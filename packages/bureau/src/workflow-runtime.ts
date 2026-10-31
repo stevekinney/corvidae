@@ -577,6 +577,26 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return result;
   }
 
+  /**
+   * The registration of the files' documents with the engine, and a contributed trigger's fire,
+   * one at a time (COR-1874). Narrower than {@link exclusive}: it holds only the registration, never
+   * a schedule, a trigger's `start` or `stop`, or anything else that can wait for a fire, so a fire
+   * that waits for it can never wait for itself.
+   */
+  let registrationTail: Promise<unknown> = Promise.resolve();
+  function withRegistration<T>(work: () => Promise<T>): Promise<T> {
+    const result = registrationTail.then(work, work);
+    registrationTail = result.catch(() => undefined);
+    return result;
+  }
+  /**
+   * The file each workflow's active revision in the engine was registered from, as of the last
+   * registration that succeeded. Written and read only under {@link withRegistration}.
+   */
+  let appliedFiles = new Map<string, ReadyWorkflowFile>();
+  /** Why the last registration failed, until one succeeds. Written under {@link withRegistration}. */
+  let registrationFailure: unknown;
+
   function readyFiles(): ReadyWorkflowFile[] {
     return catalog.list().flatMap((listing) => {
       const file = catalog.find(listing.id);
@@ -629,45 +649,44 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
   /**
    * A contributed trigger fired for workflow `id`: start an instance with the payload, as a signal
-   * trigger does. A file that was paused or changed since the trigger started starts nothing. A
-   * payload the file's `inputSchema` refuses rejects with {@link WorkflowInputInvalidError}, which
-   * the plugin that fired sees.
+   * trigger does. A payload the `inputSchema` refuses rejects with {@link WorkflowInputInvalidError},
+   * which the plugin that fired sees.
    *
-   * The file is judged against, and the instance started on, the revision the engine has applied,
-   * as `start` and `signal` do: a fire that lands while a change is applying waits for it, and
-   * rejects with {@link WorkflowApplyError} when it failed. A fire during the trigger's own
-   * `start` does not wait, because that `start` is inside the apply and would wait for itself; the
-   * apply registers a file's revision before it starts the file's triggers, so the engine already
-   * has it.
+   * The fire takes one snapshot, the file whose revision the engine has applied
+   * ({@link appliedFiles}), judges the payload by that revision's `inputSchema`, and starts that
+   * same revision: both happen under {@link withRegistration}, so no registration can move the
+   * engine's active revision in between. A fire that lands while a change to the files is queued or
+   * applying runs the revision applied before it; one after the change registered runs the new
+   * one. A revision that was paused, or whose trigger is another kind, starts nothing.
+   *
+   * It never waits for an apply. An apply that stops this trigger awaits the trigger's `stop`, and
+   * a trigger's `stop` may wait for its fires in flight (a webhook server's does), so a fire that
+   * waited for the apply would wait for itself. The registration lock holds only the registration,
+   * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
+   * rejects with {@link WorkflowApplyError} until an apply succeeds.
    */
-  async function fireTrigger(
-    id: string,
-    kind: string,
-    payload: unknown,
-    duringStart: boolean,
-  ): Promise<void> {
+  async function fireTrigger(id: string, kind: string, payload: unknown): Promise<void> {
     if (closed) return;
     // The caller owns `payload`: snapshot it before the first await. A value that is not JSON is
     // refused below, once the file it would start is known, as before.
     const requested: unknown = payload ?? null;
     const isJson = z.json().safeParse(requested).success;
     const input: unknown = isJson ? structuredClone(requested) : requested;
-    if (!duringStart) {
-      if (applyPending) queueApply();
-      await settled();
+    await withRegistration(async () => {
       if (closed) return;
-      if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
-    }
-    const file = catalog.find(id);
-    if (file === undefined || file.paused || file.document.trigger.kind !== kind) return;
-    if (!isJson) {
-      throw options.createError('The trigger payload must be a JSON value.', 'BAD_REQUEST');
-    }
-    const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
-    if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-    const trigger = { kind, payload: input };
-    assertSendable('trigger payload', trigger);
-    await engine.start(weftNameOf(id), trigger);
+      const failure = registrationFailure ?? applyFailure;
+      if (failure !== undefined) throw new WorkflowApplyError(failure);
+      const file = appliedFiles.get(id);
+      if (file === undefined || file.paused || file.document.trigger.kind !== kind) return;
+      if (!isJson) {
+        throw options.createError('The trigger payload must be a JSON value.', 'BAD_REQUEST');
+      }
+      const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
+      if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
+      const trigger = { kind, payload: input };
+      assertSendable('trigger payload', trigger);
+      await engine.start(weftNameOf(id), trigger);
+    });
   }
 
   const triggers = createWorkflowTriggerSupervisor({
@@ -762,12 +781,23 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     const files = readyFiles();
     // The snapshot first: a revision never reaches the engine without one behind it.
     for (const file of files) await snapshots.ensure(file.id, file.document);
-    const registered: readonly RegisteredWorkflowDocument[] = await registerBureauWorkflowDocuments(
-      engine,
-      registrationHost,
-      { active: files.map((file) => file.document), retained },
-    );
-    for (const entry of registered) registeredTypes.add(bureauNameOf(entry.name));
+    await withRegistration(async () => {
+      try {
+        const registered: readonly RegisteredWorkflowDocument[] =
+          await registerBureauWorkflowDocuments(engine, registrationHost, {
+            active: files.map((file) => file.document),
+            retained,
+          });
+        for (const entry of registered) registeredTypes.add(bureauNameOf(entry.name));
+        appliedFiles = new Map(files.map((file) => [file.id, file]));
+        registrationFailure = undefined;
+      } catch (error) {
+        // Weft activates the documents one at a time, so some may be active and others not: until
+        // a registration succeeds, no fire may trust `appliedFiles`.
+        registrationFailure = error;
+        throw error;
+      }
+    });
   }
 
   /** Whether `id` is the name of a workflow the engine has from code, not one Bureau registered. */

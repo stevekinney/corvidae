@@ -36,16 +36,11 @@ export interface WorkflowTriggerSupervisor {
 
 export interface WorkflowTriggerSupervisorOptions {
   /**
-   * Starts an instance of workflow `id` for the trigger `kind`; called by a trigger's `fire`.
-   * `duringStart` is true when the trigger fired before its `start` resolved. Such a fire can be
-   * from inside the apply that is starting the trigger, so it must not wait for that apply.
+   * Starts an instance of workflow `id` for the trigger `kind`; called by a trigger's `fire`, which
+   * may come before its `start` resolves. It must never wait for a reconcile: a reconcile awaits a
+   * trigger's `stop`, and a `stop` may wait for the trigger's fires in flight.
    */
-  readonly fire: (
-    id: string,
-    kind: string,
-    payload: unknown,
-    duringStart: boolean,
-  ) => Promise<void>;
+  readonly fire: (id: string, kind: string, payload: unknown) => Promise<void>;
   readonly diagnose: (message: string, cause: unknown) => void;
 }
 
@@ -53,8 +48,6 @@ interface RunningTrigger {
   /** The kind, its version and the trigger object: a change to any restarts the trigger. */
   readonly key: string;
   readonly controller: AbortController;
-  /** Whether `start` has not yet resolved or failed. */
-  starting: boolean;
   /** What `start` resolved with; absent when `start` failed, so the same trigger is not retried. */
   stop?: (() => void | Promise<void>) | undefined;
 }
@@ -80,13 +73,12 @@ export function createWorkflowTriggerSupervisor(
     // A close that landed while the previous trigger was starting or stopping: start nothing.
     if (closed) return;
     const controller = new AbortController();
-    const entry: RunningTrigger = { key, controller, starting: true };
+    const entry: RunningTrigger = { key, controller };
     running.set(id, entry);
     const { kind, trigger } = desired;
     const { kind: _kind, ...rest } = trigger;
     const parsed = kind.value.configuration.safeParse(rest);
     if (!parsed.success) {
-      entry.starting = false;
       options.diagnose(
         `The "${kind.name}" trigger of workflow "${id}" has a configuration its kind refuses: ${parsed.error.message}`,
         undefined,
@@ -98,9 +90,7 @@ export function createWorkflowTriggerSupervisor(
         configuration: parsed.data,
         signal: controller.signal,
         fire: (payload) =>
-          controller.signal.aborted
-            ? Promise.resolve()
-            : options.fire(id, kind.name, payload, entry.starting),
+          controller.signal.aborted ? Promise.resolve() : options.fire(id, kind.name, payload),
       });
     } catch (error) {
       options.diagnose(
@@ -108,8 +98,6 @@ export function createWorkflowTriggerSupervisor(
         error,
       );
       return;
-    } finally {
-      entry.starting = false;
     }
     // Stopped while `start` was still resolving: it listens for nothing now.
     if (controller.signal.aborted) {

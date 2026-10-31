@@ -22,6 +22,7 @@ import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-ho
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import {
   contributionCatalog,
@@ -832,10 +833,89 @@ describe('a contributed trigger that fires while an earlier change has not reach
     const before = await engine.list({ type: 'pipeline', limit: 10 });
     expect(before.total).toBe(0);
 
+    // A fire never waits for an apply, so it is the rescan that catches the engine up.
     failing = false;
+    await runtime.workflows.refresh();
     await ticker.fire({ issue: 'COR-4' });
     const after = await engine.list({ type: 'pipeline', limit: 10 });
     expect(after.total).toBe(1);
+  });
+
+  it('is refused with the registration failure, and starts the new revision once it registers', async () => {
+    const w = await world();
+    const ticker = createTickerController();
+    const pipeline = (input: string) => ({
+      trigger: { kind: 'x:ticker', channel: 'alerts' },
+      steps: [{ kind: 'activity', handler: 'x:y', input }],
+    });
+    await w.put('pipeline', pipeline('hello'));
+    const { engine, runtime } = await w.boot({
+      contributions: createWorkflowContributions(
+        contributionCatalog({ activityVersion: '1', ticker }),
+      ),
+    });
+    await runtime.workflows.refresh();
+    // Registering the changed file's revision fails, so the engine is behind the files.
+    const registerSource = engine.registerSource.bind(engine);
+    let failing = true;
+    engine.registerSource = (...args: Parameters<Engine['registerSource']>) => {
+      if (failing) throw new Error('registration refused');
+      return registerSource(...args);
+    };
+    await w.put('pipeline', pipeline('changed'));
+    await runtime.workflows.refresh();
+
+    const refusal = await rejectionOf(ticker.fire({ issue: 'COR-5' }));
+    expect(refusal).toBeInstanceOf(WorkflowApplyError);
+    expect((refusal as Error).message).toContain('registration refused');
+    const before = await engine.list({ type: 'pipeline', limit: 10 });
+    expect(before.total).toBe(0);
+
+    failing = false;
+    await runtime.workflows.refresh();
+    await ticker.fire({ issue: 'COR-5' });
+    const after = await engine.list({ type: 'pipeline', limit: 10 });
+    expect(after.items[0]?.version).toBe(
+      runtime.workflows.list().find((entry) => entry.id === 'pipeline')?.version,
+    );
+  });
+});
+
+describe('a contributed trigger that fires while the Bureau closes (COR-1874)', () => {
+  it('completes, and so does the close that waits for the trigger to stop', async () => {
+    const w = await world();
+    const ticker = createTickerController();
+    await w.put('pipeline', {
+      trigger: { kind: 'x:ticker', channel: 'alerts' },
+      steps: [{ kind: 'activity', handler: 'x:y', input: 'hello' }],
+    });
+    const { engine, runtime } = await w.boot({
+      contributions: createWorkflowContributions(
+        contributionCatalog({ activityVersion: '1', ticker }),
+      ),
+    });
+    await runtime.workflows.refresh();
+    // The fire is held inside the engine's start until the close has begun.
+    const engineStart = engine.start.bind(engine);
+    const entered = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<void>();
+    engine.start = async (...args: Parameters<Engine['start']>) => {
+      entered.resolve();
+      await gate.promise;
+      return engineStart(...args);
+    };
+
+    const fired = ticker.fire({ issue: 'COR-6' });
+    await entered.promise;
+    // The trigger's stop waits for this fire, and the close waits for the stop.
+    const closing = runtime.close();
+    gate.resolve();
+    await fired;
+    await closing;
+
+    expect(ticker.stopped).toBe(1);
+    const runs = await engine.list({ type: 'pipeline', limit: 10 });
+    expect(runs.total).toBe(1);
   });
 });
 

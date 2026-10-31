@@ -228,53 +228,6 @@ describe('a workflow file that uses a contributed activity and trigger kind', ()
     });
   });
 
-  it('starts the revision a changed file registers when a trigger fires while the change is applying', async () => {
-    const ticker = createTickerController();
-    const harness = await start({ ticker });
-    await harness.put('pipeline.json', workflowFileText('pipeline', ticking()));
-    await listing(harness, 'pipeline');
-    const before = await versionOf(harness, 'pipeline');
-    const oldTrigger = ticker.contexts[0]!;
-
-    // Another file's trigger is still starting, so the apply it belongs to has not finished.
-    const release = ticker.hold('blocked');
-    await harness.put(
-      'other.json',
-      workflowFileText('other', ticking({ trigger: { kind: 'x:ticker', channel: 'blocked' } })),
-    );
-    void harness.bureau.workflows?.refresh();
-    await waitUntil(() => ticker.hasStarted('blocked'), { message: 'the held trigger to start' });
-
-    // The pipeline's file changes: the catalog has it now, but its revision is not registered.
-    await harness.put(
-      'pipeline.json',
-      workflowFileText(
-        'pipeline',
-        ticking({ steps: [{ kind: 'activity', handler: 'x:y', input: 'changed' }] }),
-      ),
-    );
-    void harness.bureau.workflows?.refresh();
-    await waitUntil(
-      () =>
-        harness.bureau.workflows?.list().find((entry) => entry.id === 'pipeline')?.version !==
-        before,
-      {
-        message: 'the catalog to hold the changed file',
-      },
-    );
-
-    const fired = oldTrigger.fire({ issue: 'COR-3' });
-    release();
-    await fired;
-
-    await waitUntil(async () => (await firstRunStatus(harness, 'pipeline')) === 'completed', {
-      message: 'the fired instance to complete',
-    });
-    const [run] = await runsOf(harness, 'pipeline');
-    const detail = await harness.bureau.workflows?.getRun(run!.id);
-    expect(detail?.result).toBe(activityAnswer('1', 'changed'));
-  });
-
   it('stops the trigger when the file is paused, and a fire after that starts nothing', async () => {
     const ticker = createTickerController();
     const harness = await start({ ticker });

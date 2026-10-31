@@ -10,9 +10,12 @@ import { createVersionedCatalog, type VersionedCatalog } from '../versioned-cata
 
 /** What the `x:ticker` trigger kind recorded, and how a test fires it. */
 export interface TickerController {
-  /** The context of every `start`, in order. */
+  /**
+   * The context of every `start`, in order. Its `fire` is tracked, so the trigger's stop function
+   * waits for the fires still in flight, as a webhook server's does for its requests.
+   */
   readonly contexts: PluginTriggerContext[];
-  /** How many times the kind's stop function ran. */
+  /** How many times the kind's stop function finished; each waits for its trigger's fires in flight. */
   stopped: number;
   /** When set, `start` fires this payload before it resolves, as a source that has news at once does. */
   fireOnStart?: unknown;
@@ -97,10 +100,23 @@ export function contributionCatalog(options: ContributionOptions): VersionedCata
         description: 'Fires when a test says so.',
         configuration: z.object({ channel: z.string() }).strict(),
         start: async (context: PluginTriggerContext) => {
-          ticker.contexts.push(context);
+          const inFlight = new Set<Promise<void>>();
+          const tracked: PluginTriggerContext = {
+            ...context,
+            fire: (payload) => {
+              const fired = context.fire(payload);
+              inFlight.add(fired);
+              const forget = () => inFlight.delete(fired);
+              fired.then(forget, forget);
+              return fired;
+            },
+          };
+          ticker.contexts.push(tracked);
           await ticker.heldUntil((context.configuration as { channel: string }).channel);
-          if (Object.hasOwn(ticker, 'fireOnStart')) await context.fire(ticker.fireOnStart);
-          return () => {
+          if (Object.hasOwn(ticker, 'fireOnStart')) await tracked.fire(ticker.fireOnStart);
+          // As `Bun.serve`'s `server.stop()` does, stopping waits for the fires still in flight.
+          return async () => {
+            await Promise.allSettled(inFlight);
             ticker.stopped += 1;
           };
         },
