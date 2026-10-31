@@ -43,7 +43,7 @@
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { routerSelectionLocationAt } from '../capabilities/selection-location.ts';
+  import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import AuditDetail from './audit-detail.svelte';
   import {
     auditExportFilename,
@@ -202,7 +202,7 @@
     return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString();
   }
 
-  const selectionLocation = routerSelectionLocationAt('/health/audit');
+  const selectionLocation = routerSelectionLocationFor('/health/audit');
 
   // Export reads every page the filters match, not only the ones the list has loaded.
   const exportMutation = createMutation<number, unknown, void>(

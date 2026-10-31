@@ -95,6 +95,41 @@ describe('overlapping registrations', () => {
 });
 
 describe('a key press', () => {
+  test('acts once per press: a held key repeating never runs it, or a sequence', () => {
+    const ran: string[] = [];
+    const registry = new ShortcutRegistry();
+    registry.register({ ...entry(['a'], 'global'), handler: () => ran.push('a') });
+    registry.register({ ...entry(['g', 'c'], 'global'), handler: () => ran.push('gc') });
+
+    expect(registry.handleKey(key('a'), NOWHERE, 0)).toBe(true);
+    expect(registry.handleKey(key('a', { repeat: true }), NOWHERE, 1)).toBe(false);
+    expect(registry.handleKey(key('a', { repeat: true }), NOWHERE, 2)).toBe(false);
+    // A repeat neither starts a sequence nor continues one.
+    expect(registry.handleKey(key('g', { repeat: true }), NOWHERE, 3)).toBe(false);
+    expect(registry.handleKey(key('c'), NOWHERE, 4)).toBe(false);
+    registry.handleKey(key('g'), NOWHERE, 5);
+    expect(registry.handleKey(key('c', { repeat: true }), NOWHERE, 6)).toBe(false);
+    expect(ran).toEqual(['a']);
+  });
+
+  test('acts on nothing while a dialog is open, and again once it is closed', () => {
+    const ran: string[] = [];
+    const registry = new ShortcutRegistry();
+    registry.register({ ...entry(['a'], 'global'), handler: () => ran.push('a') });
+    registry.register({
+      ...entry(['s'], 'global'),
+      modifier: 'mod',
+      handler: () => ran.push('save'),
+    });
+
+    const underDialog = { ...NOWHERE, dialogOpen: true };
+    expect(registry.handleKey(key('a'), underDialog, 0)).toBe(false);
+    expect(registry.handleKey(key('s', { metaKey: true }), underDialog, 1)).toBe(false);
+    expect(ran).toEqual([]);
+    expect(registry.handleKey(key('a'), { ...NOWHERE, dialogOpen: false }, 2)).toBe(true);
+    expect(ran).toEqual(['a']);
+  });
+
   test('runs a shortcut only where its scope is active', () => {
     const ran: string[] = [];
     const registry = new ShortcutRegistry();

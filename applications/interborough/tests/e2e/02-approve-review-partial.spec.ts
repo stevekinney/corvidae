@@ -7,12 +7,13 @@
  * currently-pending ones carry `artifact.sections` (headline/body/
  * callToAction) regardless of their own `allowPartial` value (section
  * rendering is driven purely by artifact shape —
- * `review-domain.ts`'s `extractReviewSections`), so this locates any
- * pending review whose type badge reads "content" rather than a specific
- * document title, which the row itself never renders.
+ * `review-domain.ts`'s `extractReviewSections`), so this opens the pending
+ * reviews in turn until one shows its section decisions, rather than naming
+ * a specific document title.
  */
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
+import { listEngineReviews } from './review-support.ts';
 
 const REVIEWER = 'e2e-operator';
 const FEEDBACK = 'Tighten the call to action; the rest reads well.';
@@ -22,20 +23,24 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
   request,
   checkA11y,
 }) => {
+  await listEngineReviews(page, request);
   await page.goto('/reviews');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot
   // skeleton `page.goto()`'s `load` event resolves under.
-  await expect(page.getByRole('heading', { level: 2, name: 'Workflow reviews' })).toBeVisible();
+  await expect(page.locator('[data-review-row^="engine:"]').first()).toBeVisible();
   await checkA11y('reviews inbox');
 
-  // The engine's pending reviews are in their own section, each with its own form. The sectioned
-  // ones are `content` reviews; the first of them is decided here.
-  const review = page
-    .locator('.weft-review-detail')
-    .filter({ has: page.getByText('Section decisions') })
-    .first();
-  await expect(review).toBeVisible();
+  // The engine's pending reviews are in the one list, each with its own form once it is open. The
+  // sectioned ones are `content` reviews; the first of them is decided here.
+  const rows = page.locator('[data-review-row^="engine:"]');
+  const review = page.locator('.ib-review-pane[data-kind="engine-review"]');
+  for (let index = 0; index < (await rows.count()); index += 1) {
+    await rows.nth(index).click();
+    await expect(review).toBeVisible();
+    if (await review.getByText('Section decisions').isVisible()) break;
+  }
+  await expect(review.getByText('Section decisions')).toBeVisible();
   const reviewId = await review.getByRole('link').first().getAttribute('href');
 
   await review
@@ -71,7 +76,7 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
 
   // The page lists only what waits on someone, so the decided review leaves it. The engine has it
   // as decided, with the reviewer and the outcome the form sent.
-  await expect(page.locator(`.weft-review-detail a[href="${reviewId ?? ''}"]`)).toHaveCount(0);
+  await expect(page.locator(`.ib-review-pane a[href="${reviewId ?? ''}"]`)).toHaveCount(0);
   const decided = await request.get(`${E2E_BASE_URL}/v1/reviews`, {
     params: { status: 'completed' },
   });

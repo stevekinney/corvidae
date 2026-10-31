@@ -1,7 +1,8 @@
 /**
  * The host's model providers while it runs: what it offers now, and the three ways a person
- * changes it without a restart. {@link ProviderManager.connect} stores a provider's API key and
- * lists the provider in `configuration.json`, {@link ProviderManager.editCatalog} replaces the
+ * changes it without a restart. {@link ProviderManager.connect} stores a provider's API key and its
+ * allowlist (`plugins.<plugin>.configuration.models` in `configuration.json`),
+ * {@link ProviderManager.editCatalog} replaces the
  * catalog edits there, and {@link ProviderManager.reload} reads both files again, for a person who
  * edited them by hand. Each ends the same way: the files are read back, the rows become the
  * Bureau's catalog (`bureau.models.replace`), and the next generate resolves with the new key.
@@ -21,7 +22,11 @@
  */
 
 import type { Bungalow } from '@lostgradient/bungalow';
-import type { resolveProviderGenerate, SettingLockReason } from '@lostgradient/bureau';
+import type {
+  ProviderChecker,
+  resolveProviderGenerate,
+  SettingLockReason,
+} from '@lostgradient/bureau';
 import type { BackendDescriptor, GenerateFunction } from '@lostgradient/operative';
 
 import { parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
@@ -31,13 +36,15 @@ import { providerDiagnostics } from './host-diagnostics.ts';
 import { hostWriteLocks } from './locations.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
+  allowlistMissMessage,
   createCatalogGenerate,
   loadProviders,
+  parseDocument,
   parseProviderConfiguration,
-  PROVIDER_NAMES,
-  PROVIDER_SECRET_KEYS,
+  readAllowlists,
   selectCatalogRows,
-  type InterboroughProviderName,
+  unmatchedAllowlistEntries,
+  type ContributedProvider,
   type LoadedProviders,
   type ModelSelection,
 } from './providers.ts';
@@ -67,11 +74,11 @@ export class ProviderWriteLockedError extends Error {
  */
 export class ProviderPartialChangeError extends Error {
   /** The provider whose key was stored. */
-  readonly provider: InterboroughProviderName;
+  readonly provider: string;
   /** Whether the host is calling the provider with the stored key, as the host loaded it. */
   readonly inUse: boolean;
 
-  constructor(provider: InterboroughProviderName, inUse: boolean) {
+  constructor(provider: string, inUse: boolean) {
     super(
       inUse
         ? `The ${provider} key was stored and is in use, but the configuration could not be written and the previous key could not be put back.`
@@ -97,7 +104,7 @@ export class ProviderInputError extends Error {
 
 /** What a provider connection asks for. */
 export type ProviderConnection = {
-  /** The provider's name: `anthropic`, `openai`, or `gemini`. */
+  /** The name of a provider a loaded plugin contributes, such as `anthropic`. */
   readonly provider: string;
   /**
    * The API key, a string. Stored in the provider's 0600 secret file, and never returned, logged,
@@ -105,8 +112,9 @@ export type ProviderConnection = {
    */
   readonly apiKey: unknown;
   /**
-   * An allowlist of models, a list of names. Absent keeps the provider's current allowlist (none
-   * for a new provider), and `null` removes it so every model is offered. Checked like a hand edit.
+   * An allowlist of models, a list of names, stored as the plugin's `configuration.models`. Absent
+   * keeps the current allowlist (none for a new provider), and `null` removes it so every model is
+   * offered. Checked like a hand edit.
    */
   readonly models?: unknown;
 };
@@ -122,8 +130,8 @@ export type ProviderChange = {
 /** One provider as the configuration describes it, for a page that lets a person manage it. */
 export type ProviderStatus = {
   /** The provider's name. */
-  readonly name: InterboroughProviderName;
-  /** Whether `configuration.json` lists the provider. */
+  readonly name: string;
+  /** Whether the owner has set the provider up: it has a key, or its plugin has an allowlist. */
   readonly configured: boolean;
   /** Whether the provider has a key. The key itself is never reported. */
   readonly hasKey: boolean;
@@ -137,7 +145,7 @@ export type ProviderStatus = {
  */
 export type ProviderModelRow = {
   /** The row's provider. */
-  readonly provider: InterboroughProviderName;
+  readonly provider: string;
   /** The provider-native model name. */
   readonly model: string;
   /** The other names that reach the row, which a catalog edit may use instead of `model`. */
@@ -192,6 +200,25 @@ export type ProviderManager = {
   editCatalog(edits: unknown): Promise<ProviderChange>;
   /** Read the configuration and the keys again and apply them. */
   reload(): Promise<ProviderChange>;
+  /**
+   * Check that `document` could be written as `configuration.json`: its allowlists match the
+   * loaded plugins' models, counting the rows its catalog edits add. It throws what the next start
+   * would throw and writes nothing. It does not queue, so a caller already inside the
+   * configuration queue can use it on the document it read there.
+   */
+  checkDocument(document: Record<string, unknown>): void;
+  /**
+   * What is wrong with a plugin's stored allowlist, seen against the providers it contributes, as
+   * Bureau's `models.checkProviders` asks it before the plugin is accepted. A plugin with a
+   * mismatched allowlist is skipped, so the host starts and the owner fixes it through the plugin
+   * routes. Reads the catalog edits from the stored configuration; writes nothing.
+   */
+  checkProviders: ProviderChecker;
+  /**
+   * Hand the manager the providers the loaded plugins contribute and load them: the rows for the
+   * Bureau's first catalog. The host calls it from Bureau's `models.catalog` factory, once.
+   */
+  adopt(providers: readonly ContributedProvider[]): Promise<readonly BackendDescriptor[]>;
   /** The queue this manager writes the configuration through, for other writers of the file to share. */
   readonly configurationQueue: ConfigurationQueue;
   /**
@@ -217,19 +244,19 @@ export type ProviderManagerOptions = {
   >;
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
-  /** Receives warnings, such as a configured provider with no key. They never hold a key. */
+  /**
+   * Called after the manager writes a plugin's configuration, so the plugin manager reads the file
+   * again and reports what is stored. Optional.
+   */
+  readonly afterConfigurationWrite?: () => Promise<void>;
+  /** Receives warnings, such as a provider with an allowlist and no key. They never hold a key. */
   readonly warn: (message: string) => void;
   /** Bureau's provider resolver, or a stand-in for a test. */
   readonly resolveProviderGenerate: typeof resolveProviderGenerate;
 };
 
-function isProviderName(value: string): value is InterboroughProviderName {
-  return (PROVIDER_NAMES as readonly string[]).includes(value);
-}
-
 /** The page's view of a catalog row. */
-function modelRowOf(row: BackendDescriptor): ProviderModelRow | undefined {
-  if (!isProviderName(row.provider)) return undefined;
+function modelRowOf(row: BackendDescriptor): ProviderModelRow {
   return {
     provider: row.provider,
     model: row.model,
@@ -253,14 +280,19 @@ function modelRowOf(row: BackendDescriptor): ProviderModelRow | undefined {
   };
 }
 
-function checkedProvider(value: unknown): InterboroughProviderName {
-  if (typeof value !== 'string' || !isProviderName(value)) {
+function checkedProvider(
+  value: unknown,
+  providers: readonly ContributedProvider[],
+): ContributedProvider {
+  const found =
+    typeof value === 'string' ? providers.find((provider) => provider.name === value) : undefined;
+  if (found === undefined) {
     throw new ProviderInputError(
       'provider',
-      `not a provider. Expected ${PROVIDER_NAMES.join(', ')}.`,
+      `not a provider. Expected ${providers.map((provider) => provider.name).join(', ')}.`,
     );
   }
-  return value;
+  return found;
 }
 
 function checkedKey(value: unknown): string {
@@ -281,21 +313,49 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Create the manager. It holds nothing until {@link ProviderManager.attach} and an initial load. */
-export async function createProviderManager(
-  options: ProviderManagerOptions,
-): Promise<ProviderManager> {
+/**
+ * `document` with the allowlist of `plugin` set to `models` (`plugins.<plugin>.configuration.models`),
+ * keeping every other key of the plugin's entry and of its configuration. `undefined` changes
+ * nothing, and `null` removes the allowlist. A removal that leaves nothing behind leaves no entry.
+ */
+function withAllowlist(
+  document: Record<string, unknown>,
+  plugin: string,
+  models: unknown,
+): Record<string, unknown> {
+  if (models === undefined) return document;
+  const plugins = isPlainObject(document['plugins']) ? document['plugins'] : {};
+  const existing = Object.hasOwn(plugins, plugin) ? plugins[plugin] : undefined;
+  const entry = isPlainObject(existing) ? { ...existing } : {};
+  const configuration = isPlainObject(entry['configuration']) ? { ...entry['configuration'] } : {};
+  if (models === null) delete configuration['models'];
+  else configuration['models'] = models;
+  if (Object.keys(configuration).length === 0) delete entry['configuration'];
+  else entry['configuration'] = configuration;
+  if (existing === undefined && Object.keys(entry).length === 0) return document;
+  return { ...document, plugins: { ...plugins, [plugin]: entry } };
+}
+
+/** Create the manager. It holds nothing until {@link ProviderManager.adopt} hands it the providers. */
+export function createProviderManager(options: ProviderManagerOptions): ProviderManager {
   const { bungalow } = options;
   const location = bungalow.configurationLocation;
-  const load = (): Promise<LoadedProviders> =>
+  const load = (providers: readonly ContributedProvider[]): Promise<LoadedProviders> =>
     loadProviders({
       configurationLocation: location,
       readConfiguration: () => bungalow.readConfiguration(),
       readSecret: (key) => bungalow.readSecret(key),
       warn: options.warn,
+      providers,
     });
 
-  let loaded = await load();
+  // Nothing is offered until the plugins have been set up and `adopt` hands over their providers.
+  let loaded: LoadedProviders = {
+    providers: [],
+    allowlists: new Map(),
+    rows: [],
+    apiKeys: new Map(),
+  };
   let replaceRows: ((rows: readonly BackendDescriptor[]) => Promise<number>) | undefined;
   let closed = false;
   // Every change reads the files, decides, writes, and reads again. Running them one at a time
@@ -322,27 +382,36 @@ export async function createProviderManager(
     } catch {
       throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
     }
-    if (text === undefined) return {};
     // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
-    parseProviderConfiguration(text, location);
-    const parsed: unknown = JSON.parse(text);
-    return isPlainObject(parsed) ? parsed : {};
+    const document = parseDocument(text, location);
+    if (text !== undefined) parseProviderConfiguration(text, location);
+    return document;
   }
 
   /** Check a document against the keys the host would hold, then write it. Nothing is written when it fails. */
-  function validated(
-    document: Record<string, unknown>,
-    keys: ReadonlySet<InterboroughProviderName>,
-  ): string {
+  function validated(document: Record<string, unknown>, keys: ReadonlySet<string>): string {
     const text = `${JSON.stringify(document, null, 2)}\n`;
+    // The stored edits are read as `loadProviders` reads them: an edit for a provider no loaded
+    // plugin contributes waits, ignored, for its plugin. A new edit was checked against the names
+    // when it arrived.
     const configuration = parseProviderConfiguration(text, location);
-    selectCatalogRows({ configuration, path: location, available: keys });
+    selectCatalogRows({
+      configuration,
+      allowlists: readAllowlists(
+        document,
+        location,
+        loaded.providers.map((provider) => provider.plugin),
+      ),
+      path: location,
+      available: keys,
+      providers: loaded.providers,
+    });
     return text;
   }
 
   const apply = async (): Promise<ProviderChange> => {
     // Read back from disk, so the host serves what a restart would.
-    const next = await load();
+    const next = await load(loaded.providers);
     loaded = next;
     if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
     const catalog = await replaceRows(next.rows);
@@ -357,8 +426,13 @@ export async function createProviderManager(
       createCatalogGenerate(selection, {
         rows: loaded.rows,
         apiKeys: loaded.apiKeys,
+        providers: loaded.providers,
         resolveProviderGenerate: options.resolveProviderGenerate,
       }),
+    async adopt(providers) {
+      loaded = await load([...providers]);
+      return loaded.rows;
+    },
     attach(replace) {
       replaceRows = replace;
     },
@@ -368,19 +442,27 @@ export async function createProviderManager(
     async snapshot() {
       const document = await readDocument();
       const configuration = parseProviderConfiguration(JSON.stringify(document), location);
+      const allowlists = readAllowlists(
+        document,
+        location,
+        loaded.providers.map((provider) => provider.plugin),
+      );
       const reason = lockReason();
       return {
-        providers: PROVIDER_NAMES.map((name) => {
-          const entry = configuration.providers[name];
+        providers: loaded.providers.map((provider) => {
+          const models = allowlists.get(provider.plugin);
+          const hasKey = loaded.apiKeys.has(provider.name);
           return {
-            name,
-            configured: entry !== undefined,
-            hasKey: loaded.apiKeys.has(name),
-            ...(entry?.models === undefined ? {} : { models: entry.models }),
+            name: provider.name,
+            configured: hasKey || models !== undefined,
+            hasKey,
+            ...(models === undefined ? {} : { models }),
           };
         }),
-        catalog: configuration.catalog ?? [],
-        models: loaded.rows.flatMap((row) => modelRowOf(row) ?? []),
+        catalog: (configuration.catalog ?? []).filter((edit) =>
+          loaded.providers.some((provider) => provider.name === edit.provider),
+        ),
+        models: loaded.rows.map(modelRowOf),
         ...(reason === undefined ? {} : { lockReason: reason }),
       };
     },
@@ -388,23 +470,22 @@ export async function createProviderManager(
     // may change it while this waits its turn.
     async connect(connection) {
       assertWritable();
-      const provider = checkedProvider(connection.provider);
+      const contributed = checkedProvider(connection.provider, loaded.providers);
+      const provider = contributed.name;
+      const secretKey = contributed.secretKey;
+      if (secretKey === undefined) {
+        throw new ProviderInputError('provider', 'its plugin declares no secret to hold a key.');
+      }
       const key = checkedKey(connection.apiKey);
       const models: unknown = Array.isArray(connection.models)
         ? [...connection.models]
         : connection.models;
       return serialized(async () => {
         const document = await readDocument();
-        const providers = isPlainObject(document['providers']) ? document['providers'] : {};
-        const existing = providers[provider];
-        const entry = isPlainObject(existing) ? { ...existing } : {};
-        if (models === null) delete entry['models'];
-        else if (models !== undefined) entry['models'] = models;
         const text = validated(
-          { ...document, providers: { ...providers, [provider]: entry } },
+          withAllowlist(document, contributed.plugin, models),
           new Set([...loaded.apiKeys.keys(), provider]),
         );
-        const secretKey = PROVIDER_SECRET_KEYS[provider];
         const previousKey = bungalow.readSecret(secretKey);
         // True once the new key is on the disk. A write that throws may still have replaced the
         // file (Bungalow renames it, then syncs the directory), so a throw is checked against the
@@ -448,16 +529,30 @@ export async function createProviderManager(
           }
           throw error;
         }
+        // The plugin manager reports what is stored, so it reads the file again; the write stands
+        // either way.
+        await options.afterConfigurationWrite?.().catch(() => undefined);
         return apply();
       });
     },
     async editCatalog(edits) {
       assertWritable();
-      const parsed = parseCatalogEdits(edits, location, PROVIDER_NAMES);
+      const parsed = parseCatalogEdits(
+        edits,
+        location,
+        loaded.providers.map((provider) => provider.name),
+      );
       return serialized(async () => {
-        const { catalog: _replaced, ...rest } = await readDocument();
+        const { catalog: stored, ...rest } = await readDocument();
+        // An edit for a provider no loaded plugin contributes is not the caller's to replace: it
+        // waits in the file for its plugin, after the edits that replace the others.
+        const names = new Set(loaded.providers.map((provider) => provider.name));
+        const dormant = parseCatalogEdits(stored ?? [], location).filter(
+          (edit) => !names.has(edit.provider),
+        );
+        const next = [...parsed, ...dormant];
         const text = validated(
-          parsed.length === 0 ? rest : { ...rest, catalog: parsed },
+          next.length === 0 ? rest : { ...rest, catalog: next },
           new Set(loaded.apiKeys.keys()),
         );
         bungalow.writeConfiguration(text);
@@ -465,5 +560,26 @@ export async function createProviderManager(
       });
     },
     reload: () => serialized(apply),
+    checkDocument(document) {
+      validated(document, new Set(loaded.apiKeys.keys()));
+    },
+    async checkProviders({ configuration, providers: contributed }) {
+      const models = isPlainObject(configuration) ? configuration['models'] : undefined;
+      if (!Array.isArray(models) || !models.every((entry) => typeof entry === 'string')) return [];
+      let text: string | undefined;
+      try {
+        text = await bungalow.readConfiguration();
+      } catch {
+        throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
+      }
+      const edits =
+        text === undefined ? [] : (parseProviderConfiguration(text, location).catalog ?? []);
+      const owned = contributed.map(({ definition, rows }) => ({ name: definition.name, rows }));
+      const misses = unmatchedAllowlistEntries(owned, models, edits);
+      return misses.map((index) => ({
+        field: `models[${index}]`,
+        message: allowlistMissMessage(owned),
+      }));
+    },
   };
 }

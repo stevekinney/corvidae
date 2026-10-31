@@ -1,10 +1,10 @@
 /**
  * The catalog edits in `configuration.json`: a person turns a model off, corrects its price or
- * limits, or adds a row the built-in list lacks. They sit beside `providers`:
+ * limits, or adds a row the built-in list lacks. They sit beside `plugins`:
  *
  * ```json
  * {
- *   "providers": { "openai": {} },
+ *   "plugins": { "openai": { "configuration": { "models": ["gpt-4.1"] } } },
  *   "catalog": [
  *     { "provider": "openai", "model": "gpt-4.1", "off": true },
  *     { "provider": "openai", "model": "gpt-4.1-mini", "contextWindowTokens": 200000 },
@@ -173,13 +173,13 @@ function parsePricing(value: unknown, path: string, field: string): CatalogPrici
 }
 
 /**
- * Parse the `catalog` list of `configuration.json`. `providerNames` are the providers an edit may
- * name. Two edits for one provider and model are refused, so the list says one thing about a row.
+ * Parse the `catalog` list of `configuration.json`. `providerNames`, when given, are the providers an
+ * edit may name. Two edits for one provider and model are refused, so the list says one thing about a row.
  */
 export function parseCatalogEdits(
   value: unknown,
   path: string,
-  providerNames: readonly string[],
+  providerNames?: readonly string[],
 ): readonly CatalogEdit[] {
   if (!Array.isArray(value)) throw problem(path, 'catalog', 'expected a list of edits.');
   const seen = new Set<string>();
@@ -192,7 +192,7 @@ export function parseCatalogEdits(
       }
     }
     const provider = nonEmptyText(entry['provider'], path, `${field}.provider`);
-    if (!providerNames.includes(provider)) {
+    if (providerNames !== undefined && !providerNames.includes(provider)) {
       throw problem(
         path,
         `${field}.provider`,

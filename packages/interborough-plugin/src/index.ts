@@ -10,6 +10,7 @@ export type {
   PluginHookActionContext,
   PluginHookActionKind,
   PluginMcpApp,
+  PluginProvider,
   PluginRunHooks,
   PluginSetupResult,
   PluginTriggerContext,

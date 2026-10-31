@@ -29,12 +29,12 @@
       : AGENT_EDITOR_COPY.noProvider,
   );
 
-  /** The first provider the host accepts, as the example the snippet configures. */
+  /** The first provider the host offers, as the example plugin the snippet enables. */
   const snippet = $derived.by(() => {
     const example = paths?.providers[0]?.name;
     return example === undefined
       ? undefined
-      : JSON.stringify({ providers: { [example]: {} } }, null, 2);
+      : JSON.stringify({ plugins: { [example]: { enabled: true } } }, null, 2);
   });
 </script>
 

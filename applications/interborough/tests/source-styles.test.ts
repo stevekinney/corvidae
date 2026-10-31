@@ -9,7 +9,7 @@ const expectedImportedSelectors = [
   '.weft-dashboard',
   '.weft-workflow-list__header-actions',
   '.weft-workers-route',
-  '.weft-reviews-route',
+  '.ib-reviews',
   '.weft-storage-route',
 ];
 

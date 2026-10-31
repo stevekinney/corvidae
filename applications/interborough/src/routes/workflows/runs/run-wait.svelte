@@ -21,6 +21,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { uploadAsset } from '../../../lib/bureau-assets.ts';
   import {
     getBureauReview,
     isReviewRoundChanged,
@@ -134,14 +135,13 @@
     }
   }
 
-  async function decide(decision: 'approve' | 'deny', note: string): Promise<void> {
+  async function decide(decision: 'approve' | 'deny'): Promise<void> {
     working = true;
     failure = undefined;
     try {
       await resolveBureauReview({
         id: wait.reviewId,
-        decision: decision === 'deny' && note !== '' ? 'reject' : decision,
-        ...(note === '' ? {} : { reason: note }),
+        decision,
         // The round shown: an approval gated again since is refused, not decided.
         ...(review.data?.kind === 'tool-approval' ? { round: review.data.round } : {}),
       });
@@ -189,6 +189,7 @@
       busy={working}
       {issues}
       failed={failure !== undefined}
+      uploadFile={async (file, signal) => (await uploadAsset(file, { signal })).assetId}
       onSubmit={(value) => void answer(value)}
     />
     {#if failure !== undefined}<p class="ib-run-wait__note" role="alert">{failure}</p>{/if}
@@ -204,7 +205,7 @@
         summary: declaredSummary(approval.action.message, approval.reason),
       })}
       deciding={working}
-      onDecide={(decision, note) => void decide(decision, note)}
+      onDecide={(decision) => void decide(decision)}
     />
     {#if failure !== undefined}<p class="ib-run-wait__note">{failure}</p>{/if}
   {/if}

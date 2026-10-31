@@ -16,7 +16,7 @@ import type { Page } from '@playwright/test';
 import { CHAT_COPY, CONNECTION_COPY, TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test, type PageErrorLog } from './fixtures.ts';
-import { expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
+import { expectEngineMissesForRuns, taskOfSession, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 /** Counts the console errors and failed requests an outage makes the page report. */
@@ -166,11 +166,11 @@ test.describe('the server stops answering while a page with data is open', () =>
     const outage = watchOutage(page, REFUSED);
     const threadId = newThreadId('offline-approve');
     await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
-    await page.goto('/reviews');
-    const row = page.locator('.ib-review').filter({
-      has: page.locator(`a[href="/chats/${threadId}"]`),
-    });
-    const approve = row.getByRole('button', { name: 'Approve' });
+    const review = await waitingReviewOf(request, threadId);
+    await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
+    const row = page.locator(`[data-review-row="bureau:${review.id}"]`);
+    const pane = page.locator('.ib-review-pane');
+    const approve = pane.getByRole('button', { name: 'Approve' });
     await expect(approve).toBeVisible();
     const operations = recordOperations(page);
 
@@ -179,7 +179,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await expect(banner(page)).toBeVisible(NOTICE);
     await expect(approve).toHaveAttribute('aria-disabled', 'true');
-    await expect(row.getByRole('button', { name: 'Deny' })).toHaveAttribute(
+    await expect(pane.getByRole('button', { name: 'Deny' })).toHaveAttribute(
       'aria-disabled',
       'true',
     );

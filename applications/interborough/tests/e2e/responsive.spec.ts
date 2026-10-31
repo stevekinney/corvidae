@@ -39,6 +39,7 @@ import {
   responsiveVariants,
   type ResponsiveSeed,
 } from './responsive-routes.ts';
+import { bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
@@ -68,6 +69,10 @@ const LONG_MEMORY = `responsive-memory-${'m'.repeat(300)}`;
 /** A catalog row whose model name is one unbroken word, to be listed on Settings › Models. */
 const LONG_MODEL = `responsive-model-${'m'.repeat(300)}`;
 const CHAT_THREAD = newThreadId('responsive');
+/** The chats whose runs wait on, and have had, an approval: each title is one 300-character word. */
+const REVIEW_THREAD = newThreadId('responsive-review');
+const DECIDED_REVIEW_THREAD = newThreadId('responsive-decided-review');
+const LONG_REVIEW_TITLE = `Refund ${'w'.repeat(300)}`;
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
 const WORKFLOW_FILE = 'e2e-digest';
@@ -100,6 +105,11 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/workflows/:workflow/runs/:run': /Input and output/,
   '/workflows/:workflow/edit': /Workflow file/,
   '/runs/:run': /Input and output/,
+  // The list prints the question each waiting review asks, and the open review its source line,
+  // which links to the chat whose title is the long word.
+  '/reviews': /Refund order order-1001 for/,
+  '/reviews (review open)': /wwwwwwwwww/,
+  '/reviews (done tab, review open)': /wwwwwwwwww/,
   '/schedules': /inventory-sync/,
   '/schedules/:schedule': /Next fires/,
   '/goals': /seeded-goal/,
@@ -324,6 +334,20 @@ async function removeCatalogRow(request: APIRequestContext, model: string): Prom
   await request.put('/host/catalog', { data: { edits } });
 }
 
+/**
+ * Starts a refund run named `title` that waits on its approval, and returns the review's identifier.
+ * The chat is titled by what the run was asked, so the review's source line links to a long title.
+ */
+async function reviewOfRun(
+  request: APIRequestContext,
+  threadId: string,
+  title: string,
+): Promise<string> {
+  await runToEnd(request, 'tool-runner', threadId, title);
+  const review = await waitingReviewOf(request, threadId);
+  return review.id;
+}
+
 let addresses: Readonly<Record<string, string>>;
 let variantAddresses: Readonly<Record<string, string>>;
 
@@ -343,6 +367,13 @@ test.beforeAll(async ({ playwright }) => {
     });
     await runToEnd(request, 'assistant', CHAT_THREAD, 'Say hello');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, MEMORY_THREAD, LONG_MEMORY);
+    const waitingReview = await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE);
+    const decidedReview = await reviewOfRun(request, DECIDED_REVIEW_THREAD, LONG_REVIEW_TITLE);
+    await bureauCall(request, 'bureau.reviews.resolve', {
+      id: decidedReview,
+      decision: 'approve',
+      round: 0,
+    });
     const stored = await request.put(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`, {
       headers: { 'content-type': 'application/octet-stream' },
       data: Buffer.from('a value'),
@@ -363,6 +394,8 @@ test.beforeAll(async ({ playwright }) => {
       run: runs.items?.[0]?.id ?? 'responsive-run',
       schedule: schedules.items?.[0]?.id ?? 'responsive-schedule',
       goal: SEEDED_GOAL_RUN_IDENTIFIER,
+      review: `bureau:${waitingReview}`,
+      decidedReview: `bureau:${decidedReview}`,
     };
     addresses = responsiveAddresses(seed);
     variantAddresses = responsiveVariants(seed);
@@ -400,7 +433,7 @@ test.afterAll(async ({ playwright }) => {
         },
       });
     }
-    await deleteChats([CHAT_THREAD, MEMORY_THREAD]);
+    await deleteChats([CHAT_THREAD, MEMORY_THREAD, REVIEW_THREAD, DECIDED_REVIEW_THREAD]);
   } finally {
     await request.dispose();
   }

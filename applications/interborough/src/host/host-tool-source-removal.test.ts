@@ -40,7 +40,7 @@ async function home(): Promise<string> {
   directories.push(directory);
   await writeFile(
     join(directory, 'configuration.json'),
-    JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+    JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
   );
   const bungalow = await openBungalow({
     name: 'interborough',

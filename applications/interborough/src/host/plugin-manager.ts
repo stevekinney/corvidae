@@ -181,6 +181,12 @@ export type PluginManager = {
    * error still reaches the caller.
    */
   writeSecret(key: string, value: string): void;
+  /**
+   * Read the persisted choices from the file again, for a writer of `plugins.<name>` other than
+   * this manager (the provider manager writes a provider plugin's allowlist), so a report shows
+   * what is stored.
+   */
+  reload(): Promise<void>;
   /** Create the secrets declared `generated` that an enabled plugin lacks. Local mode only; a remote home does nothing. */
   ensureGeneratedSecrets(): Promise<void>;
   /** Every plugin with the owner's choices and its secrets' standing. */
@@ -212,6 +218,24 @@ export type PluginManagerOptions = {
   readonly unloaded?: readonly PluginUnloaded[];
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
+  /**
+   * Whether the host applies this plugin's configuration while it runs, so a change to it needs no
+   * restart (a provider plugin's allowlist). Defaults to none. Only `enabled` then counts for
+   * `restartRequired`.
+   */
+  readonly appliesConfigurationLive?: (plugin: string) => boolean;
+  /**
+   * For a plugin the host applies live: checks the whole document the host is about to write, and
+   * throws what the next start would throw, before a byte is written. It runs inside the
+   * configuration queue, on the document read there, so another writer cannot change what it was
+   * checked against before the write (a catalog edit that removes a row the allowlist names).
+   */
+  readonly checkDocument?: (document: Record<string, unknown>) => void;
+  /**
+   * For a plugin the host applies live: called once a change to its choices is stored, outside the
+   * configuration queue, to apply them (the host reloads the model catalog).
+   */
+  readonly applyConfiguration?: (plugin: string) => Promise<void>;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
   /** Secret keys the host keeps for itself: a plugin that declares one is skipped, since it would read or overwrite it. */
@@ -372,8 +396,9 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
   ): unknown => settingsOf(settings, name).configuration ?? {};
   const restartRequired = (entry: BureauPluginEntry): boolean =>
     enabledIn(persisted, entry) !== enabledIn(loaded, entry) ||
-    JSON.stringify(configurationIn(persisted, entry.descriptor.name)) !==
-      JSON.stringify(configurationIn(loaded, entry.descriptor.name));
+    (options.appliesConfigurationLive?.(entry.descriptor.name) !== true &&
+      JSON.stringify(configurationIn(persisted, entry.descriptor.name)) !==
+        JSON.stringify(configurationIn(loaded, entry.descriptor.name)));
 
   // Watchers by key. A listener that throws must not stop the others, so each call is isolated.
   const watchers = new Map<string, Set<() => void>>();
@@ -462,6 +487,9 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     secrets,
     lockReason,
     writeSecret,
+    async reload() {
+      persisted = readPluginSettings(await readText(), location);
+    },
     ensureGeneratedSecrets: () => serialized(async () => generate()),
     close() {
       closed = true;
@@ -525,7 +553,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         const problem = configurationProblem(entry, configuration);
         if (problem !== undefined) throw new PluginInputError(problem.field, problem.message);
       }
-      return serialized(async () => {
+      const live = options.appliesConfigurationLive?.(name) === true;
+      const change = await serialized(async () => {
         assertWritable();
         const text = await readText();
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
@@ -546,6 +575,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         const nextDocument = { ...document, plugins: { ...declared, [name]: nextEntry } };
         // The same check the next start applies, before a byte is written.
         const applied = parsePluginSettings(nextDocument, location);
+        if (live && configuration !== undefined) options.checkDocument?.(nextDocument);
         try {
           bungalow.writeConfiguration(`${JSON.stringify(nextDocument, null, 2)}\n`);
         } catch (error) {
@@ -564,6 +594,11 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (enabledIn(persisted, entry)) generate();
         return changeOf(entry);
       });
+      // Applied outside the queue, which the work shares. A change to `enabled` alone waits for a restart.
+      if (live && (configuration !== undefined || clearsConfiguration)) {
+        await options.applyConfiguration?.(name);
+      }
+      return change;
     },
 
     async saveSecret(name, key, value) {

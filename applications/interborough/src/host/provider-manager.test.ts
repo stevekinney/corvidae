@@ -7,6 +7,7 @@ import type { Bungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { describe, expect, test } from 'bun:test';
 
+import { contributedFixtures } from './provider-fixtures.test-support.ts';
 import {
   createProviderManager,
   ProviderPartialChangeError,
@@ -47,7 +48,9 @@ function fakeHome(
     mode,
     configurationLocation: 's3://state/configuration.json',
     writes: [],
-    configuration: JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+    configuration: JSON.stringify({
+      plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
+    }),
     secrets: new Map([['anthropic-api-key', 'fixture-existing-key']]),
     unreadable: false,
     readConfiguration: () => Promise.resolve(home.configuration),
@@ -84,11 +87,12 @@ function fakeHome(
 }
 
 async function managerFor(home: FakeHome) {
-  const manager = await createProviderManager({
+  const manager = createProviderManager({
     bungalow: home,
     warn: () => undefined,
     resolveProviderGenerate,
   });
+  await manager.adopt(contributedFixtures());
   const revisions: number[] = [];
   manager.attach((rows) => {
     revisions.push(rows.length);
@@ -161,6 +165,39 @@ describe('a remote home', () => {
       expect(text.includes(KEY)).toBe(false);
     }
     expect(home.writes).toEqual([]);
+  });
+});
+
+describe('a stored catalog edit for a provider no loaded plugin contributes', () => {
+  const dormant = { provider: 'voyage', model: 'voyage-3', off: true };
+
+  test('waits, ignored, and does not stop another provider from connecting', async () => {
+    const home = fakeHome('local');
+    home.configuration = JSON.stringify({ catalog: [dormant] });
+    const { manager } = await managerFor(home);
+
+    await manager.connect({ provider: 'anthropic', apiKey: KEY });
+    await manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]);
+
+    expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
+    const snapshot = await manager.snapshot();
+    expect(snapshot.catalog).toEqual([{ provider: 'anthropic', model: 'sonnet', off: true }]);
+    // A replacement of the edits leaves the dormant one in the file for its plugin.
+    expect(JSON.parse(home.configuration ?? '{}').catalog).toEqual([
+      { provider: 'anthropic', model: 'sonnet', off: true },
+      dormant,
+    ]);
+  });
+
+  test('is kept out of the snapshot, and a new edit may not name its provider', async () => {
+    const home = fakeHome('local');
+    home.configuration = JSON.stringify({ catalog: [dormant] });
+    const { manager } = await managerFor(home);
+
+    const snapshot = await manager.snapshot();
+    expect(snapshot.catalog).toEqual([]);
+    const failure = await failureOf(manager.editCatalog([dormant]));
+    expect(String(failure)).toContain('catalog[0].provider');
   });
 });
 
@@ -299,20 +336,19 @@ describe('a write that fails', () => {
     expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
   });
 
-  test('a new provider whose configuration cannot be written is stored but not in use, and the message says so', async () => {
+  test('a new provider whose configuration cannot be written keeps the key it stored, and the message says it is in use', async () => {
     const home = fakeHome('local', { failConfiguration: true, failRestore: true });
     const { manager } = await managerFor(home);
 
     const failure = await failureOf(manager.connect({ provider: 'openai', apiKey: KEY }));
 
     expect(failure).toBeInstanceOf(ProviderPartialChangeError);
-    expect((failure as ProviderPartialChangeError).inUse).toBe(false);
-    expect(String(failure)).toContain('not in use');
+    expect((failure as ProviderPartialChangeError).inUse).toBe(true);
+    expect(String(failure)).toContain('is in use');
     expect(String(failure).includes(KEY)).toBe(false);
-    // The key is on the disk, and the host does not call the provider with it.
+    // The key could not be put back, and a provider needs only its key: the host calls it with it.
     expect(home.secrets.get('openai-api-key')).toBe(KEY);
-    expect(manager.current().apiKeys.has('openai')).toBe(false);
-    expect([...manager.current().apiKeys.keys()]).toEqual(['anthropic']);
+    expect(manager.current().apiKeys.get('openai')).toBe(KEY);
   });
 
   test('a change after close is refused', async () => {
@@ -331,11 +367,11 @@ describe('a write that fails', () => {
     const { manager } = await managerFor(home);
 
     await Promise.all([
-      manager.connect({ provider: 'openai', apiKey: KEY }),
-      manager.connect({ provider: 'gemini', apiKey: KEY }),
+      manager.connect({ provider: 'openai', apiKey: KEY, models: ['gpt-4.1'] }),
+      manager.connect({ provider: 'gemini', apiKey: KEY, models: ['pro'] }),
     ]);
 
-    expect(Object.keys(JSON.parse(home.configuration ?? '{}').providers).toSorted()).toEqual([
+    expect(Object.keys(JSON.parse(home.configuration ?? '{}').plugins).toSorted()).toEqual([
       'anthropic',
       'gemini',
       'openai',
