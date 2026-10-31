@@ -34,19 +34,9 @@
 
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
-  import {
-    partitionPendingReviews,
-    pendingEntriesOnly,
-  } from '../../routes/reviews/review-domain.ts';
-  import {
-    REVIEW_POLL_MILLISECONDS,
-    bureauReviewsQuery,
-    weftReviewsQueryOptions,
-  } from '../../routes/reviews/reviews-data.ts';
+  import { usePendingReviewsCount } from '../../routes/reviews/pending-reviews-count.svelte.ts';
   import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import { NAVIGATION_COPY, VIEW_COPY } from '../copy.ts';
-  import { useFleetEventsLive } from '../live-polling.svelte.ts';
   import { DESTINATIONS, destinationKeys, type Destination } from './destinations.ts';
 
   interface SidebarNavProps {
@@ -80,21 +70,8 @@
 
   const STALE_HEARTBEAT_MS = 30_000;
 
-  // What is waiting on the caller: the Bureau's reviews, and the engine's when the principal may
-  // read them. They are the entries `/reviews` reads, so the count and the list change together.
-  const principalStore = getPrincipalStore();
-  const bureauReviews = bureauReviewsQuery();
-  const fleetLive = useFleetEventsLive();
-  const engineReviews = createQuery(
-    () =>
-      weftReviewsQueryOptions(
-        client,
-        'pending',
-        principalStore.hasScope('reviews:read'),
-        fleetLive(),
-      ),
-    undefined,
-  );
+  // What is waiting on the caller: the same number the Health overview shows as Needs you.
+  const reviewsPending = usePendingReviewsCount(() => client);
 
   const workersQuery = createQuery(
     () => ({
@@ -105,28 +82,6 @@
     undefined,
   );
 
-  // One number from whichever sources answered; none while neither has.
-  // The engine's reviews are counted as the page files them: one past its deadline is under Timed
-  // out, not pending, so the badge and the page's count agree. The deadline is checked as often as
-  // the list is read.
-  let reviewsNow = $state(Date.now());
-  $effect(() => {
-    // poll-reason: clock
-    const timer = setInterval(() => {
-      reviewsNow = Date.now();
-    }, REVIEW_POLL_MILLISECONDS);
-    return () => clearInterval(timer);
-  });
-  const enginePending = $derived(
-    partitionPendingReviews(pendingEntriesOnly(engineReviews.data ?? []), reviewsNow).pending
-      .length,
-  );
-  const reviewsPendingCount = $derived(
-    bureauReviews.data === undefined && engineReviews.data === undefined
-      ? undefined
-      : (bureauReviews.data?.length ?? 0) +
-          (principalStore.hasScope('reviews:read') ? enginePending : 0),
-  );
   const workersUnhealthyCount = $derived(
     workersQuery.data?.items.filter(
       (worker) => worker.health === 'drained' || worker.heartbeatAgeMs > STALE_HEARTBEAT_MS,
@@ -137,8 +92,9 @@
   function badgeOf(
     destination: Destination,
   ): { readonly count: number; readonly variant: 'warning' | 'danger' } | undefined {
-    if (destination.view === 'reviews' && reviewsPendingCount !== undefined) {
-      return { count: reviewsPendingCount, variant: 'warning' };
+    const waiting = reviewsPending.count();
+    if (destination.view === 'reviews' && waiting !== undefined) {
+      return { count: waiting, variant: 'warning' };
     }
     if (destination.view === 'health' && workersUnhealthyCount !== undefined) {
       return { count: workersUnhealthyCount, variant: 'danger' };

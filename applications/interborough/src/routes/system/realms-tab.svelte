@@ -11,7 +11,7 @@
    * returns `pools: []` — rendered as the plain "not in realm mode" empty
    * state below, not an error, matching the operation's own doc.
    */
-  import { Badge, EmptyState, Table } from '@lostgradient/cinder';
+  import { Badge, EmptyState, Skeleton, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import { Layers } from '@lucide/svelte';
 
@@ -46,12 +46,13 @@
 <div class="weft-realms-tab">
   {#if query.isPending}
     <div role="status" aria-busy="true" aria-label="Loading realm diagnostics">
-      Loading realm diagnostics…
+      <Skeleton height="8rem" />
     </div>
   {:else if query.isError}
     <QueryFaultBanner error={query.error} onRetry={() => query.refetch()} />
   {:else if query.data.pools.length === 0}
     <EmptyState
+      kind="first-use"
       title="No revision realms"
       description="This server has not opted into workflowExecutionMode: 'realm' — no workflow-revision realm pools exist to diagnose. See the Workflow revision isolation guide."
     >

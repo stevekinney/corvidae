@@ -287,7 +287,7 @@ describe('HealthTab', () => {
       activities: {},
     });
     const { findByText, unmount } = await renderHealthTab();
-    expect(await findByText('No workflow with an input schema is registered yet.')).not.toBeNull();
+    expect(await findByText('No workflow with an input schema')).not.toBeNull();
     unmount();
   });
 });

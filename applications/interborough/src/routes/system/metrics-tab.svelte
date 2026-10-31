@@ -27,6 +27,7 @@
     LineChart,
     Segment,
     SegmentedControl,
+    Skeleton,
     Statistic,
     StatisticGroup,
   } from '@lostgradient/cinder';
@@ -160,7 +161,7 @@
   {:else if rawQuery.isError}
     <QueryFaultBanner error={rawQuery.error} onRetry={() => rawQuery.refetch()} />
   {:else}
-    <div class="weft-metrics-tab__raw-header">
+    <div class="weft-metrics-tab__raw-actions">
       <Button
         variant="secondary"
         size="sm"
@@ -171,7 +172,13 @@
         {#snippet leadingIcon()}<Download aria-hidden="true" size={13} />{/snippet}
       </Button>
     </div>
-    <CodeBlock code={rawQuery.data ?? 'Loading…'} language="text" highlight={false} copyable />
+    {#if rawQuery.data === undefined}
+      <div role="status" aria-busy="true" aria-label="Loading the raw metrics">
+        <Skeleton height="12rem" />
+      </div>
+    {:else}
+      <CodeBlock code={rawQuery.data} language="text" highlight={false} copyable />
+    {/if}
   {/if}
 </div>
 
@@ -201,7 +208,7 @@
     gap: 12px;
   }
 
-  .weft-metrics-tab__raw-header {
+  .weft-metrics-tab__raw-actions {
     display: flex;
     justify-content: flex-end;
   }

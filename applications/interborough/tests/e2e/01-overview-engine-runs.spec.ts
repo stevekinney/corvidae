@@ -16,14 +16,14 @@ const VIEWPORTS = [
 ] as const;
 
 for (const viewport of VIEWPORTS) {
-  test(`Overview Failed count opens the failed engine workflows at ${String(viewport.width)}px`, async ({
+  test(`Overview Failed in 24h count opens the recently failed engine workflows at ${String(viewport.width)}px`, async ({
     page,
     checkA11y,
   }) => {
     await page.setViewportSize(viewport);
     await page.goto('/health');
 
-    const failedCount = page.getByRole('link', { name: /^Failed\s+\d+$/ });
+    const failedCount = page.getByRole('link', { name: /^Failed in 24h\s+\d+$/ });
     await expect(failedCount).toBeVisible();
     await checkA11y(`engine overview at ${String(viewport.width)}px`);
     const countText = (await failedCount.textContent()) ?? '';
@@ -32,7 +32,9 @@ for (const viewport of VIEWPORTS) {
 
     await failedCount.click();
 
-    await expect(page).toHaveURL(/\/health\/runs\?status=failed$/);
+    await expect(page).toHaveURL(
+      /\/health\/runs\?status=failed&status=timed-out&updated_at_gte=\d+$/,
+    );
     await expect(page.getByRole('heading', { level: 1, name: 'Workflow runs' })).toBeVisible();
     // Across types: a count spans every workflow type the engine holds.
     await expect(page.getByRole('row', { name: /payment-failing/ }).first()).toBeVisible();
@@ -44,3 +46,28 @@ for (const viewport of VIEWPORTS) {
     await checkA11y(`engine runs, failed, at ${String(viewport.width)}px`);
   });
 }
+
+test('Overview shows the health line, four counts, and a window of at most six activity lines', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.goto('/health');
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
+  const counts = page.getByRole('navigation', { name: 'Health counts' });
+  await expect(counts.getByRole('link')).toHaveCount(4);
+  for (const label of ['Working now', 'Needs you', 'Failed in 24h', 'Schedules']) {
+    await expect(
+      counts.getByRole('link', { name: new RegExp(`^${label}\\s+(\\d+|—)$`) }),
+    ).toBeVisible();
+  }
+
+  // A fixed window: the seeded engine has far more events than six, and the window never grows.
+  const activity = page.getByRole('region', { name: 'Recent activity' });
+  await expect(activity).toBeVisible();
+  expect(await activity.locator('.weft-activity-feed__row').count()).toBeLessThanOrEqual(6);
+
+  await activity.getByRole('link', { name: 'Open the audit log' }).click();
+  await expect(page).toHaveURL(/\/health\/audit$/);
+  await checkA11y('engine overview');
+});

@@ -6,7 +6,7 @@
  * module's doc for why `client.operations[...]` (JSON-RPC) needs this
  * instead.
  */
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { router } from '../../lib/router.svelte.ts';
@@ -65,7 +65,7 @@ describe('Dashboard', () => {
     expect(getByText('Start a run')).not.toBeNull();
   });
 
-  test('renders the three bands with real counts once health and aggregate data resolve', async () => {
+  test('renders the health line, four counts and recent activity once health and aggregate data resolve', async () => {
     scripted = new ScriptedFetch();
     scripted.routeUrl('/v1/health', { status: 'ok' });
     scripted.routeJsonRpcMethod('weft.workflows.aggregate', {
@@ -97,38 +97,50 @@ describe('Dashboard', () => {
     scripted.routeUrl('/reviews', { items: [] });
     const client = realClient();
 
-    const { getByText, getAllByText, queryByText } = render(DashboardIndexHarness, {
+    const { findByRole, getByText, queryByText } = render(DashboardIndexHarness, {
       props: { client },
     });
 
-    await waitFor(() => expect(getByText('Runs by status')).not.toBeNull());
-    expect(getAllByText('9').length).toBeGreaterThan(0);
+    await waitFor(() => expect(getByText('Working now')).not.toBeNull());
     expect(getByText('Recent activity')).not.toBeNull();
-    // Each status opens the engine's own run list on that status, in the engine's own word, and a
-    // modified click is the browser's. None goes to the Bureau's `/runs`.
-    const targets: Readonly<Record<string, string>> = {
-      Running: '/health/runs?status=running',
-      Pending: '/health/runs?status=pending',
-      Suspended: '/health/runs?status=suspended',
-      Completed: '/health/runs?status=completed',
-      Cancelled: '/health/runs?status=cancelled',
-      Failed: '/health/runs?status=failed',
-      'Timed out': '/health/runs?status=timed-out',
-    };
-    for (const [label, target] of Object.entries(targets)) {
-      expect(getByText(label).closest('a')?.getAttribute('href'), label).toBe(target);
-    }
+    // The four counts, each a link that opens the list it counted.
+    const counts = await findByRole('navigation', { name: 'Health counts' });
+    const links = Array.from(counts.querySelectorAll('a')).map((link) => [
+      link.querySelector('.weft-health-count__label')?.textContent,
+      link.getAttribute('href'),
+    ]);
+    expect(links.map(([label]) => label)).toEqual([
+      'Working now',
+      'Needs you',
+      'Failed in 24h',
+      'Schedules',
+    ]);
+    const hrefs = Object.fromEntries(links as [string, string][]);
+    // Working now counts the running runs, and opens the engine's list on that status, in the
+    // engine's own word. None goes to the Bureau's `/runs`.
+    expect(hrefs['Working now']).toBe('/health/runs?status=running');
+    expect(within(counts).getByRole('link', { name: /^Working now\s+9$/ })).not.toBeNull();
+    // Failed in 24h counts failed and timed-out runs that changed in the last day, and its link
+    // carries the same filter, so the list holds as many runs as the count says.
+    const failedHref = new URL(hrefs['Failed in 24h'] ?? '', 'http://localhost');
+    expect(failedHref.pathname).toBe('/health/runs');
+    expect(failedHref.searchParams.getAll('status')).toEqual(['failed', 'timed-out']);
+    expect(Number(failedHref.searchParams.get('updated_at_gte'))).toBeGreaterThan(
+      Date.now() - 25 * 60 * 60 * 1000,
+    );
+    expect(hrefs['Needs you']).toBe('/reviews');
+    expect(hrefs['Schedules']).toBe('/schedules?status=active');
     for (const link of document.querySelectorAll('a')) {
       expect(link.getAttribute('href')?.startsWith('/runs?status='), link.outerHTML).toBe(false);
     }
-    const failed = getByText('Failed').closest('a') as HTMLAnchorElement;
-    expect(getByText('View all →').closest('a')?.getAttribute('href')).toBe('/health/runs');
+    const failed = counts.querySelector(`a[href="${hrefs['Failed in 24h']}"]`) as HTMLAnchorElement;
     expect(await fireEvent.click(failed, { button: 0, metaKey: true })).toBe(true);
     expect(await fireEvent.click(failed, { button: 0 })).toBe(false);
     expect(router.pathname).toBe('/health/runs');
-    expect(router.search.get('status')).toBe('failed');
-    // The engine runs its work in-process, so no card counts remote workers, and failures are one
-    // count among the statuses rather than a chart of their own.
+    expect(router.search.getAll('status')).toEqual(['failed', 'timed-out']);
+    // The engine runs its work in-process, so no card counts remote workers, and the old
+    // status card and its per-status cells are gone.
+    expect(queryByText('Runs by status')).toBeNull();
     expect(queryByText('Failures by category')).toBeNull();
     // The one mention of workers is the link to their page, beside the heading.
     expect(getByText('Workers').closest('nav')?.getAttribute('aria-label')).toBe('Health sections');
@@ -148,7 +160,7 @@ describe('Dashboard', () => {
     expect(links).toEqual([
       ['Workers', '/health/workers'],
       ['Storage', '/health/storage'],
-      ['Audit', '/health/audit'],
+      ['Audit log', '/health/audit'],
     ]);
     const audit = sections.querySelector('a[href="/health/audit"]') as HTMLAnchorElement;
     expect(await fireEvent.click(audit, { button: 0 })).toBe(false);
