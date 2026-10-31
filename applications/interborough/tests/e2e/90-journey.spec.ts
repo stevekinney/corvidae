@@ -397,20 +397,17 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
   await expect(page.locator(ASSISTANT_ROW).last()).toContainText(original);
 
   await page.goto(memoryAddress);
-  const stored = page.locator('.weft-memory__content', { hasText: original });
+  const stored = page.locator('.ib-memory__content', { hasText: original });
   await expect(stored).toHaveText(original);
-  // The correction starts from the row itself: hover it, then press its Correct.
-  const row = page.locator('[data-memory]', { hasText: original });
-  await row.hover();
-  await row.getByRole('button', { name: new RegExp(`^${MEMORY_COPY.correct.action}:`) }).click();
-  const dialog = page.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
-  await dialog.getByLabel(MEMORY_COPY.correct.dialog.label).fill(correction);
-  await dialog.getByRole('button', { name: MEMORY_COPY.correct.dialog.submit }).click();
+  // The correction edits the words in place, in the open memory.
+  await stored.click();
+  const detail = page.getByRole('region', { name: MEMORY_COPY.detail.heading });
+  await detail.getByRole('button', { name: MEMORY_COPY.correct.iconLabel }).click();
+  await detail.getByLabel(MEMORY_COPY.correct.edit.label).fill(correction);
+  await detail.getByRole('button', { name: MEMORY_COPY.correct.edit.submit }).click();
   await expect(page.getByText(MEMORY_COPY.correct.saved.title, { exact: true })).toBeVisible();
-  await expect(page.locator('.weft-memory__content', { hasText: correction })).toHaveText(
-    correction,
-  );
-  await expect(page.locator('.weft-memory__content', { hasText: original })).toHaveCount(0);
+  await expect(page.locator('.ib-memory__content', { hasText: correction })).toHaveText(correction);
+  await expect(page.locator('.ib-memory__content', { hasText: original })).toHaveCount(0);
 
   // A new chat that names the label is answered with what the agent remembers now.
   await page.goto(`/chats/new?agent=${RECALL_AGENT_NAME}`);

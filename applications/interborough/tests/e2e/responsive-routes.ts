@@ -18,6 +18,8 @@ export interface ResponsiveSeed {
   readonly instructionsAgent: string;
   /** An agent that has a memory with a long unbroken word in it. */
   readonly memoryAgent: string;
+  /** The memory of that agent that holds the long unbroken word, opened beside the list. */
+  readonly memory: string;
   /** A workflow type the engine has registered. */
   readonly workflow: string;
   /** An agent-authored workflow, which has a file and so an editor. */
@@ -95,6 +97,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
   const agent = `/agents/${encodeURIComponent(seed.instructionsAgent)}`;
   return {
+    // The memory with the long word open: below 900px the details replace the list, and the text,
+    // the three columns of facts and the governance actions are measured.
+    '/agents/:agent/memories (memory open)': `/agents/${encodeURIComponent(seed.memoryAgent)}/memories?memory=${encodeURIComponent(seed.memory)}`,
     '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
     '/agents/:agent (settings tab)': `${agent}?tab=settings`,
     '/workflows/:workflow (file)': file,

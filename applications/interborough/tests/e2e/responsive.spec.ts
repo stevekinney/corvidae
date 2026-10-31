@@ -96,6 +96,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // Only the form prints this heading; the long word is in the textarea, which the text does not include.
   '/agents/:agent/edit': /Guardrails and limits/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
+  // The open memory prints its text and the facts under it; the row's text is clamped.
+  '/agents/:agent/memories (memory open)': /Where it came from/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,
   '/workflows/:workflow (file)': /Writes the daily digest/,
@@ -374,6 +376,13 @@ test.beforeAll(async ({ playwright }) => {
     });
     await runToEnd(request, 'assistant', CHAT_THREAD, 'Say hello');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, MEMORY_THREAD, LONG_MEMORY);
+    const storedMemories = (await bureauCall(request, 'bureau.memory.list', {
+      agentId: TEXT_ECHO_AGENT_NAME,
+      limit: 100,
+    })) as { memories: { id: string; content: string }[] };
+    const longMemory = storedMemories.memories.find((memory) =>
+      memory.content.includes(LONG_MEMORY),
+    );
     const waitingReview = await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE);
     const decidedReview = await reviewOfRun(request, DECIDED_REVIEW_THREAD, LONG_REVIEW_TITLE);
     await bureauCall(request, 'bureau.reviews.resolve', {
@@ -396,6 +405,7 @@ test.beforeAll(async ({ playwright }) => {
       agent: AGENT_ID,
       instructionsAgent: INSTRUCTIONS_AGENT_ID,
       memoryAgent: TEXT_ECHO_AGENT_NAME,
+      memory: longMemory?.id ?? 'responsive-memory',
       workflow: 'order-processing',
       workflowFile: WORKFLOW_FILE,
       run: runs.items?.[0]?.id ?? 'responsive-run',

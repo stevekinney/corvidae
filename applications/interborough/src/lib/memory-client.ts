@@ -1,11 +1,13 @@
 /**
  * The browser's view of an agent's memory: the operations `bureau.memory.list`, `search`, `get`,
- * `forget` and `correct` (COR-1546), parsed at the boundary, and the faults they answer with,
+ * `forget` and `correct` (COR-1546), and the governance ones (`share`, `share.revoke`, `hold`,
+ * `hold.release`, `quarantine` and `export`, COR-1809), parsed at the boundary, and the faults they answer with,
  * sorted into the few the Memory page tells apart.
  *
  * The operations serve the caller's own memory under one agent. The caller is the host's one local
  * principal and is never a parameter. Reading needs `bureau.memory:read` and changing needs
- * `bureau.memory:write`; a caller without the scope is answered `Forbidden` whatever it owns.
+ * `bureau.memory:write`; a legal hold needs `bureau.memory:govern`. A caller without the scope is
+ * answered `Forbidden` whatever it owns.
  */
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -167,6 +169,84 @@ export async function correctMemory(
   );
 }
 
+const transitionSchema = z.object({ id: z.string(), changed: z.boolean() });
+
+const shareSchema = transitionSchema.extend({ granteeOwnerId: z.string(), grantedBy: z.string() });
+
+/** What sharing or withdrawing a share answers: whether anything changed, and for whom. */
+export type ShareResult = z.infer<typeof shareSchema>;
+
+/**
+ * Lets another owner read one memory (`granted`), or withdraws that access (`revoked`). Doing
+ * either twice is not an error: `changed` says whether this call did anything.
+ */
+export async function changeMemoryShare(
+  agentId: string,
+  id: string,
+  granteeOwnerId: string,
+  change: 'granted' | 'revoked',
+  options?: Options,
+): Promise<ShareResult> {
+  return shareSchema.parse(
+    await callBureau(
+      change === 'granted' ? 'bureau.memory.share' : 'bureau.memory.share.revoke',
+      { agentId, id, granteeOwnerId },
+      options,
+    ),
+  );
+}
+
+const holdSchema = transitionSchema.extend({ legalHold: z.enum(['held', 'released']) });
+
+/** What placing or lifting a legal hold answers: whether anything changed, and the hold's state now. */
+export type HoldResult = z.infer<typeof holdSchema>;
+
+/** Places a legal hold on one memory (`place`), or lifts it (`release`). */
+export async function changeLegalHold(
+  agentId: string,
+  id: string,
+  change: 'place' | 'release',
+  options?: Options,
+): Promise<HoldResult> {
+  return holdSchema.parse(
+    await callBureau(
+      change === 'place' ? 'bureau.memory.hold' : 'bureau.memory.hold.release',
+      { agentId, id },
+      options,
+    ),
+  );
+}
+
+const quarantineSchema = transitionSchema.extend({ affected: z.number().int() });
+
+/** What quarantining a memory answers: whether it changed, and how many records it reached. */
+export type QuarantineResult = z.infer<typeof quarantineSchema>;
+
+/** Takes one memory, and what was derived from it, out of use. There is no way back from here. */
+export async function quarantineMemory(
+  agentId: string,
+  id: string,
+  reason: string,
+  options?: Options,
+): Promise<QuarantineResult> {
+  return quarantineSchema.parse(
+    await callBureau('bureau.memory.quarantine', { agentId, id, reason }, options),
+  );
+}
+
+const exportSchema = z.object({
+  exportId: z.string().nullable(),
+  memories: z.array(memorySchema),
+});
+
+/** What exporting an agent's memories answers: the manifest's identifier, and every memory. */
+export type MemoryExport = z.infer<typeof exportSchema>;
+
+/** Exports every memory the caller has of the agent, which records the export in the ledger. */
+export async function exportMemories(agentId: string, options?: Options): Promise<MemoryExport> {
+  return exportSchema.parse(await callBureau('bureau.memory.export', { agentId }, options));
+}
+
 /** What a thrown memory operation came to, sorted into what the page words. */
 export type MemoryFault =
   | { readonly kind: 'forbidden' }
@@ -175,6 +255,8 @@ export type MemoryFault =
   | { readonly kind: 'superseded' }
   /** Governed memory did not admit the correction. */
   | { readonly kind: 'successor-not-admitted' }
+  /** A memory was shared with its own owner, or with no one. */
+  | { readonly kind: 'invalid-grantee' }
   | { readonly kind: 'other'; readonly message: string };
 
 /** Sorts a thrown fault into the {@link MemoryFault} the Memory page shows. */
@@ -196,8 +278,11 @@ export function memoryFaultOf(error: unknown): MemoryFault {
         ? { kind: 'superseded' }
         : { kind: 'other', message: error.message };
     case 'Unprocessable':
-      return data['reason'] === 'memory-successor-not-admitted'
-        ? { kind: 'successor-not-admitted' }
+      if (data['reason'] === 'memory-successor-not-admitted') {
+        return { kind: 'successor-not-admitted' };
+      }
+      return data['reason'] === 'memory-invalid-grantee'
+        ? { kind: 'invalid-grantee' }
         : { kind: 'other', message: error.message };
     default:
       return { kind: 'other', message: error.message };

@@ -1,7 +1,7 @@
 /** How the Memory page words a memory's facts. */
 
 import { MEMORY_COPY } from '../../app/copy.ts';
-import type { Memory, MemoryLineage } from '../../lib/memory-client.ts';
+import type { Memory, MemoryFault, MemoryLineage } from '../../lib/memory-client.ts';
 
 /** The words for `value` from `words`, or the value itself when the Bureau names one the page does not know. */
 export function labelFor(words: Readonly<Record<string, string>>, value: string): string {
@@ -19,7 +19,7 @@ export type LineageLink =
   | { readonly kind: 'chat'; readonly sessionId: string }
   | { readonly kind: 'memory'; readonly id: string };
 
-/** One row of a memory's lineage: its label, and either plain text or a link to follow. */
+/** One row of a memory's facts: its label, and either plain text or a link to follow. */
 export type LineageField = {
   readonly id: string;
   readonly term: string;
@@ -27,57 +27,80 @@ export type LineageField = {
   readonly link?: LineageLink;
 };
 
+/** The facts below a memory's text, in the three columns the page shows. */
+export type LineageGroups = {
+  /** Where it came from: its source, the chat that produced it, and the run that wrote it. */
+  readonly origin: LineageField[];
+  /** Trust and time: how far to trust it, what kind it is in the engine's terms, when, and a known legal hold. */
+  readonly standing: LineageField[];
+  /** What it corrects, and what corrected it. */
+  readonly history: LineageField[];
+};
+
 /**
- * The rows of a memory's lineage, in the order the page shows them. From the memory itself: its
- * source, trust, class, creation time, and the chat that produced it. From the governance ledger:
- * the run that wrote it, the memory it corrects, and the memory that corrected it. A row the Bureau
- * recorded nothing for says so. The legal hold is `legalHold`, the words for what is known of it.
+ * The facts of a memory, grouped for the page. From the memory itself: its source, trust, class,
+ * creation time, and the chat that produced it. From the governance ledger: the run that wrote it,
+ * the memory it corrects, and the memory that corrected it. An origin the server recorded nothing
+ * for says so. The legal hold is `legalHold`, shown only once it is known (`undefined` leaves it
+ * out): a hold has no read of its own, so it is learned from a hold, a release, or a refused forget.
  */
-export function lineageFields(
+export function lineageGroups(
   memory: Memory,
   lineage: MemoryLineage,
-  legalHold: string,
-): LineageField[] {
-  const { fields, notRecorded } = MEMORY_COPY.detail;
+  legalHold: 'held' | 'free' | undefined,
+): LineageGroups {
+  const { fields, notRecorded, noHistory } = MEMORY_COPY.detail;
   const link = (
     id: string,
     term: string,
     shown: string,
     target: LineageLink | undefined,
+    absent: string,
   ): LineageField =>
-    target === undefined
-      ? { id, term, value: notRecorded }
-      : { id, term, value: shown, link: target };
-  return [
-    { id: 'source', term: fields.source, value: labelFor(MEMORY_COPY.source, memory.source) },
-    { id: 'trust', term: fields.trust, value: labelFor(MEMORY_COPY.trust, memory.trust) },
-    {
-      id: 'class',
-      term: fields.memoryClass,
-      value: labelFor(MEMORY_COPY.memoryClass, memory.memoryClass),
-    },
-    { id: 'created', term: fields.created, value: formatMemoryTime(memory.createdAt) },
-    link(
-      'session',
-      fields.session,
-      MEMORY_COPY.detail.openChat,
-      memory.sessionId === null ? undefined : { kind: 'chat', sessionId: memory.sessionId },
-    ),
-    { id: 'run', term: fields.run, value: lineage.runId ?? notRecorded },
-    link(
-      'corrects',
-      fields.corrects,
-      MEMORY_COPY.detail.openMemory,
-      lineage.corrects === null ? undefined : { kind: 'memory', id: lineage.corrects },
-    ),
-    link(
-      'corrected-by',
-      fields.correctedBy,
-      MEMORY_COPY.detail.openMemory,
-      lineage.correctedBy === null ? undefined : { kind: 'memory', id: lineage.correctedBy },
-    ),
-    { id: 'legal-hold', term: fields.legalHold, value: legalHold },
-  ];
+    target === undefined ? { id, term, value: absent } : { id, term, value: shown, link: target };
+  return {
+    origin: [
+      { id: 'source', term: fields.source, value: labelFor(MEMORY_COPY.source, memory.source) },
+      link(
+        'session',
+        fields.session,
+        MEMORY_COPY.detail.openChat,
+        memory.sessionId === null ? undefined : { kind: 'chat', sessionId: memory.sessionId },
+        notRecorded,
+      ),
+      { id: 'run', term: fields.run, value: lineage.runId ?? notRecorded },
+    ],
+    standing: [
+      { id: 'trust', term: fields.trust, value: labelFor(MEMORY_COPY.trust, memory.trust) },
+      { id: 'kind', term: fields.kind, value: kindOf(memory).label },
+      { id: 'created', term: fields.created, value: formatMemoryTime(memory.createdAt) },
+      ...(legalHold === undefined
+        ? []
+        : [
+            {
+              id: 'legal-hold',
+              term: fields.legalHold,
+              value: MEMORY_COPY.detail.legalHold[legalHold],
+            },
+          ]),
+    ],
+    history: [
+      link(
+        'corrects',
+        fields.corrects,
+        MEMORY_COPY.detail.openMemory,
+        lineage.corrects === null ? undefined : { kind: 'memory', id: lineage.corrects },
+        noHistory,
+      ),
+      link(
+        'corrected-by',
+        fields.correctedBy,
+        MEMORY_COPY.detail.openMemory,
+        lineage.correctedBy === null ? undefined : { kind: 'memory', id: lineage.correctedBy },
+        noHistory,
+      ),
+    ],
+  };
 }
 
 /** What a row's chip says about a memory, and the sentence that explains it. */
@@ -141,4 +164,60 @@ export function matchesQuery(text: string, query: string): boolean {
 export function excerpt(content: string): string {
   const text = content.trim().replace(/\s+/g, ' ');
   return text.length > 48 ? `${text.slice(0, 48)}…` : text;
+}
+
+/** The kinds the list can be narrowed to, in plain names. `all` shows every memory. */
+export type KindFilter = 'all' | 'facts' | 'chats' | 'howTo' | 'you';
+
+/** The plain-named group a memory belongs to, or `undefined` for a class this page has no group for. */
+export function groupOf(
+  memory: Pick<Memory, 'memoryClass' | 'source'>,
+): Exclude<KindFilter, 'all'> | undefined {
+  if (memory.source === 'operator') return 'you';
+  switch (memory.memoryClass) {
+    case 'episodic':
+    case 'working':
+      return 'chats';
+    case 'procedural':
+      return 'howTo';
+    case 'semantic':
+    case 'identity':
+    case 'resource':
+      return 'facts';
+    default:
+      return undefined;
+  }
+}
+
+/** Whether `memory` is shown under `filter`: every memory under `all`, and a group's own under its name. */
+export function matchesKind(
+  memory: Pick<Memory, 'memoryClass' | 'source'>,
+  filter: KindFilter,
+): boolean {
+  return filter === 'all' || groupOf(memory) === filter;
+}
+
+/**
+ * The plain name a row shows for a memory: Facts, From chats, How-to or From you. A class the page
+ * has no group for shows as the server wrote it.
+ */
+export function plainKindOf(memory: Pick<Memory, 'memoryClass' | 'source'>): string {
+  const group = groupOf(memory);
+  return group === undefined ? memory.memoryClass : MEMORY_COPY.plainKind[group];
+}
+
+/** The words for a fault a change was answered with: a title, and what to do about it. */
+export function refusalWords(fault: MemoryFault): { title: string; description: string } {
+  const words = MEMORY_COPY.correct.refusal;
+  switch (fault.kind) {
+    case 'superseded':
+    case 'successor-not-admitted':
+    case 'forbidden':
+    case 'not-found':
+      return words[fault.kind];
+    case 'invalid-grantee':
+      return MEMORY_COPY.govern.refusal['invalid-grantee'];
+    case 'other':
+      return { title: words.other.title, description: fault.message };
+  }
 }
