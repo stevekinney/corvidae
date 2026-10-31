@@ -214,6 +214,17 @@ describe('previewRows with an allowlist', () => {
   });
 });
 
+describe('previewRows with a saved off edit', () => {
+  test('follows the working edits: saved off, on, then off again', () => {
+    const saved = { ...SONNET, off: true };
+    const savedEdit = { provider: 'anthropic', model: 'sonnet', off: true };
+    const on = withModelOff([savedEdit], saved, false);
+    expect(previewRows([saved], on)[0]?.off).toBe(false);
+    const off = withModelOff(on, saved, true);
+    expect(previewRows([saved], off)[0]?.off).toBe(true);
+  });
+});
+
 describe('previewRows', () => {
   test('lays the edits over the rows, so an unsaved switch already shows', () => {
     const rows = previewRows(
@@ -235,7 +246,8 @@ describe('previewRows', () => {
   });
 
   test('turns a row on when its off edit is gone', () => {
-    expect(previewRows([{ ...SONNET, off: true }], [])[0]?.off).toBe(true);
+    // The edits decide, not the snapshot's `off`: with none, the row is on.
+    expect(previewRows([{ ...SONNET, off: true }], [])[0]?.off).toBe(false);
     expect(
       previewRows([{ ...SONNET, off: true }], [{ provider: 'anthropic', model: 'sonnet' }])[0]?.off,
     ).toBe(false);

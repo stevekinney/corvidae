@@ -167,7 +167,7 @@ export function previewRows(
 ): PreviewRow[] {
   const shown: PreviewRow[] = rows.map((row) => {
     const edit = editOf(edits, row);
-    if (edit === undefined) return { ...row, added: false };
+    if (edit === undefined) return { ...row, added: false, off: false };
     return {
       ...row,
       added: edit.basedOn !== undefined,
