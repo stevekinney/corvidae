@@ -50,10 +50,10 @@
         "@lostgradient/operative-anthropic": "workspace:*",
         "@lostgradient/operative-gemini": "workspace:*",
         "@lostgradient/operative-openai": "workspace:*",
-        "@lostgradient/operative-typesafe": "workspace:*",
         "@lostgradient/plugin-anthropic": "workspace:*",
         "@lostgradient/plugin-gemini": "workspace:*",
         "@lostgradient/plugin-openai": "workspace:*",
+        "@lostgradient/plugin-typesafe": "workspace:*",
         "@lostgradient/storage": "workspace:*",
         "@lostgradient/storage-bun-sqlite": "workspace:*",
         "@lostgradient/storage-indexeddb": "workspace:*",
@@ -853,6 +853,24 @@
         "typescript": "catalog:",
       },
     },
+    "plugins/typesafe": {
+      "name": "@lostgradient/plugin-typesafe",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "@lostgradient/operative-typesafe": "workspace:*",
+        "@tanstack/ai": "catalog:",
+        "@tanstack/ai-typesafe": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "plugins/voyage": {
       "name": "@lostgradient/plugin-voyage",
       "dependencies": {
@@ -1253,6 +1271,8 @@
     "@lostgradient/plugin-ollama": ["@lostgradient/plugin-ollama@workspace:plugins/ollama"],
 
     "@lostgradient/plugin-openai": ["@lostgradient/plugin-openai@workspace:plugins/openai"],
+
+    "@lostgradient/plugin-typesafe": ["@lostgradient/plugin-typesafe@workspace:plugins/typesafe"],
 
     "@lostgradient/plugin-voyage": ["@lostgradient/plugin-voyage@workspace:plugins/voyage"],
 

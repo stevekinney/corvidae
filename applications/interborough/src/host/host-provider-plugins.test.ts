@@ -149,13 +149,14 @@ describe('a plugin that contributes a provider', () => {
 });
 
 describe('the providers the workspace ships', () => {
-  test('declare exactly the three keys the host has always used', () => {
+  test('declare exactly the four keys the host has always used', () => {
     expect(
       workspacePlugins().map(({ descriptor }) => [descriptor.name, descriptor.secrets]),
     ).toEqual([
       ['anthropic', ['anthropic-api-key']],
       ['openai', ['openai-api-key']],
       ['gemini', ['gemini-api-key']],
+      ['typesafe', ['typesafe-api-key']],
     ]);
   });
 

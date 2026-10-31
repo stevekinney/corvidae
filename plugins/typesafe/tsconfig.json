@@ -1,0 +1,16 @@
+{
+  "extends": "@lostgradient/typescript/library.json",
+  "include": ["src"],
+  "exclude": ["node_modules", "coverage"],
+  "references": [
+    {
+      "path": "../../packages/interborough-plugin/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/operative/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/operative-typesafe/tsconfig.source.json"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ import type { BureauPluginEntry, BureauPluginSettings } from '@lostgradient/bure
 import anthropic from '@lostgradient/plugin-anthropic';
 import gemini from '@lostgradient/plugin-gemini';
 import openai from '@lostgradient/plugin-openai';
+import typesafe from '@lostgradient/plugin-typesafe';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
@@ -31,7 +32,33 @@ export function workspacePlugins(): readonly BureauPluginEntry[] {
     { descriptor: anthropic, source: 'package', location: '@lostgradient/plugin-anthropic' },
     { descriptor: openai, source: 'package', location: '@lostgradient/plugin-openai' },
     { descriptor: gemini, source: 'package', location: '@lostgradient/plugin-gemini' },
+    { descriptor: typesafe, source: 'package', location: '@lostgradient/plugin-typesafe' },
   ];
+}
+
+/** The decision model the `decisions.model` setting defaults to: the typesafe plugin's Jev model. */
+export const DEFAULT_DECISION_MODEL = 'typesafe:jev';
+
+/**
+ * The `decisions` option that makes {@link DEFAULT_DECISION_MODEL} the default of `decisions.model`,
+ * or nothing when the typesafe plugin is not loaded or the owner disabled it, since Bureau refuses
+ * a default that names a model no plugin contributed. The setting selects the model: the owner can
+ * still choose `catalog`. Until the plugin's `typesafe-api-key` secret is saved a decision routed to
+ * the model refuses, and saving it applies to the next decision.
+ */
+export function defaultDecisionOptions(
+  entries: readonly BureauPluginEntry[],
+  settings: Readonly<Record<string, BureauPluginSettings>>,
+): { readonly decisions: { readonly model: string } } | Record<string, never> {
+  const entry = entries.find((candidate) => candidate.descriptor.name === typesafe.name);
+  if (entry === undefined) return {};
+  const enabled = Object.hasOwn(settings, typesafe.name)
+    ? settings[typesafe.name]?.enabled
+    : undefined;
+  if (enabled ?? entry.descriptor.enabledByDefault ?? true) {
+    return { decisions: { model: DEFAULT_DECISION_MODEL } };
+  }
+  return {};
 }
 
 /** The fields an entry of the `plugins` key may hold. */

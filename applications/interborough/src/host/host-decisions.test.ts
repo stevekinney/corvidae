@@ -1,18 +1,20 @@
 /**
- * COR-1709 — the host's decision model: with the `typesafe-api-key` secret in Bungalow's secrets, Bureau's
- * decisions are answered by `typesafeJev` (from `@lostgradient/operative-typesafe`) for the kinds it serves, and without it the host starts
- * all the same and leaves every decision to the catalog's fallback. No test reaches the network:
- * `fetch` is replaced for the whole file, and the key is a fixture.
+ * COR-1886 — the host's decision model is the typesafe plugin's `typesafe:jev`, the default of the
+ * `decisions.model` setting. With the `typesafe-api-key` secret in Bungalow's secrets, Bureau's
+ * decisions are answered by Jev for the kinds it serves. Without it the host starts all the same,
+ * the plugin is `needs-setup`, and a decision routed to Jev refuses until the key is saved, with no
+ * restart. No test reaches the network: `fetch` is replaced for the whole file, and the key is a
+ * fixture.
  */
 import { openBungalow } from '@lostgradient/bungalow';
+import { TYPESAFE_API_KEY_SECRET } from '@lostgradient/plugin-typesafe';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
 import { startHost, type Host } from './host.ts';
-import { TYPESAFE_SECRET_KEY } from './providers.ts';
 
 const FIXTURE_KEY = 'fixture-typesafe-key-51c9';
 const directories: string[] = [];
@@ -54,31 +56,51 @@ async function startWith(secrets: Readonly<Record<string, string>>): Promise<Hos
   return host;
 }
 
+async function typesafeListing(host: Host) {
+  const listings = await host.bureau.plugins.list();
+  return listings.find(({ descriptor }) => descriptor.name === 'typesafe');
+}
+
+const decide = (host: Host, request: Parameters<Host['bureau']['decisions']['decide']>[0]) =>
+  host.bureau.decisions.decide(request).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+
 describe('the TypeSafe decision model', () => {
-  test('starts without the typesafe-api-key secret and leaves every decision to the catalog’s fallback', async () => {
+  test('starts without the typesafe-api-key secret, with the plugin needs-setup and decisions unavailable', async () => {
     const host = await startWith({});
 
-    const failure = await host.bureau.decisions
-      .decide({ kind: 'boolean', question: 'Is it?' })
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
+    const listing = await typesafeListing(host);
+    expect(listing?.status).toBe('needs-setup');
+    const failure = await decide(host, { kind: 'boolean', question: 'Is it?' });
 
-    // No provider holds a key, so the catalog has no row to fall back to.
-    expect(failure).toMatchObject({ code: 'NOT_CONFIGURED' });
+    expect(failure).toMatchObject({ name: 'PluginNeedsSetupError', plugin: 'typesafe' });
     expect(requests).toEqual([]);
   });
 
-  test('starts with the typesafe-api-key secret and asks TypeSafe for a boolean, a choice, and a scale', async () => {
-    const host = await startWith({ [TYPESAFE_SECRET_KEY]: FIXTURE_KEY });
+  test('uses typesafe:jev for the next decision once the key is saved, with no restart', async () => {
+    const host = await startWith({});
+    expect(await decide(host, { kind: 'boolean', question: 'Is it?' })).toMatchObject({
+      name: 'PluginNeedsSetupError',
+    });
 
-    const failure = await host.bureau.decisions
-      .decide({ kind: 'boolean', question: 'Is it?' })
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
+    await host.plugins.saveSecret('typesafe', TYPESAFE_API_KEY_SECRET, FIXTURE_KEY);
+    const failure = await decide(host, { kind: 'boolean', question: 'Is it?' });
+
+    // The refused request is TypeSafe's, not a needs-setup refusal or a fallback's.
+    expect(failure).toBeDefined();
+    expect(failure).not.toMatchObject({ name: 'PluginNeedsSetupError' });
+    expect(requests.length).toBeGreaterThan(0);
+    expect(String(failure)).not.toContain(FIXTURE_KEY);
+  });
+
+  test('starts with the typesafe-api-key secret and asks TypeSafe for a boolean', async () => {
+    const host = await startWith({ [TYPESAFE_API_KEY_SECRET]: FIXTURE_KEY });
+
+    const listing = await typesafeListing(host);
+    expect(listing?.status).toBe('running');
+    const failure = await decide(host, { kind: 'boolean', question: 'Is it?' });
 
     // The refused request is TypeSafe's, not a fallback's: the fallback has no row to run.
     expect(failure).toBeDefined();
@@ -88,52 +110,57 @@ describe('the TypeSafe decision model', () => {
   });
 
   test('sends a kind TypeSafe does not serve to the fallback even with the key', async () => {
-    const host = await startWith({ [TYPESAFE_SECRET_KEY]: FIXTURE_KEY });
+    const host = await startWith({ [TYPESAFE_API_KEY_SECRET]: FIXTURE_KEY });
 
-    const failure = await host.bureau.decisions
-      .decide({
-        kind: 'structured',
-        question: 'Name it',
-        schema: z.object({}),
-      })
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
+    const failure = await decide(host, {
+      kind: 'structured',
+      question: 'Name it',
+      schema: z.object({}),
+    });
 
     expect(failure).toMatchObject({ code: 'NOT_CONFIGURED' });
     expect(requests).toEqual([]);
   });
-  test('registers TypeSafe as the default decision model, and `catalog` in the settings sends every kind to the fallback', async () => {
-    const host = await startWith({ [TYPESAFE_SECRET_KEY]: FIXTURE_KEY });
+
+  test('makes typesafe:jev the default decision model, and `catalog` in the settings sends every kind to the fallback', async () => {
+    const host = await startWith({ [TYPESAFE_API_KEY_SECRET]: FIXTURE_KEY });
     const snapshot = await host.bureau.settings.get();
-    expect(snapshot.values['decisions.model']).toBe('typesafe');
+    expect(snapshot.values['decisions.model']).toBe('typesafe:jev');
 
     const changed = await host.bureau.settings.update(
       { 'decisions.model': 'catalog' },
       { expectedRevision: snapshot.revision },
     );
     expect(changed).toMatchObject({ outcome: 'applied' });
-    const failure = await host.bureau.decisions
-      .decide({ kind: 'boolean', question: 'Is it?' })
-      .then(
-        () => undefined,
-        (error: unknown) => error,
-      );
+    const failure = await decide(host, { kind: 'boolean', question: 'Is it?' });
 
     // The next decision no longer asks TypeSafe: the catalog has no row to fall back to.
     expect(failure).toMatchObject({ code: 'NOT_CONFIGURED' });
     expect(requests).toEqual([]);
   });
 
-  test('offers only the catalog without the secret', async () => {
+  test('offers typesafe:jev without the secret, since the plugin contributes it either way', async () => {
     const host = await startWith({});
     const { values } = await host.bureau.settings.get();
-    expect(values['decisions.model']).toBeUndefined();
+    expect(values['decisions.model']).toBe('typesafe:jev');
     const refused = await host.bureau.settings.update(
       { 'decisions.model': 'typesafe' },
       { expectedRevision: 0 },
     );
     expect(refused).toMatchObject({ outcome: 'rejected', reason: 'invalid-value' });
+  });
+
+  test('starts with no default decision model when the owner disabled the plugin', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-decisions-'));
+    directories.push(home);
+    await writeFile(
+      join(home, 'configuration.json'),
+      JSON.stringify({ plugins: { typesafe: { enabled: false } } }),
+    );
+    const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(host);
+
+    const { values } = await host.bureau.settings.get();
+    expect(values['decisions.model']).toBeUndefined();
   });
 });

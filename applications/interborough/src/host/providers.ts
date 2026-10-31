@@ -36,15 +36,6 @@ import type {
 import { applyCatalogEdits, parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
-/**
- * The Bungalow secret that holds the TypeSafe API key (the `TYPESAFE_API_KEY` of the project
- * document, spelled as Bungalow requires: its secret keys are lowercase and hyphenated, as
- * `anthropic-api-key` is). When it is set, Bureau's decisions are
- * answered by `typesafeJev` (from `@lostgradient/operative-typesafe`) for the kinds it serves (`boolean`, `choice`, `scale`); every other
- * kind, and every kind when it is not set, goes to the catalog's language-model fallback.
- */
-export const TYPESAFE_SECRET_KEY = 'typesafe-api-key';
-
 /** A model provider a loaded plugin contributes, with what the host needs to call it. */
 export type ContributedProvider = {
   /** The plugin that contributed it, whose `configuration.models` is the provider's allowlist. */
