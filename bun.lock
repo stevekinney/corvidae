@@ -765,6 +765,44 @@
         "@a2a-js/sdk",
       ],
     },
+    "plugins/ollama": {
+      "name": "@lostgradient/plugin-ollama",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "armorer": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "plugins/voyage": {
+      "name": "@lostgradient/plugin-voyage",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "armorer": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "scripts/browser-fixtures": {
       "name": "@lostgradient/browser-fixtures",
       "devDependencies": {
@@ -1136,6 +1174,10 @@
     "@lostgradient/operative-typesafe": ["@lostgradient/operative-typesafe@workspace:packages/operative-typesafe"],
 
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
+
+    "@lostgradient/plugin-ollama": ["@lostgradient/plugin-ollama@workspace:plugins/ollama"],
+
+    "@lostgradient/plugin-voyage": ["@lostgradient/plugin-voyage@workspace:plugins/voyage"],
 
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 
