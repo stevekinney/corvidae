@@ -31,9 +31,11 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await expect(failedRow).toBeVisible();
   await failedRow.getByRole('link').click();
 
-  await expect(page.locator('h1.weft-workflow-detail__title')).toBeVisible();
-  // A run only the engine knows has the workflow's title as its page's one level-1 heading.
+  // A run only the engine knows has the workflow's type as its page's one level-1 heading, and
+  // its sections are on the page: there are no tabs to open.
+  await expect(page.getByRole('heading', { level: 1, name: 'payment-failing' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+  await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(
     page.getByText(
       'The workflow or an activity threw an error that did not match a timeout, cancellation, resource, or system failure.',
@@ -41,7 +43,7 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   ).toBeVisible();
   await checkA11y('workflow detail — overview (failure explanation)');
 
-  await page.getByRole('tab', { name: 'Timeline' }).click();
+  await expect(page.getByRole('heading', { level: 3, name: 'Timeline' })).toBeVisible();
   // Scoped to the first step row through Cinder's public `data-cinder-path`
   // attribute (stamped on every `RunStepTimeline` step/branch row), not its
   // private class names. Cinder's own `selection-control` button (WFC-7:
@@ -70,7 +72,7 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await expect(page.getByText('Selected — Events filtered to this step')).toBeVisible();
   await checkA11y('workflow detail — timeline (step selected)');
 
-  await page.getByRole('tab', { name: 'Events' }).click();
+  await page.getByRole('button', { name: 'Events' }).click();
   await expect(page.getByText('step: ')).toBeVisible();
   await page.getByRole('button', { name: 'Download' }).click();
   await expect(page.getByRole('menu')).toBeVisible();

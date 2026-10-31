@@ -3,7 +3,8 @@
    * The tool calls of a run, in the chat's style (`../../chat/tool-calls.svelte`), with the run's
    * decision inline under the call that waits for it. The calls come from the chat thread the run
    * belongs to; a run with no chat (a goal's attempt, a catalog task) has none to show, and a run
-   * that waits on a question rather than a tool shows the question below the calls.
+   * that waits on a question rather than a tool has the question above all of this, in the
+   * waiting section (`run-waiting.svelte`).
    *
    * The thread is read again whenever the run's stream reports something (`events`), because a call
    * that starts or ends inside one status is a change the task's own fields do not show, and
@@ -70,7 +71,6 @@
     return () => clearTimeout(timer);
   });
   const entries = $derived(toolCallsOfRun(task.id, thread.data ?? []));
-  const questions = $derived(task.openWaits.filter((wait) => wait.kind === 'human-wait'));
   // A tool approval is decided under its call. One whose call is not among the entries (the thread
   // is still being read, failed to read, or does not hold the call) has no row to sit under, so it is
   // shown on its own rather than lost, as the chat shows an approval with no call.
@@ -100,12 +100,9 @@
     retryLabel={RETRY_LABEL}
     onRetry={() => void thread.refetch()}
   />
-{:else if questions.length === 0 && unmatchedApprovals.length === 0}
+{:else if unmatchedApprovals.length === 0}
   <p class="ib-run__note">{TASK_COPY.noToolCalls}</p>
 {/if}
 {#each unmatchedApprovals as wait (wait.reviewId)}
-  <RunWait taskId={task.id} {wait} />
-{/each}
-{#each questions as wait (wait.reviewId)}
   <RunWait taskId={task.id} {wait} />
 {/each}

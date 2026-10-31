@@ -15,7 +15,7 @@
  * each carrying `attempts` and the relevant timestamp/error). Per weft's own
  * `documentation/guides/workflows.md` ("Durable cancellation teardown"), a
  * finalizer only ever runs after a workflow reaches `cancelled` or
- * `timed-out` — `completed`/`failed` never drive one. `workflow-detail.svelte`
+ * `timed-out` — `completed`/`failed` never drive one. `runs/run-engine.svelte.ts`
  * fetches this alongside the workflow itself and passes it down as a plain
  * prop (not fetched inside this module — this module stays a pure mapping),
  * so `finalizerStatusPresentation` below is the one place both the header

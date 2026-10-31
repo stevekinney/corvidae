@@ -98,7 +98,7 @@
   // which Svelte forbids inside a `$derived`, and `workflow.id` is stable
   // for this component's whole lifetime regardless (a workflow's `id` never
   // changes once created, and this tab only ever mounts under one fixed
-  // `workflow-detail.svelte` id). `untrack()` makes that explicit instead of
+  // `runs/run-engine.svelte.ts` id). `untrack()` makes that explicit instead of
   // triggering the `state_referenced_locally` compiler warning.
   const selection = timelineSelectionFor(untrack(() => workflow.id));
 

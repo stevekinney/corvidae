@@ -69,7 +69,8 @@ function open(
 }
 
 const BUREAU_ONLY: readonly AuthorizationScope[] = [];
-const origin = (container: HTMLElement) => container.querySelector('.ib-run__origin');
+const origin = (container: HTMLElement) => container.querySelector('[data-testid="run-lineage"]');
+const header = (container: HTMLElement) => container.querySelector('[data-run-header]');
 
 describe('where a run came from', () => {
   test('a run started from a chat links to the chat, and opens it in place', async () => {
@@ -78,9 +79,7 @@ describe('where a run came from', () => {
     });
 
     const openChat = await view.findByRole('link', { name: TASK_COPY.openChat });
-    await waitFor(() =>
-      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromChat),
-    );
+    await waitFor(() => expect(origin(view.container)?.querySelector('a')).toBeTruthy());
     // A modified click is the browser's.
     expect(await fireEvent.click(openChat, { button: 0, metaKey: true })).toBe(true);
     expect(router.pathname).toBe('/runs/run-1');
@@ -118,9 +117,7 @@ describe('where a run came from', () => {
     }));
 
     const sessionLink = await view.findByRole('link', { name: TASK_COPY.openSession });
-    await waitFor(() =>
-      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
-    );
+    await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.schedule));
     expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
     expect(await fireEvent.click(sessionLink, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('fire-1');
@@ -142,10 +139,8 @@ describe('where a run came from', () => {
       origin: 'chat',
     }));
 
-    await waitFor(() =>
-      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
-    );
-    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedFromChat);
+    await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.schedule));
+    expect(origin(view.container)?.textContent).not.toContain('Refund order 1234');
   });
 
   test('a run a person started in a session a schedule created is said to be from a chat', async () => {
@@ -158,8 +153,9 @@ describe('where a run came from', () => {
     }));
 
     await waitFor(() =>
-      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromChat),
+      expect(origin(view.container)?.querySelector('a')?.getAttribute('href')).toContain('fire-1'),
     );
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.schedule);
   });
 
   test('a fire whose session the caller cannot read is still said to be a schedule’s', async () => {
@@ -177,16 +173,15 @@ describe('where a run came from', () => {
       throw new Error('No such chat');
     });
 
-    await waitFor(() =>
-      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromSchedule),
-    );
-    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedFromChat);
-    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.startedDirectly);
+    await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.schedule));
+    expect(origin(view.container)?.textContent).not.toContain(TASK_COPY.originUnrecorded);
   });
 
-  test('a run no chat has is said to have started directly, and an unnamed agent is “An agent”', async () => {
+  test('a run nothing recorded the origin of says so, and an unnamed agent is “An agent”', async () => {
     const view = open('/runs/run-1', {
-      tasks: [taskFixture({ id: 'run-1', contextId: 'handle-1', agentName: null })],
+      tasks: [
+        taskFixture({ id: 'run-1', contextId: 'handle-1', agentName: null, kind: 'catalog' }),
+      ],
     });
     stub?.on('bureau.contexts.get', () => {
       throw new Error('No such chat');
@@ -194,7 +189,7 @@ describe('where a run came from', () => {
 
     await view.findByRole('heading', { level: 1, name: TASK_COPY.unknownAgent });
     await waitFor(() =>
-      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedDirectly),
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.originUnrecorded),
     );
     expect(view.queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
   });
@@ -211,7 +206,47 @@ describe('where a run came from', () => {
       ],
     });
 
-    await waitFor(() => expect(origin(view.container)?.textContent).toContain('2m'));
+    await waitFor(() => expect(header(view.container)?.textContent).toContain('2m'));
+  });
+});
+
+describe('what started the run, and what started that', () => {
+  test('follows a child run to the run that started it, and a step to its workflow, up to three levels', async () => {
+    const view = open('/runs/child-1', {
+      tasks: [
+        taskFixture({
+          id: 'child-1',
+          agentName: 'writer',
+          origin: { kind: 'agent', agentName: 'planner', parentRunId: 'parent-1' },
+        }),
+        taskFixture({
+          id: 'parent-1',
+          agentName: 'planner',
+          origin: { kind: 'parent', parentRunId: 'workflow-1' },
+        }),
+        taskFixture({
+          id: 'workflow-1',
+          agentName: 'runner',
+          origin: { kind: 'parent', parentRunId: 'workflow-2' },
+        }),
+        taskFixture({
+          id: 'workflow-2',
+          agentName: 'runner',
+          origin: { kind: 'parent', parentRunId: 'workflow-3' },
+        }),
+      ],
+    });
+
+    await waitFor(() =>
+      expect(origin(view.container)?.querySelectorAll('li.ib-run-lineage__item').length).toBe(3),
+    );
+    const levels = [...(origin(view.container)?.querySelectorAll('li.ib-run-lineage__item') ?? [])];
+    expect(levels.map((level) => level.getAttribute('data-depth'))).toEqual(['1', '2', '3']);
+    // Each level names the run above it, and links to it.
+    const links = [...(origin(view.container)?.querySelectorAll('a') ?? [])].map((link) =>
+      link.getAttribute('href'),
+    );
+    expect(links).toEqual(['/runs/parent-1', '/runs/workflow-1', '/runs/workflow-2']);
   });
 });
 
@@ -242,23 +277,15 @@ describe('the answer', () => {
     await view.findByText(TASK_COPY.noAnswer);
   });
 
-  test('the badge follows a status the stream reports that the page has not read yet', async () => {
+  test('the status follows a status the stream reports that the page has not read yet', async () => {
     const view = open('/runs/run-1', { tasks: [taskFixture({ id: 'run-1', status: 'working' })] });
     await view.findByRole('heading', { level: 1 });
     await waitFor(() => expect(stub?.streams.length).toBeGreaterThan(0));
-    await waitFor(() =>
-      expect(view.container.querySelector('.ib-run__heading')?.textContent).toContain(
-        TASK_COPY.states.working,
-      ),
-    );
+    await waitFor(() => expect(header(view.container)?.textContent).toContain('Running'));
 
     stub?.streams[0]?.push(snapshotElement('run-1', 'completed', { artifact: null }));
 
-    await waitFor(() =>
-      expect(view.container.querySelector('.ib-run__heading')?.textContent).toContain(
-        TASK_COPY.states.completed,
-      ),
-    );
+    await waitFor(() => expect(header(view.container)?.textContent).toContain('Done'));
   });
 });
 
@@ -278,21 +305,23 @@ describe('a run that cannot be followed live', () => {
   });
 });
 
-describe('a run only the engine knows', () => {
-  test('has no heading of its own on its Engine tab, so the workflow it holds is the one title', async () => {
-    const view = open('/runs/engine-run-1', { withEngine: true });
+describe('the page', () => {
+  test('is one header with one status, a Details rail and no tabs, even for a caller with no engine scope', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', status: 'completed', agentName: 'echo' })],
+      scopes: BUREAU_ONLY,
+    });
 
-    await view.findByRole('tab', { name: TASK_COPY.tabs.engine });
-    await waitFor(() => expect(stub?.callsTo('bureau.goals.list').length).toBeGreaterThan(0));
-    expect(view.queryByRole('heading', { level: 1, name: TASK_COPY.runTitle })).toBeNull();
-    expect(view.getByRole('article', { name: TASK_COPY.runTitle })).not.toBeNull();
-  });
-
-  test('names itself on its Summary tab, where the workflow is not shown', async () => {
-    const view = open('/runs/engine-run-1?view=summary');
-
-    await view.findByRole('heading', { level: 1, name: TASK_COPY.runTitle });
+    await view.findByRole('heading', { level: 1, name: 'echo' });
     expect(view.getAllByRole('heading', { level: 1 }).length).toBe(1);
+    expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
+    expect(header(view.container)?.textContent).toContain('Done');
+    expect(view.queryAllByRole('tab').length).toBe(0);
+    for (const name of ['Input and output', 'Activity', 'Details']) {
+      expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
+    }
+    // What only the workflow's reader may do is not drawn, and the page is whole without it.
+    expect(view.queryByRole('heading', { level: 2, name: 'Change or ask this run' })).toBeNull();
   });
 });
 
@@ -303,6 +332,7 @@ describe('a goal’s attempt', () => {
       attempts: [goalAttemptFixture('goal-1-a0', { status })],
     });
 
+  const WORD = { completed: 'Done', failed: 'Failed', canceled: 'Canceled', working: 'Running' };
   test.each([
     ['passed', 'completed'],
     ['failed', 'failed'],
@@ -312,9 +342,7 @@ describe('a goal’s attempt', () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt(status)], scopes: BUREAU_ONLY });
 
     await view.findByRole('heading', { level: 1, name: 'planner' });
-    expect(view.container.querySelector('.ib-run__heading')?.textContent).toContain(
-      TASK_COPY.states[state],
-    );
+    expect(header(view.container)?.textContent).toContain(WORD[state]);
     expect(view.getByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
   });
 
@@ -368,9 +396,7 @@ describe('a goal’s attempt', () => {
     const link = (await view.findByRole('link', {
       name: TASK_COPY.openSession,
     })) as HTMLAnchorElement;
-    await waitFor(() =>
-      expect(origin(view.container)?.textContent).toContain(TASK_COPY.startedFromGoal),
-    );
+    await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.goal));
     expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
       { contextId: 'goal-session-goal-1-a0' },
     ]);
@@ -412,7 +438,7 @@ describe('a goal’s attempt', () => {
           [...view.container.querySelectorAll('.ib-run-wait')].map((wait) =>
             wait.getAttribute('data-kind'),
           ),
-        ).toEqual(['tool-approval', 'human-wait']),
+        ).toEqual(['human-wait', 'tool-approval']),
       );
       await waitFor(() => expect(stub?.callsTo('bureau.goals.list').length).toBeGreaterThan(0));
       expect(requested.filter((url) => url.includes('/threads/'))).toEqual([]);
@@ -425,8 +451,8 @@ describe('a goal’s attempt', () => {
   test('names the goal, which opens in place', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
 
-    const link = (await view.findByRole('link', { name: 'goal-1' })) as HTMLAnchorElement;
+    const link = (await view.findByRole('link', { name: /^goal-1 / })) as HTMLAnchorElement;
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/goals');
+    expect(router.pathname).toBe('/goals/goal-1');
   });
 });

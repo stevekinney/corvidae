@@ -112,7 +112,7 @@ test('operator opens a stream from the timeline and reads its chunks in order', 
   page,
   checkA11y,
 }) => {
-  await page.goto(`/runs/${CHUNK_STREAMER_RUN_ID}?tab=timeline`);
+  await page.goto(`/runs/${CHUNK_STREAMER_RUN_ID}`);
   await page.getByRole('button', { name: 'View chunks of progress' }).click();
 
   const chunks = page.locator('[data-chunk-sequence]');
@@ -131,7 +131,8 @@ test('operator reads a run’s update history, then sends an update that outlast
   page,
   checkA11y,
 }) => {
-  await page.goto(`/runs/${UPDATE_DESK_RUN_ID}?tab=updates`);
+  await page.goto(`/runs/${UPDATE_DESK_RUN_ID}`);
+  await page.getByRole('button', { name: 'Send an update' }).click();
 
   // Both were sent when the fixture was seeded, before this page loaded. A stored answer is swept five
   // minutes after it is made, and a long browser run can reach this spec after that, so what the row
@@ -180,7 +181,7 @@ test('a browser that sends an update over REST and sees it time out does not sen
   // The console sends over JSON-RPC, so this goes straight to the REST route with a browser's `fetch`.
   // A request answered `Request Timeout` is replayed by the browser, each replay a new update; the
   // route answers a timeout `504`, which no user agent replays.
-  await page.goto(`/runs/${UPDATE_DESK_REPLAY_RUN_ID}?tab=updates`);
+  await page.goto(`/runs/${UPDATE_DESK_REPLAY_RUN_ID}`);
   const outcome = await page.evaluate(async (workflowId) => {
     try {
       const response = await fetch(`/v1/workflows/${workflowId}/update/slow`, {

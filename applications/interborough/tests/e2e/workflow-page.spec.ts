@@ -247,12 +247,11 @@ test.describe('Start run', () => {
     });
     await page.goto(`/runs/${runId}`);
 
-    const record = page.getByRole('region', { name: 'Run record' });
-    await expect(record).toContainText(id);
-    await expect(record.getByRole('link', { name: id })).toHaveAttribute(
-      'href',
-      `/workflows/${id}`,
-    );
+    // The Bureau's record of the instance fills the page: the workflow leads it, and links to its page.
+    await expect(page.getByRole('heading', { level: 1, name: id })).toBeVisible();
+    await expect(
+      page.getByRole('complementary', { name: 'Details' }).getByRole('link', { name: id }),
+    ).toHaveAttribute('href', `/workflows/${id}`);
     await expect(page.getByText('No workflow found')).toHaveCount(0);
 
     // Let the instance finish, so it does not stay in the host.

@@ -6,7 +6,7 @@
    * this file is the only place that can tell those apart, plus the `?view=` sub-navigation the
    * engine's start wizard and aggregate view live under. `/runs` is the human list of what the
    * agents have done (`runs/run-list.svelte`), and `/runs/:run` is one run's page
-   * (`runs/run-detail.svelte`), whose Engine tab is the workflow detail the engine always had.
+   * (`runs/run-detail.svelte`), whose sections for the workflow engine's side of a run are there for a caller who may read it.
    *
    * The list and a run's page are the Bureau's, and hold no console scope. The start wizard and the
    * aggregate view read the engine, so a caller without `workflows:read` is told so here instead of

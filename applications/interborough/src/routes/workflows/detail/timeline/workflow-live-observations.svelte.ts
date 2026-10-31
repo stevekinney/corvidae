@@ -26,7 +26,7 @@
  *
  * **Confirmed empirically (live browser, fresh tab, dev harness) that this
  * NEVER actually recovers replay in this app today.** This class is
- * instantiated from `workflow-detail.svelte`'s mount specifically to join
+ * instantiated from `runs/run-engine.svelte.ts`'s mount specifically to join
  * as early as this track's files can reach — but `src/app/shell/shell.svelte`
  * constructs `EngineStatusController` (`src/app/engine-status.svelte.ts`),
  * whose constructor calls `this.fleetSource.subscribe(...)` SYNCHRONOUSLY,
@@ -50,7 +50,7 @@
  * The finalizer teardown half of this class (`finalizingLive`/
  * `finalizerTeardown`) is GONE, not just renamed: weft#732 item 4 shipped
  * `weft.workflows.finalizer.get`, a durable field with none of this
- * replay-ordering problem, so `workflow-detail.svelte` now fetches finalizer
+ * replay-ordering problem, so `runs/run-engine.svelte.ts` now fetches finalizer
  * status directly as a plain query instead of inferring it from a live event
  * this class might miss — see `finalizer-strip.svelte`'s module doc.
  *
@@ -106,7 +106,7 @@ export interface FleetSubscribable {
 
 /**
  * Subscribes to the shared fleet feed for one workflow's lifetime (owned by
- * whoever constructs it — `workflow-detail.svelte` does, at mount, so this
+ * whoever constructs it — `runs/run-engine.svelte.ts` does, at mount, so this
  * starts as close to page-load as this track's files can reach without
  * itself opening a second fleet connection). Call `dispose()` on unmount.
  */

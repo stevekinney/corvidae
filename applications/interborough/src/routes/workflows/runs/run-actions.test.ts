@@ -184,7 +184,8 @@ describe('what a run is waiting on', () => {
     }));
 
     expect(await view.findByText('Which environment should the release go to?')).not.toBeNull();
-    const send = view.getByRole('button', { name: 'Send answer' });
+    // The question is answered where it is asked, at the top of the page, with the chat's control.
+    const send = view.getByRole('button', { name: /^Send$/ });
     expect(send.hasAttribute('disabled')).toBe(true);
     await fireEvent.input(view.getByLabelText('Your answer'), { target: { value: ' staging ' } });
     await fireEvent.click(send);
@@ -195,6 +196,9 @@ describe('what a run is waiting on', () => {
       answer: 'staging',
       signalName: 'environment',
     });
+    // The answer is read back masked as the chat reads it, for as long as the page is open.
+    expect(await view.findByText('You answered')).not.toBeNull();
+    expect(view.container.querySelector('[data-question-answer]')?.textContent).toBe('staging');
   });
 
   test('an answer the Bureau refuses is told next to the field', async () => {
@@ -207,11 +211,11 @@ describe('what a run is waiting on', () => {
 
     await view.findByText('Which environment should the release go to?');
     await fireEvent.input(view.getByLabelText('Your answer'), { target: { value: 'staging' } });
-    await fireEvent.click(view.getByRole('button', { name: 'Send answer' }));
+    await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
 
-    await waitFor(() =>
-      expect(view.container.querySelector('.ib-decision__failure')).not.toBeNull(),
-    );
+    expect(await view.findByText(/The Bureau broke/)).not.toBeNull();
+    // The question stays open to answer again.
+    expect(view.getByLabelText('Your answer')).not.toBeNull();
   });
 
   test('a tool approval is approved or denied where the run is shown', async () => {

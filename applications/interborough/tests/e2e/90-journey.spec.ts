@@ -314,13 +314,11 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
 
   await runs.first().getByRole('link').first().click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
-  // A run the Bureau has no task for opens on its summary, and the engine's page is its Engine tab.
-  await page.getByRole('tab', { name: 'Workflow' }).click();
   // The run's page also links its schedule, `bureau-workflow-schedule:journey-digest:1`, and its
-  // breadcrumb names the workflow, so the type's link is the one named exactly inside the tab.
+  // breadcrumb names the workflow, so the type's link is the one named exactly inside the Details rail.
   await expect(
     page
-      .getByRole('tabpanel', { name: 'Workflow' })
+      .getByRole('complementary', { name: 'Details' })
       .getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }),
   ).toHaveAttribute('href', `/workflows/${JOURNEY_WORKFLOW_ID}`);
 });
@@ -427,14 +425,14 @@ test('starts a run it does not release, reaches it from the chat’s run sentenc
   await page.getByRole('link', { name: '1 run is working' }).click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   await expect(
-    page.locator('.ib-run__heading').getByText('Working', { exact: true }),
+    page.locator('[data-run-header]').getByText('Running', { exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Cancel run', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel run', exact: true }).click();
 
   await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
   await expect(
-    page.locator('.ib-run__heading').getByText('Canceled', { exact: true }),
+    page.locator('[data-run-header]').getByText('Canceled', { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Cancel run' })).toHaveCount(0);
   // Cancelling ended the run that was held, so nothing is left on the barrier.

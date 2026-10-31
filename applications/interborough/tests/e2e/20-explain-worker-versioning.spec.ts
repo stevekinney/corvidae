@@ -45,8 +45,6 @@ test('a pinned run shows its binding and says why it cannot be overridden', asyn
   checkA11y,
 }) => {
   await page.goto(`/runs/${E2E_PINNED_RUN_ID}`);
-  await expect(page.getByText('Worker: pinned')).toBeVisible();
-
   await expect(panel(page)).toBeVisible();
   await expect(figure(page, 'Policy')).toHaveText('Pinned');
   await expect(figure(page, 'Deployment')).toHaveText(E2E_VERSIONED_DEPLOYMENT_NAME);
@@ -60,7 +58,8 @@ test('a pinned run shows its binding and says why it cannot be overridden', asyn
   await checkA11y('workflow detail — pinned worker binding');
 
   // The restart dialog states the inheritance rule and offers no override.
-  await page.getByRole('button', { name: 'Restart' }).click();
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Restart' }).click();
   const dialog = page.getByRole('dialog', { name: 'Restart workflow' });
   await expect(dialog.getByText('Worker version for a restart or retry')).toBeVisible();
   await expect(dialog.getByTestId('restart-override-reason')).toContainText('cannot be overridden');
@@ -75,7 +74,6 @@ test('an auto-upgrade run shows the compatibility it requires and why it may mov
   checkA11y,
 }) => {
   await page.goto(`/runs/${E2E_AUTO_UPGRADE_RUN_ID}`);
-  await expect(page.getByText('Worker: auto-upgrade')).toBeVisible();
   await expect(figure(page, 'Policy')).toHaveText('Auto-upgrade');
   await expect(figure(page, 'Requires build')).toHaveText(E2E_VERSIONED_FIRST_BUILD_ID);
   await expect(figure(page, 'Requires artifact digest')).toHaveText(
@@ -111,7 +109,8 @@ test('an operator previews a worker upgrade, confirms it, and the restart binds 
 }) => {
   expect(await boundGeneration(page, E2E_AUTO_UPGRADE_RUN_ID)).toBe(1);
   await page.goto(`/runs/${E2E_AUTO_UPGRADE_RUN_ID}`);
-  await page.getByRole('button', { name: 'Restart' }).click();
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Restart' }).click();
   const dialog = page.getByRole('dialog', { name: 'Restart workflow' });
   await expect(dialog.getByText('Worker version for a restart or retry')).toBeVisible();
 

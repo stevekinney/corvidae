@@ -87,7 +87,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.bulk.retryfailed` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
 | `weft.workflows.bulk.signal` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
 | `weft.workflows.bulk.tags` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
-| `weft.workflows.cancel` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `cancel` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
+| `weft.workflows.cancel` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `cancel` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
 | `weft.workflows.checkpoints.get` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` |  | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.checkpoints.list` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` |  | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.definitions.get` | not-in-dashboard |  |  |  |  | Weft's own dashboard lists a workflow's revisions through `weft.workflows.revisions.list` and its registry from `weft.system.registry`; the definitions catalog serves the Interborough workflows page. |
@@ -95,16 +95,16 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.events.list` | exposed | `src/routes/workflows/detail/events-tab.svelte` | `getEvents` | `src/routes/workflows/detail/events-tab.test.ts` |  |  |
 | `weft.workflows.finalizer.get` | exposed | `src/routes/workflows/detail/workflow-observability.ts` |  | `src/routes/workflows/detail/workflow-observability.test.ts` |  |  |
 | `weft.workflows.fork` | exposed | `src/routes/workflows/detail/checkpoints/fork-dialog.svelte` | `fork` | `src/routes/workflows/detail/checkpoints/fork-dialog.test.ts` |  |  |
-| `weft.workflows.get` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `get` | `src/routes/workflows/detail/workflow-detail.test.ts` | COR-164 |  |
+| `weft.workflows.get` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `get` | `src/routes/workflows/runs/run-detail-engine.test.ts` | COR-164 |  |
 | `weft.workflows.list` | exposed | `src/routes/workflows/list/workflow-list.svelte` | `list` | `src/routes/workflows/list/workflow-list.test.ts` |  |  |
 | `weft.workflows.logs.list` | tracked |  |  |  | COR-1811 |  |
 | `weft.workflows.purge` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
-| `weft.workflows.query` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `query` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
+| `weft.workflows.query` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `query` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
 | `weft.workflows.refresh` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel-actions.test.ts` | COR-166 |  |
 | `weft.workflows.refresh.diagnostics` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel.test.ts` | COR-166 |  |
 | `weft.workflows.replay` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` | `replayTo` | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.result.get` | not-in-dashboard |  |  |  |  | Workflow detail shows the result from the `weft.workflows.get` state it already loads, and this operation waits for the run to settle, which would hold a dashboard request open. |
-| `weft.workflows.resume` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `resume` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
+| `weft.workflows.resume` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `resume` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
 | `weft.workflows.revisions.activate` | exposed | `src/routes/system/workflow-revisions-panel.svelte` |  | `src/routes/system/workflow-revisions-panel-activation.test.ts` |  |  |
 | `weft.workflows.revisions.get` | exposed | `src/routes/system/revision-detail.svelte` |  | `src/routes/system/revision-detail.test.ts` | COR-1464 |  |
 | `weft.workflows.revisions.install` | exposed | `src/routes/system/revision-install-form.svelte` |  | `src/routes/system/revision-install-form.test.ts` | COR-1464 |  |
@@ -115,11 +115,11 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.workflows.start` | exposed | `src/routes/workflows/start/start-wizard.svelte` | `start` | `src/routes/workflows/start/start-wizard.test.ts` | COR-164 |  |
 | `weft.workflows.startorsignal` | exposed | `src/routes/workflows/detail/restart-dialog.svelte` | `startOrSignal` | `src/routes/workflows/detail/restart-dialog.test.ts` |  |  |
 | `weft.workflows.streams.chunks` | exposed | `src/routes/workflows/detail/streams/stream-chunks-data.ts` |  | `src/routes/workflows/detail/streams/stream-chunks-view.test.ts` | COR-1462 |  |
-| `weft.workflows.suspend` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `suspend` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
-| `weft.workflows.tags.add` | exposed | `src/routes/workflows/detail/overview-tab.svelte` | `addTags` | `src/routes/workflows/detail/overview-tab.test.ts` |  |  |
-| `weft.workflows.tags.remove` | exposed | `src/routes/workflows/detail/overview-tab.svelte` | `removeTags` | `src/routes/workflows/detail/overview-tab.test.ts` |  |  |
+| `weft.workflows.suspend` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `suspend` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
+| `weft.workflows.tags.add` | exposed | `src/routes/workflows/runs/run-tags.svelte` | `addTags` | `src/routes/workflows/runs/run-tags.test.ts` |  |  |
+| `weft.workflows.tags.remove` | exposed | `src/routes/workflows/runs/run-tags.svelte` | `removeTags` | `src/routes/workflows/runs/run-tags.test.ts` |  |  |
 | `weft.workflows.timeline.get` | exposed | `src/routes/workflows/detail/timeline-tab.svelte` | `getTimeline` | `src/routes/workflows/detail/timeline-tab.test.ts` |  |  |
-| `weft.workflows.timeout` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `timeout` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
+| `weft.workflows.timeout` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `timeout` | `src/routes/workflows/runs/run-detail-engine.test.ts` |  |  |
 | `weft.workflows.update` | exposed | `src/routes/workflows/detail/updates/updates-data.ts` |  | `src/routes/workflows/detail/updates-tab.test.ts` | COR-1463 |  |
 | `weft.workflows.updates.list` | exposed | `src/routes/workflows/detail/updates/updates-data.ts` |  | `src/routes/workflows/detail/updates-tab.test.ts` | COR-1463 |  |
 | `feed:workflow-events:sse` | exposed | `src/lib/live-source/workflow-tail-source.svelte.ts` |  | `src/lib/live-source/workflow-tail-source.test.ts` |  |  |

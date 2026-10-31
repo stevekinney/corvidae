@@ -1,25 +1,29 @@
 <script lang="ts">
   /**
-   * `/runs/:run`: one run. It leads with the agent and how the run stands, then what started it, and
-   * offers the two things a person does here, Open chat and Cancel run, as buttons of one size. The
-   * Summary tab holds the answer (rendered as Markdown), the tool calls, and, when the run needs
-   * a person, the decision itself, inline. The Engine tab is the workflow page the engine has
-   * always had: payloads, tags, revision, signals, updates, checkpoints, children, restart, and the
-   * rest of what only an operator uses.
+   * `/runs/:run`: one run, as one page with one header and one status, and no tabs. The header says
+   * what ran and how the run stands, with Open chat and Cancel run beside a More menu for the rest.
+   * Below it, in this order: what the run is waiting on a person for (a question is answered right
+   * there, with the chat's own question control), what went in and came out, what the run did, and
+   * a place to change or ask the run something (a signal, an update, a query) without a dialog. The
+   * Details rail, 320 px wide beside the sections and under them on a narrow screen, holds the
+   * facts, each label above its value, and begins with what started the run.
    *
    * Status comes from the task (`bureau.tasks.get`), which the page reads again whenever the task's
    * stream (`bureau.tasks.events`) reports a change, and whenever `bureau.events` reports a run or
    * the cleanup of a cancellation (`task.cleanup-acknowledged`), on a timer only while that feed is
-   * not live; the answer is the stream's, because the
-   * management plane's task view carries none. A run that is not a task (a goal's attempt started
-   * before attempts were tasks, COR-1868) is shown from the goal that made it. The Engine tab reads the engine,
-   * so it is there only for a caller who holds `workflows:read`; everything else is the Bureau's.
-   * A Bureau that does not know the run (a missing task, or one removed while the page was open) is a
-   * run that was not found, and any other failure to read it is an error that can be retried.
+   * not live; the answer is the stream's, because the management plane's task view carries none. A
+   * run that is not a task (a goal's attempt started before attempts were tasks, COR-1868) is shown
+   * from the goal that made it, and a run only the workflow engine holds, from the engine. When more
+   * than one holds it, the task's status is the one shown.
+   *
+   * The sections that read the workflow engine are there for a caller who holds `workflows:read`,
+   * and each is gated again on the scope its own reads need; a caller without engine access still
+   * has the whole page the Bureau can fill in. A run that no source knows is a run that was not
+   * found, and any other failure to read it is an error that can be retried.
    */
   import { onMount, untrack } from 'svelte';
 
-  import { Badge, Button, EmptyState, ErrorState, Skeleton, Tabs } from '@lostgradient/cinder';
+  import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { renderMarkdown } from '@lostgradient/markdown';
   import { SearchX } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -30,21 +34,31 @@
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import {
     getTask,
-    isScheduleFire,
     isTerminalState,
     type TaskCleanup,
     type TaskView,
   } from '../../../lib/bureau-tasks.ts';
   import { classifyFault } from '../../../lib/faults.ts';
-  import { formatDuration, formatRelativeTime } from '../../../lib/format/index.ts';
   import { chatSessionPath } from '../../../lib/identifier-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { router, workflowDetailPath, workflowRunPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
-  import { taskStatePresentation } from '../../../lib/task-status.ts';
-  import WorkflowDetail from '../detail/workflow-detail.svelte';
-  import RunCancel from './run-cancel.svelte';
-  import RunToolCalls from './run-tool-calls.svelte';
+  import {
+    attemptStatusWord,
+    taskStatusWord,
+    workflowRunStatusWord,
+    type StatusWord,
+  } from '../../../lib/status.ts';
+  import { getWorkflowFileRun } from '../../../lib/workflow-files.ts';
+  import { isTerminalStatus } from '../detail/workflow-status.ts';
+  import RestartDialog from '../detail/restart-dialog.svelte';
+  import RunActivity from './run-activity.svelte';
+  import RunChange from './run-change.svelte';
+  import RunDetails from './run-details.svelte';
+  import RunEnginePanels from './run-engine-panels.svelte';
+  import { RunEngine } from './run-engine.svelte.ts';
+  import RunHeader from './run-header.svelte';
+  import RunInputOutput from './run-input-output.svelte';
+  import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
 
   interface RunDetailProps {
@@ -55,7 +69,7 @@
 
   const queryClient = useQueryClient();
   const principal = getPrincipalStore();
-  // The Engine tab is the workflow page, and the engine answers only a caller who may read it.
+  // The workflow's own sections are the engine's, and the engine answers only a caller who may read it.
   const engineAllowed = $derived(principal.hasScope('workflows:read'));
   const initialRunId = untrack(() => runId);
   const detailKey = queryKeys.bureauTasks.detail(initialRunId);
@@ -173,6 +187,16 @@
     return undefined;
   });
 
+  // The workflow engine is asked only for a run the Bureau does not describe: a task, or a goal's
+  // attempt, has all the page needs from the Bureau, and the engine would answer a run it does not
+  // hold with a 404 that the browser logs as an error. A caller who may not read the engine
+  // is never asked.
+  const engine = new RunEngine(
+    () => initialRunId,
+    () => engineAllowed && notFound && goals.isSuccess && attempt === undefined,
+  );
+  const workflow = $derived(engine.workflow ?? undefined);
+
   // The session a goal's attempt ran in. A goal's session is not listed under Chat, so the attempt's
   // page is where a person reaches it, while the Bureau still has it.
   const attemptSession = createQuery(
@@ -185,68 +209,159 @@
     undefined,
   );
 
-  // A run only the engine knows (no task, and no goal made it) has nothing on its Summary tab, so it
-  // opens on the Engine tab, where the workflow is. Either tab can still be asked for by name.
-  const engineOnly = $derived(notFound && attempt === undefined && engineAllowed);
-  const view = $derived.by(() => {
-    if (!engineAllowed) return 'summary';
-    const asked = router.current.search.get('view');
-    if (asked === 'engine' || asked === 'summary') return asked;
-    return engineOnly ? 'engine' : 'summary';
-  });
-  // A run only the engine knows has no header of its own while its Engine tab is open: the workflow's
-  // title is then the page's one level-1 heading. On its Summary tab the page still names itself.
-  const leadsWithEngine = $derived(
-    engineOnly && task.data === undefined && !task.isPending && view === 'engine',
+  // A run of a workflow file that the engine behind the console does not hold may still be the
+  // Bureau's (`bureau.workflows.runs.get`): the end-to-end host's engine is a fixture, and answers
+  // the read by the run's identifier with a 404. Asked only once the engine has said it does not
+  // have the run, and only for a run no task describes.
+  const fileRun = createQuery(
+    () => ({
+      queryKey: queryKeys.workflows.fileRun(initialRunId),
+      queryFn: ({ signal }) => getWorkflowFileRun(initialRunId, { signal }),
+      enabled: engineAllowed && engine.notFound && notFound && attempt === undefined,
+      retry: false,
+    }),
+    undefined,
   );
-  let tab = $state(untrack(() => view));
-  $effect(() => {
-    tab = view;
-  });
-  function changeTab(next: string): void {
-    const search = new URLSearchParams(router.search);
-    if (next === 'engine') search.set('view', 'engine');
-    else {
-      // Summary is the absence of a choice, except where the choice would otherwise be Engine.
-      if (engineOnly) search.set('view', 'summary');
-      else search.delete('view');
-      search.delete('tab');
-    }
-    // The run keeps the address it was opened under: nested under its workflow, or by ID alone.
-    const workflow = router.current.params['workflow'];
-    router.navigate(
-      workflow === undefined
-        ? workflowDetailPath(initialRunId, search)
-        : workflowRunPath(workflow, initialRunId, search),
-      { replace: true },
-    );
-  }
-
-  const attemptThreadId = $derived(
-    attempt !== undefined && attempt.attempt.sessionId !== '' ? attempt.attempt.sessionId : null,
-  );
-  const chatHref = $derived(
-    goalTask
-      ? attemptSession.isSuccess
-        ? chatSessionPath(attemptSession.data.id)
-        : undefined
-      : chat.isSuccess && task.data !== undefined
-        ? chatSessionPath(task.data.contextId)
-        : undefined,
+  const record = $derived(fileRun.data);
+  const fileRunAbsent = $derived(
+    fileRun.isError && classifyFault(fileRun.error)?.kind === 'not-found',
   );
 
   const answer = $derived(follower.artifact?.text);
   const answerHtml = $derived(answer === undefined ? '' : renderMarkdown(answer).html);
-  const startedAt = $derived(task.data === undefined ? undefined : Date.parse(task.data.createdAt));
-  // Nothing knows this run: the Bureau has no task, no goal made it (the goals were read), and the
-  // caller may not ask the engine, which is the only other place a run can be.
-  const unknownRun = $derived(
-    notFound && goals.isSuccess && attempt === undefined && !engineAllowed,
+
+  // What the page knows of the run, from the first source that has it: the task, a goal's attempt,
+  // the workflow engine, or the Bureau's record of a workflow file's run.
+  const summary = $derived.by(
+    ():
+      | {
+          readonly title: string | undefined;
+          readonly status: StatusWord;
+          readonly startedAt: number;
+          readonly updatedAt: number;
+          readonly over: boolean;
+        }
+      | undefined => {
+      if (task.data !== undefined) {
+        return {
+          title: task.data.agentName ?? undefined,
+          status: taskStatusWord(task.data.status),
+          startedAt: Date.parse(task.data.createdAt),
+          updatedAt: Date.parse(task.data.updatedAt),
+          over: isTerminalState(task.data.status),
+        };
+      }
+      if (attempt !== undefined) {
+        const startedAt = Date.parse(attempt.attempt.startedAt);
+        const completedAt =
+          attempt.attempt.completedAt === null
+            ? undefined
+            : Date.parse(attempt.attempt.completedAt);
+        return {
+          title: attempt.goal.agentName,
+          status: attemptStatusWord(attempt.attempt.status),
+          startedAt,
+          updatedAt: completedAt ?? startedAt,
+          over: completedAt !== undefined,
+        };
+      }
+      if (workflow !== undefined) {
+        return {
+          title: workflow.type,
+          status: workflowRunStatusWord(workflow.status),
+          startedAt: workflow.createdAt,
+          updatedAt: workflow.updatedAt,
+          over: isTerminalStatus(workflow.status),
+        };
+      }
+      if (record !== undefined) {
+        return {
+          title: record.workflow,
+          status: workflowRunStatusWord(record.status),
+          startedAt: Date.parse(record.createdAt),
+          updatedAt: Date.parse(record.updatedAt),
+          over:
+            record.status !== 'pending' &&
+            record.status !== 'running' &&
+            record.status !== 'suspended',
+        };
+      }
+      return undefined;
+    },
   );
+
+  const attemptThreadId = $derived(
+    attempt !== undefined && attempt.attempt.sessionId !== '' ? attempt.attempt.sessionId : null,
+  );
+  const chatLink = $derived.by(() => {
+    if (goalTask) {
+      return attemptSession.isSuccess
+        ? { href: chatSessionPath(attemptSession.data.id), label: TASK_COPY.openSession }
+        : undefined;
+    }
+    if (task.data === undefined) {
+      return attempt !== undefined && attemptSession.isSuccess
+        ? { href: chatSessionPath(attemptSession.data.id), label: TASK_COPY.openSession }
+        : undefined;
+    }
+    return chat.isSuccess
+      ? {
+          href: chatSessionPath(task.data.contextId),
+          label: chat.data.origin === 'chat' ? TASK_COPY.openChat : TASK_COPY.openSession,
+        }
+      : undefined;
+  });
+
+  // A note for the run's Activity when there is no task to read tool calls from.
+  const activityNote = $derived(
+    task.data !== undefined
+      ? undefined
+      : attempt !== undefined
+        ? engineAllowed
+          ? TASK_COPY.goalAttemptNote
+          : TASK_COPY.goalAttemptNoteBureauOnly
+        : notFound && engineAllowed && workflow !== undefined
+          ? TASK_COPY.engineOnlyNote
+          : undefined,
+  );
+
+  // Nothing knows this run: the Bureau has no task, no goal made it (the goals were read), and the
+  // caller either may not ask the engine, or the engine and the Bureau's record of a workflow file
+  // both answered that they do not have it.
+  const unknownRun = $derived(
+    notFound &&
+      goals.isSuccess &&
+      attempt === undefined &&
+      (!engineAllowed || (engine.notFound && fileRunAbsent)),
+  );
+  // The engine, or the Bureau's record of a workflow file's run, could not be read, and nothing
+  // else describes the run.
+  const lookupFailed = $derived(
+    notFound &&
+      attempt === undefined &&
+      engineAllowed &&
+      summary === undefined &&
+      (engine.fault !== null || (engine.notFound && fileRun.isError && !fileRunAbsent)),
+  );
+  // Still finding out: the task, then the goals, then the engine, then the Bureau's record of a
+  // workflow file's run, each asked only when the one before had nothing.
+  const loading = $derived(
+    summary === undefined &&
+      (task.isPending ||
+        (notFound &&
+          (goals.isPending ||
+            (engineAllowed &&
+              attempt === undefined &&
+              ((engine.workflow === undefined && engine.fault === null) ||
+                (engine.notFound && fileRun.isPending)))))),
+  );
+
+  let restartOpen = $state(false);
 </script>
 
 {#if follower.removed || unknownRun}
   <EmptyState
+    kind="first-use"
     title={TASK_COPY.notFound.title}
     description={TASK_COPY.notFound.description}
     headingLevel={1}
@@ -262,202 +377,95 @@
     retryLabel={RETRY_LABEL}
     onRetry={() => void (notFound && goals.isError ? goals.refetch() : task.refetch())}
   />
+{:else if lookupFailed}
+  <ErrorState
+    variant="flat"
+    title={TASK_COPY.loadFailed.title}
+    description={engine.fault?.message ?? TASK_COPY.loadFailed.description}
+    headingLevel={1}
+    retryLabel={RETRY_LABEL}
+    onRetry={() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(initialRunId) });
+      void fileRun.refetch();
+    }}
+  />
 {:else}
-  <!-- A run only the engine knows has no heading of its own: the workflow it holds leads the page. -->
-  <article
-    class="ib-run"
-    aria-labelledby={leadsWithEngine ? undefined : 'ib-run-title'}
-    aria-label={leadsWithEngine ? TASK_COPY.runTitle : undefined}
-  >
-    {#if task.data}
-      {@const current = task.data}
-      {@const presentation = taskStatePresentation(current.status)}
-      <header class="ib-run__header">
-        <div class="ib-run__heading">
-          <h1 id="ib-run-title" class="ib-run__title">
-            {#if current.agentName === null}{TASK_COPY.unknownAgent}{:else}<code
-                class="ib-identifier">{current.agentName}</code
-              >{/if}
-          </h1>
-          <Badge variant={presentation.variant}>{presentation.label}</Badge>
-        </div>
-        <div class="ib-run__actions">
-          {#if chatHref !== undefined}
-            <Button
-              variant="secondary"
-              href={router.href(chatHref)}
-              label={chat.data?.origin === 'chat' ? TASK_COPY.openChat : TASK_COPY.openSession}
-              onclick={(event) => {
-                if (
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey ||
-                  event.button !== 0
-                )
-                  return;
-                event.preventDefault();
-                router.navigate(chatHref);
-              }}
-            />
-          {/if}
-          <RunCancel task={current} />
-        </div>
-        <p class="ib-run__origin">
-          {#if goalTask && attempt !== undefined}
-            {TASK_COPY.startedFromGoal}
-            <a
-              href={router.href('/goals')}
-              onclick={(event) => {
-                event.preventDefault();
-                router.navigate('/goals');
-              }}>{attempt.goal.goalRunId}</a
-            >
-          {:else if chat.isSuccess}
-            {isScheduleFire(current) ? TASK_COPY.startedFromSchedule : TASK_COPY.startedFromChat}
-            <a
-              href={router.href(chatSessionPath(current.contextId))}
-              onclick={(event) => {
-                if (
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey ||
-                  event.button !== 0
-                )
-                  return;
-                event.preventDefault();
-                router.navigate(chatSessionPath(current.contextId));
-              }}>{chat.data.title ?? TASK_COPY.untitledChat}</a
-            >
-          {:else if isScheduleFire(current)}
-            {TASK_COPY.startedFromSchedule}
-          {:else}
-            {TASK_COPY.startedDirectly}
-          {/if}
-          {#if startedAt !== undefined}
-            · <span title={current.createdAt}>{formatRelativeTime(startedAt, Date.now())}</span>
-          {/if}
-          {#if isTerminalState(current.status) && startedAt !== undefined}
-            · {formatDuration(Math.max(0, Date.parse(current.updatedAt) - startedAt))}
-          {/if}
-        </p>
-      </header>
-    {:else if attempt !== undefined}
-      {@const presentation = taskStatePresentation(
-        attempt.attempt.status === 'passed'
-          ? 'completed'
-          : attempt.attempt.status === 'failed'
-            ? 'failed'
-            : attempt.attempt.status === 'aborted'
-              ? 'canceled'
-              : 'working',
-      )}
-      <header class="ib-run__header">
-        <div class="ib-run__heading">
-          <h1 id="ib-run-title" class="ib-run__title">
-            <code class="ib-identifier">{attempt.goal.agentName}</code>
-          </h1>
-          <Badge variant={presentation.variant}>{presentation.label}</Badge>
-        </div>
-        {#if attemptSession.isSuccess}
-          {@const sessionHref = chatSessionPath(attemptSession.data.id)}
-          <div class="ib-run__actions">
-            <Button
-              variant="secondary"
-              href={router.href(sessionHref)}
-              label={TASK_COPY.openSession}
-              onclick={(event) => {
-                if (
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey ||
-                  event.button !== 0
-                )
-                  return;
-                event.preventDefault();
-                router.navigate(sessionHref);
-              }}
-            />
-          </div>
-        {/if}
-        <p class="ib-run__origin">
-          {TASK_COPY.startedFromGoal}
-          <a
-            href={router.href('/goals')}
-            onclick={(event) => {
-              event.preventDefault();
-              router.navigate('/goals');
-            }}>{attempt.goal.goalRunId}</a
-          >
-          ·
-          <span title={attempt.attempt.startedAt}
-            >{formatRelativeTime(Date.parse(attempt.attempt.startedAt), Date.now())}</span
-          >
-        </p>
-      </header>
-    {:else if task.isPending}
+  <article class="ib-run" aria-label={TASK_COPY.runTitle}>
+    {#if summary !== undefined}
+      <RunHeader
+        runId={initialRunId}
+        title={summary.title ?? (task.data === undefined ? undefined : TASK_COPY.unknownAgent)}
+        fallbackTitle={TASK_COPY.runTitle}
+        status={summary.status}
+        startedAt={summary.startedAt}
+        tookMilliseconds={summary.over
+          ? Math.max(0, summary.updatedAt - summary.startedAt)
+          : undefined}
+        task={task.data}
+        chat={chatLink}
+        engineStatus={workflow?.status}
+        pendingAction={engine.pendingAction}
+        actionGate={engine.actionGate}
+        onAction={(action) => engine.act(action)}
+        onRestart={() => (restartOpen = true)}
+      />
+    {:else if loading}
       <Skeleton height="2rem" width="40%" />
-    {:else if !leadsWithEngine}
-      <header class="ib-run__header">
-        <div class="ib-run__heading">
-          <h1 id="ib-run-title" class="ib-run__title">{TASK_COPY.runTitle}</h1>
-        </div>
-      </header>
+    {:else}
+      <RunHeader
+        runId={initialRunId}
+        title={undefined}
+        fallbackTitle={TASK_COPY.runTitle}
+        status={undefined}
+      />
     {/if}
 
-    <Tabs bind:value={tab} onValueChange={changeTab}>
-      <Tabs.List label={TASK_COPY.tabsLabel}>
-        <Tabs.Trigger value="summary">{TASK_COPY.tabs.summary}</Tabs.Trigger>
-        {#if engineAllowed}<Tabs.Trigger value="engine">{TASK_COPY.tabs.engine}</Tabs.Trigger>{/if}
-      </Tabs.List>
-      <Tabs.Panel value="summary">
-        <div class="ib-run__summary">
-          {#if task.data}
-            {@const current = task.data}
-            <section aria-labelledby="ib-run-answer">
-              <h2 id="ib-run-answer" class="ib-run__heading-2">{TASK_COPY.answerHeading}</h2>
-              {#if answer !== undefined && answer.trim() !== ''}
-                <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-                <div class="weft-artifact-markdown ib-run__answer">{@html answerHtml}</div>
-                {#if follower.artifact?.truncated}
-                  <p class="ib-run__note">{TASK_COPY.answerTruncated}</p>
-                {/if}
-              {:else}
-                <p class="ib-run__note">
-                  {isTerminalState(current.status) ? TASK_COPY.noAnswer : TASK_COPY.noAnswerYet}
-                </p>
-              {/if}
-            </section>
-            <section aria-labelledby="ib-run-tools">
-              <h2 id="ib-run-tools" class="ib-run__heading-2">{TASK_COPY.toolCallsHeading}</h2>
-              <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
-              <RunToolCalls
-                task={current}
-                threadId={goalTask ? attemptThreadId : undefined}
-                events={taskEvents}
-              />
-            </section>
-            {#if follower.state === 'unavailable'}
-              <p class="ib-run__note" role="status">{TASK_COPY.followUnavailable}</p>
-            {:else if follower.state === 'reconnecting'}
-              <p class="ib-run__note" role="status">{TASK_COPY.followReconnecting}</p>
-            {/if}
-          {:else if attempt !== undefined}
-            <p class="ib-run__note">
-              {engineAllowed ? TASK_COPY.goalAttemptNote : TASK_COPY.goalAttemptNoteBureauOnly}
-            </p>
-          {:else if notFound && engineAllowed}
-            <p class="ib-run__note">{TASK_COPY.engineOnlyNote}</p>
+    <div class="ib-run__layout">
+      <div class="ib-run__main">
+        {#if task.data}
+          <RunWaiting task={task.data} />
+        {/if}
+        {#if summary !== undefined}
+          <RunInputOutput
+            task={task.data}
+            answerHtml={answer === undefined ? undefined : answerHtml}
+            answerTruncated={follower.artifact?.truncated === true}
+            followState={follower.state}
+            {workflow}
+            record={workflow === undefined ? record : undefined}
+          />
+          <RunActivity
+            task={task.data}
+            threadId={goalTask ? attemptThreadId : undefined}
+            {taskEvents}
+            note={activityNote}
+            engine={workflow === undefined ? undefined : engine}
+            {workflow}
+          />
+          {#if workflow !== undefined}
+            <RunChange {engine} {workflow} />
+            <RunEnginePanels {engine} {workflow} />
           {/if}
-        </div>
-      </Tabs.Panel>
-      {#if engineAllowed}
-        <Tabs.Panel value="engine">
-          {#if tab === 'engine'}<WorkflowDetail headingLevel={leadsWithEngine ? 1 : 2} />{/if}
-        </Tabs.Panel>
+        {/if}
+      </div>
+      {#if summary !== undefined}
+        <RunDetails
+          runId={initialRunId}
+          task={task.data}
+          goal={attempt?.goal}
+          chat={chat.data}
+          engine={workflow === undefined ? undefined : engine}
+          {workflow}
+          recordWorkflow={record?.workflow}
+          startedAt={summary.startedAt}
+          updatedAt={summary.updatedAt}
+          over={summary.over}
+        />
       {/if}
-    </Tabs>
+    </div>
   </article>
+
+  {#if restartOpen && workflow !== undefined}
+    <RestartDialog client={engine.client} {workflow} onClose={() => (restartOpen = false)} />
+  {/if}
 {/if}

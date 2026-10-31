@@ -2,7 +2,7 @@
   /**
    * Compact active-versus-bound badge for list-scale revision cells (COR-15):
    * the workflow list, the children tab, and the lineage panel's children
-   * preview. The single-record equivalent lives in `detail/header.svelte`
+   * preview. The single-record equivalent lives in `runs/run-details.svelte`
    * (same labels and variants, so the two never disagree in wording).
    *
    * Renders only the two comparisons a row can assert — `'active'` and

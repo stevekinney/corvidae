@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Test-only harness: the route outlet with the shell's one fleet feed provided, which the engine's
-   * workflow page (a run's Engine tab) reads from its ancestors. Never imported by production code.
+   * workflow sections of a run's page read from its ancestors. Never imported by production code.
    */
   import type { HttpClient } from '@lostgradient/weft';
   import { onDestroy, untrack } from 'svelte';

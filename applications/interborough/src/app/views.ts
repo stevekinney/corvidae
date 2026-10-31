@@ -104,7 +104,7 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     canBeEmpty: true,
   },
   // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
-  // the Engine tab of a run, the start wizard, and the aggregate view read the engine, and they say
+  // the workflow sections of a run, the start wizard, and the aggregate view read the engine, and they say
   // so themselves when the caller may not.
   runs: {
     density: 'compact',

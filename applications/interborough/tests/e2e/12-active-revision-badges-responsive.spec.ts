@@ -39,13 +39,14 @@ test('list-row active-revision badges fit across widths and themes', async ({ pa
         page.getByRole('heading', { level: 1, name: 'fulfillment-parent' }),
       ).toBeVisible();
 
-      // Overview lineage panel's children preview.
+      // The Related runs section's lineage panel, with its children preview.
       const preview = page.locator('a[href*="/runs/"]').filter({ hasText: BADGE });
       await expect(preview.first()).toBeVisible();
       expect(await noOverflow()).toBe(true);
 
-      await page.getByRole('tab', { name: 'Children' }).click();
-      await expect(page.getByText(BADGE).first()).toBeVisible();
+      // The children list sits under it in the same section: there is no tab to open.
+      await expect(page.getByRole('tab')).toHaveCount(0);
+      await expect(page.getByText(BADGE).nth(1)).toBeVisible();
       expect(await noOverflow()).toBe(true);
     }
   }

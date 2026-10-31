@@ -90,7 +90,7 @@
     };
     readonly workflow: WorkflowState;
     readonly liveObservations: WorkflowLiveObservations;
-    /** `weft.workflows.finalizer.get` result, fetched once by `workflow-detail.svelte` and shared with the header badge — see `finalizer-strip.svelte`'s module doc. */
+    /** `weft.workflows.finalizer.get` result, fetched once by `runs/run-engine.svelte.ts` and shared with the header badge — see `finalizer-strip.svelte`'s module doc. */
     readonly finalizerStatus: WorkflowFinalizerStatus | null | undefined;
     /** Whether the principal holds `streams:read`, which a stream's chunks need. Without it no stream link renders. */
     readonly canReadStreams?: boolean | undefined;

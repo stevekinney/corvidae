@@ -4,7 +4,13 @@
    * flat row the chat shows, decided through `bureau.reviews.resolve`; a question is one text field
    * answered through `bureau.tasks.respond`. The task names a wait by its review's identifier only,
    * so the question, the tool, and its arguments are read from `bureau.reviews.get`.
+   *
+   * A question is the chat package's own (`ChatQuestion`), drawn for a text answer with the field
+   * in place (`answerInComposer` off: the page has no composer). Once it is answered it reads
+   * "You answered ...", masked the way the chat masks it (`recordAnswer`), for as long as the page
+   * is open, since the review it answered is no longer open to read it back from.
    */
+  import { ChatQuestion, recordAnswer, type QuestionAnswerRecord } from '@lostgradient/chat';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
@@ -15,8 +21,8 @@
   } from '../../../lib/bureau-reviews.ts';
   import { respondToTask, type TaskOpenWait } from '../../../lib/bureau-tasks.ts';
   import ApprovalDecision from '../../../lib/decision/approval-decision.svelte';
-  import QuestionDecision from '../../../lib/decision/question-decision.svelte';
   import { classifyFault, faultTreatment } from '../../../lib/faults.ts';
+  import IdentifierText from '../../../lib/identifier-text.svelte';
   import { createPendingCommandKey } from '../../../lib/pending-command-key.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { invalidateReviewQueries } from '../../../lib/review-queries.ts';
@@ -49,19 +55,33 @@
   const commandKey = createPendingCommandKey();
   let working = $state(false);
   let failure = $state<string | undefined>(undefined);
+  let answered = $state.raw<QuestionAnswerRecord | undefined>(undefined);
+
+  /** An answer is free text: the Bureau's `bureau.tasks.respond` takes a string. */
+  const ANSWER_SCHEMA = { type: 'string', title: REVIEWS_COPY.answerLabel } as const;
 
   async function answer(text: string): Promise<void> {
-    if (wait.kind !== 'human-wait') return;
+    if (wait.kind !== 'human-wait' || text === '') return;
+    // What was asked is read once, before the first await: the props are the page's and move on.
+    const { reviewId, signalName } = wait;
+    const prompt = review.data?.kind === 'human-wait' ? review.data.prompt : undefined;
     working = true;
     failure = undefined;
     try {
       await respondToTask({
         taskId,
-        messageId: commandKey.keyFor(`${taskId}:${wait.reviewId}`, text),
+        messageId: commandKey.keyFor(`${taskId}:${reviewId}`, text),
         answer: text,
-        signalName: wait.signalName,
+        signalName,
       });
       commandKey.confirmed();
+      answered = recordAnswer({
+        toolCallId: reviewId,
+        toolName: 'agent',
+        message: prompt,
+        schema: ANSWER_SCHEMA,
+        value: text,
+      });
       await invalidateReviewQueries(queryClient);
     } catch (error) {
       failure = faultTreatment(error).message;
@@ -99,19 +119,32 @@
 <div class="ib-run-wait" data-kind={wait.kind}>
   {#if review.isPending}
     <p class="ib-run-wait__note" role="status" aria-busy="true">{TASK_COPY.readingWait}</p>
+  {:else if answered !== undefined}
+    <ChatQuestion
+      id={`run-wait-${wait.reviewId}`}
+      schema={ANSWER_SCHEMA}
+      answer={answered}
+      onSubmit={() => {}}
+    />
   {:else if gone}
     <p class="ib-run-wait__note">{TASK_COPY.waitGone}</p>
   {:else if review.isError}
     <p class="ib-run-wait__note">{TASK_COPY.waitLoadFailed}</p>
   {:else if review.data.kind === 'human-wait'}
-    <QuestionDecision
+    <p class="ib-run-wait__prompt" id={`run-wait-${wait.reviewId}-prompt`}>
+      <IdentifierText text={review.data.prompt ?? TASK_COPY.humanWaitFallback} identifiers={[]} />
+    </p>
+    <ChatQuestion
+      {...{ 'data-changes': true }}
       id={`run-wait-${wait.reviewId}`}
-      question={review.data.prompt ?? TASK_COPY.humanWaitFallback}
-      identifiers={[]}
-      sending={working}
-      {failure}
-      onSend={answer}
+      schema={ANSWER_SCHEMA}
+      answerInComposer={false}
+      busy={working}
+      failed={failure !== undefined}
+      onSubmit={(value) => void answer(String(value).trim())}
     />
+    {#if failure !== undefined}<p class="ib-run-wait__note" role="alert">{failure}</p>{/if}
+    <p class="ib-run-wait__note">{REVIEWS_COPY.answerHint}</p>
   {:else}
     {@const approval = review.data.approval}
     <ApprovalDecision

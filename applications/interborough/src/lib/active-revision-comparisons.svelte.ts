@@ -1,6 +1,6 @@
 /**
  * List-scale active-versus-bound revision comparison (COR-15, follow-up to
- * WFT-117). `workflow-detail.svelte` already compares ONE record's persisted
+ * WFT-117). `runs/run-engine.svelte.ts` already compares ONE record's persisted
  * `revision` against its type's active pointer with a single
  * `createQuery`; the workflow list, the children tab, and the lineage
  * panel's children preview show many rows at once, so this module fetches
@@ -9,7 +9,7 @@
  * once per row.
  *
  * Every per-type query reuses `queryKeys.catalog.active(type)` verbatim —
- * the key `workflow-detail.svelte`, `workflow-revisions-panel.svelte`, and
+ * the key `runs/run-engine.svelte.ts`, `workflow-revisions-panel.svelte`, and
  * `dynamic-source-panel.svelte` already share. TanStack Query therefore
  * deduplicates concurrent fetches across those consumers, and the
  * `invalidateQueries({ queryKey: queryKeys.catalog.active(name) })` the two
@@ -84,7 +84,7 @@ export function createActiveRevisionComparisons(
    * refetch, so `data` alone could present a last-known pointer as current
    * fact after, say, `workflows:read` was revoked mid-session. An errored
    * query therefore collapses to `undefined` ("unresolved"), exactly as
-   * `workflow-detail.svelte`'s `resolvedActiveRevision` does.
+   * `runs/run-engine.svelte.ts`'s `resolvedActiveRevision` does.
    */
   const pointers = $derived.by(() => {
     const byType = new Map<string, WorkflowCatalogActivePointerLike | null | undefined>();

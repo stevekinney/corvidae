@@ -270,7 +270,7 @@ describe('dashboard coverage matrix checker', () => {
     const markdown = replaceRow(
       readMatrix(),
       'weft.workflows.get',
-      '| `weft.workflows.get` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `cancel` | `src/routes/workflows/detail/workflow-detail.test.ts` | | |',
+      '| `weft.workflows.get` | exposed | `src/routes/workflows/runs/run-engine.svelte.ts` | `cancel` | `src/routes/workflows/runs/run-detail-engine.test.ts` | | |',
     );
     expect(await checkCoverageMatrix(markdown, context)).toEqual([
       'weft.workflows.get: Method cancel sent DELETE /v1/workflows/workflow-1, not GET /v1/workflows/:id.',
