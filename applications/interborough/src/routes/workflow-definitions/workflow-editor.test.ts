@@ -14,6 +14,7 @@ import { WORKFLOW_COPY } from '../../app/copy.ts';
 import { STUB_REMOTE_WORKFLOW_DIRECTORY, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import { shortcuts } from '../../lib/shortcuts.ts';
 import {
   emptyWorld,
   installWorkflowWorld,
@@ -59,9 +60,17 @@ const editorOf = (container: HTMLElement) =>
 async function ready(container: HTMLElement): Promise<HTMLElement> {
   await waitFor(() =>
     expect(
-      editorOf(container)?.querySelector('textarea, [data-testid="workflow-problem"]'),
+      editorOf(container)?.querySelector('[role="tab"], [data-testid="workflow-problem"]'),
     ).toBeTruthy(),
   );
+  const tab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+    (candidate) => candidate.textContent?.trim() === WORKFLOW_COPY.builder.jsonTab,
+  );
+  // The JSON tab holds the editor these specifications type into.
+  if (tab !== undefined) {
+    await fireEvent.click(tab);
+    await waitFor(() => expect(textarea(container)).toBeTruthy());
+  }
   return editorOf(container) as HTMLElement;
 }
 
@@ -441,5 +450,81 @@ describe.each(['local', 'remote'] as const)('the editor of a workflow on a %s ho
           : `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
       ),
     );
+  });
+});
+
+describe('the step builder in the editor', () => {
+  const field = (container: HTMLElement, id: string) =>
+    container.querySelector<HTMLInputElement>(`#${id}`) as HTMLInputElement;
+  const tabNamed = (container: HTMLElement, name: string) =>
+    [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+      (candidate) => candidate.textContent?.trim() === name,
+    ) as HTMLElement;
+
+  /** The editor, once it is filled and showing the Builder tab. */
+  async function builderReady(container: HTMLElement): Promise<void> {
+    await ready(container);
+    await fireEvent.click(tabNamed(container, WORKFLOW_COPY.builder.builderTab));
+    await waitFor(() => expect(field(container, 'workflow-builder-name')).toBeTruthy());
+  }
+
+  test('shows the file as rows with a fixed name, and saves a row edit against the hash it read', async () => {
+    const { container, getByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    expect(field(container, 'workflow-builder-name').value).toBe('digest');
+    expect(field(container, 'workflow-builder-name').readOnly).toBe(true);
+
+    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
+      target: { value: '3h' },
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+    const call = stub?.callsTo('bureau.workflows.update')[0];
+    expect(call?.params['expectedHash']).toBe('hash-1');
+    const definition = call?.params['definition'] as Record<string, unknown>;
+    expect(definition['trigger']).toEqual({ kind: 'schedule', spec: '3h' });
+    expect(definition['agent']).toBe('writer');
+    expect(definition).not.toHaveProperty('name');
+  });
+
+  test('keeps the draft in the builder when the file changed underneath it', async () => {
+    const { container, findByRole, getByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    const file = stub?.file('digest');
+    if (file === undefined) throw new Error('The file is missing.');
+    file.hash = 'hash-by-hand';
+
+    await fireEvent.input(field(container, 'workflow-builder-trigger-field'), {
+      target: { value: '4h' },
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    await findByRole('button', { name: WORKFLOW_COPY.stale.action });
+    expect(field(container, 'workflow-builder-trigger-field').value).toBe('4h');
+    expect(stub?.file('digest')?.hash).toBe('hash-by-hand');
+  });
+
+  test('registers ⌘Enter on the edit route, which saves, and removes it when the page goes', async () => {
+    const { container, unmount } = open('/workflows/digest/edit');
+    await builderReady(container);
+    const press = (): boolean =>
+      shortcuts.handleKey(
+        { key: 'Enter', metaKey: true, ctrlKey: false, altKey: false, editable: true },
+        { routePattern: '/workflows/:workflow/edit', regions: [] },
+        Date.now(),
+      );
+
+    expect(press()).toBe(true);
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.update')).toHaveLength(1));
+
+    unmount();
+    expect(press()).toBe(false);
+  });
+
+  test('marks Save as a control that changes something', async () => {
+    const { container, getByRole } = open('/workflows/digest/edit');
+    await builderReady(container);
+    expect(
+      getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).hasAttribute('data-changes'),
+    ).toBe(true);
   });
 });
