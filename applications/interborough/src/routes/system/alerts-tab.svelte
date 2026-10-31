@@ -30,7 +30,13 @@
    * stream down to just the alert/constraint/operational-warning kinds it
    * cares about, with no shared eviction budget.
    */
-  import { EmptyState, Badge, type BadgeVariant, Skeleton } from '@lostgradient/cinder';
+  import {
+    EmptyState,
+    Badge,
+    type BadgeVariant,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { BellOff, Info } from '@lucide/svelte';
 
@@ -157,9 +163,7 @@
 </script>
 
 <div class="weft-alerts-tab">
-  <div class="weft-alerts-tab__header">
-    <h2 class="weft-alerts-tab__title">Active alerts</h2>
-  </div>
+  <SectionHeading level={3} title="Active alerts" />
 
   {#if activeAlertsQuery.isPending}
     <div class="weft-alerts-tab__loading" aria-label="Loading active alerts">
@@ -169,24 +173,26 @@
     <QueryFaultBanner error={activeAlertsQuery.error} onRetry={() => activeAlertsQuery.refetch()} />
   {:else if activeAlertsQuery.data.items.length === 0}
     <EmptyState
+      kind="done"
+      headingLevel={4}
       title="No active alerts"
       description="No alert rule is currently firing. Alerts fire when a configured metric crosses its threshold."
     >
       {#snippet icon()}
         <BellOff aria-hidden="true" size={20} />
       {/snippet}
-      {#snippet action()}
-        <a
-          href={router.href('/health/workers?tab=diagnostics')}
-          onclick={(event) => {
-            event.preventDefault();
-            router.navigate('/health/workers?tab=diagnostics');
-          }}
-        >
-          Open Diagnostics
-        </a>
-      {/snippet}
     </EmptyState>
+    <p class="weft-alerts-tab__next-step">
+      <a
+        href={router.href('/health/workers?tab=diagnostics')}
+        onclick={(event) => {
+          event.preventDefault();
+          router.navigate('/health/workers?tab=diagnostics');
+        }}
+      >
+        Open Diagnostics
+      </a>
+    </p>
   {:else}
     <ul class="weft-alerts-tab__list">
       {#each keyedByOccurrence(activeAlertsQuery.data.items, (candidate) => candidate.metric) as { key, item: alert } (key)}
@@ -204,8 +210,8 @@
     </ul>
   {/if}
 
-  <div class="weft-alerts-tab__header weft-alerts-tab__header--activity">
-    <h2 class="weft-alerts-tab__title">Recent activity</h2>
+  <div class="weft-alerts-tab__activity">
+    <SectionHeading level={3} title="Recent activity" />
   </div>
   <p class="weft-alerts-tab__note">
     <Info aria-hidden="true" size={13} />
@@ -215,6 +221,8 @@
 
   {#if store.isEmpty}
     <EmptyState
+      kind="done"
+      headingLevel={4}
       title="No alert activity since page load"
       description="New alerts and warnings will appear here as they fire."
     >
@@ -261,25 +269,19 @@
     gap: 6px;
   }
 
-  .weft-alerts-tab__header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+  .weft-alerts-tab__next-step {
+    margin: 0;
+    text-align: center;
+    font-size: var(--cinder-text-sm);
   }
 
-  .weft-alerts-tab__header--activity {
+  .weft-alerts-tab__activity {
     margin-top: 18px;
   }
 
   .weft-alerts-tab__loading {
     display: flex;
     flex-direction: column;
-  }
-
-  .weft-alerts-tab__title {
-    margin: 0;
-    font-size: var(--cinder-text-lg);
-    font-weight: 600;
   }
 
   .weft-alerts-tab__note {

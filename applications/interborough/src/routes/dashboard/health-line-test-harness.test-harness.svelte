@@ -1,10 +1,10 @@
 <script lang="ts">
-  /** Test-only composition of `<DashboardTestHarness>` + `<CriticalAlertsBand>`. */
+  /** Test-only composition of `<DashboardTestHarness>` + `<HealthLine>`. */
   import type { HttpClient } from '@lostgradient/weft';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';
-  import CriticalAlertsBand from './critical-alerts-band.svelte';
+  import HealthLine from './health-line.svelte';
   import DashboardTestHarness from './dashboard-test-harness.test-harness.svelte';
 
   interface Props {
@@ -18,6 +18,6 @@
 
 <DashboardTestHarness {client} {scopes} {onQueryClientReady}>
   {#snippet children()}
-    <CriticalAlertsBand />
+    <HealthLine />
   {/snippet}
 </DashboardTestHarness>

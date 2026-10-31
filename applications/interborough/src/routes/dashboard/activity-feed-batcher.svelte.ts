@@ -22,17 +22,52 @@ export interface ActivityFeedRow {
   readonly emittedAtMs: number;
 }
 
+/** One line of the window: a row, and how many in a row of the same kind it stands for. */
+export interface ActivityFeedItem extends ActivityFeedRow {
+  /** How many consecutive rows of this kind collapsed into this line; the line shows the newest. */
+  readonly count: number;
+}
+
+/**
+ * What makes two neighbouring rows repeats of one another: the same severity, the same headline and
+ * the same subject. Headlines are generic ("Workflow failed"), so the link names the workflow the
+ * row is about: failures of two workflows stay two lines, each linking to its own, while repeats of
+ * one workflow still collapse. Some kinds link to a fixed page (reviews, alerts, workers), so the
+ * link says nothing about their subject; the body does, so it is part of the key too.
+ */
+function collapseKey(row: ActivityFeedRow): string {
+  return `${row.tier}\u0000${row.title}\u0000${row.href}\u0000${row.body}`;
+}
+
+/** Folds each run of repeats in a newest-first list into its newest row, carrying the run's count. */
+function collapse(rows: readonly ActivityFeedItem[]): ActivityFeedItem[] {
+  const folded: ActivityFeedItem[] = [];
+  for (const row of rows) {
+    const last = folded.at(-1);
+    if (last !== undefined && collapseKey(last) === collapseKey(row)) {
+      folded[folded.length - 1] = { ...last, count: last.count + row.count };
+    } else {
+      folded.push(row);
+    }
+  }
+  return folded;
+}
+
+function asItem(row: ActivityFeedRow): ActivityFeedItem {
+  return { ...row, count: 1 };
+}
+
 export interface ActivityFeedBatcherOptions {
   /** Batch flush window in ms. Defaults to 100 (plan §5). Overridable for deterministic tests. */
   readonly batchWindowMs?: number;
-  /** Visible row cap. Defaults to 30 (a compact dashboard card). */
+  /** How many lines the window holds. Defaults to 6: a fixed window of the latest, never a growing list. */
   readonly visibleCap?: number;
   /** Held-while-paused row cap, to bound memory during a long read pause. Defaults to 200. */
   readonly heldCap?: number;
 }
 
 const DEFAULT_BATCH_WINDOW_MS = 100;
-const DEFAULT_VISIBLE_CAP = 30;
+const DEFAULT_VISIBLE_CAP = 6;
 const DEFAULT_HELD_CAP = 200;
 
 /**
@@ -43,7 +78,7 @@ const DEFAULT_HELD_CAP = 200;
  * read-in-progress) interaction on the feed's DOM container.
  */
 export class ActivityFeedBatcher {
-  items: ActivityFeedRow[] = $state([]);
+  items: ActivityFeedItem[] = $state([]);
   pendingCount: number = $state(0);
 
   #paused = $state(false);
@@ -66,6 +101,15 @@ export class ActivityFeedBatcher {
     this.#heldCap = options.heldCap ?? DEFAULT_HELD_CAP;
   }
 
+  /**
+   * Starts the window from rows that already happened, oldest first, so a page opened after the
+   * feed began does not start empty. Only an empty window is seeded: live rows are never replaced.
+   */
+  seed(rows: readonly ActivityFeedRow[]): void {
+    if (this.items.length > 0) return;
+    this.items = collapse(rows.toReversed().map(asItem)).slice(0, this.#visibleCap);
+  }
+
   /** Queues a row for the next batch flush. */
   ingest(row: ActivityFeedRow): void {
     this.#pending.push(row);
@@ -81,7 +125,7 @@ export class ActivityFeedBatcher {
   resume(): void {
     this.#paused = false;
     if (this.#held.length === 0) return;
-    this.items = [...this.#held, ...this.items].slice(0, this.#visibleCap);
+    this.items = collapse([...this.#held.map(asItem), ...this.items]).slice(0, this.#visibleCap);
     this.#held = [];
     this.pendingCount = 0;
   }
@@ -116,6 +160,6 @@ export class ActivityFeedBatcher {
       return;
     }
 
-    this.items = [...batch, ...this.items].slice(0, this.#visibleCap);
+    this.items = collapse([...batch.map(asItem), ...this.items]).slice(0, this.#visibleCap);
   }
 }

@@ -27,7 +27,15 @@
    * fencing epoch, and lease instants. A failed or malformed read renders as
    * a fault, never as a healthy badge.
    */
-  import { Button, ConfirmDialog, CodeBlock, CopyButton } from '@lostgradient/cinder';
+  import {
+    Button,
+    ConfirmDialog,
+    CodeBlock,
+    CopyButton,
+    EmptyState,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { Terminal } from '@lucide/svelte';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
 
@@ -64,17 +72,18 @@
 
   <div class="weft-health-tab__grid">
     <section class="weft-health-tab__panel">
-      <div class="weft-health-tab__panel-header">
-        <span>Recover all</span>
-        <Button
-          data-changes
-          variant="secondary"
-          size="sm"
-          label="Recover all"
-          onclick={() => (confirmOpen = true)}
-          disabled={recoverAll.isPending}
-        />
-      </div>
+      <SectionHeading level={3} title="Recover all">
+        {#snippet actions()}
+          <Button
+            data-changes
+            variant="secondary"
+            size="sm"
+            label="Recover all"
+            onclick={() => (confirmOpen = true)}
+            disabled={recoverAll.isPending}
+          />
+        {/snippet}
+      </SectionHeading>
       <p class="weft-health-tab__hint">
         Resumes every workflow this server believes should be running but isn't currently tracked in
         memory — for use after an unclean restart.
@@ -82,11 +91,11 @@
     </section>
 
     <section class="weft-health-tab__panel">
-      <div class="weft-health-tab__panel-header">
-        <span>Codegen preview</span>
-      </div>
+      <SectionHeading level={3} title="Codegen preview" />
       {#if registryQuery.isPending}
-        <p class="weft-health-tab__loading">Loading…</p>
+        <div role="status" aria-busy="true" aria-label="Loading the codegen preview">
+          <Skeleton height="6rem" />
+        </div>
       {:else if registryQuery.isError}
         <QueryFaultBanner error={registryQuery.error} onRetry={() => registryQuery.refetch()} />
       {:else}
@@ -98,15 +107,19 @@
             exact, complete <code>.d.ts</code>.
           </p>
         {:else}
-          <p class="weft-health-tab__hint">No workflow with an input schema is registered yet.</p>
+          <EmptyState
+            kind="first-use"
+            size="compact"
+            headingLevel={4}
+            title="No workflow with an input schema"
+            description="Register a workflow that takes input and its type appears here."
+          />
         {/if}
       {/if}
     </section>
 
     <section class="weft-health-tab__panel">
-      <div class="weft-health-tab__panel-header">
-        <span>Conformance</span>
-      </div>
+      <SectionHeading level={3} title="Conformance" />
       <p class="weft-health-tab__hint">
         Verify this server against the Weft conformance suite. Conformance runs from the CLI only —
         there is no server-side trigger.
@@ -156,22 +169,15 @@
   }
 
   .weft-health-tab__panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   }
 
-  .weft-health-tab__panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
-  }
-
-  .weft-health-tab__loading,
   .weft-health-tab__hint {
     margin: 0;
     font-size: var(--cinder-text-xs);

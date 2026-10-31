@@ -448,37 +448,6 @@
   gap: 8px;
 }
 
-/* ---------------------------------------------------------------------- */
-/* Dashboard card (cards/dashboard-card.svelte)                           */
-/* ---------------------------------------------------------------------- */
-
-.weft-reviews-card-link {
-  display: block;
-  color: inherit;
-  text-decoration: none;
-}
-
-.weft-reviews-card__stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-reviews-card__skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-reviews-card__error {
-  margin: 0;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-status-danger-text);
-}
-
 /* Responsive: no page-level horizontal scroll (PROJECT-BRIEF binding
  * rule); interactive targets ≥40px on touch below tablet width. */
 @media (max-width: 47.99rem) {

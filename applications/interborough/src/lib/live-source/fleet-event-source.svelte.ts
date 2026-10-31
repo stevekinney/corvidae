@@ -36,6 +36,9 @@ export interface FleetEventFrame {
   readonly payload: unknown;
 }
 
+/** How many of the latest frames a source keeps for {@link FleetEventSource.recent}. */
+export const RECENT_FRAME_CAP = 200;
+
 /** Client-side filter applied per `subscribe()` call, or server-side via the constructor. */
 export interface FleetEventFilter {
   readonly kind?: string;
@@ -173,6 +176,9 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
 
   readonly #subscribers = new Set<FleetEventSubscriber>();
 
+  /** The latest frames this source dispatched, oldest first, so a view opened later can show what it missed. */
+  readonly #recent: FleetEventFrame[] = [];
+
   #abortController: AbortController | null = null;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #reconnectAttempt = 0;
@@ -201,6 +207,15 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
       this.#subscribers.delete(subscriber);
       this.#disconnectIfNoSubscribers();
     };
+  }
+
+  /**
+   * The latest frames this source has dispatched, oldest first, at most `limit` of them (and never
+   * more than {@link RECENT_FRAME_CAP}). A view that opens after the feed has been running starts
+   * from these instead of from nothing, and then subscribes for what follows.
+   */
+  recent(limit: number = RECENT_FRAME_CAP): readonly FleetEventFrame[] {
+    return limit <= 0 ? [] : this.#recent.slice(-limit);
   }
 
   whenConnected(): Promise<void> {
@@ -309,6 +324,10 @@ export class FleetEventSource implements LiveSource<FleetEventFrame> {
   }
 
   #dispatch(envelope: FleetEventFrame): void {
+    this.#recent.push(envelope);
+    if (this.#recent.length > RECENT_FRAME_CAP) {
+      this.#recent.splice(0, this.#recent.length - RECENT_FRAME_CAP);
+    }
     for (const subscriber of this.#subscribers) {
       if (matchesFilter(envelope, subscriber.filter)) subscriber.onFrame(envelope);
     }
