@@ -39,7 +39,11 @@ import {
   typesOf,
 } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
-import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support.ts';
+import {
+  agentFileText,
+  KNOWN_MODEL,
+  TEST_CONTRIBUTIONS,
+} from '../testing/agent-file-fixtures.test-support.ts';
 import { startFileBureau } from '../testing/agent-file-bureau.test-support.ts';
 import { isReasoningEvent } from './ag-ui-vocabulary.ts';
 
@@ -398,17 +402,23 @@ describe('PII only in the thinking (the answer is clean)', () => {
   });
 
   describe.each([
-    ['default', 'RUN_FINISHED'],
-    ['tripwire', 'RUN_ERROR'],
-  ] as const)('on a file agent with guardrails: %s', (preset, ending) => {
-    it(`streams no frame that carries it, and the run ends ${ending}`, async () => {
+    ['lists no guardrail', undefined],
+    ['lists a plugin guardrail', '[x:check]'],
+  ] as const)('on a file agent that %s', (_name, listed) => {
+    it('streams no frame that carries it, and the default preset ends the run RUN_ERROR', async () => {
       const files = await startFileBureau({
         scripts: { 'claude-opus-5-5': () => 'A clean answer.' },
         thinking: { 'claude-opus-5-5': thought },
-        overrides: { id: 'file-agent-stream' },
+        overrides: { id: 'file-agent-stream', agentContributions: TEST_CONTRIBUTIONS },
       });
       try {
-        await files.put('helper.md', agentFileText({ model: KNOWN_MODEL, guardrails: preset }));
+        await files.put(
+          'helper.md',
+          agentFileText({
+            model: KNOWN_MODEL,
+            ...(listed === undefined ? {} : { guardrails: listed }),
+          }),
+        );
         await files.bureau.agents.refresh();
         const handler = createBureauHandler(files.bureau, {
           unauthenticatedAccess: 'allow',
@@ -421,7 +431,7 @@ describe('PII only in the thinking (the answer is clean)', () => {
 
         expect(leaks(frames)).toEqual([]);
         expect(reasoningOf(frames)).toEqual([]);
-        expect(typesOf(frames).at(-1)).toBe(EventType[ending]);
+        expect(typesOf(frames).at(-1)).toBe(EventType.RUN_ERROR);
       } finally {
         await files.dispose();
       }

@@ -1,12 +1,15 @@
 /**
- * COR-1912 — `guardrails` over `bureau.agents.definitions.*`: a create writes it, `get` shows it
- * (`null` for a file that names none), an update that leaves it out keeps the file's value and
- * `null` removes it, and a name that is not a preset is refused before anything is written.
+ * COR-1877 — `guardrails` and `hooks` over `bureau.agents.definitions.*`: a create writes the ids,
+ * `get` shows them (`null` for a file that lists none), an update that leaves one out keeps the
+ * file's list and `null` removes it, an id no plugin contributes is refused as
+ * `reference-unresolved` before anything is written, and the old preset name is refused as a
+ * malformed value.
  */
 import { readFile } from 'node:fs/promises';
 
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { createAgentContributions } from '../../agent-contributions.ts';
 import {
   callAs,
   DEFINITION,
@@ -18,36 +21,53 @@ import {
 
 afterEach(disposeServed);
 
-describe('guardrails on the definition operations', () => {
-  it('creates an agent with each preset, and shows it on get', async () => {
-    const served = await serve();
-    for (const preset of ['default', 'tripwire', 'off'] as const) {
-      const id = `guarded-${preset}`;
-      const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
-        id,
-        definition: { ...DEFINITION, guardrails: preset },
-      });
-      expect(created.error).toBeUndefined();
+const contributions = createAgentContributions([
+  {
+    plugin: 'x',
+    guardrails: {
+      inputDetectors: [
+        {
+          name: 'check',
+          detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
+        },
+      ],
+    },
+    runHooks: [{ name: 'audit' }],
+  },
+]);
 
-      const text = await readFile(ownerPath(served, id), 'utf8');
-      expect(text).toMatch(new RegExp(`guardrails: '?${preset}'?`));
-      const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id });
-      expect(got.result?.['definition']).toMatchObject({ guardrails: preset });
-    }
+function servedWithContributions() {
+  return serve({ overrides: { agentContributions: contributions } });
+}
+
+describe.each(['guardrails', 'hooks'] as const)('%s on the definition operations', (key) => {
+  const id = key === 'guardrails' ? 'x:check' : 'x:audit';
+
+  it('creates an agent that lists an id, and shows it on get', async () => {
+    const served = await servedWithContributions();
+    const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'guarded',
+      definition: { ...DEFINITION, [key]: [id] },
+    });
+    expect(created.error).toBeUndefined();
+
+    expect(await readFile(ownerPath(served, 'guarded'), 'utf8')).toContain(id);
+    const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'guarded' });
+    expect(got.result?.['definition']).toMatchObject({ [key]: [id] });
   });
 
-  it('shows null for a file that names none', async () => {
-    const served = await serve();
+  it('shows null for a file that lists none', async () => {
+    const served = await servedWithContributions();
     await seed(served);
     const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
-    expect(got.result?.['definition']).toMatchObject({ guardrails: null });
+    expect(got.result?.['definition']).toMatchObject({ [key]: null });
   });
 
-  it('keeps the preset when an update leaves it out, and removes it for null', async () => {
-    const served = await serve();
+  it('keeps the list when an update leaves it out, and removes it for null', async () => {
+    const served = await servedWithContributions();
     await served.put(
       'patient.md',
-      `---\nmodel: ${DEFINITION.model}\nguardrails: tripwire\n---\nBody.\n`,
+      `---\nmodel: ${DEFINITION.model}\n${key}: [${id}]\n---\nBody.\n`,
     );
     await served.bureau.agents.refresh();
     const kept = await callAs(served.owner, 'bureau.agents.definitions.update', {
@@ -59,47 +79,41 @@ describe('guardrails on the definition operations', () => {
     const afterKeep = await callAs(served.owner, 'bureau.agents.definitions.get', {
       id: 'patient',
     });
-    expect(afterKeep.result?.['definition']).toMatchObject({
-      name: 'Patient',
-      guardrails: 'tripwire',
-    });
+    expect(afterKeep.result?.['definition']).toMatchObject({ name: 'Patient', [key]: [id] });
 
-    const changed = await callAs(served.owner, 'bureau.agents.definitions.update', {
+    const cleared = await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'patient',
       expectedHash: kept.result?.['hash'],
       definition: {
         model: DEFINITION.model,
         name: 'Patient',
         instructions: 'Body.\n',
-        guardrails: 'default',
-      },
-    });
-    expect(changed.error).toBeUndefined();
-    expect(await readFile(ownerPath(served, 'patient'), 'utf8')).toContain('guardrails: default');
-
-    const cleared = await callAs(served.owner, 'bureau.agents.definitions.update', {
-      id: 'patient',
-      expectedHash: changed.result?.['hash'],
-      definition: {
-        model: DEFINITION.model,
-        name: 'Patient',
-        instructions: 'Body.\n',
-        guardrails: null,
+        [key]: null,
       },
     });
     expect(cleared.error).toBeUndefined();
-    expect(await readFile(ownerPath(served, 'patient'), 'utf8')).not.toContain('guardrails');
+    expect(await readFile(ownerPath(served, 'patient'), 'utf8')).not.toContain(key);
   });
 
-  it('refuses a name that is not a preset and writes nothing', async () => {
-    const served = await serve();
-    for (const guardrails of ['strict', 'Default', true, ['default']]) {
+  it('refuses an id no plugin contributes as reference-unresolved, and writes nothing', async () => {
+    const served = await servedWithContributions();
+    const response = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'unresolved',
+      definition: { ...DEFINITION, [key]: ['y:gone'] },
+    });
+    expect(response.error?.data?.['reason']).toBe('reference-unresolved');
+    expect(await Bun.file(ownerPath(served, 'unresolved')).exists()).toBe(false);
+  });
+
+  it('refuses a value that is not a list of ids, the old preset names among them', async () => {
+    const served = await servedWithContributions();
+    for (const value of ['tripwire', 'off', true, [1], ['']]) {
       const response = await callAs(served.owner, 'bureau.agents.definitions.create', {
         id: 'strict',
-        definition: { ...DEFINITION, guardrails },
+        definition: { ...DEFINITION, [key]: value },
       });
-      expect([JSON.stringify(guardrails), response.error?.data?.httpStatus]).toEqual([
-        JSON.stringify(guardrails),
+      expect([JSON.stringify(value), response.error?.data?.httpStatus]).toEqual([
+        JSON.stringify(value),
         400,
       ]);
     }
