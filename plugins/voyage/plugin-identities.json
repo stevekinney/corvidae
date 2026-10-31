@@ -1,0 +1,18 @@
+{
+  "plugin": "voyage",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "kind": "configuration",
+      "id": "voyage",
+      "version": "1.0.0",
+      "schema": "sha256:dd9c9ae11d05fecc96b7959a85f54867d03bad5368087689c779a16f0bd13fa5"
+    },
+    {
+      "kind": "embedder",
+      "id": "voyage:embed",
+      "version": "1.0.0",
+      "schema": "sha256:2e762d3123557f5d4bec3d892e3f81f7be0e4a8f9b22c3a4e32c17b279e4f9f1"
+    }
+  ]
+}

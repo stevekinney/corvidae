@@ -801,6 +801,25 @@
         "typescript": "catalog:",
       },
     },
+    "plugins/ollama": {
+      "name": "@lostgradient/plugin-ollama",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "armorer": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "plugins/openai": {
       "name": "@lostgradient/plugin-openai",
       "dependencies": {
@@ -812,6 +831,25 @@
       },
       "devDependencies": {
         "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "plugins/voyage": {
+      "name": "@lostgradient/plugin-voyage",
+      "dependencies": {
+        "@lostgradient/interborough-plugin": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "armorer": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
@@ -1194,7 +1232,11 @@
 
     "@lostgradient/plugin-gemini": ["@lostgradient/plugin-gemini@workspace:plugins/gemini"],
 
+    "@lostgradient/plugin-ollama": ["@lostgradient/plugin-ollama@workspace:plugins/ollama"],
+
     "@lostgradient/plugin-openai": ["@lostgradient/plugin-openai@workspace:plugins/openai"],
+
+    "@lostgradient/plugin-voyage": ["@lostgradient/plugin-voyage@workspace:plugins/voyage"],
 
     "@lostgradient/storage": ["@lostgradient/storage@workspace:packages/storage"],
 

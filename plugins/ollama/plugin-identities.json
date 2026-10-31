@@ -1,0 +1,18 @@
+{
+  "plugin": "ollama",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "kind": "configuration",
+      "id": "ollama",
+      "version": "1.0.0",
+      "schema": "sha256:bf7404367a5ae1fdf94abc5cbb22995403fceba95ed439af8f10a1ce67b41566"
+    },
+    {
+      "kind": "embedder",
+      "id": "ollama:embed",
+      "version": "1.0.0",
+      "schema": "sha256:ee46c1ea20239d35ef998be3b17e84368f67a3a9c3577b1bc3b6f7f879a7055a"
+    }
+  ]
+}
