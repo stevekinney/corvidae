@@ -1633,7 +1633,7 @@ export const TASK_COPY = {
     'owned-by-goal':
       'Not canceled. This run is an attempt of a goal, and cancelling the goal stops it.',
     'owned-by-workflow':
-      'Not canceled. This run is a step of a workflow, and cancelling the workflow run stops it.',
+      'Not canceled. This run is a step of a workflow, and it is not canceled on its own.',
   },
 } as const;
 

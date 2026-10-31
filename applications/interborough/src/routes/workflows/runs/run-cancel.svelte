@@ -35,8 +35,8 @@
   let confirming = $state(false);
   let failure = $state<string | undefined>(undefined);
 
-  // An attempt of a goal and a step of a workflow stop with the goal or the workflow that owns
-  // them, so there is nothing to ask of the run itself.
+  // An attempt of a goal is stopped by its goal, and a step of a workflow is not canceled on its own
+  // (the Bureau refuses it), so there is nothing to ask of the run itself.
   const canCancel = $derived(
     !isTerminalState(task.status) && task.cleanup === null && !isOwnedElsewhere(task),
   );

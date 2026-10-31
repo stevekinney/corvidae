@@ -270,4 +270,15 @@ describe('Started by', () => {
     const narrowed = open('/runs?startedBy=agent', ORIGIN_TASKS);
     await waitFor(() => expect(rowIds(narrowed.container)).toEqual(['o-agent']));
   });
+
+  test('asks the Bureau for the origin, so a match past the first page is found', async () => {
+    const view = open('/runs?startedBy=agent', ORIGIN_TASKS);
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['o-agent']));
+    // The page's own listing is the one that asks for a hundred; other views list for themselves.
+    const calls = (stub?.callsTo('bureau.tasks.list') ?? []).filter(
+      (call) => call.params['limit'] === 100,
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((call) => call.params['origin'] === 'agent')).toBe(true);
+  });
 });

@@ -48,10 +48,10 @@
   const START_RUN_PATH = '/runs?view=start';
   const filter = $derived(parseRunFilter(router.current.search));
 
-  // The status and the agent are asked of the Bureau, so a page holds the runs that match and Load
-  // more goes on from there. "Working" is two of the Bureau's states (a submitted task is working
-  // too), so it is narrowed here instead. The rest (what started a run, how recently) the Bureau
-  // cannot narrow, and are applied to what the pages hold.
+  // The status, the agent and what started a run are asked of the Bureau, so a page holds the runs
+  // that match and Load more goes on from there. "Working" is two of the Bureau's states (a submitted
+  // task is working too), so it is narrowed here instead. How recently a run started the Bureau
+  // cannot narrow, so that is applied to what the pages hold.
   const serverStatus = $derived(filter.status === 'working' ? undefined : filter.status);
   // The three queries below follow `bureau.events`: a run by `run.*` and `action`, a goal by `goal.*`,
   // a chat by `session.*` (`app/bureau-event-queries.ts`). Each asks again on a timer only while the
@@ -60,13 +60,20 @@
   const tasks = createInfiniteQuery(() => {
     const polling = !bureauLive();
     return {
-      queryKey: ['bureau-tasks', 'runs', serverStatus ?? '', filter.agent ?? ''] as const,
+      queryKey: [
+        'bureau-tasks',
+        'runs',
+        serverStatus ?? '',
+        filter.agent ?? '',
+        filter.startedBy ?? '',
+      ] as const,
       queryFn: ({ pageParam, signal }: { pageParam: string; signal: AbortSignal }) =>
         listTasks(
           {
             limit: PAGE_SIZE,
             ...(serverStatus === undefined ? {} : { status: serverStatus }),
             ...(filter.agent === undefined ? {} : { agentName: filter.agent }),
+            ...(filter.startedBy === undefined ? {} : { origin: filter.startedBy }),
             ...(pageParam === '' ? {} : { pageToken: pageParam }),
           },
           { signal },

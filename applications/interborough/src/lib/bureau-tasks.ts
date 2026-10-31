@@ -7,6 +7,7 @@
  * `bureau-client.ts` restates a context's: the browser does not import the Bureau, and a response
  * that does not parse is a fault in the Bureau, not data to show.
  */
+import type { TaskOriginKind } from '@lostgradient/bureau';
 import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
@@ -104,7 +105,7 @@ export function isScheduleFire(task: Pick<TaskView, 'actor'>): boolean {
 }
 
 /**
- * Whether the task belongs to a goal or a workflow, which is the one that stops it
+ * Whether the task belongs to a goal or a workflow, so it is not canceled on its own
  * (`bureau.tasks.cancel` refuses it with `owned-by-goal` or `owned-by-workflow`): an attempt of a
  * goal, or a step of a workflow instance.
  */
@@ -127,6 +128,8 @@ export type TaskFilter = {
   readonly contextId?: string;
   readonly agentName?: string;
   readonly status?: TaskState;
+  /** Only the tasks recorded with an origin of this kind; a task with none matches no kind. */
+  readonly origin?: TaskOriginKind;
 };
 
 type Options = { readonly signal?: AbortSignal };
