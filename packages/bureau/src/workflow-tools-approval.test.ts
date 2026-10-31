@@ -33,29 +33,40 @@ async function start() {
 
 describe('a file agent that states no toolApproval', () => {
   it.each([
-    ['workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS }],
-    ['settings-update', { patch: { 'decisions.fallbackModel': 'a/b' }, expectedRevision: 0 }],
-  ])('is asked before it calls %s, which parks the run on an approval', async (tool, args) => {
+    [
+      'bureau:workflows-create',
+      'bureau__workflows-create',
+      { name: 'Digest', trigger: TRIGGER, steps: STEPS },
+    ],
+    [
+      'settings-update',
+      'settings-update',
+      { patch: { 'decisions.fallbackModel': 'a/b' }, expectedRevision: 0 },
+    ],
+  ])(
+    'is asked before it calls %s, which parks the run on an approval',
+    async (tool, providerName, args) => {
+      const harness = await start();
+      if (tool === 'settings-update')
+        await harness.putAgent('scribe', [tool], { approval: 'default' });
+
+      const called = await harness.callTool(providerName, args);
+
+      // The run stopped on the approval, so the model never saw an answer to record.
+      expect(called.outcome).toBeUndefined();
+      const review = harness.bureau.reviews.list().find((entry) => entry.runId === called.runId);
+      expect(review).toMatchObject({ kind: 'tool-approval', agentName: 'scribe' });
+      expect(review?.kind === 'tool-approval' && review.approval.toolName).toBe(tool);
+      expect(review?.kind === 'tool-approval' && review.approval.approvalToken).toBeDefined();
+      // Nothing was written before a person approved.
+      expect(harness.bureau.workflows?.list()).toEqual([]);
+    },
+  );
+
+  it('is not asked before it calls bureau:workflows-list, which reads', async () => {
     const harness = await start();
-    if (tool === 'settings-update')
-      await harness.putAgent('scribe', [tool], { approval: 'default' });
 
-    const called = await harness.callTool(tool, args);
-
-    // The run stopped on the approval, so the model never saw an answer to record.
-    expect(called.outcome).toBeUndefined();
-    const review = harness.bureau.reviews.list().find((entry) => entry.runId === called.runId);
-    expect(review).toMatchObject({ kind: 'tool-approval', agentName: 'scribe' });
-    expect(review?.kind === 'tool-approval' && review.approval.toolName).toBe(tool);
-    expect(review?.kind === 'tool-approval' && review.approval.approvalToken).toBeDefined();
-    // Nothing was written before a person approved.
-    expect(harness.bureau.workflows?.list()).toEqual([]);
-  });
-
-  it('is not asked before it calls workflows-list, which reads', async () => {
-    const harness = await start();
-
-    const called = await harness.callTool('workflows-list', {});
+    const called = await harness.callTool('bureau__workflows-list', {});
 
     expect(called.outcome).toBe('success');
     expect(harness.bureau.reviews.list()).toEqual([]);

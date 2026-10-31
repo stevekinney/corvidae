@@ -176,30 +176,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/styles/workers.css",
-      "subject": ".weft-queue-detail__header",
-      "issue": "COR-1972"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workers.css",
-      "subject": ".weft-dead-letter-panel__header",
-      "issue": "COR-1972"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workers.css",
-      "subject": ".weft-task-ledger-detail__header",
-      "issue": "COR-1972"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workers.css",
-      "subject": ".weft-task-cancellation__header",
-      "issue": "COR-1972"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/workflows.css",
       "subject": ".weft-start-wizard__header",
       "issue": "COR-1855"

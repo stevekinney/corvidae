@@ -30,6 +30,7 @@ import {
   type PluginSecretGate,
 } from './plugin-secret-gate';
 import type { BureauPluginSecrets } from './plugin-types';
+import { listedPlugins } from '../testing/plugin-listing.test-support';
 
 const SECRET = 'sk-live-gate-0123456789';
 const KEY = 'kit-api-key';
@@ -100,13 +101,13 @@ describe('a plugin missing a declared secret', () => {
     bureaus.push(bureau);
 
     const statusOf = async () => {
-      const [listing] = await bureau.plugins.list();
+      const [listing] = await listedPlugins(bureau);
       return listing?.status;
     };
-    const [missing] = await bureau.plugins.list();
+    const [missing] = await listedPlugins(bureau);
     expect(missing?.status).toBe('needs-setup');
     // Its contributions are registered, so a tool call of it is named `kit:lookup` all the same.
-    expect(bureau.plugins.registered()).toEqual(['kit']);
+    expect(bureau.plugins.registered()).toEqual(['bureau', 'kit']);
     expect(missing?.problems).toEqual([
       { code: 'secret-missing', key: KEY, contributions: ['kit:lookup@1.0.0', 'kit:fmt'] },
     ]);
@@ -119,7 +120,7 @@ describe('a plugin missing a declared secret', () => {
       async () => (await statusOf()) === 'running',
       'the plugin did not run after its secret was saved',
     );
-    const [running] = await bureau.plugins.list();
+    const [running] = await listedPlugins(bureau);
     expect(running?.problems).toEqual([]);
     expect(bureau.formatEvent(event).title).toBe('Formatted');
     expect(JSON.stringify(await bureau.plugins.list())).not.toContain(SECRET);
@@ -172,7 +173,7 @@ describe('a plugin missing a declared secret', () => {
 
     secrets.save(KEY, SECRET);
     await waitForCondition(async () => {
-      const [listing] = await bureau.plugins.list();
+      const [listing] = await listedPlugins(bureau);
       return listing?.status === 'running';
     }, 'the plugin did not run after its secret was saved');
     const task = await bureau.tasks.start('kit:writer', 'Go.');

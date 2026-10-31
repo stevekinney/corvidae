@@ -168,10 +168,10 @@ test.describe('a new agent', () => {
       for (const line of lines) expect(Array.from(line).length).toBeLessThanOrEqual(120);
 
       // A tool whose description is a long prompt shows the line written for a person.
-      const created = catalog.tools.find((tool) => tool.name === 'workflows-create');
+      const created = catalog.tools.find((tool) => tool.name === 'bureau:workflows-create');
       expect(created?.description.length).toBeGreaterThan(120);
       expect(created?.shortDescription).not.toBeNull();
-      const row = page.locator('[data-tool="workflows-create"]');
+      const row = page.locator('[data-tool="bureau:workflows-create"]');
       await expect(row.getByTestId('agent-tool-line')).toHaveText(created?.shortDescription ?? '');
       await expect(row.getByTestId('agent-tool-full')).toHaveCount(0);
 

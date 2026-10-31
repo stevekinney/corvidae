@@ -945,8 +945,10 @@ describe('bureau.agents.catalog', () => {
   it('lists the tools an agent file may name, by name', async () => {
     const served = await serve();
     const response = await callAs(served.owner, 'bureau.agents.catalog', {});
-    // COR-1710: Bureau's own settings tools are in every catalog, for an agent file to name.
+    // COR-1710: Bureau's own settings tools are in every catalog, for an agent file to name, and so
+    // is the built-in `bureau` plugin's `bureau:discover-agents` (COR-1890).
     expect(response.result?.['tools']).toEqual([
+      expect.objectContaining({ name: 'bureau:discover-agents', source: 'bureau' }),
       expect.objectContaining({
         name: 'lookup-order',
         description: 'Looks an order up',

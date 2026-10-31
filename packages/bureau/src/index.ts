@@ -57,6 +57,11 @@ export type {
   PluginStatus,
 } from './plugins/plugin-types';
 export { pluginLoadOrder } from './plugins/compose-plugins';
+export {
+  BUREAU_PLUGIN_ENTRY,
+  BUREAU_PLUGIN_NAME,
+  BUREAU_PLUGIN_VERSION,
+} from './plugins/bureau-plugin';
 export type {
   AgentContributions,
   AgentContributionSource,

@@ -1,8 +1,8 @@
 /**
  * COR-1879 — plugin composition: what `createBureau` does with `plugins` before anything else.
  *
- * Plugins load in the P-COR-96 order: package plugins in the order the host gives them, then folder
- * plugins by folder name. Each enabled plugin's configuration is parsed, its `setup` runs once with
+ * Plugins load in the P-COR-96 order: the built-in `bureau` plugin (COR-1890), then package plugins in
+ * the order the host gives them, then folder plugins by folder name. Each enabled plugin's configuration is parsed, its `setup` runs once with
  * storage confined to `plugin:<name>:`, and what it returns is checked against every name already
  * held (Bureau's own, the host's, and earlier plugins'). The first holder of a name keeps it: a
  * later plugin that claims a held name is `skipped` whole with `name-clash`, so none of its
@@ -93,8 +93,9 @@ function folderName(location: string): string {
   return segments.at(-1) ?? location;
 }
 
-/** Package plugins in the order given, then folder plugins by folder name. */
+/** Built-in plugins first, then package plugins in the order given, then folder plugins by folder name. */
 export function pluginLoadOrder(entries: readonly BureauPluginEntry[]): BureauPluginEntry[] {
+  const builtIn = entries.filter((entry) => entry.source === 'built-in');
   const packages = entries.filter((entry) => entry.source === 'package');
   const folders = entries
     .filter((entry) => entry.source === 'folder')
@@ -103,7 +104,7 @@ export function pluginLoadOrder(entries: readonly BureauPluginEntry[]): BureauPl
       const right = folderName(b.location);
       return left < right ? -1 : left > right ? 1 : 0;
     });
-  return [...packages, ...folders];
+  return [...builtIn, ...packages, ...folders];
 }
 
 function settingsOf(

@@ -49,28 +49,6 @@
   font-weight: 600;
 }
 
-.weft-workers-callout {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-radius: var(--cinder-radius-lg);
-  border: 1px solid;
-  font-size: var(--cinder-text-sm);
-}
-
-.weft-workers-callout--warning {
-  background: var(--cinder-status-warning-background);
-  border-color: var(--cinder-status-warning-border);
-  color: var(--cinder-status-warning-text);
-}
-
-.weft-workers-callout--danger {
-  background: var(--cinder-status-danger-background);
-  border-color: var(--cinder-status-danger-border);
-  color: var(--cinder-status-danger-text);
-}
-
 /* ---------------------------------------------------------------------- */
 /* Route shell                                                            */
 /* ---------------------------------------------------------------------- */
@@ -299,8 +277,9 @@
   gap: 16px;
 }
 
-.weft-queue-detail__header {
+.weft-queue-detail__title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
@@ -317,33 +296,29 @@
   align-items: start;
 }
 
-.weft-queue-detail__no-workers {
-  padding: var(--cinder-density-pad-card);
-  margin: 0;
-  font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-subtle);
-}
-
-.weft-dead-letter-panel {
-  flex-direction: column;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-}
-
-.weft-dead-letter-panel__header {
+.weft-dead-letter-panel__title {
   display: flex;
   align-items: center;
   gap: 9px;
-  width: 100%;
 }
 
 .weft-dead-letter-panel__description {
-  margin: 8px 0 11px;
+  margin: 0;
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   font-size: var(--cinder-text-xs);
+  color: var(--cinder-text-subtle);
 }
 
-.weft-dead-letter-panel__empty {
-  margin: 0;
-  font-size: var(--cinder-text-sm);
+/* The identifier and timestamp columns hold long unbroken strings; wrap them rather than widen the page. */
+.weft-dead-letter-panel__wrap {
+  overflow-wrap: anywhere;
+}
+
+.weft-dead-letter-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .weft-dead-letter-panel__list {
@@ -360,12 +335,6 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.weft-dead-letter-panel__activity {
-  flex: 1;
-  min-width: 80px;
-  font-size: var(--cinder-text-xs);
 }
 
 .weft-queue-workers-list {
@@ -460,14 +429,14 @@
   gap: 16px;
 }
 
-.weft-task-ledger-detail__header {
+.weft-task-ledger-detail__title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.weft-task-ledger-detail__header h2,
+.weft-task-ledger-detail__title-row h2,
 .weft-task-ledger-detail__grid h3 {
   margin: 0;
 }
@@ -483,14 +452,14 @@
    Timestamps and digests are long unbroken strings, so these blocks wrap
    anywhere rather than widen the page at 375px. */
 
-.weft-task-cancellation__header {
+.weft-task-cancellation__title-row {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.weft-task-cancellation__header h3 {
+.weft-task-cancellation__title-row h3 {
   margin: 0;
   font-size: inherit;
   font-weight: inherit;

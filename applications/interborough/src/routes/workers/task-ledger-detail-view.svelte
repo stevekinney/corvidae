@@ -148,7 +148,7 @@
 {/snippet}
 
 <article class="weft-task-ledger-detail" aria-labelledby="task-ledger-title">
-  <header class="weft-task-ledger-detail__header">
+  <header class="weft-task-ledger-detail__title-row">
     <div>
       <h2 id="task-ledger-title">Authoritative task ledger</h2>
       <span class="weft-workers-id" title={task.operationId}>{truncateId(task.operationId)}</span>

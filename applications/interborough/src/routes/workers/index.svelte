@@ -51,6 +51,7 @@
   import DrainDialog from './drain-dialog.svelte';
   import { drainFingerprint, type DrainFingerprint } from './drain-guard.ts';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
+  import { deadLetterTarget, sameDeadLetter, type DeadLetterTarget } from './dead-letter-guard.ts';
   import ConformancePanel from './conformance-panel.svelte';
   import DeploymentsPanel from './deployments-panel.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
@@ -277,19 +278,34 @@
     resumeDeployment.mutate({ deploymentName });
   }
 
+  const CLEAR_REFUSAL =
+    'That dead letter was cleared or changed, so nothing was cleared. Check how the queue is now, then clear it again if you still mean to.';
   let clearDialogOpen = $state(false);
-  let clearOperationId = $state<string | null>(null);
+  let clearTarget = $state<DeadLetterTarget | null>(null);
+  let clearRefusal = $state<string | null>(null);
+
+  // The dead letter as the diagnostics list it now; the clear is confirmed against the one listed
+  // when the dialog opened, so a dead letter that was cleared or re-recorded meanwhile is refused.
+  function listedDeadLetter(operationId: string): DeadLetterTarget | null {
+    return deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId);
+  }
 
   function openClearDialog(operationId: string): void {
-    clearOperationId = operationId;
-    selectTask(operationId);
-    clearDialogOpen = true;
+    clearRefusal = null;
+    clearTarget = listedDeadLetter(operationId);
+    clearDialogOpen = clearTarget !== null;
+    if (clearTarget === null) clearRefusal = CLEAR_REFUSAL;
   }
 
   function handleClearConfirm(): void {
-    if (!clearOperationId) return;
-    clearDeadLetterAction.mutate({ operationId: clearOperationId });
+    const target = clearTarget;
+    if (!target) return;
     clearDialogOpen = false;
+    if (!sameDeadLetter(target, listedDeadLetter(target.operationId))) {
+      clearRefusal = CLEAR_REFUSAL;
+      return;
+    }
+    clearDeadLetterAction.mutate({ operationId: target.operationId });
   }
 
   // ---------------------------------------------------------------------
@@ -355,6 +371,12 @@
   {#if drainRefusal !== null}
     <Alert variant="warning" dismissible onDismiss={() => (drainRefusal = null)}
       >{drainRefusal}</Alert
+    >
+  {/if}
+
+  {#if clearRefusal !== null}
+    <Alert variant="warning" dismissible onDismiss={() => (clearRefusal = null)}
+      >{clearRefusal}</Alert
     >
   {/if}
 
@@ -478,6 +500,7 @@
               now={Date.now()}
               refreshing={taskDetailQuery.isFetching}
               staleHeartbeatAfterMs={TASK_HEARTBEAT_STALE_AFTER_MS}
+              onRetry={() => void taskDetailQuery.refetch()}
             />
           {/await}
           {#if taskDetailQuery.data}
@@ -533,12 +556,11 @@
   />
 {/if}
 
-{#if clearOperationId}
+{#if clearTarget}
   <ClearDeadLetterDialog
     bind:open={clearDialogOpen}
-    operationId={clearOperationId}
+    target={clearTarget}
     submitting={clearDeadLetterAction.isPending}
-    task={taskDetailQuery.data}
     onConfirm={handleClearConfirm}
     onCancel={() => (clearDialogOpen = false)}
   />

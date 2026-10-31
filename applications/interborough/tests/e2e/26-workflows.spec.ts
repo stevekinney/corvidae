@@ -24,6 +24,7 @@ import {
   APPROVAL_START_SIGNAL,
   createWorkflowFile,
   listWorkflowRuns,
+  openJsonTab,
   readWorkflow,
   removeWorkflow,
   SEEDED_WORKFLOWS,
@@ -286,6 +287,8 @@ test.describe('a new workflow', () => {
         root.getByRole('heading', { level: 1, name: WORKFLOW_COPY.creator.heading }),
       ).toBeVisible();
 
+      await openJsonTab(root);
+
       const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
       const template = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
       expect(template).toMatchObject({
@@ -322,6 +325,7 @@ test.describe('a new workflow', () => {
   }) => {
     await page.goto('/workflows/new');
     const root = page.locator('[data-page="workflow-creator"]');
+    await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
     const template = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
 
@@ -770,6 +774,7 @@ test.describe('the editor', () => {
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
         await workflowFilePath(request, 'e2e-editable'),
       );
+      await openJsonTab(root);
       const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
       const text = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
       // The file's own name is there to read, and is not sent.
@@ -799,6 +804,7 @@ test.describe('the editor', () => {
     const before = await readWorkflow(request, 'e2e-refused');
     await page.goto('/workflows/e2e-refused/edit');
     const root = page.locator('[data-page="workflow-editor"]');
+    await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
 
     await editor.fill('{ "trigger": ');
@@ -822,6 +828,7 @@ test.describe('the editor', () => {
     await makeWorkflow(request, 'e2e-edit-stale');
     await page.goto('/workflows/e2e-edit-stale/edit');
     const root = page.locator('[data-page="workflow-editor"]');
+    await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
     await expect(editor).toBeVisible();
 
@@ -870,6 +877,8 @@ test.describe('the editor', () => {
     await expect(root.getByTestId('workflow-problem')).toContainText('invalid-document');
     await expect(root.getByTestId('workflow-file-path')).toHaveText(path);
     await checkA11y('an invalid file in the editor');
+
+    await openJsonTab(root);
 
     const editor = await jsonEditor(root, WORKFLOW_COPY.editor.textLabel);
     await editor.fill(JSON.stringify({ trigger: { kind: 'schedule', spec: '1h' }, steps: STEPS }));

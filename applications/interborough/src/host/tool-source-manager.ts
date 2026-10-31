@@ -115,6 +115,7 @@ import {
   parseToolSourcesConfiguration,
   qualifyToolNames,
   readToolSourcesConfiguration,
+  RESERVED_TOOL_SOURCE_IDENTIFIERS,
   serializeToolSources,
   TOOL_SOURCE_IDENTIFIER,
   type ConfiguredToolSettings,
@@ -852,6 +853,13 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     const remember = (standing: ToolSourceStanding): void => {
       booted.set(source.id, { standing, description, settings });
     };
+    // A saved source must not stop the host: its tools would collide with a built-in plugin's namespace.
+    if (RESERVED_TOOL_SOURCE_IDENTIFIERS.includes(source.id)) {
+      const message = `The identifier "${source.id}" is reserved for the host's own tools, so this source is not loaded. Remove it.`;
+      warn(`Tool source "${source.id}" did not load: ${message}`);
+      remember(standingOf(entry, 'failed', { message }));
+      return;
+    }
     try {
       if (isOAuth(source)) {
         const secrets = await vault.read(source.id);
@@ -1104,6 +1112,10 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     async connect(request) {
       assertWritable();
       const id = checkedIdentifier(request.id, 'id');
+      // Only a new source is refused the name: one stored before the name was reserved must stay removable.
+      if (RESERVED_TOOL_SOURCE_IDENTIFIERS.includes(id)) {
+        throw new ToolSourceInputError('id', `"${id}" is reserved for the host's own tools.`);
+      }
       checkUrls(request.source);
       let source: ToolSourceDescription;
       try {

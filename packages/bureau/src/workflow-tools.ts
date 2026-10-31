@@ -1,8 +1,9 @@
 /**
  * The tools an agent manages its workflows with (COR-1529): `workflows-create`, `workflows-update`,
- * `workflows-pause`, `workflows-resume`, and `workflows-list`. Bureau adds them to the deployment's
- * tool catalog itself when `workflowSource` is set, so an agent file receives them only when it
- * lists them in `tools`. They write through `Bureau.workflows`, the same operations HTTP callers
+ * `workflows-pause`, `workflows-resume`, and `workflows-list`. The built-in `bureau` plugin
+ * contributes them when `workflowSource` is set (COR-1890), so an agent file receives them only when
+ * it lists them in `tools` as `bureau:workflows-create` and so on, and a provider calls them
+ * `bureau__workflows-create`. They write through `Bureau.workflows`, the same operations HTTP callers
  * use, never to the filesystem directly.
  *
  * Every workflow belongs to the deployment's owner of record. A tool acts only when the owner of
@@ -21,6 +22,7 @@ import { createTool, type Tool, type ToolContext } from 'armorer';
 import { z } from 'zod';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
+import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
 import {
   checkWorkflowIdentifier,
   type WorkflowFileDefinition,
@@ -29,7 +31,10 @@ import {
 } from './workflow-file';
 import { type BureauWorkflows, WorkflowApplyError } from './workflow-runtime';
 
-/** The names of the five tools. Hyphens, because provider tool-name grammars exclude dots. */
+/**
+ * The names of the five tools within the `bureau` plugin. Hyphens, because provider tool-name
+ * grammars exclude dots.
+ */
 export const WORKFLOW_TOOL_NAMES = [
   'workflows-create',
   'workflows-update',
@@ -37,13 +42,6 @@ export const WORKFLOW_TOOL_NAMES = [
   'workflows-resume',
   'workflows-list',
 ] as const;
-
-/** The name of a tool in the agent source's `tools` that one of the five would collide with, if there is one. */
-export function collidingWorkflowToolName(
-  tools: Readonly<Record<string, unknown>> | undefined,
-): string | undefined {
-  return WORKFLOW_TOOL_NAMES.find((name) => tools !== undefined && Object.hasOwn(tools, name));
-}
 
 /** What the tools read from the Bureau that owns them. */
 export interface WorkflowToolHost {
@@ -182,7 +180,7 @@ const expectedHashSchema = z
   .string()
   .min(1)
   .describe(
-    'The `hash` workflows-list returned for this workflow; a file that changed since is a conflict.',
+    'The `hash` bureau__workflows-list returned for this workflow; a file that changed since is a conflict.',
   );
 
 const guardedInput = z.object({
@@ -338,6 +336,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           ...(await calling.workflows.create(provisional, definition(calling.agent, input), {
             actor: calling.actor,
             hookOrigin: calling.hookOrigin,
+            source: BUREAU_PLUGIN_NAME,
           })),
         };
       } catch (error) {
@@ -350,7 +349,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-update',
     version: '1.0.0',
     description:
-      'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `description`, `inputSchema`, and `outputSchema` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
+      'Replace a workflow with a new trigger and steps, if its file still has the `hash` bureau__workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `description`, `inputSchema`, and `outputSchema` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
     metadata: { mutates: true, shortDescription: 'Replace a workflow’s trigger and steps.' },
     execute: async (input, context): Promise<WorkflowToolResult> => {
@@ -363,6 +362,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
             expectedHash: input.expectedHash,
             actor: calling.actor,
             hookOrigin: calling.hookOrigin,
+            source: BUREAU_PLUGIN_NAME,
           })),
         };
       } catch (error) {
@@ -376,8 +376,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       name,
       version: '1.0.0',
       description: paused
-        ? 'Pause a workflow, if its file still has the `hash` workflows-list returned. A paused workflow starts nothing new; instances already running finish.'
-        : 'Resume a paused workflow, if its file still has the `hash` workflows-list returned.',
+        ? 'Pause a workflow, if its file still has the `hash` bureau__workflows-list returned. A paused workflow starts nothing new; instances already running finish.'
+        : 'Resume a paused workflow, if its file still has the `hash` bureau__workflows-list returned.',
       input: guardedInput,
       metadata: {
         mutates: true,
@@ -388,7 +388,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       execute: async (input, context): Promise<WorkflowToolResult> => {
         const calling = await caller(context, input.id);
         if ('refusal' in calling) return calling.refusal;
-        const guard = { expectedHash: input.expectedHash, actor: calling.actor };
+        const guard = {
+          expectedHash: input.expectedHash,
+          actor: calling.actor,
+          source: BUREAU_PLUGIN_NAME,
+        };
         try {
           return {
             status: 'ok',
@@ -407,7 +411,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-list',
     version: '1.0.0',
     description:
-      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its description, and its `inputSchema` and `outputSchema` (pass them back to workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
+      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its description, and its `inputSchema` and `outputSchema` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
     input: z.object({}),
     metadata: { readOnly: true, shortDescription: 'List the workflows and their state.' },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {

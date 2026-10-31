@@ -66,12 +66,12 @@ function workflowToolsOf(offered: readonly string[] | undefined): string[] {
 describe('which agents are offered the tools', () => {
   it('offers an agent file the tools it lists, and no others', async () => {
     const harness = await start({ agents: [] });
-    await harness.putAgent('lister', ['workflows-list']);
+    await harness.putAgent('lister', ['bureau:workflows-list']);
     await harness.putAgent('bare', []);
-    await harness.callTool('workflows-list', {}, { agent: 'lister' });
+    await harness.callTool('bureau__workflows-list', {}, { agent: 'lister' });
     const listerOffered = workflowToolsOf(harness.offered.at(-1));
     // The agent that lists none is offered none, so it makes no call, but its model is still asked.
-    const bareCall = await harness.callTool('workflows-list', {}, { agent: 'bare' });
+    const bareCall = await harness.callTool('bureau__workflows-list', {}, { agent: 'bare' });
     expect(bareCall.outcome).not.toBe('success');
     expect(listerOffered).toEqual(['workflows-list']);
     expect(workflowToolsOf(harness.offered.at(-1))).toEqual([]);
@@ -86,38 +86,45 @@ describe('which agents are offered the tools', () => {
       'workflows-list',
     ]);
     const harness = await start();
-    await harness.callTool('workflows-list', {});
+    await harness.callTool('bureau__workflows-list', {});
     expect(workflowToolsOf(harness.offered[0])).toEqual([...WORKFLOW_TOOL_NAMES].toSorted());
   });
 
-  it('refuses a host tool with one of their names at createBureau, with BAD_REQUEST', async () => {
+  it('refuses a host tool in the bureau namespace at createBureau, with BAD_REQUEST, in either spelling', async () => {
     for (const name of WORKFLOW_TOOL_NAMES) {
-      const error = await createBureau({
-        agents: {},
-        agentSource: agentFileDirectory('/nonexistent', { tools: { [name]: lookupTool } }),
-        workflowSource: workflowFileDirectory('/nonexistent-workflows'),
-        models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
-        storage: new MemoryStorage(),
-        durable: true,
-      }).then(
-        (bureau) => (bureau.dispose(), undefined),
-        (failure: unknown) => failure,
-      );
-      expect(error, name).toBeInstanceOf(BureauError);
-      expect((error as BureauError).code).toBe('BAD_REQUEST');
-      expect((error as BureauError).message).toContain(name);
+      for (const key of [`bureau:${name}`, `bureau__${name}`]) {
+        const error = await createBureau({
+          agents: {},
+          agentSource: agentFileDirectory('/nonexistent', { tools: { [key]: lookupTool } }),
+          workflowSource: workflowFileDirectory('/nonexistent-workflows'),
+          models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
+          storage: new MemoryStorage(),
+          durable: true,
+        }).then(
+          (bureau) => (bureau.dispose(), undefined),
+          (failure: unknown) => failure,
+        );
+        expect(error, key).toBeInstanceOf(BureauError);
+        expect((error as BureauError).code).toBe('BAD_REQUEST');
+        expect((error as BureauError).message).toContain(key);
+      }
     }
   });
 
-  it('accepts the same host tool name when no workflow directory is set', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      agentSource: agentFileDirectory('/nonexistent', { tools: { 'workflows-list': lookupTool } }),
-      models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
-      storage: new MemoryStorage(),
-      durable: true,
-    });
-    await bureau.dispose();
+  it('accepts a host tool with the bare name of a workflow tool, with or without a workflow directory', async () => {
+    for (const workflowSource of [undefined, workflowFileDirectory('/nonexistent-workflows')]) {
+      const bureau = await createBureau({
+        agents: {},
+        agentSource: agentFileDirectory('/nonexistent', {
+          tools: { 'workflows-list': lookupTool },
+        }),
+        ...(workflowSource === undefined ? {} : { workflowSource }),
+        models: { generate: () => async () => ({ content: '', toolCalls: [] }) },
+        storage: new MemoryStorage(),
+        durable: true,
+      });
+      await bureau.dispose();
+    }
   });
 });
 
@@ -148,7 +155,7 @@ describe('workflows-create', () => {
   it('writes a file owned by the calling agent, active as the call returns, and derives the identifier', async () => {
     const harness = await start();
 
-    const { result, outcome } = await harness.callTool('workflows-create', {
+    const { result, outcome } = await harness.callTool('bureau__workflows-create', {
       name: 'Nightly Digest!',
       trigger: TRIGGER,
       steps: STEPS,
@@ -171,13 +178,17 @@ describe('workflows-create', () => {
   it('writes the description it is given, and none when it is left out', async () => {
     const harness = await start();
 
-    await harness.callTool('workflows-create', {
+    await harness.callTool('bureau__workflows-create', {
       name: 'Described',
       description: 'Writes the nightly digest.',
       trigger: TRIGGER,
       steps: STEPS,
     });
-    await harness.callTool('workflows-create', { name: 'Bare', trigger: TRIGGER, steps: STEPS });
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Bare',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
 
     expect(await fileOf(harness, 'described')).toMatchObject({
       description: 'Writes the nightly digest.',
@@ -191,7 +202,7 @@ describe('workflows-create', () => {
 
   it('takes an explicit identifier, and answers a taken one as a conflict naming it, with no suffix', async () => {
     const harness = await start();
-    const first = await harness.callTool('workflows-create', {
+    const first = await harness.callTool('bureau__workflows-create', {
       name: 'Anything',
       id: 'digest',
       trigger: TRIGGER,
@@ -199,7 +210,7 @@ describe('workflows-create', () => {
     });
     expect(first.result).toMatchObject({ status: 'ok', id: 'digest' });
 
-    const taken = await harness.callTool('workflows-create', {
+    const taken = await harness.callTool('bureau__workflows-create', {
       name: 'Digest',
       trigger: TRIGGER,
       steps: STEPS,
@@ -216,7 +227,7 @@ describe('workflows-create', () => {
   it('answers a name that cannot be an identifier as invalid-identifier, and writes nothing', async () => {
     const harness = await start();
     for (const name of ['!!!', '9 lives', 'x'.repeat(65)]) {
-      const { result, outcome } = await harness.callTool('workflows-create', {
+      const { result, outcome } = await harness.callTool('bureau__workflows-create', {
         name,
         trigger: TRIGGER,
         steps: STEPS,
@@ -229,7 +240,7 @@ describe('workflows-create', () => {
 
   it('answers an explicit identifier that is not valid as invalid-identifier', async () => {
     const harness = await start();
-    const { result } = await harness.callTool('workflows-create', {
+    const { result } = await harness.callTool('bureau__workflows-create', {
       name: 'Digest',
       id: 'Bad_Id',
       trigger: TRIGGER,
@@ -241,7 +252,7 @@ describe('workflows-create', () => {
 
   it('answers a document that would not load with its issues as the tool result, not as a failure', async () => {
     const harness = await start();
-    const { result, outcome } = await harness.callTool('workflows-create', {
+    const { result, outcome } = await harness.callTool('bureau__workflows-create', {
       name: 'Broken',
       trigger: { kind: 'schedule', spec: 'not a schedule' },
       steps: [{ kind: 'activity', handler: 'nobody' }],
@@ -255,7 +266,7 @@ describe('workflows-create', () => {
 
   it('creates a workflow that is paused when it says so, and a signal-triggered one', async () => {
     const harness = await start();
-    await harness.callTool('workflows-create', {
+    await harness.callTool('bureau__workflows-create', {
       name: 'Listener',
       trigger: { kind: 'signal', name: 'go' },
       steps: STEPS,
@@ -307,7 +318,7 @@ describe('what a model is shown of a tool’s input', () => {
 describe('workflows-update, workflows-pause, workflows-resume', () => {
   async function seeded() {
     const harness = await start({ agents: ['scribe', 'editor'] });
-    await harness.callTool('workflows-create', {
+    await harness.callTool('bureau__workflows-create', {
       name: 'Digest',
       trigger: TRIGGER,
       steps: STEPS,
@@ -318,7 +329,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
   it('update replaces the definition and makes the caller the agent that wrote it', async () => {
     const harness = await seeded();
     const { result } = await harness.callTool(
-      'workflows-update',
+      'bureau__workflows-update',
       {
         id: 'digest',
         expectedHash: hashOf(harness, 'digest'),
@@ -340,7 +351,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
     const before = await fileOf(harness, 'digest');
 
     const paused = await harness.callTool(
-      'workflows-pause',
+      'bureau__workflows-pause',
       { id: 'digest', expectedHash: hashOf(harness, 'digest') },
       { agent: 'editor' },
     );
@@ -349,7 +360,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
     expect(await scheduleStatus(harness)).toBe('paused');
 
     const resumed = await harness.callTool(
-      'workflows-resume',
+      'bureau__workflows-resume',
       { id: 'digest', expectedHash: hashOf(harness, 'digest') },
       { agent: 'editor' },
     );
@@ -372,7 +383,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
       ['workflows-pause', {}],
       ['workflows-resume', {}],
     ] as const) {
-      const { result, outcome } = await harness.callTool(tool, {
+      const { result, outcome } = await harness.callTool(`bureau__${tool}`, {
         id: 'digest',
         expectedHash: stale,
         ...args,
@@ -395,7 +406,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
       ['workflows-pause', {}],
       ['workflows-resume', {}],
     ] as const) {
-      const { result } = await harness.callTool(tool, {
+      const { result } = await harness.callTool(`bureau__${tool}`, {
         id: 'nobody',
         expectedHash: 'abc',
         ...args,
@@ -407,7 +418,7 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
   it('answers an update that would not load as invalid, and leaves the file as it was', async () => {
     const harness = await seeded();
     const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
-    const { result } = await harness.callTool('workflows-update', {
+    const { result } = await harness.callTool('bureau__workflows-update', {
       id: 'digest',
       expectedHash: hashOf(harness, 'digest'),
       trigger: { kind: 'webhook' },
@@ -421,8 +432,12 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
 describe('workflows-list', () => {
   it('lists each workflow with its hash, state, paused, and trigger kind, and a broken file with its problem', async () => {
     const harness = await start();
-    await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
-    await harness.callTool('workflows-create', {
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await harness.callTool('bureau__workflows-create', {
       name: 'Listener',
       trigger: { kind: 'signal', name: 'go' },
       steps: STEPS,
@@ -431,7 +446,7 @@ describe('workflows-list', () => {
     await Bun.write(join(harness.workflowsPath, 'broken.json'), '{ not json');
     await harness.bureau.workflows!.refresh();
 
-    const { result } = await harness.callTool('workflows-list', {});
+    const { result } = await harness.callTool('bureau__workflows-list', {});
 
     expect(result).toEqual({
       status: 'ok',
@@ -475,13 +490,13 @@ describe('workflows-list', () => {
 
   it('lists the description, so an agent can pass it back and keep it through an update', async () => {
     const harness = await start();
-    await harness.callTool('workflows-create', {
+    await harness.callTool('bureau__workflows-create', {
       name: 'Digest',
       description: 'Writes the daily digest.',
       trigger: TRIGGER,
       steps: STEPS,
     });
-    const listing = await harness.callTool('workflows-list', {});
+    const listing = await harness.callTool('bureau__workflows-list', {});
     const listed = listing.result as {
       workflows: Array<{ id: string; hash: string; description: string | null }>;
     };
@@ -489,7 +504,7 @@ describe('workflows-list', () => {
       { id: 'digest', description: 'Writes the daily digest.' },
     ]);
 
-    const { result } = await harness.callTool('workflows-update', {
+    const { result } = await harness.callTool('bureau__workflows-update', {
       id: 'digest',
       expectedHash: listed.workflows[0]!.hash,
       description: listed.workflows[0]!.description,
@@ -497,7 +512,7 @@ describe('workflows-list', () => {
       steps: STEPS,
     });
     expect(result).toMatchObject({ status: 'ok' });
-    const afterListing = await harness.callTool('workflows-list', {});
+    const afterListing = await harness.callTool('bureau__workflows-list', {});
     const after = afterListing.result as {
       workflows: Array<{ description: string | null }>;
     };
@@ -518,7 +533,7 @@ describe('workflows-list', () => {
     const inputSchema = { type: 'object', required: ['city'] };
     const outputSchema = { type: 'object' };
 
-    await harness.callTool('workflows-create', {
+    await harness.callTool('bureau__workflows-create', {
       name: 'Digest',
       trigger: { kind: 'signal', name: 'go' },
       steps: STEPS,
@@ -527,12 +542,12 @@ describe('workflows-list', () => {
     });
 
     expect(await fileOf(harness, 'digest')).toMatchObject({ inputSchema, outputSchema });
-    const listed = await harness.callTool('workflows-list', {});
+    const listed = await harness.callTool('bureau__workflows-list', {});
     expect(listed.result).toMatchObject({
       workflows: [{ id: 'digest', inputSchema, outputSchema }],
     });
     // An update that passes the listed schemas back keeps them; one that leaves them out has none.
-    const kept = await harness.callTool('workflows-update', {
+    const kept = await harness.callTool('bureau__workflows-update', {
       id: 'digest',
       expectedHash: hashOf(harness, 'digest'),
       trigger: { kind: 'signal', name: 'go' },
@@ -542,7 +557,7 @@ describe('workflows-list', () => {
     });
     expect(kept.result).toMatchObject({ status: 'ok' });
     expect(harness.bureau.workflows!.list()[0]?.inputSchema).toEqual(inputSchema);
-    await harness.callTool('workflows-update', {
+    await harness.callTool('bureau__workflows-update', {
       id: 'digest',
       expectedHash: hashOf(harness, 'digest'),
       trigger: { kind: 'signal', name: 'go' },
@@ -554,7 +569,7 @@ describe('workflows-list', () => {
   it('refuses a schema outside the answer-schema limits as an invalid document naming the field', async () => {
     const harness = await start();
 
-    const { result } = await harness.callTool('workflows-create', {
+    const { result } = await harness.callTool('bureau__workflows-create', {
       name: 'Digest',
       trigger: { kind: 'signal', name: 'go' },
       steps: STEPS,
@@ -568,10 +583,14 @@ describe('workflows-list', () => {
 
   it('hands the hash it lists to the tools that change a file', async () => {
     const harness = await start();
-    await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
-    const called = await harness.callTool('workflows-list', {});
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const called = await harness.callTool('bureau__workflows-list', {});
     const listed = called.result as { workflows: Array<{ id: string; hash: string }> };
-    const { result } = await harness.callTool('workflows-pause', {
+    const { result } = await harness.callTool('bureau__workflows-pause', {
       id: 'digest',
       expectedHash: listed.workflows[0]!.hash,
     });
@@ -582,7 +601,11 @@ describe('workflows-list', () => {
 describe('who the tools act for', () => {
   async function withWorkflow() {
     const harness = await start();
-    await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
     return harness;
   }
 
@@ -592,7 +615,7 @@ describe('who the tools act for', () => {
     const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
     const hash = hashOf(harness, 'digest');
 
-    const listed = await harness.callTool('workflows-list', {}, { principal });
+    const listed = await harness.callTool('bureau__workflows-list', {}, { principal });
     expect(listed.outcome).toBe('success');
     expect(listed.result).toEqual({ status: 'ok', workflows: [] });
 
@@ -606,7 +629,7 @@ describe('who the tools act for', () => {
       ['workflows-pause', { id: 'digest', expectedHash: hash }, 'digest'],
       ['workflows-resume', { id: 'digest', expectedHash: hash }, 'digest'],
     ] as const) {
-      const { result, outcome } = await harness.callTool(tool, args, { principal });
+      const { result, outcome } = await harness.callTool(`bureau__${tool}`, args, { principal });
       expect(outcome, tool).toBe('success');
       expect(result, tool).toEqual({ status: 'not-found', id });
     }
@@ -619,9 +642,13 @@ describe('who the tools act for', () => {
     const harness = await withWorkflow();
     // `anonymous:local` is the deployment's owner of record: the default for a run with no principal,
     // and also what an explicit principal of that name is.
-    const asOwner = await harness.callTool('workflows-list', {}, { principal: 'anonymous:local' });
+    const asOwner = await harness.callTool(
+      'bureau__workflows-list',
+      {},
+      { principal: 'anonymous:local' },
+    );
     expect((asOwner.result as { workflows: unknown[] }).workflows).toHaveLength(1);
-    const asDefault = await harness.callTool('workflows-list', {});
+    const asDefault = await harness.callTool('bureau__workflows-list', {});
     expect((asDefault.result as { workflows: unknown[] }).workflows).toHaveLength(1);
   });
 
@@ -643,20 +670,24 @@ describe('who the tools act for', () => {
 describe('a chat session run', () => {
   it('acts as the session’s principal and agent, the same as a catalog run', async () => {
     const harness = await start();
-    await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
 
-    const asOwner = await harness.callTool('workflows-list', {}, { via: 'session' });
+    const asOwner = await harness.callTool('bureau__workflows-list', {}, { via: 'session' });
     expect((asOwner.result as { workflows: unknown[] }).workflows).toHaveLength(1);
 
     const asAlice = await harness.callTool(
-      'workflows-list',
+      'bureau__workflows-list',
       {},
       { via: 'session', principal: 'api-key:alice' },
     );
     expect(asAlice.result).toEqual({ status: 'ok', workflows: [] });
 
     const created = await harness.callTool(
-      'workflows-create',
+      'bureau__workflows-create',
       { name: 'From chat', trigger: TRIGGER, steps: STEPS },
       { via: 'session' },
     );
@@ -668,7 +699,11 @@ describe('a chat session run', () => {
 describe('a calling agent whose identifier is not an agent identifier', () => {
   it('gets invalid-agent from every tool and writes nothing', async () => {
     const harness = await start();
-    await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
     const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
     const hash = hashOf(harness, 'digest');
     const tools = createWorkflowTools({
@@ -712,7 +747,7 @@ describe('a file written by hand', () => {
       workflowFileText('by-hand', { agent: 'someone' }),
     );
     await harness.bureau.workflows!.refresh();
-    const { result } = await harness.callTool('workflows-pause', {
+    const { result } = await harness.callTool('bureau__workflows-pause', {
       id: 'by-hand',
       expectedHash: hashOf(harness, 'by-hand'),
     });

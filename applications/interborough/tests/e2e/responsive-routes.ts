@@ -5,7 +5,7 @@
  * lane, so a new route cannot be added without an address, and an entry cannot lose its owner.
  */
 
-import { E2E_FLEET_WORKER_ID } from './e2e-constants.ts';
+import { E2E_CROSS_BUILD_QUEUE, E2E_FLEET_WORKER_ID } from './e2e-constants.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
 
 /** The identifiers the specification seeds, and so the addresses it can name. */
@@ -76,6 +76,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/settings': '/settings',
     '/settings/models': '/settings/models',
     '/settings/model-policy': '/settings/model-policy',
+    '/settings/plugins': '/settings/plugins',
     '/settings/data-and-retention': '/settings/data-and-retention',
     '/settings/api-reference': '/settings/api-reference',
   };
@@ -87,7 +88,8 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
  * as are an agent's Instructions and Settings tabs, with the tab named in the address (`?tab=`).
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
- * as is the Workers page with the seeded worker open, and as are a waiting review open and the
+ * as is the Workers page with the seeded worker open and its Task queues tab with a seeded queue
+ * open (its dead letters and recovery diagnostics), and as are a waiting review open and the
  * Reviews page's Done tab.
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
@@ -105,6 +107,8 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // The Workers list with the seeded worker open: its detail is the widest part of the page, and
     // below 900px it replaces the list.
     '/health/workers (worker open)': `/health/workers?worker=${encodeURIComponent(E2E_FLEET_WORKER_ID)}`,
+    // A queue open: its strategy, dead letters, recovery diagnostics (the seeded retry storm) and workers.
+    '/health/workers (queue open)': `/health/workers?tab=queues&queue=${encodeURIComponent(E2E_CROSS_BUILD_QUEUE)}`,
     '/capabilities (skills tab)': '/capabilities?tab=skills',
     '/capabilities (skill open)': `/capabilities?tab=skills&skill=${encodeURIComponent(skillAddressKey(E2E_SKILLS.long))}`,
     // A waiting review open (one pane at a time below 900px, so at 375 and 768 the detail replaces

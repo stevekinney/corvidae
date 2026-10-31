@@ -8,11 +8,10 @@
   import { EmptyState, Skeleton } from '@lostgradient/cinder';
   import Lock from '@lucide/svelte/icons/lock';
 
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import { isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
+  import PanelFault from './panel-fault.svelte';
   import TaskLedgerDetailView from './task-ledger-detail-view.svelte';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
-  import { MalformedTaskLedgerError } from './workers-data.ts';
 
   interface TaskLedgerPanelProps {
     readonly loading: boolean;
@@ -21,6 +20,8 @@
     readonly now: number;
     readonly refreshing?: boolean;
     readonly staleHeartbeatAfterMs?: number | undefined;
+    /** Reads the ledger again; the fault banner offers it when given. */
+    readonly onRetry?: (() => void) | undefined;
   }
 
   let {
@@ -30,6 +31,7 @@
     now,
     refreshing = false,
     staleHeartbeatAfterMs,
+    onRetry = undefined,
   }: TaskLedgerPanelProps = $props();
 </script>
 
@@ -39,6 +41,8 @@
   </div>
 {:else if error && isForbidden(error)}
   <EmptyState
+    kind="first-use"
+    headingLevel={2}
     title="Task ledger is locked"
     description={`${scopeReason('system:read')} to read lease and attempt evidence.`}
   >
@@ -46,13 +50,15 @@
       <Lock size={28} aria-hidden="true" />
     {/snippet}
   </EmptyState>
-{:else if error instanceof MalformedTaskLedgerError}
-  <EmptyState title="Malformed server response" description={error.message} />
 {:else if error}
-  {@const treatment = faultTreatment(error)}
-  <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+  <PanelFault {error} {onRetry} />
 {:else if task}
   <TaskLedgerDetailView {task} {now} {refreshing} {staleHeartbeatAfterMs} />
 {:else}
-  <EmptyState title="No task selected" description="Choose a task to inspect its ledger." />
+  <EmptyState
+    kind="first-use"
+    headingLevel={2}
+    title="No task selected"
+    description="Choose a task to inspect its ledger."
+  />
 {/if}

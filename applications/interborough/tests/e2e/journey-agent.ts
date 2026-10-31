@@ -35,8 +35,11 @@ export const JOURNEY_WORKFLOW_CADENCE = '5s';
 /** What the scripted author says once the workflow tool has answered. */
 export const JOURNEY_AUTHOR_REPLY = 'The journey digest is written and scheduled.';
 
-/** The name of the workflow tool the author calls. */
-export const JOURNEY_TOOL_NAME = 'workflows-create';
+/** The workflow tool the author uses, as an agent file names it and a tool approval is keyed (COR-1890). */
+export const JOURNEY_TOOL_NAME = 'bureau:workflows-create';
+
+/** The name the scripted model calls that tool by: the form a provider sees a namespaced tool in. */
+export const JOURNEY_TOOL_CALL_NAME = 'bureau__workflows-create';
 
 type ProviderResolver = NonNullable<HostOptions['resolveProviderGenerate']>;
 
@@ -56,7 +59,7 @@ function authorResponse(context: GenerateContext): GenerateResponse {
     toolCalls: [
       {
         id: 'journey-workflows-create-1',
-        name: JOURNEY_TOOL_NAME,
+        name: JOURNEY_TOOL_CALL_NAME,
         arguments: {
           name: 'Journey digest',
           id: JOURNEY_WORKFLOW_ID,

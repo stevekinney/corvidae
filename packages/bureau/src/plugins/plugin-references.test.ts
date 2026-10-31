@@ -15,6 +15,7 @@ import { agentFileDirectory } from '../sources/agent-file-directory';
 import { layeredAgentSource } from '../sources/layered-source';
 import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from '../testing/agent-file-bureau.test-support';
+import { listedPlugins } from '../testing/plugin-listing.test-support';
 
 const roots: string[] = [];
 const harnesses: FileBureauHarness[] = [];
@@ -67,7 +68,7 @@ describe('a plugin file naming an absent contribution', () => {
     const triager = harness.bureau.agents.list().find(({ id }) => id === 'p:triager');
     expect(triager?.state).toBe('invalid');
     expect(harness.bureau.agents.list().find(({ id }) => id === 'p:reader')?.state).toBe('ready');
-    const [listing] = await harness.bureau.plugins.list();
+    const [listing] = await listedPlugins(harness.bureau);
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([
       { code: 'reference-unresolved', file: 'p:triager', id: 'p:absent' },

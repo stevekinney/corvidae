@@ -159,7 +159,7 @@ describe('the operations, against the real Bureau', () => {
       // The `tool-runner` agent's own toolbox holds its own `lookup-order`, not the catalog's.
       users: [],
     });
-    expect(byName.get('workflows-create')).toMatchObject({ source: 'bureau' });
+    expect(byName.get('bureau:workflows-create')).toMatchObject({ source: 'bureau' });
     expect(byName.get('settings-update')).toMatchObject({ source: 'bureau' });
   });
 

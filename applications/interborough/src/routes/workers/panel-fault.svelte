@@ -8,7 +8,12 @@
 
   import QueryFaultBanner from '../system/query-fault-banner.svelte';
   import { MalformedDeploymentsError } from './deployments-data.ts';
+  import {
+    MalformedDeadLetterError,
+    MalformedTaskDeliveriesError,
+  } from './task-delivery-evidence.ts';
   import { MalformedWorkerDiagnosticsError } from './worker-manifest-diagnostics.ts';
+  import { MalformedTaskLedgerError } from './workers-data.ts';
 
   interface PanelFaultProps {
     readonly error: unknown;
@@ -19,7 +24,11 @@
   let { error, onRetry = undefined }: PanelFaultProps = $props();
 
   const malformed = $derived(
-    error instanceof MalformedWorkerDiagnosticsError || error instanceof MalformedDeploymentsError,
+    error instanceof MalformedWorkerDiagnosticsError ||
+      error instanceof MalformedDeploymentsError ||
+      error instanceof MalformedTaskLedgerError ||
+      error instanceof MalformedTaskDeliveriesError ||
+      error instanceof MalformedDeadLetterError,
   );
 </script>
 

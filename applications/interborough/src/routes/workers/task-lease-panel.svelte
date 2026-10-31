@@ -117,7 +117,7 @@
   aria-labelledby="task-cancellation-heading"
   data-cancellation={cancellation.status}
 >
-  <div class="weft-workers-panel__title weft-task-cancellation__header">
+  <div class="weft-workers-panel__title weft-task-cancellation__title-row">
     <h3 id="task-cancellation-heading">Cancellation evidence</h3>
     <Badge variant={cancellation.variant}>{cancellation.statusLabel}</Badge>
   </div>
