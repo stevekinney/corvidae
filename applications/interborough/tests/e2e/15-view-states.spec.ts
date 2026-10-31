@@ -10,7 +10,13 @@ import type { Page, Route } from '@playwright/test';
 import { NOT_FOUND_ROUTE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
-import { expect, loggedFailedResponse, test, type PageErrorLog } from './fixtures.ts';
+import {
+  expect,
+  holdBureauFeed,
+  loggedFailedResponse,
+  test,
+  type PageErrorLog,
+} from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
 
@@ -146,7 +152,9 @@ async function drive(
   if (outcome === 'ready') return;
   const probe = PROBES[view];
   if (outcome === 'error' || outcome === 'forbidden') {
-    // The test answers the probe with an error status, and Chromium logs every such response.
+    // The test answers the probe with an error status, and Chromium logs every such response. The
+    // feed's catch-up would ask the probe again if it landed during the first read, so it is held.
+    await holdBureauFeed(page);
     const status = outcome === 'error' ? 500 : 403;
     pageErrors.expect({
       pattern: loggedFailedResponse(status, probe.url),

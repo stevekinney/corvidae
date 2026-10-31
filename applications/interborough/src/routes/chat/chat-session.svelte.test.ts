@@ -554,6 +554,80 @@ const second =
   () =>
     sse([{ ...started, runId: 'run-2' }, ...events, { ...finished, runId: 'run-2' }]);
 
+/**
+ * The thread as the mount restores it while its run is parked on {@link approval}: the call, and
+ * its result waiting on a person, in the shape the Bureau writes. The action must be complete, or
+ * the result is read back as a plain success and nothing is pending.
+ */
+const parkedThread = {
+  type: 'MESSAGES_SNAPSHOT',
+  messages: [
+    { id: 'user-1', role: 'user', content: 'Refund it' },
+    {
+      id: 'step-1',
+      role: 'assistant',
+      toolCalls: [
+        {
+          id: 'call-refund',
+          type: 'function',
+          function: { name: 'issue-refund', arguments: '{}' },
+        },
+      ],
+    },
+    {
+      id: 'result-1',
+      role: 'tool',
+      toolCallId: 'call-refund',
+      content: 'requires approval',
+      metadata: {
+        'conversationalist:toolResult': {
+          outcome: 'action_required',
+          action: {
+            type: 'approval',
+            message: 'Refund order-1001?',
+            risk: 'high',
+            operation: { argsPreview: {}, kind: 'other' },
+            policyVersion: 'policy:1',
+            idempotencyKey: 'approval:refund-1001',
+          },
+          content: 'requires approval',
+        },
+      },
+    },
+  ],
+};
+/**
+ * A run parked on `interrupts`, as an attach reads it: the thread with the approval pending, the
+ * call it waits on streamed again for a client that did not watch it, then the interrupts.
+ */
+const parkedWithThread =
+  (...interrupts: unknown[]) =>
+  () =>
+    sse([
+      started,
+      parkedThread,
+      ...toolCall,
+      { ...finished, outcome: { type: 'interrupt', interrupts } },
+    ]);
+
+describe('an attach to a run parked on an approval', () => {
+  test('shows the approval, and deciding it sends the decision as the run’s resume', async () => {
+    const mounted = mountOver({ start: [second()], attach: [parkedWithThread(approval)] });
+    const session = open(mounted.fetch);
+    await session.attach();
+    await until(() => !session.streaming && session.approvals.length === 1);
+
+    await session.controller.adapter.resolveToolApproval?.('call-refund', {
+      decision: 'approve',
+      remember: false,
+    });
+
+    expect(mounted.bodies).toHaveLength(1);
+    expect(mounted.bodies[0]?.resume?.map((entry) => entry.interruptId)).toEqual([approval.id]);
+    expect(session.failure).toBeUndefined();
+  });
+});
+
 describe('a run that waits on several questions', () => {
   function sessionWaitingOn(...interrupts: unknown[]) {
     const mounted = mountOver({
@@ -688,6 +762,20 @@ describe('a resume the mount refused', () => {
     await session.adapter.sendMessage({ role: 'user', content: 'Go on' }, []);
 
     // The decision is sent again first, and the message after it as a start of its own.
+    expect(mounted.bodies).toHaveLength(4);
+    expect(mounted.bodies[2]?.resume).toEqual(mounted.bodies[1]?.resume);
+    expect(mounted.bodies[3]?.resume).toBeUndefined();
+    expect(session.failure).toBeUndefined();
+  });
+
+  test('for a busy thread whose reread still shows the approval pending, the next send applies the decision', async () => {
+    const { mounted, session } = await approvedWith(
+      [refusalOf('THREAD_BUSY', 'Thread has a run in progress'), second(), second()],
+      [parkedWithThread(approval)],
+    );
+
+    await session.adapter.sendMessage({ role: 'user', content: 'Go on' }, []);
+
     expect(mounted.bodies).toHaveLength(4);
     expect(mounted.bodies[2]?.resume).toEqual(mounted.bodies[1]?.resume);
     expect(mounted.bodies[3]?.resume).toBeUndefined();

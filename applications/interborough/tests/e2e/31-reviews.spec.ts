@@ -11,7 +11,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, threadMessages } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -345,6 +345,8 @@ test.describe('a Bureau that fails', () => {
       reason: 'the test answers the Bureau’s review list with a 500',
       count: 3,
     });
+    // The feed's catch-up would ask the lists again while the page is open, so it is held.
+    await holdBureauFeed(page);
     await page.route('**/bureau/jsonrpc', async (route) => {
       if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
         await route.fulfill({ status: 500, json: { error: 'The Bureau broke.' } });
