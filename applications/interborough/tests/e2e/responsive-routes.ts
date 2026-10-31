@@ -116,9 +116,6 @@ export interface PendingRoute {
  * its owner). Do not add an entry to ship a regression.
  */
 export const pending: readonly PendingRoute[] = [
-  // The 2,000-character key is cut off with no way to reach it at 375 (`.cinder-table` clips), and
-  // scrolls 16,000px inside a 488 or 684px region at 768 and 1280. The storage explorer is rebuilt there.
-  { pattern: '/health/storage', issue: 'COR-1851', failsAt: [375, 768, 1280] },
   // The Discovery tab's outlet scrolls 8px at 375 and its raw-toggle ends at 383px, and the
   // Operations and Discovery tables are cut off. The API reference is rebuilt there.
   { pattern: '/settings/api-reference', issue: 'COR-1847', failsAt: [375] },

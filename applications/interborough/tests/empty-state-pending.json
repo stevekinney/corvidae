@@ -1,10 +1,6 @@
 {
   "entries": [
     {
-      "file": "src/routes/audit/index.svelte",
-      "issue": "COR-1851"
-    },
-    {
       "file": "src/routes/dashboard/index.svelte",
       "issue": "COR-1850"
     },
@@ -27,18 +23,6 @@
     {
       "file": "src/routes/schedules/schedule-list.svelte",
       "issue": "COR-1859"
-    },
-    {
-      "file": "src/routes/storage/get-panel.svelte",
-      "issue": "COR-1851"
-    },
-    {
-      "file": "src/routes/storage/index.svelte",
-      "issue": "COR-1851"
-    },
-    {
-      "file": "src/routes/storage/scan-panel.svelte",
-      "issue": "COR-1851"
     },
     {
       "file": "src/routes/system/alerts-tab.svelte",

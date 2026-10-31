@@ -148,7 +148,7 @@ describe('Dashboard', () => {
     expect(links).toEqual([
       ['Workers', '/health/workers'],
       ['Storage', '/health/storage'],
-      ['Audit', '/health/audit'],
+      ['Audit log', '/health/audit'],
     ]);
     const audit = sections.querySelector('a[href="/health/audit"]') as HTMLAnchorElement;
     expect(await fireEvent.click(audit, { button: 0 })).toBe(false);

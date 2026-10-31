@@ -8,6 +8,7 @@ import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { Component } from 'svelte';
 
+import { STORAGE_COPY } from '../app/copy.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../lib/scopes.svelte.ts';
 import DashboardView from './dashboard-view.svelte';
@@ -122,7 +123,7 @@ describe('a view rendered outside the application shell', () => {
     });
 
     expect(await findByText('Storage access requires storage:admin')).not.toBeNull();
-    expect(queryByRole('tablist')).toBeNull();
+    expect(queryByRole('search', { name: STORAGE_COPY.filtersLabel })).toBeNull();
   });
 
   test('a rejected credential leaves the view rendered with every scope locked', async () => {
@@ -132,7 +133,7 @@ describe('a view rendered outside the application shell', () => {
     });
 
     expect(await findByText('Storage access requires storage:admin')).not.toBeNull();
-    expect(queryByRole('tablist')).toBeNull();
+    expect(queryByRole('search', { name: STORAGE_COPY.filtersLabel })).toBeNull();
   });
 
   test('a failed principal probe falls open to an anonymous principal, as the application shell does', async () => {
@@ -142,14 +143,14 @@ describe('a view rendered outside the application shell', () => {
     });
 
     expect(await findByText('Storage access requires storage:admin')).not.toBeNull();
-    expect(queryByRole('tablist')).toBeNull();
+    expect(queryByRole('search', { name: STORAGE_COPY.filtersLabel })).toBeNull();
   });
 
   test('a view granted the scope renders the surface the scope unlocks', async () => {
     server = stubServer(['storage:admin']);
     const { findByRole } = render(HostPage, { props: { client: client(), view: StorageView } });
 
-    expect(await findByRole('tab', { name: 'KV browser' })).not.toBeNull();
+    expect(await findByRole('search', { name: STORAGE_COPY.filtersLabel })).not.toBeNull();
   });
 });
 
@@ -160,7 +161,7 @@ describe('a view rendered below the providers the application shell supplies', (
       props: { client: client(), view: StorageView, scopes: ['storage:admin'] },
     });
 
-    expect(await findByRole('tab', { name: 'KV browser' })).not.toBeNull();
+    expect(await findByRole('search', { name: STORAGE_COPY.filtersLabel })).not.toBeNull();
     expect(server.requests.map(({ operation }) => operation)).not.toContain(
       'weft.system.principal',
     );
