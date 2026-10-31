@@ -1,13 +1,14 @@
 /**
- * `/agents/:agent/memories`: what an agent remembers of the caller's chats, a search over it, one
- * memory's lineage, and forgetting and correcting.
+ * `/agents/:agent/memories`: what an agent remembers of the caller's chats as a list with the open
+ * memory beside it, a search that runs as you type, a kind filter, one memory's facts, forgetting,
+ * correcting in place, and the governance actions (share, legal hold, quarantine, export).
  *
  * Every case seeds its memory with a scripted chat turn. The host has one memory writer, the
  * persist hook of a run, so a memory comes from an agent answering in a chat; the `echo-text` agent
  * (`text-echo-agent.ts`) answers with what it was sent, so a case that sends a unique label stores a
  * memory that is its own, whatever the seeded agents' fixed replies have stored in the same run.
  */
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import { MEMORY_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
@@ -24,23 +25,22 @@ const uniqueLabel = (prefix: string) => `${prefix} ${crypto.randomUUID().slice(0
 const frame = (page: Page) => page.locator('[data-view="agents"]');
 const rowOf = (page: Page, text: string) => page.locator('[data-memory]', { hasText: text });
 const detailOf = (page: Page) => page.getByRole('region', { name: MEMORY_COPY.detail.heading });
+const searchOf = (page: Page) => page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel });
 
 /** Opens the details of the memory whose text is `text`, by clicking its row. */
 async function openDetails(page: Page, text: string) {
-  await rowOf(page, text).locator('.weft-memory__content').click();
-  await expect(detailOf(page)).toBeVisible();
+  await rowOf(page, text).locator('.ib-memory__content').click();
+  await expect(detailOf(page).locator('blockquote', { hasText: text })).toBeVisible();
 }
 
-/** A row's Forget or Correct: named for the memory (`Forget: <text>`), so a memory whose own words say "forget" is not mistaken for it. */
-const rowAction = (row: Locator, action: string) =>
-  row.getByRole('button', { name: new RegExp(`^${action}:`) });
-
-/** Forgets the memory whose text is `text` from its row, and confirms the question. */
-async function forgetFromRow(page: Page, text: string) {
-  const row = rowOf(page, text);
-  await rowAction(row, MEMORY_COPY.forget.action).click();
+/** Forgets the memory whose text is `text` from its details, and confirms the question. */
+async function forgetFromDetails(page: Page, text: string) {
+  await openDetails(page, text);
+  await detailOf(page).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }).click();
   const dialog = page.getByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
   await expect(dialog).toBeVisible();
+  // The question names what goes.
+  await expect(dialog).toContainText(text.slice(0, 20));
   await dialog.getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }).click();
 }
 
@@ -67,8 +67,7 @@ test.describe('the memory page', () => {
 
     // A search lists the memories that match, best first, says how relevant each is and how many
     // of the agent's memories match, and marks the words it was given.
-    await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(label);
-    await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
+    await searchOf(page).fill(label);
     // The memory with the unique label matches, and shows its relevance; which row ranks first
     // is the Bureau's business and is not asserted.
     await expect(rowOf(page, label)).toHaveCount(1);
@@ -88,9 +87,7 @@ test.describe('the memory page', () => {
       MEMORY_COPY.source.conversation,
     );
     await expect(field(MEMORY_COPY.detail.fields.trust)).toHaveText(MEMORY_COPY.trust.untrusted);
-    await expect(field(MEMORY_COPY.detail.fields.memoryClass)).toHaveText(
-      MEMORY_COPY.memoryClass.episodic,
-    );
+    await expect(field(MEMORY_COPY.detail.fields.kind)).toHaveText(MEMORY_COPY.kind.episodic.label);
     await expect(field(MEMORY_COPY.detail.fields.session).getByRole('link')).toHaveAttribute(
       'href',
       `/chats/${threadId}`,
@@ -99,9 +96,10 @@ test.describe('the memory page', () => {
     await expect(field(MEMORY_COPY.detail.fields.run)).not.toHaveText(
       MEMORY_COPY.detail.notRecorded,
     );
-    await expect(field(MEMORY_COPY.detail.fields.legalHold)).toHaveText(
-      MEMORY_COPY.detail.legalHold.unknown,
-    );
+    // Nothing has said whether it is held, so the page does not guess.
+    await expect(
+      detail.locator('dt', { hasText: MEMORY_COPY.detail.fields.legalHold }),
+    ).toHaveCount(0);
   });
 
   test('forgets a memory and no longer lists it', async ({ page, request }) => {
@@ -116,7 +114,7 @@ test.describe('the memory page', () => {
     );
     await page.goto(MEMORY_PATH);
 
-    await forgetFromRow(page, label);
+    await forgetFromDetails(page, label);
 
     await expect(
       page.getByText(MEMORY_COPY.forget.outcome.completed.title, { exact: true }),
@@ -132,10 +130,10 @@ test.describe('the memory page', () => {
     await runToEnd(request, TEXT_ECHO_SOLO_AGENT_NAME, newThreadId('memory-solo'), label);
     await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memories`);
 
-    await forgetFromRow(page, label);
+    await forgetFromDetails(page, label);
 
     // The page says nothing is left, and the receipt is still there to read.
-    await expect(page.getByText(MEMORY_COPY.nothingLeft)).toBeVisible();
+    await expect(page.getByRole('heading', { name: MEMORY_COPY.nothingLeft.title })).toBeVisible();
     await expect(
       page.getByText(MEMORY_COPY.forget.outcome.completed.title, { exact: true }),
     ).toBeVisible();
@@ -145,37 +143,137 @@ test.describe('the memory page', () => {
     await expect(frame(page)).toHaveAttribute('data-state', 'empty');
   });
 
-  test('opens a row on click, shows its actions without hover, and has no Details button', async ({
+  test('opens a row on click, names its kind in plain words, and keeps the engine’s term for the details', async ({
     page,
     request,
   }) => {
     const label = uniqueLabel('Row opens');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-row'), label);
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(MEMORY_PATH);
     const row = rowOf(page, label);
-    const actions = row.locator('.weft-memory__actions');
     await expect(row).toHaveCount(1);
 
-    await expect(page.getByRole('button', { name: /^Details/ })).toHaveCount(0);
-    // Forget and Correct are visible at rest: nothing reveals them on hover or focus.
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await expect(actions).toHaveCSS('opacity', '1');
-    await expect(rowAction(row, MEMORY_COPY.forget.action)).toBeVisible();
-    await expect(rowAction(row, MEMORY_COPY.correct.action)).toBeVisible();
+    // A row has one button: the opener. Correct and Forget are on the open memory.
+    await expect(row.locator('xpath=ancestor::li').getByRole('button')).toHaveCount(1);
+    await expect(row).toContainText(MEMORY_COPY.plainKind.chats);
+    await expect(row).not.toContainText(MEMORY_COPY.kind.episodic.label);
 
-    // The kind reads in plain words, is part of the opener, and says what it means to a screen
-    // reader; a keyboard user who focuses the row sees the same sentence.
-    const opener = row.locator('.cinder-selectable-row__primary');
-    await expect(opener).toContainText(MEMORY_COPY.kind.episodic.label);
-    await expect(opener).toHaveAccessibleDescription(MEMORY_COPY.kind.episodic.description);
-    await opener.focus();
-    await expect(
-      page.getByRole('tooltip', { name: MEMORY_COPY.kind.episodic.description }),
-    ).toBeVisible();
-
-    await row.locator('.weft-memory__content').click();
+    await row.locator('.ib-memory__content').click();
     await expect(detailOf(page)).toBeVisible();
-    await expect(row).toHaveAttribute('data-selected', 'true');
+    await expect(
+      detailOf(page).getByText(MEMORY_COPY.kind.episodic.label, { exact: true }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/[?&]memory=/);
+  });
+
+  test('narrows the list to a kind in plain words, over the memories loaded so far', async ({
+    page,
+    request,
+  }) => {
+    const label = uniqueLabel('Kind filter');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-kind'), label);
+    await page.goto(MEMORY_PATH);
+    await expect(rowOf(page, label)).toHaveCount(1);
+
+    // The agent's chat turns are remembered as what it learned in a chat.
+    await page.getByLabel(MEMORY_COPY.filter.label).selectOption('chats');
+    await expect(rowOf(page, label)).toHaveCount(1);
+    await page.getByLabel(MEMORY_COPY.filter.label).selectOption('you');
+    await expect(rowOf(page, label)).toHaveCount(0);
+  });
+
+  test('places and releases a legal hold, and the fact shows only once it is known', async ({
+    page,
+    request,
+  }) => {
+    const label = uniqueLabel('Hold me');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-hold'), label);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(MEMORY_PATH);
+    await openDetails(page, label);
+    const detail = detailOf(page);
+    const hold = detail.locator('dt', { hasText: MEMORY_COPY.detail.fields.legalHold });
+    await expect(hold).toHaveCount(0);
+
+    await detail.getByRole('button', { name: MEMORY_COPY.govern.hold.place }).click();
+
+    await expect(page.getByText(MEMORY_COPY.govern.hold.outcome.placed.title)).toBeVisible();
+    await expect(hold.locator('xpath=following-sibling::dd[1]')).toHaveText(
+      MEMORY_COPY.detail.legalHold.held,
+    );
+    await detail.getByRole('button', { name: MEMORY_COPY.govern.hold.release }).click();
+    await expect(page.getByText(MEMORY_COPY.govern.hold.outcome.released.title)).toBeVisible();
+    await expect(hold.locator('xpath=following-sibling::dd[1]')).toHaveText(
+      MEMORY_COPY.detail.legalHold.free,
+    );
+  });
+
+  test('shares a memory with another owner and stops sharing', async ({ page, request }) => {
+    const label = uniqueLabel('Share me');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-share'), label);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(MEMORY_PATH);
+    await openDetails(page, label);
+
+    await detailOf(page).getByRole('button', { name: MEMORY_COPY.govern.share.action }).click();
+    const dialog = page.getByRole('dialog', { name: MEMORY_COPY.govern.share.dialog.title });
+    await dialog.getByLabel(MEMORY_COPY.govern.share.dialog.label).fill('another-owner');
+    await dialog.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.submit }).click();
+    await expect(page.getByText(MEMORY_COPY.govern.share.outcome.granted.title)).toBeVisible();
+
+    await detailOf(page).getByRole('button', { name: MEMORY_COPY.govern.share.action }).click();
+    const again = page.getByRole('dialog', { name: MEMORY_COPY.govern.share.dialog.title });
+    await again.getByLabel(MEMORY_COPY.govern.share.dialog.label).fill('another-owner');
+    await again.getByRole('button', { name: MEMORY_COPY.govern.share.dialog.revoke }).click();
+    await expect(page.getByText(MEMORY_COPY.govern.share.outcome.revoked.title)).toBeVisible();
+  });
+
+  test('quarantines a memory after saying it cannot be undone, and no longer lists it', async ({
+    page,
+    request,
+  }) => {
+    const label = uniqueLabel('Quarantine me');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-quarantine'), label);
+    await runToEnd(
+      request,
+      TEXT_ECHO_AGENT_NAME,
+      newThreadId('memory-quarantine-keep'),
+      uniqueLabel('Keep me too'),
+    );
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(MEMORY_PATH);
+    await openDetails(page, label);
+
+    await detailOf(page)
+      .getByRole('button', { name: MEMORY_COPY.govern.quarantine.action })
+      .click();
+    const dialog = page.getByRole('dialog', { name: MEMORY_COPY.govern.quarantine.dialog.title });
+    await expect(dialog).toContainText('This cannot be undone.');
+    await expect(dialog).toContainText(label.slice(0, 20));
+    await dialog.getByLabel(MEMORY_COPY.govern.quarantine.dialog.reasonLabel).fill('It is wrong.');
+    await dialog
+      .getByRole('button', { name: MEMORY_COPY.govern.quarantine.dialog.confirm })
+      .click();
+
+    await expect(page.getByText(MEMORY_COPY.govern.quarantine.outcome.done.title)).toBeVisible();
+    await expect(rowOf(page, label)).toHaveCount(0);
+  });
+
+  test('exports the agent’s memories to a file', async ({ page, request }) => {
+    const label = uniqueLabel('Export me');
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-export'), label);
+    await page.goto(MEMORY_PATH);
+    await expect(rowOf(page, label)).toHaveCount(1);
+
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: MEMORY_COPY.govern.export.action, exact: true }).click();
+
+    const saved = await download;
+    expect(saved.suggestedFilename()).toBe(
+      MEMORY_COPY.govern.export.fileName(TEXT_ECHO_AGENT_NAME),
+    );
+    await expect(page.getByText(MEMORY_COPY.govern.export.outcome.title)).toBeVisible();
   });
 
   test('is empty for an agent that has remembered nothing', async ({ page }) => {
@@ -224,8 +322,7 @@ for (const width of WIDTHS) {
       await page.goto(MEMORY_PATH);
       await expect(rowOf(page, label)).toHaveCount(1);
 
-      await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(label);
-      await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
+      await searchOf(page).fill(label);
 
       await expect(page.getByTestId('memory-match-count')).toContainText('match');
       await expect(page.locator('mark').first()).toBeVisible();
@@ -233,11 +330,10 @@ for (const width of WIDTHS) {
 
       // A query that shares nothing with any memory matches none, and says so with a way back.
       const nonsense = `qzxv${crypto.randomUUID().replaceAll('-', '')}`;
-      await page.getByRole('searchbox', { name: MEMORY_COPY.searchLabel }).fill(nonsense);
-      await page.getByRole('button', { name: MEMORY_COPY.searchAction, exact: true }).click();
-      await expect(page.getByTestId('memory-match-count')).toHaveText(
-        MEMORY_COPY.noMatch(nonsense),
-      );
+      await searchOf(page).fill(nonsense);
+      await expect(
+        page.getByRole('heading', { name: MEMORY_COPY.noMatch.title(nonsense) }),
+      ).toBeVisible();
       await expect(page.locator('[data-memory]')).toHaveCount(0);
       await checkA11y(`an empty memory search at ${width}px`);
       await page.getByRole('button', { name: MEMORY_COPY.clearMatch }).click();
@@ -259,21 +355,24 @@ for (const width of WIDTHS) {
 
       await openDetails(page, original);
       await checkA11y(`a memory's details at ${width}px`);
-      // A correction starts from the row itself, with no need to open the details first.
-      const row = rowOf(page, original);
-      await checkA11y(`a memory's row with its actions at ${width}px`);
-      await rowAction(row, MEMORY_COPY.correct.action).click();
-      const dialog = page.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByLabel(MEMORY_COPY.correct.dialog.label)).toHaveValue(original);
-      await checkA11y(`the correction dialog at ${width}px`);
-      await dialog.getByLabel(MEMORY_COPY.correct.dialog.label).fill(correction);
-      await dialog.getByRole('button', { name: MEMORY_COPY.correct.dialog.submit }).click();
+      // Correct edits the words in place, with no dialog.
+      await detailOf(page).getByRole('button', { name: MEMORY_COPY.correct.iconLabel }).click();
+      const field = detailOf(page).getByLabel(MEMORY_COPY.correct.edit.label);
+      await expect(field).toHaveValue(original);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await checkA11y(`a memory being corrected at ${width}px`);
+      await field.fill(correction);
+      await detailOf(page).getByRole('button', { name: MEMORY_COPY.correct.edit.submit }).click();
 
       // The correction is listed and the original is not, and the page says it was replaced.
       await expect(page.getByText(MEMORY_COPY.correct.saved.title, { exact: true })).toBeVisible();
-      await expect(rowOf(page, correction)).toHaveCount(1);
-      await expect(rowOf(page, original)).toHaveCount(0);
+      // Below the list's breakpoint the open memory replaces the list, so the rows are only there
+      // beside it.
+      const layout = await page.locator('[data-cinder-layout]').getAttribute('data-cinder-layout');
+      if (layout === 'split') {
+        await expect(rowOf(page, correction)).toHaveCount(1);
+        await expect(rowOf(page, original)).toHaveCount(0);
+      }
       // The page opened the correction, whose lineage links back to the memory it replaced.
       const opened = detailOf(page);
       await expect(opened.locator('blockquote', { hasText: correction })).toBeVisible();
@@ -287,6 +386,7 @@ for (const width of WIDTHS) {
         .locator('xpath=following-sibling::dd[1]')
         .getByRole('button', { name: MEMORY_COPY.detail.openMemory })
         .click();
+      // The original was kept, and is the correction's history.
       await expect(opened.locator('blockquote', { hasText: original })).toBeVisible();
       await checkA11y(`a corrected memory's original at ${width}px`);
     });

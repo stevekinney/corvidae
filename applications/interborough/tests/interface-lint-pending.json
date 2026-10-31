@@ -8,42 +8,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/routes/agents/agent-memory.svelte",
-      "subject": ".weft-memory__header",
-      "issue": "COR-1854"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/routes/agents/agent-memory.svelte",
-      "subject": ".cinder-search-field",
-      "issue": "COR-1854"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/agents/memory-detail.svelte",
-      "subject": ".weft-memory-detail__header",
-      "issue": "COR-1854"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/routes/agents/memory-row.svelte",
-      "subject": ".cinder-selectable-row--has-trailing-actions",
-      "issue": "COR-1854"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/routes/agents/memory-row.svelte",
-      "subject": ".cinder-selectable-row__primary",
-      "issue": "COR-1854"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/routes/agents/memory-row.svelte",
-      "subject": ".cinder-selectable-row__trailing-actions",
-      "issue": "COR-1854"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/routes/schedules/schedule-form-drawer.svelte",
       "subject": ".weft-schedule-drawer__header",
       "issue": "COR-1859"

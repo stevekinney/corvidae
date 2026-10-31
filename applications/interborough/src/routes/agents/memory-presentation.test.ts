@@ -5,11 +5,15 @@ import type { Memory, MemoryLineage } from '../../lib/memory-client.ts';
 import {
   excerpt,
   formatMemoryTime,
+  groupOf,
   highlightSegments,
   kindOf,
   labelFor,
-  lineageFields,
+  lineageGroups,
+  matchesKind,
   matchesQuery,
+  plainKindOf,
+  refusalWords,
 } from './memory-presentation.ts';
 
 const MEMORY: Memory = {
@@ -38,43 +42,43 @@ describe('formatMemoryTime', () => {
   });
 });
 
-describe('lineageFields', () => {
-  const hold = MEMORY_COPY.detail.legalHold.unknown;
+describe('lineageGroups', () => {
   const none: MemoryLineage = { runId: null, corrects: null, correctedBy: null };
-  const byId = (fields: ReturnType<typeof lineageFields>) =>
-    Object.fromEntries(fields.map((field) => [field.id, field]));
+  const all = (groups: ReturnType<typeof lineageGroups>) => [
+    ...groups.origin,
+    ...groups.standing,
+    ...groups.history,
+  ];
+  const byId = (groups: ReturnType<typeof lineageGroups>) =>
+    Object.fromEntries(all(groups).map((field) => [field.id, field]));
 
-  test('lists the nine fields in the order the page shows them', () => {
-    const fields = lineageFields(MEMORY, { runId: 'run-7', corrects: 'a', correctedBy: 'b' }, hold);
-    expect(fields.map((field) => field.id)).toEqual([
-      'source',
-      'trust',
-      'class',
-      'created',
-      'session',
-      'run',
-      'corrects',
-      'corrected-by',
-      'legal-hold',
-    ]);
-    expect(fields.map((field) => field.term)).toEqual([
+  test('puts the facts in three columns, in the order the page shows them', () => {
+    const groups = lineageGroups(
+      MEMORY,
+      { runId: 'run-7', corrects: 'a', correctedBy: 'b' },
+      undefined,
+    );
+    expect(groups.origin.map((field) => field.id)).toEqual(['source', 'session', 'run']);
+    expect(groups.standing.map((field) => field.id)).toEqual(['trust', 'kind', 'created']);
+    expect(groups.history.map((field) => field.id)).toEqual(['corrects', 'corrected-by']);
+    expect(all(groups).map((field) => field.term)).toEqual([
       MEMORY_COPY.detail.fields.source,
-      MEMORY_COPY.detail.fields.trust,
-      MEMORY_COPY.detail.fields.memoryClass,
-      MEMORY_COPY.detail.fields.created,
       MEMORY_COPY.detail.fields.session,
       MEMORY_COPY.detail.fields.run,
+      MEMORY_COPY.detail.fields.trust,
+      MEMORY_COPY.detail.fields.kind,
+      MEMORY_COPY.detail.fields.created,
       MEMORY_COPY.detail.fields.corrects,
       MEMORY_COPY.detail.fields.correctedBy,
-      MEMORY_COPY.detail.fields.legalHold,
     ]);
   });
 
-  test('takes the source, trust, class, time and chat from the memory, and links the chat', () => {
-    const fields = byId(lineageFields(MEMORY, none, hold));
+  test('takes the source, trust, kind, time and chat from the memory, and links the chat', () => {
+    const fields = byId(lineageGroups(MEMORY, none, undefined));
     expect(fields['source']?.value).toBe(MEMORY_COPY.source.conversation);
     expect(fields['trust']?.value).toBe(MEMORY_COPY.trust.untrusted);
-    expect(fields['class']?.value).toBe(MEMORY_COPY.memoryClass.episodic);
+    // The engine's own term is for here: the list names a memory in plain words.
+    expect(fields['kind']?.value).toBe(MEMORY_COPY.kind.episodic.label);
     expect(fields['created']?.value).toBe(formatMemoryTime(MEMORY.createdAt));
     expect(fields['session']).toMatchObject({
       value: MEMORY_COPY.detail.openChat,
@@ -84,10 +88,10 @@ describe('lineageFields', () => {
 
   test('takes the run and the two corrections from the ledger, and links each correction', () => {
     const fields = byId(
-      lineageFields(
+      lineageGroups(
         MEMORY,
         { runId: 'run-7', corrects: 'memory-0', correctedBy: 'memory-2' },
-        hold,
+        undefined,
       ),
     );
     expect(fields['run']).toEqual({
@@ -99,17 +103,84 @@ describe('lineageFields', () => {
     expect(fields['corrected-by']?.link).toEqual({ kind: 'memory', id: 'memory-2' });
   });
 
-  test('says a field was not recorded, with no link, when the Bureau has nothing for it', () => {
-    const fields = byId(lineageFields({ ...MEMORY, sessionId: null }, none, hold));
-    for (const id of ['session', 'run', 'corrects', 'corrected-by']) {
+  test('says an origin was not recorded and a history is empty, with no link', () => {
+    const fields = byId(lineageGroups({ ...MEMORY, sessionId: null }, none, undefined));
+    for (const id of ['session', 'run']) {
       expect(fields[id]?.value).toBe(MEMORY_COPY.detail.notRecorded);
+      expect(fields[id]?.link).toBeUndefined();
+    }
+    for (const id of ['corrects', 'corrected-by']) {
+      expect(fields[id]?.value).toBe(MEMORY_COPY.detail.noHistory);
       expect(fields[id]?.link).toBeUndefined();
     }
   });
 
-  test('carries the words for what is known of a legal hold', () => {
-    const held = MEMORY_COPY.detail.legalHold.held;
-    expect(byId(lineageFields(MEMORY, none, held))['legal-hold']?.value).toBe(held);
+  test('shows a legal hold only once it is known', () => {
+    expect(byId(lineageGroups(MEMORY, none, undefined))['legal-hold']).toBeUndefined();
+    expect(byId(lineageGroups(MEMORY, none, 'held'))['legal-hold']?.value).toBe(
+      MEMORY_COPY.detail.legalHold.held,
+    );
+    expect(byId(lineageGroups(MEMORY, none, 'free'))['legal-hold']?.value).toBe(
+      MEMORY_COPY.detail.legalHold.free,
+    );
+  });
+});
+
+describe('the kind filter', () => {
+  const kinds = [
+    [{ memoryClass: 'semantic', source: 'conversation' }, 'facts'],
+    [{ memoryClass: 'identity', source: 'conversation' }, 'facts'],
+    [{ memoryClass: 'resource', source: 'conversation' }, 'facts'],
+    [{ memoryClass: 'episodic', source: 'conversation' }, 'chats'],
+    [{ memoryClass: 'working', source: 'conversation' }, 'chats'],
+    [{ memoryClass: 'procedural', source: 'conversation' }, 'howTo'],
+    // A memory a person wrote is theirs whatever its class.
+    [{ memoryClass: 'semantic', source: 'operator' }, 'you'],
+  ] as const;
+
+  test('groups each class in plain words, and a person’s own memory apart', () => {
+    for (const [memory, group] of kinds) expect(groupOf(memory)).toBe(group);
+    expect(groupOf({ memoryClass: 'dreamt', source: 'conversation' })).toBeUndefined();
+  });
+
+  test('shows every memory under all, and a group’s own under its name', () => {
+    for (const [memory, group] of kinds) {
+      expect(matchesKind(memory, 'all')).toBe(true);
+      expect(matchesKind(memory, group)).toBe(true);
+      expect(matchesKind(memory, group === 'facts' ? 'you' : 'facts')).toBe(false);
+    }
+    // A class the page has no group for is listed under All only.
+    const dreamt = { memoryClass: 'dreamt', source: 'conversation' };
+    expect(matchesKind(dreamt, 'all')).toBe(true);
+    expect(matchesKind(dreamt, 'facts')).toBe(false);
+  });
+
+  test('names a row in plain words, and shows a class it has no group for as written', () => {
+    expect(plainKindOf({ memoryClass: 'episodic', source: 'conversation' })).toBe('From chats');
+    expect(plainKindOf({ memoryClass: 'procedural', source: 'conversation' })).toBe('How-to');
+    expect(plainKindOf({ memoryClass: 'semantic', source: 'conversation' })).toBe('Facts');
+    expect(plainKindOf({ memoryClass: 'semantic', source: 'operator' })).toBe('From you');
+    expect(plainKindOf({ memoryClass: 'dreamt', source: 'conversation' })).toBe('dreamt');
+  });
+});
+
+describe('refusalWords', () => {
+  test('words each refusal the page tells apart, and shows the server’s own words for any other', () => {
+    for (const kind of [
+      'superseded',
+      'successor-not-admitted',
+      'forbidden',
+      'not-found',
+    ] as const) {
+      expect(refusalWords({ kind })).toEqual(MEMORY_COPY.correct.refusal[kind]);
+    }
+    expect(refusalWords({ kind: 'invalid-grantee' })).toEqual(
+      MEMORY_COPY.govern.refusal['invalid-grantee'],
+    );
+    expect(refusalWords({ kind: 'other', message: 'The disk is full.' })).toEqual({
+      title: MEMORY_COPY.correct.refusal.other.title,
+      description: 'The disk is full.',
+    });
   });
 });
 

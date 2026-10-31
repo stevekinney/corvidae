@@ -1,107 +1,86 @@
 <script lang="ts">
   /**
-   * One memory in the list: its text, how long ago it was learned, and what kind of memory it is.
-   * The whole row opens the memory's details, and its time and kind are part of that opener, so a
-   * screen reader hears them with the text. Forget and Correct sit beside it and are always
-   * visible, never revealed only by hovering the row, so neither is behind a second click. The kind carries a sentence in plain words, for a person who did not choose it:
-   * a tooltip anchored to the opener, so a keyboard user who focuses the row sees it, and the
-   * opener's `aria-describedby` for a screen reader.
+   * One memory in the list: its text, how long ago it was learned, and what kind of memory it is,
+   * in plain words (Facts, From chats, How-to, From you). The whole row opens the memory's
+   * details, and Correct and Forget live there. A memory that is open but not on the pages read so
+   * far (one a correction replaced, or one an address names) has no `memory` yet, so the row reads
+   * it the way the details do and shares the answer.
    */
-  import { Badge, Button, RelativeTime, SelectableRow, Tooltip } from '@lostgradient/cinder';
+  import { Badge, RelativeTime, SelectableRow, Skeleton } from '@lostgradient/cinder';
+  import { createQuery } from '@tanstack/svelte-query';
 
   import { MEMORY_COPY } from '../../app/copy.ts';
-  import type { Memory } from '../../lib/memory-client.ts';
-  import { excerpt, formatMemoryTime, highlightSegments, kindOf } from './memory-presentation.ts';
+  import { getMemory, type Memory } from '../../lib/memory-client.ts';
+  import { queryKeys } from '../../lib/query.ts';
+  import { formatMemoryTime, highlightSegments, plainKindOf } from './memory-presentation.ts';
 
   type Props = {
-    memory: Memory;
+    agentId: string;
+    id: string;
+    /** The memory, when the pages read so far hold it; otherwise the row reads it. */
+    memory: Memory | undefined;
     /** What the list was searched for, to mark in the text; empty when it is not a search. */
     query: string;
     /** The search's relevance for this memory, or `null` when the list is not a search. */
     score: number | null;
+    /** True for the open memory the list or search does not hold, which leads the list. */
+    pinned?: boolean;
     selected: boolean;
-    /** True while a forget is being saved: it is asked once, so the action waits for it. */
-    forgetPending: boolean;
-    onOpen: (id: string) => void;
-    onForget: (id: string) => void;
-    onCorrect: (memory: Memory) => void;
+    onOpen: () => void;
   };
 
-  let { memory, query, score, selected, forgetPending, onOpen, onForget, onCorrect }: Props =
-    $props();
+  let { agentId, id, memory, query, score, pinned = false, selected, onOpen }: Props = $props();
 
-  const kind = $derived(kindOf(memory));
-  const segments = $derived(highlightSegments(memory.content, query));
-  const name = $derived(excerpt(memory.content));
-  const when = $derived(formatMemoryTime(memory.createdAt));
-  /** The row's full text, which says what its actions are for when two excerpts are alike. */
-  const textId = $props.id();
-  let row = $state<HTMLElement | null>(null);
-  /** The row's opener, which the row component renders: the kind's tooltip is anchored to it. */
-  let opener = $state<HTMLElement | null>(null);
+  const read = createQuery(
+    () => ({
+      queryKey: queryKeys.memory.detail(agentId, id),
+      queryFn: ({ signal }) => getMemory(agentId, id, { signal }),
+      enabled: memory === undefined,
+      retry: false,
+    }),
+    undefined,
+  );
 
-  $effect(() => {
-    opener = row?.querySelector<HTMLElement>('.cinder-selectable-row__primary') ?? null;
-  });
+  const shown = $derived(memory ?? read.data?.memory);
+  const segments = $derived(highlightSegments(shown?.content ?? '', query));
 </script>
 
-<li class="weft-memory__row" data-memory={memory.id} data-selected={selected} bind:this={row}>
-  <SelectableRow
-    density="condensed"
-    {selected}
-    selectedState="current"
-    onclick={() => onOpen(memory.id)}
-  >
-    {#snippet title()}
-      <span class="weft-memory__content" id={textId}
-        >{#each segments as segment, index (index)}{#if segment.match}<mark
-              class="weft-memory__match">{segment.text}</mark
+<SelectableRow {selected} selectedState="current" onclick={onOpen} data-memory={id}>
+  {#snippet title()}
+    {#if shown !== undefined}
+      <span class="ib-memory__content"
+        >{#each segments as segment, index (index)}{#if segment.match}<mark class="ib-memory__match"
+              >{segment.text}</mark
             >{:else}{segment.text}{/if}{/each}</span
       >
-    {/snippet}
-    {#snippet meta()}
-      <span class="weft-memory__facts">
+    {:else if read.isError}
+      <span class="ib-memory__content">{MEMORY_COPY.detail.failed}</span>
+    {:else}
+      <Skeleton height="1rem" width="70%" />
+    {/if}
+  {/snippet}
+  {#snippet meta()}
+    {#if shown !== undefined}
+      <span class="ib-memory__facts">
+        {#if pinned}
+          <span data-pinned>{MEMORY_COPY.pinnedNote}</span>
+        {/if}
         {#if score !== null}
           <span>{MEMORY_COPY.relevance}: {score.toFixed(2)}</span>
         {/if}
-        <RelativeTime class="weft-memory__time" date={memory.createdAt} title={when} />
-        <span class="weft-memory__kind">
-          <Badge variant="neutral" size="sm">{kind.label}</Badge>
-        </span>
+        <RelativeTime
+          class="ib-memory__time"
+          date={shown.createdAt}
+          title={formatMemoryTime(shown.createdAt)}
+        />
+        <Badge variant="neutral" size="sm">{plainKindOf(shown)}</Badge>
       </span>
-    {/snippet}
-    {#snippet trailingActions()}
-      <span class="weft-memory__actions">
-        <Button
-          data-changes
-          variant="ghost"
-          size="sm"
-          aria-label={MEMORY_COPY.rowAction.correct(name, when)}
-          aria-describedby={textId}
-          onclick={() => onCorrect(memory)}>{MEMORY_COPY.correct.action}</Button
-        >
-        <Button
-          data-changes
-          variant="ghost"
-          size="sm"
-          disabled={forgetPending}
-          aria-label={MEMORY_COPY.rowAction.forget(name, when)}
-          aria-describedby={textId}
-          onclick={() => onForget(memory.id)}>{MEMORY_COPY.forget.action}</Button
-        >
-      </span>
-    {/snippet}
-  </SelectableRow>
-  <Tooltip text={kind.description} triggerRef={opener} />
-</li>
+    {/if}
+  {/snippet}
+</SelectableRow>
 
 <style>
-  .weft-memory__row {
-    display: block;
-    list-style: none;
-  }
-
-  .weft-memory__content {
+  .ib-memory__content {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
@@ -111,43 +90,16 @@
     overflow-wrap: anywhere;
   }
 
-  .weft-memory__match {
+  .ib-memory__match {
     background: var(--cinder-status-warning-background);
     color: var(--cinder-status-warning-text);
     border-radius: var(--cinder-radius-sm);
   }
 
-  .weft-memory__facts {
+  .ib-memory__facts {
     display: inline-flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-1) var(--cinder-space-3);
-    white-space: nowrap;
-  }
-
-  .weft-memory__kind {
-    display: inline-flex;
-  }
-
-  .weft-memory__actions {
-    display: inline-flex;
-    gap: var(--cinder-space-1);
-  }
-
-  /* The actions sit beside the text on a wide screen and under it on a narrow one. */
-  @media (max-width: 40rem) {
-    .weft-memory__row :global(.cinder-selectable-row--has-trailing-actions) {
-      grid-template-columns: minmax(0, 1fr);
-      row-gap: 0;
-    }
-
-    .weft-memory__row :global(.cinder-selectable-row__primary) {
-      padding-block-end: 0;
-    }
-
-    .weft-memory__row :global(.cinder-selectable-row__trailing-actions) {
-      justify-content: flex-end;
-      padding-block-end: var(--cinder-space-2);
-    }
   }
 </style>

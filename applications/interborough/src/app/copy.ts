@@ -1921,25 +1921,23 @@ export type MemoryDeletionState = 'completed' | 'pending' | 'exempt' | 'failed' 
 export const MEMORY_COPY = {
   /** The link on an agent's page that opens its memory. */
   link: 'Memory',
-  heading: 'Memory',
-  backToAgent: (name: string): string => `Back to ${name}`,
+  heading: 'Memories',
   listLabel: 'What this agent remembers',
   searchLabel: 'Search this agent’s memory',
   searchPlaceholder: 'Search memory…',
-  searchAction: 'Search',
   clearSearch: 'Clear search',
   loadMore: 'Load more',
   loading: 'Loading memories',
-  /** Shown when forgetting leaves the agent with nothing, while the receipt is still on the screen. */
-  nothingLeft: 'This agent remembers nothing now.',
   listFailed: 'The memories could not be loaded.',
+  /** Under an open memory the list or search does not hold, which the list leads with. */
+  pinnedNote: 'Open now, not in this list',
   noContent: 'This memory has no text.',
   relevance: 'Relevance',
   /** How many memories the agent has; `more` is true when the list has pages left to load. */
   count: (shown: number, more: boolean): string =>
     `${shown}${more ? '+' : ''} ${shown === 1 && !more ? 'memory' : 'memories'}`,
   /**
-   * What a search found. The Bureau ranks every memory the agent has and has no score floor, so a
+   * What a search found. The server ranks every memory the agent has and has no score floor, so a
    * memory matches when it holds a word of the query, and its relevance only orders the matches.
    * `total` is the agent's memory count when every page of it has been read, and `more` says the
    * search filled its page, so more may match than are shown, unless every memory already does.
@@ -1950,10 +1948,55 @@ export const MEMORY_COPY = {
       ? `${matched}${plus} of ${total} ${total === 1 ? 'memory matches' : 'memories match'}`
       : `${matched}${plus} ${matched === 1 && plus === '' ? 'memory matches' : 'memories match'}`;
   },
-  noMatch: (query: string): string => `No memory matches “${query}”`,
+  /** The list is empty because the agent forgot its last memory while the page was open. */
+  nothingLeft: {
+    title: 'This agent remembers nothing now',
+    description: 'What it learns in a chat from here on is listed here.',
+  },
+  /** The list is empty because a search matched nothing. */
+  noMatch: {
+    title: (query: string): string => `No memory matches “${query}”`,
+    description: 'Try other words, or show every memory.',
+  },
+  /** The list is empty because no loaded memory is of the kind chosen. */
+  noKind: {
+    title: 'No loaded memory is of this kind',
+    description: 'Show every kind to see the memories again.',
+  },
   /** The action under an empty search that lists everything again. */
   clearMatch: 'Show all memories',
-  /** The kind chip on a row: a short name, and a sentence for the person who did not choose it. */
+  /** The Back button above the open memory where it replaces the list. */
+  backToList: 'Back to memories',
+  /** What the empty detail says while no memory is open. */
+  nothingOpen: {
+    title: 'No memory open',
+    description: 'Choose a memory to read it, correct it, forget it or see where it came from.',
+  },
+  /**
+   * The kind filter, in plain names. It filters the memories loaded so far, not every memory the
+   * agent has, and says so.
+   */
+  filter: {
+    label: 'Kind',
+    all: 'All kinds',
+    facts: 'Facts',
+    chats: 'From chats',
+    howTo: 'How-to',
+    you: 'From you',
+    /** The line under the count while a kind is chosen: it works over the loaded pages only. */
+    note: (shown: number, loaded: number, more: boolean): string =>
+      `${shown} of the ${loaded}${more ? ' loaded so far' : ''} ${loaded === 1 ? 'memory is' : 'memories are'} of this kind.${
+        more ? ' Load more to look further.' : ''
+      }`,
+  },
+  /** The kind chip on a row, in plain words; the detail names the engine's own term. */
+  plainKind: {
+    facts: 'Facts',
+    chats: 'From chats',
+    howTo: 'How-to',
+    you: 'From you',
+  },
+  /** The kind in the engine's own terms, with a sentence for the person who did not choose it. */
   kind: {
     operator: { label: 'Operator', description: 'Operator: a correction you wrote' },
     working: {
@@ -1974,13 +2017,8 @@ export const MEMORY_COPY = {
       label: 'Resource',
       description: 'Resource: reference material the agent can look up',
     },
-    /** For a kind the Bureau added that this page has no words for. */
+    /** For a kind the server added that this page has no words for. */
     unknown: (kind: string): string => `${kind}: a kind of memory this page has no description for`,
-  },
-  /** The names of a row's actions: the memory is named so each row's buttons are told apart. */
-  rowAction: {
-    forget: (excerpt: string, when: string): string => `Forget: ${excerpt} (${when})`,
-    correct: (excerpt: string, when: string): string => `Correct: ${excerpt} (${when})`,
   },
   detail: {
     heading: 'Memory details',
@@ -1990,26 +2028,32 @@ export const MEMORY_COPY = {
       title: 'This memory was not found',
       description: 'It may have been forgotten, or it may not be yours.',
     },
-    close: 'Close details',
-    lineage: 'Where this memory came from',
     content: 'Memory',
+    /** The three columns of facts below the text. */
+    groups: {
+      origin: 'Where it came from',
+      standing: 'Trust and time',
+      history: 'Correction history',
+    },
     fields: {
       source: 'Source',
-      trust: 'Trust',
-      memoryClass: 'Class',
-      created: 'Created',
       session: 'Chat',
       run: 'Run',
+      trust: 'Trust',
+      kind: 'Kind',
+      created: 'Created',
+      legalHold: 'Legal hold',
       corrects: 'Corrects',
       correctedBy: 'Corrected by',
-      legalHold: 'Legal hold',
     },
-    /** What a field says when the Bureau recorded nothing for it. */
+    /** What an origin field says when nothing recorded it. */
     notRecorded: 'Not recorded',
-    /** The legal hold is learned only from a forget attempt: no read says it. */
+    /** What a history field says when the memory was never part of a correction. */
+    noHistory: 'None',
+    /** The legal hold is shown only once it is known: from a hold, a release, or a refused forget. */
     legalHold: {
-      unknown: 'Not known until you try to forget this memory',
       held: 'Held: this memory stays stored',
+      free: 'Not held',
     },
     openChat: 'Open chat',
     openMemory: 'Open that memory',
@@ -2038,10 +2082,12 @@ export const MEMORY_COPY = {
   },
   forget: {
     action: 'Forget',
+    /** The name of the icon button that forgets the open memory. */
+    iconLabel: 'Forget this memory',
     dialog: {
       title: 'Forget this memory?',
-      description:
-        'The agent stops recalling it, and it leaves this list and search. A copy of it that a chat already saved is not scrubbed.',
+      description: (excerpt: string): string =>
+        `The agent stops recalling “${excerpt}”, and it leaves this list and search. A copy of it that a chat already saved is not scrubbed.`,
       confirm: 'Forget memory',
     },
     /** The words for each state the deletion can answer with. */
@@ -2096,17 +2142,25 @@ export const MEMORY_COPY = {
   },
   correct: {
     action: 'Correct',
-    dialog: {
-      title: 'Correct this memory',
+    /** The name of the icon button that edits the open memory in place. */
+    iconLabel: 'Correct this memory',
+    edit: {
       description:
-        'Your words become a new memory that replaces this one. The agent recalls only the correction; this one is kept and linked from it.',
+        'Your words become a new memory that replaces this one. The agent recalls only the correction; this one is kept in its history.',
       label: 'Corrected memory',
       submit: 'Save correction',
       cancel: 'Cancel',
     },
+    /** The page-level report of a correction that was refused: its title leads, then the words the person wrote. */
+    notSaved: {
+      title: 'The correction was not saved',
+      draftLabel: 'What you wrote',
+      editAgain: 'Edit it again',
+    },
     saved: {
       title: 'Memory corrected',
-      description: 'The agent now recalls your correction in place of the old memory.',
+      description:
+        'The agent now recalls your correction in place of the old memory. The old one is kept in its history.',
     },
     refusal: {
       superseded: {
@@ -2127,6 +2181,114 @@ export const MEMORY_COPY = {
         description: 'It may have been forgotten, or it may not be yours.',
       },
       other: { title: 'The correction was not saved', description: '' },
+    },
+  },
+  /** Sharing, holding, quarantining and exporting: each is recorded in the memory ledger. */
+  govern: {
+    heading: 'Sharing and governance',
+    recorded: 'The memory ledger records this.',
+    share: {
+      action: 'Share',
+      dialog: {
+        title: 'Share this memory',
+        description: (excerpt: string): string =>
+          `Another owner you name can read “${excerpt}”, and nothing else of it: they cannot list, search, correct, forget or share it again.`,
+        label: 'Owner to share with',
+        submit: 'Share memory',
+        revoke: 'Stop sharing',
+        cancel: 'Cancel',
+      },
+      outcome: {
+        granted: {
+          title: 'Memory shared',
+          description: (owner: string): string => `${owner} can now read it.`,
+        },
+        alreadyGranted: {
+          title: 'Already shared',
+          description: (owner: string): string => `${owner} could already read it.`,
+        },
+        revoked: {
+          title: 'Sharing stopped',
+          description: (owner: string): string => `${owner} can no longer read it.`,
+        },
+        notShared: {
+          title: 'It was not shared',
+          description: (owner: string): string => `${owner} could not read it, so nothing changed.`,
+        },
+      },
+    },
+    hold: {
+      place: 'Place legal hold',
+      release: 'Release legal hold',
+      outcome: {
+        placed: {
+          title: 'Legal hold placed',
+          description:
+            'Forgetting this memory, and the retention sweep, leave it stored until the hold is released.',
+        },
+        alreadyPlaced: {
+          title: 'Already on legal hold',
+          description: 'It stays stored until the hold is released.',
+        },
+        released: {
+          title: 'Legal hold released',
+          description: 'A forget that was waiting on the hold now goes ahead.',
+        },
+        notHeld: {
+          title: 'It was not on legal hold',
+          description: 'Nothing changed.',
+        },
+      },
+    },
+    quarantine: {
+      action: 'Quarantine',
+      dialog: {
+        title: 'Quarantine this memory?',
+        description: (excerpt: string): string =>
+          `“${excerpt}” and anything derived from it is taken out of use: it is no longer listed, searched, read or recalled. This cannot be undone. It stays stored for inspection, and forgetting it still removes it.`,
+        reasonLabel: 'Why is it quarantined?',
+        confirm: 'Quarantine memory',
+        cancel: 'Cancel',
+      },
+      outcome: {
+        done: {
+          title: 'Memory quarantined',
+          description: (affected: number): string =>
+            `${affected} ${affected === 1 ? 'record was' : 'records were'} taken out of use.`,
+        },
+        already: {
+          title: 'Already quarantined',
+          description: 'Nothing changed.',
+        },
+      },
+    },
+    export: {
+      action: 'Export',
+      /** The name of the file the export saves. */
+      fileName: (agent: string): string => `${agent}-memories.json`,
+      outcome: {
+        title: 'Memories exported',
+        description: (count: number, exportId: string | null): string =>
+          `${count} ${count === 1 ? 'memory was' : 'memories were'} saved to a file${
+            exportId === null ? '' : ` (export ${exportId})`
+          }. A memory forgotten later is scrubbed from the export’s record.`,
+      },
+    },
+    failed: 'That change was not made',
+    refusal: {
+      forbidden: {
+        title: 'This is locked',
+        description:
+          'Sharing and quarantine need the bureau.memory:write scope, and a legal hold needs bureau.memory:govern.',
+      },
+      'invalid-grantee': {
+        title: 'That owner cannot be shared with',
+        description: 'Name another owner: not this memory’s own owner, and not nobody.',
+      },
+      'not-found': {
+        title: 'This memory was not found',
+        description: 'It may have been forgotten, or it may not be yours.',
+      },
     },
   },
 } as const;

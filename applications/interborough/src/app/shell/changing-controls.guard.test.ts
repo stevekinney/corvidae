@@ -38,9 +38,9 @@ const SOURCE_ROOT = join(import.meta.dir, '..', '..');
 const ALWAYS_CHANGING = [
   'lib/decision/approval-decision.svelte',
   // Forget opens a confirmation through `changes?.askToForget`, an object's method this reading
-  // cannot follow; Correct opens the correction's form.
+  // cannot follow; Correct saves in place, and the governance buttons open the page's dialogs or
+  // ask for a hold through `governance?.changeHold`, which it cannot follow either.
   'routes/agents/memory-detail.svelte',
-  'routes/agents/memory-row.svelte',
 ];
 
 const TEST_FILE = /\.test(-[a-z]+)?\.(ts|svelte)$/;
