@@ -22,13 +22,17 @@
     users: readonly string[];
     /** Whether the agents that use skills could not be read, so `users` may be incomplete. */
     usersFailed: boolean;
+    /** Whether the agents that use skills are still being read. */
+    usersPending: boolean;
   }
 
-  let { skill, users, usersFailed }: Props = $props();
+  let { skill, users, usersFailed, usersPending }: Props = $props();
 
   const copy = CAPABILITIES_COPY.skill;
   const untrusted = $derived(isUntrusted(skill));
   const unavailable = $derived(unavailableText(skill));
+  // Users match by name, so a shadowed row would inherit the winning skill's agents.
+  const shadowed = $derived(skill.unavailableReason === 'shadowed');
 </script>
 
 <article
@@ -80,7 +84,9 @@
     {/if}
   </dl>
 
-  {#if usersFailed}
+  {#if shadowed || usersPending}
+    <!-- Nothing: a shadowed skill has no users of its own, and pending users are not yet known. -->
+  {:else if usersFailed}
     <Alert variant="warning">{copy.usersFailed}</Alert>
   {:else}
     <AgentUsers heading={copy.users} {users} empty={copy.noUsers} />

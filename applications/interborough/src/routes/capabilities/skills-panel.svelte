@@ -17,7 +17,7 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { CAPABILITIES_COPY, RETRY_LABEL } from '../../app/copy.ts';
-  import { listSkills } from '../../lib/bureau-skills.ts';
+  import { listSkillCatalog } from '../../lib/bureau-skills.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { listSkillUsers } from '../../lib/skill-users.ts';
   import { isUntrusted, matchesFilter, skillKey, trustLabel } from './capability-presentation.ts';
@@ -29,7 +29,7 @@
   const skills = createQuery(
     () => ({
       queryKey: queryKeys.skills.list(),
-      queryFn: ({ signal }) => listSkills({ signal }),
+      queryFn: ({ signal }) => listSkillCatalog({ signal }),
       // A failure is shown with Try again, not retried behind the person's back.
       retry: false,
     }),
@@ -45,7 +45,8 @@
   );
 
   let filter = $state('');
-  const all = $derived(skills.data ?? []);
+  const all = $derived(skills.data?.skills ?? []);
+  const hasSources = $derived((skills.data?.sourceCount ?? 0) > 0);
   const shown = $derived(all.filter((skill) => matchesFilter(skill.name, filter)));
 </script>
 
@@ -67,8 +68,8 @@
     <EmptyState
       kind="first-use"
       headingLevel={2}
-      title={copy.skill.empty.title}
-      description={copy.skill.empty.description}
+      title={hasSources ? copy.skill.emptySources.title : copy.skill.empty.title}
+      description={hasSources ? copy.skill.emptySources.description : copy.skill.empty.description}
     />
   {:else}
     <div class="ib-capabilities__frame" data-shortcut-region="list-detail">
@@ -107,6 +108,8 @@
             {#snippet meta()}
               {#if isUntrusted(skill)}
                 <Badge variant="warning" size="sm">{trustLabel(skill)}</Badge>
+              {:else if !skill.available}
+                <Badge variant="warning" size="sm">{copy.skill.unavailableBadge}</Badge>
               {/if}
             {/snippet}
           </SelectableRow>
@@ -126,6 +129,7 @@
           <SkillDetail
             {skill}
             users={users.data?.get(skill.name) ?? []}
+            usersPending={users.isPending}
             usersFailed={users.isError}
           />
         {/snippet}

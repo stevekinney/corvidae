@@ -67,7 +67,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/agents': /An agent description that keeps going/,
   '/capabilities': /Reads only|Changes things|Dangerous|Not classified/,
   '/capabilities (skills tab)': /e2e-summarize/,
-  '/capabilities (skill open)': /skillword-w+/,
+  // Only the open skill's detail prints this heading; the long word is in its row at 1280 too.
+  '/capabilities (skill open)': /Where it comes from/,
   '/agents/:agent': /An agent description that keeps going/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
   '/workflows': /order-processing/,

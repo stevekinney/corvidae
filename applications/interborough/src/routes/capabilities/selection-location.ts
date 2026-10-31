@@ -5,12 +5,20 @@
  */
 import type { ListDetailSelectionLocation } from '@lostgradient/cinder';
 
+import { untrack } from 'svelte';
+
 import { router } from '../../lib/router.svelte.ts';
+
+const CAPABILITIES_PATH = '/capabilities';
 
 /** A selection that reads and writes one parameter of the current address, replacing the entry. */
 export const routerSelectionLocation: ListDetailSelectionLocation = {
-  read: (parameter) => router.search.get(parameter),
+  // Untracked: the list reads the address on every run, and following `router.search` would rerun
+  // it on every navigation, writing its selection onto the next page.
+  read: (parameter) => untrack(() => router.search.get(parameter)),
   write: (parameter, key) => {
+    // The list outlives the navigation that unmounts it by a tick; it must not write onto the page left for.
+    if (untrack(() => router.pathname) !== CAPABILITIES_PATH) return;
     const search = new URLSearchParams(router.search);
     if (key === null) search.delete(parameter);
     else search.set(parameter, key);

@@ -4,6 +4,7 @@
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -281,6 +282,95 @@ describe('the Skills tab', () => {
     const { findByText, container } = mount();
     await findByText(copy.skill.usersFailed);
     expect(container.textContent).not.toContain(copy.skill.noUsers.title);
+  });
+
+  test('marks an unavailable skill of a trusted source in its row', async () => {
+    const broken = { ...SKILLS[0], name: 'broken', available: false, unavailableReason: 'invalid' };
+    restore = serve(TOOLS, [SKILLS[0], broken]).restore;
+    landAt('/capabilities?tab=skills');
+    const { container, findByText } = mount();
+    await findByText('broken');
+    const row = (name: string) => container.querySelector(`[data-skill-row="${name}"]`);
+    expect(row('broken')?.textContent).toContain(copy.skill.unavailableBadge);
+    expect(row('summarize')?.textContent).not.toContain(copy.skill.unavailableBadge);
+  });
+
+  test('shows no users while they are pending, and none for a shadowed skill', async () => {
+    const shadowed = {
+      ...SKILLS[0],
+      source: { id: 'other', kind: 'user', location: '/skills/other', plugin: null },
+      available: false,
+      unavailableReason: 'shadowed',
+    };
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const served = bureau({
+      'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+      'bureau.skills.list': () => ({
+        revision: 1,
+        skills: [SKILLS[0], shadowed],
+        sources: [],
+        trustLocked: null,
+      }),
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+      'bureau.agents.definitions.get': (params) => codeDetail(String(params['id']), ['summarize']),
+    });
+    // Hold the agents back until released, so the users are pending.
+    const base = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (typeof init?.body === 'string' && init.body.includes('bureau.agents.list')) await gate;
+      return base(input, init);
+    }) as typeof fetch;
+    restore = () => {
+      globalThis.fetch = base;
+      served.restore();
+    };
+    landAt('/capabilities?tab=skills&skill=home%2Fsummarize');
+    const { container, findByText, findByRole } = mount();
+    await findByText(copy.skill.whatItDoes);
+    expect(container.textContent).not.toContain(copy.skill.noUsers.title);
+    release?.();
+    await findByRole('link', { name: 'assistant' });
+
+    await fireEvent.click(container.querySelectorAll('[data-skill-row="summarize"]')[1]!);
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-testid="skill-detail"]')?.getAttribute('data-trust'),
+      ).toBe('trusted');
+      expect(container.querySelector('[data-testid="skill-unavailable"]')).not.toBeNull();
+    });
+    expect(container.querySelector('[data-testid="capability-users"]')).toBeNull();
+    expect(container.textContent).not.toContain(copy.skill.noUsers.title);
+  });
+
+  test('says no skill was found, not to add a directory, when sources are configured', async () => {
+    restore = bureau({
+      'bureau.agents.catalog': () => ({ models: [], tools: TOOLS }),
+      'bureau.skills.list': () => ({
+        revision: 1,
+        skills: [],
+        sources: [{ id: 'home', kind: 'user', location: '/skills/home', precedence: 20 }],
+        trustLocked: null,
+      }),
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+    }).restore;
+    landAt('/capabilities?tab=skills');
+    const { container, findByText } = mount();
+    await findByText(copy.skill.emptySources.title);
+    expect(container.textContent).not.toContain(copy.skill.empty.title);
+  });
+
+  test('leaving with an item open does not carry its parameter to the next page', async () => {
+    restore = serve().restore;
+    landAt('/capabilities');
+    const { container, findByText } = mount();
+    await findByText('read-file');
+    await fireEvent.click(container.querySelector('[data-tool-row="read-file"]')!);
+    await waitFor(() => expect(window.location.search).toContain('tool=read-file'));
+    router.navigate('/agents');
+    await tick();
+    await tick();
+    expect(window.location.pathname + window.location.search).toBe('/agents');
   });
 
   test('is a first-use empty state when the host discovered no skill', async () => {

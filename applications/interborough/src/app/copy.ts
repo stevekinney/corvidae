@@ -1566,6 +1566,12 @@ export const CAPABILITIES_COPY = {
       description:
         'Skills are folders with a SKILL.md file. Add a skills directory to the host configuration to see them here.',
     },
+    emptySources: {
+      title: 'No skills found',
+      description:
+        'The host looked in the skills directories it is configured with and found no folder with a SKILL.md file.',
+    },
+    unavailableBadge: 'Unavailable',
     filtered: {
       title: 'No skills match',
       description: 'No skill name contains what you typed.',
