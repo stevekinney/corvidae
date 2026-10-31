@@ -34,6 +34,23 @@ describe('definePlugin', () => {
     expect(result?.evalJudges?.[0]?.name).toBe('COR');
   });
 
+  test('types an activity that declares its own version', async () => {
+    const plugin = definePlugin({
+      ...valid,
+      setup: () => ({
+        activities: [
+          { name: 'sync-issue', version: '2.1.0', execute: async () => ({ synced: true }) },
+        ],
+      }),
+    });
+    const result = await plugin.setup?.({
+      configuration: {},
+      secrets: { get: async () => undefined },
+      storage: new MemoryStorage(),
+    });
+    expect(result?.activities?.[0]?.version).toBe('2.1.0');
+  });
+
   test.each(['', 'Example', '1example', 'a_b', 'a:b', 'a--', '-a', 'a b'])(
     'refuses the plugin name %p',
     (name) => {

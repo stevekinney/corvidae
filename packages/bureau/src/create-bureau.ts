@@ -285,6 +285,7 @@ import { createGoalWorkflowHost } from './goal-ports';
 import { recoveryEntryFailure } from './goal-recovery';
 import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
+import { createWorkflowContributions } from './workflow-contributions';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
 import { createAbandonedTaskSweeper, openProcessLease } from './process-lease';
@@ -3144,6 +3145,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
     // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
     // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
+    const workflowContributions = createWorkflowContributions(options.contributionCatalog);
     workflowRuntime =
       options.workflowSource === undefined || runtime.durable === undefined
         ? undefined
@@ -3154,7 +3156,9 @@ async function constructBureau<const D extends AgentDefinitions>(
             engine: runtime.durable.engine as Engine,
             host: createWorkflowDocumentHost({
               runAgentStep: (request) => runWorkflowAgentStep(request),
+              contributions: workflowContributions,
             }),
+            contributions: workflowContributions,
             snapshotStore: createWorkflowSnapshotStore({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,

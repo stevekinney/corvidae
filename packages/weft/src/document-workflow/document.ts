@@ -84,6 +84,14 @@ export interface DocumentWorkflowHost {
    * otherwise, because a schema nothing checks would promise a guarantee nobody keeps.
    */
   readonly checkSchema?: DocumentSchemaChecker | undefined;
+  /**
+   * The version each handler in {@link DocumentWorkflowHost.activities} is at, keyed by handler
+   * name. A handler absent here has no version. A document that pins a handler in its
+   * {@link WorkflowDocument.activityVersions} is refused unless the host has that handler at
+   * exactly the pinned version, so a run recovered from a pinned revision never executes another
+   * version of an activity.
+   */
+  readonly activityVersions?: Readonly<Record<string, string>> | undefined;
 }
 
 /** One step of a {@link WorkflowDocument}. */
@@ -113,6 +121,15 @@ export interface WorkflowDocument {
    * `inputSchema`.
    */
   readonly outputSchema?: Readonly<Record<string, JSONValue>>;
+  /**
+   * The version of each activity handler the steps use, keyed by handler name. Weft hashes it into
+   * the document's version, so the same steps pinned to another version of a handler are another
+   * revision, and {@link validateWorkflowDocument} refuses a pin the host cannot honor (see
+   * {@link DocumentWorkflowHost.activityVersions}). Optional like `inputSchema`: a document that
+   * pins nothing is the document it always was, with the version it always had. Every key names a
+   * handler one of the steps uses.
+   */
+  readonly activityVersions?: Readonly<Record<string, string>>;
 }
 
 const jsonValueSchema = z.custom<JSONValue>(isJSONValue, 'must be a JSON value');
@@ -170,6 +187,7 @@ export const workflowDocumentSchema = z.strictObject({
   steps: z.array(stepSchema).min(1),
   inputSchema: jsonObjectSchema.optional(),
   outputSchema: jsonObjectSchema.optional(),
+  activityVersions: z.record(z.string().min(1), z.string().min(1)).optional(),
 });
 
 /** One reason a document was rejected, located by a path such as `steps[2].handler`. */
@@ -272,6 +290,40 @@ function hostIssues(
       issues.push({ path, message: nameIssue });
     } else if (!Object.hasOwn(host.activities, step.handler)) {
       issues.push({ path, message: `activity handler "${step.handler}" is not registered` });
+    }
+  }
+  issues.push(...pinIssues(document, host));
+  return issues;
+}
+
+/** The issues with a document's `activityVersions`: a pin for a handler no step uses, or one the host cannot honor. */
+function pinIssues(
+  document: WorkflowDocument,
+  host: DocumentWorkflowHost,
+): WorkflowDocumentIssue[] {
+  if (document.activityVersions === undefined) return [];
+  const used = new Set(
+    document.steps.flatMap((step) => (step.kind === 'activity' ? [step.handler] : [])),
+  );
+  const issues: WorkflowDocumentIssue[] = [];
+  for (const [handler, version] of Object.entries(document.activityVersions)) {
+    const path = `activityVersions.${handler}`;
+    if (!used.has(handler)) {
+      issues.push({ path, message: `no step uses the activity handler "${handler}"` });
+      continue;
+    }
+    const loaded =
+      host.activityVersions !== undefined && Object.hasOwn(host.activityVersions, handler)
+        ? host.activityVersions[handler]
+        : undefined;
+    if (loaded !== version) {
+      issues.push({
+        path,
+        message:
+          loaded === undefined
+            ? `activity handler "${handler}" is pinned at version "${version}", but this host has no version of it`
+            : `activity handler "${handler}" is pinned at version "${version}", but this host has version "${loaded}"`,
+      });
     }
   }
   return issues;

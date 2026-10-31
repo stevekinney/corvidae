@@ -157,9 +157,16 @@ export interface PluginCodeAgent {
   readonly agent: RunnableAgent | RunnableAgent<any, true>;
 }
 
-/** An activity a plugin's workflows can call. */
+/**
+ * An activity a plugin's workflows can call. Its `name` is unique within the plugin; a workflow
+ * file names it `plugin:name`, with no version, and its `execute` receives the step's document
+ * activity argument (`input`, `trigger`, `previous`, `workflowId`, `step`).
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- an activity's input and output vary per activity.
-export type PluginActivity = ActivityDefinition<any, any>;
+export type PluginActivity = ActivityDefinition<any, any> & {
+  /** The activity's own version; a record that pins it uses the plugin's version without one. */
+  readonly version?: string;
+};
 
 /**
  * What `setup` returns: everything the plugin adds to the host. Every member is optional, so a

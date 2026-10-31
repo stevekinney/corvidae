@@ -111,6 +111,7 @@ export type {
   BureauWorkflows,
 } from './workflow-runtime';
 export type { WorkflowFinishReason, WorkflowSchemaIssue } from './workflow-schema';
+export type { WorkflowRunPinProblem } from './workflow-snapshot-store';
 export { WorkflowInputInvalidError } from './workflow-schema';
 export type {
   WorkflowFileDefinition,

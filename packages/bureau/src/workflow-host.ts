@@ -22,7 +22,8 @@ import {
   type WorkflowDocumentSet,
 } from '@lostgradient/weft';
 
-import { isMappedWeftName } from './namespaced-identifier';
+import { isMappedWeftName, isNamespacedIdentifier } from './namespaced-identifier';
+import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import { toScheduleSpec } from './schedule-spec';
 import { toWeftDocumentInput } from './workflow-document-handlers';
 import { AGENT_STEP_HANDLER, TRIGGER_KEYS } from './workflow-file';
@@ -112,6 +113,11 @@ export interface AgentStepRequest {
 export interface WorkflowHostDependencies {
   /** Run one agent as the deployment's owner and resolve its result; rejects when the run fails. */
   readonly runAgentStep: (request: AgentStepRequest) => Promise<AgentStepResult>;
+  /**
+   * The contributed activities and trigger kinds a file may also name (COR-1874); none for a
+   * Bureau without plugins.
+   */
+  readonly contributions?: WorkflowContributions | undefined;
 }
 
 /** Why an `agent` step failed. The message is what `bureau.workflows.runs.get` shows. */
@@ -162,8 +168,10 @@ export function composeAgentMessage(message: string, trigger: unknown, previous:
 export function createWorkflowDocumentHost(
   dependencies: WorkflowHostDependencies,
 ): DocumentWorkflowHost {
+  const contributions = dependencies.contributions ?? NO_WORKFLOW_CONTRIBUTIONS;
   return Object.freeze({
     activities: Object.freeze({
+      ...contributions.activities,
       [AGENT_STEP_HANDLER]: async (argument: DocumentActivityArgument) => {
         const { agent, message } = argument.input as { agent: string; message: string };
         return dependencies.runAgentStep({
@@ -174,8 +182,9 @@ export function createWorkflowDocumentHost(
         });
       },
     }),
-    triggerKinds: Object.freeze({ ...WORKFLOW_TRIGGER_KINDS }),
+    triggerKinds: Object.freeze({ ...contributions.triggerValidators, ...WORKFLOW_TRIGGER_KINDS }),
     checkSchema: checkWorkflowSchema,
+    activityVersions: contributions.activityVersions,
   });
 }
 
@@ -263,6 +272,37 @@ export function bridgeEngineActivities(
     },
   );
   return Object.freeze({ ...host, activities });
+}
+
+/**
+ * `host` with every contributed trigger kind (`plugin:name`) accepted, loaded or not. Register a
+ * revision through it, never read a file through it: the trigger that starts a workflow is needed
+ * by a file, which must name a kind that is loaded, and not by a revision that already has
+ * instances, which resumes whatever its plugin has since done to the kind (COR-1874). Its
+ * activities are still held to exactly the versions the revision pins.
+ */
+export function acceptContributedTriggers(host: DocumentWorkflowHost): DocumentWorkflowHost {
+  const accept: DocumentTriggerValidator = () => undefined;
+  const validatorOf = (name: string | symbol): DocumentTriggerValidator | undefined => {
+    if (typeof name !== 'string') return undefined;
+    if (isNamespacedIdentifier(name)) return accept;
+    return Object.hasOwn(host.triggerKinds, name) ? host.triggerKinds[name] : undefined;
+  };
+  const triggerKinds = new Proxy<Record<string, DocumentTriggerValidator>>(
+    {},
+    {
+      get: (_target, name) => validatorOf(name),
+      has: (_target, name) => validatorOf(name) !== undefined,
+      ownKeys: () => Object.keys(host.triggerKinds),
+      getOwnPropertyDescriptor: (_target, name) => {
+        const value = validatorOf(name);
+        return value === undefined
+          ? undefined
+          : { value, enumerable: true, configurable: true, writable: false };
+      },
+    },
+  );
+  return Object.freeze({ ...host, triggerKinds });
 }
 
 /**

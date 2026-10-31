@@ -49,12 +49,30 @@ export const WORKFLOW_CANCELLATION_KEY_PREFIX = 'bureau-workflow-cancelled-run:v
  */
 export interface WorkflowRunCancellation {
   readonly schemaVersion: 1;
+  /**
+   * Present when the instance was cancelled because a contributed activity its revision pins is
+   * not loaded (COR-1874): the same verdict the versioned catalog gives a resolution.
+   */
+  readonly pin?: WorkflowRunPinProblem;
   readonly runId: string;
   /** The workflow's identifier. */
   readonly id: string;
   readonly workflowVersion: string;
   readonly reason: string;
   readonly cancelledAt: string;
+}
+
+/**
+ * Why a revision's pinned activity cannot be resolved: `missing` when no version of the activity is
+ * loaded, `version-mismatch` when only other versions are. Never answered by another version.
+ */
+export interface WorkflowRunPinProblem {
+  /** `missing` when no version of the activity is loaded, `version-mismatch` when only others are. */
+  readonly reason: 'missing' | 'version-mismatch';
+  /** The pinned activity, as `plugin:name@version`. */
+  readonly activity: string;
+  /** The versions of the activity that are loaded; empty for `missing`. */
+  readonly availableVersions: readonly string[];
 }
 
 /** A document as Bureau registered it with the engine. */
