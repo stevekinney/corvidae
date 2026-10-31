@@ -161,18 +161,33 @@
     return null;
   });
 
-  /** Danger when any chip is, warning for any other thing that needs attention, and success for none. */
+  /**
+   * Whether a read the line may make failed for a reason other than a missing scope (a `403` is the
+   * lock note's business). All clear is for successful reads with nothing to report: a failed read
+   * may be hiding dead letters or stuck tasks, so it must never read as green.
+   */
+  const readFailed = $derived.by(() => {
+    const diagnosticsFailed =
+      canReadSystem && diagnosticsQuery.isError && !isForbidden(diagnosticsQuery.error);
+    const reviewsFailed =
+      canReadReviews && reviewsQuery.isError && !isForbidden(reviewsQuery.error);
+    return diagnosticsFailed || reviewsFailed;
+  });
+
+  /** Danger when any chip is, warning for any other thing that needs attention or a failed read, and success for none. */
   const tone = $derived<'success' | 'warning' | 'danger'>(
     chips.some((chip) => chip.tone === 'danger')
       ? 'danger'
-      : chips.length > 0
+      : chips.length > 0 || readFailed
         ? 'warning'
         : 'success',
   );
   const summary = $derived(
-    chips.length === 0
-      ? HEALTH_OVERVIEW_COPY.allClear
-      : HEALTH_OVERVIEW_COPY.needsAttention(chips.length),
+    chips.length > 0
+      ? HEALTH_OVERVIEW_COPY.needsAttention(chips.length)
+      : readFailed
+        ? HEALTH_OVERVIEW_COPY.lineUnavailable
+        : HEALTH_OVERVIEW_COPY.allClear,
   );
 </script>
 
@@ -196,7 +211,7 @@
       <StatusDot status={tone} labelVisible={false} />
       {summary}
     </p>
-    {#if chips.length > 0 || deniedScope}
+    {#if chips.length > 0 || deniedScope || readFailed}
       <div class="weft-health-line__chips">
         {#each chips as chip (chip.id)}
           <a
@@ -226,6 +241,11 @@
             </a>
           {/if}
         {/each}
+        {#if readFailed}
+          <span class="weft-health-line__partial-lock" role="status">
+            {HEALTH_OVERVIEW_COPY.lineReadFailed}
+          </span>
+        {/if}
         {#if deniedScope}
           <span class="weft-health-line__partial-lock">
             <Lock aria-hidden="true" size={13} />

@@ -905,6 +905,14 @@ export const HEALTH_OVERVIEW_COPY = {
   unavailable: '—',
   /** The health line when nothing needs attention. */
   allClear: 'All clear. Nothing needs attention.',
+  /**
+   * The health line when a read it depends on failed and nothing it could read needs attention:
+   * the line cannot say all is clear about what it never saw.
+   */
+  lineUnavailable:
+    'Health could not be fully read. Nothing was reported, but that is not all clear.',
+  /** The note beside the chips when one of the line's reads failed. */
+  lineReadFailed: 'Some checks could not be read',
   /** The health line when something does: how many things, and each one below it. */
   needsAttention: (count: number): string =>
     count === 1 ? '1 thing needs attention' : `${String(count)} things need attention`,

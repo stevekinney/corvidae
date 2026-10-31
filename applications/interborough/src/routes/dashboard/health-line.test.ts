@@ -12,6 +12,7 @@ import { tick } from 'svelte';
 
 import { HttpClient, HttpClientError } from '@lostgradient/weft';
 
+import { HEALTH_OVERVIEW_COPY } from '../../app/copy.ts';
 import { invalidateForTaskEvent } from '../../app/task-event-queries.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { TASK_HEARTBEAT_STALE_AFTER_MS } from '../workers/worker-catalog-types.ts';
@@ -63,7 +64,12 @@ function alertClient(options: {
       },
     },
   });
-  Object.defineProperty(client, 'listReviews', { value: () => Promise.resolve(options.reviews) });
+  Object.defineProperty(client, 'listReviews', {
+    value: () =>
+      options.reviews instanceof HttpClientError
+        ? Promise.reject(options.reviews)
+        : Promise.resolve(options.reviews),
+  });
   return client;
 }
 
@@ -236,6 +242,71 @@ describe('HealthLine', () => {
         getByText('Requires system:read, reviews:read to see what needs attention here.'),
       ).not.toBeNull(),
     );
+  });
+
+  test('does not say all is clear when both reads failed, and says it could not read them', async () => {
+    const client = alertClient({
+      diagnostics: new HttpClientError(500, 'Internal Server Error'),
+      reviews: new HttpClientError(503, 'Service Unavailable'),
+    });
+
+    const { getByText, queryByText } = render(HealthLineHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText(HEALTH_OVERVIEW_COPY.lineUnavailable)).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+    expect(queryByText(HEALTH_OVERVIEW_COPY.allClear)).toBeNull();
+    expect(getByText(HEALTH_OVERVIEW_COPY.lineReadFailed)).not.toBeNull();
+  });
+
+  test('does not say all is clear when one read failed and the other found nothing', async () => {
+    for (const failing of ['diagnostics', 'reviews'] as const) {
+      const failure = new HttpClientError(500, 'Internal Server Error');
+      const client = alertClient({
+        diagnostics:
+          failing === 'diagnostics'
+            ? failure
+            : { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
+        reviews: failing === 'reviews' ? failure : [],
+      });
+
+      const { getByText, queryByText, unmount } = render(HealthLineHarness, { props: { client } });
+
+      await waitFor(
+        () => expect(getByText(HEALTH_OVERVIEW_COPY.lineUnavailable)).not.toBeNull(),
+        WAIT_FOR_TWO_QUERIES,
+      );
+      expect(queryByText(HEALTH_OVERVIEW_COPY.allClear)).toBeNull();
+      unmount();
+    }
+  });
+
+  test('keeps the chips of the read that worked, and notes the one that failed', async () => {
+    const client = alertClient({
+      diagnostics: new HttpClientError(500, 'Internal Server Error'),
+      reviews: [
+        {
+          status: 'pending',
+          reviewId: 'review-1',
+          workflowId: 'wf-1',
+          artifact: {},
+          reviewType: 'content',
+          reviewers: ['alice@example.com'],
+          allowPartial: false,
+          createdAt: Date.now() - 950_000,
+          timeout: 1_000_000,
+        },
+      ],
+    });
+
+    const { getByText } = render(HealthLineHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText('1 review near timeout')).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+    expect(getByText(HEALTH_OVERVIEW_COPY.lineReadFailed)).not.toBeNull();
   });
 
   test('a 403 from diagnostics degrades to a partial lock note while reviews chips still render', async () => {

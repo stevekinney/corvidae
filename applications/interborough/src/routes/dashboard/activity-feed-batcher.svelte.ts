@@ -30,12 +30,13 @@ export interface ActivityFeedItem extends ActivityFeedRow {
 
 /**
  * What makes two neighbouring rows repeats of one another: the same severity, the same headline and
- * the same subject. Headlines are generic ("Workflow failed"), so the link, which names the workflow
- * or page the row is about, stands for the subject: failures of two workflows stay two lines, each
- * linking to its own, while repeats of one workflow still collapse.
+ * the same subject. Headlines are generic ("Workflow failed"), so the link names the workflow the
+ * row is about: failures of two workflows stay two lines, each linking to its own, while repeats of
+ * one workflow still collapse. Some kinds link to a fixed page (reviews, alerts, workers), so the
+ * link says nothing about their subject; the body does, so it is part of the key too.
  */
 function collapseKey(row: ActivityFeedRow): string {
-  return `${row.tier}\u0000${row.title}\u0000${row.href}`;
+  return `${row.tier}\u0000${row.title}\u0000${row.href}\u0000${row.body}`;
 }
 
 /** Folds each run of repeats in a newest-first list into its newest row, carrying the run's count. */

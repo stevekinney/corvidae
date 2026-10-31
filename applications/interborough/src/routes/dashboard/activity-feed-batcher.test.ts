@@ -63,6 +63,21 @@ describe('ActivityFeedBatcher', () => {
     batcher.dispose();
   });
 
+  test('keeps two alerts apart on a fixed link, because only the body names which one fired', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    const alert = { title: 'Alert fired', tier: 'critical', href: '/health?tab=alerts' } as const;
+    batcher.ingest(row({ id: 'a', ...alert, body: 'queue-depth' }));
+    batcher.ingest(row({ id: 'b', ...alert, body: 'queue-depth' }));
+    batcher.ingest(row({ id: 'c', ...alert, body: 'disk-pressure' }));
+
+    await waitFor(() => expect(batcher.items).toHaveLength(2));
+    expect(batcher.items.map((item) => [item.id, item.body, item.count])).toEqual([
+      ['c', 'disk-pressure', 1],
+      ['b', 'queue-depth', 2],
+    ]);
+    batcher.dispose();
+  });
+
   test('keeps a repeat across a later flush, and never merges rows of different severity', async () => {
     const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
     batcher.ingest(row({ id: 'a', title: 'Workflow failed', tier: 'warning' }));
