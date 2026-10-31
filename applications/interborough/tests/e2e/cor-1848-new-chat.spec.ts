@@ -7,10 +7,17 @@
  */
 import type { Page } from '@playwright/test';
 
-import { newThreadId, runToEnd } from './chat-support.ts';
+import { newThreadId, releaseBarrier, runToEnd } from './chat-support.ts';
+import { E2E_DEFAULT_AGENT } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
+
+// A new chat with no `?agent=` starts with the host's default agent, the barrier agent
+// (`E2E_DEFAULT_AGENT`), which holds its run until the barrier is released.
+test.afterEach(async ({ request }) => {
+  await releaseBarrier(request);
+});
 const transcript = (page: Page) => page.getByRole('region', { name: 'Chat conversation' });
 
 test.describe('a new chat', () => {
@@ -21,7 +28,7 @@ test.describe('a new chat', () => {
 
     const pill = page.getByRole('combobox', { name: 'Agent' });
     await expect(pill).toBeVisible();
-    await expect(pill).toHaveValue(/assistant/i);
+    await expect(pill).toHaveValue(E2E_DEFAULT_AGENT);
     // The pill is inside the composer's own region, and not in the header above it.
     expect(await pill.evaluate((element) => element.closest('header') === null)).toBe(true);
     const composerBox = await composer(page).boundingBox();

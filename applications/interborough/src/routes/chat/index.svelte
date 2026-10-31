@@ -13,7 +13,7 @@
 
   import { RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
   import { getContext } from '../../lib/bureau-client.ts';
-  import { DEFAULT_AGENT } from '../../lib/default-agent.ts';
+  import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import { classifyFault } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -34,7 +34,13 @@
   // its run starts, and the conversation, with its live run, stays mounted through that.
   const startsNew = untrack(() => isNew);
   const chosenAgent = untrack(() => router.current.search.has('agent'));
-  const initialAgent = untrack(() => router.current.search.get('agent') ?? DEFAULT_AGENT);
+  const namedAgent = untrack(() => router.current.search.get('agent'));
+  // Without `?agent=` a new chat starts with the first agent that can run. The view frame has
+  // already asked, so this is the cached answer; `null` means no agent can run.
+  const defaultAgent = createQuery(
+    () => ({ ...defaultAgentQuery(), enabled: startsNew && namedAgent === null }),
+    undefined,
+  );
 
   const context = createQuery(
     () => ({
@@ -48,13 +54,25 @@
 </script>
 
 {#if startsNew}
-  <ChatConversation
-    {sessionId}
-    title={null}
-    agentName={initialAgent}
-    agentChosen={chosenAgent}
-    isNew
-  />
+  {#if namedAgent !== null || defaultAgent.data !== undefined}
+    <ChatConversation
+      {sessionId}
+      title={null}
+      agentName={namedAgent ?? defaultAgent.data ?? ''}
+      agentChosen={chosenAgent}
+      isNew
+    />
+  {:else}
+    <div
+      class="weft-chat-route"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading the conversation"
+    >
+      <Skeleton height="1.5rem" width="40%" />
+      <Skeleton height="10rem" />
+    </div>
+  {/if}
 {:else if context.data}
   <ChatConversation {sessionId} title={context.data.title} agentName={context.data.agentName} />
 {:else if context.isError}

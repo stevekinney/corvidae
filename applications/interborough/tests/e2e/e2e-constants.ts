@@ -20,6 +20,14 @@ export const E2E_PORT = endToEndPort();
 export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 
 /**
+ * The agent a new chat starts with on the main host when `?agent=` names none: the first agent the
+ * Bureau lists that can run. A host's extra agents are listed before a plugin's, so this is the
+ * barrier agent (`barrier-agent.ts`), not the demo plugin's `demo:assistant`; a spec that needs the
+ * assistant's reply names it with `?agent=demo:assistant`.
+ */
+export const E2E_DEFAULT_AGENT = 'barrier';
+
+/**
  * Where the test-only barrier control listens, on the port after the host's. The chat specs hold a run on a barrier so no case
  * depends on timing (`barrier-agent.ts`); the host itself serves no such route.
  */

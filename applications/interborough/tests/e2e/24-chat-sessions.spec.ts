@@ -8,12 +8,25 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 
 import { TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
-import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
-import { E2E_BUREAU_URL } from './e2e-constants.ts';
+import {
+  conversation,
+  deleteChats,
+  newThreadId,
+  releaseBarrier,
+  runToEnd,
+} from './chat-support.ts';
+import { E2E_BUREAU_URL, E2E_DEFAULT_AGENT } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { expectEngineMissesForRuns } from './task-support.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
+
+// A new chat with no `?agent=` starts with the host's default agent, the barrier agent
+// (`E2E_DEFAULT_AGENT`), which holds its run until the barrier is released. A spec that sends to it
+// leaves that run held, and a later spec that counts the runs held would read it.
+test.afterEach(async ({ request }) => {
+  await releaseBarrier(request);
+});
 
 async function send(page: Page, text: string): Promise<void> {
   await composer(page).fill(text);
@@ -342,7 +355,7 @@ test.describe('a new chat', () => {
   }) => {
     await page.goto('/chats/new');
     const agent = page.getByRole('combobox', { name: 'Agent' });
-    await expect(agent).toHaveValue(/assistant/i);
+    await expect(agent).toHaveValue(E2E_DEFAULT_AGENT);
 
     await agent.fill('tool');
     await page.getByRole('option', { name: /tool-runner/i }).click();
@@ -412,12 +425,12 @@ test.describe('a new chat', () => {
         body: `data: ${JSON.stringify({ type: 'RUN_ERROR', message: 'The thread is busy.', code: 'THREAD_BUSY' })}\n\n`,
       });
     });
-    await page.goto('/chats/new');
+    await page.goto('/chats/new?agent=demo:assistant');
 
     await send(page, 'A first message that is refused');
 
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
-    await expect(page).toHaveURL(/\/chats\/new$/);
+    await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)assistant$/);
     refuse = false;
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(page).toHaveURL(sessionUrl);
@@ -459,7 +472,7 @@ test.describe('returning to a session', () => {
    */
   async function finishedSession(page: Page): Promise<{ address: string; first: string }> {
     const first = `Question one ${crypto.randomUUID().slice(0, 8)}`;
-    await page.goto('/chats/new');
+    await page.goto('/chats/new?agent=demo:assistant');
     await send(page, first);
     await expect(page).toHaveURL(sessionUrl);
     await expect(conversation(page).getByText('Hello from the assistant.')).toHaveCount(1);

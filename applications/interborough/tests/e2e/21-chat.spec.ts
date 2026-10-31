@@ -15,6 +15,7 @@ import {
   releaseBarrier,
   runToEnd,
 } from './chat-support.ts';
+import { E2E_DEFAULT_AGENT } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const BARRIER = 'barrier';
@@ -516,7 +517,7 @@ for (const width of [375, 1280] as const) {
     }) => {
       await page.goto('/chats/new');
       const welcome = page.getByTestId('new-chat-welcome');
-      await expect(welcome).toContainText('demo:assistant');
+      await expect(welcome).toContainText(E2E_DEFAULT_AGENT);
       const others = page.getByRole('group', { name: 'Or start with another agent' });
       await expect(others).toBeVisible();
       await checkA11y(`a new chat with the agents to choose from at ${width}px`);

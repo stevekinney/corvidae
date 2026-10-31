@@ -1,7 +1,7 @@
 /**
  * An agent's Access tab against the real host: set when a tool asks first and a budget in the
  * tab, save, and see the file hold it, then chat with the agent as another client would and see the
- * setting enforced. `lookup-order` only reads, so under the default (`on-changes`) a chat runs it;
+ * setting enforced. `demo:lookup-order` only reads, so under the default (`on-changes`) a chat runs it;
  * the ask in the second case is the tab's doing alone. The chats are scripted by markers
  * (`access-provider.ts`). A skill from a source the host does not trust is listed with no way to
  * grant it.
@@ -28,7 +28,7 @@ test.afterEach(async ({ request }) => {
 
 async function agentWithLookup(request: Parameters<typeof createAgentFile>[0], id: string) {
   agents.add(id);
-  await createAgentFile(request, id, { tools: ['lookup-order'] });
+  await createAgentFile(request, id, { tools: ['demo:lookup-order'] });
 }
 
 /** The definition the Bureau holds for the agent now. */
@@ -72,11 +72,11 @@ test.describe('the Access tab', () => {
 
     await page.goto(`/agents/${id}?tab=access`);
     await page
-      .getByRole('combobox', { name: copy.asksFirstLabel('lookup-order') })
+      .getByRole('combobox', { name: copy.asksFirstLabel('demo:lookup-order') })
       .selectOption('always');
     await save(page);
     expect(await definitionOf(request, id)).toMatchObject({
-      toolApproval: { 'lookup-order': 'always' },
+      toolApproval: { 'demo:lookup-order': 'always' },
     });
 
     // After: the same chat is held on an approval, and the tool has not run.
@@ -133,15 +133,15 @@ test.describe('the Access tab', () => {
 
     await page.goto(`/agents/${id}?tab=access`);
     await page
-      .getByRole('combobox', { name: copy.asksFirstLabel('lookup-order') })
+      .getByRole('combobox', { name: copy.asksFirstLabel('demo:lookup-order') })
       .selectOption('never');
     await save(page);
-    await page.getByRole('checkbox', { name: 'lookup-order' }).uncheck();
+    await page.getByRole('checkbox', { name: 'demo:lookup-order' }).uncheck();
     await save(page);
 
     const definition = await definitionOf(request, id);
     expect(definition?.tools).toEqual([]);
-    expect(definition).not.toHaveProperty('toolApproval.lookup-order');
+    expect(definition).not.toHaveProperty('toolApproval.demo:lookup-order');
   });
 
   test('lists a skill from an untrusted source and offers no way to grant it', async ({
