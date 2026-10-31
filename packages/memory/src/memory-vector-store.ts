@@ -650,7 +650,7 @@ export function createMemoryVectorStore(
     async listQueuedEmbeds(profile, limit) {
       const queued: MemoryVectorReference[] = [];
       if (limit < 1) return queued;
-      for await (const [, value] of storage.scan(queuePrefix(profile))) {
+      for await (const [, value] of storage.scan(queuePrefix(profile), { limit })) {
         const { id, tenantId, namespace } = queuedEmbedSchema.parse(
           JSON.parse(textDecoder.decode(value)),
         );
@@ -658,7 +658,6 @@ export function createMemoryVectorStore(
           id,
           scope: tenantId === undefined ? { namespace } : { tenantId, namespace },
         });
-        if (queued.length >= limit) break;
       }
       return queued;
     },
