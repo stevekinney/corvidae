@@ -426,7 +426,7 @@
     <div class="weft-schedule-drawer__footer">
       <span class="weft-schedule-drawer__service-note">Runs as schedules service account</span>
       <Button variant="ghost" size="sm" onclick={() => (open = false)}>Cancel</Button>
-      <Button variant="primary" size="sm" disabled={!canSubmit} onclick={submit}>
+      <Button data-changes variant="primary" size="sm" disabled={!canSubmit} onclick={submit}>
         {mode === 'create' ? 'Create schedule' : 'Save changes'}
       </Button>
       {#if writeGate.disabled}

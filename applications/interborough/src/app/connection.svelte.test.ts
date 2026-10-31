@@ -2,13 +2,11 @@
  * The connection monitor on its own: what makes the server unreachable, how it learns the server is
  * back, and what it does about it. The view frame's reading of it is in `states-matrix.test.ts`.
  */
-import { rejectionOf } from '@lostgradient/testing';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { QueryClient } from '@tanstack/svelte-query';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { ServerUnreachableError } from '../lib/faults.ts';
-import { ConnectionMonitor, connectionProbeDelayMs, guardChanges } from './connection.svelte.ts';
+import { ConnectionMonitor, connectionProbeDelayMs } from './connection.svelte.ts';
 
 const monitors: ConnectionMonitor[] = [];
 afterEach(() => {
@@ -85,10 +83,21 @@ describe('ConnectionMonitor', () => {
     expect(monitor.lastHealthyAt).toBe(5_000);
   });
 
-  test('reads the query cache: an unanswered query makes it unreachable and a success clears it', async () => {
-    const monitor = open(async () => {
-      throw new TypeError('Failed to fetch');
+  test('reads the query cache: an unanswered query makes it unreachable, and no query result clears it', async () => {
+    let recovered = 0;
+    let now = 1_000;
+    // The probe never answers: the host is stopped.
+    const monitor = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      onRecovered: () => {
+        recovered += 1;
+      },
+      probeDelayMs: () => 60_000,
+      now: () => now,
     });
+    monitors.push(monitor);
     const queryClient = new QueryClient();
     const stop = monitor.observe(queryClient);
     await queryClient
@@ -99,8 +108,47 @@ describe('ConnectionMonitor', () => {
       })
       .catch(() => undefined);
     expect(monitor.unreachable).toBe(true);
+    const stoppedAt = monitor.lastHealthyAt;
+
+    now = 9_000;
+    // A plain success, a probe that swallows its failure (the reviews view, COR-1612), one that
+    // settles it (the schedules overlay), and a value written to the cache, all against a dead host.
     await queryClient.fetchQuery({ queryKey: ['up'], queryFn: async () => 1 });
-    expect(monitor.unreachable).toBe(false);
+    await queryClient.fetchQuery({
+      queryKey: ['view', 'reviews'],
+      queryFn: async () => {
+        try {
+          throw new TypeError('Failed to fetch');
+        } catch {
+          return { empty: false };
+        }
+      },
+    });
+    await queryClient.fetchQuery({
+      queryKey: ['overlay'],
+      queryFn: async () => {
+        const settled = await Promise.allSettled([Promise.reject(new TypeError('x'))]);
+        return settled.length;
+      },
+    });
+    queryClient.setQueryData(['manual'], 1);
+
+    expect(monitor.unreachable).toBe(true);
+    expect(recovered).toBe(0);
+    // The age of the data on screen does not move either: nothing newer arrived.
+    expect(monitor.lastHealthyAt).toBe(stoppedAt);
+    stop();
+  });
+
+  test('while reachable, a query success moves the age of the data forward', async () => {
+    let now = 1_000;
+    const monitor = new ConnectionMonitor({ probe: async () => 1, now: () => now });
+    monitors.push(monitor);
+    const queryClient = new QueryClient();
+    const stop = monitor.observe(queryClient);
+    now = 4_000;
+    await queryClient.fetchQuery({ queryKey: ['up'], queryFn: async () => 1 });
+    expect(monitor.lastHealthyAt).toBe(4_000);
     stop();
   });
 
@@ -117,33 +165,5 @@ describe('ConnectionMonitor', () => {
       .catch(() => undefined);
     expect(monitor.unreachable).toBe(false);
     stop();
-  });
-});
-
-describe('guardChanges', () => {
-  test('refuses a mutation before it runs while unreachable, and puts the previous handler back', async () => {
-    const monitor = open(async () => new Response('ok'));
-    const queryClient = new QueryClient();
-    const release = guardChanges(queryClient, monitor);
-    let sent = 0;
-    const change = () =>
-      queryClient
-        .getMutationCache()
-        .build(queryClient, {
-          mutationFn: async () => {
-            sent += 1;
-            return 'done';
-          },
-        })
-        .execute(undefined);
-
-    expect(await change()).toBe('done');
-    monitor.reportUnreachable();
-    expect(await rejectionOf(change())).toBeInstanceOf(ServerUnreachableError);
-    expect(sent).toBe(1);
-
-    release();
-    expect(await change()).toBe('done');
-    expect(sent).toBe(2);
   });
 });

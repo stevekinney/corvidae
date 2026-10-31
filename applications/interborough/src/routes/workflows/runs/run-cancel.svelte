@@ -60,6 +60,7 @@
 
 {#if canCancel}
   <Button
+    data-changes
     variant="secondary"
     label={TASK_COPY.cancelAction}
     loading={cancelling}

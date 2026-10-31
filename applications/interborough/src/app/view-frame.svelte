@@ -14,9 +14,11 @@
    *
    * A view that has shown its data keeps showing it when the next request fails. It stays ready
    * and carries `data-stale`, which one rule in `foundation.css` dims, beside `data-stale-since`,
-   * the time of the data on screen. The server not answering (`../app/connection.svelte.ts`) makes
-   * every ready view stale, and the shell's banner says so; a server that answers with a fault
-   * makes only this view stale, and the frame says what failed above the data, with no banner.
+   * the time of the data on screen. A view that was empty stays empty and is dimmed the same way.
+   * The server not answering (`../app/connection.svelte.ts`) makes every ready or empty view
+   * stale, and the shell's banner says so. A server that answers with a fault makes only this view
+   * stale, with no banner, and the frame says what failed above it, with Retry and the age of the
+   * data as text.
    * With nothing to keep, a request that got no answer replaces the view with the unreachable
    * page, and any other failure with the error.
    *
@@ -26,7 +28,7 @@
    */
   import { untrack, type Snippet } from 'svelte';
 
-  import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, ErrorState, RelativeTime, Skeleton } from '@lostgradient/cinder';
   import { Inbox } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -41,7 +43,7 @@
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
-  import { CONNECTION_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
   import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
@@ -219,6 +221,20 @@
   }
 </script>
 
+{#snippet refreshError()}
+  <div class="weft-view__refresh-error">
+    <ErrorState
+      variant="flat"
+      title={errorCopy.title}
+      description={errorCopy.description}
+      headingLevel={2}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => void probeQuery.refetch()}
+    />
+    <p class="weft-view__stale-age">{STALE_DATA_LABEL} <RelativeTime date={staleSince} /></p>
+  </div>
+{/snippet}
+
 <div
   class="weft-view"
   data-view={initial.view}
@@ -228,15 +244,7 @@
 >
   {#if state === 'ready'}
     {#if refreshFailed && !connection.unreachable}
-      <ErrorState
-        class="weft-view__refresh-error"
-        variant="flat"
-        title={errorCopy.title}
-        description={errorCopy.description}
-        headingLevel={2}
-        retryLabel={RETRY_LABEL}
-        onRetry={() => void probeQuery.refetch()}
-      />
+      {@render refreshError()}
     {/if}
     {@render children()}
   {:else if state === 'loading'}
@@ -247,6 +255,9 @@
       <Skeleton height="10rem" />
     </div>
   {:else if state === 'empty' && emptyCopy}
+    {#if refreshFailed && !connection.unreachable}
+      {@render refreshError()}
+    {/if}
     <EmptyState
       class="weft-view__empty"
       title={emptyCopy.title}

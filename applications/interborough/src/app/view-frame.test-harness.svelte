@@ -20,7 +20,8 @@
   } from '../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from './bureau-event-queries.ts';
   import { provideFleetEventSource } from './engine-status.svelte.ts';
-  import { ConnectionMonitor, guardChanges, provideConnection } from './connection.svelte.ts';
+  import { armWriteGuard } from '../lib/write-guard.ts';
+  import { ConnectionMonitor, provideConnection } from './connection.svelte.ts';
   import { connectFleetInvalidation } from './fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from './live-polling.svelte.ts';
   import ToastHost from './toast-host.svelte';
@@ -87,7 +88,10 @@
     untrack(() => onConnection)?.(monitor);
     $effect(() => {
       const stopObserving = monitor.observe(queryClient);
-      const stopGuarding = guardChanges(queryClient, monitor);
+      const stopGuarding = armWriteGuard(
+        () => monitor.unreachable,
+        [window.location.origin, 'http://localhost'],
+      );
       return () => {
         stopObserving();
         stopGuarding();

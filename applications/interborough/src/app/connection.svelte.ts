@@ -1,20 +1,23 @@
 /**
  * Whether the server answers, as the shell knows it. Three things say it does not: a request that
  * got no answer (`isNetworkFailure`, seen on any query or mutation), the browser reporting that it
- * is offline, and the engine feed giving up (`stale` or `closed`). One thing says it does again: a
- * request that got an answer, or the probe of `/v1/health` that this monitor makes on its own while
- * the server is down, because nothing else asks while the page sits still.
+ * is offline, and the engine feed giving up (`stale` or `closed`). Exactly one thing says it does
+ * again: the probe of `/v1/health` that this monitor makes on its own while the server is down.
+ * No query result clears it, because a query can succeed against a stopped host: a view that
+ * swallows its own failures (`view-probes.ts`) or settles them (`allSettled` in
+ * `schedule-kinds.ts`) resolves with the host down.
  *
  * Everything that shows the problem reads `unreachable` from here: the shell's banner, the view
  * frame's dimming (`view-frame.svelte`), the full-page state for a view with nothing to show, and
- * the refusal of changes (`guardChanges`). A page never decides for itself whether to disable an
- * action; it asks `refuseChange` or marks the control `data-changes`, and the shell turns it off.
+ * the refusal of changes (`../lib/write-guard.ts`, which the shell arms from this monitor). A page
+ * never decides for itself whether to disable an action; it marks the control `data-changes`, and
+ * the shell turns it off (`shell/changing-actions.ts`).
  */
 import { getContext, setContext } from 'svelte';
 
 import type { QueryClient } from '@tanstack/svelte-query';
 
-import { isNetworkFailure, ServerUnreachableError } from '../lib/faults.ts';
+import { isNetworkFailure } from '../lib/faults.ts';
 
 /** The wait before the probe of attempt `attempt` (counted from 1): one second, doubling to eight. */
 export function connectionProbeDelayMs(attempt: number): number {
@@ -62,7 +65,7 @@ export class ConnectionMonitor {
     this.#scheduleProbe();
   }
 
-  /** Records that the server answered. */
+  /** Records that the server answered. Only the probe may say so: see the header. */
   reportReachable(): void {
     if (this.#disposed) return;
     this.lastHealthyAt = this.#now();
@@ -84,12 +87,17 @@ export class ConnectionMonitor {
     this.reportReachable();
   }
 
-  /** Reads one query or mutation cache event: an error with no answer, or a success. */
+  /**
+   * Reads one query or mutation cache event. An error with no answer makes the server unreachable.
+   * A success moves the age of the data forward while the server is reachable, and does nothing
+   * while it is not: it cannot lift the state, and it must not make the data on screen look newer.
+   */
   observe(queryClient: QueryClient): () => void {
     const onEvent = (event: { type: string; action?: { type: string; error?: unknown } }): void => {
       if (event.type !== 'updated' || event.action === undefined) return;
-      if (event.action.type === 'success') this.reportReachable();
-      else if (event.action.type === 'error' && isNetworkFailure(event.action.error)) {
+      if (event.action.type === 'success') {
+        if (!this.unreachable && !this.#disposed) this.lastHealthyAt = this.#now();
+      } else if (event.action.type === 'error' && isNetworkFailure(event.action.error)) {
         this.reportUnreachable();
       }
     };
@@ -132,26 +140,6 @@ export class ConnectionMonitor {
     this.#disposed = true;
     this.#stopProbing();
   }
-}
-
-/**
- * Refuses every mutation while the server is unreachable, for the whole application, without a
- * page naming it: a change sent to a server that does not answer would fail after the retries, or
- * worse, be queued by the browser and sent later. The refusal is a `ServerUnreachableError`, which
- * the default mutation handler already tells the person in the words of an unreachable fault.
- * Returns the function that puts the previous handler back.
- */
-export function guardChanges(queryClient: QueryClient, monitor: ConnectionMonitor): () => void {
-  const config = queryClient.getMutationCache().config;
-  const previous = config.onMutate;
-  config.onMutate = (...input) => {
-    if (monitor.unreachable) throw new ServerUnreachableError();
-    return previous?.(...input);
-  };
-  return () => {
-    if (previous === undefined) delete config.onMutate;
-    else config.onMutate = previous;
-  };
 }
 
 const CONNECTION_CONTEXT_KEY = Symbol('interborough-connection');

@@ -83,7 +83,7 @@
           />
         </Tooltip>
       {:else if worker.health === 'draining'}
-        <Button variant="secondary" size="sm" label="Resume" onclick={onResume} />
+        <Button data-changes variant="secondary" size="sm" label="Resume" onclick={onResume} />
       {:else}
         <Button variant="secondary" size="sm" label="Drain" onclick={onDrain} />
       {/if}

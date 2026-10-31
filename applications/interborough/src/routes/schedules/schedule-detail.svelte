@@ -226,6 +226,7 @@
     {#snippet headerActions()}
       {#if allowed.pause || allowed.resume}
         <Button
+          data-changes
           variant="secondary"
           disabled={writeGate.disabled || actions.busy}
           title={writeGate.title}
@@ -268,6 +269,7 @@
           </Dropdown.Item>
           {#if allowed.cancel}
             <Dropdown.Item
+              data-changes
               variant="danger"
               disabled={writeGate.disabled || actions.busy}
               onclick={() => {

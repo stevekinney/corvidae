@@ -314,6 +314,7 @@
       <div class="ib-workflow__actions">
         {#if actions.pause && !file.paused}
           <Button
+            data-changes
             variant="secondary"
             size="sm"
             disabled={busy || file.hash === null}
@@ -322,6 +323,7 @@
         {/if}
         {#if actions.resume && file.paused}
           <Button
+            data-changes
             variant="secondary"
             size="sm"
             disabled={busy || file.hash === null}
@@ -338,6 +340,7 @@
         {/if}
         {#if actions.delete}
           <Button
+            data-changes
             variant="danger"
             size="sm"
             disabled={busy}

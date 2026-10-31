@@ -92,6 +92,9 @@ export const CONNECTION_COPY = {
   },
 } as const;
 
+/** What precedes the age of the data a view keeps showing after its own request failed. */
+export const STALE_DATA_LABEL = 'Showing data from';
+
 /** The label on the control that asks a view to try again. */
 export const RETRY_LABEL = 'Try again';
 

@@ -690,11 +690,27 @@
   padding: 0;
 }
 
+/* While the server does not answer, a control that changes something reads as off. The shell sets
+ * `data-connection` and holds the activation (`app/shell/changing-actions.ts`); this rule is only
+ * the look, and it must name the same controls as `CHANGING_ACTION_SELECTOR`. It reads the shell
+ * from the body so that a dialog, which renders outside the shell, is dimmed too. */
+body:has(.weft-shell[data-connection='unreachable'])
+  :is([data-changes], button[type='submit'], input[type='submit']) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* A view that is showing what it showed last time (`data-stale`, set by the frame while the server
  * does not answer or its own request failed) is dimmed, so what is on screen reads as old. The one
  * thing left at full strength is what the frame says about the failure. */
 .weft-view[data-stale='true'] > :not(.weft-view__refresh-error) {
   opacity: 0.6;
+}
+
+.weft-view__stale-age {
+  margin: 0 0 var(--cinder-space-3, 0.75rem);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm, 0.875rem);
 }
 
 .weft-view__action {

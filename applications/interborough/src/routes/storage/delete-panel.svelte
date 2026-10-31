@@ -42,6 +42,7 @@
   />
   <ReservedPrefixCallout {key} />
   <Button
+    data-changes
     label="Delete · confirm"
     variant="danger"
     size="sm"

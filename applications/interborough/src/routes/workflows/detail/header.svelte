@@ -340,6 +340,7 @@
     {#each actions as action (action)}
       <Tooltip text={actionGate.title ?? ''}>
         <Button
+          data-changes
           variant="secondary"
           size="sm"
           label={actionLabel(action)}

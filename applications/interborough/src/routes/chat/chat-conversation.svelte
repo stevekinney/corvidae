@@ -472,6 +472,7 @@
       {#snippet messageActions({ message })}
         {#if branchPoints.has(message.id)}
           <Button
+            data-changes
             type="button"
             class="chat-message-action-button"
             size="xs"

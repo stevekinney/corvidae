@@ -185,6 +185,7 @@
 
 {#if choices.length > 1}
   <Select
+    data-changes
     id="weft-chat-model"
     class="weft-chat-model"
     label={COPY.label}

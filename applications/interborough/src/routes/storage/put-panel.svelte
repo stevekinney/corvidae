@@ -48,6 +48,7 @@
     class="weft-storage-monospace-input"
   />
   <Button
+    data-changes
     label="Put · confirm"
     variant="primary"
     size="sm"

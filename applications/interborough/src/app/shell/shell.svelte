@@ -18,18 +18,19 @@
   import { Banner, SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
+  import { armWriteGuard } from '../../lib/write-guard.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
   import { CONNECTION_COPY } from '../copy.ts';
-  import { ConnectionMonitor, guardChanges, provideConnection } from '../connection.svelte.ts';
+  import { ConnectionMonitor, provideConnection } from '../connection.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
@@ -39,7 +40,7 @@
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
   import { ThemeStore } from '../theme.svelte.ts';
   import AuthModeBanner from './auth-mode-banner.svelte';
-  import { disableChangingActions } from './changing-actions.ts';
+  import { holdChangingActions } from './changing-actions.ts';
   import CommandPaletteLauncher from './command-palette.svelte';
   import CriticalAlertStrip from './critical-alert-strip.svelte';
   import { registerShellShortcuts } from './destinations.ts';
@@ -92,16 +93,21 @@
       onRecovered: () => void queryClient.invalidateQueries(),
     }),
   );
+  // Armed while the shell initializes, not in an effect, because a child that captures `fetch` when
+  // it is created (a chat's run wiring) would otherwise keep the one that never refuses.
+  const disarmWriteGuard = armWriteGuard(
+    () => connection.unreachable,
+    [window.location.origin, new URL(initialClient.baseUrl, window.location.origin).origin],
+  );
+  onDestroy(disarmWriteGuard);
   $effect(() => {
     const stopObserving = connection.observe(queryClient);
-    const stopGuarding = guardChanges(queryClient, connection);
     const goOffline = () => connection.reportUnreachable();
     const comeOnline = () => void connection.check();
     window.addEventListener('offline', goOffline);
     window.addEventListener('online', comeOnline);
     return () => {
       stopObserving();
-      stopGuarding();
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('online', comeOnline);
       connection.dispose();
@@ -226,11 +232,13 @@
 
   let paletteOpen = $state(false);
 
-  // While the server does not answer, every control that changes something is turned off.
-  let main = $state<HTMLElement | undefined>();
+  // While the server does not answer, every control that changes something is held back: dimmed by
+  // the shell's `data-connection` attribute, refused on activation, and marked `aria-disabled`.
+  // The page's own `disabled` state is never touched (`./changing-actions.ts`).
+  // A dialog renders outside the shell, so the hold covers the whole document.
   $effect(() => {
-    if (!connection.unreachable || main === undefined) return;
-    return disableChangingActions(main, CONNECTION_COPY.changesOff);
+    if (!connection.unreachable) return;
+    return holdChangingActions(document.body, CONNECTION_COPY.changesOff);
   });
 </script>
 
@@ -240,7 +248,7 @@
     engineStatus={engineStatus.status}
     bind:collapsed={sidebarCollapsed, setSidebarCollapsed}
   />
-  <div class="weft-shell-main" bind:this={main}>
+  <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen bind:drawerOpen />
     {#if connection.unreachable}
       <Banner

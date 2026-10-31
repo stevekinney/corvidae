@@ -141,6 +141,7 @@
                 </Tooltip>
               {:else}
                 <Button
+                  data-changes
                   variant="secondary"
                   size="sm"
                   label={state?.kind === 'report' ? 'Run again' : 'Run conformance'}

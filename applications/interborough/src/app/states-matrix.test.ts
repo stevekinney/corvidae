@@ -12,13 +12,18 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
+import { callBureau } from '../lib/bureau-client.ts';
 import { settle } from '../lib/fake-timers.test-support.ts';
+import { ServerUnreachableError } from '../lib/faults.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../lib/scopes.svelte.ts';
 import { ChatSessionState, MAX_RECONNECT_ATTEMPTS } from '../routes/chat/chat-session.svelte.ts';
 import type { ConnectionMonitor } from './connection.svelte.ts';
-import { CONNECTION_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
+import { holdChangingActions } from './shell/changing-actions.ts';
 import Harness from './view-frame.test-harness.svelte';
+import { probeFor } from './view-probes.ts';
+import type { ViewName } from './views.ts';
 
 let restoreFetch: (() => void) | undefined;
 afterEach(() => {
@@ -29,31 +34,37 @@ afterEach(() => {
 
 type HostMode = 'answers' | 'stopped' | 'fails';
 
-/** A host whose schedules list answers, is stopped (no answer at all), or answers with a 500. */
+/**
+ * A host whose schedules list answers, is stopped (no answer at all), or answers with a 500.
+ * `empty` makes the list answer with nothing in it. `writes` counts the writes that reached it.
+ */
 function host(initial: HostMode) {
-  const state = { mode: initial, schedulesRequests: 0 };
-  restoreFetch = installFetchImplementation(async (input) => {
+  const state = { mode: initial, schedulesRequests: 0, writes: 0, empty: false };
+  restoreFetch = installFetchImplementation(async (input, init) => {
     const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(text, 'http://localhost');
     if (state.mode === 'stopped') throw new TypeError('Failed to fetch');
     if (url.pathname.endsWith('/health')) return Response.json({ status: 'ok' });
+    if (init?.method !== undefined && init.method !== 'GET') state.writes += 1;
     state.schedulesRequests += 1;
     if (state.mode === 'fails') {
       return Response.json({ error: 'The server broke.' }, { status: 500 });
     }
-    return Response.json({ items: [{ id: 'schedule-1' }], total: 1 });
+    return state.empty
+      ? Response.json({ items: [], total: 0 })
+      : Response.json({ items: [{ id: 'schedule-1' }], total: 1 });
   });
   return state;
 }
 
-function mountSchedules() {
+function mountSchedules(view: ViewName = 'schedules') {
   let queryClient: QueryClient | undefined;
   let monitor: ConnectionMonitor | undefined;
   const result = render(Harness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: AUTHORIZATION_SCOPES,
-      view: 'schedules',
+      view,
       onQueryClient: (created: QueryClient) => {
         queryClient = created;
       },
@@ -128,7 +139,7 @@ describe('the view frame and the connection monitor', () => {
     expect(page.frame().dataset['state']).toBe('ready');
   });
 
-  test('a change is refused while the host is unreachable, and allowed again once it answers', async () => {
+  test('a write is refused at the request while the host is unreachable, and allowed again once it answers', async () => {
     const state = host('answers');
     const page = mountSchedules();
     await page.findByTestId('content');
@@ -136,25 +147,98 @@ describe('the view frame and the connection monitor', () => {
     await page.queryClient().refetchQueries({ queryKey: ['view'] });
     await waitFor(() => expect(page.monitor().unreachable).toBe(true));
 
-    let sent = 0;
-    const change = () =>
-      page
-        .queryClient()
-        .getMutationCache()
-        .build(page.queryClient(), {
-          mutationFn: async () => {
-            sent += 1;
-            return 'done';
-          },
-        })
-        .execute(undefined);
-    expect(String(await rejectionOf(change()))).toMatch(/did not answer/);
-    expect(sent).toBe(0);
-
+    // Through the Weft client, which is not the mutation cache, and through the Bureau's.
+    const client = new HttpClient({ baseUrl: 'http://localhost/api' });
     state.mode = 'answers';
+    expect(await rejectionOf(client.cancel('run-1'))).toBeInstanceOf(ServerUnreachableError);
+    expect(await rejectionOf(callBureau('bureau.tasks.cancel', { taskId: 't' }))).toBeInstanceOf(
+      ServerUnreachableError,
+    );
+    expect(state.writes).toBe(0);
+
     await waitFor(() => expect(page.monitor().unreachable).toBe(false));
-    expect(await change()).toBe('done');
-    expect(sent).toBe(1);
+    await client.cancel('run-1');
+    expect(state.writes).toBe(1);
+  });
+
+  test('a view that swallows its failure succeeds against a stopped host: the host stays unreachable', async () => {
+    const state = host('answers');
+    const page = mountSchedules();
+    await page.findByTestId('content');
+    state.mode = 'stopped';
+    await page.queryClient().refetchQueries({ queryKey: ['view'] });
+    await waitFor(() => expect(page.monitor().unreachable).toBe(true));
+    const stoppedAt = page.monitor().lastHealthyAt;
+
+    // The reviews probe catches the network failure and answers "not empty", as COR-1612 decided,
+    // so opening Reviews with the host stopped is a query that succeeds.
+    const probe = probeFor('reviews', {}, undefined, new URLSearchParams())!;
+    const client = new HttpClient({ baseUrl: 'http://localhost/api' });
+    const answer = await page.queryClient().fetchQuery({
+      queryKey: ['view', 'reviews'],
+      queryFn: () => probe(client, page.queryClient()),
+    });
+    expect(answer).toEqual({ empty: false });
+
+    expect(page.monitor().unreachable).toBe(true);
+    expect(page.monitor().lastHealthyAt).toBe(stoppedAt);
+    expect(page.frame().dataset['stale']).toBe('true');
+  });
+
+  test('a 5xx refetch on an empty view says what failed, with Retry and the age of what is shown', async () => {
+    const state = host('answers');
+    state.empty = true;
+    const page = mountSchedules();
+    await waitFor(() => expect(page.frame().dataset['state']).toBe('empty'));
+
+    state.mode = 'fails';
+    await page.queryClient().refetchQueries({ queryKey: ['view'] });
+
+    await waitFor(() => expect(page.frame().dataset['stale']).toBe('true'));
+    expect(page.frame().dataset['state']).toBe('empty');
+    expect(
+      page.getByRole('heading', { level: 2, name: VIEW_COPY.schedules.error.title }),
+    ).not.toBeNull();
+    expect(page.getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    expect(page.frame().textContent).toContain(STALE_DATA_LABEL);
+    expect(page.monitor().unreachable).toBe(false);
+  });
+
+  test('a 5xx refetch shows the age as text on a view that has data too', async () => {
+    const state = host('answers');
+    const page = mountSchedules();
+    await page.findByTestId('content');
+    state.mode = 'fails';
+    await page.queryClient().refetchQueries({ queryKey: ['view'] });
+    await waitFor(() => expect(page.frame().dataset['stale']).toBe('true'));
+    expect(page.frame().textContent).toContain(STALE_DATA_LABEL);
+  });
+});
+
+describe('the controls a changing action holds', () => {
+  test('a Save the page keeps disabled until it is edited stays held after the edit, and the page state is untouched', () => {
+    const root = document.createElement('main');
+    root.innerHTML =
+      '<form><input id="name"><button type="submit" id="save" disabled>Save</button></form>';
+    document.body.append(root);
+    const save = root.querySelector<HTMLButtonElement>('#save')!;
+    const release = holdChangingActions(root, CONNECTION_COPY.changesOff);
+    expect(save.disabled).toBe(true);
+    // The first keystroke of the outage enables Save, as the page does.
+    save.disabled = false;
+    expect(save.getAttribute('aria-disabled')).toBe('true');
+    let submitted = 0;
+    root.querySelector('form')!.addEventListener('submit', (event) => {
+      event.preventDefault();
+      submitted += 1;
+    });
+    save.click();
+    expect(submitted).toBe(0);
+    release();
+    // The seam gave back exactly what it took: the page's own state is what it was.
+    expect(save.disabled).toBe(false);
+    expect(save.hasAttribute('aria-disabled')).toBe(false);
+    root.remove();
   });
 });
 

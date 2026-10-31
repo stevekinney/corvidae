@@ -67,6 +67,7 @@
       <div class="weft-health-tab__panel-header">
         <span>Recover all</span>
         <Button
+          data-changes
           variant="secondary"
           size="sm"
           label="Recover all"

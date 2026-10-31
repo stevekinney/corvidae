@@ -131,6 +131,7 @@
     {/if}
     <Tooltip text={sendGate.title ?? ''}>
       <Button
+        data-changes
         variant="primary"
         size="sm"
         fullWidth
