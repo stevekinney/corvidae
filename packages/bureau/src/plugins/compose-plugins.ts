@@ -445,6 +445,26 @@ async function setUp(
   }
 }
 
+/** `given` with every caller-owned collection composition reads after an await copied now. */
+function snapshotOf<O extends ComposableOptions>(given: O): O {
+  const { agents, validators, eventFormatters, decisions, hooks, onlineEvals } = given;
+  return {
+    ...given,
+    ...(agents === undefined ? {} : { agents: { ...agents } }),
+    ...(validators === undefined ? {} : { validators: [...validators] }),
+    ...(eventFormatters === undefined ? {} : { eventFormatters: [...eventFormatters] }),
+    ...(decisions?.models === undefined
+      ? {}
+      : { decisions: { ...decisions, models: { ...decisions.models } } }),
+    ...(hooks?.actionKinds === undefined
+      ? {}
+      : { hooks: { ...hooks, actionKinds: [...hooks.actionKinds] } }),
+    ...(onlineEvals === undefined
+      ? {}
+      : { onlineEvals: { ...onlineEvals, judges: [...onlineEvals.judges] } }),
+  };
+}
+
 /**
  * Loads `options.plugins` and folds what they contribute into the options. With no plugins the
  * options come back as given, except that a `memory` factory is called with nothing contributed.
@@ -452,9 +472,9 @@ async function setUp(
 export async function composePlugins<O extends ComposableOptions>(
   given: O,
 ): Promise<ComposedPlugins<O>> {
-  // The agent catalog is the caller's object, read before the first await: a caller that mutates
-  // it after calling `createBureau` must not change what this Bureau runs.
-  const options: O = given.agents === undefined ? given : { ...given, agents: { ...given.agents } };
+  // The caller's objects are read before the first await: a caller that mutates them after
+  // calling `createBureau` must not change what this Bureau composes.
+  const options = snapshotOf(given);
   const contributed = new Contributed();
   const records: PluginRecord[] = [];
   const claims = heldByHost(options);
