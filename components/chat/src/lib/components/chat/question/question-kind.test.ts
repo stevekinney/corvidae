@@ -10,7 +10,14 @@ import {
   timeFromLocal,
   withoutSecrets,
 } from './question-answer.ts';
-import { choicesOf, classifyQuestion, ratingStepsOf, type QuestionKind } from './question-kind.ts';
+import {
+  choicesOf,
+  classifyQuestion,
+  mediaTypeMatches,
+  ratingBounds,
+  ratingStepsOf,
+  type QuestionKind,
+} from './question-kind.ts';
 
 describe('classifyQuestion', () => {
   const cases: [string, Record<string, unknown>, QuestionKind][] = [
@@ -136,5 +143,23 @@ describe('answers', () => {
       issuesOfRejection({ issues: [{ path: ['a', 0], message: 'bad' }, { nope: true }] }),
     ).toEqual([{ path: ['a', 0], message: 'bad' }]);
     expect(issuesOfRejection({ issues: [] })).toBeUndefined();
+  });
+});
+
+describe('media types and wide ratings', () => {
+  test('an empty type is unknown and accepted, x- is the same type, other types are refused', () => {
+    expect(mediaTypeMatches('application/yaml', '')).toBe(true);
+    expect(mediaTypeMatches('application/yaml', 'application/x-yaml')).toBe(true);
+    expect(mediaTypeMatches('application/x-yaml', 'application/yaml')).toBe(true);
+    expect(mediaTypeMatches('image/*', 'image/png; charset=binary')).toBe(true);
+    expect(mediaTypeMatches('image/png', 'text/plain')).toBe(false);
+    expect(mediaTypeMatches(undefined, 'anything/at-all')).toBe(true);
+  });
+
+  test('a rating wider than the button row has no steps and reports its bounds instead', () => {
+    const wide = { type: 'integer', minimum: 1, maximum: 100, 'x-kind': 'rating' };
+    expect(ratingStepsOf(wide)).toEqual([]);
+    expect(ratingBounds(wide)).toEqual({ minimum: 1, maximum: 100 });
+    expect(ratingStepsOf({ minimum: 1, maximum: 20 })).toHaveLength(20);
   });
 });

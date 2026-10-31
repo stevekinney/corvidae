@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  acceptsFile,
   formatAcceptDescription,
   installFilePickerReturnFallback,
   installFileUploadSurfaceActivation,
@@ -50,5 +51,26 @@ describe('installFileUploadSurfaceActivation', () => {
     destroy();
     surface.dispatchEvent(new Event('click'));
     expect(opened).toBe(1);
+  });
+});
+
+describe('acceptsFile', () => {
+  const named = (name: string, type: string): File => new File(['x'], name, { type });
+
+  test('a file whose type the browser could not name is accepted against a media type', () => {
+    expect(acceptsFile(named('config.yaml', ''), 'application/yaml')).toBe(true);
+    expect(acceptsFile(named('config.yaml', ''), 'image/*')).toBe(true);
+  });
+
+  test('x- marks the same type under an older name', () => {
+    expect(acceptsFile(named('config.yaml', 'application/x-yaml'), 'application/yaml')).toBe(true);
+    expect(acceptsFile(named('config.yaml', 'application/yaml'), 'application/x-yaml')).toBe(true);
+  });
+
+  test('a named type that does not match is still refused, and extensions still decide by name', () => {
+    expect(acceptsFile(named('notes.txt', 'text/plain'), 'application/yaml')).toBe(false);
+    expect(acceptsFile(named('logo.png', 'image/png'), 'image/*')).toBe(true);
+    expect(acceptsFile(named('a.yaml', ''), '.json')).toBe(false);
+    expect(acceptsFile(named('a.json', ''), '.json')).toBe(true);
   });
 });

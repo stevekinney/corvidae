@@ -10,6 +10,7 @@
 </script>
 
 <script lang="ts">
+  import { validateSchemaFormValue } from '@lostgradient/cinder';
   import ChatQuestion from '../../question/chat-question.svelte';
   import { issuesOfRejection, recordAnswer } from '../../question/question-answer.ts';
   import type { ChatQuestionIssue } from '../../question/question-answer.ts';
@@ -43,8 +44,18 @@
     busy = true;
     failed = false;
     issues = [];
+    const generation = store.generation;
     try {
+      // The host is called only with an answer that meets the whole schema, whichever control
+      // gave it, so the composer and the specialised controls are held to what SchemaForm is.
+      const checked = await validateSchemaFormValue(part.schema, value);
+      if (!checked.valid) {
+        issues = checked.issues;
+        return false;
+      }
       await onInputSubmit(part.toolCallId, value);
+      // A different conversation has taken the store while the host was answering.
+      if (store.generation !== generation) return false;
       store.answers.set(
         part.toolCallId,
         recordAnswer({

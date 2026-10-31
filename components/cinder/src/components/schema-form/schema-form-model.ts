@@ -340,6 +340,17 @@ export function isTemporalStringSchema(schema: JsonSchemaObject): boolean {
  * Whether a message for `path` has a field to appear on: the form's root, a named property, an
  * array row, or anything under a control that edits many values at once.
  */
+/**
+ * What a blank moment field holds. A property or array row leaves it out, because a blank is not
+ * an RFC 3339 value; the form's own root cannot be left out, so it is `null` where the schema
+ * allows null and the empty string (which the validator then refuses) where it does not.
+ */
+export function blankMomentValue(field: SchemaFormField): unknown {
+  if (field.path.length > 0) return undefined;
+  const type = field.schema['type'];
+  return Array.isArray(type) && type.includes('null') ? null : '';
+}
+
 export function fieldAtPathExists(field: SchemaFormField, path: readonly string[]): boolean {
   if (path.length === 0) return true;
   const [head, ...rest] = path;
@@ -378,7 +389,8 @@ export function defaultValueForField(field: SchemaFormField): unknown {
   }
   if (field.kind === 'boolean') return false;
   if (field.kind === 'enum') return field.options.length > 0 ? field.options[0]!.value : '';
-  if (field.kind === 'string') return isTemporalStringSchema(field.schema) ? undefined : '';
+  if (field.kind === 'string')
+    return isTemporalStringSchema(field.schema) ? blankMomentValue(field) : '';
   if (field.kind === 'json') return null;
   return undefined;
 }

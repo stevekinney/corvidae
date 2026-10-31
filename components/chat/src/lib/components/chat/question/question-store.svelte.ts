@@ -28,6 +28,8 @@ export class QuestionStore {
   /** The answered questions, by tool call id. */
   readonly answers = new SvelteMap<string, QuestionAnswerRecord>();
 
+  #generation = 0;
+
   readonly #composerTargets = new SvelteMap<string, ComposerQuestionTarget>();
   readonly #answerInComposer: () => boolean;
   readonly #uploadFile: () => ((file: File, signal: AbortSignal) => Promise<string>) | undefined;
@@ -47,6 +49,22 @@ export class QuestionStore {
     this.#maxFileSize = maxFileSize;
     this.#answerInComposer = answerInComposer;
     this.#uploadFile = uploadFile;
+  }
+
+  /**
+   * Counts the conversations this store has served. An answer in flight remembers the number it
+   * started under and is dropped if the store has moved on, so a late completion cannot write into
+   * the next conversation.
+   */
+  get generation(): number {
+    return this.#generation;
+  }
+
+  /** Forgets every answer and open question, for a different conversation. */
+  reset(): void {
+    this.#generation += 1;
+    this.answers.clear();
+    this.#composerTargets.clear();
   }
 
   /** Whether free text is answered through the composer. */

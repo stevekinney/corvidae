@@ -11,6 +11,7 @@ import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
+  appendAssistantMessage,
   appendToolCall,
   appendToolResult,
   appendUserMessage,
@@ -54,6 +55,13 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+async function settle(): Promise<void> {
+  // load-proof: Svelte effects, event handlers and promise continuations (a schema check compiles through a few) settle in the microtask queue, so these turns only drain them and await no timer or IO
+  for (let turn = 0; turn < 4; turn += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 function composerOf(container: HTMLElement): HTMLTextAreaElement {
   return container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
 }
@@ -62,8 +70,7 @@ async function typeAndSend(container: HTMLElement, text: string): Promise<void> 
   const composer = composerOf(container);
   await fireEvent.input(composer, { target: { value: text } });
   await fireEvent.keyDown(composer, { key: 'Enter' });
-  await tick();
-  await tick();
+  await settle();
 }
 
 function questionConversation(id: string, schema: Record<string, unknown>): ConversationHistory {
@@ -152,8 +159,7 @@ describe('free text answered through the composer', () => {
 
     await fireEvent.input(field!, { target: { value: 'production' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await tick();
-    await tick();
+    await settle();
 
     expect(answers).toEqual([['ask', 'production']]);
     expect(messages).toEqual([]);
@@ -176,8 +182,7 @@ describe('free text answered through the composer', () => {
     await tick();
 
     await fireEvent.click(screen.getByRole('button', { name: 'Staging' }));
-    await tick();
-    await tick();
+    await settle();
 
     expect(answers).toEqual(['staging']);
     expect(document.body.textContent).toContain('You answered');
@@ -199,8 +204,7 @@ describe('answered questions', () => {
     });
     await tick();
     await fireEvent.click(screen.getByRole('button', { name: 'Staging' }));
-    await tick();
-    await tick();
+    await settle();
 
     await view.rerender({
       conversation: replaceToolResult(conversation, 'ask', {
@@ -269,8 +273,7 @@ describe('a question whose run has resumed', () => {
     });
     await tick();
     await fireEvent.click(screen.getByRole('button', { name: 'staging' }));
-    await tick();
-    await tick();
+    await settle();
     expect(screen.queryByRole('button', { name: 'Change' })).not.toBeNull();
 
     await view.rerender({ conversation: resumed(conversation) });
@@ -295,8 +298,7 @@ describe('a question whose run has resumed', () => {
       target: { value: 'first' },
     });
     await fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    await tick();
-    await tick();
+    await settle();
     await fireEvent.click(screen.getByRole('button', { name: 'Change' }));
     await tick();
     expect(view.container.querySelector('[data-cinder-tool-input] textarea')).not.toBeNull();
@@ -306,5 +308,145 @@ describe('a question whose run has resumed', () => {
 
     expect(view.container.querySelector('[data-cinder-tool-input] textarea')).toBeNull();
     expect(view.container.textContent).toContain('You answered');
+  });
+});
+
+describe('answers are held to the whole schema, and belong to their conversation', () => {
+  test('an answer that breaks the schema never reaches the host, from the composer or a control', async () => {
+    const answers: unknown[] = [];
+    const strict = { type: 'string', minLength: 5, pattern: '^[a-z]+$' };
+    const view = render(Chat, {
+      id: 'q-strict',
+      conversation: questionConversation('q-strict', { type: 'string', minLength: 5 }),
+      answerInComposer: true,
+      onInputSubmit: (_id: string, value: unknown) => {
+        answers.push(value);
+      },
+    });
+    await tick();
+
+    await typeAndSend(view.container, 'abc');
+
+    expect(answers).toEqual([]);
+    expect(view.container.textContent).toContain('too short');
+    // The refused text is back in the composer to fix.
+    expect(composerOf(view.container).value).toBe('abc');
+    expect(strict).toBeDefined();
+  });
+
+  test('an answer from a specialised control is checked too', async () => {
+    const answers: unknown[] = [];
+    render(Chat, {
+      id: 'q-range',
+      conversation: questionConversation('q-range', {
+        type: 'integer',
+        exclusiveMinimum: 10,
+        title: 'Count',
+      }),
+      onInputSubmit: (_id: string, value: unknown) => {
+        answers.push(value);
+      },
+    });
+    await tick();
+    const field = screen.getByRole('spinbutton', { name: /Count/ });
+    await fireEvent.input(field, { target: { value: '3' } });
+    await fireEvent.blur(field);
+    await fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await settle();
+
+    expect(answers).toEqual([]);
+    expect(document.body.textContent).not.toContain('You answered');
+  });
+
+  test('a different conversation does not inherit the answer to a call with the same id', async () => {
+    const first = questionConversation('q-first', { type: 'boolean' });
+    const view = render(Chat, {
+      id: 'q-switch',
+      conversation: first,
+      onInputSubmit: () => undefined,
+    });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await settle();
+    expect(view.container.textContent).toContain('You answered');
+
+    await view.rerender({ conversation: questionConversation('q-second', { type: 'boolean' }) });
+    await settle();
+
+    expect(view.container.textContent).not.toContain('You answered');
+    expect(screen.queryByRole('button', { name: 'Yes' })).not.toBeNull();
+  });
+
+  test('an answer still in flight when the conversation changes does not land in the next one', async () => {
+    let release: () => void = () => undefined;
+    const view = render(Chat, {
+      id: 'q-late',
+      conversation: questionConversation('q-late-1', { type: 'boolean' }),
+      onInputSubmit: () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    });
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+    await settle();
+
+    await view.rerender({ conversation: questionConversation('q-late-2', { type: 'boolean' }) });
+    await tick();
+    release();
+    await settle();
+
+    expect(view.container.textContent).not.toContain('You answered');
+  });
+});
+
+describe('long ratings and virtualized transcripts', () => {
+  test('a rating over many steps takes any value in its range from a number field', async () => {
+    const answers: unknown[] = [];
+    render(Chat, {
+      id: 'q-rating',
+      conversation: questionConversation('q-rating', {
+        type: 'integer',
+        minimum: 1,
+        maximum: 100,
+        'x-kind': 'rating',
+        title: 'Score',
+      }),
+      onInputSubmit: (_id: string, value: unknown) => {
+        answers.push(value);
+      },
+    });
+    await tick();
+    const field = screen.getByRole('spinbutton', { name: /Score/ });
+    await fireEvent.input(field, { target: { value: '73' } });
+    await fireEvent.blur(field);
+    await fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await settle();
+
+    expect(answers).toEqual([73]);
+  });
+
+  test('the open question keeps answering from the composer when its row is out of the window', async () => {
+    const answers: unknown[] = [];
+    const messages: unknown[] = [];
+    let conversation = questionConversation('q-virtual', TEXT);
+    for (let index = 0; index < 120; index += 1) {
+      conversation = appendAssistantMessage(conversation, `Filler ${index}`);
+    }
+    const view = render(Chat, {
+      id: 'q-virtual',
+      conversation,
+      virtualized: true,
+      answerInComposer: true,
+      onInputSubmit: (_id: string, value: unknown) => {
+        answers.push(value);
+      },
+      onSubmit: (event: unknown) => messages.push(event),
+    });
+    await settle();
+    await typeAndSend(view.container, 'still an answer');
+
+    expect(answers).toEqual(['still an answer']);
+    expect(messages).toEqual([]);
   });
 });

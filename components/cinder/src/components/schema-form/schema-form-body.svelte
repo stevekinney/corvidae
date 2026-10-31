@@ -23,6 +23,7 @@
     choiceBranchForValue,
     countLeafFields,
     createSchemaFormModel,
+    blankMomentValue,
     fieldAtPathExists,
     getValueAtPath,
     initialValueForField,
@@ -398,7 +399,15 @@
       }
 
       formState.commit(result.value, serialized.value);
-      await onSubmit?.(result.value as SchemaFormOutput, event);
+      try {
+        await onSubmit?.(result.value as SchemaFormOutput, event);
+      } finally {
+        // Once the host has the value, the hidden output field must not keep a secret in the
+        // document, whether the host took it or refused it. A native submit still needs it.
+        if (!shouldResumeNativeSubmit() && schemaHoldsConcealedField(schema)) {
+          formState.clearSerializedValue();
+        }
+      }
 
       if (shouldResumeNativeSubmit()) {
         allowNativeSubmit = true;
@@ -592,7 +601,9 @@
             (next) =>
               formState.updateValue(
                 field.path,
-                next === '' && isTemporalStringSchema(field.schema) ? undefined : next,
+                next === '' && isTemporalStringSchema(field.schema)
+                  ? blankMomentValue(field)
+                  : next,
               )
           }
         />

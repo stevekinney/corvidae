@@ -310,6 +310,23 @@ describe('ChatQuestion file gates', () => {
     expect(input.getAttribute('accept')).toBe('image/png');
   });
 
+  test('a type the browser cannot name is accepted: empty, or the x- form of the schema type', async () => {
+    const yaml = { type: 'string', contentMediaType: 'application/yaml', 'x-asset': true };
+    for (const type of ['', 'application/x-yaml', 'application/yaml']) {
+      const uploaded: string[] = [];
+      const { container, submitted } = await ask(yaml, {
+        uploadFile: (file: File) => {
+          uploaded.push(file.name);
+          return Promise.resolve('asset-yaml');
+        },
+      });
+      await drop(container, new File(['a: 1'], 'config.yaml', { type }));
+      expect(uploaded).toEqual(['config.yaml']);
+      expect(submitted).toEqual(['asset-yaml']);
+      cleanup();
+    }
+  });
+
   test('a file of another type is refused before anything is uploaded', async () => {
     const uploaded: string[] = [];
     const { container, submitted } = await ask(FILE, {

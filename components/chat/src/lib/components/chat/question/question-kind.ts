@@ -116,16 +116,30 @@ export function choicesOf(schema: SchemaNode): QuestionChoice[] {
   return values.map((value) => ({ value, label: labelFor(schema, value) }));
 }
 
-/** The integer steps of a rating, `minimum` to `maximum`, each with its `x-labels` entry when it has one. */
+/** The most steps a rating draws as a row of buttons; a wider range is a number field. */
+export const MAXIMUM_RATING_STEPS = 20;
+
+/**
+ * The integer steps of a rating, `minimum` to `maximum`, each with its `x-labels` entry when it
+ * has one. A range wider than {@link MAXIMUM_RATING_STEPS} has no steps to draw: it returns `[]`,
+ * and {@link ratingBounds} says what the number field takes.
+ */
 export function ratingStepsOf(schema: SchemaNode): QuestionChoice[] {
-  const minimum = schemaKeyword(schema, 'minimum');
-  const maximum = schemaKeyword(schema, 'maximum');
-  if (typeof minimum !== 'number' || typeof maximum !== 'number') return [];
+  const bounds = ratingBounds(schema);
+  if (bounds === undefined || bounds.maximum - bounds.minimum + 1 > MAXIMUM_RATING_STEPS) return [];
   const steps: QuestionChoice[] = [];
-  for (let step = minimum; step <= maximum && steps.length < 20; step += 1) {
+  for (let step = bounds.minimum; step <= bounds.maximum; step += 1) {
     steps.push({ value: step, label: labelFor(schema, step) });
   }
   return steps;
+}
+
+/** The inclusive integer range of a rating, or `undefined` when the schema does not give one. */
+export function ratingBounds(schema: SchemaNode): { minimum: number; maximum: number } | undefined {
+  const minimum = schemaKeyword(schema, 'minimum');
+  const maximum = schemaKeyword(schema, 'maximum');
+  if (typeof minimum !== 'number' || typeof maximum !== 'number') return undefined;
+  return { minimum, maximum };
 }
 
 /** The numeric keyword `name` of `schema`, when it is a number. */
@@ -142,10 +156,21 @@ export function acceptedMediaType(schema: SchemaNode): string | undefined {
   return bare === '' || bare === '*/*' ? undefined : bare;
 }
 
-/** Whether a file of media type `fileType` satisfies the `accepted` type: an exact match, or a `type/*` family. */
+/** `application/x-yaml` as `application/yaml`: `x-` marks the same type under an older name. */
+function withoutExperimentalPrefix(mediaType: string): string {
+  return mediaType.replace(/^([^/]+)\/x-/, '$1/');
+}
+
+/**
+ * Whether a file of media type `fileType` satisfies the `accepted` type: an exact match or a
+ * `type/*` family. A browser leaves the type empty when it cannot name one (`.yaml`), so an empty
+ * type is unknown and is accepted.
+ */
 export function mediaTypeMatches(accepted: string | undefined, fileType: string): boolean {
   if (accepted === undefined) return true;
-  const actual = (fileType.split(';')[0] ?? '').trim().toLowerCase();
-  if (accepted.endsWith('/*')) return actual.startsWith(accepted.slice(0, -1));
-  return actual === accepted;
+  const actual = withoutExperimentalPrefix((fileType.split(';')[0] ?? '').trim().toLowerCase());
+  if (actual === '') return true;
+  const wanted = withoutExperimentalPrefix(accepted);
+  if (wanted.endsWith('/*')) return actual.startsWith(wanted.slice(0, -1));
+  return actual === wanted;
 }

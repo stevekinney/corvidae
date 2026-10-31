@@ -56,6 +56,7 @@
     choicesOf,
     mediaTypeMatches,
     classifyQuestion,
+    ratingBounds,
     ratingStepsOf,
     schemaKeyword,
     schemaNumber,
@@ -79,6 +80,7 @@
   const kind = $derived(classifyQuestion(schema));
   const choices = $derived(choicesOf(schema));
   const steps = $derived(ratingStepsOf(schema));
+  const bounds = $derived(ratingBounds(schema));
   const errorText = $derived(issues.map((issue) => issue.message).join(' '));
   const errorProp = $derived(errorText === '' ? {} : { error: errorText });
   const errorId = $derived(`${id}-error`);
@@ -373,22 +375,36 @@
           if (rating !== undefined) onSubmit(rating);
         }}
       >
-        <div class="chat-question-choices" role="radiogroup" aria-label={title}>
-          {#each steps as step (String(step.value))}
-            <Button
-              type="button"
-              variant={Object.is(rating, step.value) ? 'primary' : 'secondary'}
-              role="radio"
-              aria-checked={Object.is(rating, step.value)}
-              disabled={busy}
-              onclick={() => (rating = step.value)}
-            >
-              {step.label}
-            </Button>
-          {/each}
-        </div>
-        {#if errorText !== ''}
-          <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
+        {#if steps.length === 0}
+          <NumberInput
+            id={`${id}-rating`}
+            label={title}
+            value={typeof rating === 'number' ? rating : null}
+            onValueChange={(next) => (rating = next ?? undefined)}
+            min={bounds?.minimum}
+            max={bounds?.maximum}
+            step={1}
+            {...errorProp}
+            disabled={busy}
+          />
+        {:else}
+          <div class="chat-question-choices" role="radiogroup" aria-label={title}>
+            {#each steps as step (String(step.value))}
+              <Button
+                type="button"
+                variant={Object.is(rating, step.value) ? 'primary' : 'secondary'}
+                role="radio"
+                aria-checked={Object.is(rating, step.value)}
+                disabled={busy}
+                onclick={() => (rating = step.value)}
+              >
+                {step.label}
+              </Button>
+            {/each}
+          </div>
+          {#if errorText !== ''}
+            <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
+          {/if}
         {/if}
         <Button type="submit" variant="primary" disabled={busy || rating === undefined}>Send</Button
         >

@@ -27,7 +27,7 @@
 </script>
 
 <script lang="ts">
-  import { flushSync, tick } from 'svelte';
+  import { flushSync, tick, untrack } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
   import type { Message, MessageInput, ToolCallPair } from '../conversation-model.ts';
   import type { ChatComposerStatus } from '../input/composer-status.ts';
@@ -50,6 +50,7 @@
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
+  import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
   import ChatHistoryTrigger from './chat-history-trigger.svelte';
   import ChatStatusAnnouncer from './chat-status-announcer.svelte';
@@ -270,6 +271,16 @@
     // Quotes belong to the conversation they were taken from.
     quotes.clear();
     quoteSelection.dismiss();
+  });
+
+  // Answers to questions belong to the conversation they were given in, and an answer still in
+  // flight must not land in this one. A pre-effect runs before the new rows' own effects register
+  // their questions, which a post-effect would wipe.
+  let questionsConversationId = untrack(() => conversation.id);
+  $effect.pre(() => {
+    if (conversation.id === questionsConversationId) return;
+    questionsConversationId = conversation.id;
+    untrack(() => questions.reset());
   });
 
   // ==========================================================================
@@ -663,6 +674,30 @@
     tick,
   });
 
+  // The free-text question the composer answers lives in a mounted row, so a virtualized list
+  // keeps that row rendered even when it scrolls out of range.
+  const openComposerQuestionMessageId = $derived.by(() => {
+    if (!answerInComposer) return undefined;
+    let openCallId: string | undefined;
+    for (const [callId, pairs] of toolCallPairsByCallId) {
+      const action = pairs.find((pair) => pair.result?.outcome === 'action_required')?.result
+        ?.action;
+      const schema: unknown = action?.type === 'input' ? action.schema : undefined;
+      if (
+        typeof schema === 'object' &&
+        schema !== null &&
+        !Array.isArray(schema) &&
+        classifyQuestion(schema as Record<string, unknown>) === 'text' &&
+        !questions.answers.has(callId)
+      ) {
+        openCallId = callId;
+      }
+    }
+    return openCallId === undefined
+      ? undefined
+      : messages.find((message) => message.toolCall?.id === openCallId)?.id;
+  });
+
   const virtualRows = $derived.by(() => {
     if (!isVirtualized) return [];
 
@@ -706,6 +741,18 @@
             ),
           });
         }
+      }
+    }
+
+    if (openComposerQuestionMessageId !== undefined) {
+      const questionIndex = findRenderRowIndexByMessageId(
+        renderRows,
+        openComposerQuestionMessageId,
+      );
+      if (questionIndex >= 0 && !renderedIndexes.has(questionIndex)) {
+        const virtualItem = chatVirtualizer.getVirtualItem(questionIndex);
+        const questionRow = renderRows[questionIndex];
+        if (virtualItem && questionRow) rows.push({ row: questionRow, virtualItem });
       }
     }
 

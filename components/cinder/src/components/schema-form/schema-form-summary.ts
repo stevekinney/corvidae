@@ -2,8 +2,8 @@ import {
   choiceBranchForValue,
   defaultValueForField,
   getValueAtPath,
-  isConcealedSchema,
   isRecord,
+  schemaHoldsConcealedField,
   type SchemaFormField,
 } from './schema-form-model.ts';
 
@@ -51,7 +51,7 @@ function changedValueText(leaf: SchemaFormField, formValue: unknown): string | u
   if (current === undefined || current === null) return undefined;
   if (JSON.stringify(current) === JSON.stringify(defaultValueForField(leaf))) return undefined;
   // A secret is counted as set, but its value never becomes text.
-  if (isConcealedSchema(leaf.schema)) return current === '' ? undefined : CONCEALED_TEXT;
+  if (schemaHoldsConcealedField(leaf.schema)) return current === '' ? undefined : CONCEALED_TEXT;
 
   if (typeof current === 'boolean') return current ? leaf.label : undefined;
   if (typeof current === 'string') return current === '' ? undefined : current;

@@ -7,6 +7,8 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render, screen } = await import('@testing-library/svelte');
 const { default: SchemaForm } = await import('./schema-form.svelte');
+const { createSchemaFormModel } = await import('./schema-form-model.ts');
+const { summarizeGroup } = await import('./schema-form-summary.ts');
 
 // load-proof: Svelte effects and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 function flush(): Promise<void> {
@@ -237,5 +239,126 @@ describe('SchemaForm optional moments', () => {
     await flush();
 
     expect(submitted).toEqual([{ name: 'ada' }]);
+  });
+});
+
+describe('SchemaForm secrets in other places', () => {
+  afterEach(() => cleanup());
+
+  test('the hidden output field keeps no secret once the host has the value', async () => {
+    const taken: unknown[] = [];
+    const { container } = render(SchemaForm, {
+      props: {
+        schema: {
+          type: 'object',
+          properties: {
+            token: { type: 'string', title: 'Token', writeOnly: true, 'x-secret': true },
+          },
+        },
+        onSubmit: (value: unknown) => {
+          taken.push(value);
+        },
+      },
+    });
+    await flush();
+    await fireEvent.input(screen.getByLabelText(/Token/), { target: { value: 'sk-live-123' } });
+    container
+      .querySelector('form')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    await flush();
+    await flush();
+
+    expect(taken).toEqual([{ token: 'sk-live-123' }]);
+    expect(container.innerHTML).not.toContain('sk-live-123');
+    expect(container.querySelector<HTMLInputElement>('input[type=hidden]')?.value).toBe('');
+  });
+
+  test('a form without a secret keeps its serialized output for native readers', async () => {
+    const { container } = render(SchemaForm, {
+      props: {
+        schema: { type: 'object', properties: { name: { type: 'string', title: 'Name' } } },
+        onSubmit: () => undefined,
+      },
+    });
+    await flush();
+    await fireEvent.input(screen.getByLabelText(/Name/), { target: { value: 'ada' } });
+    container
+      .querySelector('form')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    await flush();
+    await flush();
+
+    expect(container.querySelector<HTMLInputElement>('input[type=hidden]')?.value).toBe(
+      '{"name":"ada"}',
+    );
+  });
+
+  test('a writeOnly literal branch of a choice is masked in a group summary', () => {
+    const model = createSchemaFormModel({
+      type: 'object',
+      properties: {
+        group: {
+          type: 'object',
+          title: 'Group',
+          properties: {
+            auth: {
+              oneOf: [
+                { type: 'string', writeOnly: true },
+                { type: 'object', properties: { user: { type: 'string' } } },
+              ],
+            },
+          },
+        },
+      },
+    });
+    const group = model.field.fields[0]!;
+
+    const summary = summarizeGroup(group, { group: { auth: 'sk-live-123' } });
+
+    expect(summary).not.toContain('sk-live-123');
+    expect(summary).toContain('••••');
+  });
+
+  test('a blank root date that may be null is sent as null, and one that may not is refused with a message', async () => {
+    const nullable: unknown[] = [];
+    const first = render(SchemaForm, {
+      props: {
+        schema: { type: ['string', 'null'], format: 'date', title: 'Due' },
+        onSubmit: (value: unknown) => {
+          nullable.push(value);
+        },
+      },
+    });
+    await flush();
+    first.container
+      .querySelector('form')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    await flush();
+    await flush();
+    expect(nullable).toEqual([null]);
+    expect(first.container.textContent).not.toContain('not JSON serializable');
+    cleanup();
+
+    const strict: unknown[] = [];
+    const second = render(SchemaForm, {
+      props: {
+        schema: { type: 'string', format: 'date', title: 'Due', minLength: 10 },
+        onSubmit: (value: unknown) => {
+          strict.push(value);
+        },
+      },
+    });
+    await flush();
+    second.container
+      .querySelector('form')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flush();
+    await flush();
+    await flush();
+    expect(strict).toEqual([]);
+    expect(second.container.textContent).not.toContain('not JSON serializable');
   });
 });

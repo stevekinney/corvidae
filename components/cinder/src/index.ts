@@ -750,7 +750,11 @@ export type {
   ScheduleValue,
 } from './components/schedule-builder/index.ts';
 
-export { default as SchemaForm, readSchemaFormData } from './components/schema-form/index.ts';
+export {
+  default as SchemaForm,
+  readSchemaFormData,
+  validateSchemaFormValue,
+} from './components/schema-form/index.ts';
 export type {
   SchemaFormDraftChangeHandler,
   SchemaFormOutput,
