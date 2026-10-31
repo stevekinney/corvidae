@@ -13,7 +13,7 @@ import type { RegistryAgnosticEngine, WeftServer } from '@lostgradient/weft';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { InterboroughProviderName, LoadedProviders } from './providers.ts';
+import type { LoadedProviders } from './providers.ts';
 
 /** The build the host serves, as {@link HostDiagnostics.build} reports it when `index.html` exists. */
 export type HostBuildDiagnostics = {
@@ -26,7 +26,7 @@ export type HostBuildDiagnostics = {
 /** One model provider the host offers, as {@link HostDiagnostics.providers} reports it. */
 export type HostProviderDiagnostics = {
   /** The provider's name: `anthropic`, `openai`, or `gemini`. */
-  readonly name: InterboroughProviderName;
+  readonly name: string;
   /** The identifiers of the models the host's catalog offers from this provider. */
   readonly models: readonly string[];
 };

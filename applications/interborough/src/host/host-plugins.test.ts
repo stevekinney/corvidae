@@ -751,7 +751,7 @@ describe('a secret write that stores the file and then fails', () => {
 });
 
 describe('/host/paths', () => {
-  test('keeps the host’s own providers and adds those a plugin contributes', async () => {
+  test('reports the providers the loaded plugins contribute, each with its plugin’s first secret', async () => {
     const home = await scratch();
     const lender: BureauPluginEntry = {
       descriptor: definePlugin({
@@ -770,37 +770,24 @@ describe('/host/paths', () => {
 
     const paths = await pathsOf(host);
 
-    expect(paths.providers.map((provider) => provider.name)).toEqual([
-      'anthropic',
-      'openai',
-      'gemini',
-      'lender',
+    expect(paths.providers).toEqual([
+      { name: 'lender', secretFile: join(home, 'secrets', 'lender-api-key') },
     ]);
-    expect(paths.providers.at(-1)?.secretFile).toBe(join(home, 'secrets', 'lender-api-key'));
   });
 
-  test('lets a plugin that carries a built-in provider’s name replace it', async () => {
+  test('reports the three provider plugins the workspace ships when no plugin list is given', async () => {
     const home = await scratch();
-    const replacement: BureauPluginEntry = {
-      descriptor: definePlugin({
-        name: 'openai',
-        version: '1.0.0',
-        description: 'Contributes the OpenAI provider.',
-        secrets: ['openai-key-from-plugin'],
-        setup: () => ({
-          providers: [providerNamed('openai')],
-        }),
-      }),
-      source: 'package',
-      location: '@fixture/openai',
-    };
-    const host = await startAt(home, [replacement]);
+    const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(host);
 
     const paths = await pathsOf(host);
 
-    expect(paths.providers.filter((provider) => provider.name === 'openai')).toEqual([
-      { name: 'openai', secretFile: join(home, 'secrets', 'openai-key-from-plugin') },
-    ]);
+    expect(paths.providers).toEqual(
+      ['anthropic', 'openai', 'gemini'].map((name) => ({
+        name,
+        secretFile: join(home, 'secrets', `${name}-api-key`),
+      })),
+    );
   });
 });
 

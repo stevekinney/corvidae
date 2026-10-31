@@ -154,7 +154,10 @@ const HOST_ENTRY: Record<
     host: { onlineEvals: { judges: [judge('p:x')], sampleRate: 1 } },
     contribution: { evalJudges: [judge('x')] },
   },
-  provider: { noHostEntry: 'Bureau has no provider option; the host wires providers (COR-1880).' },
+  provider: {
+    noHostEntry:
+      'A provider is handed to the host’s `models.catalog` factory, which holds no names.',
+  },
   'mcp-app': { noHostEntry: 'Bureau has no MCP app option; the host wires them (COR-1880).' },
   embedder: {
     noHostEntry:

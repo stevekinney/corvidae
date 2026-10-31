@@ -71,7 +71,7 @@ Interborough reads none of the `S3_*` variables itself. Bungalow builds the `Bun
 | Object or folder | What it is |
 | --- | --- |
 | `P` + `deployment-id` | The deployment's identifier, written once with `If-None-Match: *`. Hosts that start together agree on the one value the store kept. Do not edit it. |
-| `P` + `configuration.json` | The model providers (see "Model providers"). A missing object means no providers. Put it there yourself; a remote host cannot write it. |
+| `P` + `configuration.json` | The plugins' choices, with each provider plugin's allowlist, and the catalog edits (see "Model providers" and "Plugins"). A missing object means every plugin's defaults, and no model is offered until a provider has a key. Put it there yourself; a remote host cannot write it. |
 | `P` + `agents/<id>.md` | One agent per object, in the Markdown file format of "Agent files". The agent editor writes here. |
 | `P` + `workflows/<id>.json` | One workflow per object, in the format of "Workflow files". The Workflows pages write here. |
 
@@ -87,23 +87,22 @@ The Settings page and the editors show these as `s3://<bucket>/<prefix>...`, and
 
 ## Model providers
 
-The Bureau's model catalog holds the models of the providers you configure, and only those. With nothing configured the host starts, the catalog is empty, and the seeded agents run as always. The host reads no environment variable for a key.
+The Bureau's model catalog holds the models of the providers the loaded plugins contribute that have an API key, and only those. The workspace ships three provider plugins, `anthropic`, `openai` and `gemini` (`plugins/*`), each of which contributes its provider and its catalog rows. With no key set the host starts, the catalog is empty, and the seeded agents run as always. The host reads no environment variable for a key.
 
-Configure providers in `configuration.json` in the state directory, `~/.interborough/configuration.json` or `$INTERBOROUGH_HOME/configuration.json`. A missing file means no providers.
+A provider needs only its key. To limit the models a provider offers, set an allowlist in `configuration.json` in the state directory, `~/.interborough/configuration.json` or `$INTERBOROUGH_HOME/configuration.json`, as the `models` of the provider plugin's configuration. A missing file means no allowlists.
 
 ```json
 {
-  "providers": {
-    "anthropic": {},
-    "openai": { "models": ["gpt-4.1", "o3"] }
+  "plugins": {
+    "openai": { "configuration": { "models": ["gpt-4.1", "o3"] } }
   }
 }
 ```
 
-- The provider keys are exactly `anthropic`, `openai`, and `gemini`. Any other key under `providers` fails startup with an error that names the file and the field, for example `providers.voyage`. Embedding-only providers (`voyage`, `ollama`) are not generative backends. Keys outside `providers` are ignored, and a field other than `models` inside a provider fails startup.
-- `models` is an optional allowlist. Each entry names a model or one of its aliases, such as `claude-sonnet-5` or `sonnet`. Leave it out to offer every current model of the provider. An empty list, or an entry that matches no current model of that provider, fails startup and names the field, for example `providers.openai.models[1]`. Retired models are never offered.
+- `models` is an optional allowlist. Each entry names a model or one of its aliases, such as `claude-sonnet-5` or `sonnet`. Leave it out to offer every current model of the provider. An empty list, or an entry that matches no current model of that provider, skips the provider's plugin at startup with a `configuration-invalid` problem that names the field, for example `models[1]`; the host still starts, and the plugin's row in Settings › Plugins shows the problem. The plugin routes refuse such an entry while the plugin is loaded. Retired models are never offered. The host reads it on every catalog load, so a change applies without a restart.
+- Turning a provider's plugin off (`"enabled": false`) removes its provider from the catalog on the next start. A top-level `providers` key is not read.
 - A question field the agent marks secret (`x-secret`) is encrypted before Bureau keeps it, under the Bungalow secret `answer-encryption-key`, which the host creates on its first local start. To rotate it, move its value to `answer-encryption-key-<keyId>`, where `<keyId>` is the 24-character id every sealed answer's `keyId` names, and write a new key to `answer-encryption-key`; answers sealed under the old key stay readable while that file exists, and are `secret-unavailable` once it is deleted. See [Bureau's secret answers](../../packages/bureau/documentation/secret-answers.md).
-- Each provider's API key is a Bungalow secret: `anthropic-api-key`, `openai-api-key`, and `gemini-api-key`, one file each in `secrets/` (mode `0600`). Surrounding whitespace is trimmed. A configured provider with no key is left out of the catalog, and the host logs one warning that names the provider and the secret it expects, never a value.
+- Each provider's API key is the first secret its plugin declares: `anthropic-api-key`, `openai-api-key`, and `gemini-api-key`, one file each in `secrets/` (mode `0600`). Surrounding whitespace is trimmed. A provider with an allowlist and no key is left out of the catalog, and the host logs one warning that names the provider and the secret it expects, never a value. The plugin is `needs-setup` until the key is set.
 
 ```bash
 mkdir -p ~/.interborough/secrets
@@ -111,7 +110,7 @@ printf '%s' "$YOUR_KEY" > ~/.interborough/secrets/anthropic-api-key
 chmod 600 ~/.interborough/secrets/anthropic-api-key
 ```
 
-The host passes the catalog rows as `models.catalog` when it creates the Bureau, so no boot step plans against a provider that is not configured, and `bureau.models.replace(rows)` is the only way the rows change. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the host's provider definitions (`PROVIDER_DEFINITIONS`: Anthropic, OpenAI, and Gemini) and the provider's key, and refuses a model the catalog does not hold or one that is turned off.
+The host gives the Bureau a `models.catalog` factory, which builds the rows from the providers the plugins contributed once their setup has run, so no boot step plans against a provider without a key, and `bureau.models.replace(rows)` is the only way the rows change afterwards. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the contributed provider definitions and the provider's key, and refuses a model the catalog does not hold or one that is turned off.
 
 ### Changing providers without a restart
 
@@ -119,14 +118,14 @@ A local host writes the configuration and a provider's key itself, and applies t
 
 | Request | What it does |
 | --- | --- |
-| `GET /host/providers` | Each provider, whether `configuration.json` lists it and whether it has a key (never the key), its allowlist, and the catalog edits. Carries `lockReason` when writes are refused. |
-| `PUT /host/providers/<name>` `{ "apiKey", "models"? }` | Connects the provider, or replaces its key: the key goes to `secrets/<name>-api-key` (mode `0600`) and the provider into `configuration.json`. Without `models` an existing allowlist stays; `"models": null` clears it. |
+| `GET /host/providers` | Each provider a loaded plugin contributes, whether it is set up (it has a key or an allowlist) and whether it has a key (never the key), its allowlist, and the catalog edits. Carries `lockReason` when writes are refused. |
+| `PUT /host/providers/<name>` `{ "apiKey", "models"? }` | Connects the provider, or replaces its key: the key goes to the plugin's declared secret, such as `secrets/<name>-api-key` (mode `0600`), and the allowlist to `plugins.<name>.configuration.models` in `configuration.json`. Without `models` an existing allowlist stays; `"models": null` clears it. |
 | `PUT /host/catalog` `{ "edits": [...] }` | Replaces the catalog edits (below). An empty list removes them. |
 | `POST /host/providers/reload` | Reads the configuration and the keys again, for a person who edited them by hand. |
 
-Every change is checked against the keys the host holds before any byte is written, so a request cannot leave a configuration the next start refuses. The files are then read back, the rows become the Bureau's catalog (`bureau.models.replace`), and the agent files are rebuilt before the request answers. A run that began earlier finishes with the key it started with. The first run that begins after the answer uses the new key. The same operations are `host.providers.connect`, `.editCatalog`, `.reload`, and `.snapshot`.
+Every change is checked against the keys the host holds, and against the models of the provider plugins that are loaded, before any byte is written, and the check and the write run as one step in the configuration queue, so another writer cannot change what it was checked against. An allowlist for a provider plugin that is not loaded (turned off, or skipped) cannot be checked against models the host has not seen: it is stored as given, and the next start skips that plugin with a `configuration-invalid` problem at `models[<index>]`, never refusing to start. Fix the allowlist through the plugin's route or by hand and restart. The files are then read back, the rows become the Bureau's catalog (`bureau.models.replace`), and the agent files are rebuilt before the request answers. A run that began earlier finishes with the key it started with. The first run that begins after the answer uses the new key. The same operations are `host.providers.connect`, `.editCatalog`, `.reload`, and `.snapshot`.
 
-The configuration is written atomically (Bungalow's `writeConfiguration`: a temporary file, synced, renamed over `configuration.json`, mode `0600`), so a crash mid-write leaves the previous file whole. An error names the field, such as `apiKey` or `providers.openai.models[0]`, and never a value. No response, warning, log line, or diagnostic holds a key.
+The configuration is written atomically (Bungalow's `writeConfiguration`: a temporary file, synced, renamed over `configuration.json`, mode `0600`), so a crash mid-write leaves the previous file whole. An error names the field, such as `apiKey` or `plugins.openai.configuration.models[0]`, and never a value. No response, warning, log line, or diagnostic holds a key.
 
 ### Plugins
 
@@ -148,13 +147,13 @@ Folder plugins (COR-1881) load after the workspace's, from each folder of `<bung
 
 `bun run dev --plugin <path>` (repeatable) loads that folder as well and lists it with the problem `development-source`. An edit to its `plugin.ts` restarts the host in place under `bun --watch`.
 
-The plugins' embedders and memory detectors reach governed memory through `BureauOptions.memory`'s factory (`src/host/memory.ts`), and `/host/paths` reports the secret file of each provider a plugin contributes beside the host's own.
+The plugins' embedders and memory detectors reach governed memory through `BureauOptions.memory`'s factory (`src/host/memory.ts`), and `/host/paths` reports the secret file of each provider a plugin contributes.
 
 **Catalog edits.** A `catalog` list in `configuration.json` turns a model off, corrects its price or limits, or adds a row the built-in list lacks:
 
 ```json
 {
-  "providers": { "openai": {} },
+  "plugins": { "openai": { "configuration": { "models": ["gpt-4.1", "o3"] } } },
   "catalog": [
     { "provider": "openai", "model": "gpt-4.1", "off": true },
     {
@@ -171,11 +170,11 @@ The plugins' embedders and memory detectors reach governed memory through `Burea
 
 An edit that names a built-in model (by `model` or alias) changes that row. A price edit keeps the row's `longContext` rates unless its `pricing` names them: `"longContext": { "inputTokensAbove", "inputPerMillionTokens", "outputPerMillionTokens" }` replaces them and `"longContext": null` removes them. An off model stays listed as `unavailable`, which keeps it from agents and plans, and `host.generateFor` refuses it. An edit that names no built-in model adds a row: `basedOn` names a current model of the same provider whose capabilities it copies, and it may set its own price and limits. An edit with no match and no `basedOn`, a second edit for one model (under the same name or another, such as `claude-haiku-4-5` and `haiku`), or an output limit above the context window fails with the field, for example `catalog[0].model`.
 
-An allowlist (`providers.<name>.models`) may name an added row by its model, and applies to added rows as to built-in ones: an added row the allowlist does not name is left out.
+An allowlist (`plugins.<plugin>.configuration.models`) may name an added row by its model, and applies to added rows as to built-in ones: an added row the allowlist does not name is left out.
 
 **Other writers of `configuration.json`.** A write reads the file, changes the part it owns, and writes the whole file back, so writers must not overlap. `host.configurationQueue.run(work)` is the one queue they share (`src/host/configuration-queue.ts`): run the whole read-change-write inside `work`. The provider manager uses it, and any other part of the host that writes the file must too.
 
-**A failed key change.** The key is written before the configuration. When the configuration cannot be written, the previous key is put back and the host keeps using it. If the key itself cannot be written, nothing changed and the answer is a plain `500` with `{ "error": "failed" }`. If the previous key cannot be put back either, the answer is `500` with `{ "error": "partial", "inUse": ... }`, where `inUse` is what the host loaded afterwards: `true` for a configured provider (the new key is in use), `false` for a new provider whose configuration was not written (the key is stored but not used).
+**A failed key change.** The key is written before the configuration. When the configuration cannot be written, the previous key is put back and the host keeps using it. If the key itself cannot be written, nothing changed and the answer is a plain `500` with `{ "error": "failed" }`. If the previous key cannot be put back either, the answer is `500` with `{ "error": "partial", "inUse": ... }`, where `inUse` is what the host loaded afterwards: `true` when the host loaded the new key, `false` when it could not read it back (the key is stored but not known to be in use).
 
 **Remote mode refuses.** A remote home keeps its configuration in the bucket and its keys in the environment, which the host cannot write. `PUT` requests answer `403` with `{ "error": "locked", "reason": "deployment" }`, `/host/paths` reports `locked: { configuration: "deployment", providerKeys: "deployment" }` (the reason codes `settings.get` gives a locked key), and `host.providers.connect` and `.editCatalog` throw `ProviderWriteLockedError`. Reload still works, since it only reads.
 
@@ -300,11 +299,11 @@ The host serves every ready agent to chat. An agent's `a2a` opt-in decides wheth
 
 `/agents/new` creates an agent and `/agents/:agent/edit` edits and deletes one, through the Bureau's `bureau.agents.definitions.*` and `bureau.agents.catalog` operations (`src/lib/agent-definitions.ts`). The page lives in `src/routes/agent-editor` and renders in its own view, `agent-editor`, whose states are loading, error, forbidden, and not found.
 
-- **The fields** are name, identifier, description, model, tools, and the instructions body. The model and tool lists are exactly what `bureau.agents.catalog` returns, so with no provider configured the model list is empty and the page shows no form. It shows where to add a provider instead (the configuration file, an example `providers` entry, and the file that holds each provider's API key) with a reload that asks the Bureau again. `skillDescriptors` has no field: a save sends the loaded `skillDescriptors` back unchanged. The A2A switch is the one control beside the form's footer.
+- **The fields** are name, identifier, description, model, tools, and the instructions body. The model and tool lists are exactly what `bureau.agents.catalog` returns, so with no provider configured the model list is empty and the page shows no form. It shows where to add a provider instead (the configuration file, an example `plugins` entry, and the file that holds each provider's API key) with a reload that asks the Bureau again. `skillDescriptors` has no field: a save sends the loaded `skillDescriptors` back unchanged. The A2A switch is the one control beside the form's footer.
 - **The identifier** is the file name without `.md`. On `/agents/new` it fills in from the name as a slug and can be edited until the first save, and after that it is read-only. A taken identifier, whether another file or an agent defined in code, shows on the field and writes nothing.
 - **The A2A switch** sets the agent's `a2a` opt-in. It travels with a save like any other field, so turning it changes nothing until the person saves.
 - **Conflicts.** Every write names that `hash`. A file that changed on disk since is refused as `StaleRevision`, and the page says the agent changed outside Interborough, with a reload that discards unsaved edits. A file that was deleted on disk is the not-found state, and so is an identifier that names no agent or an agent defined in code. A file the Bureau cannot use opens the editor in an error state with its problem and its path.
-- **The file path** comes from the host's `/host/paths`, which names the agent directory and the workflow directory, the `configurationFile` where model providers are configured, and the `providers` the configuration accepts, each with the `secretFile` that holds its API key. The revision history under the form lists the versions that have run, each by its short hash and last-run time, most recently run first. A save alone does not add a row.
+- **The file path** comes from the host's `/host/paths`, which names the agent directory and the workflow directory, the `configurationFile` where model providers are configured, and the `providers` the loaded plugins contribute, each with the `secretFile` that holds its API key. The revision history under the form lists the versions that have run, each by its short hash and last-run time, most recently run first. A save alone does not add a row.
 - **Entry points.** The agent list has a New agent action, and an agent's page has an Edit action when the agent is a file; an agent defined in code has no Edit, because the editor would not find it. The list also shows each invalid agent file, with its error, its path, and a link to its editor, because `bureau.agents.list` leaves invalid files out and the list reads `bureau.agents.definitions.list` for them. A deleted agent leaves the list.
 - **The identifier `new`** is refused, because `/agents/new` is the page that creates an agent and an agent called `new` could never be opened.
 - **After a write** a save lands on `/agents/:agent`, and a delete lands on `/agents`.

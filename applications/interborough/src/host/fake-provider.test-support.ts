@@ -25,7 +25,7 @@ export async function writeProviderHome(
 ): Promise<void> {
   await writeFile(
     join(home, 'configuration.json'),
-    JSON.stringify({ providers: { anthropic: { models } } }),
+    JSON.stringify({ plugins: { anthropic: { configuration: { models } } } }),
   );
   const bungalow = await openBungalow({
     name: 'interborough',

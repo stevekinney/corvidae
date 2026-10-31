@@ -9,7 +9,7 @@ The authoring package for Interborough plugins. A plugin is trusted, in-process 
 | `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, and `storage` confined to the key prefix `plugin:<name>:`. |
 | `PluginSetupResult` | What `setup` returns: the contributions, and `afterStart(bureau, context)`. |
 | `PluginHostApi` | The structural slice of Bureau `afterStart` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
-| `PluginContributions` | Tools, activities, validators, guardrails, run hooks, decision routers, trigger kinds, hook action kinds, providers, embedders, memory detectors, eval judges, MCP apps, event formatters, and code agents. |
+| `PluginContributions` | Tools, activities, validators, guardrails, run hooks, decision routers, trigger kinds, hook action kinds, providers (each with its catalog rows), embedders, memory detectors, eval judges, MCP apps, event formatters, and code agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
 ## Write a plugin

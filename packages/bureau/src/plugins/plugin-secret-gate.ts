@@ -31,7 +31,7 @@
  * | eval judge (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
- * | provider, MCP app | not gated: Bureau has no entry point for either, and the host reads the plugin's status (COR-1880) | | |
+ * | provider, MCP app | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for an MCP app, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
  *
  * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
  * receives needs no secret.
