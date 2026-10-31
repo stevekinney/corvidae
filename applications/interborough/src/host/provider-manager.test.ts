@@ -180,9 +180,8 @@ describe('a stored catalog edit for a provider no loaded plugin contributes', ()
     await manager.editCatalog([{ provider: 'anthropic', model: 'sonnet', off: true }]);
 
     expect(manager.current().apiKeys.get('anthropic')).toBe(KEY);
-    expect((await manager.snapshot()).catalog).toEqual([
-      { provider: 'anthropic', model: 'sonnet', off: true },
-    ]);
+    const snapshot = await manager.snapshot();
+    expect(snapshot.catalog).toEqual([{ provider: 'anthropic', model: 'sonnet', off: true }]);
     // A replacement of the edits leaves the dormant one in the file for its plugin.
     expect(JSON.parse(home.configuration ?? '{}').catalog).toEqual([
       { provider: 'anthropic', model: 'sonnet', off: true },
@@ -195,7 +194,8 @@ describe('a stored catalog edit for a provider no loaded plugin contributes', ()
     home.configuration = JSON.stringify({ catalog: [dormant] });
     const { manager } = await managerFor(home);
 
-    expect((await manager.snapshot()).catalog).toEqual([]);
+    const snapshot = await manager.snapshot();
+    expect(snapshot.catalog).toEqual([]);
     const failure = await failureOf(manager.editCatalog([dormant]));
     expect(String(failure)).toContain('catalog[0].provider');
   });
