@@ -21,6 +21,6 @@
 {#if matched !== undefined}
   <Callout variant="warning" semantic="note">
     Key uses reserved prefix <code class="weft-storage-inline-code">{matched}</code> — Weft uses this
-    prefix internally, and writes here may disrupt engine recovery.
+    prefix internally, and writes here may disrupt recovery.
   </Callout>
 {/if}

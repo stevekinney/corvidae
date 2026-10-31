@@ -63,7 +63,7 @@ test('operator restarts a completed run, seeing the revision it will select firs
   // Same id, fresh run: the server's lineage stamp changed, so a new run
   // replaced the prior one, and the panel still shows the continuation chain.
   await expect.poll(() => readReplacement(page.request)).not.toBe(stampBefore);
-  await expect(page.getByText('Continuation chain · same workflow id')).toBeVisible();
+  await expect(page.getByText('Continuation chain · same workflow ID')).toBeVisible();
   await expect(page.getByText('Previous run')).toBeVisible();
   await checkA11y('workflow detail — after restart');
 });

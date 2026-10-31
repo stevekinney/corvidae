@@ -119,11 +119,11 @@
 
   {#if reading.kind === 'absent'}
     <p class="weft-worker-binding__empty">
-      No worker binding. This run predates worker versioning, or its workflow declares no worker
-      versioning policy, so no deployment build is recorded for it.
+      No worker version is recorded. This run predates worker versioning, or its workflow declares
+      no worker versioning policy, so no deployment build is recorded for it.
     </p>
   {:else if reading.kind === 'malformed'}
-    <Callout variant="danger" semantic="note" title="Worker binding unreadable">
+    <Callout variant="danger" semantic="note" title="Worker version unreadable">
       {#snippet icon()}
         <CircleAlert aria-hidden="true" size={17} />
       {/snippet}
@@ -155,10 +155,10 @@
     </div>
     {#if reading.record.history.length === 0}
       <p class="weft-worker-binding__empty">
-        No earlier bindings: this run has only ever been bound to the build above.
+        No earlier versions: this run has only ever been bound to the build above.
       </p>
     {:else}
-      <ol class="weft-worker-binding__history" aria-label="Earlier worker bindings, oldest first">
+      <ol class="weft-worker-binding__history" aria-label="Earlier worker versions, oldest first">
         {#each historyOldestFirst as entry, index (`${index}-${entry.boundAt}`)}
           <li>
             <span class="weft-worker-binding__history-build">

@@ -25,12 +25,12 @@ await worker.connect();`;
 
 <section class="weft-workers-in-process" aria-label="Remote workers">
   <p class="weft-workers-in-process__sentence">
-    This engine runs its work in-process. Remote workers are not configured.
+    This server runs its work in-process. Remote workers are not configured.
   </p>
   <Collapsible trigger="Learn how to connect one" animated={false}>
     <div class="weft-workers-in-process__how">
       <p class="weft-workers-in-process__text">
-        A remote worker takes the engine’s activities when the engine is created with
+        A remote worker takes the server’s activities when the server is created with
         <code class="ib-identifier">{engineOption}</code>, and it connects to this host like this.
         The guide is
         <code class="ib-identifier">packages/weft/documentation/guides/remote-workers.md</code>.

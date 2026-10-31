@@ -205,7 +205,7 @@
   <div class="weft-workflow-list__header">
     <div>
       {#if scopedType === undefined}
-        <h1>Engine runs</h1>
+        <h1>Workflow runs</h1>
       {:else}
         <h1>
           Runs of

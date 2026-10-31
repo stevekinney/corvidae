@@ -111,8 +111,8 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await expect(drawer).not.toBeVisible();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
-  // The revision policy is the engine's, so it is under the Engine disclosure.
-  await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
+  // The revision policy is the engine's, so it is under the Advanced disclosure.
+  await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
   await expect(page.getByText(/^Pinned \(/)).toBeVisible();
   await checkA11y('schedule detail — pinned revision policy shown');
 });

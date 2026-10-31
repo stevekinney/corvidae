@@ -49,7 +49,7 @@ describe('WorkerBindingPanel', () => {
     const { getByText, queryByTestId } = render(WorkerBindingPanel, {
       props: { workflow: workflow() },
     });
-    expect(getByText(/No worker binding/)).not.toBeNull();
+    expect(getByText(/No worker version/)).not.toBeNull();
     expect(queryByTestId('worker-binding-why')).toBeNull();
   });
 
@@ -73,7 +73,7 @@ describe('WorkerBindingPanel', () => {
     ]) {
       expect(container.textContent).toContain(value);
     }
-    expect(getByText(/No earlier bindings/)).not.toBeNull();
+    expect(getByText(/No earlier versions/)).not.toBeNull();
     expect(getByTestId('worker-binding-override-note').textContent).toContain(
       'cannot be overridden',
     );
@@ -142,7 +142,7 @@ describe('WorkerBindingPanel', () => {
         }),
       },
     });
-    expect(getByText('Worker binding unreadable')).not.toBeNull();
+    expect(getByText('Worker version unreadable')).not.toBeNull();
     expect(container.textContent).toContain('workerBinding.current.routingGeneration');
     expect(queryByTestId('worker-binding-why')).toBeNull();
     expect(container.textContent).not.toContain('sha256:artifact-1');

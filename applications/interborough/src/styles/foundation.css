@@ -108,13 +108,13 @@
 
 /* The header holds the button that folds the sidebar to its icon rail and opens it again. It sits
  * at the inline end of the expanded sidebar, and centred over the icons on the rail. */
-.weft-shell-sidebar__header {
+.weft-shell-sidebar__brand {
   display: flex;
   justify-content: flex-end;
   padding: var(--cinder-space-2) var(--cinder-space-2) 0;
 }
 
-.weft-shell-sidebar--collapsed .weft-shell-sidebar__header {
+.weft-shell-sidebar--collapsed .weft-shell-sidebar__brand {
   justify-content: center;
   padding-inline: 0;
 }
@@ -588,8 +588,6 @@
   padding: var(--cinder-space-2) var(--cinder-density-pad-inline) var(--cinder-space-1);
   font-size: var(--cinder-text-2xs);
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--cinder-text-subtle);
 }
 

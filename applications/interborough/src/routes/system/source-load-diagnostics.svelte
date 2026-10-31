@@ -167,7 +167,7 @@
 
     {#if summary.state === 'loading'}
       <p class="weft-source-load__note">
-        This load is shared by waiting callers on the serving engine process. The console cannot
+        This load is shared by waiting callers on the serving server process. The console cannot
         cancel it; closing or refreshing this page does not stop it.
       </p>
     {/if}

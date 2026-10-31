@@ -66,13 +66,13 @@
 
 <section class="weft-health-tab__lease" aria-labelledby="engine-lease-heading">
   <div class="weft-health-tab__lease-header">
-    <h2 id="engine-lease-heading">Engine lease</h2>
+    <h2 id="engine-lease-heading">Server lease</h2>
     {#if presentation}
       <Badge variant={presentation.variant}>{presentation.label}</Badge>
     {/if}
   </div>
   {#if leaseQuery.isPending}
-    <div role="status" aria-busy="true" aria-label="Loading engine lease">
+    <div role="status" aria-busy="true" aria-label="Loading server lease">
       <Skeleton height="3rem" />
     </div>
   {:else if leaseQuery.error instanceof MalformedSystemLeaseError}

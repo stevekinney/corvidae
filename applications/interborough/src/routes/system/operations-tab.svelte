@@ -84,11 +84,8 @@
     {#if view === 'table'}
       {@const rows = filterOperationCatalog(catalog, searchQuery)}
       <p class="weft-operations-tab__scope-note">
-        Required scope isn't advertised by the discovery documents yet (<a
-          href="https://github.com/stevekinney/weft/issues/737"
-          target="_blank"
-          rel="noreferrer">stevekinney/weft#737</a
-        >) — see the Scopes tab for what each granted scope unlocks.
+        The discovery documents do not list the scope each operation needs yet. See the Scopes tab
+        for what each granted scope unlocks.
       </p>
       <Table caption="Operation catalog" scrollable>
         <Table.Header>

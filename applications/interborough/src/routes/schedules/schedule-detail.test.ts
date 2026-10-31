@@ -117,7 +117,7 @@ describe('ScheduleDetail', () => {
       ]) {
         expect(queryByText(hidden), hidden).toBeNull();
       }
-      await fireEvent.click(getByRole('button', { name: 'Engine' }));
+      await fireEvent.click(getByRole('button', { name: 'Advanced' }));
       expect(await waitFor(() => getByText('0 2 * * *'))).not.toBeNull();
       expect(getByText('Jitter')).not.toBeNull();
       expect(getByText('Revision policy')).not.toBeNull();
@@ -177,7 +177,7 @@ describe('ScheduleDetail', () => {
       });
 
       await fireEvent.click(await waitFor(() => getByRole('button', { name: 'More actions' })));
-      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy id' })));
+      await fireEvent.click(await waitFor(() => getByRole('menuitem', { name: 'Copy ID' })));
 
       await waitFor(() => expect(written).toEqual(['nightly-rollup']));
     } finally {
@@ -238,7 +238,7 @@ describe('ScheduleDetail', () => {
       await waitFor(() =>
         expect(getByText('No runs yet. This schedule has not fired.')).not.toBeNull(),
       );
-      await fireEvent.click(getByRole('button', { name: 'Engine' }));
+      await fireEvent.click(getByRole('button', { name: 'Advanced' }));
       await waitFor(() => expect(getByText('No active or queued runs.')).not.toBeNull());
     } finally {
       await server.stop();
@@ -279,7 +279,7 @@ describe('ScheduleDetail', () => {
       // Queued runs are the engine's, so they are under the disclosure. A queued-run row is the
       // only link that says "queued …": the current-run row never does, so this can only pass
       // once a real `ScheduleQueuedRun` entry has round-tripped through the API.
-      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Engine' })));
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Advanced' })));
       const queuedLink = await waitFor(() => {
         const found = getAllByRole('link').find((link) => /queued /.test(link.textContent ?? ''));
         expect(found).toBeDefined();
@@ -323,7 +323,7 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'current-run-probe' },
       });
 
-      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Engine' })));
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: 'Advanced' })));
       const heading = await waitFor(() => getByText('Running now'));
       const currentRunLink = await waitFor(() => {
         const link = heading.parentElement?.querySelector('a');
@@ -400,7 +400,7 @@ describe('ScheduleDetail', () => {
         Array.from(sentence.querySelectorAll('code.ib-identifier'), (code) => code.textContent),
       ).toContain('0 9 * * 1-5');
 
-      await fireEvent.click(getByRole('button', { name: 'Engine' }));
+      await fireEvent.click(getByRole('button', { name: 'Advanced' }));
       const definition = await waitFor(() => {
         const found = document.querySelector('.cinder-description-list__definition code');
         if (found === null) throw new Error('the Engine list has not rendered the cron expression');

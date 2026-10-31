@@ -145,8 +145,6 @@
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-xs);
   font-weight: 600;
-  letter-spacing: var(--cinder-tracking-wide);
-  text-transform: uppercase;
 }
 
 .ib-chat-group__rows {
@@ -351,8 +349,6 @@
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-xs);
   font-weight: 600;
-  letter-spacing: var(--cinder-tracking-wide);
-  text-transform: uppercase;
 }
 
 .ib-new-chat__grid {

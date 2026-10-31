@@ -92,9 +92,9 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await expect(drawer).not.toBeVisible();
 
   // Persisted: the detail page reflects every saved change. The overlap policy is one line; the
-  // engine's fields (the revision policy, the jitter) are under the Engine disclosure.
+  // engine's fields (the revision policy, the jitter) are under the Advanced disclosure.
   await expect(page.getByText('Queues a fire if the previous run is still going')).toBeVisible();
-  await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
   await expect(page.getByText(/^Pinned \(/)).toBeVisible();
   await expect(page.getByText('±30000ms')).toBeVisible();
   await checkA11y('schedule detail — edited options persisted');

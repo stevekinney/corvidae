@@ -239,7 +239,7 @@
   {#snippet children()}
     <div class="weft-restart-dialog">
       <p class="weft-restart-dialog__lead">
-        Replaces this {workflow.status} run with a fresh one under the same id
+        Replaces this {workflow.status} run with a fresh one under the same ID
         <code>{workflow.id}</code>. The prior run's record is purged; its input and tags are reused.
       </p>
 
@@ -287,7 +287,7 @@
 
       {#if signalledToLiveRun}
         <p class="weft-restart-dialog__notice" role="alert">
-          This run was not restarted: it is already live under this id, so the signal was delivered
+          This run was not restarted: it is already live under this ID, so the signal was delivered
           to it instead. Another operator may have restarted it first, or an earlier attempt already
           landed. Close this dialog to see its current state.
         </p>

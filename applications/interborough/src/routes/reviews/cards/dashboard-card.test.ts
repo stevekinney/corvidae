@@ -90,9 +90,9 @@ describe('Reviews dashboard card', () => {
     });
 
     expect(container.querySelector('.weft-dashboard-card__title')?.textContent).toBe(
-      'Engine reviews',
+      'Workflow reviews',
     );
-    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Engine reviews');
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Workflow reviews');
   });
 
   test('links to /reviews', async () => {

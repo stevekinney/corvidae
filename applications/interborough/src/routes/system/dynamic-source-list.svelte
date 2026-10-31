@@ -174,7 +174,7 @@
     <EmptyState
       title={offset === 0 ? 'No dynamic sources registered' : 'No sources on this page'}
       description={offset === 0
-        ? 'This engine process has no registered dynamic workflow sources to select.'
+        ? 'This server has no registered dynamic workflow sources to select.'
         : 'Go back to the previous page or use the manual lookup below.'}
       headingLevel={4}
     >

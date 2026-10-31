@@ -263,7 +263,7 @@
     <div class="weft-workflow-detail__not-found">
       <EmptyState
         title="No workflow found"
-        description={`No workflow found with id "${id}". It may have been purged, or the id may be mistyped.`}
+        description={`No workflow found with ID "${id}". It may have been purged, or the ID may be mistyped.`}
       >
         {#snippet icon()}<SearchX aria-hidden="true" size={22} />{/snippet}
         {#snippet action()}

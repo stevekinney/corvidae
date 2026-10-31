@@ -105,7 +105,7 @@ describe('HealthTab', () => {
     routeBaseline(scripted);
     const { findByText, getByText, getByRole, unmount } = await renderHealthTab();
     expect(await findByText('Contested')).not.toBeNull();
-    expect(getByRole('heading', { name: 'Engine lease' })).not.toBeNull();
+    expect(getByRole('heading', { name: 'Server lease' })).not.toBeNull();
     expect(
       getByText('This engine lost the ownership lease: another holder deposed this engine.'),
     ).not.toBeNull();

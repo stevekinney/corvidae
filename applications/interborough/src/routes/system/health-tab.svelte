@@ -75,7 +75,7 @@
         />
       </div>
       <p class="weft-health-tab__hint">
-        Resumes every workflow this engine believes should be running but isn't currently tracked in
+        Resumes every workflow this server believes should be running but isn't currently tracked in
         memory — for use after an unclean restart.
       </p>
     </section>
@@ -107,7 +107,7 @@
         <span>Conformance</span>
       </div>
       <p class="weft-health-tab__hint">
-        Verify this engine against the Weft conformance suite. Conformance runs from the CLI only —
+        Verify this server against the Weft conformance suite. Conformance runs from the CLI only —
         there is no server-side trigger.
       </p>
       <div class="weft-health-tab__command">
@@ -130,7 +130,7 @@
 <ConfirmDialog
   open={confirmOpen}
   title="Recover all workflows?"
-  description="This resumes every workflow this engine believes should be running. Safe to run repeatedly, but may generate a burst of activity if many workflows were stalled."
+  description="This resumes every workflow this server believes should be running. Safe to run repeatedly, but may generate a burst of activity if many workflows were stalled."
   confirmLabel="Recover all"
   onConfirm={() => {
     confirmOpen = false;

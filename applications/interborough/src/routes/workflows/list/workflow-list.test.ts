@@ -186,7 +186,7 @@ describe('WorkflowList', () => {
 
     expect(await findByText('payment-failing')).not.toBeNull();
     expect(await findByText('order-processing')).not.toBeNull();
-    expect(getByRole('heading', { level: 1 }).textContent).toBe('Engine runs');
+    expect(getByRole('heading', { level: 1 }).textContent).toBe('Workflow runs');
     const requestUrl = new URL(fetchScript.calls.at(-1)!.url);
     expect(requestUrl.searchParams.get('status')).toBe('failed');
     expect(requestUrl.searchParams.get('type')).toBeNull();

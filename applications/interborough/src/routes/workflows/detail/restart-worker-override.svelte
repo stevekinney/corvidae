@@ -139,7 +139,7 @@
 
 {#if reading.kind !== 'absent'}
   <section class="weft-restart-override" data-testid="restart-worker-override">
-    <h3 class="weft-restart-override__title">Worker binding</h3>
+    <h3 class="weft-restart-override__title">Worker version</h3>
     {#if reading.kind === 'bound'}
       <p>{explainWorkerBinding(reading)}</p>
     {/if}

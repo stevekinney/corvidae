@@ -55,7 +55,7 @@ test('a pinned run shows its binding and says why it cannot be overridden', asyn
   await expect(panel(page).getByTestId('worker-binding-why')).toContainText(
     'Weft never moves a pinned run',
   );
-  await expect(panel(page).getByText(/No earlier bindings/)).toBeVisible();
+  await expect(panel(page).getByText(/No earlier versions/)).toBeVisible();
   await expect(panel(page).getByText('Workflow-bound and standalone activities')).toBeVisible();
   await checkA11y('workflow detail — pinned worker binding');
 

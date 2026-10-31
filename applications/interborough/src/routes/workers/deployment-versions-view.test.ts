@@ -236,7 +236,7 @@ describe('DeploymentVersionsView — workflow bucket', () => {
         }),
       ],
     });
-    expect(getByRole('status').textContent).toContain('Enter a workflow id');
+    expect(getByRole('status').textContent).toContain('Enter a workflow ID');
     await fireEvent.input(getByLabelText('Workflow ID'), { target: { value: 'wf-42' } });
     expect(getByRole('status').textContent).toContain(
       'wf-42 lands on build build-c, the ramping build',

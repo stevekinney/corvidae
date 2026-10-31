@@ -3,7 +3,7 @@
  *
  * schedules → create slide-over → "Advanced: start a code-defined workflow" → ScheduleBuilder
  * every day at 03:00 UTC → overlap policy → backfill warning → save → detail shows next fires,
- * and keeps the engine's fields behind its Engine disclosure.
+ * and keeps the engine's fields behind its Advanced disclosure.
  *
  * Purely additive (creates one new schedule); safe anywhere in the run
  * order relative to the other flows.
@@ -77,7 +77,7 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await expect(page.getByTestId('schedule-next-fires').locator('li')).toHaveCount(5);
   // The engine's own fields are there only once the disclosure opens.
   await expect(page.getByText('Revision policy', { exact: true })).toHaveCount(0);
-  await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
+  await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
   await expect(page.getByText('Revision policy', { exact: true })).toBeVisible();
   await expect(page.getByText('0 3 * * *')).toBeVisible();
   await checkA11y('schedule detail — next fires populated');

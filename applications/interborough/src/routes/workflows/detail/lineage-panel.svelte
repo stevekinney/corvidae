@@ -105,7 +105,7 @@
    * wall-clock `getNow()` (`ownership: 'workflow-lease'` explicitly
    * permits multiple engines, and Weft's ownership documentation accounts
    * for clock skew between them), so a TRACKED replacement created causally
-   * AFTER the fork on a clock-skewed engine can still stamp a `createdAt`
+   * AFTER the fork on a clock-skewed server can still stamp a `createdAt`
    * that appears to precede it — `createdAt`-only would misattribute it.
    * `ForkLineage` carries no durable generation token to check instead
    * (just `{ workflowId, step }`), so both signals are required together:
@@ -244,7 +244,7 @@
 
     {#if restartedFrom}
       <div>
-        <div class="weft-lineage-panel__section-label">Continuation chain · same workflow id</div>
+        <div class="weft-lineage-panel__section-label">Continuation chain · same workflow ID</div>
         <div class="weft-lineage-continuation">
           <span class="weft-lineage-continuation__chip weft-lineage-continuation__chip--previous">
             <span class="weft-lineage-continuation__label">Previous run</span>
@@ -305,11 +305,11 @@
           <span class="weft-lineage-panel__id" title={forkedFrom.workflowId}>
             {truncateId(forkedFrom.workflowId)}
           </span>
-          <CopyButton value={forkedFrom.workflowId} iconOnly label="Copy workflow id" />
+          <CopyButton value={forkedFrom.workflowId} iconOnly label="Copy workflow ID" />
           {#if sourceRevisionAttributable && forkSourceQuery.data?.revision !== undefined}
             {@const sourceRevision = forkSourceQuery.data.revision}
             <Tooltip
-              text={`Source revision (exact executable artifact): ${sourceRevision}. Best-effort attribution: this id has never been displaced by a tracked start-new replacement, and this record's own creation time precedes this fork — not an absolute guarantee against an untracked id reuse racing a clock-skewed engine.`}
+              text={`Source revision (exact executable artifact): ${sourceRevision}. Best-effort attribution: this ID has never been displaced by a tracked start-new replacement, and this record's own creation time precedes this fork — not an absolute guarantee against an untracked ID reuse racing a clock-skewed server.`}
             >
               <span class="weft-lineage-panel__id">rev {truncateId(sourceRevision)}</span>
             </Tooltip>
@@ -321,7 +321,7 @@
             </Tooltip>
           {:else if forkSourceQuery.data && !sourceRevisionAttributable}
             <Tooltip
-              text={`This id was reused by a start-new replacement after this fork was created, so the current record's revision may not match what was actually forked. Not shown to avoid a wrong attribution.`}
+              text={`This ID was reused by a start-new replacement after this fork was created, so the current record's revision may not match what was actually forked. Not shown to avoid a wrong attribution.`}
             >
               <Badge variant="neutral" size="sm">Revision not attributable</Badge>
             </Tooltip>

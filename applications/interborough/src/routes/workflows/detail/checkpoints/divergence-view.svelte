@@ -124,8 +124,6 @@
   .weft-divergence-view__column-label {
     font-size: var(--cinder-text-2xs);
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--cinder-text-disabled);
     margin-bottom: 8px;
   }

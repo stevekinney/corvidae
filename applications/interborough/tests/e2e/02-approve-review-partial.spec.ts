@@ -26,7 +26,7 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot
   // skeleton `page.goto()`'s `load` event resolves under.
-  await expect(page.getByRole('heading', { level: 2, name: 'Engine reviews' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Workflow reviews' })).toBeVisible();
   await checkA11y('reviews inbox');
 
   // The engine's pending reviews are in their own section, each with its own form. The sectioned

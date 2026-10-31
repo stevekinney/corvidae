@@ -120,7 +120,7 @@ describe('additional coverage', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
-    const input = getByRole('textbox', { name: 'Revision id' });
+    const input = getByRole('textbox', { name: 'Revision ID' });
     await fireEvent.input(input, { target: { value: 'order-processing-rev-explicit' } });
 
     // Still showing the FIRST (source-mode) failure's guidance — the
@@ -152,7 +152,7 @@ describe('additional coverage', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
-    const input = getByRole('textbox', { name: 'Revision id' });
+    const input = getByRole('textbox', { name: 'Revision ID' });
     await fireEvent.input(input, { target: { value: 'order-processing-rev-missing' } });
     await fireEvent.click(getByRole('button', { name: 'Create fork' }));
 
@@ -236,7 +236,7 @@ describe('additional coverage', () => {
     // Force the listing query to refetch and this time come back 403 —
     // the dialog degrades to the free-text Input mid-session.
     await queryClient.refetchQueries({ queryKey: queryKeys.catalog.revisions('order-processing') });
-    const input = await findByRole('textbox', { name: 'Revision id' });
+    const input = await findByRole('textbox', { name: 'Revision ID' });
     await fireEvent.input(input, { target: { value: 'order-processing-rev-b' } });
     await fireEvent.click(getByRole('button', { name: 'Create fork' }));
 

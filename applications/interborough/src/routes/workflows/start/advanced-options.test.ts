@@ -36,7 +36,7 @@ describe('AdvancedOptions', () => {
       },
     });
 
-    const idInput = requireElement(getByLabelText('Workflow id'), HTMLInputElement);
+    const idInput = requireElement(getByLabelText('Workflow ID'), HTMLInputElement);
     await fireEvent.input(idInput, { target: { value: 'my-run' } });
 
     expect(latest.id).toBe('my-run');

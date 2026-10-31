@@ -186,7 +186,7 @@
 <Sidebar label="Interborough" bind:collapsed class={sidebarStateClass}>
   {#snippet navigation()}
     {#if !isMobileViewport.current}
-      <div class="weft-shell-sidebar__header">
+      <div class="weft-shell-sidebar__brand">
         <Button
           variant="ghost"
           iconOnly

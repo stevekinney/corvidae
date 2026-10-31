@@ -583,7 +583,7 @@ describe('the drawers when something is not as it was', () => {
     open('/schedules/no-such-schedule?edit=1');
     const dialog = within(await drawer('Edit schedule'));
 
-    await dialog.findByText(/No schedule with id "no-such-schedule" exists/);
+    await dialog.findByText(/No schedule with ID "no-such-schedule" exists/);
   });
 
   test('a code-defined schedule on an interval is edited and saved as an interval', async () => {

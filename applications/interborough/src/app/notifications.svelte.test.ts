@@ -210,7 +210,7 @@ describe('NotificationStore', () => {
       expect(store.items[0]).toMatchObject({
         kind: 'engine',
         tier: 'critical',
-        title: 'Engine unreachable',
+        title: 'Server unreachable',
         href: '/health',
         emittedAtMs: 5_000,
       });

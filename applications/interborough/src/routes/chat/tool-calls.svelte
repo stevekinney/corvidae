@@ -51,7 +51,7 @@
       <span>{groupSummary(entries)}</span>
       <Button
         variant="ghost"
-        size="lg"
+        size="sm"
         label={open ? CHAT_COPY.tools.hide : CHAT_COPY.tools.show}
         aria-expanded={open}
         onclick={() => (open = !open)}
@@ -87,7 +87,7 @@
         </span>
         <Button
           variant="ghost"
-          size="lg"
+          size="sm"
           label={CHAT_COPY.tools.details}
           aria-expanded={detailsOpen[entry.callId] === true}
           aria-controls={`${id}-${entry.callId}-details`}

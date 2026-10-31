@@ -131,8 +131,6 @@
     gap: 7px;
     font-size: var(--cinder-text-2xs);
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
     color: var(--cinder-text-subtle);
   }
 

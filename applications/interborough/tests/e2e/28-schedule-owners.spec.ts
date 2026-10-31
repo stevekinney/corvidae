@@ -1,7 +1,7 @@
 /**
  * COR-1494 and COR-1654: the schedules area, as an operator uses it. A schedule is named by what it
  * does and never by its identifier: the seeded one is "Daily summary", runs `assistant` every day at
- * 09:00, and sends its text; its identifier is "Copy id" in the actions menu. Each schedule says what
+ * 09:00, and sends its text; its identifier is "Copy ID" in the actions menu. Each schedule says what
  * it starts and links to it: an agent run links to its agent, and a workflow's is its trigger and
  * links to the workflow. The seeded schedule is paused and resumed from the list, its cadence is
  * edited in the drawer an agent run has, which holds the cadence, the description, and whether to
@@ -124,11 +124,11 @@ test.describe('what each schedule starts', () => {
       await expect(page.getByText('Revision policy', { exact: true })).toHaveCount(0);
       await expect(page.getByText('Worker binding for scheduled runs')).toHaveCount(0);
       await checkA11y(`schedule detail — an agent run at ${width}px`);
-      await page.getByRole('main').getByRole('button', { name: 'Engine' }).click();
+      await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
       await expect(page.getByText('Jitter', { exact: true })).toBeVisible();
       await expect(page.getByText('Revision policy', { exact: true })).toBeVisible();
       await expect(page.getByText('Worker binding for scheduled runs')).toBeVisible();
-      await checkA11y(`schedule detail — the Engine disclosure open at ${width}px`);
+      await checkA11y(`schedule detail — the Advanced disclosure open at ${width}px`);
     });
   }
 
@@ -165,7 +165,7 @@ test.describe('the seeded agent run', () => {
 
       await actionsOf(row(page, id)).click();
       // The identifier is reachable from here, and shown nowhere else.
-      await expect(page.getByRole('menuitem', { name: 'Copy id' })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: 'Copy ID' })).toBeVisible();
       await page.getByRole('menuitem', { name: /Pause/ }).click();
       await expect(row(page, id)).toHaveAttribute('data-status', 'paused');
 

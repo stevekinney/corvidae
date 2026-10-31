@@ -1,0 +1,442 @@
+{
+  "entries": [
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/agent-editor/agent-editor-form.svelte",
+      "subject": ".cinder-form-field__description",
+      "issue": "COR-1852"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/agent-editor/agent-editor-page.svelte",
+      "subject": ".cinder-page-header__row",
+      "issue": "COR-1852"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/agent-editor/agent-editor-tool-row.svelte",
+      "subject": ".cinder-form-field__label",
+      "issue": "COR-1852"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/agents/agent-memory.svelte",
+      "subject": ".weft-memory__header",
+      "issue": "COR-1854"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/agents/agent-memory.svelte",
+      "subject": ".cinder-search-field",
+      "issue": "COR-1854"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/agents/memory-detail.svelte",
+      "subject": ".weft-memory-detail__header",
+      "issue": "COR-1854"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/agents/memory-row.svelte",
+      "subject": ".cinder-selectable-row--has-trailing-actions",
+      "issue": "COR-1854"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/agents/memory-row.svelte",
+      "subject": ".cinder-selectable-row__primary",
+      "issue": "COR-1854"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/agents/memory-row.svelte",
+      "subject": ".cinder-selectable-row__trailing-actions",
+      "issue": "COR-1854"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/goals/index.svelte",
+      "subject": ".weft-goals__header",
+      "issue": "COR-1843"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/schedules/schedule-form-drawer.svelte",
+      "subject": ".weft-schedule-drawer__header",
+      "issue": "COR-1859"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/settings/index.svelte",
+      "subject": ".weft-settings__header",
+      "issue": "COR-1842"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/alerts-tab.svelte",
+      "subject": ".weft-alerts-tab__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/dynamic-source-list.svelte",
+      "subject": ".weft-source-list__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/dynamic-source-panel.svelte",
+      "subject": ".weft-dynamic-source__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/health-tab.svelte",
+      "subject": ".weft-health-tab__panel-header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/lease-status-panel.svelte",
+      "subject": ".weft-health-tab__lease-header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/mcp-panel.svelte",
+      "subject": ".weft-mcp-panel__diagram-header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/mcp-panel.svelte",
+      "subject": ".weft-mcp-panel__test-header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/metrics-tab.svelte",
+      "subject": ".weft-metrics-tab__raw-header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/refresh-panel.svelte",
+      "subject": ".weft-refresh-panel__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/registry-detail.svelte",
+      "subject": ".weft-registry-detail__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/registry-detail.svelte",
+      "subject": ".weft-registry-detail__message-header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/registry-tab.svelte",
+      "subject": ".weft-registry-list__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/registry-tab.svelte",
+      "subject": ".weft-registry-activity-card__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/retention-panel.svelte",
+      "subject": ".weft-retention-panel__header",
+      "issue": "COR-1842"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/revision-detail.svelte",
+      "subject": ".weft-revision-detail__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/system/workflow-revisions-panel.svelte",
+      "subject": ".weft-revisions-panel__header",
+      "issue": "COR-1847"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/routes/workflows/detail/async-activity/async-activity-drawer.svelte",
+      "subject": ".cinder-code-block",
+      "issue": "COR-1860"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/workflows/detail/streams/stream-chunks-view.svelte",
+      "subject": ".weft-stream-view__header",
+      "issue": "COR-1860"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/workflows/detail/workflow-detail.css",
+      "subject": ".weft-workflow-detail__header",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/workflows/detail/workflow-detail.css",
+      "subject": ".weft-overview-tab__panel-header",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/workflows/detail/workflow-detail.css",
+      "subject": ".weft-lineage-panel__header",
+      "issue": "COR-1860"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/workflows/detail/workflow-detail.css",
+      "subject": ".weft-send-tab__history-header",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/routes/workflows/detail/workflow-detail.css",
+      "subject": ".weft-children-tab__header",
+      "issue": "COR-1860"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/agents.css",
+      "subject": ".ib-agents__header",
+      "issue": "COR-1843"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/agents.css",
+      "subject": ".ib-agent__header",
+      "issue": "COR-1844"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/agents.css",
+      "subject": ".cinder-badge",
+      "issue": "COR-1843"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/chat.css",
+      "subject": ".weft-chat-header",
+      "issue": "COR-1848"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/chat.css",
+      "subject": ".ib-chats__header",
+      "issue": "COR-1848"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/dashboard.css",
+      "subject": ".weft-dashboard__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/dashboard.css",
+      "subject": ".weft-dashboard-card__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/foundation.css",
+      "subject": ".weft-notification-panel__header",
+      "issue": "COR-1861"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/reviews.css",
+      "subject": ".weft-reviews-route__header",
+      "issue": "COR-1849"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/reviews.css",
+      "subject": ".weft-review-detail__header",
+      "issue": "COR-1849"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/schedules.css",
+      "subject": ".ib-schedules__header",
+      "issue": "COR-1859"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/schedules.css",
+      "subject": ".ib-schedule__header",
+      "issue": "COR-1859"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/schedules.css",
+      "subject": ".cinder-page-header__row",
+      "issue": "COR-1859"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/schedules.css",
+      "subject": ".cinder-page-header__actions",
+      "issue": "COR-1859"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/schedules.css",
+      "subject": ".cinder-form-field",
+      "issue": "COR-1859"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/storage.css",
+      "subject": ".weft-storage-results-header",
+      "issue": "COR-1851"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/tasks.css",
+      "subject": ".ib-run__header",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/tasks.css",
+      "subject": ".cinder-description-list__definition",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/tasks.css",
+      "subject": ".cinder-badge",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/tasks.css",
+      "subject": ".cinder-select",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-workers-panel__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-workers-route__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-fleet-view__section-header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-worker-detail__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-queue-detail__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-dead-letter-panel__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-diagnostic-card__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-task-ledger-detail__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-worker-session__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-task-cancellation__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-conformance__target-header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workers.css",
+      "subject": ".weft-deployment__header",
+      "issue": "COR-1850"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workflow-definitions.css",
+      "subject": ".ib-workflows__header",
+      "issue": "COR-1843"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workflow-definitions.css",
+      "subject": ".ib-workflow__header",
+      "issue": "COR-1841"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workflow-definitions.css",
+      "subject": ".ib-workflow__section-header",
+      "issue": "COR-1841"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workflows.css",
+      "subject": ".weft-workflow-list__header",
+      "issue": "COR-1856"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workflows.css",
+      "subject": ".weft-start-wizard__header",
+      "issue": "COR-1855"
+    },
+    {
+      "rule": "app-header-class",
+      "file": "src/styles/workflows.css",
+      "subject": ".weft-aggregate-view__header",
+      "issue": "COR-1856"
+    }
+  ]
+}

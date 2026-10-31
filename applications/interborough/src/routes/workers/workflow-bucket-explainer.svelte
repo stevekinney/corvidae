@@ -31,11 +31,11 @@
   <Input
     id={inputId}
     label="Workflow ID"
-    description="Type a workflow id to see which build it deterministically lands on."
+    description="Type a workflow ID to see which build it deterministically lands on."
     bind:value={workflowId}
     class="weft-workers-mono"
   />
   <p class="weft-bucket-explainer__answer" role="status">
-    {explanation?.text ?? 'Enter a workflow id to see its build.'}
+    {explanation?.text ?? 'Enter a workflow ID to see its build.'}
   </p>
 </div>

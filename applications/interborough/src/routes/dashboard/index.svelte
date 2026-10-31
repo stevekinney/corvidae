@@ -93,7 +93,7 @@
       class="weft-dashboard__gate-skeleton"
       role="status"
       aria-busy="true"
-      aria-label="Loading the engine overview"
+      aria-label="Loading the health overview"
     >
       <div class="weft-dashboard__gate-skeleton-grid">
         <Skeleton height="7.5rem" />

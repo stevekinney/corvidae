@@ -43,7 +43,7 @@ export const RUN_DETAIL_COPY = {
     heading: 'Search attributes',
     loading: 'Loading search attributes',
     empty: 'This run has no search attributes.',
-    engineOwned: 'Set by the engine. It cannot be edited here.',
+    engineOwned: 'Set by the system. It cannot be edited here.',
     edit: (key: string): string => `Edit ${key}`,
     save: (key: string): string => `Save ${key}`,
     cancel: (key: string): string => `Cancel editing ${key}`,
@@ -200,13 +200,13 @@ export const AGENT_EDITOR_COPY = {
   },
   invalid: {
     title: 'This agent’s file is invalid',
-    description: 'The Bureau cannot run it until the file is fixed. Edit the file, then reload.',
+    description: 'Interborough cannot run it until the file is fixed. Edit the file, then reload.',
     action: 'Reload from disk',
     fileLabel: 'File',
   },
   loadFailed: {
     title: 'The agent could not be loaded',
-    description: 'The Bureau did not answer. Check that the host is running, then try again.',
+    description: 'The server did not answer. Check that the host is running, then try again.',
   },
   revisions: {
     heading: 'Revision history',
@@ -251,9 +251,9 @@ export const WORKFLOW_COPY = {
   /** The list at `/workflows`. */
   list: {
     /** The disclosure that holds the types the Bureau runs itself. */
-    engineWorkflows: (count: number): string => `Engine workflows (${String(count)})`,
+    engineWorkflows: (count: number): string => `Internal workflows (${String(count)})`,
     engineDescription:
-      'The Bureau runs these itself to carry out agent runs, goals, and its heartbeat. Nobody starts one by hand.',
+      'Interborough runs these itself to carry out agent runs, goals, and its heartbeat. Nobody starts one by hand.',
     emptyTitle: 'No workflows yet',
     emptyBeforeTool: 'Chat with an agent that has the',
     emptyTool: 'workflows-create',
@@ -276,7 +276,7 @@ export const WORKFLOW_COPY = {
     runDuration: (milliseconds: string): string => `took ${milliseconds}`,
     details: 'Details',
     trigger: 'Trigger',
-    engine: 'Engine',
+    engine: 'Revisions',
     schedulesHeading: 'Schedules',
     schedulesFailed: 'The schedules could not be loaded.',
     scheduleActive: 'Active',
@@ -351,9 +351,9 @@ export const WORKFLOW_COPY = {
    * (`workflow-apply-failed`). The change is on disk, so it is not a failed write.
    */
   applyFailed: {
-    title: 'Saved, but the engine could not apply it yet',
+    title: 'Saved, but the server could not apply it yet',
     description:
-      'The file on disk has the change. The engine did not follow it, and applies the file again by itself. This page shows what is on disk.',
+      'The file on disk has the change. The server did not follow it, and applies the file again by itself. This page shows what is on disk.',
   },
   pauseFailed: 'The workflow was not paused',
   resumeFailed: 'The workflow was not resumed',
@@ -361,8 +361,7 @@ export const WORKFLOW_COPY = {
   forbidden: 'This installation does not let you change workflows.',
   loadFailed: {
     title: 'The workflow could not be loaded',
-    description:
-      'The Bureau or the engine did not answer. Check that the host is running, then try again.',
+    description: 'The server did not answer. Check that the host is running, then try again.',
   },
   signal: {
     heading: 'Send a signal',
@@ -391,7 +390,7 @@ export const WORKFLOW_COPY = {
     invalid: {
       title: 'This workflow’s file is invalid',
       description:
-        'The Bureau cannot run it until the file is fixed. Edit it below, or fix the file and reload.',
+        'Interborough cannot run it until the file is fixed. Edit it below, or fix the file and reload.',
       action: 'Reload from disk',
     },
     unreadable: {
@@ -440,9 +439,9 @@ export const SCHEDULE_COPY = {
     description: 'No schedule matches the current filters. Clear a filter to see more.',
   },
   actionsFor: (name: string): string => `Actions for ${name}`,
-  copyId: 'Copy id',
-  idCopied: 'Schedule id copied',
-  idCopyFailed: 'The schedule id was not copied',
+  copyId: 'Copy ID',
+  idCopied: 'Schedule ID copied',
+  idCopyFailed: 'The schedule ID was not copied',
   next: (when: string): string => `next ${when}`,
   neverFired: 'not fired yet',
   lastSucceeded: 'last run succeeded',
@@ -456,7 +455,7 @@ export const SCHEDULE_COPY = {
   recentRuns: 'Recent runs',
   noRuns: 'No runs yet. This schedule has not fired.',
   notScheduled: (status: string): string => `Not scheduled. This schedule is ${status}.`,
-  engine: 'Engine',
+  engine: 'Advanced',
   engineRows: {
     cron: 'Cron',
     interval: 'Interval',
@@ -483,12 +482,12 @@ export const SCHEDULE_COPY = {
   stale: STALE_COPY,
   /** The Bureau changed the workflow’s file, and the engine could not follow yet. */
   unapplied: {
-    title: 'Saved, but the engine could not apply it yet',
+    title: 'Saved, but the server could not apply it yet',
     description:
-      'The workflow’s file has the change. The engine did not follow it, and applies the file again by itself. This page shows what is on disk.',
+      'The workflow’s file has the change. The server did not follow it, and applies the file again by itself. This page shows what is on disk.',
   },
   overlayFailed: {
-    title: 'The Bureau did not say what these schedules start',
+    title: 'The server did not say what these schedules start',
     description:
       'Until it answers, schedules are listed without their agents and cannot be changed. Check that the host is running, then try again.',
   },
@@ -526,11 +525,11 @@ export const SCHEDULE_COPY = {
     reservedAgentRun:
       'Agent runs are scheduled by choosing an agent, which checks the agent and its owner.',
     reservedBureauWorkflow:
-      'The Bureau starts this workflow itself, with checks a schedule made here would skip.',
+      'Interborough starts this workflow itself, with checks a schedule made here would skip.',
     reservedAgentAuthored:
       'This workflow is agent-authored. Its schedule is the trigger in its file, so change it in the workflow.',
     allTypesReserved:
-      'Every registered workflow type here is started from its own screen or by the Bureau itself, so none is offered. Enter the name of another workflow type.',
+      'Every registered workflow type here is started from its own screen or by Interborough itself, so none is offered. Enter the name of another workflow type.',
     registryNote:
       'Only workflows defined in code are listed. An agent-authored workflow is scheduled by the trigger in its file.',
     overlayLoading: 'Checking which workflows are agent-authored.',
@@ -578,7 +577,7 @@ export const SETTINGS_COPY = {
       'Every host on this shared storage has to run the same value, so it is set by the deployment and cannot be changed here.',
   },
   notPersisted:
-    'This Bureau does not keep its settings. They go back to the code defaults when the host stops.',
+    'This server does not keep its settings. They go back to the code defaults when the host stops.',
   saved: {
     title: 'Settings saved',
     description: 'The changes apply live where a setting allows it.',
@@ -666,13 +665,13 @@ export const GOALS_COPY = {
     validatorNameLabel: 'Validator name',
     validatorVersionLabel: 'Validator version',
     validatorDescription:
-      'The exact name and version of a validator this Bureau was configured with. One it lacks is refused.',
+      'The exact name and version of a validator this server was configured with. One it lacks is refused.',
     maximumAttemptsLabel: 'Maximum attempts',
     maximumAttemptsDescription: 'The most attempts the goal makes before it ends as exhausted.',
     maximumAttemptsInvalid: 'Enter a whole number of attempts, one or more.',
     maximumTotalStepsLabel: 'Maximum total steps',
     maximumTotalStepsDescription:
-      'The most steps the goal takes across all its attempts. The Bureau needs a bound on the attempts together, and this is it.',
+      'The most steps the goal takes across all its attempts. Interborough needs a bound on the attempts together, and this is it.',
     maximumTotalStepsInvalid: 'Enter a whole number of steps, one or more.',
     createAction: 'Create goal',
     cancelAction: 'Cancel',
@@ -702,8 +701,8 @@ export const AUDIT_COPY = {
   resourceLabel: 'Resource',
   /** The first option of the resource picker: no narrowing by what a record is about. */
   anyResource: 'Any resource',
-  resourceIdLabel: 'Resource id',
-  resourceIdPlaceholder: 'Id',
+  resourceIdLabel: 'Resource ID',
+  resourceIdPlaceholder: 'ID',
   searchAction: 'Search',
   clearAction: 'Clear',
   loadMore: 'Load more',
@@ -724,7 +723,7 @@ export const AUDIT_COPY = {
   failed: {
     title: 'The search failed',
     description:
-      'The Bureau did not answer this search. Check that the host is running, then try again.',
+      'The server did not answer this search. Check that the host is running, then try again.',
   },
 } as const;
 
@@ -881,7 +880,7 @@ export const CHAT_COPY = {
     /** The upload did not finish, for a reason the person cannot act on beyond trying again. */
     uploadFailed: 'The file could not be uploaded. Remove it and attach it again.',
     /** The Bureau looked at the bytes and refused them: a safety gate flagged the file, or it is not the type it says. */
-    rejected: 'The Bureau would not accept this file. Its content was refused.',
+    rejected: 'The server would not accept this file. Its content was refused.',
     /** The upload session was gone before the file finished arriving. */
     expired: 'The upload expired before it finished. Remove the file and attach it again.',
     /** The run was refused because the model could not take an attachment. */
@@ -1038,7 +1037,7 @@ export const MEMORY_COPY = {
       pending: {
         title: 'Forgetting has not finished',
         description:
-          'The Bureau started removing this memory and has not confirmed it. Check again shortly.',
+          'The server started removing this memory and has not confirmed it. Check again shortly.',
       },
       failed: {
         title: 'The memory was not removed',
@@ -1048,7 +1047,7 @@ export const MEMORY_COPY = {
       unknown: {
         title: 'The result could not be confirmed',
         description:
-          'The Bureau could not say whether this memory was removed. Check the list, and forget it again if it is still there.',
+          'The server could not say whether this memory was removed. Check the list, and forget it again if it is still there.',
       },
     } satisfies Record<MemoryDeletionState, { title: string; description: string }>,
     receiptLabel: 'What the deletion reached',
@@ -1096,7 +1095,7 @@ export const MEMORY_COPY = {
       'successor-not-admitted': {
         title: 'The correction was not accepted',
         description:
-          'The Bureau’s content rules or this agent’s memory limit refused it, so nothing changed. Reword it and try again.',
+          'Interborough’s content rules or this agent’s memory limit refused it, so nothing changed. Reword it and try again.',
       },
       forbidden: {
         title: 'Changing memory is locked',
@@ -1125,7 +1124,7 @@ export const TASK_COPY = {
   loading: 'Loading runs',
   loadFailed: {
     title: 'The runs could not be loaded',
-    description: 'The Bureau did not answer. Check that the host is running, then try again.',
+    description: 'The server did not answer. Check that the host is running, then try again.',
   },
   empty: {
     title: 'No runs yet',
@@ -1188,29 +1187,28 @@ export const TASK_COPY = {
   noToolCalls: 'The agent has not used a tool.',
   toolCallsLoadFailed: {
     title: 'The tool calls could not be loaded',
-    description: 'The Bureau did not answer. Check that the host is running, then try again.',
+    description: 'The server did not answer. Check that the host is running, then try again.',
   },
   startedFromChat: 'Started from the chat',
   startedFromSchedule: 'Started by a schedule, in the session',
   startedFromGoal: 'Started by the goal',
   runTitle: 'Run',
   tabsLabel: 'Run sections',
-  tabs: { summary: 'Summary', engine: 'Engine' },
+  tabs: { summary: 'Summary', engine: 'Workflow' },
   goalAttemptNote:
-    'A goal made this run, so the Bureau has no task for it. The Engine tab has what the engine recorded.',
-  /** The same, for a caller who may not read the engine, so there is no Engine tab to point to. */
-  goalAttemptNoteBureauOnly: 'A goal made this run, so the Bureau has no task for it.',
+    'A goal made this run, so there is no task for it. The Workflow tab has what the workflow recorded.',
+  /** The same, for a caller who may not read the workflow, so there is no Workflow tab to point to. */
+  goalAttemptNoteBureauOnly: 'A goal made this run, so there is no task for it.',
   /** A run the Bureau does not know, to a caller who may not read the engine either. */
   notFound: {
     title: 'This run was not found',
     description:
       'It may have been removed, or it may belong to someone else. Open a run from the list.',
   },
-  engineOnlyNote:
-    'The Bureau has no task for this run. The Engine tab has what the engine recorded.',
+  engineOnlyNote: 'There is no task for this run. The Workflow tab has what the workflow recorded.',
   answerTruncated: 'The answer was cut short.',
   followUnavailable:
-    'This Bureau cannot follow a task live, so its answer and live updates are not shown here.',
+    'This server cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
   waitsHeading: 'Waiting on you',
   readingWait: 'Reading what the run is waiting on.',
@@ -1268,7 +1266,7 @@ export const REVIEWS_COPY = {
   details: 'Details',
   questionFallback: 'It is waiting for your answer.',
   waiting: (count: number): string => `${String(count)} waiting on you`,
-  engineHeading: 'Engine reviews',
+  engineHeading: 'Workflow reviews',
   approve: 'Approve',
   deny: 'Deny',
   reject: 'Reject',
@@ -1329,7 +1327,7 @@ export const PALETTE_COPY = {
   placeholder: 'Search everything',
   untitledChat: CHAT_COPY.untitled,
   emptyTitle: 'Search the console',
-  emptyDescription: 'Type the name of a chat or an agent, or an id, to jump to it.',
+  emptyDescription: 'Type the name of a chat or an agent, or an ID, to jump to it.',
   noMatchesTitle: 'No matches',
   noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
 } as const;
@@ -1372,12 +1370,12 @@ export const NAVIGATION_COPY = {
   expandSidebar: 'Expand sidebar',
   /** What the engine status dot says, by the state of the live feed. */
   engineStatus: {
-    connecting: 'Engine connecting',
-    live: 'Engine healthy',
-    reconnecting: 'Engine reconnecting',
-    polling: 'Engine healthy (polling)',
-    stale: 'Engine status stale',
-    closed: 'Engine unreachable',
+    connecting: 'Server connecting',
+    live: 'Server healthy',
+    reconnecting: 'Server reconnecting',
+    polling: 'Server healthy (polling)',
+    stale: 'Server status stale',
+    closed: 'Server unreachable',
   },
 } as const;
 
@@ -1416,7 +1414,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Chat',
     loading: {
       title: 'Loading chat',
-      description: 'Checking that the Bureau is ready to take messages.',
+      description: 'Checking that the server is ready to take messages.',
     },
     empty: {
       title: 'Start a chat',
@@ -1426,7 +1424,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'Chat is unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Chat is locked' },
     notFound: {
@@ -1446,16 +1444,15 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Agents',
     loading: {
       title: 'Loading agents',
-      description: 'Asking the Bureau which agents it has.',
+      description: 'Asking the server which agents it has.',
     },
     empty: {
       title: 'No agents to show',
-      description:
-        'The Bureau lists no agents. Add one as a Markdown file in the agents directory.',
+      description: 'No agents are defined yet. Add one as a Markdown file in the agents directory.',
     },
     error: {
       title: 'Agents are unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Agents are locked' },
     notFound: {
@@ -1466,7 +1463,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     loadingByPattern: {
       '/agents/:agent/memories': {
         title: 'Loading memory',
-        description: 'Asking the Bureau what this agent remembers of your chats.',
+        description: 'Asking the server what this agent remembers of your chats.',
       },
     },
     emptyByPattern: {
@@ -1480,7 +1477,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       '/agents/:agent/memories': {
         title: 'Memory is unavailable',
         description:
-          'The Bureau did not answer, or it keeps no memory. Check that the host is running, then try again.',
+          'The server did not answer, or it keeps no memory. Check that the host is running, then try again.',
       },
     },
     forbiddenByPattern: {
@@ -1499,7 +1496,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'The agent editor is unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'The agent editor is locked' },
     notFound: {
@@ -1512,7 +1509,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Workflows',
     loading: {
       title: 'Loading workflows',
-      description: 'Reading the workflow definitions the engine knows and the Bureau’s files.',
+      description: 'Reading the workflow definitions and their files.',
     },
     empty: {
       title: 'No workflows yet',
@@ -1522,8 +1519,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'Workflows are unavailable',
-      description:
-        'The engine or the Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Workflows are locked' },
     notFound: {
@@ -1555,13 +1551,13 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'Runs are unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Runs are locked' },
   },
   schedules: {
     label: 'Schedules',
-    loading: { title: 'Loading schedules', description: 'Reading the engine’s schedules.' },
+    loading: { title: 'Loading schedules', description: 'Reading the schedules.' },
     empty: {
       title: 'No schedules yet',
       description: 'Create a schedule to start a workflow on a timetable.',
@@ -1569,7 +1565,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'Schedules are unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Schedules are locked' },
   },
@@ -1581,7 +1577,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'Reviews are unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Reviews are locked' },
   },
@@ -1589,11 +1585,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Workers',
     loading: {
       title: 'Loading workers',
-      description: 'Reading the workers connected to the engine.',
+      description: 'Reading the connected workers.',
     },
     error: {
       title: 'Workers are unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Workers are locked' },
   },
@@ -1601,11 +1597,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Storage',
     loading: {
       title: 'Loading storage',
-      description: 'Checking what the engine’s storage can do.',
+      description: 'Checking what the storage can do.',
     },
     error: {
       title: 'Storage is unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Storage is locked' },
   },
@@ -1621,7 +1617,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'The audit trail is unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'The audit trail is locked' },
   },
@@ -1629,17 +1625,17 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Settings',
     loading: {
       title: 'Loading settings',
-      description: 'Reading the settings the Bureau is running with.',
+      description: 'Reading the settings in use.',
     },
     error: {
       title: 'Settings are unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Settings are locked' },
   },
   goals: {
     label: 'Goals',
-    loading: { title: 'Loading goals', description: 'Reading the goals the Bureau is running.' },
+    loading: { title: 'Loading goals', description: 'Reading the running goals.' },
     empty: {
       title: 'No goals yet',
       description:
@@ -1648,17 +1644,17 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     error: {
       title: 'Goals are unavailable',
-      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Goals are locked' },
   },
   health: {
     label: 'Health',
-    loading: { title: 'Loading the engine', description: 'Reading the engine’s overview.' },
+    loading: { title: 'Loading health', description: 'Reading the health overview.' },
     error: {
-      title: 'The engine is unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
+      title: 'The server is unavailable',
+      description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The engine overview is locked' },
+    forbidden: { title: 'The health overview is locked' },
   },
 };

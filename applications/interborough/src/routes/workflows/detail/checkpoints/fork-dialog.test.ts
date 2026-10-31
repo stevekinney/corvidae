@@ -254,7 +254,7 @@ describe('ForkDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
 
     await waitFor(() => {
-      expect(getByRole('textbox', { name: 'Revision id' })).not.toBeNull();
+      expect(getByRole('textbox', { name: 'Revision ID' })).not.toBeNull();
       expect(getByText(/don't have permission to list installed revisions/)).not.toBeNull();
     });
   });
@@ -285,7 +285,7 @@ describe('ForkDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
 
     await waitFor(() => {
-      expect(getByRole('textbox', { name: 'Revision id' })).not.toBeNull();
+      expect(getByRole('textbox', { name: 'Revision ID' })).not.toBeNull();
       expect(getByText(/don't have permission to list installed revisions/)).not.toBeNull();
     });
     expect(queryByText('Could not load the list of installed revisions.')).toBeNull();
@@ -315,7 +315,7 @@ describe('ForkDialog', () => {
     await waitFor(() => {
       expect(getByText('Could not load the list of installed revisions.')).not.toBeNull();
     });
-    expect(queryByRole('textbox', { name: 'Revision id' })).toBeNull();
+    expect(queryByRole('textbox', { name: 'Revision ID' })).toBeNull();
   });
 
   test('disables Create fork for a principal without workflows:write, which weft.workflows.fork requires', async () => {
@@ -367,7 +367,7 @@ describe('ForkDialog', () => {
     });
 
     await fireEvent.click(getByRole('button', { name: 'Fork a different revision' }));
-    const input = getByRole('textbox', { name: 'Revision id' });
+    const input = getByRole('textbox', { name: 'Revision ID' });
     await fireEvent.input(input, { target: { value: 'order-processing-rev-explicit' } });
     await fireEvent.click(getByRole('button', { name: 'Create fork' }));
 

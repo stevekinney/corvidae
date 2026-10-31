@@ -396,7 +396,7 @@ test.describe('a code-defined type', () => {
   test.describe('on the host whose console is the Bureau’s own engine', () => {
     test.use({ baseURL: E2E_BUREAU_URL });
 
-    test('a type the Bureau registers for itself has no Engine disclosure and no install form', async ({
+    test('a type the Bureau registers for itself has no Revisions disclosure and no install form', async ({
       page,
     }) => {
       await page.goto('/workflows/agentRun');

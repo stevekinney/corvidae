@@ -102,7 +102,7 @@
   {#if deployments.length === 0 && workers.length === 0}
     <EmptyState
       title="No workers connected"
-      description="Connect a RemoteWorker to this queue to see it here — see the SDK docs for `RemoteWorker`."
+      description="Connect a remote worker to this queue to see it here. The documentation explains how."
     />
   {:else if deployments.length === 0}
     <EmptyState

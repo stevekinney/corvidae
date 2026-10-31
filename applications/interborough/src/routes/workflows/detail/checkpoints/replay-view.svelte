@@ -64,7 +64,7 @@
               definition:
                 replay.revision !== undefined
                   ? `${replay.revision}. ${EAGER_REVISION_HEDGE}`
-                  : 'Not attributable — the source record was purged, this checkpoint or the workflow record predates execution-token correlation, or the stable id has since been reused by a different run.',
+                  : 'Not attributable — the source record was purged, this checkpoint or the workflow record predates execution-token correlation, or the stable ID has since been reused by a different run.',
             },
             { term: 'Recorded', definition: new Date(replay.checkpoint.createdAt).toISOString() },
             { term: 'Events at this step', definition: String(replay.events.length) },
@@ -140,8 +140,6 @@
   .weft-replay-view__section-label {
     font-size: var(--cinder-text-2xs);
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
     color: var(--cinder-text-disabled);
   }
 

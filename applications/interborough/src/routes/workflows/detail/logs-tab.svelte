@@ -28,5 +28,5 @@
 
 <EmptyState
   title="Logs aren't available over the API"
-  description={"ctx.log() records are only visible to a host-side EngineOptions.onLog sink — weft's maintainers confirmed this is intentional (weft#732), not a gap awaiting a fix, so this console can't read a workflow's ctx.log() history."}
+  description="Workflow logs stay on the server that runs the workflow, so this page cannot show them."
 />

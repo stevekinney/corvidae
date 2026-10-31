@@ -1,0 +1,220 @@
+{
+  "entries": [
+    {
+      "file": "src/app/boot-failure.svelte",
+      "issue": "COR-1839"
+    },
+    {
+      "file": "src/app/shell/command-palette.svelte",
+      "issue": "COR-1839"
+    },
+    {
+      "file": "src/app/shell/route-outlet.svelte",
+      "issue": "COR-1839"
+    },
+    {
+      "file": "src/app/view-frame.svelte",
+      "issue": "COR-1839"
+    },
+    {
+      "file": "src/routes/agent-editor/agent-editor-no-provider.svelte",
+      "issue": "COR-1852"
+    },
+    {
+      "file": "src/routes/audit/index.svelte",
+      "issue": "COR-1851"
+    },
+    {
+      "file": "src/routes/chat/index.svelte",
+      "issue": "COR-1848"
+    },
+    {
+      "file": "src/routes/dashboard/index.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/reviews/cards/dashboard-card.svelte",
+      "issue": "COR-1849"
+    },
+    {
+      "file": "src/routes/reviews/reviews-inbox.svelte",
+      "issue": "COR-1849"
+    },
+    {
+      "file": "src/routes/schedules/cards/dashboard-card.svelte",
+      "issue": "COR-1859"
+    },
+    {
+      "file": "src/routes/schedules/schedule-detail.svelte",
+      "issue": "COR-1859"
+    },
+    {
+      "file": "src/routes/schedules/schedule-list.svelte",
+      "issue": "COR-1859"
+    },
+    {
+      "file": "src/routes/storage/get-panel.svelte",
+      "issue": "COR-1851"
+    },
+    {
+      "file": "src/routes/storage/index.svelte",
+      "issue": "COR-1851"
+    },
+    {
+      "file": "src/routes/storage/scan-panel.svelte",
+      "issue": "COR-1851"
+    },
+    {
+      "file": "src/routes/system/alerts-tab.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/system/dynamic-source-list.svelte",
+      "issue": "COR-1847"
+    },
+    {
+      "file": "src/routes/system/lease-status-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/system/realms-tab.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/system/registry-contract-verification-panel.svelte",
+      "issue": "COR-1847"
+    },
+    {
+      "file": "src/routes/system/registry-tab.svelte",
+      "issue": "COR-1847"
+    },
+    {
+      "file": "src/routes/workers/conformance-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/deployment-versions-view.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/deployments-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/diagnostics-view.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/fleet-view.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/index.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/manifest-diagnostics-view.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/queue-list-view.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/task-attempt-history.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/task-dead-letter-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/task-delivery-history.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/task-ledger-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/verification-fault-view.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/worker-contract-verification-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/worker-list-view.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/worker-manifest-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workers/worker-session-panel.svelte",
+      "issue": "COR-1850"
+    },
+    {
+      "file": "src/routes/workflow-definitions/workflow-list.svelte",
+      "issue": "COR-1843"
+    },
+    {
+      "file": "src/routes/workflows/aggregate/aggregate-view.svelte",
+      "issue": "COR-1843"
+    },
+    {
+      "file": "src/routes/workflows/detail/async-activity/activity-worker-provenance.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/checkpoints/checkpoints-tab.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/checkpoints/divergence-view.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/checkpoints/replay-view.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/children-tab.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/logs-tab.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/remote-activity-panel.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/timeline-tab.svelte",
+      "issue": "COR-1860"
+    },
+    {
+      "file": "src/routes/workflows/detail/workflow-detail.svelte",
+      "issue": "COR-1856"
+    },
+    {
+      "file": "src/routes/workflows/index.svelte",
+      "issue": "COR-1843"
+    },
+    {
+      "file": "src/routes/workflows/list/workflow-list.svelte",
+      "issue": "COR-1843"
+    },
+    {
+      "file": "src/routes/workflows/runs/run-detail.svelte",
+      "issue": "COR-1856"
+    },
+    {
+      "file": "src/routes/workflows/runs/run-list.svelte",
+      "issue": "COR-1843"
+    }
+  ]
+}

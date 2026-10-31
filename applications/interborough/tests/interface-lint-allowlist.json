@@ -1,0 +1,70 @@
+{
+  "entries": [
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-sidebar__footer",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-sidebar__nav",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-side-navigation",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-side-navigation__list",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-code-location",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer__body",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer__header",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-drawer__title",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-breadcrumbs",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    },
+    {
+      "rule": "cinder-selector",
+      "file": "src/styles/foundation.css",
+      "subject": ".cinder-button",
+      "reason": "App shell chrome: it sizes Cinder's sidebar, drawer, breadcrumb and button internals, no page issue rewrites the shell, and Cinder exposes no styling hook for these elements."
+    }
+  ]
+}

@@ -47,8 +47,8 @@
   <div class="weft-start-advanced__grid">
     <Input
       id="weft-start-id"
-      label="Workflow id"
-      description="Leave blank to let the engine generate one."
+      label="Workflow ID"
+      description="Leave blank to let the server generate one."
       value={value.id}
       oninput={(event) => patch({ id: (event.currentTarget as HTMLInputElement).value })}
     />

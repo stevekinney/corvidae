@@ -289,10 +289,10 @@
             </Badge>
           </Tooltip>
         {:else if workerReading.kind === 'malformed'}
-          <Tooltip text={`The worker binding could not be read: ${workerReading.reason}.`}>
+          <Tooltip text={`The worker version could not be read: ${workerReading.reason}.`}>
             <Badge variant="warning">
               <TriangleAlert aria-hidden="true" size={11} />
-              Worker binding unreadable
+              Worker version unreadable
             </Badge>
           </Tooltip>
         {/if}
@@ -322,7 +322,7 @@
         <span class="weft-workflow-detail__id" title={workflow.id}>
           {truncateId(workflow.id)}
         </span>
-        <CopyButton value={workflow.id} iconOnly label="Copy workflow id" />
+        <CopyButton value={workflow.id} iconOnly label="Copy workflow ID" />
         <span class="weft-workflow-detail__meta-sep">·</span>
         <span>created {formatRelativeTime(workflow.createdAt, now)}</span>
         {#if showDeadline && deadlineRemainingMs !== null}
@@ -351,7 +351,7 @@
     {/each}
 
     {#if canRestart}
-      <Tooltip text="Replace this run with a fresh one under the same id">
+      <Tooltip text="Replace this run with a fresh one under the same ID">
         <Button variant="secondary" size="sm" label="Restart" onclick={() => onRestart?.()} />
       </Tooltip>
     {/if}

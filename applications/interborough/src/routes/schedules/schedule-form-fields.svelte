@@ -256,7 +256,7 @@
       <div class="weft-schedule-form__backfill-warning">
         <TriangleAlert aria-hidden="true" size={14} />
         <span>
-          If the schedule falls behind (for example, the engine was down), missed occurrences fire
+          If the schedule falls behind (for example, the server was down), missed occurrences fire
           immediately in a bounded catch-up window instead of being skipped.
         </span>
       </div>

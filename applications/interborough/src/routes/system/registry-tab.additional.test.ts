@@ -113,7 +113,7 @@ describe('additional coverage', () => {
       await withContractHashes(registrySnapshot([manifestFixture('heartbeat')])),
     );
     const { findByText } = await renderRegistryTab();
-    expect(await findByText('No activities registered for this engine.')).not.toBeNull();
+    expect(await findByText('No activities registered for this server.')).not.toBeNull();
   });
 
   test('a declared root schema that is not `type: object` renders its root type, not "no schema declared"', async () => {

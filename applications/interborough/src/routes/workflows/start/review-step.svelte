@@ -49,7 +49,7 @@
 
   const advancedItems = $derived(
     [
-      advanced.id ? { term: 'Workflow id', definition: advanced.id } : null,
+      advanced.id ? { term: 'Workflow ID', definition: advanced.id } : null,
       advanced.idempotencyKey
         ? { term: 'Idempotency key', definition: advanced.idempotencyKey }
         : null,

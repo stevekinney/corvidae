@@ -185,13 +185,12 @@
   </fieldset>
 
   <div class="weft-settings-editor__actions">
-    <Button type="submit" variant="primary" size="lg" disabled={!form.canSave || submit.isPending}
+    <Button type="submit" variant="primary" disabled={!form.canSave || submit.isPending}
       >{SETTINGS_COPY.saveAction}</Button
     >
     <Button
       type="button"
       variant="secondary"
-      size="lg"
       disabled={form.dirtyKeys.length === 0 || submit.isPending}
       onclick={discard}>{SETTINGS_COPY.discardAction}</Button
     >
