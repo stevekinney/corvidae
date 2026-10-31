@@ -26,9 +26,9 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
+import { SEEDED_GOAL_RUN_IDENTIFIER } from '@lostgradient/plugin-demo';
 import { STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
-import { SEEDED_GOAL_RUN_IDENTIFIER } from '../../src/host/seed.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
@@ -362,7 +362,7 @@ async function reviewOfRun(
   threadId: string,
   title: string,
 ): Promise<string> {
-  await runToEnd(request, 'tool-runner', threadId, title);
+  await runToEnd(request, 'demo:tool-runner', threadId, title);
   const review = await waitingReviewOf(request, threadId);
   return review.id;
 }
@@ -384,11 +384,11 @@ test.beforeAll(async ({ playwright }) => {
       description: LONG_DESCRIPTION,
       instructions: LONG_INSTRUCTIONS,
       // The Access tab's largest values, and a tool that asks every time.
-      toolApproval: { 'lookup-order': 'always' },
+      toolApproval: { 'demo:lookup-order': 'always' },
       costBudget: { perRunUsd: 1_000_000, perChatUsd: 1_000_000 },
       toolBudget: { maxCalls: 100_000, maxDurationSeconds: 86_400 },
     });
-    await runToEnd(request, 'assistant', CHAT_THREAD, 'Say hello');
+    await runToEnd(request, 'demo:assistant', CHAT_THREAD, 'Say hello');
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, MEMORY_THREAD, LONG_MEMORY);
     const storedMemories = (await bureauCall(request, 'bureau.memory.list', {
       agentId: TEXT_ECHO_AGENT_NAME,

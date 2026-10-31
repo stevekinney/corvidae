@@ -19,6 +19,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { MEMORY_DELETION_PROPAGATION } from './memory.ts';
 
@@ -57,6 +58,7 @@ function recalling(name: string) {
 async function start(home?: string): Promise<{ host: Host; home: string }> {
   const directory = home ?? (await mkdtemp(join(tmpdir(), 'interborough-memory-')));
   if (home === undefined) directories.push(directory);
+  await enableDemoPlugin(directory);
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: directory },
     port: 0,
@@ -236,9 +238,9 @@ describe('the host’s governed memory', () => {
 
   test('keeps the seeded agents’ memory too, owned by the one local caller', async () => {
     const { host } = await start();
-    await chat(host, 'assistant', 'thread-1');
+    await chat(host, 'demo:assistant', 'thread-1');
 
-    const [memory] = await memoriesOf(host, 'assistant');
+    const [memory] = await memoriesOf(host, 'demo:assistant');
     expect(memory?.content).toContain('Hello from the assistant');
     expect(memory?.sessionId).toBe('thread-1');
   });

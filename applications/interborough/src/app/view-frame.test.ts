@@ -13,6 +13,7 @@ import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-su
 import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { queryKeys } from '../lib/query.ts';
+import { router } from '../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
 import {
   codeDefinition,
@@ -515,28 +516,98 @@ describe('the chat list, a new chat, and the agents', () => {
   });
 
   test('a new chat is ready for an agent the Bureau lists', async () => {
-    stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
+    stubBureau({ 'bureau.agents.list': () => agents({ name: 'demo:assistant' }) });
     const { container, findByTestId } = mount('chat', { pattern: '/chats/new' });
 
     expect(await findByTestId('content')).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('ready');
   });
 
-  test('a new chat is not found for an agent that does not exist', async () => {
-    for (const entries of [[{ name: 'other' }], []]) {
-      stubBureau({
-        'bureau.agents.list': () => agents(...(entries as Array<Partial<typeof AGENT>>)),
-      });
-      const { container, findByRole, unmount } = mount('chat', { pattern: '/chats/new' });
-      // It is the agent that is missing, so the words are about the agent and not the session.
-      const words = VIEW_COPY.chat.notFoundByPattern?.['/chats/new'];
+  /** A host that lists `names` as agents and reports `plugins`, or fails the plugin route when null. */
+  function stubHostWithPlugins(names: readonly string[], plugins: readonly unknown[] | null): void {
+    restore = installFetchImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/host/plugins')) {
+        return plugins === null
+          ? new Response('down', { status: 500 })
+          : Response.json({ plugins, unloaded: [] });
+      }
+      return agents(...names.map((name) => ({ name })));
+    });
+  }
 
-      expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-      expect(container.textContent).toContain(words?.description ?? '');
-      expect(words?.title).not.toBe(VIEW_COPY.chat.notFound?.title);
-      expect(frame(container).dataset['state']).toBe('not-found');
-      unmount();
-      restore?.();
+  const demoPlugin = (status: string, agentNames: readonly string[]) => ({
+    descriptor: {
+      name: 'demo',
+      version: '1.0.0',
+      description: '',
+      required: false,
+      enabledByDefault: false,
+      secrets: [],
+    },
+    source: 'folder',
+    location: '/plugins/demo',
+    status,
+    problems: [],
+    contributions: agentNames.map((id) => ({
+      kind: 'code-agent',
+      id,
+      references: { agents: 0, schedules: 0, waitingRuns: 0 },
+    })),
+    enabled: status !== 'disabled',
+    configuration: {},
+    secrets: [],
+    restartRequired: false,
+  });
+
+  test('a new chat on a fresh host, with the demo plugin off and no agent listed, shows the empty state', async () => {
+    stubHostWithPlugins([], [demoPlugin('disabled', [])]);
+    const { container, findByRole } = mount('chat', { pattern: '/chats/new' });
+    const words = VIEW_COPY.chat.emptyByPattern?.['/chats/new'];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(words?.title).not.toBe(VIEW_COPY.chat.empty?.title);
+    expect(frame(container).dataset['state']).toBe('empty');
+  });
+
+  test('a new chat opens on the first agent that can run', async () => {
+    stubHostWithPlugins(['notes'], [demoPlugin('running', ['demo:assistant'])]);
+    const { container, findByTestId } = mount('chat', { pattern: '/chats/new' });
+
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+  });
+
+  test('a new chat never defaults to an agent of a plugin that needs setup', async () => {
+    stubHostWithPlugins(['demo:assistant'], [demoPlugin('needs-setup', ['demo:assistant'])]);
+    const { container, findByRole } = mount('chat', { pattern: '/chats/new' });
+    const words = VIEW_COPY.chat.emptyByPattern?.['/chats/new'];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('empty');
+  });
+
+  test('a new chat is not found for an agent that does not exist', async () => {
+    // The probe reads `?agent=` from the address; without one it would start from a default agent.
+    router.navigate('/chats/new?agent=nobody', { replace: true });
+    try {
+      for (const entries of [[{ name: 'other' }], []]) {
+        stubBureau({
+          'bureau.agents.list': () => agents(...(entries as Array<Partial<typeof AGENT>>)),
+        });
+        const { container, findByRole, unmount } = mount('chat', { pattern: '/chats/new' });
+        // It is the agent that is missing, so the words are about the agent and not the session.
+        const words = VIEW_COPY.chat.notFoundByPattern?.['/chats/new'];
+
+        expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+        expect(container.textContent).toContain(words?.description ?? '');
+        expect(words?.title).not.toBe(VIEW_COPY.chat.notFound?.title);
+        expect(frame(container).dataset['state']).toBe('not-found');
+        unmount();
+        restore?.();
+      }
+    } finally {
+      router.navigate('/', { replace: true });
     }
   });
 

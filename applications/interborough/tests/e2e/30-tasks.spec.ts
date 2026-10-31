@@ -116,7 +116,7 @@ test.describe('the runs of a chat', () => {
     checkA11y,
   }) => {
     const threadId = newThreadId('runs-link');
-    await runToEnd(request, 'assistant', threadId, 'Say hello');
+    await runToEnd(request, 'demo:assistant', threadId, 'Say hello');
     const task = await taskOfSession(request, threadId);
 
     await page.goto('/runs');
@@ -132,7 +132,7 @@ test.describe('the runs of a chat', () => {
 
     await expect(page).toHaveURL(new RegExp(`/runs/${task.id}$`));
     await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('assistant');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('demo:assistant');
     await expect(heading(page).getByText('Done', { exact: true })).toBeVisible();
     // Open chat is the first action, and the answer is the stream's: the task view has none.
     await expect(page.getByRole('link', { name: 'Open chat' })).toHaveAttribute(
@@ -154,7 +154,7 @@ test.describe('the runs of a chat', () => {
     request,
   }) => {
     const threadId = newThreadId('runs-list');
-    await runToEnd(request, 'assistant', threadId, 'Say hello');
+    await runToEnd(request, 'demo:assistant', threadId, 'Say hello');
     const task = await taskOfSession(request, threadId);
 
     await page.goto('/runs?startedBy=chat');
@@ -180,7 +180,7 @@ test.describe('the runs of a caller who may not read the engine', () => {
     request,
   }) => {
     const threadId = newThreadId('runs-no-engine');
-    await runToEnd(request, 'assistant', threadId, 'Say hello');
+    await runToEnd(request, 'demo:assistant', threadId, 'Say hello');
     const task = await taskOfSession(request, threadId);
     // The principal holds a scope, but not `workflows:read`.
     const scopes = ['system:read'];
@@ -208,7 +208,7 @@ test.describe('the runs of a caller who may not read the engine', () => {
     await expect(row).toBeVisible();
     await row.getByRole('link', { name: 'assistant' }).click();
 
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('assistant');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('demo:assistant');
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
     // The whole page is there without the workflow's sections, and it has no tabs at all.
     await expect(page.getByRole('heading', { level: 2, name: 'Details' })).toBeVisible();
@@ -228,7 +228,7 @@ test.describe('a run that waits on a question', () => {
     checkA11y,
   }) => {
     const threadId = newThreadId('tasks-human');
-    await runToEnd(request, 'request-human-input', threadId, 'Release it');
+    await runToEnd(request, 'demo:request-human-input', threadId, 'Release it');
     const task = await taskOfSession(request, threadId);
     expect(task.status).toBe('input-required');
 
@@ -256,7 +256,7 @@ test.describe('following a task', () => {
     await makeStreamsSeverable(page);
     // A run parked on a question has made one durable change, so the stream has a position to keep.
     const threadId = newThreadId('tasks-follow');
-    await runToEnd(request, 'request-human-input', threadId, 'Release it');
+    await runToEnd(request, 'demo:request-human-input', threadId, 'Release it');
     const { id: taskId } = await taskOfSession(request, threadId);
     const resumes: Array<string | undefined> = [];
     page.on('request', (outgoing) => {
@@ -342,7 +342,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     const threadId = newThreadId('tasks-width');
-    await runToEnd(request, 'request-human-input', threadId, 'Release it');
+    await runToEnd(request, 'demo:request-human-input', threadId, 'Release it');
     const task = await taskOfSession(request, threadId);
 
     await page.goto(`/runs/${task.id}`);

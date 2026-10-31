@@ -69,6 +69,8 @@ export const queryKeys = {
   },
   agents: {
     list: () => ['agents', 'list'] as const,
+    /** The first listed agent that can run, or `null` (`lib/default-agent.ts`). */
+    default: () => ['agents', 'default'] as const,
     /** Every agent definition, invalid files included (`bureau.agents.definitions.list`). */
     definitions: () => ['agents', 'definitions'] as const,
     /** One agent as `bureau.agents.definitions.get` shows it. */

@@ -37,7 +37,7 @@ describe('the access provider resolver', () => {
     const opener: Row = { role: 'user', content: `${ACCESS_LOOKUP_MARKER} Find it.` };
 
     const first = await generateWith(opener);
-    expect(first.toolCalls?.map((call) => call.name)).toEqual(['lookup-order']);
+    expect(first.toolCalls?.map((call) => call.name)).toEqual(['demo:lookup-order']);
 
     const second = await generateWith(opener, { role: 'assistant', content: '', toolCall: CALL });
     expect(second).toEqual({ content: ACCESS_REPLY, toolCalls: [] });

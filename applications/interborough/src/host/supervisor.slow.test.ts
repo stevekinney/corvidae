@@ -8,6 +8,7 @@
  * the hang guard, so none is on Bun's per-test clock; the tests assert on what it recorded. Nothing
  * asserts on how long anything takes.
  */
+import { HUMAN_INPUT_SIGNAL } from '@lostgradient/plugin-demo';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, test } from 'bun:test';
@@ -15,9 +16,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
-import { HUMAN_INPUT_SIGNAL } from './seed.ts';
 
 const packageDirectory = join(import.meta.dir, '..', '..');
 const supervisorEntry = join(import.meta.dir, 'supervisor.ts');
@@ -80,6 +81,7 @@ async function supervise(
   },
 ): Promise<Supervised> {
   const home = await scratch();
+  await enableDemoPlugin(home);
   const port = await freePort();
   const child = spawnWithHangGuard(
     [
@@ -219,7 +221,7 @@ function runBody(threadId: string, extra: Record<string, unknown> = {}): string 
 
 async function agUiStream(supervised: Supervised, body: string): Promise<string> {
   const response = await fetch(
-    new URL('/bureau/ag-ui/agents/request-human-input/run', supervised.url),
+    new URL('/bureau/ag-ui/agents/demo:request-human-input/run', supervised.url),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'text/event-stream' },

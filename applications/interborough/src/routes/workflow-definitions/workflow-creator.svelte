@@ -14,7 +14,7 @@
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
-  import { DEFAULT_AGENT } from '../../lib/default-agent.ts';
+  import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import {
@@ -30,25 +30,31 @@
   const creator = copy.creator;
   const queryClient = useQueryClient();
 
-  /** What the editor starts with: the smallest file the Bureau accepts that does something. */
-  const TEMPLATE = JSON.stringify(
-    {
-      name: creator.templateName,
-      description: creator.templateDescription,
-      trigger: { kind: 'schedule', spec: creator.templateSpec },
-      steps: [
-        {
-          kind: 'activity',
-          handler: 'agent',
-          input: { agent: DEFAULT_AGENT, message: creator.templateMessage },
-        },
-      ],
-    },
-    null,
-    2,
-  );
+  /**
+   * What the editor starts with: the smallest file the Bureau accepts that does something. Its
+   * step names `agent`, the first agent that can run, or none (`''`) until one is known or when no
+   * agent can run.
+   */
+  function templateFor(agent: string): string {
+    return JSON.stringify(
+      {
+        name: creator.templateName,
+        description: creator.templateDescription,
+        trigger: { kind: 'schedule', spec: creator.templateSpec },
+        steps: [
+          {
+            kind: 'activity',
+            handler: 'agent',
+            input: { agent, message: creator.templateMessage },
+          },
+        ],
+      },
+      null,
+      2,
+    );
+  }
 
-  let text = $state(TEMPLATE);
+  let text = $state(templateFor(''));
   /** Why the text cannot be saved, or the Bureau's words for a document it refused. */
   let validation = $state('');
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
@@ -113,6 +119,23 @@
     validation = '';
     save.mutate({ id: parsed.id, definition: parsed.definition });
   }
+
+  // The step names the first agent that can run once the host says which, unless the person has
+  // already changed the text.
+  onMount(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const agent = await queryClient.fetchQuery(defaultAgentQuery());
+        if (!cancelled && agent !== null && text === templateFor('')) text = templateFor(agent);
+      } catch {
+        // The host did not say, so the step names no agent and the person chooses one.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  });
 
   // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
   onMount(() =>

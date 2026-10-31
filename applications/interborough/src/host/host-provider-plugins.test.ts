@@ -58,7 +58,6 @@ async function startAt(home: string, options: Parameters<typeof startHost>[0] = 
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
     ...options,
   });
   hosts.push(host);
@@ -149,7 +148,7 @@ describe('a plugin that contributes a provider', () => {
 });
 
 describe('the providers the workspace ships', () => {
-  test('declare exactly the four keys the host has always used', () => {
+  test('declare exactly the four keys the host has always used, and the demo plugin one of its own', () => {
     expect(
       workspacePlugins().map(({ descriptor }) => [descriptor.name, descriptor.secrets]),
     ).toEqual([
@@ -157,6 +156,7 @@ describe('the providers the workspace ships', () => {
       ['openai', ['openai-api-key']],
       ['gemini', ['gemini-api-key']],
       ['typesafe', ['typesafe-api-key']],
+      ['demo', [{ key: 'demo-approval-secret', generated: true }]],
     ]);
   });
 

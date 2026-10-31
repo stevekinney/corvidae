@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 
 const homes: string[] = [];
@@ -34,15 +35,16 @@ async function firstFinishedFire(host: Host) {
 test('a schedule fire runs once and ends normally, not at the step limit', async () => {
   const home = await mkdtemp(join(tmpdir(), 'interborough-fire-'));
   homes.push(home);
+  await enableDemoPlugin(home);
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
+    plugins: pluginsWithUnseededDemo(),
   });
   hosts.push(host);
   await host.bureau.schedules.create({
     description: 'Fires every second',
-    agentName: 'assistant',
+    agentName: 'demo:assistant',
     input: 'Summarize.',
     spec: '1s',
   });

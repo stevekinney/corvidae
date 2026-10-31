@@ -96,7 +96,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     await page.goto('/agents');
     const frame = page.locator('[data-view="agents"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
-    const row = page.locator('[data-agent="assistant"]');
+    const row = page.locator('[data-agent="demo:assistant"]');
     // What the frame dims is the page it frames: its direct children.
     const content = frame.locator(':scope > *').first();
     await expect(row).toBeVisible();
@@ -165,7 +165,7 @@ test.describe('the server stops answering while a page with data is open', () =>
   }) => {
     const outage = watchOutage(page, REFUSED);
     const threadId = newThreadId('offline-approve');
-    await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     const review = await waitingReviewOf(request, threadId);
     await page.goto(`/reviews?review=${encodeURIComponent(`bureau:${review.id}`)}`);
     const row = page.locator(`[data-review-row="bureau:${review.id}"]`);

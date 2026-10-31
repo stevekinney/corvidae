@@ -116,7 +116,7 @@ test.describe('a new agent', () => {
       expect(agent.definition).toMatchObject({
         name: 'E2E New Agent',
         model: 'anthropic/claude-sonnet-5',
-        tools: ['lookup-order'],
+        tools: ['demo:lookup-order'],
         instructions: 'Answer in one short sentence.',
       });
       const text = await readFile(await agentFilePath(request, 'e2e-new-agent'), 'utf8');
@@ -176,9 +176,9 @@ test.describe('a new agent', () => {
       await expect(row.getByTestId('agent-tool-full')).toHaveCount(0);
 
       // A tool that declares nothing shows its description, which already fits, with nothing to open.
-      const lookup = page.locator('[data-tool="lookup-order"]');
+      const lookup = page.locator('[data-tool="demo:lookup-order"]');
       await expect(lookup.getByTestId('agent-tool-line')).toHaveText(
-        catalog.tools.find((tool) => tool.name === 'lookup-order')?.description ?? '',
+        catalog.tools.find((tool) => tool.name === 'demo:lookup-order')?.description ?? '',
       );
       await expect(lookup.getByRole('button', { name: copy.toolDisclosure })).toHaveCount(0);
 
@@ -215,7 +215,7 @@ test.describe('a new agent', () => {
     const untouched = await readAgent(request, 'e2e-taken');
     expect(untouched.definition?.name).toBe(BASE_DEFINITION.name);
 
-    await identifier.fill('assistant');
+    await identifier.fill('echo-image');
     await page.getByRole('button', { name: copy.createAction }).click();
     await expect(page.getByText(copy.identifierTaken['shadows-code-agent'])).toBeVisible();
     await expect(page).toHaveURL(/\/agents\/new$/);
@@ -461,7 +461,7 @@ test.describe('an agent that exists', () => {
     await expect(page).toHaveURL(/\/agents$/);
     await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
-    await expect(page.locator('[data-agent="assistant"]')).toHaveCount(1);
+    await expect(page.locator('[data-agent="demo:assistant"]')).toHaveCount(1);
     await expect(page.locator('[data-agent="e2e-delete"]')).toHaveCount(0);
     await expect.poll(() => faultCodeOf(request, 'e2e-delete')).toBe('NotFound');
     const stillThere = await readFile(path, 'utf8').then(
@@ -672,7 +672,7 @@ test.describe('the list of agents', () => {
     request,
   }) => {
     await makeAgent(request, 'e2e-entry');
-    await page.goto('/agents/assistant');
+    await page.goto('/agents/demo:assistant');
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: copy.editAction })).toHaveCount(0);
 
@@ -687,7 +687,7 @@ test.describe('an agent that cannot be edited', () => {
   for (const width of WIDTHS) {
     for (const [label, id] of [
       ['one that does not exist', 'e2e-no-such-agent'],
-      ['one defined in code', 'assistant'],
+      ['one defined in code', 'demo:assistant'],
     ] as const) {
       test(`is not found for ${label}, at ${width} pixels`, async ({ page, checkA11y }) => {
         await page.setViewportSize({ width, height: 900 });

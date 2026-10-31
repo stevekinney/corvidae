@@ -8,6 +8,7 @@
  * identifier rules.
  */
 import { AGENT_FILE_STEM_PATTERN as BUREAU_IDENTIFIER_PATTERN } from '@lostgradient/bureau';
+import { createAgent as createCodeAgent, createScriptedGenerate } from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -29,8 +30,9 @@ import {
 import type { Fetcher } from '../lib/bureau-client.ts';
 import { urlOf } from '../lib/bureau-stub.test-support.ts';
 import { getHostPaths } from '../lib/host-paths.ts';
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { fakeProvider, writeProviderHome } from './fake-provider.test-support.ts';
-import { startHost, type Host } from './host.ts';
+import { startHost, type Host, type HostOptions } from './host.ts';
 import { runTask } from './run-task.test-support.ts';
 
 const directories: string[] = [];
@@ -43,21 +45,30 @@ afterEach(async () => {
   }
 });
 
-async function startConfigured(): Promise<{ host: Host; home: string; fetcher: Fetcher }> {
+async function startConfigured(
+  options: Pick<HostOptions, 'extraAgents'> = {},
+): Promise<{ host: Host; home: string; fetcher: Fetcher }> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-editor-'));
   directories.push(home);
   await writeProviderHome(home);
+  await enableDemoPlugin(home);
   const { resolver } = fakeProvider('A reply.');
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
     resolveProviderGenerate: resolver,
+    ...options,
   });
   hosts.push(host);
   // The client sends relative URLs, as a page does; a test resolves them against the host.
   const fetcher: Fetcher = (input, init) => fetch(new URL(urlOf(input), host.url), init);
   return { host, home, fetcher };
 }
+
+/** A scripted generate for a code agent the test defines itself. */
+const scripted = createScriptedGenerate([
+  { kind: 'respond', response: { content: 'Scripted.', toolCalls: [] } },
+]);
 
 const skillDescriptors = [
   { id: 'cite', name: 'Cite', description: 'Cites the sources', tags: ['research'] },
@@ -67,7 +78,7 @@ const definition: AgentDefinitionInput = {
   name: 'Researcher',
   description: 'Finds and cites sources',
   model: 'anthropic/sonnet',
-  tools: ['lookup-order'],
+  tools: ['demo:lookup-order'],
   skillDescriptors,
   instructions: 'You are a careful researcher.',
 };
@@ -133,19 +144,20 @@ describe('the operations, against the real Bureau', () => {
     // The tools are the Bureau's own tool catalog, which holds the host's tool and the workflow tools.
     const offered = host.bureau.agents.tools().map((tool) => tool.name);
     expect(catalog.tools.map((tool) => tool.name)).toEqual(offered);
-    expect(offered).toContain('lookup-order');
+    expect(offered).toContain('demo:lookup-order');
     // Every tool states its input schema, Bureau's settings and workflow tools included, and who
-    // provides it. The seeded `tool-runner` agent's toolbox names `lookup-order`, so it uses it.
+    // provides it. The demo `tool-runner` agent's toolbox names `lookup-order`, so it uses it.
     for (const tool of catalog.tools) {
       expect(tool.inputSchema).not.toBeNull();
       expect(tool.inputSchema).toMatchObject({ type: 'object' });
     }
     const byName = new Map(catalog.tools.map((tool) => [tool.name, tool]));
-    expect(byName.get('lookup-order')).toMatchObject({
+    expect(byName.get('demo:lookup-order')).toMatchObject({
       tier: 'read-only',
       defaultApproval: 'allow',
       source: 'host',
-      users: ['tool-runner'],
+      // The `tool-runner` agent's own toolbox holds its own `lookup-order`, not the catalog's.
+      users: [],
     });
     expect(byName.get('bureau:workflows-create')).toMatchObject({ source: 'bureau' });
     expect(byName.get('settings-update')).toMatchObject({ source: 'bureau' });
@@ -213,13 +225,17 @@ describe('the operations, against the real Bureau', () => {
   });
 
   test('answers a taken identifier by its reason, for a file and for a code-defined agent', async () => {
-    const { fetcher } = await startConfigured();
+    const { fetcher } = await startConfigured({
+      extraAgents: {
+        agents: { scripted: createCodeAgent({ name: 'scripted', generate: scripted }) },
+      },
+    });
     await createAgent('researcher', definition, { fetch: fetcher });
     expect(await faultOf(createAgent('researcher', definition, { fetch: fetcher }))).toEqual({
       kind: 'identifier-taken',
       reason: 'agent-file-exists',
     });
-    expect(await faultOf(createAgent('assistant', definition, { fetch: fetcher }))).toEqual({
+    expect(await faultOf(createAgent('scripted', definition, { fetch: fetcher }))).toEqual({
       kind: 'identifier-taken',
       reason: 'shadows-code-agent',
     });
@@ -268,7 +284,7 @@ describe('the operations, against the real Bureau', () => {
 
   test('shows a code-defined agent as code with no hash, and a file it cannot use as invalid with its problem and hash', async () => {
     const { host, home, fetcher } = await startConfigured();
-    const code = await getAgentDefinition('assistant', { fetch: fetcher });
+    const code = await getAgentDefinition('demo:assistant', { fetch: fetcher });
     expect(code).toMatchObject({ source: 'code', hash: null, definition: null });
     expect(code.codeDefinition).toMatchObject({
       name: 'assistant',
@@ -276,7 +292,7 @@ describe('the operations, against the real Bureau', () => {
       tools: [],
       skills: [],
     });
-    const runner = await getAgentDefinition('tool-runner', { fetch: fetcher });
+    const runner = await getAgentDefinition('demo:tool-runner', { fetch: fetcher });
     expect(runner.codeDefinition).toMatchObject({ tools: ['lookup-order', 'issue-refund'] });
 
     await writeFile(join(home, 'agents', 'broken.md'), '---\nmodel: openai/gpt-4.1\n---\nHi\n');

@@ -24,7 +24,7 @@ afterEach(async () => {
 async function start() {
   const home = await mkdtemp(join(tmpdir(), 'interborough-audit-retention-'));
   directories.push(home);
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, seed: false });
+  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
 }

@@ -41,7 +41,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
       server,
       `host/${crypto.randomUUID()}`,
     );
-    const host = await startHost({ environment, port: 0, seed: false, ...options });
+    const host = await startHost({ environment, port: 0, ...options });
     hosts.push(host);
     return host;
   }
@@ -144,7 +144,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
       '---\nname: Researcher\nmodel: anthropic/sonnet\n---\nYou are a careful researcher.\n',
     );
 
-    const host = await startHost({ environment, port: 0, seed: false });
+    const host = await startHost({ environment, port: 0 });
     hosts.push(host);
 
     expect(host.bureau.agents.list().find((listing) => listing.id === 'researcher')).toMatchObject({

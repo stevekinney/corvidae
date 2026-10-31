@@ -9,7 +9,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
+import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { conversation, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
@@ -85,7 +85,7 @@ async function waitingRefund(
   name: string,
 ): Promise<{ threadId: string; review: WaitingReview }> {
   const threadId = newThreadId(name);
-  await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+  await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
   expect(refundRan(await threadMessages(request, threadId))).toBe(false);
   const review = await waitingReviewOf(request, threadId);
   await page.goto(inboxAt(review));
@@ -100,7 +100,7 @@ test.describe('a tool approval', () => {
     checkA11y,
   }) => {
     const threadId = newThreadId('reviews-approve');
-    await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     expect(refundRan(await threadMessages(request, threadId))).toBe(false);
     const review = await waitingReviewOf(request, threadId);
 
@@ -114,7 +114,7 @@ test.describe('a tool approval', () => {
     await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
     const source = paneOf(page).getByTestId('review-source');
     await expect(source).toContainText('Asked by');
-    await expect(source.getByRole('link', { name: 'tool-runner' })).toBeVisible();
+    await expect(source.getByRole('link', { name: 'demo:tool-runner' })).toBeVisible();
     await expect(source).toContainText('waiting since');
     await expect(paneOf(page)).toContainText('order-1001');
     // No raw policy string, no Live toggle, and no separate section for the engine's reviews.
@@ -197,7 +197,7 @@ test.describe('a tool approval', () => {
     request,
   }) => {
     const threadId = newThreadId('reviews-chat-first');
-    await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     const review = await waitingReviewOf(request, threadId);
 
     await page.goto('/reviews');
@@ -243,7 +243,7 @@ test.describe('a tool approval', () => {
     context,
   }) => {
     const threadId = newThreadId('reviews-open-chat');
-    await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     const review = await waitingReviewOf(request, threadId);
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('.ib-decision')).toContainText('Refund order order-1001 for $42.00?');
@@ -286,7 +286,7 @@ test.describe('a decision made in the inbox', () => {
   }) => {
     // The run is started from this page, not found waiting: its first read of the pending reviews
     // can be the shared, cached one that predates the review, and must not take the call as decided.
-    await page.goto('/chats/new?agent=tool-runner');
+    await page.goto('/chats/new?agent=demo:tool-runner');
     await send(page, 'Refund order 1234');
     await expect(page.locator('.ib-decision')).toBeVisible();
     const threadId = await sessionOf(page);
@@ -307,7 +307,7 @@ test.describe('a decision made in the inbox', () => {
   }) => {
     const starts = recordStarts(page);
     const asked = page.getByRole('alert').filter({ hasText: HUMAN_INPUT_PROMPT });
-    await page.goto('/chats/new?agent=request-human-input');
+    await page.goto('/chats/new?agent=demo:request-human-input');
     await send(page, 'Release it');
     await expect(asked).toBeVisible();
     const threadId = await sessionOf(page);
@@ -344,14 +344,14 @@ test.describe('a question a run asks', () => {
     checkA11y,
   }) => {
     const threadId = newThreadId('reviews-question');
-    await runToEnd(request, 'request-human-input', threadId, 'Release it');
+    await runToEnd(request, 'demo:request-human-input', threadId, 'Release it');
     const review = await waitingReviewOf(request, threadId);
 
     await page.goto(inboxAt(review));
     await expect(rowOf(page, review)).toContainText(HUMAN_INPUT_PROMPT);
     await expect(paneOf(page)).toContainText(HUMAN_INPUT_PROMPT);
     await expect(paneOf(page).getByTestId('review-source')).toContainText(
-      'Asked by request-human-input',
+      'Asked by demo:request-human-input',
     );
     await expect(paneOf(page)).toContainText('The agent continues with your answer.');
     await checkA11y('a question in the inbox');
@@ -388,7 +388,7 @@ test.describe('a scheduled run’s human wait', () => {
     // A schedule whose agent asks a question. A fire that is still going is not fired over
     // (`overlap: 'skip'`), so the first fire is the only one while its question is open.
     const schedule = (await bureauCall(request, 'bureau.schedules.create', {
-      agentName: 'request-human-input',
+      agentName: 'demo:request-human-input',
       spec: '1s',
       input: 'Ask which environment the scheduled release goes to',
       description: `Asks which environment (${crypto.randomUUID()})`,
@@ -511,7 +511,7 @@ test.describe('the count in the navigation', () => {
       .getByRole('link', { name: /^Reviews/ });
     await expect(link).toHaveText(showsCount(before));
 
-    await runToEnd(request, 'tool-runner', newThreadId('reviews-count'), 'Refund order-1001');
+    await runToEnd(request, 'demo:tool-runner', newThreadId('reviews-count'), 'Refund order-1001');
 
     // The page asks again every five seconds, so a new approval shows without a reload.
     await expect(link).toHaveText(showsCount(before + 1), { timeout: 15_000 });
@@ -526,7 +526,7 @@ for (const width of WIDTHS) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     const threadId = newThreadId('reviews-width');
-    await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
     const review = await waitingReviewOf(request, threadId);
 
     await page.goto('/reviews');

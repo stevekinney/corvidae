@@ -37,6 +37,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
 import type { AgentSource } from '../sources/definition-source';
 import { createAgentContributions } from '../agent-contributions';
+import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../types';
 import {
   createVersionedCatalog,
@@ -648,6 +649,7 @@ async function setUp(
       secrets,
       storage: createPluginStorage(storage, descriptor.name),
       host: host.api,
+      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
     // Registered now and refused while a declared secret is missing: the options that receive

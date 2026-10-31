@@ -1,12 +1,13 @@
 import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
-import { SEEDED_AGENT_NAMES } from './seed.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -23,6 +24,7 @@ const extraAgent = createAgent({
 async function start(options: Parameters<typeof startHost>[0] = {}): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-ag-ui-'));
   directories.push(home);
+  await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, ...options });
   hosts.push(host);
   return host;
@@ -56,17 +58,17 @@ async function runEventTypes(host: Host, agent: string, threadId: string): Promi
 }
 
 describe('the AG-UI mount', () => {
-  test('streams a seeded agent’s run under the /bureau prefix', async () => {
+  test('streams a demo agent’s run under the /bureau prefix', async () => {
     const host = await start();
-    const types = await runEventTypes(host, 'assistant', 'thread-assistant');
+    const types = await runEventTypes(host, 'demo:assistant', 'thread-assistant');
     expect(types[0]).toBe('RUN_STARTED');
     expect(types).toContain('TEXT_MESSAGE_START');
     expect(types.at(-1)).toBe('RUN_FINISHED');
   });
 
-  test('streams the run of the seeded agent the host once kept private, and refuses a name it does not have', async () => {
+  test('streams the run of the demo agent the host once kept private, and refuses a name it does not have', async () => {
     const host = await start();
-    const internal = await runEventTypes(host, 'internal', 'thread-internal');
+    const internal = await runEventTypes(host, 'demo:internal', 'thread-internal');
     expect(internal[0]).toBe('RUN_STARTED');
     expect(internal.at(-1)).toBe('RUN_FINISHED');
     expect(await runEventTypes(host, 'no-such-agent', 'thread-missing')).toEqual(['RUN_ERROR']);
@@ -81,8 +83,8 @@ describe('extra agents', () => {
     expect(types.at(-1)).toBe('RUN_FINISHED');
   });
 
-  test('an extra agent named like a seeded agent stops the host and names the agent, rather than being replaced', async () => {
-    for (const name of SEEDED_AGENT_NAMES) {
+  test('an extra agent named like a demo agent stops the host and names the agent, rather than being replaced', async () => {
+    for (const name of DEMO_AGENT_NAMES.map((agent) => `demo:${agent}`)) {
       const home = await mkdtemp(join(tmpdir(), 'interborough-ag-ui-'));
       directories.push(home);
       const refusal = await rejectionOf(
@@ -92,11 +94,13 @@ describe('extra agents', () => {
           extraAgents: { agents: { [name]: extraAgent } },
         }),
       );
-      expect(String(refusal)).toContain(`The extra agent "${name}" has the name of a seeded agent`);
+      expect(String(refusal)).toContain(
+        `The extra agent "${name}" has the name of an agent the demo plugin contributes`,
+      );
     }
   });
 
-  test('an extra agent is listed with the seeded ones, none of which opts into A2A', async () => {
+  test('an extra agent is listed with the demo ones, none of which opts into A2A', async () => {
     const host = await start({ extraAgents: { agents: { extra: extraAgent } } });
     const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
       method: 'POST',
@@ -110,13 +114,13 @@ describe('extra agents', () => {
       .map((agent) => [agent.name, agent.kind, agent.a2a] as const)
       .toSorted(([left], [right]) => left.localeCompare(right));
     expect(listed).toEqual([
-      ['assistant', 'code', false],
-      ['echo', 'code', false],
+      ['demo:assistant', 'code', false],
+      ['demo:echo', 'code', false],
+      ['demo:internal', 'code', false],
+      ['demo:model-switcher', 'code', false],
+      ['demo:request-human-input', 'code', false],
+      ['demo:tool-runner', 'code', false],
       ['extra', 'code', false],
-      ['internal', 'code', false],
-      ['model-switcher', 'code', false],
-      ['request-human-input', 'code', false],
-      ['tool-runner', 'code', false],
     ]);
   });
 });
@@ -150,12 +154,12 @@ const interruptOf = (stream: string): string =>
 describe('the tool-runner approval over the mount', () => {
   test('approving the refund runs a run that reports it, and a later turn raises its own approval', async () => {
     const host = await start();
-    const first = await streamOf(host, 'tool-runner', body('thread-refund'));
+    const first = await streamOf(host, 'demo:tool-runner', body('thread-refund'));
     expect(first).toContain('"type":"interrupt"');
 
     const approved = await streamOf(
       host,
-      'tool-runner',
+      'demo:tool-runner',
       body('thread-refund', {
         messages: [],
         resume: [
@@ -167,18 +171,18 @@ describe('the tool-runner approval over the mount', () => {
     expect(approved).toContain('"type":"success"');
 
     // The next turn's calls are its own: a call identifier names one call in a conversation.
-    const next = await streamOf(host, 'tool-runner', body('thread-refund'));
+    const next = await streamOf(host, 'demo:tool-runner', body('thread-refund'));
     expect(next).toContain('"type":"interrupt"');
     expect(next).toContain('seeded-issue-refund-2');
   });
 
   test('denying the refund reports that it was not issued', async () => {
     const host = await start();
-    const first = await streamOf(host, 'tool-runner', body('thread-denied'));
+    const first = await streamOf(host, 'demo:tool-runner', body('thread-denied'));
 
     const denied = await streamOf(
       host,
-      'tool-runner',
+      'demo:tool-runner',
       body('thread-denied', {
         messages: [],
         resume: [
@@ -194,12 +198,12 @@ describe('the tool-runner approval over the mount', () => {
 describe('the request-human-input question over the mount', () => {
   test('answering it finishes the run, and a later turn asks its own question', async () => {
     const host = await start();
-    const first = await streamOf(host, 'request-human-input', body('thread-question'));
+    const first = await streamOf(host, 'demo:request-human-input', body('thread-question'));
     expect(first).toContain('"reason":"human-wait"');
 
     const answered = await streamOf(
       host,
-      'request-human-input',
+      'demo:request-human-input',
       body('thread-question', {
         messages: [],
         resume: [
@@ -215,7 +219,7 @@ describe('the request-human-input question over the mount', () => {
 
     // The next turn's call is its own: a call identifier names one call in a conversation, and a
     // run that repeated the first one's would fail without ever ending its stream.
-    const next = await streamOf(host, 'request-human-input', body('thread-question'));
+    const next = await streamOf(host, 'demo:request-human-input', body('thread-question'));
     expect(next).toContain('"reason":"human-wait"');
   });
 });

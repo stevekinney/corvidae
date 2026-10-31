@@ -1,0 +1,72 @@
+{
+  "plugin": "demo",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "kind": "code-agent",
+      "id": "demo:assistant",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "code-agent",
+      "id": "demo:echo",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "code-agent",
+      "id": "demo:internal",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "code-agent",
+      "id": "demo:model-switcher",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "code-agent",
+      "id": "demo:request-human-input",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "code-agent",
+      "id": "demo:tool-runner",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "configuration",
+      "id": "demo",
+      "version": "1.0.0",
+      "schema": "sha256:93ab7499dc3c616f8db8780fed0d9f69270803cda913882ad2ef3943db8d7225"
+    },
+    {
+      "kind": "tool",
+      "id": "demo:issue-refund",
+      "version": "1.0.0",
+      "schema": "sha256:faa8c3b57ed8c9b6db8630a303018627684dd6c301f1239076dae50a72379743"
+    },
+    {
+      "kind": "tool",
+      "id": "demo:lookup-order",
+      "version": "1.0.0",
+      "schema": "sha256:28e589d28d9e14f9b9dbc60f7c2d43080f47a908691bcc851e789a31f9d36209"
+    },
+    {
+      "kind": "validator",
+      "id": "demo:accepts-any-answer",
+      "version": "1",
+      "schema": null
+    },
+    {
+      "kind": "validator",
+      "id": "demo:never-passes",
+      "version": "1",
+      "schema": null
+    }
+  ]
+}

@@ -4,7 +4,7 @@
  * the other specifications use, so an opener without a marker is answered as it always was.
  *
  * An opener that carries {@link ACCESS_LOOKUP_MARKER} gets a script: one call to the read-only
- * `lookup-order` tool, then a fixed reply once the call has a result. An opener that carries
+ * `demo:lookup-order` tool, then a fixed reply once the call has a result. An opener that carries
  * {@link ACCESS_LOOP_MARKER} calls the tool on every step and never answers, so only a limit on
  * the run ends it. A call the run's tool policy refuses has a result too (the policy's refusal),
  * so counting the calls already in the conversation keeps the lookup script from asking twice.
@@ -39,7 +39,7 @@ function lookup(context: GenerateContext, again: boolean): GenerateResponse {
     toolCalls: [
       {
         id: `access-lookup-order-${String(calls + 1)}`,
-        name: 'lookup-order',
+        name: 'demo:lookup-order',
         arguments: { orderId: 'order-1001' },
       },
     ],

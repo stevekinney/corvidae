@@ -326,7 +326,7 @@ describe('a page that asks to be kept', () => {
           ? {
               agents: [
                 {
-                  name: 'assistant',
+                  name: 'demo:assistant',
                   displayName: 'Assistant',
                   description: null,
                   definitionRevision: 1,
@@ -338,7 +338,7 @@ describe('a page that asks to be kept', () => {
           : {
               id: 'session-1',
               owner: null,
-              agentName: 'assistant',
+              agentName: 'demo:assistant',
               title: null,
               lastMessagePreview: null,
               parentContextId: null,
@@ -360,7 +360,7 @@ describe('a page that asks to be kept', () => {
     const page = container.querySelector('.weft-chat-route');
     expect(page).not.toBeNull();
 
-    router.navigate('/chats/new?agent=assistant', { replace: true });
+    router.navigate('/chats/new?agent=demo:assistant', { replace: true });
     router.navigate('/chats/session-1', { replace: true, keep: true });
     await quietFor(50);
 

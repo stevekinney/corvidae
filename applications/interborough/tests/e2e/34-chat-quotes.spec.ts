@@ -61,8 +61,8 @@ for (const viewport of VIEWPORTS) {
   }) => {
     await page.setViewportSize(viewport);
     const threadId = newThreadId('quote');
-    await runToEnd(request, 'echo', threadId, FIRST_QUESTION);
-    await runToEnd(request, 'echo', threadId, SECOND_QUESTION);
+    await runToEnd(request, 'demo:echo', threadId, FIRST_QUESTION);
+    await runToEnd(request, 'demo:echo', threadId, SECOND_QUESTION);
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     const replies = page.locator(ASSISTANT_ROW);

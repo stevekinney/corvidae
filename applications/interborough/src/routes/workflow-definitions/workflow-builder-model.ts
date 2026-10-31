@@ -6,7 +6,6 @@
  * fields) survives an edit.
  */
 import { WORKFLOW_COPY } from '../../app/copy.ts';
-import { DEFAULT_AGENT } from '../../lib/default-agent.ts';
 import { stepLabel, triggerLabel } from './workflow-presentation.ts';
 
 /** The kinds of step the builder adds: an agent step, a wait (`sleep`), and a signal wait. */
@@ -178,8 +177,11 @@ export function setTrigger(text: string, kind: BuilderTriggerKind, value: string
   return toText(document);
 }
 
-/** `text` with a new step of `kind` at the end. */
-export function addStep(text: string, kind: BuilderStepKind): string {
+/**
+ * `text` with a new step of `kind` at the end. A new agent step names `agent`, the host's default
+ * agent (`lib/default-agent.ts`), or none (`''`) when no agent can run.
+ */
+export function addStep(text: string, kind: BuilderStepKind, agent = ''): string {
   const document = parseObject(text);
   if (document === undefined) return text;
   // A `steps` that is not a list stays as it is: adding would replace it.
@@ -189,7 +191,7 @@ export function addStep(text: string, kind: BuilderStepKind): string {
     steps.push({
       kind: 'activity',
       handler: 'agent',
-      input: { agent: DEFAULT_AGENT, message: '' },
+      input: { agent, message: '' },
     });
   } else if (kind === 'wait') {
     steps.push({ kind: 'sleep', duration: '1m' });

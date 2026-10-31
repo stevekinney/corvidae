@@ -23,6 +23,7 @@ import {
 } from '../lib/agent-definitions.ts';
 import type { Fetcher } from '../lib/bureau-client.ts';
 import { urlOf } from '../lib/bureau-stub.test-support.ts';
+import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 
@@ -81,6 +82,7 @@ async function start(loop: boolean): Promise<{ host: Host; fetcher: Fetcher }> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-access-'));
   directories.push(home);
   await writeProviderHome(home);
+  await enableDemoPlugin(home);
   const client = stubClient({ loop });
   const resolver: NonNullable<HostOptions['resolveProviderGenerate']> = (
     definitions,
@@ -97,6 +99,7 @@ async function start(loop: boolean): Promise<{ host: Host; fetcher: Fetcher }> {
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
+    plugins: pluginsWithUnseededDemo(),
     resolveProviderGenerate: resolver,
   });
   hosts.push(host);
@@ -108,7 +111,7 @@ const BASE: AgentDefinitionInput = {
   name: 'Clerk',
   description: 'Looks orders up.',
   model: 'anthropic/sonnet',
-  tools: ['lookup-order'],
+  tools: ['demo:lookup-order'],
   skillDescriptors: [],
   instructions: 'Look the order up.',
 };
@@ -182,7 +185,7 @@ describe('a per-tool setting saved on the Access tab, in a chat', () => {
   test('asks first for a tool set to always, before the tool runs', async () => {
     const { host, fetcher } = await start(false);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { toolApproval: { 'lookup-order': 'always' } });
+    await saveAccess(fetcher, { toolApproval: { 'demo:lookup-order': 'always' } });
 
     const stream = await chat(host, 'thread-always');
 
@@ -194,7 +197,7 @@ describe('a per-tool setting saved on the Access tab, in a chat', () => {
   test('never runs a tool set to blocked', async () => {
     const { host, fetcher } = await start(false);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { toolApproval: { 'lookup-order': 'blocked' } });
+    await saveAccess(fetcher, { toolApproval: { 'demo:lookup-order': 'blocked' } });
 
     const stream = await chat(host, 'thread-blocked');
 

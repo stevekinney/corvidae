@@ -8,7 +8,7 @@ import { getGoal, listGoals } from '../lib/bureau-goals.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
 import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
-import { DEFAULT_AGENT } from '../lib/default-agent.ts';
+import { defaultAgentQuery } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
 import { listMemories } from '../lib/memory-client.ts';
 import { AGENT_MEMORY_PATTERN, queryKeys } from '../lib/query.ts';
@@ -177,10 +177,14 @@ export function probeFor(
           return { empty: false };
         };
       }
-      // A new chat needs an agent the Bureau lists: an unknown one is not found.
+      // A new chat needs an agent the Bureau lists: an unknown one is not found. Without `?agent=`
+      // it starts with the first agent that can run, and with none the view is empty.
       if (pattern === '/chats/new') {
-        const agent = search.get('agent') ?? DEFAULT_AGENT;
-        return async () => {
+        const agent = search.get('agent');
+        return async (_client, queryClient) => {
+          if (agent === null) {
+            return { empty: (await queryClient.fetchQuery(defaultAgentQuery())) === null };
+          }
           const agents = await listAgents();
           const found = agents.find((entry) => entry.name === agent);
           if (found === undefined) throw notFound('agent');

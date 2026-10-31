@@ -22,7 +22,10 @@
     Textarea,
   } from '@lostgradient/cinder';
 
+  import { useQueryClient } from '@tanstack/svelte-query';
+
   import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import {
     addStep,
     moveStep,
@@ -54,6 +57,21 @@
   let { text, onTextChange, mode, error, jsonId, jsonLabel, jsonDescription }: Props = $props();
 
   const copy = WORKFLOW_COPY.builder;
+
+  const queryClient = useQueryClient();
+
+  /**
+   * Adds a step at the end. A new agent step names the first agent that can run, asked for when
+   * the step is added, and none when no agent can or the host does not say. The text is read after
+   * the answer, so an edit made while it was coming is kept.
+   */
+  async function appendStep(kind: BuilderStepKind): Promise<void> {
+    const agent =
+      kind === 'agent'
+        ? ((await queryClient.fetchQuery(defaultAgentQuery()).catch(() => null)) ?? '')
+        : '';
+    onTextChange(addStep(text, kind, agent));
+  }
 
   let tab = $state<'builder' | 'json'>('builder');
 
@@ -171,10 +189,8 @@
                 description={copy.noSteps.description}
               >
                 {#snippet action()}
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onclick={() => onTextChange(addStep(text, 'agent'))}>{copy.addAgent}</Button
+                  <Button variant="primary" size="sm" onclick={() => void appendStep('agent')}
+                    >{copy.addAgent}</Button
                   >
                 {/snippet}
               </EmptyState>
@@ -265,10 +281,8 @@
               </ol>
               <div class="weft-workflow-builder__add">
                 {#each ADD_ACTIONS as action (action.kind)}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onclick={() => onTextChange(addStep(text, action.kind))}>{action.label}</Button
+                  <Button variant="secondary" size="sm" onclick={() => void appendStep(action.kind)}
+                    >{action.label}</Button
                   >
                 {/each}
               </div>

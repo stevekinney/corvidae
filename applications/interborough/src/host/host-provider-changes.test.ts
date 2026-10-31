@@ -101,7 +101,6 @@ async function startAt(directory: string, options: Parameters<typeof startHost>[
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: directory },
     port: 0,
-    seed: false,
     ...options,
   });
   hosts.push(host);

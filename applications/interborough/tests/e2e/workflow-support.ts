@@ -26,10 +26,14 @@ export const APPROVAL_SIGNAL = 'e2e-approve';
 
 /** What a spec writes through the Bureau to create a workflow, unless it says otherwise. */
 export const BASE_WORKFLOW = {
-  agent: 'assistant',
+  agent: 'demo:assistant',
   trigger: { kind: 'schedule', spec: '24h' },
   steps: [
-    { kind: 'activity', handler: 'agent', input: { agent: 'assistant', message: 'Say hello.' } },
+    {
+      kind: 'activity',
+      handler: 'agent',
+      input: { agent: 'demo:assistant', message: 'Say hello.' },
+    },
   ],
 } as const;
 

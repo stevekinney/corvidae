@@ -7,6 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 
 const QUESTION = 'PRIVATE-QUESTION-7c1e';
@@ -21,10 +22,11 @@ afterEach(async () => {
 });
 
 describe('the reply details of a seeded agent', () => {
-  for (const agentName of ['assistant', 'echo']) {
+  for (const agentName of ['demo:assistant', 'demo:echo']) {
     test(`${agentName} returns a plan reason and an effective context`, async () => {
       const home = await mkdtemp(join(tmpdir(), 'interborough-reply-details-'));
       directories.push(home);
+      await enableDemoPlugin(home);
       const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
       hosts.push(host);
 

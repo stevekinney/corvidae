@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
+import { scriptedAssistantAgents } from './scripted-assistant.test-support.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -39,7 +40,11 @@ async function startAt(files: Readonly<Record<string, string>> = {}): Promise<{
       await writeFile(join(home, 'workflows', name), text);
     }
   }
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, seed: false });
+  const host = await startHost({
+    environment: { INTERBOROUGH_HOME: home },
+    port: 0,
+    extraAgents: scriptedAssistantAgents(),
+  });
   hosts.push(host);
   return { host, home };
 }

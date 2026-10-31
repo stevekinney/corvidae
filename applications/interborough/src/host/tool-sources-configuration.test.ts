@@ -4,7 +4,6 @@
 import { describe, expect, test } from 'bun:test';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
-import { createAgentFileTools } from './seed.ts';
 import {
   MAXIMUM_TOOL_NAME_LENGTH,
   NO_TOOL_SOURCES,
@@ -13,7 +12,6 @@ import {
   qualifyToolNames,
   readToolSourcesConfiguration,
   serializeToolSources,
-  TOOL_NAME_SEPARATOR,
   TOOL_SOURCE_IDENTIFIER,
 } from './tool-sources-configuration.ts';
 
@@ -184,10 +182,9 @@ describe('the name an agent file uses for a tool', () => {
     expect(qualifiedToolName('a-b', 'c')).toEqual({ name: 'a-b__c' });
   });
 
-  test('cannot collide with a built-in tool, none of which holds the separator', () => {
-    for (const name of Object.keys(createAgentFileTools())) {
-      expect(name.includes(TOOL_NAME_SEPARATOR)).toBe(false);
-    }
+  test('cannot collide with a plugin’s tool, whose id holds a colon that no qualified name does', () => {
+    expect(nameOf('files', 'demo:lookup-order').includes(':')).toBe(false);
+    expect(nameOf('demo', 'lookup-order')).toBe('demo__lookup-order');
   });
 
   test('skips a tool that has no name', () => {

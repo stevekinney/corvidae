@@ -10,8 +10,8 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
+import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { SETTINGS_COPY } from '../../src/app/copy.ts';
-import { HUMAN_INPUT_PROMPT } from '../../src/host/seed.ts';
 import { E2E_LOCKED_SETTING } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, waitingReviewOf } from './task-support.ts';
@@ -53,7 +53,7 @@ async function saveHumanInput(page: Page, on: boolean): Promise<void> {
 
 /** Starts a chat with the seeded question-asking agent and returns the session it became. */
 async function startChat(page: Page): Promise<string> {
-  await page.goto('/chats/new?agent=request-human-input');
+  await page.goto('/chats/new?agent=demo:request-human-input');
   const composer = page.getByRole('textbox');
   await composer.fill('Release it');
   await composer.press('Enter');

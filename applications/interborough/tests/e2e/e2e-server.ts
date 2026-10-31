@@ -27,6 +27,7 @@ import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
+import { enableDemoPlugin } from '../../src/host/demo-plugin.test-support.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/fake-provider.test-support.ts';
 import { startHost } from '../../src/host/host.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
@@ -69,6 +70,10 @@ await mkdir(home, { recursive: true });
 await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
 // Executable skills in two sources, one trusted and one not (`skills-support.ts`).
 await seedSkills(home);
+// The scripted agents the specs talk to (`demo:assistant`, `demo:tool-runner`, and the rest) come
+// from the demo plugin, which is off by default, so the home turns it on. It goes last because it
+// merges into the `configuration.json` the lines above wrote.
+await enableDemoPlugin(home);
 const provider = fakeProvider('This reply comes from the end-to-end provider stub.');
 
 // Three workflow files, in the directory the Bureau reads at start (`26-workflows.spec.ts`): one
@@ -133,6 +138,9 @@ const host = await startHost({
 if (fixtureEngine === undefined) throw new Error('The host did not create the console engine.');
 const engine = fixtureEngine;
 const { server } = host;
+// The demo plugin seeds the schedule and the goal in `afterStart`, which `startHost` does not wait
+// for, and the specs read both as soon as the server says it is listening.
+await host.bureau.plugins.ready();
 
 await seed(engine);
 
@@ -236,11 +244,13 @@ await writeFile(
   join(bureauWorkflowDirectory, 'e2e-digest.json'),
   `${JSON.stringify(SEEDED_WORKFLOW_FILES['e2e-digest'], null, 2)}\n`,
 );
+await enableDemoPlugin(bureauHome);
 const bureauHost = await startHost({
   environment: { INTERBOROUGH_HOME: bureauHome },
   port: E2E_BUREAU_PORT,
   buildDirectory,
 });
+await bureauHost.bureau.plugins.ready();
 
 // The third host, which only the journey opens (`90-journey.spec.ts`). Its console is the Bureau's
 // own engine, because the journey follows an agent-authored workflow's schedule into the Workflows
@@ -250,6 +260,7 @@ const bureauHost = await startHost({
 const journeyHome = join(scratch, 'journey-home');
 await mkdir(journeyHome, { recursive: true });
 await writeProviderHome(journeyHome);
+await enableDemoPlugin(journeyHome);
 const journeyBarrier = createBarrier();
 const journeyHost = await startHost({
   extraAgents: {
@@ -266,6 +277,7 @@ const journeyHost = await startHost({
   port: E2E_JOURNEY_PORT,
   buildDirectory,
 });
+await journeyHost.bureau.plugins.ready();
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's

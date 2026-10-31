@@ -255,7 +255,7 @@ for (const view of VIEW_NAMES) {
         // The chat list has something to show once the caller has a session,
         // whose run is listed under Runs.
         if (view === 'chat' && outcome === 'ready') {
-          await runToEnd(request, 'assistant', newThreadId('states'), 'Hello');
+          await runToEnd(request, 'demo:assistant', newThreadId('states'), 'Hello');
         }
         await drive(page, pageErrors, view, outcome);
         await page.goto(PATHS[view]);

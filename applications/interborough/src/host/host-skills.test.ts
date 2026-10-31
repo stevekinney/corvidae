@@ -80,7 +80,7 @@ async function layout(extra: Record<string, unknown> = {}): Promise<Layout> {
 }
 
 async function startAt(home: string): Promise<Host> {
-  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, seed: false });
+  const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
   return host;
 }

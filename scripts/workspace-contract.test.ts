@@ -75,6 +75,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/bureau',
   '@lostgradient/interborough-plugin',
   '@lostgradient/plugin-anthropic',
+  '@lostgradient/plugin-demo',
   '@lostgradient/plugin-gemini',
   '@lostgradient/plugin-guardrails',
   '@lostgradient/plugin-ollama',

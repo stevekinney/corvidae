@@ -130,7 +130,6 @@ async function startAt(path: string): Promise<Host> {
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: path },
     port: 0,
-    seed: false,
     resolveProviderGenerate: resolver,
   });
   hosts.push(host);

@@ -12,6 +12,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin } from './demo-plugin.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 import { runTask } from './run-task.test-support.ts';
 
@@ -58,6 +59,7 @@ async function prepareHome(setup: Setup): Promise<string> {
 }
 
 async function startAt(home: string, options: HostOptions = {}): Promise<Host> {
+  await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0, ...options });
   hosts.push(host);
   return host;
@@ -125,7 +127,7 @@ describe('the installed catalog', () => {
     const host = await start({}, { warn: (message) => warnings.push(message) });
 
     expect(host.bureau.models.catalog().descriptors).toEqual([]);
-    const result = await runTask(host.bureau, 'assistant', 'Hello');
+    const result = await runTask(host.bureau, 'demo:assistant', 'Hello');
     expect(result.content).toBe(
       'Hello from the assistant. This reply is scripted; no model was called.',
     );

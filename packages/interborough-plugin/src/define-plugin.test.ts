@@ -43,6 +43,7 @@ describe('definePlugin', () => {
       secrets: { get: async () => undefined },
       storage: new MemoryStorage(),
       host: unstartedHost,
+      toolApprovalHooks: () => ({}),
     });
     expect(result?.evalJudges?.[0]?.name).toBe('COR');
   });
@@ -61,6 +62,7 @@ describe('definePlugin', () => {
       secrets: { get: async () => undefined },
       storage: new MemoryStorage(),
       host: unstartedHost,
+      toolApprovalHooks: () => ({}),
     });
     expect(result?.activities?.[0]?.version).toBe('2.1.0');
   });

@@ -2851,6 +2851,16 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
         description: 'It may have been deleted. Choose an agent from the list to start a chat.',
       },
     },
+    // A new chat with no `?agent=` starts with the first agent that can run; with none, there is
+    // nothing to start it with.
+    emptyByPattern: {
+      '/chats/new': {
+        title: 'No agent is ready to chat',
+        description:
+          'This host has no agent that can take a message yet. Turn on a plugin that adds agents, or finish setting one up, then start a chat.',
+        action: { label: 'Open plugins', href: '/settings/plugins' },
+      },
+    },
   },
   agents: {
     label: 'Agents',

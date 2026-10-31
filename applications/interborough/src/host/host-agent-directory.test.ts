@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 import { runTask } from './run-task.test-support.ts';
 
@@ -31,6 +32,7 @@ async function prepareHome(files: Readonly<Record<string, string>> = {}): Promis
     join(home, 'configuration.json'),
     JSON.stringify({ plugins: { anthropic: { configuration: { models: ['sonnet'] } } } }),
   );
+  await enableDemoPlugin(home);
   const bungalow = await openBungalow({
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: home },
@@ -53,7 +55,7 @@ async function startAt(home: string, options: HostOptions = {}): Promise<Host> {
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
+    plugins: pluginsWithUnseededDemo(),
     ...options,
   });
   hosts.push(host);
@@ -98,7 +100,7 @@ const RESEARCHER = [
   '---',
   'name: Researcher',
   'model: anthropic/sonnet',
-  'tools: [lookup-order]',
+  'tools: [demo:lookup-order]',
   '---',
   'You are a careful researcher.',
   '',
@@ -109,12 +111,12 @@ describe('the host’s agent directory', () => {
     const home = await prepareHome();
     const host = await startAt(home);
     expect(host.bureau.agents.list().map((listing) => listing.id)).toEqual([
-      'assistant',
-      'tool-runner',
-      'request-human-input',
-      'echo',
-      'model-switcher',
-      'internal',
+      'demo:assistant',
+      'demo:tool-runner',
+      'demo:request-human-input',
+      'demo:echo',
+      'demo:model-switcher',
+      'demo:internal',
     ]);
     const created = await host.bureau.agents.create('writer', {
       model: 'anthropic/sonnet',
@@ -183,13 +185,17 @@ describe('the host’s agent directory', () => {
     expect(host.bureau.agents.list().find((listing) => listing.id === 'late')?.state).toBe('ready');
   });
 
-  test('cannot take the name of a seeded agent', async () => {
+  test('a file named like a demo agent is its own agent, beside the plugin’s', async () => {
     const home = await prepareHome({ 'assistant.md': RESEARCHER });
     const host = await startAt(home);
-    const listings = host.bureau.agents.list().filter((listing) => listing.id === 'assistant');
-    expect(listings.map((listing) => [listing.source, listing.state])).toEqual([
-      ['code', 'ready'],
-      ['file', 'invalid'],
+    const listings = host.bureau.agents.list();
+    expect(
+      listings
+        .filter((listing) => listing.id === 'assistant' || listing.id === 'demo:assistant')
+        .map((listing) => [listing.id, listing.source, listing.state]),
+    ).toEqual([
+      ['demo:assistant', 'code', 'ready'],
+      ['assistant', 'file', 'ready'],
     ]);
   });
 });

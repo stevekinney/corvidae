@@ -1,30 +1,31 @@
 /**
- * The seeded schedule is remembered in Weft storage, under `app:interborough:seeded-schedule`, by
- * conditional writes (COR-1757). Each row crosses a starting state (what the record and the Bureau
- * already hold) and a failure (what `schedules.create` or the storage does mid-start) with its exit
- * (how many schedules the start created, what the record holds, whether the start rejected), and
- * then restarts once on the same storage to show what the next start does with what was left.
+ * The demo plugin remembers its seeded schedule in the plugin's scoped storage, under
+ * `plugin:demo:seeded-schedule`, by conditional writes (COR-1757, moved from the host by COR-1889).
+ * Each row crosses a starting state (what the record and the Bureau already hold) and a failure
+ * (what `schedules.create` or the storage does mid-start) with its exit (how many schedules the
+ * start created, what the record holds, whether the start rejected), and then restarts once on the
+ * same storage to show what the next start does with what was left.
  */
 import { createBureau, ScheduleLocatorUnavailableError, type Bureau } from '@lostgradient/bureau';
+import { createPluginStorage, type PluginHostApi } from '@lostgradient/interborough-plugin';
 import { MemoryStorage } from '@lostgradient/storage';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import plugin, { createDemoPlugin } from './plugin.ts';
 import {
-  createSeededAgents,
-  createSeededValidators,
-  seedBureau,
+  DemoScheduleRecordLostError,
+  seedDemo,
   SEEDED_GOAL_RUN_IDENTIFIER,
   SEEDED_SCHEDULE_DESCRIPTION,
-  SeededScheduleRecordLostError,
-  type SeededAgents,
 } from './seed.ts';
 
-const RECORD_KEY = 'app:interborough:seeded-schedule';
+const RECORD_KEY = 'plugin:demo:seeded-schedule';
 const CREATE_FAILURE = new Error('The schedule store is unavailable.');
 const STORAGE_FAILURE = new Error('The database is unavailable.');
 
-type SeededBureau = Bureau<SeededAgents>;
-type Create = SeededBureau['schedules']['create'];
+type SeededBureau = Bureau<Record<string, never>>;
+type Create = PluginHostApi['schedules']['create'];
 
 const bureaus: SeededBureau[] = [];
 
@@ -32,10 +33,19 @@ afterEach(() => {
   for (const bureau of bureaus.splice(0)) bureau.dispose();
 });
 
-async function openBureau(storage: MemoryStorage): Promise<SeededBureau> {
+/**
+ * A Bureau with the demo plugin enabled over `storage`. `seedOnStart: false` keeps the plugin's own
+ * `afterStart` from seeding, so a row controls when the seed runs and what it is handed.
+ */
+async function openBureau(
+  storage: MemoryStorage,
+  descriptor = createDemoPlugin({ seedOnStart: false }),
+): Promise<SeededBureau> {
   const bureau = await createBureau({
-    agents: createSeededAgents('fixture-approval-secret'),
-    validators: createSeededValidators(),
+    agents: {},
+    plugins: [{ descriptor, source: 'package', location: '@lostgradient/plugin-demo' }],
+    pluginConfiguration: { demo: { enabled: true } },
+    pluginSecrets: { get: async (key) => `test-secret:${key}`, watch: () => () => {} },
     storage,
     durable: true,
   });
@@ -61,9 +71,22 @@ async function seededGoals(bureau: SeededBureau): Promise<string[]> {
   return goals.map((goal) => goal.goalRunId);
 }
 
-/** A Bureau whose `schedules.create` is `create`, counted. Everything else is the real Bureau. */
-function withCreate(bureau: SeededBureau, create: Create): SeededBureau {
-  return { ...bureau, schedules: { ...bureau.schedules, create } };
+/** The host API a plugin receives, over the real Bureau, with `schedules.create` replaced by `create`. */
+function withCreate(bureau: SeededBureau, create: Create): PluginHostApi {
+  return {
+    agents: { list: () => bureau.agents.list() },
+    schedules: { create, list: (filter) => bureau.schedules.list(filter) },
+    goals: { create: (request) => bureau.goals.create(request) },
+  };
+}
+
+/** The plugin's scoped storage over `storage`, which is what `afterStart` is handed. */
+function hostOf(bureau: SeededBureau): PluginHostApi {
+  return withCreate(bureau, (definition) => bureau.schedules.create(definition));
+}
+
+function pluginStorageOf(storage: MemoryStorage) {
+  return createPluginStorage(storage, 'demo');
 }
 
 /**
@@ -98,7 +121,7 @@ type Row = {
   failWrite?: number;
   starts?: number;
   first: {
-    rejects?: Error | typeof SeededScheduleRecordLostError;
+    rejects?: Error | typeof DemoScheduleRecordLostError;
     created: number;
     seeded: number;
     /** `identifier` is the id of a seeded schedule this start created; `claim` is any `claimed:<uuid>`. */
@@ -178,7 +201,7 @@ const rows: Row[] = [
     create: 'locator-unavailable',
     during: 'overwritten',
     first: {
-      rejects: SeededScheduleRecordLostError,
+      rejects: DemoScheduleRecordLostError,
       created: 1,
       seeded: 1,
       record: 'someone-elses-value',
@@ -210,7 +233,7 @@ const rows: Row[] = [
     name: 'create succeeds but the claim is gone: the start fails loudly and the record stays unset',
     during: 'deleted',
     first: {
-      rejects: SeededScheduleRecordLostError,
+      rejects: DemoScheduleRecordLostError,
       created: 1,
       seeded: 1,
       record: 'absent',
@@ -222,7 +245,7 @@ const rows: Row[] = [
     name: 'create succeeds but another value replaced the claim: fails loudly, keeps that value',
     during: 'overwritten',
     first: {
-      rejects: SeededScheduleRecordLostError,
+      rejects: DemoScheduleRecordLostError,
       created: 1,
       seeded: 1,
       record: 'someone-elses-value',
@@ -266,7 +289,7 @@ function matches(
   return actual === expected;
 }
 
-describe('seedBureau records the seeded schedule in Weft storage', () => {
+describe('seedDemo records the seeded schedule in the plugin storage', () => {
   for (const row of rows) {
     test(row.name, async () => {
       const storage = new MemoryStorage();
@@ -275,7 +298,7 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
       if (row.existing !== undefined) {
         const existing = await bureau.schedules.create({
           description: SEEDED_SCHEDULE_DESCRIPTION,
-          agentName: 'assistant',
+          agentName: 'demo:assistant',
           input: 'Summarize what happened yesterday.',
           spec: '0 9 * * *',
         });
@@ -314,7 +337,9 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
 
       const warnings: string[] = [];
       const starts = Array.from({ length: row.starts ?? 1 }, () =>
-        seedBureau(withCreate(bureau, create), storage, (message) => warnings.push(message)),
+        seedDemo(withCreate(bureau, create), pluginStorageOf(storage), (message) =>
+          warnings.push(message),
+        ),
       );
       const settled = await Promise.allSettled(starts);
       const rejections = settled.filter((result) => result.status === 'rejected');
@@ -348,12 +373,12 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
       const restarted = await openBureau(storage);
       let createdAfterRestart = 0;
       const restartWarnings: string[] = [];
-      await seedBureau(
+      await seedDemo(
         withCreate(restarted, async (definition) => {
           createdAfterRestart += 1;
           return restarted.schedules.create(definition);
         }),
-        storage,
+        pluginStorageOf(storage),
         (message) => restartWarnings.push(message),
       );
       expect(restartWarnings).toHaveLength(recordAfterFirst?.startsWith('claimed:') ? 1 : 0);
@@ -371,14 +396,14 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
     });
   }
 
-  test('the record is the key "seeded-schedule" under the "app:interborough" scope', async () => {
+  test('the record is the key "seeded-schedule" under the "plugin:demo:" scope', async () => {
     const storage = new MemoryStorage();
     const bureau = await openBureau(storage);
-    await seedBureau(bureau, storage);
+    await seedDemo(hostOf(bureau), pluginStorageOf(storage));
     const [schedule] = await seededSchedules(bureau);
     expect(await readRecord(storage)).toBe(schedule?.id);
     const keys: string[] = [];
-    for await (const [key] of storage.scan('app:')) keys.push(key);
+    for await (const [key] of storage.scan('plugin:demo:')) keys.push(key);
     expect(keys).toEqual([RECORD_KEY]);
   });
 
@@ -387,7 +412,7 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
     await storage.put(RECORD_KEY, new TextEncoder().encode(CRASHED_CLAIM));
     const bureau = await openBureau(storage);
     const warnings: string[] = [];
-    await seedBureau(bureau, storage, (message) => warnings.push(message));
+    await seedDemo(hostOf(bureau), pluginStorageOf(storage), (message) => warnings.push(message));
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('"seeded-schedule"');
     expect(warnings[0]).toContain('stale');
@@ -398,9 +423,43 @@ describe('seedBureau records the seeded schedule in Weft storage', () => {
   test('a start that finds the recorded identifier says nothing', async () => {
     const storage = new MemoryStorage();
     const bureau = await openBureau(storage);
-    await seedBureau(bureau, storage, () => {});
+    await seedDemo(hostOf(bureau), pluginStorageOf(storage), () => {});
     const warnings: string[] = [];
-    await seedBureau(bureau, storage, (message) => warnings.push(message));
+    await seedDemo(hostOf(bureau), pluginStorageOf(storage), (message) => warnings.push(message));
     expect(warnings).toEqual([]);
+  });
+});
+
+describe('the demo plugin seeds from afterStart', () => {
+  test('a Bureau with the plugin enabled seeds one schedule and the goal, and a restart adds nothing', async () => {
+    const storage = new MemoryStorage();
+    const first = await openBureau(storage, plugin);
+    await first.plugins.ready();
+    await waitUntil(
+      async () => {
+        const seeded = await seededSchedules(first);
+        return seeded.length === 1;
+      },
+      { message: 'the seeded schedule to exist' },
+    );
+    expect(await seededGoals(first)).toEqual([SEEDED_GOAL_RUN_IDENTIFIER]);
+    const [schedule] = await seededSchedules(first);
+    expect(await readRecord(storage)).toBe(schedule?.id);
+
+    first.dispose();
+    bureaus.splice(bureaus.indexOf(first), 1);
+    const restarted = await openBureau(storage, plugin);
+    await restarted.plugins.ready();
+    expect(await seededSchedules(restarted)).toHaveLength(1);
+    expect(await readRecord(storage)).toBe(schedule?.id);
+  });
+
+  test('two starts that overlap over one storage create one schedule and one goal', async () => {
+    const storage = new MemoryStorage();
+    const first = await openBureau(storage);
+    const hosts = [hostOf(first), hostOf(first)];
+    await Promise.all(hosts.map((host) => seedDemo(host, pluginStorageOf(storage), () => {})));
+    expect(await seededSchedules(first)).toHaveLength(1);
+    expect(await seededGoals(first)).toEqual([SEEDED_GOAL_RUN_IDENTIFIER]);
   });
 });

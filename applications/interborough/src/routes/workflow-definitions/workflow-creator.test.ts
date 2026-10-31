@@ -35,8 +35,19 @@ afterEach(() => {
   stub = undefined;
 });
 
-function open() {
-  stub = installWorkflowWorld(emptyWorld({ files: [readyFile('digest')] }));
+/** The agents a host lists, as `bureau.agents.list` answers them. */
+const listed = (...names: readonly string[]) =>
+  names.map((name) => ({
+    name,
+    displayName: name,
+    description: null,
+    definitionRevision: 1,
+    kind: 'code',
+    a2a: false,
+  }));
+
+function open(agents: ReadonlyArray<Record<string, unknown>> = []) {
+  stub = installWorkflowWorld(emptyWorld({ files: [readyFile('digest')], agents: [...agents] }));
   router.navigate('/workflows/new', { replace: true });
   return render(Harness, { props: { client: stub.client, scopes: AUTHORIZATION_SCOPES } } as never);
 }
@@ -86,6 +97,35 @@ describe('the new-workflow editor', () => {
     expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
       'ready',
     );
+  });
+
+  test('names no agent in its step on a fresh host, where no agent is listed', async () => {
+    const { container, findByRole } = open();
+    await findByRole('heading', { level: 1, name: WORKFLOW_COPY.creator.heading });
+    await waitFor(() => expect(stub?.callsTo('bureau.agents.list')).toHaveLength(1));
+    await openJson(container);
+
+    const template = JSON.parse(textarea(container).value) as { steps: Array<{ input: unknown }> };
+    expect(template.steps[0]?.input).toEqual({
+      agent: '',
+      message: WORKFLOW_COPY.creator.templateMessage,
+    });
+  });
+
+  test('names the first listed agent in its step', async () => {
+    const { container, findByRole } = open(listed('notes', 'demo:assistant'));
+    await findByRole('heading', { level: 1, name: WORKFLOW_COPY.creator.heading });
+    await openJson(container);
+
+    await waitFor(() => {
+      const template = JSON.parse(textarea(container).value) as {
+        steps: Array<{ input: unknown }>;
+      };
+      expect(template.steps[0]?.input).toEqual({
+        agent: 'notes',
+        message: WORKFLOW_COPY.creator.templateMessage,
+      });
+    });
   });
 
   test('creates the file without its name, and lands on the new workflow’s page', async () => {
@@ -261,8 +301,12 @@ describe('the step builder', () => {
   });
 
   test('builds a workflow from rows, saves it, and sends the file the rows describe', async () => {
-    const { container } = open();
+    const { container } = open(listed('demo:assistant'));
     await ready(container);
+    // The template's step names the host's first agent once the host has said which.
+    await waitFor(() =>
+      expect(field(container, 'workflow-builder-step-1-agent').value).toBe('demo:assistant'),
+    );
     await fireEvent.input(field(container, 'workflow-builder-name'), {
       target: { value: 'built-here' },
     });
@@ -296,7 +340,7 @@ describe('the step builder', () => {
           {
             kind: 'activity',
             handler: 'agent',
-            input: { agent: 'assistant', message: 'Write it.' },
+            input: { agent: 'demo:assistant', message: 'Write it.' },
           },
           { kind: 'await-signal', signal: 'approved' },
           { kind: 'sleep', duration: '1m' },
@@ -453,7 +497,7 @@ describe('the step builder', () => {
   });
 
   test('removes a step, and an empty list is the first-use empty state with a way to add one', async () => {
-    const { container, findByText } = open();
+    const { container, findByText } = open(listed('notes'));
     await ready(container);
     await fireEvent.click(button(container, WORKFLOW_COPY.builder.remove(1)));
 
@@ -463,6 +507,8 @@ describe('the step builder', () => {
     await waitFor(() =>
       expect(container.querySelectorAll('[data-step-kind="agent"]')).toHaveLength(1),
     );
+    // The new step names the host's first agent that can run.
+    expect(field(container, 'workflow-builder-step-1-agent').value).toBe('notes');
   });
 
   test('says the builder needs valid JSON, and opens the JSON tab from there', async () => {

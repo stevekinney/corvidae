@@ -4,6 +4,7 @@
  * fenced by their owner and its live feed would never see them. Both are proven through the public
  * origin, the way the console reaches them.
  */
+import { createAgent, stopWhen } from '@lostgradient/operative';
 import { HttpClient } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -29,11 +30,19 @@ async function startWithRunInFlight() {
   const host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
-    seed: false,
-    generate: async () => {
-      started.resolve();
-      await release.promise;
-      return { content: 'finished', toolCalls: [] };
+    // An agent of the test's own, because a run of it has to stay in flight until the test lets go.
+    extraAgents: {
+      agents: {
+        waiting: createAgent({
+          name: 'waiting',
+          generate: async () => {
+            started.resolve();
+            await release.promise;
+            return { content: 'finished', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
     },
   });
   hosts.push(host);
@@ -72,7 +81,7 @@ describe('the Engine console', () => {
     let runId: string | undefined;
     const feed = await readFeedUntil(host, () => runId);
 
-    const run = await host.bureau.tasks.start('assistant', 'watch me');
+    const run = await host.bureau.tasks.start('waiting', 'watch me');
     runId = run.id;
     await started;
     const received = await feed.done;
@@ -84,7 +93,7 @@ describe('the Engine console', () => {
 
   test('cancels a run the Bureau started through its own ownership', async () => {
     const { host, started, release } = await startWithRunInFlight();
-    const run = await host.bureau.tasks.start('assistant', 'cancel me');
+    const run = await host.bureau.tasks.start('waiting', 'cancel me');
     await started;
 
     await new HttpClient({ baseUrl: host.url.origin }).cancel(run.id);
