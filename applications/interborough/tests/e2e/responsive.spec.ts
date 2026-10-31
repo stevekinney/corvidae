@@ -26,12 +26,18 @@
  */
 import type { Page } from '@playwright/test';
 
+import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
-import { pending, responsiveAddresses, type ResponsiveSeed } from './responsive-routes.ts';
+import {
+  pending,
+  responsiveAddresses,
+  responsiveVariants,
+  type ResponsiveSeed,
+} from './responsive-routes.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
@@ -63,6 +69,10 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/agents/:agent/memories': /mmmmmmmmmm/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,
+  '/workflows/:workflow (file)': /Writes the daily digest/,
+  '/workflows/:workflow (file, code tab)': /Write the digest/,
+  '/workflows/:workflow (file, runs tab)': /Recent runs/,
+  '/workflows/:workflow (file, history tab)': /Revisions that have run/,
   '/workflows/:workflow/runs/:run': /Definition/,
   '/workflows/:workflow/edit': /Workflow file/,
   '/runs/:run': /Definition/,
@@ -170,7 +180,7 @@ async function untilQuiet(page: Page): Promise<void> {
  */
 async function settle(page: Page, pattern: string, width: number): Promise<void> {
   await page.setViewportSize({ width, height: HEIGHT });
-  await page.goto(addresses[pattern]!);
+  await page.goto((addresses[pattern] ?? variantAddresses[pattern])!);
   const outlet = page.locator('main.weft-shell-outlet');
   await expect(outlet).toBeVisible();
   const frame = outlet.locator('[data-view]').first();
@@ -186,6 +196,20 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
  * has scanned, so it scans from the long key's start and waits for the key.
  */
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  // The file's header carries its four actions; measure the page only once all four are there.
+  '/workflows/:workflow (file)': async (page) => {
+    const header = page.locator('[data-page="workflow-detail"] .cinder-page-header__actions');
+    for (const name of [
+      WORKFLOW_COPY.page.startAction,
+      WORKFLOW_COPY.pauseAction,
+      WORKFLOW_COPY.editAction,
+      WORKFLOW_COPY.deleteAction,
+    ]) {
+      await expect(
+        header.getByRole('button', { name }).or(header.getByRole('link', { name })),
+      ).toBeVisible();
+    }
+  },
   '/health/storage': async (page) => {
     await page.getByRole('tab', { name: 'Start / end' }).click();
     await page.getByLabel('Start (inclusive)').fill('responsive-');
@@ -230,6 +254,7 @@ async function problemsAt(page: Page, pattern: string, width: number): Promise<s
 }
 
 let addresses: Readonly<Record<string, string>>;
+let variantAddresses: Readonly<Record<string, string>>;
 
 test.beforeAll(async ({ playwright }) => {
   const request = await playwright.request.newContext({ baseURL: E2E_BASE_URL });
@@ -260,6 +285,7 @@ test.beforeAll(async ({ playwright }) => {
       schedule: schedules.items?.[0]?.id ?? 'responsive-schedule',
     };
     addresses = responsiveAddresses(seed);
+    variantAddresses = responsiveVariants(seed);
   } finally {
     await request.dispose();
   }
@@ -394,4 +420,14 @@ for (const route of routes) {
       }
     });
   }
+}
+
+// The names do not depend on the seed's values, only the addresses do.
+const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));
+for (const variant of VARIANTS) {
+  test(`${variant} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
+    for (const width of WIDTHS) {
+      expect(await problemsAt(page, variant, width), `${variant} at ${width}px`).toEqual([]);
+    }
+  });
 }

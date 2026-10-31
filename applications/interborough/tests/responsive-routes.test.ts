@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { routes } from '../src/app/routes.ts';
 import { matchRoute } from '../src/lib/router.svelte.ts';
-import { pending, responsiveAddresses } from './e2e/responsive-routes.ts';
+import { pending, responsiveAddresses, responsiveVariants } from './e2e/responsive-routes.ts';
 
 const SEED = {
   chat: 'chat-1',
@@ -29,6 +29,14 @@ describe('the responsive specification’s routes', () => {
   test('opens each route’s address on that route', () => {
     for (const [pattern, address] of Object.entries(responsiveAddresses(SEED))) {
       expect(matchRoute(address.split('?')[0]!)?.pattern, address).toBe(pattern);
+    }
+  });
+
+  test('opens each variant’s address on the route it is named for', () => {
+    const variants = Object.entries(responsiveVariants(SEED));
+    expect(variants.length).toBeGreaterThan(0);
+    for (const [name, address] of variants) {
+      expect(matchRoute(address.split('?')[0]!)?.pattern, address).toBe(name.split(' ')[0]);
     }
   });
 

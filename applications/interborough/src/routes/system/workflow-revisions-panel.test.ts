@@ -87,7 +87,9 @@ describe('WorkflowRevisionsPanel', () => {
       data: { weftCode: 'NotFound', httpStatus: 404 },
     });
     const { findByText } = await renderPanel();
-    expect(await findByText('No revisions installed for this workflow yet.')).not.toBeNull();
+    expect(
+      await findByText('Installing a revision of this workflow lists it here.'),
+    ).not.toBeNull();
   });
 
   test('a revisions.list server fault renders the fault banner with a working retry', async () => {

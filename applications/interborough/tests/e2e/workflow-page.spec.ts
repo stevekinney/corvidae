@@ -205,6 +205,14 @@ test.describe('Start run', () => {
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
     const [run] = await listWorkflowRuns(request, id);
     expect(run?.status).toBe('running');
+    // The instance took the input the dialog held, as JSON, and was started from the web surface.
+    const started = await bureau(request, 'bureau.workflows.runs.get', { runId: run?.id });
+    expect(started.fault).toBeUndefined();
+    expect((started.result as { trigger: unknown }).trigger).toMatchObject({
+      kind: 'manual',
+      input: { topic: 'weather' },
+      origin: { surface: 'web' },
+    });
 
     // Let the instance finish, so it does not stay in the host.
     await expect

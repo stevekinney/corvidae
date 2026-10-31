@@ -298,7 +298,11 @@ export const WORKFLOW_COPY = {
     runs: {
       emptyTitle: 'Nothing has run this workflow yet',
       emptyDescription: 'A run appears here as soon as one starts.',
-      emptyDescriptionNoStart: 'Its trigger starts a run, and it appears here.',
+      /** A paused file starts nothing, so its empty state says so rather than promising a trigger. */
+      emptyDescriptionPaused:
+        'This workflow is paused, so its trigger starts nothing. Resume it and a run appears here once one starts.',
+      /** A code-defined type has no Start action on this page (COR-1855), so something else starts it. */
+      emptyDescriptionCode: 'A run appears here as soon as something starts one.',
     },
     /** The Code tab. */
     code: {

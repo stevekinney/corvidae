@@ -41,7 +41,15 @@
    * (`policy.requireExactRevision: false`) is a deliberate omission from
    * this batch, not an oversight — see the PR body.
    */
-  import { Badge, Button, ConfirmDialog, CopyButton, SectionHeading } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    ConfirmDialog,
+    CopyButton,
+    EmptyState,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { TriangleAlert } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -290,10 +298,16 @@
   </SectionHeading>
 
   {#if !canRead}
-    <p class="weft-revisions-panel__note">Requires workflows:read to view installed revisions.</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
+      title="Revisions are not available to you"
+      description="Requires workflows:read to view installed revisions."
+    />
   {:else if isLoading}
     <div role="status" aria-busy="true" aria-label="Loading revisions">
-      <p class="weft-revisions-panel__note">Loading…</p>
+      <Skeleton height="2rem" />
     </div>
   {:else if revisionsQuery.isError}
     <QueryFaultBanner error={revisionsQuery.error} onRetry={() => revisionsQuery.refetch()} />
@@ -308,7 +322,13 @@
       >
     </div>
   {:else if rows.length === 0}
-    <p class="weft-revisions-panel__note">No revisions installed for this workflow yet.</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
+      title="No revisions installed"
+      description="Installing a revision of this workflow lists it here."
+    />
   {:else}
     {#if activeQuery.data === null}
       <p class="weft-revisions-panel__note">No active revision — never activated.</p>

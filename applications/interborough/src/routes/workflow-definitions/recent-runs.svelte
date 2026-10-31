@@ -26,9 +26,11 @@
     kind: 'code' | 'agent-authored';
     /** Starts a run, when this workflow can be started from the page; the empty state offers it. */
     onStart?: (() => void) | undefined;
+    /** Resumes a paused file, when this page can; the empty state of a paused file offers it. */
+    onResume?: (() => void) | undefined;
   }
 
-  let { type, kind, onStart }: Props = $props();
+  let { type, kind, onStart, onResume }: Props = $props();
 
   const copy = WORKFLOW_COPY;
   const client = getClient();
@@ -114,13 +116,27 @@
         <Button variant="primary" size="sm" onclick={onStart}>{copy.page.startAction}</Button>
       {/snippet}
     </EmptyState>
+  {:else if runs.data.length === 0 && kind === 'agent-authored' && onResume !== undefined}
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
+      title={copy.page.runs.emptyTitle}
+      description={copy.page.runs.emptyDescriptionPaused}
+    >
+      {#snippet action()}
+        <Button variant="primary" size="sm" onclick={onResume}>{copy.resumeAction}</Button>
+      {/snippet}
+    </EmptyState>
   {:else if runs.data.length === 0}
     <EmptyState
       kind="first-use"
       size="compact"
       headingLevel={3}
       title={copy.page.runs.emptyTitle}
-      description={copy.page.runs.emptyDescriptionNoStart}
+      description={kind === 'agent-authored'
+        ? copy.page.runs.emptyDescriptionPaused
+        : copy.page.runs.emptyDescriptionCode}
     />
   {:else}
     <ul class="ib-workflow__list">

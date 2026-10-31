@@ -286,26 +286,36 @@
     ...(engineType ? [] : (['history'] as const)),
   ]);
 
-  // The URL owns the tab, so a tab can be linked and the back button returns to it: `activeTab`
-  // mirrors `?tab=` both ways, and each effect writes only when its target differs. Overview is
-  // the address with no `tab`.
+  // The URL owns the tab, so a tab can be linked and the back button returns to it. `activeTab`
+  // follows `?tab=`, and a tab the person picks writes the address from Tabs' `onValueChange`, so a
+  // jump through history to an older `?tab=` entry is only read, never written back over.
+  // Overview is the address with no `tab`.
   let activeTab = $state(untrack(() => router.search.get('tab') ?? 'overview'));
-  /** The tab shown: one this workflow does not have falls back to Overview. */
-  const shownTab = $derived(tabs.some((tab) => tab === activeTab) ? activeTab : 'overview');
 
-  $effect(() => {
-    const next = shownTab;
+  /** Puts a tab the person picked in the address. */
+  function writeTab(next: string): void {
     const search = new URLSearchParams(router.search);
     if ((search.get('tab') ?? 'overview') === next) return;
     if (next === 'overview') search.delete('tab');
     else search.set('tab', next);
     const query = search.size === 0 ? '' : `?${search.toString()}`;
-    router.navigate(`${workflowTypePath(type)}${query}`, { replace: true });
-  });
+    router.navigate(`${workflowTypePath(type)}${query}`);
+  }
 
   $effect(() => {
     const fromUrl = router.search.get('tab') ?? 'overview';
     if (fromUrl !== activeTab) activeTab = fromUrl;
+  });
+
+  // An address that names a tab this workflow does not have is Overview: say so in the address,
+  // in place, so it is not a history entry of its own.
+  $effect(() => {
+    const named = router.search.get('tab');
+    if (named === null || tabs.some((tab) => tab === named)) return;
+    const search = new URLSearchParams(router.search);
+    search.delete('tab');
+    const query = search.size === 0 ? '' : `?${search.toString()}`;
+    router.navigate(`${workflowTypePath(type)}${query}`, { replace: true });
   });
 </script>
 
@@ -429,7 +439,7 @@
       </Alert>
     {/if}
 
-    <Tabs bind:value={activeTab}>
+    <Tabs bind:value={activeTab} onValueChange={writeTab}>
       <Tabs.List label={copy.page.tabsLabel}>
         <Tabs.Trigger value="overview">{copy.page.tabs.overview}</Tabs.Trigger>
         <Tabs.Trigger value="code">{copy.page.tabs.code}</Tabs.Trigger>
@@ -464,6 +474,11 @@
             {type}
             kind={resolved.kind}
             onStart={canStart ? () => (starting = true) : undefined}
+            onResume={actions?.resume && file?.paused && file.hash !== null
+              ? () => {
+                  if (!busy) act(resume.mutate);
+                }
+              : undefined}
           />
         </Tabs.Panel>
       {/if}

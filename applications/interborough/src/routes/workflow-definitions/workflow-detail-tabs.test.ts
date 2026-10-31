@@ -288,6 +288,33 @@ describe('the tab in the address', () => {
     expect(router.search.has('tab')).toBe(false);
   });
 
+  test('reads a jump back through history to an older tab, and does not write over it', async () => {
+    const { container } = open('/workflows/digest?tab=runs');
+    await waitFor(() => expect(testId(container, 'workflow-recent-runs')).not.toBeNull());
+    const root = container.querySelector<HTMLElement>(
+      '[data-page="workflow-detail"]',
+    ) as HTMLElement;
+    await openTab(root, TABS.code);
+    await openTab(root, TABS.overview);
+    expect(router.search.has('tab')).toBe(false);
+    const entries = window.history.length;
+
+    // Two steps back is the Runs entry; the Code entry sits between it and the address of no tab.
+    router.back();
+    await waitFor(() => expect(router.search.get('tab')).toBe('code'));
+    await waitFor(() => expect(testId(container, 'workflow-code')).not.toBeNull());
+    router.back();
+    await waitFor(() => expect(router.search.get('tab')).toBe('runs'));
+    await waitFor(() => expect(testId(container, 'workflow-recent-runs')).not.toBeNull());
+    // Each entry was only read: none was replaced and none was added.
+    expect(window.history.length).toBe(entries);
+    router.forward();
+    await waitFor(() => expect(router.search.get('tab')).toBe('code'));
+    router.forward();
+    await waitFor(() => expect(router.search.has('tab')).toBe(false));
+    await waitFor(() => expect(testId(container, 'workflow-overview')).not.toBeNull());
+  });
+
   test('falls back to the Overview for a tab the workflow does not have', async () => {
     const { container } = open('/workflows/agentRun?tab=history');
     const root = await ready(container);
@@ -419,6 +446,50 @@ describe('starting a run', () => {
     await waitFor(() => expect(testId(document.body, 'workflow-start-form')).toBeNull());
     expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
     expect(router.pathname).toBe('/workflows/digest');
+
+    await fireEvent.click(startButton(root) as HTMLElement);
+    const reopened = await findByRole('textbox', {
+      name: WORKFLOW_COPY.startDialog.inputLabel,
+    });
+    expect((reopened as HTMLTextAreaElement).value).toBe('');
+    expect(document.body.textContent).not.toContain(WORKFLOW_COPY.startDialog.invalidInput);
+  });
+});
+
+describe('the Runs tab of a workflow that cannot be started from the page', () => {
+  test('a paused file says it is paused, and Resume starts it again', async () => {
+    const { container } = open('/workflows/paused-one', { runs: [] });
+    const root = await ready(container);
+    await openTab(root, TABS.runs);
+    const runs = (): HTMLElement => testId(root, 'workflow-recent-runs') as HTMLElement;
+    await waitFor(() =>
+      expect(runs().textContent).toContain(WORKFLOW_COPY.page.runs.emptyDescriptionPaused),
+    );
+    expect(runs().textContent).not.toContain('Its trigger starts a run');
+    const resume = runs().querySelector('.cinder-empty-state button');
+    expect(resume?.textContent?.trim()).toBe(WORKFLOW_COPY.resumeAction);
+
+    await fireEvent.click(resume as HTMLElement);
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.resume')).toHaveLength(1));
+    await waitFor(() => expect(stub?.file('paused-one')?.paused).toBe(false));
+    // Resumed, the page offers to start it instead.
+    await waitFor(() =>
+      expect(runs().querySelector('.cinder-empty-state button')?.textContent?.trim()).toBe(
+        WORKFLOW_COPY.page.startAction,
+      ),
+    );
+  });
+
+  test('a code-defined type promises no trigger and offers no action', async () => {
+    const { container } = open('/workflows/order-processing', { runs: [] });
+    const root = await ready(container);
+    await openTab(root, TABS.runs);
+    const runs = (): HTMLElement => testId(root, 'workflow-recent-runs') as HTMLElement;
+    await waitFor(() =>
+      expect(runs().textContent).toContain(WORKFLOW_COPY.page.runs.emptyDescriptionCode),
+    );
+    expect(runs().textContent).not.toContain('trigger');
+    expect(runs().querySelector('.cinder-empty-state button')).toBeNull();
   });
 });
 

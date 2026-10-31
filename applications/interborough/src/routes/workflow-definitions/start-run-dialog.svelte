@@ -73,6 +73,7 @@
   function dismiss(): void {
     if (start.isPending) return;
     open = false;
+    input = '';
     failure = '';
     inputError = '';
   }
