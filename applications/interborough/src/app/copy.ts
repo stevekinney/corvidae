@@ -1338,11 +1338,13 @@ export const AGENT_PAGE_COPY = {
     invalid: 'This agent’s file has a problem, so its access cannot be changed until it is fixed.',
     saveAction: 'Save access',
     saveFailed: 'The access settings could not be saved.',
-    stale: 'This agent changed after the page loaded. Reload to see its current access.',
+    stale:
+      'This agent’s file changed after the page loaded, so nothing was saved. Your unsaved changes are still here; reloading shows the file as it is now and discards them.',
+    reload: 'Reload from disk',
     forbidden: 'You may not change this agent.',
     toolsHeading: 'Tools',
     toolsDescription:
-      'Allow the tools this agent may call, and choose when each asks you first. A chat’s permission mode can only make a tool ask more often, never less.',
+      'Allow the tools this agent may call, and choose when each asks you first. A chat’s permission mode can change this: it can ask on every call, refuse tools that change things, or skip the asks On changes would raise.',
     toolCount: (allowed: number, total: number): string =>
       `${String(allowed)} of ${String(total)} allowed`,
     toolsListLabel: 'Tools',

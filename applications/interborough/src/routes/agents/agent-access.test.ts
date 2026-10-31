@@ -4,6 +4,7 @@
  * The write sends the whole definition, because an update that leaves out `tools` removes them, and
  * it names the hash of the file the page read.
  */
+import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -226,6 +227,165 @@ describe('the tab', () => {
     await findByText(copy.stale);
     await waitFor(() => expect(reads).toBeGreaterThan(1));
     expect(updatesOf(served).length > 0).toBe(true);
+  });
+
+  test('keeps a dirty form, says the file changed, and reloads on request, when the write is stale', async () => {
+    landAt('/agents/researcher?tab=access');
+    let hash = 'hash-1';
+    serve({
+      'bureau.agents.definitions.get': () => ({ ...detailWith(), hash }),
+      'bureau.agents.definitions.update': () => {
+        hash = 'hash-2';
+        throw faults.stale('hash-2');
+      },
+    });
+    const { findByRole, findByText, getByRole } = mount();
+
+    const refund = await findByRole('checkbox', { name: 'issue-refund' });
+    await fireEvent.click(refund);
+    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+
+    await findByText(copy.stale);
+    // The refetch has read the new hash, and the form still holds what was ticked.
+    await waitFor(() => expect(hash).toBe('hash-2'));
+    expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', true);
+    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', false);
+
+    await fireEvent.click(getByRole('button', { name: copy.reload }));
+    await waitFor(() =>
+      expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', false),
+    );
+    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', true);
+  });
+
+  test('says the file could not be read when a reload fails', async () => {
+    landAt('/agents/researcher?tab=access');
+    let failReads = false;
+    serve({
+      'bureau.agents.definitions.get': () => {
+        if (failReads) throw new Error('down');
+        return detailWith();
+      },
+      'bureau.agents.definitions.update': () => {
+        throw faults.stale('hash-2');
+      },
+    });
+    const { findByRole, findByText, getByRole } = mount();
+
+    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
+    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+    await findByText(copy.stale);
+    failReads = true;
+    await fireEvent.click(getByRole('button', { name: copy.reload }));
+
+    await findByText(copy.loadFailed);
+  });
+
+  test('keeps a dirty form when coming back to the window reads a file with a new hash', async () => {
+    landAt('/agents/researcher?tab=access');
+    let hash = 'hash-1';
+    let reads = 0;
+    serve({
+      'bureau.agents.definitions.get': () => {
+        reads += 1;
+        return { ...detailWith(), hash };
+      },
+    });
+    const { findByRole, findByText, getByRole, queryByText } = mount();
+
+    await fireEvent.change(await findByRole('combobox', { name: /lookup-order/ }), {
+      target: { value: 'blocked' },
+    });
+    expect(queryByText(copy.stale)?.outerHTML ?? null).toBeNull();
+
+    hash = 'hash-2';
+    const before = reads;
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    await waitFor(() => expect(reads).toBeGreaterThan(before));
+    await findByText(copy.stale);
+    expect(getByRole('combobox', { name: /lookup-order/ })).toHaveProperty('value', 'blocked');
+    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', false);
+  });
+
+  test('rebuilds a form with no edits when the file’s hash changes', async () => {
+    landAt('/agents/researcher?tab=access');
+    let hash = 'hash-1';
+    let tools = ['lookup-order'];
+    let reads = 0;
+    serve({
+      'bureau.agents.definitions.get': () => {
+        reads += 1;
+        return { ...detailWith({ tools }), hash };
+      },
+    });
+    const { findByRole, getByRole, queryByText } = mount();
+
+    await findByRole('checkbox', { name: 'issue-refund' });
+    hash = 'hash-2';
+    tools = ['lookup-order', 'issue-refund'];
+    const before = reads;
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+
+    await waitFor(() => expect(reads).toBeGreaterThan(before));
+    await waitFor(() =>
+      expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', true),
+    );
+    expect(queryByText(copy.stale)?.outerHTML ?? null).toBeNull();
+  });
+
+  test('rebuilds from the hash a save returned, without calling it a change', async () => {
+    landAt('/agents/researcher?tab=access');
+    let hash = 'hash-1';
+    let tools = ['lookup-order'];
+    const served = serve({
+      'bureau.agents.definitions.get': () => ({ ...detailWith({ tools }), hash }),
+      'bureau.agents.definitions.update': () => {
+        hash = 'hash-2';
+        tools = ['lookup-order', 'issue-refund'];
+        return { id: 'researcher', hash: 'hash-2' };
+      },
+    });
+    const { findByRole, getByRole, queryByText } = mount();
+
+    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
+    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    await waitFor(() =>
+      expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', true),
+    );
+    expect(queryByText(copy.stale)?.outerHTML ?? null).toBeNull();
+    expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', true);
+  });
+
+  test('restores a tool’s approval when it is withdrawn and allowed again', async () => {
+    landAt('/agents/researcher?tab=access');
+    const served = serve(
+      { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ toolApproval: { 'lookup-order': 'blocked' } }),
+    );
+    const { container, findByRole, getByRole } = mount();
+
+    const box = await findByRole('checkbox', { name: 'lookup-order' });
+    await fireEvent.click(box);
+    await fireEvent.click(box);
+    expect(container.querySelector('[data-tool="lookup-order"] select')).toHaveProperty(
+      'value',
+      'blocked',
+    );
+    // Nothing differs from the file, so there is nothing to save, and nothing loosened.
+    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', true);
+
+    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
+    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      tools: ['lookup-order', 'issue-refund'],
+      toolApproval: { 'lookup-order': 'blocked' },
+    });
   });
 
   test('saves the guardrails, the chat limit and the tool time as typed', async () => {

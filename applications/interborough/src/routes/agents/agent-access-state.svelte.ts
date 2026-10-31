@@ -5,8 +5,9 @@
  * when they are left out. The keys the tab does not edit (`stepLimit`, `references`, `retry`,
  * `compaction`, `hooks`) are left out of the write, which keeps the file's value.
  *
- * `toolApproval` may only name a tool the file lists, or the Bureau refuses the write, so clearing
- * a tool's Allow drops its approval in the same write.
+ * `toolApproval` may only name a tool the file lists, or the Bureau refuses the write, so a tool
+ * that is not allowed has its approval left out of the write. The approval itself is kept in the
+ * form, so allowing the tool again restores what was chosen instead of loosening it.
  */
 import { SvelteMap } from 'svelte/reactivity';
 
@@ -95,14 +96,13 @@ export class AgentAccessState {
     return this.tools.includes(name);
   }
 
-  /** Allows or withdraws one tool. Withdrawing it drops its approval, which the Bureau would refuse to keep. */
+  /** Allows or withdraws one tool. A withdrawn tool's approval stays in the form and is left out of the write. */
   setAllowed(name: string, allowed: boolean): void {
     if (allowed) {
       if (!this.tools.includes(name)) this.tools = [...this.tools, name];
       return;
     }
     this.tools = this.tools.filter((tool) => tool !== name);
-    this.approvals.delete(name);
   }
 
   /** When the tool asks first: the file's statement, or `on-changes`. */

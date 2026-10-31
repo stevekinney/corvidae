@@ -6,8 +6,12 @@
    * tool budgets. It saves the lot as one write that names the hash of the file the page read, so
    * a file that changed since is refused instead of overwritten, and the page says so with a reload.
    *
-   * A chat's permission mode only tightens what is set here. An agent defined in code has no file
-   * to write, so it shows the tools it states for itself and says the rest cannot be changed.
+   * A chat's permission mode can change what is set here: it can ask on every call, refuse tools
+   * that change things, or skip the asks that On changes would raise. An agent defined in code has
+   * no file to write, so it shows the tools it states for itself and says the rest cannot be changed.
+   *
+   * A form with unsaved changes is never replaced by a refetch: when the file's hash moves under it,
+   * the page keeps the form, says nothing was saved, and offers a reload.
    */
   import {
     Alert,
@@ -26,6 +30,7 @@
   import {
     agentFaultOf,
     getAgentCatalog,
+    getAgentDefinition,
     updateAgent,
     type AgentDetail,
     type AgentFault,
@@ -60,20 +65,57 @@
     undefined,
   );
 
-  // The form is rebuilt from the file when the file's hash changes: after a save, which reads the
-  // new hash back, and after a stale write is reloaded. A refetch that returns the same file keeps
-  // what the person has typed.
+  // The form is rebuilt from the file when the file's hash changes and the person has typed
+  // nothing, or when the hash is the one this page's own save returned. A refetch that returns the
+  // same file keeps what the person has typed, and one that returns a different file keeps it too:
+  // it sets `changed`, and the page offers a reload instead of discarding the edits.
   let form = $state<AgentAccessState | undefined>();
+  /** The file changed on disk under a form with unsaved edits. */
+  let changed = $state(false);
+  /** The hash this page's last successful save wrote. */
+  let savedHash: string | null = null;
   $effect(() => {
     const loaded = detail;
     const offered = catalog.data;
     if (loaded === undefined || offered === undefined) return;
     untrack(() => {
-      if (form === undefined || form.hash !== loaded.hash) {
-        form = AgentAccessState.from(loaded, offered);
+      if (form !== undefined) {
+        if (form.hash === loaded.hash) return;
+        if (form.dirty && loaded.hash !== savedHash) {
+          changed = true;
+          return;
+        }
       }
+      form = AgentAccessState.from(loaded, offered);
+      changed = false;
     });
   });
+
+  /** Reads the file again and fills the form from it, which discards what was typed. */
+  async function reload(): Promise<void> {
+    try {
+      const [loaded, offered] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: queryKeys.agents.definition(id),
+          queryFn: ({ signal }) => getAgentDefinition(id, { signal }),
+          staleTime: 0,
+          retry: false,
+        }),
+        queryClient.fetchQuery({
+          queryKey: queryKeys.agents.catalog(),
+          queryFn: ({ signal }) => getAgentCatalog({ signal }),
+          staleTime: Infinity,
+        }),
+      ]);
+      savedHash = null;
+      problem = null;
+      changed = false;
+      form = AgentAccessState.from(loaded, offered);
+    } catch {
+      problem = copy.loadFailed;
+    }
+  }
+
   const isFile = $derived(detail?.source === 'file');
   const builtInTools = $derived(detail?.codeDefinition?.tools ?? []);
 
@@ -82,7 +124,7 @@
   function refuse(fault: AgentFault): void {
     switch (fault.kind) {
       case 'stale':
-        problem = copy.stale;
+        changed = true;
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
         return;
       case 'forbidden':
@@ -104,7 +146,9 @@
     onMutate: () => {
       problem = null;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      savedHash = result.hash;
+      changed = false;
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.versions(id) });
@@ -267,6 +311,12 @@
     </section>
     <AgentAccessSkills />
   {:else if form !== undefined}
+    {#if changed}
+      <Alert variant="warning">
+        <p>{copy.stale}</p>
+        <Button variant="secondary" size="sm" onclick={() => void reload()}>{copy.reload}</Button>
+      </Alert>
+    {/if}
     {#if problem !== null}
       <Alert variant="danger" dismissible onDismiss={() => (problem = null)}>
         <p>{problem}</p>
