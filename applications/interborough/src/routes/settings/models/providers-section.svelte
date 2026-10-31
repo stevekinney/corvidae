@@ -13,6 +13,7 @@
   import { reloadProviders, type ProvidersSnapshot } from '../../../lib/host-providers.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import ConnectDialog from './connect-dialog.svelte';
+  import { providerDisplayName } from './format-model.ts';
 
   interface Props {
     snapshot: ProvidersSnapshot;
@@ -31,7 +32,7 @@
   const connectingStatus = $derived(snapshot.providers.find((entry) => entry.name === connecting));
 
   function nameOf(provider: string): string {
-    return MODELS_COPY.providerNames[provider] ?? provider;
+    return providerDisplayName(provider);
   }
 
   function modelCount(provider: string): number {

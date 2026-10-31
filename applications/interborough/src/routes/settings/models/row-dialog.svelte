@@ -10,6 +10,7 @@
   import { untrack } from 'svelte';
 
   import { MODELS_COPY } from '../../../app/copy.ts';
+  import { providerDisplayName } from './format-model.ts';
   import {
     namesExistingRow,
     type AddedRow,
@@ -151,7 +152,7 @@
           label={copy.provider}
           options={providers.map((name) => ({
             value: name,
-            label: MODELS_COPY.providerNames[name] ?? name,
+            label: providerDisplayName(name),
           }))}
           value={provider}
           onchange={(event) => {

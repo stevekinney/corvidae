@@ -86,11 +86,15 @@
     failure = '';
     try {
       await replaceCatalogEdits(working);
-      working = null;
       showToast(copy.saved, { variant: 'success' });
-      // Read the host's rows again, and the agent editor's model choices with them.
-      await queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
+      // Read the host's rows again, and the agent editor's model choices with them. The edits stay
+      // on the table until the rows that include them are here, so no row snaps back meanwhile.
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.catalog() });
+      try {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
+      } finally {
+        working = null;
+      }
     } catch (error) {
       failure =
         error instanceof HostProviderError && error.message !== ''

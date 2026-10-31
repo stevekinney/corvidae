@@ -1,4 +1,5 @@
-/** How the Models table words a model's size and price. */
+/** How the Models page words a provider, and a model's size and price. */
+import { MODELS_COPY } from '../../../app/copy.ts';
 
 const COMPACT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 
@@ -21,4 +22,15 @@ export function formatPrice(amount: number, currency: string): string {
   } catch {
     return `${String(amount)} ${currency}`;
   }
+}
+
+/**
+ * The name a person knows a provider by. The provider's name arrives from the host, so it is looked
+ * up as an own key only: a name such as `constructor` is printed as it is, not as what every object
+ * inherits.
+ */
+export function providerDisplayName(provider: string): string {
+  return Object.hasOwn(MODELS_COPY.providerNames, provider)
+    ? (MODELS_COPY.providerNames[provider] ?? provider)
+    : provider;
 }

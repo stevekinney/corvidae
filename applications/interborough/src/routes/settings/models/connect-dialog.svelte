@@ -16,6 +16,7 @@
   import { MODELS_COPY } from '../../../app/copy.ts';
   import { connectProvider, HostProviderError } from '../../../lib/host-providers.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import { providerDisplayName } from './format-model.ts';
 
   interface Props {
     /** The provider the dialog is for, or `null` while it is closed. */
@@ -34,9 +35,7 @@
   let failure = $state('');
   let sending = $state(false);
 
-  const displayName = $derived(
-    provider === null ? '' : (MODELS_COPY.providerNames[provider] ?? provider),
-  );
+  const displayName = $derived(provider === null ? '' : providerDisplayName(provider));
   const open = $derived(provider !== null);
 
   /** The words for a refusal, none of which is the key. */

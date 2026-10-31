@@ -5,8 +5,9 @@
  *
  * The host has no way to disconnect a provider, so the case that connects one is written to pass
  * whether or not an earlier run on this server already did: it uses Manage when it finds one.
- * Everything else a case changes it puts back. A restart is not something this suite does; that a
- * catalog edit and a connected provider survive one is `src/host/host-provider-changes.test.ts`.
+ * Every case but the last puts back what it changed; the decision model has no way back to unset,
+ * and `catalog` is what unset means. A restart is not something this suite does; that a catalog
+ * edit and a connected provider survive one is `src/host/host-provider-changes.test.ts`.
  */
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
