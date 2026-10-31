@@ -2590,6 +2590,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1721 — the forwarders onto the emitter from sources it does not own (assets, file catalogs,
   // the engine's missed fires), stopped at shutdown just before `bureau.disposed`.
   const stopForwarding: Array<() => void> = [];
+  // COR-1879 — a plugin missing a declared secret follows the host's `watch` from here, so the
+  // secret's save or removal changes its contributions with no restart; stopped at shutdown.
+  stopForwarding.push(composedPlugins.watchSecrets());
   // COR-1421 — `onEvent` listens from here, before any recovery pass can
   // dispatch, so it hears the boot-time events a listener added after
   // `createBureau()` returns would miss. It is registered AFTER the event
@@ -3204,6 +3207,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               nowISO: runtimeServices.clock.nowISO,
             }),
             runtime: runtimeServices,
+            onPinnedUnavailable: (activity, runId) =>
+              pluginRegistry.notePinnedUnavailable(activity, runId),
             diagnose: (message, cause) =>
               diagnose({
                 level: 'error',
@@ -7549,7 +7554,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         try {
           // COR-1872: the call resumes at the tool version its run recorded, or not at all.
           const unavailable = pinnedToolUnavailable(toolbox, approval);
-          if (unavailable !== undefined) throw unavailable;
+          if (unavailable !== undefined) {
+            // COR-1879: the plugin whose tool the run pinned reports the run it waited on.
+            pluginRegistry.notePinnedUnavailable(unavailable.toolId, runId);
+            throw unavailable;
+          }
           await restoreApproval(approval as SignedPendingToolApproval);
         } catch (error) {
           if (
@@ -22099,6 +22108,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   construction.built(bureau);
   // COR-1879 — after the caller has the Bureau, so a plugin's `afterStart` costs a recovered run's
   // first events nothing; `bureau.plugins.ready()` settles when every one has.
+  // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds.
+  pluginRegistry.observeAgents(() => bureau.agents.list());
   void pluginRegistry.start(pluginHostApiOf(bureau as unknown as Bureau));
 }
 

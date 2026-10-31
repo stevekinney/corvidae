@@ -87,7 +87,7 @@ async function start(
 }
 
 describe('a plugin tool’s version on a durable record', () => {
-  it('registers p:t@2.0.0, resumes at 2.0.0 after a restart, and reports version-mismatch at 3.0.0', async () => {
+  it('registers p:t@2.0.0, resumes at 2.0.0 after a restart, and reports version-mismatch and pinned-version-unavailable at 3.0.0', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'bureau-plugin-tool-'));
     roots.push(directory);
     const database = createSqliteStorageFixture();
@@ -140,5 +140,9 @@ describe('a plugin tool’s version on a durable record', () => {
     expect(cause.candidates).toEqual(['p:t@3.0.0']);
     expect(upgraded.bureau.reviews.list()).toEqual([]);
     expect(executed).toEqual(['2.0.0:x']);
+    // The plugin reports the run that waited on the version it no longer loads.
+    expect(upgraded.bureau.plugins.list()[0]?.problems).toEqual([
+      { code: 'pinned-version-unavailable', id: 'p:t', version: '2.0.0', waitingRuns: 1 },
+    ]);
   });
 });

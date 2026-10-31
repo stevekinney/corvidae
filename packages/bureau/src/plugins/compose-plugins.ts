@@ -43,6 +43,11 @@ import {
 } from '../versioned-catalog';
 import { createClaims, type Claim, type Claims } from './plugin-claims';
 import type { PluginRecord } from './plugin-registry';
+import {
+  createPluginSecretGate,
+  gatedContributions,
+  type PluginSecretGate,
+} from './plugin-secret-gate';
 import { pluginTool } from './plugin-tools';
 import type {
   BureauPluginEntry,
@@ -68,6 +73,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
   readonly tools: Readonly<Record<string, Tool>>;
   /** Every plugin, in load order, with what composition found. */
   readonly records: readonly PluginRecord[];
+  /**
+   * Starts following the host's `watch` for every running plugin's declared secrets, so a saved or
+   * removed secret changes what its contributions do with no restart. Returns the function that
+   * stops following. Called once construction can stop it again at shutdown.
+   */
+  readonly watchSecrets: () => () => void;
 }
 
 const HOST_PARTY: PluginClashParty = Object.freeze({ source: 'built-in', location: 'host' });
@@ -191,6 +202,7 @@ function planOf(
   plugin: string,
   version: string,
   contributions: PluginContributions,
+  gate: PluginSecretGate | undefined,
 ): PluginContributionPlan {
   const claims: Claim[] = [];
   const listings: PluginContributionListing[] = [];
@@ -206,7 +218,7 @@ function planOf(
     listings.push({ kind, id: contributionId });
   };
   for (const tool of contributions.tools ?? []) {
-    const rebuilt = pluginTool(tool, plugin, version);
+    const rebuilt = pluginTool(tool, plugin, version, gate);
     contribute('tool', rebuilt.name, rebuilt.id);
     const providerName = toNamespacedToolName(rebuilt.identity);
     if (providerName.length > PROVIDER_TOOL_NAME_LIMIT) {
@@ -381,6 +393,7 @@ class Contributed {
     version: string,
     result: PluginSetupResult,
     tools: ReadonlyMap<string, Tool>,
+    gate: PluginSecretGate | undefined,
   ): void {
     const id = (name: string) => formatToolId({ namespace: plugin, name });
     for (const [key, tool] of tools) this.tools[key] = tool;
@@ -411,6 +424,10 @@ class Contributed {
         id: id(embedder.name),
         embedder: embedder.embed,
         dimension: embedder.dimensions,
+        // COR-1898: `memory.embedder` may name it only while its plugin's secrets are set.
+        ...(gate === undefined
+          ? {}
+          : { availability: () => (gate.available() ? 'available' : 'needs-setup') }),
       });
     }
   }
@@ -539,6 +556,7 @@ async function setUp(
       readonly context: PluginSetupContext;
       readonly plan: PluginContributionPlan;
       readonly redact: (message: string) => string;
+      readonly gate: PluginSecretGate | undefined;
     }
 > {
   const { descriptor } = entry;
@@ -547,6 +565,12 @@ async function setUp(
   const configuration = configurationProblems(entry, settings);
   if ('problems' in configuration) return { status: 'skipped', problems: configuration.problems };
   const { secrets, redact } = pluginSecretsOf(entry, options.pluginSecrets);
+  const keys = [...secretKeysOf(entry)];
+  // Read before `setup`, so a plugin missing a secret is `needs-setup` from its first listing.
+  const gate =
+    keys.length === 0
+      ? undefined
+      : await createPluginSecretGate(descriptor.name, keys, options.pluginSecrets);
   // Everything that reads the plugin runs inside the `try`: a malformed descriptor or contribution
   // skips this plugin and never fails `createBureau`.
   try {
@@ -555,9 +579,17 @@ async function setUp(
       secrets,
       storage: createPluginStorage(storage, descriptor.name),
     };
-    const result = (await descriptor.setup?.(context as never)) ?? {};
-    const plan = planOf(descriptor.name, descriptor.version, result);
-    return { status: 'set-up', result, context, plan, redact };
+    const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
+    // Registered now and refused while a declared secret is missing: the options that receive
+    // contributions are read once, so one added later would never be seen (COR-1874).
+    const result =
+      gate === undefined
+        ? returned
+        : gatedContributions(returned, gate, (name) =>
+            formatToolId({ namespace: descriptor.name, name }),
+          );
+    const plan = planOf(descriptor.name, descriptor.version, result, gate);
+    return { status: 'set-up', result, context, plan, redact, gate };
   } catch (error) {
     return {
       status: 'skipped',
@@ -645,11 +677,29 @@ export async function composePlugins<O extends ComposableOptions>(
       continue;
     }
     for (const claim of plan.claims) claims.hold(claim, party);
-    contributed.add(entry.descriptor.name, entry.descriptor.version, outcome.result, plan.tools);
+    contributed.add(
+      entry.descriptor.name,
+      entry.descriptor.version,
+      outcome.result,
+      plan.tools,
+      outcome.gate,
+    );
     record('running', [], {
       contributions: plan.listings.filter(({ kind }) => registersKind(kind, options)),
       setup: { result: outcome.result, context: outcome.context, redact: outcome.redact },
+      ...(outcome.gate === undefined ? {} : { gate: outcome.gate }),
     });
   }
-  return { options: optionsWith(options, contributed), tools: contributed.tools, records };
+  const gates = records.flatMap(({ gate }) => (gate === undefined ? [] : [gate]));
+  return {
+    options: optionsWith(options, contributed),
+    tools: contributed.tools,
+    records,
+    watchSecrets: () => {
+      const stops = gates.map((gate) => gate.watch());
+      return () => {
+        for (const stop of stops) stop();
+      };
+    },
+  };
 }
