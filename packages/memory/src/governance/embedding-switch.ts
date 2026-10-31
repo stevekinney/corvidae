@@ -8,7 +8,7 @@ import type { MemoryRecord } from '../types';
 import type { GovernanceContext } from './governance-context';
 import type { ActiveEmbedding } from './governed-embedding';
 import type { MemoryEmbeddingSwitchResult } from './governed-memory-types';
-import { putRecordVector } from './profile-vectors';
+import { evictCachedContent, putRecordVector } from './profile-vectors';
 
 /** How many records one `memory.embedding.advance()` embeds when its caller names no limit. */
 export const DEFAULT_SWITCH_STEP_LIMIT = 500;
@@ -18,6 +18,12 @@ export const TARGET_UNAVAILABLE = 'target-unavailable';
 
 /** The error a switch fails with when its profile was deleted while it still ran. */
 export const TARGET_MISSING = 'target-missing';
+
+/**
+ * How many times a start reads again after another writer moved the switch record or the active
+ * profile first. Each loss needs another switch to have started, ended, or completed meanwhile.
+ */
+const SWITCH_START_ATTEMPTS = 8;
 
 /** Whether two profiles are the same embedding. */
 export function sameProfile(left: MemoryEmbeddingProfile, right: MemoryEmbeddingProfile): boolean {
@@ -50,6 +56,7 @@ async function deleteOtherProfiles(
   below: number,
 ): Promise<void> {
   const { vectors } = context.embedding;
+  await vectors.resumeProfileDeletions();
   for (const profile of await vectors.listProfiles()) {
     if (profile.generation >= below || keep.some((kept) => sameProfile(kept, profile))) continue;
     await vectors.deleteProfile(profile);
@@ -61,6 +68,11 @@ async function deleteOtherProfiles(
  * its record is stored, the profiles that are neither active nor previous are deleted: a target a
  * crashed switch left, or one whose failure or cancellation did not finish its cleanup. The new
  * profile takes a fresh generation, so it is never one of them.
+ *
+ * The record is stored only while the switch record and the active profile are still what this
+ * start read. A start that lost to another writer deletes the profile it created and reads again,
+ * so it never records a switch from an embedding another switch replaced meanwhile, whose cleanup
+ * would delete the new active profile and which could never complete.
  */
 export async function switchEmbedder(
   context: GovernanceContext,
@@ -68,52 +80,54 @@ export async function switchEmbedder(
 ): Promise<MemoryEmbeddingSwitchResult> {
   const { embedding } = context;
   const { vectors } = embedding;
-  const availability = embedding.availability(id);
-  if (availability !== 'available') {
-    return {
-      outcome: 'refused',
-      reason: availability,
-      message:
-        availability === 'not-loaded'
-          ? `No embedder is loaded as "${id}".`
-          : `The embedder "${id}" needs setup before memory can use it.`,
-    };
+  for (let attempt = 0; attempt < SWITCH_START_ATTEMPTS; attempt++) {
+    const availability = embedding.availability(id);
+    if (availability !== 'available') {
+      return {
+        outcome: 'refused',
+        reason: availability,
+        message:
+          availability === 'not-loaded'
+            ? `No embedder is loaded as "${id}".`
+            : `The embedder "${id}" needs setup before memory can use it.`,
+      };
+    }
+    const existing = await vectors.getJob();
+    if (existing?.state === 'running') return runningRefusal(existing);
+    const from = await vectors.activeProfile(embedding.initialProfile);
+    if (from.embedderId === id) {
+      return {
+        outcome: 'refused',
+        reason: 'already-active',
+        message: `Memory already embeds with "${id}".`,
+      };
+    }
+    const { dimension } = embedding.registry.describe(id)!;
+    let target: MemoryEmbeddingProfile;
+    do {
+      target = { embedderId: id, dimension, generation: await vectors.nextGeneration() };
+    } while (!(await vectors.createProfile(target)));
+    const job: MemoryEmbeddingJob = { from, target, state: 'running', done: 0, total: 0 };
+    if (await vectors.startJob(existing, job)) {
+      // Only the switch whose record was stored cleans up, so a starter that lost never deletes the
+      // winner's profile. What a crash before this line leaves goes when this switch completes.
+      const previous = await vectors.getPreviousProfile();
+      await deleteOtherProfiles(
+        context,
+        previous === undefined ? [from] : [from, previous],
+        target.generation,
+      );
+      return { outcome: 'started', target };
+    }
+    // Another writer moved the switch record or the active profile first; this profile is never
+    // filled.
+    await vectors.deleteProfile(target);
   }
-  const existing = await vectors.getJob();
-  if (existing?.state === 'running') return runningRefusal(existing);
-  const from = await vectors.activeProfile(embedding.initialProfile);
-  if (from.embedderId === id) {
-    return {
-      outcome: 'refused',
-      reason: 'already-active',
-      message: `Memory already embeds with "${id}".`,
-    };
-  }
-  const { dimension } = embedding.registry.describe(id)!;
-  let target: MemoryEmbeddingProfile;
-  do {
-    target = { embedderId: id, dimension, generation: await vectors.nextGeneration() };
-  } while (!(await vectors.createProfile(target)));
-  const job: MemoryEmbeddingJob = { from, target, state: 'running', done: 0, total: 0 };
-  if (await vectors.replaceJob(existing, job)) {
-    // Only the switch whose record was stored cleans up, so a starter that lost never deletes the
-    // winner's profile. What a crash before this line leaves goes when this switch completes.
-    const previous = await vectors.getPreviousProfile();
-    await deleteOtherProfiles(
-      context,
-      previous === undefined ? [from] : [from, previous],
-      target.generation,
-    );
-    return { outcome: 'started', target };
-  }
-  // Another writer replaced the switch record first; this profile is never filled.
-  await vectors.deleteProfile(target);
-  const current = await vectors.getJob();
-  if (current?.state === 'running') return runningRefusal(current);
   return {
     outcome: 'refused',
     reason: 'job-running',
-    message: 'Another switch started or ended while this one was starting; read the status again.',
+    message:
+      'Other switches kept starting or ending while this one was starting; read the status again.',
   };
 }
 
@@ -211,11 +225,14 @@ async function embedPending(
   const current = await context.storage.get(item.reference.id, item.reference.scope);
   if (current?.version === item.record.version) return 'held';
   await vectors.delete(job.target, item.reference);
+  // A deleted record's `caches` target may have run before this embed cached its content again.
+  if (current === undefined) await evictCachedContent(context, item.record.content);
   return 'withdrawn';
 }
 
 /**
- * One step of the running switch (see `GovernedMemoryEmbedding.advance`): embeds up to `limit`
+ * One step of the running switch (see `GovernedMemoryEmbedding.advance`), after finishing any
+ * profile deletion a stopped process or a failed write left part-way: embeds up to `limit`
  * records its target lacks, and completes it, making its target active in one compare-and-swap,
  * once a survey finds nothing pending. On completion the profiles other than the new active one and
  * the one it replaced are deleted, so the embedding two switches back goes.
@@ -226,6 +243,8 @@ export async function advanceSwitch(context: GovernanceContext, limit: number): 
   }
   const { embedding } = context;
   const { vectors } = embedding;
+  // Each step, a switch running or not, finishes a profile deletion that stopped part-way.
+  await vectors.resumeProfileDeletions();
   let job = await vectors.getJob();
   if (job?.state !== 'running') return;
   const registered = embedding.registry.describe(job.target.embedderId);
@@ -276,7 +295,7 @@ async function embedInto(
   content: string,
 ): Promise<void> {
   const [vector] = (await context.embedding.bind(profile).embed([content])) as [Float32Array];
-  await putRecordVector(context, profile, reference, { version, vector });
+  await putRecordVector(context, profile, reference, { version, vector }, content);
 }
 
 /**

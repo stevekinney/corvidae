@@ -44,8 +44,9 @@ export interface MemoryEmbedderSetting {
   /** Starts the switch an applied write asks for. */
   afterUpdate(keys: readonly SettingKey[]): Promise<void>;
   /**
-   * One maintenance pass: advances the running switch, starts one a write asked for that never
-   * started, and sets the setting back after a switch that failed or was cancelled.
+   * One maintenance pass: advances the running switch (a step also finishes a profile deletion
+   * that stopped part-way), starts one a write asked for that never started, and sets the setting
+   * back after a switch that failed or was cancelled.
    */
   reconcile(): Promise<void>;
 }
@@ -94,11 +95,9 @@ export function createMemoryEmbedderSetting(
   }
 
   async function reconcileOnce(target: GovernedMemory): Promise<void> {
-    let status = await target.embedding.status();
-    if (status.job?.state === 'running') {
-      // Memory's own step size: a larger store takes several passes.
-      status = await target.embedding.advance({ limit: DEFAULT_SWITCH_STEP_LIMIT });
-    }
+    // Every pass, a switch running or not: a step also finishes a profile deletion a stopped
+    // process left part-way. Memory's own step size: a larger store takes several passes.
+    const status = await target.embedding.advance({ limit: DEFAULT_SWITCH_STEP_LIMIT });
     const requested = settings()['memory.embedder'];
     const active = status.active.embedder;
     if (requested === undefined || requested === active || status.job?.state === 'running') return;

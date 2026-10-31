@@ -90,8 +90,10 @@ export class MemoryVectorDimensionError extends Error {
     readonly received: number,
   ) {
     super(
-      `The embedder "${profile.embedderId}" is registered with ${profile.dimension} dimensions, ` +
-        `but gave a vector of ${received}; a profile holds one dimension only.`,
+      received === profile.dimension
+        ? `The embedder "${profile.embedderId}" gave a vector holding an entry that is not a finite number.`
+        : `The embedder "${profile.embedderId}" is registered with ${profile.dimension} dimensions, ` +
+            `but gave a vector of ${received}; a profile holds one dimension only.`,
     );
     this.name = 'MemoryVectorDimensionError';
   }
@@ -159,7 +161,10 @@ export interface MemoryVectorStore {
     scope: MemoryRecordScope,
     ids: readonly string[],
   ): Promise<Map<string, StoredMemoryVector>>;
-  /** Deletes the referenced records' vectors from every profile the store holds. */
+  /**
+   * Deletes the referenced records' vectors from every profile the store holds, and from every
+   * profile whose deletion has not finished.
+   */
   deleteMany(references: readonly MemoryVectorReference[]): Promise<void>;
   /** Whether {@link MemoryVectorStore.markInlineVectorsCopied} has run on this store. */
   inlineVectorsCopied(): Promise<boolean>;
@@ -181,9 +186,17 @@ export interface MemoryVectorStore {
   /**
    * Removes `profile` and every vector it holds. The marker goes first, so a {@link
    * MemoryVectorStore.put} into the profile that has not committed yet is refused, and one that
-   * has is among the vectors removed.
+   * has is among the vectors removed. In the same write a deletion checkpoint is stored, and it
+   * goes last: until then {@link MemoryVectorStore.deleteMany} still reaches the profile's vectors,
+   * and {@link MemoryVectorStore.resumeProfileDeletions} finishes a deletion that stopped part-way.
    */
   deleteProfile(profile: MemoryEmbeddingProfile): Promise<void>;
+  /**
+   * Finishes every profile deletion that stopped after its marker went (a process that stopped, or
+   * a failed write): removes the vectors left and the checkpoint. A deletion still running
+   * alongside is finished twice, which removes nothing the first did not.
+   */
+  resumeProfileDeletions(): Promise<void>;
   /** Deletes one record's vector from `profile` alone, leaving its vectors in other profiles. */
   delete(profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): Promise<void>;
   /** The switch record, or `undefined` when no switch is running or has ended without completing. */
@@ -196,6 +209,13 @@ export interface MemoryVectorStore {
     expected: MemoryEmbeddingJob | undefined,
     next: MemoryEmbeddingJob | undefined,
   ): Promise<boolean>;
+  /**
+   * Stores `job`, a switch starting from `job.from` into `job.target`, as the switch record, in one
+   * compare-and-swap: only if the record still is `expected`, the active profile still is
+   * `job.from`, and the store still holds `job.target`. Returns `false`, changing nothing, when any
+   * of them moved, so a start never records a switch from an embedding another switch replaced.
+   */
+  startJob(expected: MemoryEmbeddingJob | undefined, job: MemoryEmbeddingJob): Promise<boolean>;
   /**
    * Completes the switch `expected` describes, in one compare-and-swap: its target becomes the
    * active profile, its `from` becomes the previous one, and the record is removed. Returns `false`,
@@ -330,6 +350,8 @@ function scopeComponent(scope: MemoryRecordScope): string {
  * - `inline-vectors-copied`: present once the vectors records held inline
  *   before COR-1898 were copied into the profile they were made in;
  * - `p:<embedderId>:<dimension>:<generation>`: one marker per profile;
+ * - `d:<embedderId>:<dimension>:<generation>`: the checkpoint of a profile being deleted, stored
+ *   with the marker's removal and removed once its vectors are gone;
  * - `v:<embedderId>:<dimension>:<generation>:t:<tenantId>:n:<namespace>:r:<id>`:
  *   one record's vector, `{ schemaVersion: 1, version, vector }`.
  *
@@ -351,6 +373,10 @@ export function createMemoryVectorStore(
   const jobKey = `${prefix}job`;
   const profileKey = (profile: MemoryEmbeddingProfile): string =>
     `${prefix}p:${profileComponent(profile)}`;
+  const deletingKey = (profile: MemoryEmbeddingProfile): string =>
+    `${prefix}d:${profileComponent(profile)}`;
+  const profileVectorsPrefix = (profile: MemoryEmbeddingProfile): string =>
+    `${prefix}v:${profileComponent(profile)}:`;
   const recordComponent = (reference: MemoryVectorReference): string =>
     `${scopeComponent(reference.scope)}:r:${encodeStorageKeyComponent(reference.id)}`;
   const vectorKey = (profile: MemoryEmbeddingProfile, reference: MemoryVectorReference): string =>
@@ -360,6 +386,19 @@ export function createMemoryVectorStore(
     const profiles: MemoryEmbeddingProfile[] = [];
     for await (const [, value] of storage.scan(`${prefix}p:`)) profiles.push(decodeProfile(value));
     return profiles;
+  }
+
+  /** The profiles whose deletion has started and not finished. */
+  async function listDeletingProfiles(): Promise<MemoryEmbeddingProfile[]> {
+    const profiles: MemoryEmbeddingProfile[] = [];
+    for await (const [, value] of storage.scan(`${prefix}d:`)) profiles.push(decodeProfile(value));
+    return profiles;
+  }
+
+  /** Removes a deleting profile's vectors, then its checkpoint, which goes only once they are gone. */
+  async function finishDeletion(profile: MemoryEmbeddingProfile): Promise<void> {
+    await storageDeletePrefix(storage, profileVectorsPrefix(profile));
+    await storage.delete(deletingKey(profile));
   }
 
   return {
@@ -437,7 +476,14 @@ export function createMemoryVectorStore(
       // Encoded before the first await, so a caller that reuses its array cannot change the deletion.
       const records = references.map(recordComponent);
       const operations: BatchOperation[] = [];
-      for (const profile of await listProfiles()) {
+      // A profile whose deletion stopped part-way still holds vectors; its marker is gone, but its
+      // checkpoint is not. Read after the markers, so a deletion that starts between the two reads
+      // is seen in one of them.
+      const profiles = new Map<string, MemoryEmbeddingProfile>();
+      for (const profile of [...(await listProfiles()), ...(await listDeletingProfiles())]) {
+        profiles.set(profileComponent(profile), profile);
+      }
+      for (const profile of profiles.values()) {
         for (const record of records) {
           operations.push({
             type: 'delete',
@@ -492,8 +538,16 @@ export function createMemoryVectorStore(
 
     async deleteProfile(profile) {
       checkProfile(profile);
-      await storage.delete(profileKey(profile));
-      await storageDeletePrefix(storage, `${prefix}v:${profileComponent(profile)}:`);
+      // One write: from here on `put` is refused, and the checkpoint keeps the vectors reachable.
+      await storageBatch(storage, [
+        { type: 'put', key: deletingKey(profile), value: encodeProfile(profile) },
+        { type: 'delete', key: profileKey(profile) },
+      ]);
+      await finishDeletion(profile);
+    },
+
+    async resumeProfileDeletions() {
+      for (const profile of await listDeletingProfiles()) await finishDeletion(profile);
     },
 
     async delete(profile, reference) {
@@ -515,6 +569,19 @@ export function createMemoryVectorStore(
             ? { type: 'delete', key: jobKey }
             : { type: 'put', key: jobKey, value: encodeJob(next) },
         ],
+      );
+    },
+
+    async startJob(expected, job) {
+      jobSchema.parse(JSON.parse(textDecoder.decode(encodeJob(job))));
+      return storageConditionalBatch(
+        storage,
+        [
+          { key: jobKey, expectedValue: expected === undefined ? null : encodeJob(expected) },
+          { key: activeKey, expectedValue: encodeProfile(job.from) },
+          { key: profileKey(job.target), expectedValue: encodeProfile(job.target) },
+        ],
+        [{ type: 'put', key: jobKey, value: encodeJob(job) }],
       );
     },
 

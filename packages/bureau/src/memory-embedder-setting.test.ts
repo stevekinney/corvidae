@@ -9,6 +9,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createEmbedderRegistry,
   createGovernedMemory,
+  DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
   createMemoryGovernancePolicy,
@@ -16,9 +17,11 @@ import {
   createWeftMemoryRecordStorage,
   type GovernedMemory,
   HASHING_EMBEDDER_ID,
+  type MemoryEmbeddingProfile,
 } from '@lostgradient/memory';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Embedder } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -133,6 +136,32 @@ async function setEmbedder(bureau: Bureau<AgentDefinitions>, embedder: string) {
 async function embedderSetting(bureau: Bureau<AgentDefinitions>): Promise<unknown> {
   const snapshot = await bureau.settings.get();
   return snapshot.values['memory.embedder'];
+}
+
+/** `storage`, whose first `deletePrefix` fails, as a process that stops part-way would. */
+function stoppingOnFirstDeletePrefix(storage: MemoryStorage): MemoryStorage {
+  let stopped = false;
+  return new Proxy(storage, {
+    get(target, key) {
+      if (key === 'deletePrefix' && !stopped) {
+        return async () => {
+          stopped = true;
+          throw new Error('The storage stopped while deleting a profile.');
+        };
+      }
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+/** The stored keys under `prefix` in the memory vector store's key space. */
+async function vectorStoreKeys(storage: MemoryStorage, prefix: string): Promise<string[]> {
+  const keys: string[] = [];
+  for await (const [key] of storage.scan(`${DEFAULT_MEMORY_VECTOR_KEY_PREFIX}${prefix}`)) {
+    keys.push(key);
+  }
+  return keys;
 }
 
 async function remember(memory: GovernedMemory, content: string): Promise<string> {
@@ -292,5 +321,30 @@ describe('memory.embedder', () => {
     const status = await memory.embedding.status();
     expect(status.job).toMatchObject({ state: 'failed', error: 'target-unavailable' });
     expect(await embedderSetting(bureau)).toBe(HASHING_EMBEDDER_ID);
+  });
+
+  it('finishes a profile deletion that stopped part-way on the next maintenance pass, with no switch running', async () => {
+    const { bureau, memory, durable } = await start();
+    const stopping = createMemoryVectorStore(stoppingOnFirstDeletePrefix(durable));
+    const leftover: MemoryEmbeddingProfile = {
+      embedderId: FAKE,
+      dimension: DIMENSION,
+      generation: await stopping.nextGeneration(),
+    };
+    expect(await stopping.createProfile(leftover)).toBe(true);
+    await stopping.put(
+      leftover,
+      { id: 'orphan', scope: { tenantId: BUREAU_ID, namespace: 'leftover' } },
+      { version: 1, vector: new Float32Array(DIMENSION).fill(1) },
+    );
+    expect(await throwingRejectionOf(stopping.deleteProfile(leftover))).toThrow('stopped');
+    expect(await vectorStoreKeys(durable, 'v:')).toHaveLength(1);
+    const idle = await memory.embedding.status();
+    expect(idle.job).toBeUndefined();
+
+    await bureau.maintain();
+
+    expect(await vectorStoreKeys(durable, 'v:')).toEqual([]);
+    expect(await vectorStoreKeys(durable, 'd:')).toEqual([]);
   });
 });

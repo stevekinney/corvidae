@@ -537,6 +537,7 @@ export interface GovernedMemoryEmbedding {
    * Recall keeps the active profile until the switch completes. While it runs, every admission is
    * embedded into both profiles, and every deletion removes the record from both. Starting deletes
    * the profiles that are neither active nor the previous one, such as a crashed switch's target.
+   * A start reads again when another switch started, ended or completed while it was starting.
    */
   switchTo(id: string): Promise<MemoryEmbeddingSwitchResult>;
   /**
@@ -547,9 +548,12 @@ export interface GovernedMemoryEmbedding {
   /**
    * Embeds records the running switch's target lacks, and completes the switch, in one step, once
    * it holds every stored record. A switch whose embedder is no longer registered fails as
-   * `target-unavailable`; one whose embedder errors fails with that error. A failed switch's
-   * profile is deleted. Memory runs nothing on a timer, so the host calls this, as it calls
-   * {@link GovernedMemory.processDeletionPropagation}. Returns the status after the step.
+   * `target-unavailable`; one whose embedder errors, or gives a vector of the wrong length or with
+   * an entry that is not a finite number, fails with that error. A failed switch's profile is
+   * deleted. Every step, a switch running or not, first finishes any profile deletion that stopped
+   * part-way. Memory runs nothing on a timer, so the host calls this, as it calls
+   * {@link GovernedMemory.processDeletionPropagation}, whether or not a switch runs. Returns the
+   * status after the step.
    */
   advance(options?: MemoryEmbeddingAdvanceOptions): Promise<MemoryEmbeddingStatus>;
 }

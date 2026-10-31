@@ -197,10 +197,13 @@ export async function storeGovernedRecord(
   const vectorReference = { id: record.id, scope: input.scope };
   let written: MemoryEmbeddingProfile | undefined = active.profile;
   try {
-    await putRecordVector(context, active.profile, vectorReference, {
-      version: record.version,
-      vector,
-    });
+    await putRecordVector(
+      context,
+      active.profile,
+      vectorReference,
+      { version: record.version, vector },
+      input.content,
+    );
   } catch (error) {
     // Two switches completed since the profile was read, and the second deleted it. The record is
     // embedded into the active profile below instead.
