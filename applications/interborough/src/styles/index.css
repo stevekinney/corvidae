@@ -20,6 +20,7 @@
 @import './schedules.css';
 @import './decisions.css';
 @import './agents.css';
+@import './capabilities.css';
 
 /* Theme contract: `color-scheme: light dark` lets the browser/OS pick a
  * default; an explicit `data-theme="light" | "dark"` attribute on <html>

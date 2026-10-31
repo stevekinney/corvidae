@@ -13,6 +13,7 @@ import {
   Play,
   SlidersHorizontal,
   Workflow,
+  Wrench,
 } from '@lucide/svelte';
 
 import type { ShortcutRegistry } from '../../lib/shortcuts.ts';
@@ -38,6 +39,7 @@ export const DESTINATIONS: readonly Destination[] = [
   { view: 'chat', path: '/chats', letter: 'c', icon: MessageSquare, pinned: false },
   { view: 'reviews', path: '/reviews', letter: 'v', icon: Inbox, pinned: false },
   { view: 'agents', path: '/agents', letter: 'a', icon: Bot, pinned: false },
+  { view: 'capabilities', path: '/capabilities', letter: 'p', icon: Wrench, pinned: false },
   { view: 'workflows', path: '/workflows', letter: 'w', icon: Workflow, pinned: false },
   { view: 'runs', path: '/runs', letter: 'r', icon: Play, pinned: false },
   { view: 'schedules', path: '/schedules', letter: 's', icon: CalendarClock, pinned: false },
