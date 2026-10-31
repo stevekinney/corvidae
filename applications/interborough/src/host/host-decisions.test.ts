@@ -8,6 +8,7 @@
  */
 import { openBungalow } from '@lostgradient/bungalow';
 import { TYPESAFE_API_KEY_SECRET } from '@lostgradient/plugin-typesafe';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -86,6 +87,16 @@ describe('the TypeSafe decision model', () => {
     });
 
     await host.plugins.saveSecret('typesafe', TYPESAFE_API_KEY_SECRET, FIXTURE_KEY);
+    // The gate re-reads the key when the host's watch reports it saved; the plugin runs once it has.
+    await waitUntil(
+      async () => {
+        const listing = await typesafeListing(host);
+        return listing?.status === 'running';
+      },
+      {
+        message: 'the typesafe plugin to run after its key was saved',
+      },
+    );
     const failure = await decide(host, { kind: 'boolean', question: 'Is it?' });
 
     // The refused request is TypeSafe's, not a needs-setup refusal or a fallback's.
