@@ -3086,6 +3086,25 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'It may belong to someone else. Open a goal from the list.',
     },
   },
+  hooks: {
+    label: 'Hooks',
+    loading: { title: 'Loading hooks', description: 'Reading the hooks you have written.' },
+    empty: {
+      title: 'No hooks yet',
+      description:
+        'A hook does something when an event happens: it sends a signed message, starts a workflow, or notifies you.',
+      action: { label: 'New hook', href: '/hooks/new' },
+    },
+    error: {
+      title: 'Hooks are unavailable',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'Hooks are locked' },
+    notFound: {
+      title: 'This hook was not found',
+      description: 'It may belong to someone else, or it was deleted. Open a hook from the list.',
+    },
+  },
   health: {
     label: 'Health',
     loading: { title: 'Loading health', description: 'Reading the health overview.' },

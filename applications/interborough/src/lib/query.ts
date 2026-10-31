@@ -117,6 +117,20 @@ export const queryKeys = {
     /** Every goal, a page at a time, read by the runs list and a run's page for a goal's attempts. */
     runs: () => ['goals', 'runs'] as const,
   },
+  /** The caller's hooks (`bureau.hooks.*`) and the event kinds a hook can listen to. */
+  hooks: {
+    list: () => ['hooks', 'list'] as const,
+    /** One hook, read by its page. */
+    detail: (hookId: string) => ['hooks', 'detail', hookId] as const,
+    /** The newest delivery of one hook, read for the list's Last delivery column. */
+    last: (hookId: string) => ['hooks', 'last', hookId] as const,
+    /** The newest deliveries of one hook. */
+    deliveries: (hookId: string) => ['hooks', 'deliveries', hookId] as const,
+    /** The workflows a hook can start. */
+    workflows: () => ['hooks', 'workflows'] as const,
+    /** The event kinds a hook can listen to (`bureau.events.catalog`). */
+    events: () => ['hooks', 'events'] as const,
+  },
   /** The audit trail, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,

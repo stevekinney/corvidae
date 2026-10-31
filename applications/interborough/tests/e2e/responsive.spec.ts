@@ -72,6 +72,9 @@ const CHAT_THREAD = newThreadId('responsive');
 /** The chats whose runs wait on, and have had, an approval: each title is one 300-character word. */
 const REVIEW_THREAD = newThreadId('responsive-review');
 const DECIDED_REVIEW_THREAD = newThreadId('responsive-decided-review');
+/** A hook with a name at the Bureau's longest and an address that has no place to break. */
+const LONG_HOOK_NAME = 'h'.repeat(100);
+const LONG_HOOK_URL = `http://127.0.0.1:9/${'u'.repeat(300)}`;
 const LONG_REVIEW_TITLE = `Refund ${'w'.repeat(300)}`;
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
@@ -120,6 +123,10 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules/:schedule': /Next fires/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,
+  // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
+  '/hooks': /No answer/,
+  '/hooks/new': /Signing secret/,
+  '/hooks/:hook': /No answer/,
   // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
   '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
@@ -414,6 +421,14 @@ test.beforeAll(async ({ playwright }) => {
     const runs = (await listed.json()) as { items?: { id: string }[] };
     const scheduled = await request.get('/v1/schedules');
     const schedules = (await scheduled.json()) as { items?: { id: string }[] };
+    const hook = (await bureauCall(request, 'bureau.hooks.create', {
+      name: LONG_HOOK_NAME,
+      events: ['goal.attempt.evaluating', 'review.requested', 'definitions.changed'],
+      action: { type: 'webhook', url: LONG_HOOK_URL },
+      signingSecret: 'responsive-signing-secret-0123456789',
+    })) as { id: string };
+    // Nothing listens on the address, so the test delivery fails: a failing hook, with a long error.
+    await bureauCall(request, 'bureau.hooks.test', { hookId: hook.id });
     const seed: ResponsiveSeed = {
       chat: CHAT_THREAD,
       agent: AGENT_ID,
@@ -425,6 +440,7 @@ test.beforeAll(async ({ playwright }) => {
       run: runs.items?.[0]?.id ?? 'responsive-run',
       schedule: schedules.items?.[0]?.id ?? 'responsive-schedule',
       goal: SEEDED_GOAL_RUN_IDENTIFIER,
+      hook: hook.id,
       review: `bureau:${waitingReview}`,
       decidedReview: `bureau:${decidedReview}`,
     };
@@ -442,6 +458,13 @@ test.afterAll(async ({ playwright }) => {
     await removeAgent(request, INSTRUCTIONS_AGENT_ID);
     await request.delete(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`);
     await removeCatalogRow(request, LONG_MODEL);
+    const hooks = (await bureauCall(request, 'bureau.hooks.list', {})) as {
+      hooks: { id: string; name: string | null }[];
+    };
+    for (const hook of hooks.hooks) {
+      if (hook.name === LONG_HOOK_NAME)
+        await bureauCall(request, 'bureau.hooks.delete', { hookId: hook.id });
+    }
     const listed = await request.post('/bureau/jsonrpc', {
       data: {
         jsonrpc: '2.0',

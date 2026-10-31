@@ -83,6 +83,7 @@ const DESTINATIONS = [
   'Runs',
   'Schedules',
   'Goals',
+  'Hooks',
   'Health',
   'Settings',
 ];
@@ -124,6 +125,7 @@ describe('the sidebar', () => {
       Runs: '/runs',
       Schedules: '/schedules',
       Goals: '/goals',
+      Hooks: '/hooks',
       Health: '/health',
       Settings: '/settings',
     });
@@ -218,6 +220,7 @@ describe('the sidebar', () => {
       Runs: 'Runs (g r)',
       Schedules: 'Schedules (g s)',
       Goals: 'Goals (g l)',
+      Hooks: 'Hooks (g h)',
       Health: 'Health (g e)',
       Settings: 'Settings (g n)',
     });

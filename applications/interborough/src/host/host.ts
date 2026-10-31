@@ -739,6 +739,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // The workflow files a running plugin ships (COR-1977): its `content/workflows`, read-only, beneath the owner's.
       pluginWorkflowSource: createPluginWorkflowSource,
       ...(settings === undefined ? {} : { settings }),
+      // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
+      // Bureau's events. A remote home leaves them off: its signing secrets would have to live in
+      // the environment and its private-network addresses are not the person's own, so the Hooks
+      // page says they are off there instead of offering a form that could only be refused.
+      ...(bungalow.mode === 'remote' ? {} : { hooks: {} }),
     });
     held.bureau = bureau;
     // One line per plugin with its status and problem codes, once Bureau has composed them.

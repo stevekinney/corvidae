@@ -203,6 +203,29 @@ export const routes: readonly RouteDefinition[] = [
     view: 'reviews',
     load: () => import('../routes/reviews/index.svelte'),
   },
+  // The caller's hooks, the page that makes one, and one hook's editor with its recent deliveries.
+  // `new` is a path segment, not a hook: its route comes before `/hooks/:hook`.
+  {
+    pattern: '/hooks',
+    kind: 'table',
+    crumb: VIEW_COPY.hooks.label,
+    view: 'hooks',
+    load: () => import('../routes/hooks/index.svelte'),
+  },
+  {
+    pattern: '/hooks/new',
+    kind: 'editor',
+    crumb: 'New hook',
+    view: 'hooks',
+    load: () => import('../routes/hooks/index.svelte'),
+  },
+  {
+    pattern: '/hooks/:hook',
+    kind: 'editor',
+    crumb: { param: 'hook' },
+    view: 'hooks',
+    load: () => import('../routes/hooks/index.svelte'),
+  },
   // The list of goals, the page that makes one, and one goal with its attempts. `new` is a path
   // segment, not a goal: its route comes before `/goals/:goal`.
   {

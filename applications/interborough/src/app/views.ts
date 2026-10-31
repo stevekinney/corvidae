@@ -20,6 +20,7 @@ export const VIEW_NAMES = [
   'audit',
   'settings',
   'goals',
+  'hooks',
   'health',
 ] as const;
 
@@ -136,6 +137,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // In the sidebar after Schedules. Holds no console scope, as the audit trail holds none: a caller
   // sees the goals it owns. `/goals/new` is where the first goal is made, so it is never empty.
   goals: { density: 'comfortable', scopes: [], canBeEmpty: true },
+  // In the sidebar after Goals. Holds no console scope: a caller sees the hooks it owns. A home that
+  // keeps hooks off answers the page's own words, not the frame's. `/hooks/new` is where the first
+  // hook is made, so the frame never calls the view empty there.
+  hooks: { density: 'comfortable', scopes: [], canBeEmpty: true },
   // The operator's page: `system:read` alone reaches it, and so does `workflows:read` alone. Each
   // count and band that needs a scope the caller lacks shows a dash instead of failing the page.
   health: { density: 'compact', scopes: ['system:read', 'workflows:read'], canBeEmpty: false },
