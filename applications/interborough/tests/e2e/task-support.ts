@@ -61,14 +61,16 @@ export async function threadMessages(
 }
 
 /**
- * Covers the 404 the run page's read of the workflow engine logs for a task. On the default host a
- * task is an engine run, and the page asks the engine for it; this suite's engine is a fixture that
- * holds none of the Bureau's tasks, so it answers each read with a 404 (the page shows no engine
- * sections). How many reads there are follows the page's mounts and refetches, so none is counted.
+ * Covers the 404 the run page's read of the workflow engine logs for a run of the Bureau's (a task,
+ * or a goal's attempt). On the default host those are engine runs, and the page asks the engine for
+ * them; this suite's engine is a fixture that holds none of them, so it answers each read with a
+ * 404 (the page shows no engine sections). How many reads there are follows the page's mounts and
+ * refetches, so none is counted, and a read that lands after the test ends is no failure.
  */
-export function expectEngineMissesForTasks(pageErrors: PageErrorLog): void {
+export function expectEngineMissesForRuns(pageErrors: PageErrorLog): void {
   pageErrors.expectEvery({
-    pattern: loggedFailedResponse(404, /\/v1\/workflows\/run-\d+-[0-9a-f-]+:\d+\)/),
-    reason: 'the fixture engine holds no task, so the run page’s engine read of a task is a 404',
+    pattern: loggedFailedResponse(404, /\/v1\/workflows\/(?:run|goal)-[^\s)]+\)/),
+    reason:
+      'the fixture engine holds no task or attempt, so the run page’s engine read of one is a 404',
   });
 }

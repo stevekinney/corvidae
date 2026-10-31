@@ -3,6 +3,7 @@
  * waiting on, through `/runs/:run` and the route outlet, over a Bureau that answers from a table.
  */
 import { HttpClient } from '@lostgradient/weft';
+import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -23,6 +24,7 @@ import {
 } from '../../../lib/bureau-world.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
+import RunWaitingHarness from './run-waiting.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
 afterEach(() => {
@@ -227,6 +229,114 @@ describe('what a run is waiting on', () => {
       expect(view.container.querySelector('[data-section="waiting"]')).not.toBeNull(),
     );
     expect(view.container.querySelector('[data-question-answer]')?.textContent).toBe('staging');
+  });
+
+  test('a task read that lands before the answer is taken keeps the row, and then says what was answered', async () => {
+    const reviewId = 'human-wait:run-1:environment:0';
+    const task = waitingOn('human-wait', reviewId);
+    stub = installBureauWorld(
+      emptyBureauWorld({
+        tasks: [task],
+        reviews: [humanWaitFixture({ id: reviewId, runId: 'run-1' })],
+      }),
+    );
+    let release: () => void = () => undefined;
+    const taken = new Promise<void>((resolve) => (release = resolve));
+    stub.on('bureau.tasks.respond', async (params) => {
+      await taken;
+      return {
+        taskId: 'run-1',
+        messageId: params['messageId'],
+        reviewId,
+        kind: 'human-wait',
+        decision: 'approve',
+        receipt: 'applied',
+      };
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(RunWaitingHarness, { props: { task, queryClient } });
+
+    await view.findByText('Which environment should the release go to?');
+    await fireEvent.input(view.getByLabelText('Your answer'), { target: { value: 'staging' } });
+    await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond')).toHaveLength(1));
+    // The task is read again, and no longer lists the wait, before the answer is taken.
+    await view.rerender({ task: { ...task, openWaits: [], status: 'completed' } });
+    // The review is read again too, and is closed.
+    stub.on('bureau.reviews.get', () => humanWaitFixture({ id: reviewId, status: 'approved' }));
+    await queryClient.invalidateQueries({ queryKey: ['bureau-reviews'] });
+    expect(await view.findByText(TASK_COPY.sendingAnswer)).not.toBeNull();
+    expect(view.queryByText(TASK_COPY.waitGone)).toBeNull();
+    release();
+
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-question-answer]')?.textContent).toBe('staging'),
+    );
+    expect(view.queryByText(TASK_COPY.waitGone)).toBeNull();
+    // Nothing is waiting on the person any more, so the section does not say it is.
+    expect(view.queryByText(TASK_COPY.waitsHeading)).toBeNull();
+    expect(view.getByText(TASK_COPY.waitsAnsweredHeading)).not.toBeNull();
+  });
+
+  test('a yes or no is sent as JSON text, and the row reads the answer given', async () => {
+    const reviewId = 'human-wait:run-1:environment:0';
+    const view = open(waitingOn('human-wait', reviewId), {
+      reviews: [
+        humanWaitFixture({ id: reviewId, runId: 'run-1', inputSchema: { type: 'boolean' } }),
+      ],
+    });
+    stub?.on('bureau.tasks.respond', (params) => ({
+      taskId: 'run-1',
+      messageId: params['messageId'],
+      reviewId,
+      kind: 'human-wait',
+      decision: 'approve',
+      receipt: 'applied',
+    }));
+
+    await view.findByText('Which environment should the release go to?');
+    await fireEvent.click(view.getByRole('button', { name: 'Yes' }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.tasks.respond')[0]?.params).toMatchObject({ answer: 'true' });
+    expect(await view.findByText('Yes', { selector: '[data-question-answer]' })).not.toBeNull();
+  });
+
+  test('a pick of several is sent as a JSON array', async () => {
+    const reviewId = 'human-wait:run-1:environment:0';
+    const view = open(waitingOn('human-wait', reviewId), {
+      reviews: [
+        humanWaitFixture({
+          id: reviewId,
+          runId: 'run-1',
+          inputSchema: {
+            type: 'array',
+            uniqueItems: true,
+            minItems: 1,
+            items: { enum: ['staging', 'production'] },
+          },
+        }),
+      ],
+    });
+    stub?.on('bureau.tasks.respond', (params) => ({
+      taskId: 'run-1',
+      messageId: params['messageId'],
+      reviewId,
+      kind: 'human-wait',
+      decision: 'approve',
+      receipt: 'applied',
+    }));
+
+    await view.findByText('Which environment should the release go to?');
+    await fireEvent.click(view.getByLabelText('staging'));
+    await fireEvent.click(view.getByLabelText('production'));
+    await fireEvent.click(view.getByRole('button', { name: /^Send$/ }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond')).toHaveLength(1));
+    expect(stub?.callsTo('bureau.tasks.respond')[0]?.params).toMatchObject({
+      answer: '["staging","production"]',
+    });
+    expect(await view.findByText(/staging/, { selector: '[data-question-answer]' })).not.toBeNull();
   });
 
   test('a secret question is a masked field, and what was answered is never shown', async () => {

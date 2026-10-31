@@ -16,7 +16,7 @@ import type { Page } from '@playwright/test';
 import { CHAT_COPY, CONNECTION_COPY, TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test, type PageErrorLog } from './fixtures.ts';
-import { taskOfSession } from './task-support.ts';
+import { expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
 
 /** Counts the console errors and failed requests an outage makes the page report. */
@@ -204,6 +204,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     request,
     pageErrors,
   }) => {
+    expectEngineMissesForRuns(pageErrors);
     const outage = watchOutage(page, REFUSED);
     const threadId = newThreadId('offline-cancel');
     const held = await startRun('barrier', threadId, 'Start the work');

@@ -38,6 +38,7 @@ import {
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
+import { expectEngineMissesForRuns } from './task-support.ts';
 import { removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
@@ -416,7 +417,9 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
 test('starts a run it does not release, reaches it from the chat’s run sentence, and cancels it', async ({
   page,
   request,
+  pageErrors,
 }) => {
+  expectEngineMissesForRuns(pageErrors);
   await page.goto(`/chats/new?agent=barrier`);
   await send(page, 'Hold this task');
   await expect(page).toHaveURL(sessionAddress);

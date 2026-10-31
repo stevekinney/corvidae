@@ -1653,6 +1653,8 @@ export const TASK_COPY = {
     description: 'The server did not answer. Check that the host is running, then try again.',
   },
   runTitle: 'Run',
+  /** The Bureau's side of a run is shown, and the workflow engine's could not be read. */
+  engineReadFailed: 'The workflow’s record could not be read',
   goalAttemptNote:
     'A goal made this run, so there is no task for it. The sections below show what the workflow recorded.',
   /** The same, for a caller who may not read the workflow, so there is nothing recorded to point to. */
@@ -1670,7 +1672,11 @@ export const TASK_COPY = {
     'This server cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
   waitsHeading: 'Waiting on you',
+  /** The heading once everything the run asked has been answered. */
+  waitsAnsweredHeading: 'Answered',
   readingWait: 'Reading what the run is waiting on.',
+  /** The answer is on its way and the wait has already closed. */
+  sendingAnswer: 'Sending your answer.',
   waitGone: 'This wait is no longer open.',
   waitLoadFailed: 'The wait could not be read.',
   humanWaitFallback: 'The agent is waiting for your answer.',

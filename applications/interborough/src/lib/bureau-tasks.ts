@@ -238,6 +238,16 @@ export async function respondToTask(
 }
 
 /**
+ * The text that carries a question control's answer to `bureau.tasks.respond`, which takes a
+ * string. Text goes as it is. Any other answer (a boolean, a number, an array of picks, an object)
+ * goes as its JSON, which the Bureau reads back into the value when the text itself does not fit the
+ * question's schema (`answerFromText`).
+ */
+export function taskAnswerText(value: unknown): string {
+  return typeof value === 'string' ? value : (JSON.stringify(value) ?? '');
+}
+
+/**
  * Why the Bureau refused an answer to a wait (`bureau.tasks.respond`) for reasons the person can
  * fix: the `data.issues` of the `InvalidParams` fault, with each path rooted at the answer (the
  * wire roots it at the request's `answer` field, which is dropped here). `undefined` for any other

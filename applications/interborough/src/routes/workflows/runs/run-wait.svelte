@@ -29,6 +29,7 @@
   import {
     answerRefusalIssues,
     respondToTask,
+    taskAnswerText,
     type TaskOpenWait,
   } from '../../../lib/bureau-tasks.ts';
   import ApprovalDecision from '../../../lib/decision/approval-decision.svelte';
@@ -42,11 +43,17 @@
   interface RunWaitProps {
     taskId: string;
     wait: TaskOpenWait;
-    /** Called once the question is answered, so the page can keep its row after the wait closes. */
-    onAnswered?: (() => void) | undefined;
+    /** The answer once it was sent; the page keeps it, so it outlives this row's wait. */
+    answered?: QuestionAnswerRecord | undefined;
+    /** Called as the answer is sent, so the page keeps this row if the task stops listing the wait. */
+    onSending?: (() => void) | undefined;
+    /** Called with what the answer reads as once the Bureau took it. */
+    onAnswered?: ((record: QuestionAnswerRecord) => void) | undefined;
+    /** Called when the answer was not taken, so the page need not keep a wait that is closed. */
+    onFailed?: (() => void) | undefined;
   }
 
-  let { taskId, wait, onAnswered }: RunWaitProps = $props();
+  let { taskId, wait, answered, onSending, onAnswered, onFailed }: RunWaitProps = $props();
 
   const queryClient = useQueryClient();
 
@@ -68,7 +75,6 @@
   const commandKey = createPendingCommandKey();
   let working = $state(false);
   let failure = $state<string | undefined>(undefined);
-  let answered = $state.raw<QuestionAnswerRecord | undefined>(undefined);
   let issues = $state.raw<readonly ChatQuestionIssue[]>([]);
 
   /** What a question that declares no schema takes: free text, which `bureau.tasks.respond` sends. */
@@ -80,10 +86,20 @@
       : FREE_TEXT_SCHEMA,
   );
 
-  async function answer(text: string): Promise<void> {
+  /**
+   * Sends what the question's control gave. Text goes as typed; any other answer (a yes or no, a
+   * pick of several, an object, a number) goes as the JSON text the Bureau reads back into it
+   * (`answerFromText`), and is recorded as the value it is.
+   */
+  async function answer(given: unknown): Promise<void> {
+    const value = typeof given === 'string' ? given.trim() : given;
+    const text = taskAnswerText(value);
     if (wait.kind !== 'human-wait' || text === '') return;
-    // What was asked is read once, before the first await: the props are the page's and move on.
+    // What was asked is read once, before the first await: the props are the page's and move on,
+    // and the task's next read may unmount this row while the answer is still on its way.
     const { reviewId, signalName } = wait;
+    const kept = { onAnswered, onFailed };
+    onSending?.();
     const prompt = review.data?.kind === 'human-wait' ? review.data.prompt : undefined;
     const answeredSchema = schema;
     working = true;
@@ -97,17 +113,19 @@
         signalName,
       });
       commandKey.confirmed();
-      answered = recordAnswer({
-        toolCallId: reviewId,
-        toolName: 'agent',
-        message: prompt,
-        schema: answeredSchema,
-        value: text,
-      });
-      onAnswered?.();
+      kept.onAnswered?.(
+        recordAnswer({
+          toolCallId: reviewId,
+          toolName: 'agent',
+          message: prompt,
+          schema: answeredSchema,
+          value,
+        }),
+      );
       await invalidateReviewQueries(queryClient);
     } catch (error) {
       // A refusal that names fields is shown on them; any other failure is the message below.
+      kept.onFailed?.();
       const refusal = answerRefusalIssues(error);
       if (refusal === undefined) failure = faultTreatment(error).message;
       else issues = refusal;
@@ -143,15 +161,18 @@
 </script>
 
 <div class="ib-run-wait" data-kind={wait.kind}>
-  {#if review.isPending}
-    <p class="ib-run-wait__note" role="status" aria-busy="true">{TASK_COPY.readingWait}</p>
-  {:else if answered !== undefined}
+  {#if answered !== undefined}
     <ChatQuestion
       id={`run-wait-${wait.reviewId}`}
       schema={answered.schema}
       answer={answered}
       onSubmit={() => {}}
     />
+  {:else if working && (gone || review.isError)}
+    <!-- The task's or the review's next read can land before the answer's response does. -->
+    <p class="ib-run-wait__note" role="status" aria-busy="true">{TASK_COPY.sendingAnswer}</p>
+  {:else if review.isPending}
+    <p class="ib-run-wait__note" role="status" aria-busy="true">{TASK_COPY.readingWait}</p>
   {:else if gone}
     <p class="ib-run-wait__note">{TASK_COPY.waitGone}</p>
   {:else if review.isError}
@@ -168,7 +189,7 @@
       busy={working}
       {issues}
       failed={failure !== undefined}
-      onSubmit={(value) => void answer(String(value).trim())}
+      onSubmit={(value) => void answer(value)}
     />
     {#if failure !== undefined}<p class="ib-run-wait__note" role="alert">{failure}</p>{/if}
     <p class="ib-run-wait__note">{REVIEWS_COPY.answerHint}</p>

@@ -13,7 +13,7 @@ import { TASK_COPY } from '../../src/app/copy.ts';
 import { taskCursorKey } from '../../src/routes/workflows/runs/task-follower.svelte.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
-import { bureauCall, expectEngineMissesForTasks, taskOfSession } from './task-support.ts';
+import { bureauCall, expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 const ASSISTANT_REPLY = 'Hello from the assistant.';
@@ -106,7 +106,7 @@ async function runningBarrierTask(
 const heading = (page: Page) => page.locator('[data-run-header]');
 
 test.beforeEach(({ pageErrors }) => {
-  expectEngineMissesForTasks(pageErrors);
+  expectEngineMissesForRuns(pageErrors);
 });
 
 test.describe('the runs of a chat', () => {

@@ -445,6 +445,19 @@
           {#if workflow !== undefined}
             <RunChange {engine} {workflow} />
             <RunEnginePanels {engine} {workflow} />
+          {:else if engine.fault !== null}
+            <!-- The Bureau's side is shown; the engine's could not be read, and that is said. -->
+            <ErrorState
+              variant="flat"
+              title={TASK_COPY.engineReadFailed}
+              description={engine.fault.message}
+              headingLevel={2}
+              retryLabel={RETRY_LABEL}
+              onRetry={() =>
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.workflows.detail(initialRunId),
+                })}
+            />
           {/if}
         {/if}
       </div>

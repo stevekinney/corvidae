@@ -384,6 +384,30 @@ describe('a run the Bureau describes', () => {
     expect(view.queryByRole('heading', { level: 2, name: 'Change or ask this run' })).toBeNull();
   });
 
+  test('says the engine could not be read, with Retry, when it fails', async () => {
+    describeTask('task-4');
+    fetchScript.routeUrlStatus('/workflows/task-4', 500);
+
+    const view = mount('task-4');
+
+    expect(await view.findByRole('heading', { level: 1, name: 'echo' })).not.toBeNull();
+    const failure = await view.findByRole('heading', {
+      level: 2,
+      name: TASK_COPY.engineReadFailed,
+    });
+    const retry = within(failure.parentElement as HTMLElement).getByRole('button', {
+      name: 'Try again',
+    });
+    const reads = fetchScript.calls.filter((call) => call.url.includes('/workflows/task-4')).length;
+    await fireEvent.click(retry);
+    await waitFor(() =>
+      expect(
+        fetchScript.calls.filter((call) => call.url.includes('/workflows/task-4')).length,
+      ).toBeGreaterThan(reads),
+    );
+    expect(view.queryByRole('heading', { level: 2, name: 'Change or ask this run' })).toBeNull();
+  });
+
   test('is not looked up in the workflow engine for a caller without workflows:read', async () => {
     describeTask('task-3');
 
