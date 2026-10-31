@@ -64,6 +64,21 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     expect(after.values['durableOwnership.ownership']).not.toBe('none');
   });
 
+  // COR-1858: a remote home keeps its secrets in the environment, so hooks, which hold a signing
+  // secret each, are off there and the Hooks pages say so.
+  test('leaves hooks off, and answers the hooks operations as a Bureau without them', async () => {
+    const host = await start();
+
+    expect(host.bureau.hooks).toBeUndefined();
+    const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.hooks.list', params: {} }),
+    });
+    const body = (await response.json()) as { error?: { data?: { weftCode?: string } } };
+    expect(body.error?.data?.['weftCode']).toBe('UnsupportedCapability');
+  });
+
   // COR-1797: the other restart-applied settings the overlap depends on.
   test.each([
     ['maintenance', 'manual'],

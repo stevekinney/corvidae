@@ -10,6 +10,7 @@ import type { Page, Route } from '@playwright/test';
 import { NOT_FOUND_ROUTE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { E2E_BASE_URL } from './e2e-constants.ts';
 import {
   expect,
   holdBureauFeed,
@@ -17,8 +18,27 @@ import {
   test,
   type PageErrorLog,
 } from './fixtures.ts';
+import { bureauCall } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
+
+/** The hook the hooks list's ready state is shown with; the spec deletes every hook of this name. */
+const HOOK_NAME = 'e2e-view-states';
+
+test.afterAll(async ({ playwright }) => {
+  const request = await playwright.request.newContext({ baseURL: E2E_BASE_URL });
+  try {
+    const listed = (await bureauCall(request, 'bureau.hooks.list', {})) as {
+      hooks: { id: string; name: string | null }[];
+    };
+    for (const hook of listed.hooks) {
+      if (hook.name === HOOK_NAME)
+        await bureauCall(request, 'bureau.hooks.delete', { hookId: hook.id });
+    }
+  } finally {
+    await request.dispose();
+  }
+});
 
 const PATHS: Readonly<Record<ViewName, string>> = {
   chat: '/chats',
@@ -34,6 +54,7 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   audit: '/health/audit',
   settings: '/settings',
   goals: '/goals',
+  hooks: '/hooks',
   health: '/health',
 };
 
@@ -83,6 +104,7 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: bureauProbe('bureau.audit.query', { records: [], nextCursor: null }),
   goals: bureauProbe('bureau.goals.list', { goals: [], nextOffset: null }),
+  hooks: bureauProbe('bureau.hooks.list', { hooks: [] }),
   // Never empty (`VIEWS.settings.canBeEmpty`), so the answer is never served as an empty one.
   settings: bureauProbe('bureau.settings.get', {
     values: {},
@@ -224,6 +246,14 @@ for (const view of VIEW_NAMES) {
         // whose run is listed under Runs.
         if (view === 'chat' && outcome === 'ready') {
           await runToEnd(request, 'assistant', newThreadId('states'), 'Hello');
+        }
+        // The hooks list has something to show once the caller has made a hook.
+        if (view === 'hooks' && outcome === 'ready') {
+          await bureauCall(request, 'bureau.hooks.create', {
+            name: HOOK_NAME,
+            events: ['review.requested'],
+            action: { type: 'notify' },
+          });
         }
         await drive(page, pageErrors, view, outcome);
         await page.goto(PATHS[view]);

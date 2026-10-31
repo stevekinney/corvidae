@@ -74,6 +74,18 @@ function codeSummary() {
   return summary;
 }
 
+const HOOK = {
+  id: 'hook-1',
+  owner: 'anonymous:local',
+  name: null,
+  action: { type: 'notify', title: null },
+  events: ['review.requested'],
+  enabled: true,
+  createdAt: 1,
+  updatedAt: 1,
+  revision: 1,
+};
+
 const GOAL = {
   goalRunId: 'goal-1',
   owner: 'anonymous:local',
@@ -137,6 +149,10 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   if (call !== undefined && call.method === 'bureau.goals.list') {
     const goals = empty ? [] : [GOAL];
     return Response.json({ jsonrpc: '2.0', id: call.id, result: { goals, nextOffset: null } });
+  }
+  if (call !== undefined && call.method === 'bureau.hooks.list') {
+    const hooks = empty ? [] : [HOOK];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { hooks } });
   }
   if (call !== undefined) {
     // The Bureau's list operations answer their own shapes, and an empty one has nothing in it.

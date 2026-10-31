@@ -5,6 +5,7 @@ import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { getGoal, listGoals } from '../lib/bureau-goals.ts';
+import { getHook, listHooks } from '../lib/bureau-hooks.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
 import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
@@ -73,6 +74,19 @@ async function probeAudit(): Promise<ViewProbeResult> {
 async function probeGoals(): Promise<ViewProbeResult> {
   const page = await listGoals({ limit: 1 });
   return { empty: page.goals.length === 0 };
+}
+
+/**
+ * Runs a hooks probe, and lets through the answer of a home that keeps hooks off: the page words
+ * that itself, so the frame must not call it a failure or an empty list.
+ */
+async function unlessHooksAreOff(probe: () => Promise<ViewProbeResult>): Promise<ViewProbeResult> {
+  try {
+    return await probe();
+  } catch (error) {
+    if (classifyFault(error)?.kind === 'not-supported') return { empty: false };
+    throw error;
+  }
 }
 
 /**
@@ -241,6 +255,24 @@ export function probeFor(
         await getGoal(goal);
         return { empty: false };
       };
+    }
+    case 'hooks': {
+      // The page that makes a hook asks for nothing: it is where the first one is written.
+      if (pattern === '/hooks/new') return undefined;
+      const hook = parameters['hook'];
+      // One hook's page asks for that hook, which settles whether it exists and may be seen.
+      if (hook !== undefined) {
+        return () =>
+          unlessHooksAreOff(async () => {
+            await getHook(hook);
+            return { empty: false };
+          });
+      }
+      return () =>
+        unlessHooksAreOff(async () => {
+          const hooks = await listHooks();
+          return { empty: hooks.length === 0 };
+        });
     }
     case 'capabilities':
       // The catalog is what the page cannot do without: asking for it settles whether the caller
