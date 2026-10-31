@@ -7,17 +7,22 @@
    * Every state is spelled out in text; badges add color but never carry
    * meaning alone.
    */
-  import { Alert, Badge, DescriptionList, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Badge,
+    Callout,
+    DescriptionList,
+    EmptyState,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
 
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import { formatDuration, formatRelativeTime } from '../../lib/format/index.ts';
   import { isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
   import { exactTimestamp } from './task-attempt-evidence.ts';
   import { describeSessionLifecycle } from './worker-session-lifecycle.ts';
-  import {
-    MalformedWorkerDiagnosticsError,
-    type WorkerManifestDiagnostics,
-  } from './worker-manifest-diagnostics.ts';
+  import PanelFault from './panel-fault.svelte';
+  import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
   import { HEARTBEAT_STALE_AFTER_MS, TRANSPORT_LABEL } from './worker-presentation.ts';
 
   interface WorkerSessionPanelProps {
@@ -70,17 +75,18 @@
   );
 </script>
 
-<section class="weft-workers-panel weft-worker-session" aria-labelledby="worker-session-heading">
-  <div class="weft-workers-panel__header weft-worker-session__header">
-    <h2 id="worker-session-heading">Session</h2>
-    {#if instance && lifecycle}
-      <Badge variant={lifecycle.variant}>{lifecycle.label}</Badge>
-      <Badge variant={HEALTH_VARIANT[instance.health]}>{HEALTH_LABEL[instance.health]}</Badge>
-      <Badge variant={stale ? 'danger' : 'success'}
-        >{stale ? 'Heartbeat stale' : 'Heartbeat fresh'}</Badge
-      >
-    {/if}
-  </div>
+<section class="weft-workers-panel weft-worker-session" aria-label="Session">
+  <SectionHeading level={3} title="Session">
+    {#snippet actions()}
+      {#if instance && lifecycle}
+        <Badge variant={lifecycle.variant}>{lifecycle.label}</Badge>
+        <Badge variant={HEALTH_VARIANT[instance.health]}>{HEALTH_LABEL[instance.health]}</Badge>
+        <Badge variant={stale ? 'danger' : 'success'}
+          >{stale ? 'Heartbeat stale' : 'Heartbeat fresh'}</Badge
+        >
+      {/if}
+    {/snippet}
+  </SectionHeading>
 
   <div class="weft-worker-session__body">
     {#if loading}
@@ -88,17 +94,16 @@
         <Skeleton height="6rem" />
       </div>
     {:else if error && isForbidden(error)}
-      <EmptyState
-        title="Session evidence is locked"
-        description={`${scopeReason('system:read')} to read worker session diagnostics.`}
-      />
-    {:else if error instanceof MalformedWorkerDiagnosticsError}
-      <EmptyState title="Malformed server response" description={error.message} />
+      <Callout variant="warning" semantic="note" title="Session evidence is locked">
+        <p>{scopeReason('system:read')} to read worker session diagnostics.</p>
+      </Callout>
     {:else if error}
-      {@const treatment = faultTreatment(error)}
-      <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+      <PanelFault {error} />
     {:else if diagnostics === null}
       <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={3}
         title="Session closed"
         description="The server reports no registered session for this worker ID: the worker has closed, or it was removed."
       />
@@ -113,6 +118,9 @@
       <DescriptionList items={sessionItems} />
     {:else}
       <EmptyState
+        kind="first-use"
+        size="compact"
+        headingLevel={3}
         title="Session evidence unavailable"
         description="Worker diagnostics have not been read for this worker yet."
       />

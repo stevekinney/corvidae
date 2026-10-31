@@ -8,6 +8,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { BUREAU_RESERVED_KEY_PREFIXES, SHARED_KEY_FAMILIES_OF_A_CHAT } from '@lostgradient/bureau';
+
+import { MANAGED_KEY_PREFIXES } from './host-storage.ts';
 import { startHost, type Host } from './host.ts';
 
 const homes: string[] = [];
@@ -75,6 +78,7 @@ describe('a rebound Host', () => {
       '/api/v1/principal',
       '/bureau/v1/health',
       '/host/paths',
+      '/host/storage',
       '/',
       '/assets/main.js',
     ]) {
@@ -94,6 +98,23 @@ describe('a rebound Host', () => {
         200,
       );
     }
+  });
+});
+
+describe('/host/storage', () => {
+  test('names the key prefixes the Bureau writes, for the storage explorer to lock', async () => {
+    const host = await start();
+    const response = await fetch(new URL('/host/storage', host.url));
+    expect(response.status).toBe(200);
+    const report = (await response.json()) as { bureauKeyPrefixes: string[] };
+    expect(report.bureauKeyPrefixes).toEqual([...MANAGED_KEY_PREFIXES]);
+    for (const prefix of BUREAU_RESERVED_KEY_PREFIXES) {
+      expect(report.bureauKeyPrefixes).toContain(prefix);
+    }
+    for (const family of SHARED_KEY_FAMILIES_OF_A_CHAT) {
+      expect(report.bureauKeyPrefixes).toContain(family.prefix);
+    }
+    expect(report.bureauKeyPrefixes.length).toBeGreaterThan(0);
   });
 });
 
@@ -167,7 +188,7 @@ describe('a cross-site request', () => {
 
   test('is refused on Bureau and on the application too', async () => {
     const host = await start();
-    for (const path of ['/bureau/v1/health', '/host/paths', '/']) {
+    for (const path of ['/bureau/v1/health', '/host/paths', '/host/storage', '/']) {
       const response = await fetch(new URL(path, host.url), {
         headers: { origin: 'https://attacker.example' },
       });

@@ -1,0 +1,12 @@
+{
+  "plugin": "typesafe",
+  "version": "0.1.0",
+  "entries": [
+    {
+      "kind": "configuration",
+      "id": "typesafe",
+      "version": "0.1.0",
+      "schema": "sha256:93ab7499dc3c616f8db8780fed0d9f69270803cda913882ad2ef3943db8d7225"
+    }
+  ]
+}

@@ -73,16 +73,25 @@
     <VerificationFaultView {error} />
   {:else if diagnostics === null}
     <EmptyState
+      kind="done"
+      size="compact"
+      headingLevel={3}
       title="No accepted manifest"
       description="The server has no accepted manifest for this worker, so there is nothing to verify."
     />
   {:else if diagnostics === undefined}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
       title="No manifest evidence yet"
       description="This worker's accepted manifest has not been fetched, so there is nothing to verify yet."
     />
   {:else if registry === undefined}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
       title="No registry snapshot yet"
       description="No registry snapshot has been fetched to compare this worker's manifest with."
     />
@@ -91,7 +100,13 @@
       <VerificationFaultView {error} />
     {/if}
     {#if verification.workflows.length === 0}
-      <p class="weft-contract-verification__note">This worker advertises no workflows.</p>
+      <EmptyState
+        kind="done"
+        size="compact"
+        headingLevel={3}
+        title="No workflows advertised"
+        description="This worker advertises no workflows."
+      />
     {:else}
       {#each verification.workflows as workflow (workflow.workflow)}
         <div class="weft-workers-panel">

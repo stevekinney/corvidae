@@ -1,28 +1,12 @@
 {
   "entries": [
     {
-      "file": "src/routes/audit/index.svelte",
-      "issue": "COR-1851"
-    },
-    {
       "file": "src/routes/schedules/schedule-detail.svelte",
       "issue": "COR-1859"
     },
     {
       "file": "src/routes/schedules/schedule-list.svelte",
       "issue": "COR-1859"
-    },
-    {
-      "file": "src/routes/storage/get-panel.svelte",
-      "issue": "COR-1851"
-    },
-    {
-      "file": "src/routes/storage/index.svelte",
-      "issue": "COR-1851"
-    },
-    {
-      "file": "src/routes/storage/scan-panel.svelte",
-      "issue": "COR-1851"
     },
     {
       "file": "src/routes/system/dynamic-source-list.svelte",
@@ -35,30 +19,6 @@
     {
       "file": "src/routes/system/registry-tab.svelte",
       "issue": "COR-1847"
-    },
-    {
-      "file": "src/routes/workers/deployment-versions-view.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/deployments-panel.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/diagnostics-view.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/fleet-view.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/index.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/manifest-diagnostics-view.svelte",
-      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/queue-list-view.svelte",
@@ -79,26 +39,6 @@
     {
       "file": "src/routes/workers/task-ledger-panel.svelte",
       "issue": "COR-1972"
-    },
-    {
-      "file": "src/routes/workers/verification-fault-view.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/worker-contract-verification-panel.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/worker-list-view.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/worker-manifest-panel.svelte",
-      "issue": "COR-1971"
-    },
-    {
-      "file": "src/routes/workers/worker-session-panel.svelte",
-      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workflows/detail/async-activity/activity-worker-provenance.svelte",

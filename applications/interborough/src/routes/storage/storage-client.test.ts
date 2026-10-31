@@ -10,7 +10,14 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
-import { storageDelete, storageGet, storagePut, type StorageConnection } from './storage-client.ts';
+import {
+  storageConditionalBatch,
+  storageDelete,
+  storageGet,
+  storagePut,
+  storageScan,
+  type StorageConnection,
+} from './storage-client.ts';
 
 interface FetchCall {
   readonly url: string;
@@ -190,5 +197,27 @@ describe('storageDelete', () => {
 
     expect(scripted.calls[0]?.method).toBe('DELETE');
     expect(scripted.calls[0]?.url).toBe(`${connection.baseUrl}/v1/storage/k`);
+  });
+});
+
+describe('a body the server should not have sent', () => {
+  test('a scan row without a string key and value is an error, not a row of nothing', async () => {
+    scripted = new ScriptedFetch();
+    scripted.respondWith(new Response('{"key":"a","value":3}\n'));
+
+    expect(await rejectionOf(storageScan(connection, { prefix: '' }))).toMatchObject({
+      message: 'Malformed storage scan row',
+    });
+  });
+
+  test('a conditional batch answer without `applied` is an error, not a refusal', async () => {
+    scripted = new ScriptedFetch();
+    scripted.respondWith(Response.json({ applied: 'yes' }));
+
+    expect(
+      await rejectionOf(
+        storageConditionalBatch(connection, [{ key: 'k', expectedValue: null }], []),
+      ),
+    ).toMatchObject({ message: 'Malformed conditional storage batch response' });
   });
 });

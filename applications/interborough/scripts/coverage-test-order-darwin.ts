@@ -50,12 +50,9 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/schedules/fault-banner.test.ts',
   'src/routes/schedules/schedule-form-state.svelte.test.ts',
   'src/routes/schedules/schedule-status.test.ts',
-  'src/routes/storage/get-panel.test.ts',
   'src/routes/storage/value-preview.test.ts',
   'src/routes/storage/index.test.ts',
-  'src/routes/storage/reserved-prefix-callout.test.ts',
   'src/routes/storage/reserved-prefix.test.ts',
-  'src/routes/storage/put-panel.test.ts',
   'src/routes/storage/capabilities-panel.test.ts',
   'src/routes/storage/storage-client.integration.test.ts',
   'src/routes/storage/storage-client.test.ts',
@@ -86,7 +83,6 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/system/mcp-panel.test.ts',
   'src/routes/workers/diagnostics-guidance.test.ts',
   'src/routes/workers/index.test.ts',
-  'src/routes/workers/fleet-view.test.ts',
   'src/routes/workers/clear-dead-letter-dialog.test.ts',
   'src/routes/workers/drain-dialog.test.ts',
   'src/routes/workers/worker-presentation.test.ts',
@@ -160,10 +156,6 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   // attribution" (see the top of this file), that reorder could change
   // measured coverage without any real regression — flagged in WFC-10 PR
   // #14 review.
-  'src/routes/storage/batch-panel.test.ts',
-  'src/routes/storage/delete-panel.test.ts',
-  'src/routes/storage/kv-browser.test.ts',
-  'src/routes/storage/scan-panel.test.ts',
   'src/routes/storage/storage-value-display.test.ts',
   'src/routes/workers/diagnostics-view.test.ts',
   'src/routes/workers/index-actions.test.ts',
@@ -174,5 +166,4 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   // sorts immediately after worker-detail-view.test.ts — included here so
   // pinning the 10 files above doesn't push it to the very end of the
   // whole suite instead of leaving it where it already ran.
-  'src/routes/workers/worker-list-view.test.ts',
 ] as const;

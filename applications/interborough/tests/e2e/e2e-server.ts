@@ -35,6 +35,7 @@ import {
   E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
+  E2E_FLEET_WORKER_ID,
   E2E_JOURNEY_PORT,
   E2E_LOCKED_SETTING,
   E2E_LONG_POLL_BUILD_ID,
@@ -155,7 +156,7 @@ seedDynamicSources(engine);
 
 const fleetWorker = new RemoteWorker({
   serverUrl: `ws://127.0.0.1:${E2E_PORT}/v1/tasks/default/stream`,
-  workerId: 'e2e-fleet-worker-1',
+  workerId: E2E_FLEET_WORKER_ID,
   deploymentName: E2E_DEPLOYMENT_NAME,
   buildId: 'e2e-build-1',
   workflows: {

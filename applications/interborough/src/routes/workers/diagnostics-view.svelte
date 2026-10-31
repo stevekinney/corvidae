@@ -23,6 +23,10 @@
      * link to the worker the diagnostics report for it.
      */
     readonly filtered?: boolean;
+    /** The list is one worker's, inside that worker's detail: its empty state says so, and no row links back to it. */
+    readonly workerScoped?: boolean;
+    /** Clears the provenance filters; the empty state of a filtered list offers it. */
+    readonly onClearFilters?: () => void;
   }
 
   let {
@@ -31,6 +35,8 @@
     now,
     onInspectTask = () => {},
     filtered = false,
+    workerScoped = false,
+    onClearFilters,
   }: DiagnosticsViewProps = $props();
 
   function workerIdOf(item: TaskDiagnosticItem): string | undefined {
@@ -70,18 +76,37 @@
 </script>
 
 {#if totalDiagnostics === 0}
-  <EmptyState
-    title="No diagnostics"
-    description={filtered
-      ? 'No task matches these provenance filters. Clear them to see every diagnostic.'
-      : 'Nothing delayed, stuck, stale, retrying, at capacity, unadopted, or dead-lettered right now.'}
-  />
+  {#if workerScoped}
+    <EmptyState
+      kind="done"
+      size="compact"
+      headingLevel={3}
+      title="No diagnostics for this worker"
+      description="Nothing delayed, stuck, stale, retrying, at capacity, unadopted, or failed for good on this worker right now."
+    />
+  {:else if filtered}
+    <EmptyState
+      kind="filtered"
+      headingLevel={2}
+      title="No diagnostics"
+      description="No task matches these provenance filters. Clear them to see every diagnostic."
+      clearFiltersLabel="Clear filters"
+      {...onClearFilters ? { onClearFilters } : {}}
+    />
+  {:else}
+    <EmptyState
+      kind="done"
+      headingLevel={2}
+      title="No diagnostics"
+      description="Nothing delayed, stuck, stale, retrying, at capacity, unadopted, or dead-lettered right now."
+    />
+  {/if}
 {:else}
   <div class="weft-diagnostics-view">
     {#each groups as group (group.kind)}
       {@const guidance = DIAGNOSTIC_GUIDANCE[group.kind]}
       <div class={`weft-diagnostic-card weft-diagnostic-card--${guidance.variant}`}>
-        <div class="weft-diagnostic-card__header">
+        <div class="weft-diagnostic-card__summary">
           <span class="weft-workers-mono weft-diagnostic-card__kind">{guidance.title}</span>
           <Badge variant={guidance.variant}>{group.items.length} affected</Badge>
           <span class="weft-diagnostic-card__meta">
@@ -114,7 +139,7 @@
                 <span class="weft-workers-id">{truncateId(item.operationId)}</span>
               {/if}
               {item.evidence[0]}
-              {#if workerId}
+              {#if workerId && !workerScoped}
                 <a
                   class="weft-workers-id-link"
                   href={router.href(workerDeepLink(workerId))}

@@ -16,10 +16,10 @@ const VIEWPORTS = [
 ] as const;
 
 async function openLongPollWorker(page: Page): Promise<void> {
-  await page.goto('/health/workers?tab=list');
-  const row = page.getByRole('row').filter({ hasText: E2E_LONG_POLL_DEPLOYMENT_NAME });
+  await page.goto('/health/workers');
+  const row = page.locator('[data-worker-row]').filter({ hasText: E2E_LONG_POLL_DEPLOYMENT_NAME });
   await expect(row.getByText('HTTP long-poll')).toBeVisible();
-  await row.getByRole('link').first().click();
+  await row.click();
   await expect(page.getByRole('heading', { name: 'Session' })).toBeVisible();
 }
 
@@ -27,19 +27,15 @@ function session(page: Page) {
   return page.getByRole('region', { name: 'Session' });
 }
 
-test('the fleet lists both transports together', async ({ page, checkA11y }) => {
-  await page.goto('/health/workers?tab=fleet');
-  const transports = page.locator('.weft-fleet-view__transports');
-  await expect(transports).toContainText('WebSocket');
-  await expect(transports).toContainText('1 HTTP long-poll');
-  await expect(page.getByText('HTTP long-poll', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/HTTP long-poll workers have no server push/).first()).toBeVisible();
-  await checkA11y('workers—fleet with both transports');
+test('the list shows both transports together', async ({ page, checkA11y }) => {
+  await page.goto('/health/workers');
+  const rows = page.locator('[data-worker-row]');
+  await expect(rows.filter({ hasText: 'WebSocket' }).first()).toBeVisible();
+  await expect(rows.filter({ hasText: 'HTTP long-poll' })).toHaveCount(1);
+  await checkA11y('workers—list with both transports');
 
-  await page.goto('/health/workers?tab=list');
-  const table = page.getByRole('table', { name: 'Workers' });
-  await expect(table.getByText('WebSocket').first()).toBeVisible();
-  await expect(table.getByText('HTTP long-poll')).toBeVisible();
+  await openLongPollWorker(page);
+  await expect(page.getByText(/HTTP long-poll workers have no server push/).first()).toBeVisible();
 });
 
 test('a long-poll worker shows its lease, its queue, and the transport limit', async ({
@@ -60,14 +56,14 @@ test('a long-poll worker shows its lease, its queue, and the transport limit', a
 });
 
 test('a WebSocket worker has no lease deadline and says why', async ({ page }) => {
-  await page.goto('/health/workers?tab=list&worker=e2e-fleet-worker-1');
+  await page.goto('/health/workers?worker=e2e-fleet-worker-1');
   const region = session(page);
   await expect(region.getByText('The WebSocket is connected.')).toBeVisible();
   await expect(region.getByText(/None\. A WebSocket session has no lease deadline/)).toBeVisible();
 });
 
 test('a worker the server does not list reads as closed', async ({ page }) => {
-  await page.goto('/health/workers?tab=list&worker=no-such-worker');
+  await page.goto('/health/workers?worker=no-such-worker');
   await expect(page.getByRole('heading', { name: 'Worker closed' })).toBeVisible();
 });
 

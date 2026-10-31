@@ -5,17 +5,15 @@ test('operator inspects a server-accepted canonical worker manifest', async ({
   page,
   checkA11y,
 }) => {
-  await page.goto('/health/workers?tab=list');
+  await page.goto('/health/workers');
 
   // A worker is connected, so the page is the full fleet view and not the in-process sentence.
   await expect(page.getByRole('tablist', { name: 'Workers views' })).toBeVisible();
-  await expect(
-    page.getByText('This server runs its work in-process. Remote workers are not configured.'),
-  ).toHaveCount(0);
+  await expect(page.getByText('This server runs its work in-process')).toHaveCount(0);
 
-  const workerLink = page.getByRole('link', { name: 'e2e-flee…er-1' });
-  await expect(workerLink).toBeVisible();
-  await workerLink.click();
+  const workerRow = page.locator('[data-worker-row="e2e-fleet-worker-1"]');
+  await expect(workerRow).toBeVisible();
+  await workerRow.click();
 
   const manifest = page.getByRole('region', { name: 'Canonical manifest' });
   await expect(manifest).toBeVisible();
@@ -49,7 +47,7 @@ test('canonical manifest remains usable across supported widths and themes', asy
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto('/health/workers?tab=list&worker=e2e-fleet-worker-1');
+      await page.goto('/health/workers?worker=e2e-fleet-worker-1');
 
       const manifest = page.getByRole('region', { name: 'Canonical manifest' });
       await expect(manifest).toBeVisible();

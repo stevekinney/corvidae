@@ -20,7 +20,7 @@ import WorkersRoute from './index.svelte';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
 import { realClient, ScriptedFetch } from './workers-route-test-support.test-support.ts';
 
-const SENTENCE = 'This server runs its work in-process. Remote workers are not configured.';
+const SENTENCE = 'This server runs its work in-process';
 
 let scripted: ScriptedFetch | undefined;
 
@@ -123,7 +123,7 @@ describe('Workers route while the lists are being read', () => {
     expect(view.queryAllByRole('tab').length).toBe(0);
 
     queuesGate.resolve({ items: [queue()] });
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
   });
 
   test('stays the loading skeleton, not the sentence, until the diagnostics have been read', async () => {
@@ -140,7 +140,7 @@ describe('Workers route while the lists are being read', () => {
       items: [],
       summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
     });
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
   });
 });
 
@@ -151,7 +151,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -161,7 +161,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -171,7 +171,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
@@ -186,12 +186,12 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 
   test('shows the full page for an address that names a worker, even with none connected', async () => {
-    openAt('/health/workers?tab=list&worker=worker-1');
+    openAt('/health/workers?worker=worker-1');
     scripted = emptyFleet();
 
     const view = renderRoute();
@@ -212,7 +212,7 @@ describe('Workers route with something to operate', () => {
 
     const view = renderRoute();
 
-    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(6));
+    await waitFor(() => expect(view.queryAllByRole('tab').length).toBe(5));
     expect(view.queryByText(SENTENCE)).toBeNull();
   });
 });

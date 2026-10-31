@@ -16,5 +16,6 @@
   "packages/conversationalist/src/plugins/pii-redaction.ts": "Redacts parts' text and media fields beside content.",
   "packages/operative/src/conditions/predicates.ts": "The loop fingerprint reads parts in place of content when a result has them.",
   "packages/operative/src/context/assembly.ts": "estimateMessage costs text parts as text and media parts through the media cost estimator.",
+  "packages/operative/src/guardrails/output-guardrail.ts": "messageTexts reads a tool result's content value and, beside it, the text and media fields of its parts (resolved bodies included), so a grounding validator sees what the model was shown (COR-1887).",
   "packages/operative/src/tool-result-media.ts": "admitResult admits every part of any outcome's result; refusedResult keeps a failed result's own content and drops its parts on purpose, because the media was refused."
 }

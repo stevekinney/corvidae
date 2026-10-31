@@ -212,7 +212,7 @@ describe('Workers route — Diagnostics tab', () => {
 });
 
 describe('Workers route — loading skeletons', () => {
-  test('the Fleet overview tab shows a loading skeleton before the workers query resolves', () => {
+  test('the Workers tab shows a loading skeleton before the workers query resolves', () => {
     scripted = new ScriptedFetch();
     routeHappyPaths(scripted);
 

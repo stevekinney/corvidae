@@ -109,6 +109,13 @@
     min-width: 0;
   }
 
+  /* A contract hash is one long unbroken string: let the cell wrap it so the table fits its pane. */
+  .weft-workflow-verification :global(td.weft-workers-mono),
+  .weft-workflow-verification :global(th.weft-workers-mono) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   .weft-workflow-verification__heading {
     display: flex;
     flex-wrap: wrap;

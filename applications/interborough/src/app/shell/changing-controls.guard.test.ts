@@ -54,7 +54,13 @@ const MARKS = ['data-changes', 'type="submit"'];
  * operation itself (`READ_OPERATIONS`), so a read that is wrongly listed here still works offline
  * only until someone presses it.
  */
-const READING_MUTATIONS = new Set(['getMutation', 'scanMutation', 'previewMutation']);
+const READING_MUTATIONS = new Set([
+  'getMutation',
+  'scanMutation',
+  'previewMutation',
+  // The audit log's Export reads every page of the trail, then saves a file.
+  'exportMutation',
+]);
 
 const MUTATE_CALL = /\b(\w+)(?:\.\w+)?\.mutate(?:Async)?\b/g;
 

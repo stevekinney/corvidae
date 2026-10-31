@@ -7,27 +7,29 @@
    * build-scoped drain and resume, and removal, call the server's operations
    * for them and report its typed faults. Nothing here decides which build
    * serves a workflow.
+   *
+   * With a `deploymentName` it shows that one deployment, which is how a worker's detail shows the
+   * deployment the worker belongs to; without one it lists every deployment (the Deployments tab).
    */
-  import { Alert, ConfirmDialog, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { Alert, ConfirmDialog, Skeleton } from '@lostgradient/cinder';
   import { WORKER_CONFLICT_REASONS } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
-  import Lock from '@lucide/svelte/icons/lock';
 
   import { getClient } from '../../lib/client.ts';
-  import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
+  import { faultTreatment } from '../../lib/faults.ts';
   import {
     getPrincipalStore,
     isForbidden,
     scopeGate,
     scopeReason,
   } from '../../lib/scopes.svelte.ts';
+  import PanelFault from './panel-fault.svelte';
   import {
     applyRoutingMutation,
     conflictReasonOf,
     deploymentOverviewsQuery,
     drainVersionMutation,
     invalidateDeploymentQueries,
-    MalformedDeploymentsError,
     previewRoutingChange,
     removeVersionMutation,
     resumeVersionMutation,
@@ -43,11 +45,17 @@
   interface DeploymentsPanelProps {
     /** The fleet list, so each build can show the workers connected to it. */
     readonly workers: readonly WorkerSummary[];
+    /** Shows only this deployment, when given. */
+    readonly deploymentName?: string;
     /** Reference instant for relative times; defaults to render time. */
     readonly now?: number;
   }
 
-  let { workers, now = Date.now() }: DeploymentsPanelProps = $props();
+  let {
+    workers,
+    deploymentName: onlyDeployment,
+    now = Date.now(),
+  }: DeploymentsPanelProps = $props();
 
   const client = getClient();
   const queryClient = useQueryClient();
@@ -69,7 +77,11 @@
     }
   });
 
-  const overviews = $derived(overviewsQuery.data);
+  const overviews = $derived(
+    onlyDeployment === undefined
+      ? overviewsQuery.data
+      : overviewsQuery.data?.filter((entry) => entry.deploymentName === onlyDeployment),
+  );
   const error = $derived(overviewsQuery.error);
 
   function overviewOf(deploymentName: string): DeploymentOverview | undefined {
@@ -151,19 +163,11 @@
       <Skeleton height="12rem" />
     </div>
   {:else if error && overviews === undefined && isForbidden(error)}
-    <EmptyState
-      title="Deployments are locked"
-      description={`${scopeReason('system:read')} to read deployment versions and routing.`}
-    >
-      {#snippet icon()}
-        <Lock size={28} aria-hidden="true" />
-      {/snippet}
-    </EmptyState>
-  {:else if error && overviews === undefined && error instanceof MalformedDeploymentsError}
-    <EmptyState title="Malformed server response" description={error.message} />
+    <Alert variant="warning">
+      {scopeReason('system:read')} to read deployment versions and routing.
+    </Alert>
   {:else if error && overviews === undefined}
-    {@const treatment = faultTreatment(error)}
-    <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+    <PanelFault {error} onRetry={() => void overviewsQuery.refetch()} />
   {:else if overviews}
     {#if error}
       <Alert variant="warning"

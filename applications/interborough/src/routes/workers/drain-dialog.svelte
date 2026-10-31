@@ -2,8 +2,7 @@
   /**
    * Drain-with-reason dialog (plan §9.4 T5.2: "drain (with reason) / resume
    * per worker and per deployment"). Draining is reversible (Resume undoes
-   * it immediately, no confirmation — see `worker-detail-view.svelte`/
-   * `fleet-view.svelte`), so this composes `Modal` directly rather than
+   * it immediately, no confirmation — see `worker-detail-view.svelte`), so this composes `Modal` directly rather than
    * `ConfirmDialog`/`AlertDialog`: the body needs a real form field (the
    * optional reason), which neither preset dialog can host (`ConfirmDialog`
    * only has a single `typeToConfirm` input slot for irreversible actions;
