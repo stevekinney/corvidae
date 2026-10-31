@@ -296,7 +296,7 @@ describe('the step builder', () => {
           {
             kind: 'activity',
             handler: 'agent',
-            input: { agent: 'assistant', message: 'Write it.' },
+            input: { agent: 'demo:assistant', message: 'Write it.' },
           },
           { kind: 'await-signal', signal: 'approved' },
           { kind: 'sleep', duration: '1m' },

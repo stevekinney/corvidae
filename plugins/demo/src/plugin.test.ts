@@ -16,6 +16,12 @@ afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
 });
 
+/** The demo plugin's own listing: Bureau lists its built-in plugin beside the ones it loads. */
+async function demoListing(bureau: Bureau<AgentDefinitions>) {
+  const listings = await bureau.plugins.list();
+  return listings.find(({ descriptor }) => descriptor.name === 'demo');
+}
+
 async function start(
   options: {
     readonly enabled?: boolean;
@@ -47,7 +53,7 @@ async function start(
 describe('the demo plugin', () => {
   test('is off until the owner turns it on, and then contributes no agent', async () => {
     const bureau = await start({ enabled: false });
-    const [listing] = await bureau.plugins.list();
+    const listing = await demoListing(bureau);
     expect(listing).toMatchObject({ descriptor: { name: 'demo' }, status: 'disabled' });
     expect(bureau.agents.list().filter(({ id }) => id.startsWith('demo:'))).toEqual([]);
   });
@@ -95,7 +101,7 @@ describe('the demo plugin', () => {
 
   test('is needs-setup without its secret, and a demo agent refuses to run', async () => {
     const bureau = await start({});
-    const [listing] = await bureau.plugins.list();
+    const listing = await demoListing(bureau);
     expect(listing?.status).toBe('needs-setup');
     expect(listing?.problems.map(({ code }) => code)).toEqual(['secret-missing']);
     const refusal = await rejectionOf(bureau.tasks.start('demo:assistant', 'Hello'));

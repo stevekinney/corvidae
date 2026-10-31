@@ -112,7 +112,7 @@ describe('the edits', () => {
     let next = text({ trigger: FILE.trigger, steps: [] });
     for (const kind of ['agent', 'wait', 'signal'] as const) next = addStep(next, kind);
     expect(parsed(next)['steps']).toEqual([
-      { kind: 'activity', handler: 'agent', input: { agent: 'assistant', message: '' } },
+      { kind: 'activity', handler: 'agent', input: { agent: 'demo:assistant', message: '' } },
       { kind: 'sleep', duration: '1m' },
       { kind: 'await-signal', signal: '' },
     ]);
