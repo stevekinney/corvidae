@@ -65,7 +65,8 @@ export function remapMessageId(
  * associates a tool call with the turn that owns it by identifier, and
  * swapping that identifier mid-run would orphan a pending approval. A follow-up
  * keeps the client's object too, so its marker and delivery status survive.
- * Every other row the terminal names takes the terminal's object.
+ * Every other row the terminal names takes the terminal's object, including a row the run
+ * started with that this page no longer holds.
  */
 export function mergeRunHistory(
   current: ConversationHistory,
@@ -114,7 +115,7 @@ export function mergeRunHistory(
     if (!retained.has(id)) delete messages[id];
   }
   for (const id of terminal.ids) {
-    if (retained.has(id)) continue;
+    if (retained.has(id) && getOwn(current.messages, id) !== undefined) continue;
     const message = isFollowUpMessage(getOwn(current.messages, id))
       ? getOwn(current.messages, id)
       : getOwn(terminal.messages, id);

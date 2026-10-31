@@ -271,6 +271,15 @@ export const MATRIX: readonly Shape[] = [
       'earlier run': ['u', 'Fa'],
     },
   },
+  {
+    name: 'a run-start row the terminal names that the page no longer holds',
+    current: ['u'],
+    terminal: ['u', 'r0'],
+    provisional: [],
+    start: ['u', 'r0'],
+    expected: ['u', 'r0'],
+    rows: { 'snapshot only': ['r0'], 'earlier run': ['u'] },
+  },
 ];
 
 /** A history of the given rows in order; `*` marks a follow-up, `~` a hidden row. */
@@ -318,11 +327,14 @@ describe('mergeRunHistory over the outcome matrix', () => {
   test.each(cells)('$shape.name: $kind $id', ({ shape, kind, id }) => {
     const { current, terminal, merged } = merge(shape);
     const named = getOwn(terminal.messages, id) !== undefined;
-    const retained = shape.start.includes(id) && named;
+    const retained =
+      shape.start.includes(id) && named && getOwn(current.messages, id) !== undefined;
     const dropped = shape.provisional.includes(id) && !retained;
     const required = shape.expected.indexOf(id);
 
     expect(merged.ids.indexOf(id)).toBe(required);
+    // The identity check below passes vacuously for a row with no message, so name it here.
+    for (const row of merged.ids) expect(getOwn(merged.messages, row)).toBeDefined();
     if (required === -1) {
       // A row the run appended that the terminal does not name is gone, object included.
       expect(dropped).toBe(true);
