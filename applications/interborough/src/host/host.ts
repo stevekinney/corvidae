@@ -780,10 +780,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             (candidate) =>
               candidate.source === listing.source && candidate.location === listing.location,
           );
-          const content = entry?.descriptor.content;
+          const shipped = entry?.descriptor.content;
           const source =
-            listing.status === 'running' && content !== undefined
-              ? createPluginSkillSource(listing.descriptor.name, content)
+            listing.status === 'running' && shipped !== undefined
+              ? createPluginSkillSource(listing.descriptor.name, shipped)
               : undefined;
           return source === undefined ? [] : [source];
         });
