@@ -59,23 +59,25 @@ export interface PluginGoalRequest {
  * What the host serves a plugin's `afterStart`: a structural slice of Bureau, kept narrow so a
  * plugin cannot reach past the calls it is meant to make. `Bureau` satisfies it, and a type test
  * in Bureau keeps that true. The package does not import Bureau, because Bureau depends on it.
+ * Its calls are function-typed properties, not methods, so TypeScript checks their parameters
+ * strictly and a Bureau request type that grows a required field breaks that test.
  */
 export interface PluginHostApi {
   /** The agents the host runs. */
   readonly agents: {
     /** Every agent, code-defined and file-based together. */
-    list(): readonly PluginAgentListing[];
+    list: () => readonly PluginAgentListing[];
   };
   /** The host's durable schedules. */
   readonly schedules: {
     /** Registers a recurring schedule; answers `undefined` when the host has no durable engine. */
-    create(definition: PluginScheduleDefinition): Promise<ScheduleSummary | undefined>;
+    create: (definition: PluginScheduleDefinition) => Promise<ScheduleSummary | undefined>;
     /** Lists schedules; answers `undefined` when the host has no durable engine. */
-    list(filter?: ScheduleFilter): Promise<PaginatedResult<ScheduleSummary> | undefined>;
+    list: (filter?: ScheduleFilter) => Promise<PaginatedResult<ScheduleSummary> | undefined>;
   };
   /** The host's durable goals. */
   readonly goals: {
     /** Starts a goal; `outcome` says whether it was created, already existed, or was rejected. */
-    create(request: PluginGoalRequest): Promise<{ readonly outcome: string }>;
+    create: (request: PluginGoalRequest) => Promise<{ readonly outcome: string }>;
   };
 }
