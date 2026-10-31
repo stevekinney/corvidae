@@ -12,40 +12,47 @@
    * same distinction).
    */
   import { ConfirmDialog } from '@lostgradient/cinder';
-  import type { TaskLedgerDetail } from './worker-catalog-types.ts';
+
+  import type { DeadLetterTarget } from './dead-letter-guard.ts';
+  import { exactTimestamp } from './task-attempt-evidence.ts';
 
   interface ClearDeadLetterDialogProps {
     readonly open: boolean;
-    readonly operationId: string;
+    /** The dead letter this clears, as the diagnostics listed it when the dialog opened. */
+    readonly target: DeadLetterTarget;
     readonly submitting: boolean;
-    readonly task?: TaskLedgerDetail | undefined;
     readonly onConfirm: () => void;
     readonly onCancel: () => void;
   }
 
   let {
     open = $bindable(),
-    operationId,
+    target,
     submitting,
-    task,
     onConfirm,
     onCancel,
   }: ClearDeadLetterDialogProps = $props();
 
-  const preview = $derived(
-    task
-      ? `Preview: ${task.state} attempt ${task.attempt} on queue ${task.queue}. Clearing removes the retained dead-letter record—it does not retry the task.`
-      : 'Loading the authoritative attempt preview. Clearing removes the retained dead-letter record—it does not retry the task.',
+  const description = $derived(
+    [
+      `Clears the retained dead-letter record for ${target.activityName ?? 'a task'} on queue ${target.queue} (task ${target.operationId}).`,
+      target.deadLetteredAt === undefined
+        ? undefined
+        : `It failed for good at ${exactTimestamp(target.deadLetteredAt)}.`,
+      'Clearing does not retry the task, and it cannot be undone.',
+    ]
+      .filter((sentence) => sentence !== undefined)
+      .join(' '),
   );
 </script>
 
 <ConfirmDialog
   bind:open
   title="Clear dead letter"
-  description={`${preview} This cannot be undone.`}
+  {description}
   confirmLabel={submitting ? 'Clearing…' : 'Clear dead letter'}
   destructive
-  typeToConfirm={operationId}
+  typeToConfirm={target.operationId}
   {onConfirm}
   {onCancel}
 />

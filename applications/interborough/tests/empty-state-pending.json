@@ -21,26 +21,6 @@
       "issue": "COR-1847"
     },
     {
-      "file": "src/routes/workers/queue-list-view.svelte",
-      "issue": "COR-1972"
-    },
-    {
-      "file": "src/routes/workers/task-attempt-history.svelte",
-      "issue": "COR-1972"
-    },
-    {
-      "file": "src/routes/workers/task-dead-letter-panel.svelte",
-      "issue": "COR-1972"
-    },
-    {
-      "file": "src/routes/workers/task-delivery-history.svelte",
-      "issue": "COR-1972"
-    },
-    {
-      "file": "src/routes/workers/task-ledger-panel.svelte",
-      "issue": "COR-1972"
-    },
-    {
       "file": "src/routes/workflows/detail/async-activity/activity-worker-provenance.svelte",
       "issue": "COR-1860"
     },

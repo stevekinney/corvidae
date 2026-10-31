@@ -1,4 +1,4 @@
-import { render, within } from '@testing-library/svelte';
+import { fireEvent, render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
@@ -721,6 +721,21 @@ describe('TaskLedgerPanel — query states', () => {
     });
     expect(getByText('Malformed server response')).not.toBeNull();
     expect(getByText('Weft returned a malformed task ledger response.')).not.toBeNull();
+  });
+
+  test('offers Retry on a fault when the route can read the ledger again', async () => {
+    let retried = 0;
+    const { getByRole } = render(TaskLedgerPanel, {
+      props: {
+        loading: false,
+        error: new HttpClientError(500, 'Internal server error'),
+        task: undefined,
+        now: NOW,
+        onRetry: () => (retried += 1),
+      },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    expect(retried).toBe(1);
   });
 
   test('shows the server fault treatment for a 500', () => {

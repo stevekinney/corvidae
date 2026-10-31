@@ -35,6 +35,8 @@
 
 {#if queues.length === 0}
   <EmptyState
+    kind="first-use"
+    headingLevel={2}
     title="No task queues"
     description="Queues appear here once a workflow dispatches an activity or a worker connects."
   />
