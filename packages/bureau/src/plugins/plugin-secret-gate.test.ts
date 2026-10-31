@@ -7,7 +7,11 @@ import {
   type PluginContributions,
   type PluginTriggerContext,
 } from '@lostgradient/interborough-plugin';
-import { createAgent } from '@lostgradient/operative';
+import {
+  createAgent,
+  hasDefinitionResolver,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
+} from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -124,6 +128,50 @@ describe('a plugin missing a declared secret', () => {
     expect(secrets.watching(KEY)).toBe(0);
   });
 
+  it('refuses to start a code agent through bureau.tasks.start until the secret is saved', async () => {
+    const secrets = secretsStore();
+    let generated = 0;
+    const kit = definePlugin({
+      name: 'kit',
+      version: '1.0.0',
+      description: 'Needs an API key.',
+      secrets: [KEY],
+      setup: () => ({
+        codeAgents: [
+          {
+            name: 'writer',
+            agent: createAgent({
+              generate: async () => {
+                generated += 1;
+                return { content: 'done', toolCalls: [] };
+              },
+            }),
+          },
+        ],
+      }),
+    });
+    const bureau = await createBureau<AgentDefinitions>({
+      plugins: [{ descriptor: kit, source: 'package', location: '@example/kit' }],
+      pluginSecrets: secrets,
+    });
+    bureaus.push(bureau);
+
+    // Bureau starts a catalog agent through its definition resolver, not `run`: the refusal is
+    // the resolver's, and it reaches the caller before the model is ever called.
+    const refusal = await rejectionOf(bureau.tasks.start('kit:writer', 'Go.'));
+    expect(refusal).toBeInstanceOf(PluginNeedsSetupError);
+    expect(generated).toBe(0);
+
+    secrets.save(KEY, SECRET);
+    await waitForCondition(
+      async () => (await bureau.plugins.list())[0]?.status === 'running',
+      'the plugin did not run after its secret was saved',
+    );
+    const task = await bureau.tasks.start('kit:writer', 'Go.');
+    await task.result();
+    expect(generated).toBe(1);
+  });
+
   it('gates a contributed tool and reports an embedder’s availability through composition', async () => {
     const secrets = secretsStore();
     const composed = await composePlugins({
@@ -207,6 +255,8 @@ describe('the secret-gating outcome matrix', () => {
           {
             name: 'fetch',
             execute: note('activity', 'fetched'),
+            verify: note('activity-verify', true),
+            compensate: note('activity-compensate', undefined),
             retry: { maxAttempts: 3, initialBackoff: 1, backoffMultiplier: 1, maxBackoff: 1 },
           },
         ],
@@ -263,6 +313,8 @@ describe('the secret-gating outcome matrix', () => {
     );
     const calls: Record<string, () => unknown> = {
       activity: () => gatedResult.activities?.[0]?.execute({}, {} as never),
+      'activity-verify': () => gatedResult.activities?.[0]?.verify?.('fetched', {} as never),
+      'activity-compensate': () => gatedResult.activities?.[0]?.compensate?.({}, 'fetched'),
       validator: () =>
         gatedResult.validators?.[0]?.validate({} as never, new AbortController().signal),
       'guardrail-input': () =>
@@ -277,6 +329,12 @@ describe('the secret-gating outcome matrix', () => {
       'eval-judge': () => gatedResult.evalJudges?.[0]?.evaluate({} as never),
       'event-formatter': () => gatedResult.eventFormatters?.[0]?.format(event),
       'code-agent': () => gatedResult.codeAgents?.[0]?.agent.run('Go.'),
+      // The definition resolver Bureau starts, recovers and claims a durable run through.
+      'code-agent-resolver': () => {
+        const agent = gatedResult.codeAgents?.[0]?.agent;
+        if (agent === undefined || !hasDefinitionResolver(agent)) return 'no resolver';
+        return agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('Go.', {});
+      },
     };
     // Synchronous callables (a formatter, a code agent's `run`) throw; the rest reject.
     const outcomeOf = async (call: () => unknown): Promise<'refused' | 'called'> => {

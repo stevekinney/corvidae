@@ -19,7 +19,7 @@
  * | Contribution | Missing | Saved | Removed again |
  * | -- | -- | -- | -- |
  * | tool (`execute`) | refuses; the call fails, after any approval | works | refuses |
- * | activity (`execute`) | refuses without retrying (`nonRetryableErrors`) | works | refuses |
+ * | activity (`execute`, `verify`, `compensate`) | refuses without retrying (`nonRetryableErrors`); a refused `verify` fails the result, and a refused `compensate` is a failed compensation | works | refuses |
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
  * | guardrail (`detect`, `validate`) | refuses; an agent file that lists it cannot run | works | refuses |
@@ -30,7 +30,7 @@
  * | memory detector (`detect`) | refuses, which memory counts as a detection (it fails closed) | works | refuses |
  * | eval judge (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
- * | code agent (`run`) | throws; the run is not started | works | throws |
+ * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
  * | provider, MCP app | not gated: Bureau has no entry point for either, and the host reads the plugin's status (COR-1880) | | |
  *
  * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
@@ -44,6 +44,7 @@ import type {
   PluginRunHooks,
   PluginTriggerKind,
 } from '@lostgradient/interborough-plugin';
+import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
 
 import type { BureauPluginSecrets } from './plugin-types';
 
@@ -262,9 +263,25 @@ export function gatedContributions<T extends PluginContributions>(
       : {
           activities: result.activities.map((activity) => {
             const id = idOf(activity.name);
+            const { verify, compensate } = activity;
             return {
               ...activity,
               execute: gated(gate, id, activity.execute.bind(activity)),
+              // `verify` and `compensate` run the plugin's code as `execute` does, so they refuse
+              // with it; `resourceScope` and `idempotencyKey` only derive keys and stay ungated.
+              ...(verify === undefined
+                ? {}
+                : {
+                    // Either verifier shape: the wrapper passes every argument through.
+                    verify: gated(
+                      gate,
+                      id,
+                      (verify as (...args: unknown[]) => unknown).bind(activity),
+                    ) as typeof verify,
+                  }),
+              ...(compensate === undefined
+                ? {}
+                : { compensate: gated(gate, id, compensate.bind(activity)) }),
               ...(activity.retry === undefined
                 ? {}
                 : {
@@ -387,23 +404,37 @@ export function gatedContributions<T extends PluginContributions>(
 }
 
 /**
- * `agent` with `run` refusing while the gate is closed. A proxy, so every other member (including
- * symbol-keyed ones Operative reads) is the agent's own, read with the agent as `this`.
+ * `agent` with every member that starts work refusing while the gate is closed: `run`, and the
+ * definition resolver (`OPERATIVE_RESOLVE_RUN_OPTIONS`) through which Bureau starts a durable run,
+ * recovers one, and claims a run another execution created. The resolver stays a function exactly
+ * when the agent has one, so a durable dispatch is still durable and its refusal reaches the
+ * caller. A proxy, so every other member (including the other symbol-keyed ones Operative reads)
+ * is the agent's own, read with the agent as `this`.
  */
 function gatedAgent<A extends object & { run: (...args: never[]) => unknown }>(
   gate: PluginSecretGate,
   contribution: string,
   agent: A,
 ): A {
-  const run = (...args: Parameters<A['run']>) => {
-    gate.assertAvailable(contribution);
-    return (agent.run as (...args: Parameters<A['run']>) => unknown).apply(agent, args);
-  };
+  const startsWork = new Set<PropertyKey>(['run', OPERATIVE_RESOLVE_RUN_OPTIONS]);
+  const gatedMembers = new Map<PropertyKey, (...args: unknown[]) => unknown>();
   return new Proxy(agent, {
     get(target, property) {
-      if (property === 'run') return run;
       const value: unknown = Reflect.get(target, property, target);
-      return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+      if (typeof value !== 'function') return value;
+      if (!startsWork.has(property)) return (value as () => unknown).bind(target);
+      let member = gatedMembers.get(property);
+      if (member === undefined) {
+        member = (...args: unknown[]) => {
+          gate.assertAvailable(contribution);
+          return (Reflect.get(target, property, target) as (...args: unknown[]) => unknown).apply(
+            target,
+            args,
+          );
+        };
+        gatedMembers.set(property, member);
+      }
+      return member;
     },
   });
 }
