@@ -139,8 +139,10 @@ export async function storeGovernedRecord(
     attribution: context.attribution(authority, input.operationId),
   };
   // Embedded before anything is stored, so a vector the active profile refuses stores nothing.
-  const active = await context.embedding.active();
-  const vector = await embedOne(active, input.content);
+  // While the active embedder is unavailable there is no vector: the record is queued instead.
+  const active = await context.embedding.activeIfAvailable();
+  const vector =
+    active.embedding === undefined ? undefined : await embedOne(active.embedding, input.content);
   // Only the write option sets the operation key; a `dedupeKey` smuggled in
   // through extension metadata would otherwise claim another write's key.
   const { dedupeKey: _callerKey, ...extension } = withoutReservedMetadata(options.metadata ?? {});
@@ -180,11 +182,34 @@ export async function storeGovernedRecord(
       });
     }
   }
+  const vectorReference = { id: record.id, scope: input.scope };
+  // Queued before the record exists, as the ledger learns of it, so a process that stops after the
+  // record is stored still leaves the embed queued. A step embeds the queue once the embedder is
+  // loaded. A step that reads the entry before the record write lands keeps it while it is younger
+  // than QUEUED_EMBED_GRACE_MILLISECONDS, so it is never dropped from under this admission; an
+  // entry naming a record that was never stored is dropped once it is older.
+  // The profile the record's vector is stored in, or, while its embedder is unavailable, queued for.
+  let written: MemoryEmbeddingProfile | undefined = active.profile;
+  if (vector === undefined) {
+    // A queue that refuses lost its profile to two completed switches; the record is embedded into
+    // the active profile below instead.
+    const queued = await context.embedding.vectors.enqueueEmbed(
+      active.profile,
+      vectorReference,
+      context.now(),
+    );
+    if (!queued) {
+      written = undefined;
+    }
+  }
   if (options.dedupeKey !== undefined && context.storage.putOnce !== undefined) {
     const stored = await context.storage.putOnce(record);
     if (!stored.inserted) {
       // This record was never stored, so its pending entry has nothing to settle.
       if (lineage !== undefined) await context.ledger.deletePendingDerivation(tenantId, reference);
+      if (vector === undefined) {
+        await context.embedding.vectors.dequeueEmbed(active.profile, vectorReference);
+      }
       return { outcome: 'duplicate', record: stored.record };
     }
   } else {
@@ -194,26 +219,25 @@ export async function storeGovernedRecord(
   // deletion that removed the record first (a promotion's copy, found through its lineage). A
   // process that dies between the two leaves a record with no vector in the active profile, which
   // recall scores lexically, as it does any record the active profile has not embedded.
-  const vectorReference = { id: record.id, scope: input.scope };
-  let written: MemoryEmbeddingProfile | undefined = active.profile;
-  try {
-    await putRecordVector(
-      context,
-      active.profile,
-      vectorReference,
-      { version: record.version, vector },
-      input.content,
-    );
-  } catch (error) {
-    // Two switches completed since the profile was read, and the second deleted it. The record is
-    // embedded into the active profile below instead.
-    if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
-    written = undefined;
+  if (vector !== undefined) {
+    try {
+      await putRecordVector(
+        context,
+        active.profile,
+        vectorReference,
+        { version: record.version, vector },
+        input.content,
+      );
+    } catch (error) {
+      // Two switches completed since the profile was read, and the second deleted it. The record is
+      // embedded into the active profile below instead.
+      if (!(error instanceof MemoryVectorProfileMissingError)) throw error;
+      written = undefined;
+    }
   }
   // A running switch's target gets the record too (COR-1898), and so does an active profile a
   // switch made active after this admission read the old one. Neither failure fails the admission:
-  // the switch embeds what its target lacks, and a record the new active profile lacks is recalled
-  // by its text there.
+  // the record stays queued for that profile, and a step embeds it once the profile is active.
   await embedIntoOtherProfiles(context, written, vectorReference, record.version, input.content);
   if (lineage === undefined) {
     if (input.state === 'active') {

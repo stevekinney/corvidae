@@ -29,6 +29,15 @@
  * | running, embed held  | forget another pending record, release  | the forgotten record's content is not left in the target's cache |
  * | running, admission's target embed held | forget it, release | the forgotten record's content is not left in the target's cache |
  * | profile deletion stopped part-way | forget, then advance       | the forget removes the record's vector from it; the advance finishes the deletion |
+ * | none, active embedder not loaded | status, recall, admit       | `problem: 'embedder-unavailable'`; recall is lexical; the admission is stored and queued |
+ * | none, active embedder not loaded | advance                     | the queued admission stays queued |
+ * | none, active embedder loaded again | restart, advance          | the queued admission is embedded into the active profile; the queue is empty |
+ * | none, active embedder not loaded | switch to a loaded one, admit, advance | completes; every record, a queued one included, has a vector in the new profile; the problem clears |
+ * | running, last survey done, completion held | admit, target embed errors, complete | the record is queued for the target; the next advance embeds it into the now-active profile |
+ * | none, active embedder needs setup, record write held | setup completes, another process advances, release | the young entry stays queued; the next advance embeds the record |
+ * | none, an entry whose record was never stored | advance; then past the grace, restart, advance | kept while young; dropped once older than an admission can take |
+ * | none, two queued, the first's embed keeps failing | advance with limit 1, twice; it stops failing, advance | the second is embedded on the second step; the first once it stops failing |
+ * | none, active embedder needs setup | recall with `stages: ['semantic']`, minimum score 0, then 0.5 | ranked by text, `semantic` reported `unavailable`; only the match clears the minimum |
  */
 import { sha256Hex } from '@lostgradient/cryptography';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -44,15 +53,19 @@ import {
   HASHING_EMBEDDER_ID,
 } from '../../src/embedder-registry';
 import { withEmbeddingCache } from '../../src/embedding-cache';
+import { QUEUED_EMBED_GRACE_MILLISECONDS } from '../../src/governance/embedding-switch';
 import type { GovernedMemory } from '../../src/governance/governed-memory-types';
 import { collectionNamespace } from '../../src/governance/record-governance';
+import type { MemoryRecordStorage } from '../../src/memory-record-storage';
 import {
   createMemoryVectorStore,
   DEFAULT_MEMORY_VECTOR_KEY_PREFIX,
+  type MemoryEmbeddingJob,
   type MemoryEmbeddingProfile,
   type MemoryVectorReference,
   type MemoryVectorStore,
 } from '../../src/memory-vector-store';
+import type { MemoryRecord } from '../../src/types';
 import {
   createGovernedFixture,
   type GovernedBackend,
@@ -85,6 +98,7 @@ class FakeEmbedder {
   private readonly holds = new Map<string, { hold: Hold; released: Promise<void> }>();
   private failAtCall: number | undefined;
   private readonly failing = new Set<string>();
+  private readonly alwaysFailing = new Set<string>();
   private readonly poisoned = new Set<string>();
   private nextHold: { hold: Hold; released: Promise<void> } | undefined;
 
@@ -92,7 +106,11 @@ class FakeEmbedder {
     const invalid = new Set<string>();
     for (const text of texts) {
       this.calls.push(text);
-      if (this.calls.length === this.failAtCall || this.failing.delete(text)) {
+      if (
+        this.calls.length === this.failAtCall ||
+        this.failing.delete(text) ||
+        this.alwaysFailing.has(text)
+      ) {
         throw new Error(`The fake embedder refused "${text}".`);
       }
       if (this.poisoned.delete(text)) invalid.add(text);
@@ -140,6 +158,15 @@ class FakeEmbedder {
     this.failing.add(text);
   }
 
+  /** Fails every call for `text` until {@link FakeEmbedder.stopFailing} is called for it. */
+  failAlways(text: string): void {
+    this.alwaysFailing.add(text);
+  }
+
+  stopFailing(text: string): void {
+    this.alwaysFailing.delete(text);
+  }
+
   /** Fails the `call`th call, counting from the first this embedder received. */
   failAt(call: number): void {
     this.failAtCall = call;
@@ -182,8 +209,11 @@ const evictingCaches = {
   'external-processors': 'not-retained',
 } as const;
 
-/** `store`, with its next `createProfile` held until the returned hold is released. */
-function holdingCreateProfile(store: MemoryVectorStore): {
+/** `store`, with its next call of `method` held until the returned hold is released. */
+function holding(
+  store: MemoryVectorStore,
+  method: 'createProfile' | 'completeJob',
+): {
   readonly store: MemoryVectorStore;
   readonly hold: Hold;
 } {
@@ -192,17 +222,28 @@ function holdingCreateProfile(store: MemoryVectorStore): {
     release = resolve;
   });
   const hold: Hold = { entered: false, release: () => release() };
+  async function gate(): Promise<void> {
+    if (hold.entered) return;
+    hold.entered = true;
+    await released;
+  }
   return {
     hold,
     store: {
       ...store,
-      async createProfile(profile) {
-        if (!hold.entered) {
-          hold.entered = true;
-          await released;
-        }
-        return store.createProfile(profile);
-      },
+      ...(method === 'createProfile'
+        ? {
+            async createProfile(profile: MemoryEmbeddingProfile) {
+              await gate();
+              return store.createProfile(profile);
+            },
+          }
+        : {
+            async completeJob(expected: MemoryEmbeddingJob) {
+              await gate();
+              return store.completeJob(expected);
+            },
+          }),
     },
   };
 }
@@ -222,6 +263,52 @@ function stoppingOnFirstDeletePrefix(storage: MemoryStorage): MemoryStorage {
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
+}
+
+/** A registry whose only contributed embedder is `fake`, with an availability the test sets. */
+function togglingRegistry(fake: FakeEmbedder): {
+  readonly embedders: EmbedderRegistry;
+  setAvailability(availability: 'available' | 'needs-setup'): void;
+} {
+  let current: 'available' | 'needs-setup' = 'available';
+  return {
+    embedders: createEmbedderRegistry([
+      { id: FAKE, embedder: fake.embed, dimension: DIMENSION, availability: () => current },
+    ]),
+    setAvailability(availability) {
+      current = availability;
+    },
+  };
+}
+
+/** `storage`, with its next `put` held until the returned hold is released. */
+function holdingPut(storage: MemoryRecordStorage): {
+  readonly storage: MemoryRecordStorage;
+  readonly hold: Hold;
+} {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const hold: Hold = { entered: false, release: () => release() };
+  return {
+    hold,
+    storage: new Proxy(storage, {
+      get(target, key) {
+        if (key === 'put') {
+          return async (record: MemoryRecord) => {
+            if (!hold.entered) {
+              hold.entered = true;
+              await released;
+            }
+            await target.put(record);
+          };
+        }
+        const value: unknown = Reflect.get(target, key, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }),
+  };
 }
 
 /** The stored keys under `prefix` in the vector store's key space. */
@@ -676,7 +763,7 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       const fake = new FakeEmbedder();
       const fixture = await fixtureWith(fake);
       const alpha = await writeNote(fixture.memory, 'alpha note');
-      const { store, hold } = holdingCreateProfile(createMemoryVectorStore(fixture.durable));
+      const { store, hold } = holding(createMemoryVectorStore(fixture.durable), 'createProfile');
       const other = fixture.restart({
         embedders: registryWith(fake),
         initialEmbedder: HASHING_EMBEDDER_ID,
@@ -827,6 +914,224 @@ for (const backend of ['in-memory', 'weft'] as const satisfies readonly Governed
       await fixture.memory.embedding.advance();
       expect(await keysUnder(fixture.durable, leftoverVectors)).toEqual([]);
       expect(await keysUnder(fixture.durable, 'd:')).toEqual([]);
+    });
+
+    it('recalls lexically while the active embedder is not loaded, and embeds what it admitted once it is loaded again', async () => {
+      const fake = new FakeEmbedder();
+      const fixture = await fixtureWith(fake);
+      const alpha = await writeNote(fixture.memory, 'alpha note');
+      const active = await started(fixture.memory);
+      await advanceToEnd(fixture.memory);
+
+      const unloaded = fixture.restart({
+        embedders: registryWith(fake, false),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+      });
+      await unloaded.init();
+      expect(await unloaded.embedding.status()).toEqual({
+        active: { embedder: FAKE, dimension: DIMENSION },
+        problem: 'embedder-unavailable',
+      });
+      const beta = await writeNote(unloaded, 'beta note');
+      const bundle = await unloaded.recallForModel(principalA, 'beta', { collection: 'notes' });
+      expect(bundle.stopReason).not.toBe('failed');
+      expect(bundle.candidates.map((candidate) => candidate.recordId)).toContain(beta);
+      const hits = await unloaded.search(principalA, 'beta', { collection: 'notes' });
+      expect(hits.map((hit) => hit.record.id)).toContain(beta);
+      // An advance while the embedder is not loaded leaves the admission queued.
+      await unloaded.embedding.advance();
+      expect(await vectorIn(fixture, active, beta)).toBeUndefined();
+      expect(await keysUnder(fixture.durable, 'q:')).toHaveLength(1);
+
+      // A restart between the admission and its embedding keeps it queued.
+      const reloaded = fixture.restart({
+        embedders: registryWith(fake),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+      });
+      await reloaded.init();
+      expect(await reloaded.embedding.status()).toEqual({
+        active: { embedder: FAKE, dimension: DIMENSION },
+      });
+      await reloaded.embedding.advance();
+
+      expect(await vectorIn(fixture, active, beta)).toEqual(axis('beta'));
+      expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+      const scores = await semanticScores(reloaded, 'beta');
+      expect(scores.get(beta)).toBeCloseTo(1);
+      expect(scores.get(alpha)).toBeCloseTo(0);
+    });
+
+    it('switches away from an active embedder that is not loaded, embedding every record into the new profile', async () => {
+      const fake = new FakeEmbedder();
+      const fixture = await fixtureWith(fake);
+      const alpha = await writeNote(fixture.memory, 'alpha note');
+      await started(fixture.memory);
+      await advanceToEnd(fixture.memory);
+      const unloaded = fixture.restart({
+        embedders: registryWith(fake, false),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+      });
+      await unloaded.init();
+      const beta = await writeNote(unloaded, 'beta note');
+
+      const target = await started(unloaded, HASHING_EMBEDDER_ID);
+      const gamma = await writeNote(unloaded, 'gamma note');
+      await advanceToEnd(unloaded);
+
+      const status = await unloaded.embedding.status();
+      expect(status.active.embedder).toBe(HASHING_EMBEDDER_ID);
+      expect(status.problem).toBeUndefined();
+      expect(status.job).toBeUndefined();
+      for (const id of [alpha, beta, gamma]) {
+        expect(await vectorIn(fixture, target, id)).toHaveLength(target.dimension);
+      }
+    });
+
+    it('embeds into the new active profile a record whose target embed failed after the last survey and before completion', async () => {
+      const fake = new FakeEmbedder();
+      const fixture = await fixtureWith(fake);
+      await writeNote(fixture.memory, 'alpha note');
+      const { store, hold } = holding(createMemoryVectorStore(fixture.durable), 'completeJob');
+      const switching = fixture.restart({
+        embedders: registryWith(fake),
+        initialEmbedder: HASHING_EMBEDDER_ID,
+        vectors: store,
+      });
+      await switching.init();
+      const target = await started(fixture.memory);
+
+      const advancing = switching.embedding.advance();
+      await waitUntil(() => hold.entered, { message: 'the switch surveys and completes' });
+      fake.failOnce('gamma note');
+      const gamma = await writeNote(fixture.memory, 'gamma note');
+      hold.release();
+      await advancing;
+
+      expect(await activeEmbedder(fixture.memory)).toBe(FAKE);
+      expect(await vectorIn(fixture, target, gamma)).toBeUndefined();
+      await fixture.memory.embedding.advance();
+
+      expect(await vectorIn(fixture, target, gamma)).toEqual(axis('gamma'));
+      expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+      const scores = await semanticScores(fixture.memory, 'gamma');
+      expect(scores.get(gamma)).toBeCloseTo(1);
+    });
+
+    /** A fixture whose initial, active embedder is the fake, with an availability the test sets. */
+    async function togglingFixture(fake: FakeEmbedder) {
+      const toggling = togglingRegistry(fake);
+      const fixture = await createGovernedFixture(backend, {
+        governed: { embedders: toggling.embedders, initialEmbedder: FAKE },
+      });
+      const profile: MemoryEmbeddingProfile = {
+        embedderId: FAKE,
+        dimension: DIMENSION,
+        generation: 1,
+      };
+      return { fixture, profile, setAvailability: toggling.setAvailability };
+    }
+
+    it('keeps the queue entry of an admission an advance read before its record was stored, and embeds it', async () => {
+      const fake = new FakeEmbedder();
+      const { fixture, profile, setAvailability } = await togglingFixture(fake);
+      await writeNote(fixture.memory, 'alpha note');
+      const { storage, hold } = holdingPut(fixture.storage);
+      const admitting = fixture.restart({ storage });
+      await admitting.init();
+
+      setAvailability('needs-setup');
+      const writing = writeNote(admitting, 'beta note');
+      await waitUntil(() => hold.entered, {
+        message: 'the admission queues its record and holds the record write',
+      });
+      setAvailability('available');
+      // Another process advances while the record is queued and not yet stored.
+      await fixture.memory.embedding.advance();
+      hold.release();
+      const beta = await writing;
+      await fixture.memory.embedding.advance();
+
+      expect(await vectorIn(fixture, profile, beta)).toEqual(axis('beta'));
+      expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+    });
+
+    it('drops the queue entry of an admission that stopped before storing its record, once it is older than an admission can take', async () => {
+      const fake = new FakeEmbedder();
+      const { fixture, profile } = await togglingFixture(fake);
+      await writeNote(fixture.memory, 'alpha note');
+      const queued = await vectorsOf(fixture).enqueueEmbed(
+        profile,
+        referenceTo('memory-never-stored'),
+        fixture.runtime.clock.now(),
+      );
+      expect(queued).toBe(true);
+
+      await fixture.memory.embedding.advance();
+      expect(await keysUnder(fixture.durable, 'q:')).toHaveLength(1);
+
+      await fixture.runtime.advance(QUEUED_EMBED_GRACE_MILLISECONDS + 1);
+      const restarted = fixture.restart();
+      await restarted.init();
+      await restarted.embedding.advance();
+      expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+    });
+
+    it('attempts every queued embed in turn, so an entry whose embed keeps failing never holds back the next', async () => {
+      const fake = new FakeEmbedder();
+      const { fixture, profile, setAvailability } = await togglingFixture(fake);
+      setAvailability('needs-setup');
+      const written = [
+        { id: await writeNote(fixture.memory, 'alpha note'), content: 'alpha note' },
+        { id: await writeNote(fixture.memory, 'beta note'), content: 'beta note' },
+      ];
+      const queued = await keysUnder(fixture.durable, 'q:');
+      expect(queued).toHaveLength(2);
+      // Key order decides which entry a step reads first.
+      const [front, back] = queued[0]!.endsWith(`:r:${written[0]!.id}`)
+        ? [written[0]!, written[1]!]
+        : [written[1]!, written[0]!];
+      setAvailability('available');
+      fake.failAlways(front.content);
+
+      await fixture.memory.embedding.advance({ limit: 1 });
+      await fixture.memory.embedding.advance({ limit: 1 });
+      expect(await vectorIn(fixture, profile, back.id)).toEqual(axis(back.content));
+      expect(await vectorIn(fixture, profile, front.id)).toBeUndefined();
+
+      fake.stopFailing(front.content);
+      await fixture.memory.embedding.advance({ limit: 1 });
+      expect(await vectorIn(fixture, profile, front.id)).toEqual(axis(front.content));
+      expect(await keysUnder(fixture.durable, 'q:')).toEqual([]);
+    });
+
+    it('scores a semantic-only recall by text while the active embedder is unavailable, and reports semantic unavailable', async () => {
+      const fake = new FakeEmbedder();
+      const { fixture, setAvailability } = await togglingFixture(fake);
+      // Written oldest first, so a recall that ignored the query would rank beta last.
+      const beta = await writeNote(fixture.memory, 'beta note');
+      await fixture.runtime.advance(1_000);
+      await writeNote(fixture.memory, 'alpha note');
+      await fixture.runtime.advance(1_000);
+      await writeNote(fixture.memory, 'gamma note');
+      setAvailability('needs-setup');
+
+      const ranked = await fixture.memory.recallForModel(principalA, 'beta', {
+        collection: 'notes',
+        plan: { stages: ['semantic'] },
+      });
+      expect(ranked.stopReason).not.toBe('failed');
+      expect(ranked.evidence.map((evidence) => evidence.id)[0]).toBe(beta);
+      expect(ranked.evidence).toHaveLength(3);
+      expect(ranked.stages.find((report) => report.stage === 'semantic')?.status).toBe(
+        'unavailable',
+      );
+
+      const thresholded = await fixture.memory.recallForModel(principalA, 'beta', {
+        collection: 'notes',
+        plan: { stages: ['semantic'], minimumScore: 0.5 },
+      });
+      expect(thresholded.stopReason).not.toBe('failed');
+      expect(thresholded.evidence.map((evidence) => evidence.id)).toEqual([beta]);
     });
   });
 }
