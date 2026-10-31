@@ -84,6 +84,11 @@ export function numbersCommitted(schema: unknown, value: unknown): boolean {
   if (!isRecord(schema)) return true;
   const type = schema['type'];
   if ((type === 'number' || type === 'integer') && typeof value === 'string') return false;
+  // A choice (`retention.events`: `'forever'` or `{ olderThan }`) holds its fields in its branches.
+  const branches = schema['oneOf'];
+  if (Array.isArray(branches) && !branches.every((branch) => numbersCommitted(branch, value))) {
+    return false;
+  }
   if (Array.isArray(value)) {
     return value.every((item) => numbersCommitted(schema['items'], item));
   }

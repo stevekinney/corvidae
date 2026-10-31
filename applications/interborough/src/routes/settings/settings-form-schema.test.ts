@@ -79,4 +79,23 @@ describe('the schema a form is given', () => {
     expect(numbersCommitted(nested, { list: [1, '2'] })).toBe(false);
     expect(numbersCommitted(nested, { list: [1, 2], other: 'text' })).toBe(true);
   });
+
+  test('reads the object branch of a choice, as retention.events and its siblings are', () => {
+    for (const key of [
+      'retention.audit',
+      'retention.events',
+      'retention.tasks',
+      'retention.checkpoints',
+    ]) {
+      const schema = formSchemaOf(key, PUBLISHED_SCHEMA.properties[key]);
+      const object = (schema['oneOf'] as Record<string, unknown>[] | undefined)?.find(
+        (branch) => branch['properties'] !== undefined,
+      );
+      const field = Object.keys((object?.['properties'] ?? schema['properties']) as object)[0];
+      expect(field, key).toBeString();
+      expect(numbersCommitted(schema, { [field as string]: '12' }), key).toBe(false);
+      expect(numbersCommitted(schema, { [field as string]: 12 }), key).toBe(true);
+      expect(numbersCommitted(schema, 'forever'), key).toBe(true);
+    }
+  });
 });

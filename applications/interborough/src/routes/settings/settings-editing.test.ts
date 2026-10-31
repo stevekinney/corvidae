@@ -172,6 +172,24 @@ describe('a number typed into a form', () => {
   });
 });
 
+describe('a number typed into a choice between a word and an object', () => {
+  test('is no error while it is typed, in retention.events and its siblings', async () => {
+    const { container, findByRole } = open(servedSettings());
+    await findByRole('group', { name: SETTINGS_COPY.formLabel });
+    const events = row(container, 'retention.events') as HTMLElement;
+    const field = events.querySelector('input') as HTMLInputElement;
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: '12' } });
+    await quietFor(50);
+
+    expect(events.querySelector('[role="alert"]')).toBeNull();
+    expect(saveButton(container).disabled).toBe(true);
+    await fireEvent.blur(field);
+    await waitFor(() => expect(saveButton(container).disabled).toBe(false));
+    expect(events.querySelector('[role="alert"]')).toBeNull();
+  });
+});
+
 describe('⌘Enter in a number field of a form', () => {
   test('makes one save, though the field submits its form and the shell runs the shortcut', async () => {
     const { container, findByRole } = open(servedSettings({ revision: 9 }));
