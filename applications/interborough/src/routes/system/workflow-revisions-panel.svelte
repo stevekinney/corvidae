@@ -41,7 +41,15 @@
    * (`policy.requireExactRevision: false`) is a deliberate omission from
    * this batch, not an oversight — see the PR body.
    */
-  import { Badge, Button, ConfirmDialog, CopyButton } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    ConfirmDialog,
+    CopyButton,
+    EmptyState,
+    SectionHeading,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { TriangleAlert } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -281,18 +289,25 @@
 </script>
 
 <section class="weft-revisions-panel" aria-label="Installed revisions">
-  <div class="weft-revisions-panel__header">
-    <h3 class="weft-revisions-panel__title">Revisions</h3>
-    {#if isRefreshing}
-      <span class="weft-revisions-panel__refreshing" role="status">Refreshing…</span>
-    {/if}
-  </div>
+  <SectionHeading level={3} title="Revisions">
+    {#snippet actions()}
+      {#if isRefreshing}
+        <span class="weft-revisions-panel__refreshing" role="status">Refreshing…</span>
+      {/if}
+    {/snippet}
+  </SectionHeading>
 
   {#if !canRead}
-    <p class="weft-revisions-panel__note">Requires workflows:read to view installed revisions.</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
+      title="Revisions are not available to you"
+      description="Requires workflows:read to view installed revisions."
+    />
   {:else if isLoading}
     <div role="status" aria-busy="true" aria-label="Loading revisions">
-      <p class="weft-revisions-panel__note">Loading…</p>
+      <Skeleton height="2rem" />
     </div>
   {:else if revisionsQuery.isError}
     <QueryFaultBanner error={revisionsQuery.error} onRetry={() => revisionsQuery.refetch()} />
@@ -307,7 +322,13 @@
       >
     </div>
   {:else if rows.length === 0}
-    <p class="weft-revisions-panel__note">No revisions installed for this workflow yet.</p>
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
+      title="No revisions installed"
+      description="Installing a revision of this workflow lists it here."
+    />
   {:else}
     {#if activeQuery.data === null}
       <p class="weft-revisions-panel__note">No active revision — never activated.</p>
@@ -407,18 +428,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-  }
-
-  .weft-revisions-panel__header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .weft-revisions-panel__title {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
   }
 
   .weft-revisions-panel__refreshing {

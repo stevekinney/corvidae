@@ -22,6 +22,8 @@ import {
   PUBLISHED_BUREAU_EVENT_KINDS,
   publishedBureauEventKinds,
 } from './bureau-event-feed.ts';
+import { bureauEventEnvelopeSchema } from './bureau-events-operation.ts';
+import { markEventSource } from './event-source.ts';
 import {
   ActionEvent,
   AssetLifecycleEvent,
@@ -45,6 +47,47 @@ import {
 } from './skills/events.ts';
 
 const CANARY = 'CallerSuppliedDetailCanary';
+
+describe('the source of an event', () => {
+  it('is the plugin a contribution marked it with, on the envelope and not in the payload', () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const envelope = feed.publish(markEventSource(new DiagnosticEvent('warn', 'slack'), 'slack'))!;
+    expect(envelope.source).toBe('slack');
+    expect(envelope.payload).toEqual({ level: 'warn', scope: 'slack' });
+    expect(bureauEventEnvelopeSchema.parse(envelope)).toMatchObject({ source: 'slack' });
+  });
+
+  it('is absent, not undefined, on an event from Bureau core', () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const envelope = feed.publish(new DiagnosticEvent('warn', 'hooks'))!;
+    expect(Object.hasOwn(envelope, 'source')).toBe(false);
+    expect(Object.hasOwn(bureauEventEnvelopeSchema.parse(envelope) as object, 'source')).toBe(
+      false,
+    );
+  });
+
+  it('is never read from a field of the event itself', () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    const changed = new DefinitionsChangedEvent('agents', {
+      added: [],
+      changed: [],
+      removed: [],
+      rejected: [],
+    });
+    const envelope = feed.publish(changed)!;
+    expect(envelope.payload).toMatchObject({ catalog: 'agents' });
+    expect(Object.hasOwn(envelope.payload, 'source')).toBe(false);
+    expect(Object.hasOwn(envelope, 'source')).toBe(false);
+  });
+
+  it('must be a plugin name, and an event cannot be marked as two plugins', () => {
+    const event = new DiagnosticEvent('warn', 'slack');
+    expect(() => markEventSource(event, 'Not A Plugin')).toThrow(TypeError);
+    markEventSource(event, 'slack');
+    expect(() => markEventSource(event, 'calendar')).toThrow(TypeError);
+    expect(markEventSource(event, 'slack')).toBe(event);
+  });
+});
 
 describe('the bureau event feed', () => {
   it('opens a gap when reconnecting with a previous incarnation cursor', async () => {
@@ -436,7 +479,7 @@ describe('the COR-1721 event families on the feed', () => {
       ),
     ).toEqual({
       kind: 'definitions.changed',
-      payload: { source: 'agents', added: ['a'], changed: ['b'], removed: ['c'], rejected: ['b'] },
+      payload: { catalog: 'agents', added: ['a'], changed: ['b'], removed: ['c'], rejected: ['b'] },
     });
     expect(
       projectBureauEvent(new ScheduleMissedEvent('schedule-1', 3, 100, 400, 'dst-gap')),

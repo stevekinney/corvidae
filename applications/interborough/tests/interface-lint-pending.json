@@ -157,18 +157,6 @@
       "issue": "COR-1842"
     },
     {
-      "rule": "app-header-class",
-      "file": "src/routes/system/revision-detail.svelte",
-      "subject": ".weft-revision-detail__header",
-      "issue": "COR-1841"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/routes/system/workflow-revisions-panel.svelte",
-      "subject": ".weft-revisions-panel__header",
-      "issue": "COR-1841"
-    },
-    {
       "rule": "cinder-selector",
       "file": "src/routes/workflows/detail/async-activity/async-activity-drawer.svelte",
       "subject": ".cinder-code-block",
@@ -407,18 +395,6 @@
       "file": "src/styles/workflow-definitions.css",
       "subject": ".ib-workflows__header",
       "issue": "COR-1843"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workflow-definitions.css",
-      "subject": ".ib-workflow__header",
-      "issue": "COR-1841"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/workflow-definitions.css",
-      "subject": ".ib-workflow__section-header",
-      "issue": "COR-1841"
     },
     {
       "rule": "app-header-class",

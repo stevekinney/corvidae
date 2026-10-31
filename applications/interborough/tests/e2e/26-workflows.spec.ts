@@ -343,7 +343,7 @@ test.describe('a new workflow', () => {
 
 test.describe('a code-defined type', () => {
   for (const width of WIDTHS) {
-    test(`leads with what starts it and its runs, shows no row for what it lacks, and keeps the engine’s revisions behind a disclosure, at ${width} pixels`, async ({
+    test(`leads with what starts it, shows no row for what it lacks, and keeps its runs and the engine’s revisions on tabs, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
@@ -368,7 +368,6 @@ test.describe('a code-defined type', () => {
       await expect(detail(page).getByTestId('workflow-trigger')).toHaveText(
         WORKFLOW_COPY.list.schedules(2),
       );
-      await expect(detail(page).getByTestId('workflow-recent-runs')).toBeVisible();
 
       // Nothing the type lacks is a row, and no form to install a revision is on the page.
       await expect(detail(page)).not.toContainText(/\bNone\b/);
@@ -377,17 +376,15 @@ test.describe('a code-defined type', () => {
       await expect(page.getByRole('button', { name: WORKFLOW_COPY.deleteAction })).toHaveCount(0);
       await expect(page.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveCount(0);
 
-      // The engine's contract for this type declares no signal, update, query, or schema, so there
-      // is nothing for a Details disclosure to hold, and the page has none.
-      await expect(
-        detail(page).getByRole('button', { name: WORKFLOW_COPY.page.details }),
-      ).toHaveCount(0);
+      // The engine's contract for this type declares no signal, update or query, so there are no facts to list.
       await expect(detail(page).getByTestId('workflow-definition')).toHaveCount(0);
 
-      // Engine holds the revisions, and the install form with them.
-      const engine = detail(page).getByRole('button', { name: WORKFLOW_COPY.page.engine });
-      await expect(engine).toHaveAttribute('aria-expanded', 'false');
-      await engine.click();
+      // Runs holds its newest runs.
+      await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
+      await expect(detail(page).getByTestId('workflow-recent-runs')).toBeVisible();
+
+      // History holds the revisions, and the install form with them.
+      await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }).click();
       await expect(detail(page).locator('.weft-revisions-panel')).toBeVisible();
       await checkA11y(`a code-defined type at ${width}px`);
     });
@@ -396,14 +393,14 @@ test.describe('a code-defined type', () => {
   test.describe('on the host whose console is the Bureau’s own engine', () => {
     test.use({ baseURL: E2E_BUREAU_URL });
 
-    test('a type the Bureau registers for itself has no Revisions disclosure and no install form', async ({
+    test('a type the Bureau registers for itself has no History tab and no install form', async ({
       page,
     }) => {
       await page.goto('/workflows/agentRun');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       await expect(detail(page).getByRole('heading', { level: 1, name: 'agentRun' })).toBeVisible();
       await expect(
-        detail(page).getByRole('button', { name: WORKFLOW_COPY.page.engine }),
+        detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }),
       ).toHaveCount(0);
       await expect(detail(page)).not.toContainText('Install a revision');
       await expect(detail(page)).not.toContainText(/\bNone\b/);
@@ -413,7 +410,7 @@ test.describe('a code-defined type', () => {
 
 test.describe('an agent-authored type', () => {
   for (const width of WIDTHS) {
-    test(`leads with its agent, description, cadence and state, and its steps, and keeps its file and the versions behind disclosures, at ${width} pixels`, async ({
+    test(`leads with its agent, description, cadence and state, and its steps, and keeps its runs and the versions on tabs, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -431,10 +428,6 @@ test.describe('an agent-authored type', () => {
       );
       await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusActive);
       await expect(root.getByTestId('workflow-steps').getByRole('listitem')).toHaveCount(2);
-      // Nothing has run it.
-      await expect(root.getByTestId('workflow-recent-runs')).toContainText(
-        WORKFLOW_COPY.page.noRuns,
-      );
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
       await expect(root.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveAttribute(
         'href',
@@ -442,19 +435,23 @@ test.describe('an agent-authored type', () => {
       );
       await expect(root).not.toContainText(/\bNone\b/);
 
-      // Details holds where the file is, and the trigger as written.
-      await expect(root.getByTestId('workflow-file-path')).toHaveCount(0);
-      await root.getByRole('button', { name: WORKFLOW_COPY.page.details }).click();
+      // The Overview says where the file is, and the trigger as written.
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
         await workflowFilePath(request, SEEDED_WORKFLOWS.digest),
       );
       await expect(root.getByTestId('workflow-trigger-source')).toContainText('24h');
 
-      // Engine holds the versions that ran: none has, and the page does not offer to activate one.
+      // Nothing has run it, and the Runs tab says so with an action that starts one.
+      await root.getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
+      await expect(root.getByTestId('workflow-recent-runs')).toContainText(
+        WORKFLOW_COPY.page.runs.emptyTitle,
+      );
+
+      // History holds the versions that ran: none has, and the page does not offer to activate one.
       await expect(root.getByTestId('workflow-revisions')).toHaveCount(0);
-      await root.getByRole('button', { name: WORKFLOW_COPY.page.engine }).click();
+      await root.getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }).click();
       await expect(root.getByTestId('workflow-revisions')).toContainText(
-        WORKFLOW_COPY.revisions.empty,
+        WORKFLOW_COPY.revisions.emptyTitle,
       );
       await expect(root.getByRole('button', { name: /Activate/ })).toHaveCount(0);
       await checkA11y(`an agent-authored type at ${width}px`);
@@ -480,9 +477,15 @@ test.describe('an agent-authored type', () => {
       },
     });
     await page.goto('/workflows/e2e-ran');
-    await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.engine }).click();
-    await expect(detail(page).getByTestId('workflow-revisions').getByRole('listitem')).toHaveCount(
-      1,
+    await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }).click();
+    const versions = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
+    await expect(versions).toHaveCount(1);
+    // The file was edited after that version ran, so Weft's verdict against the current one is no.
+    await expect(versions.first().getByTestId('workflow-revision-verdict')).toContainText(
+      WORKFLOW_COPY.revisions.incompatible,
+    );
+    await expect(versions.first().getByTestId('workflow-revision-reasons')).toContainText(
+      WORKFLOW_COPY.revisions.reason('workflow-version-incompatible'),
     );
     // Let the instance finish, so it does not stay in the host.
     await expect
@@ -656,8 +659,10 @@ test.describe('send signal', () => {
     await expect(
       form.getByRole('status', { name: WORKFLOW_COPY.signal.resultLabel }),
     ).toContainText(WORKFLOW_COPY.signal.result(1, 0));
-    // The page's recent runs take the new instance without a reload.
+    // The page's runs take the new instance without a reload.
+    await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
     await expect(detail(page).locator('[data-run]').first()).toBeVisible();
+    await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.overview }).click();
     const after = await listWorkflowRuns(request, id);
     const running = after.filter((run) => run.status === 'running');
     expect(running).toHaveLength(waiting.length + 1);
@@ -706,7 +711,7 @@ test.describe('the runs of a type', () => {
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/workflows/inventory-sync-sweep');
+      await page.goto('/workflows/inventory-sync-sweep?tab=runs');
       await detail(page).getByRole('link', { name: WORKFLOW_COPY.runsAction }).click();
       await expect(page).toHaveURL(/\/workflows\/inventory-sync-sweep\/runs$/);
       await expect(area(page)).toHaveAttribute('data-state', 'ready');

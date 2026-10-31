@@ -104,6 +104,8 @@ export type RevisionFixture = {
     inputSchema?: Record<string, unknown> | null;
     outputSchema?: Record<string, unknown> | null;
   };
+  /** Weft's verdict against the current revision; `null` (the default) when there is none. */
+  compatibility?: { compatible: true } | { compatible: false; reasons: string[] } | null;
 };
 
 export const DOCUMENT_TEXT = JSON.stringify(
@@ -283,6 +285,8 @@ export type World = {
   revisions: Record<string, RevisionFixture[]>;
   /** What `weft.workflows.revisions.list` answers, by name: every installed version, run or not. */
   installedRevisions: Record<string, unknown[]>;
+  /** The starts `bureau.workflows.start` accepted, in order. */
+  startedRuns: Array<{ id: string; input: unknown }>;
   /** What `bureau.workflows.signal` answers. */
   signalAnswer: SignalResult;
   /** The directory `/host/paths` reports, or `null` for a host that does not say. */
@@ -311,6 +315,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     runs: [],
     revisions: {},
     installedRevisions: {},
+    startedRuns: [],
     signalAnswer: { started: [], delivered: [], rejected: [] },
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
     hostMode: 'local',
@@ -551,6 +556,35 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       if (file === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
       return file;
     },
+    'bureau.workflows.internal.get': (params) => {
+      const definition = world.definitions.find(
+        (candidate) => candidate.name === params['id'] && candidate.origin === 'code',
+      );
+      if (definition === undefined) {
+        throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
+      }
+      return {
+        id: definition.name,
+        description: definition.description,
+        version: definition.workflowVersion,
+        source: {
+          kind: 'code',
+          text: `${definition.description ?? ''}\n\n${JSON.stringify(definition.contract, null, 2)}`,
+        },
+      };
+    },
+    'bureau.workflows.start': (params) => {
+      const file = find(params['id']);
+      if (file === undefined || file.state !== 'ready' || file.paused) {
+        throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
+      }
+      world.startedRuns.push({ id: file.id, input: params['input'] ?? null });
+      return {
+        runId: `run-started-${String(world.startedRuns.length)}`,
+        workflow: file.id,
+        workflowVersion: 'version-1',
+      };
+    },
     'bureau.workflows.revisions': (params) => {
       const revisions = world.revisions[String(params['id'])];
       if (revisions === undefined) {
@@ -560,6 +594,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       return {
         revisions: revisions.map((revision) => ({
           ...revision,
+          compatibility: revision.compatibility ?? null,
           document: {
             ...revision.document,
             inputSchema: revision.document.inputSchema ?? null,

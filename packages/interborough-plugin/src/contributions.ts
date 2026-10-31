@@ -28,6 +28,11 @@ export interface PluginEvent {
   readonly emittedAtMs: number;
   /** The event's payload. */
   readonly payload: unknown;
+  /**
+   * The plugin whose contribution emitted the event. Absent on an event from Bureau core. It is
+   * the event's own field, apart from the payload: a payload key named `source` is the kind's own.
+   */
+  readonly source?: string;
 }
 
 /** Guardrails a plugin adds to the ones Operative applies to every agent. */
@@ -86,6 +91,15 @@ export interface PluginHookActionContext {
   readonly configuration: unknown;
   /** Aborts when the host stops the delivery. */
   readonly signal: AbortSignal;
+  /** The id of the delivery this attempt belongs to; every attempt of one delivery shares it. */
+  readonly deliveryId: string;
+  /**
+   * `hook:<hookId>:<deliveryId>`, the same for every attempt of one delivery and different for each
+   * delivery. A run that succeeded and was interrupted before the delivery was marked delivered is
+   * attempted again after a restart, so an action with an external effect must use this key (as an
+   * idempotency key, or a lookup of what it already did) to make the repeat a no-op.
+   */
+  readonly idempotencyKey: string;
 }
 
 /** A new kind of hook action, what a hook does when one of its events happens. */

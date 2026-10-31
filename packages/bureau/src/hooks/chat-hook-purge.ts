@@ -51,6 +51,9 @@ function payloadsOf(record: HookDeliveryRecord): Record<string, unknown>[] {
   } else if (record.work?.type === 'start-workflow') {
     const { input } = record.work;
     candidates = isRecord(input) ? [input, input['payload']] : [];
+  } else if (record.work?.type === 'plugin') {
+    // The whole event was kept for the action, so its payload can name the chat's runs.
+    candidates = [record.work.event.payload];
   }
   return candidates.filter(isRecord);
 }

@@ -529,7 +529,7 @@ export class AssetLifecycleEvent extends Event {
 }
 
 /** Which file catalog a {@link DefinitionsChangedEvent} reports on. */
-export type DefinitionSourceKind = 'agents' | 'workflows';
+export type DefinitionCatalogKind = 'agents' | 'workflows';
 
 /**
  * Fired on the bureau emitter after a rescan of the agent or workflow files changed what the
@@ -539,14 +539,15 @@ export type DefinitionSourceKind = 'agents' | 'workflows';
 export class DefinitionsChangedEvent extends Event {
   static readonly type = 'definitions.changed' as const;
 
-  readonly source: DefinitionSourceKind;
+  /** Which file catalog changed. Named `catalog`, not `source`: `source` is the envelope's plugin name. */
+  readonly catalog: DefinitionCatalogKind;
   readonly added: readonly string[];
   readonly changed: readonly string[];
   readonly removed: readonly string[];
   readonly rejected: readonly string[];
 
   constructor(
-    source: DefinitionSourceKind,
+    catalog: DefinitionCatalogKind,
     change: {
       readonly added: readonly string[];
       readonly changed: readonly string[];
@@ -555,7 +556,7 @@ export class DefinitionsChangedEvent extends Event {
     },
   ) {
     super(DefinitionsChangedEvent.type);
-    this.source = source;
+    this.catalog = catalog;
     this.added = [...change.added];
     this.changed = [...change.changed];
     this.removed = [...change.removed];

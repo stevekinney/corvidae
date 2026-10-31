@@ -227,7 +227,7 @@ describe('the definition change forwarder', () => {
     expect(forwarded).toHaveLength(1);
     expect(forwarded[0]).toMatchObject({
       type: 'definitions.changed',
-      source: 'workflows',
+      catalog: 'workflows',
       added: ['a'],
       changed: ['b'],
       removed: ['c'],
