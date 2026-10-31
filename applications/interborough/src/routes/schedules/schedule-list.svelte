@@ -67,7 +67,7 @@
   }
 
   /**
-   * The URL owns the filters: the status (the dashboard's Schedule health card deep-links here via
+   * The URL owns the filters: the status (the Health overview's Schedules count deep-links here via
    * `/schedules?status=active`) and the agent.
    */
   const statusFilter = $derived<ScheduleStatus | 'all'>(

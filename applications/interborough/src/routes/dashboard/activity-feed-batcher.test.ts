@@ -6,11 +6,13 @@ import { quietFor } from '@lostgradient/testing/wait-until';
 import { ActivityFeedBatcher, type ActivityFeedRow } from './activity-feed-batcher.svelte.ts';
 
 function row(overrides: Partial<ActivityFeedRow> = {}): ActivityFeedRow {
+  const id = overrides.id ?? 'cursor-1';
   return {
-    id: 'cursor-1',
+    id,
     tier: 'info',
     icon: 'play',
-    title: 'Workflow started',
+    // Each id is its own headline, so these cases are about order and the window, not repeats.
+    title: `Workflow ${id}`,
     body: 'Workflow wf_12345',
     href: '/runs/wf_1',
     emittedAtMs: 1_000,
@@ -21,6 +23,117 @@ function row(overrides: Partial<ActivityFeedRow> = {}): ActivityFeedRow {
 const FAST_WINDOW_MS = 5;
 
 describe('ActivityFeedBatcher', () => {
+  test('holds a window of six lines by default, the latest first', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) batcher.ingest(row({ id }));
+
+    await waitFor(() => expect(batcher.items).toHaveLength(6));
+    expect(batcher.items.map((item) => item.id)).toEqual(['h', 'g', 'f', 'e', 'd', 'c']);
+    batcher.dispose();
+  });
+
+  test('collapses repeats in a row into one line with a count, keeping the newest', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    batcher.ingest(row({ id: 'a', title: 'Daily summary run finished' }));
+    batcher.ingest(row({ id: 'b', title: 'Daily summary run finished' }));
+    batcher.ingest(row({ id: 'c', title: 'Alert fired' }));
+    batcher.ingest(row({ id: 'd', title: 'Daily summary run finished' }));
+    batcher.ingest(row({ id: 'e', title: 'Daily summary run finished' }));
+
+    await waitFor(() => expect(batcher.items).toHaveLength(3));
+    expect(batcher.items.map((item) => [item.id, item.count])).toEqual([
+      ['e', 2],
+      ['c', 1],
+      ['b', 2],
+    ]);
+    batcher.dispose();
+  });
+
+  test('keeps repeats of a headline for different workflows as separate lines, each with its own link', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    batcher.ingest(row({ id: 'a', title: 'Workflow failed', href: '/runs/wf_1' }));
+    batcher.ingest(row({ id: 'b', title: 'Workflow failed', href: '/runs/wf_2' }));
+    batcher.ingest(row({ id: 'c', title: 'Workflow failed', href: '/runs/wf_2' }));
+
+    await waitFor(() => expect(batcher.items).toHaveLength(2));
+    expect(batcher.items.map((item) => [item.id, item.href, item.count])).toEqual([
+      ['c', '/runs/wf_2', 2],
+      ['a', '/runs/wf_1', 1],
+    ]);
+    batcher.dispose();
+  });
+
+  test('keeps two alerts apart on a fixed link, because only the body names which one fired', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    const alert = { title: 'Alert fired', tier: 'critical', href: '/health?tab=alerts' } as const;
+    batcher.ingest(row({ id: 'a', ...alert, body: 'queue-depth' }));
+    batcher.ingest(row({ id: 'b', ...alert, body: 'queue-depth' }));
+    batcher.ingest(row({ id: 'c', ...alert, body: 'disk-pressure' }));
+
+    await waitFor(() => expect(batcher.items).toHaveLength(2));
+    expect(batcher.items.map((item) => [item.id, item.body, item.count])).toEqual([
+      ['c', 'disk-pressure', 1],
+      ['b', 'queue-depth', 2],
+    ]);
+    batcher.dispose();
+  });
+
+  test('keeps a repeat across a later flush, and never merges rows of different severity', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    batcher.ingest(row({ id: 'a', title: 'Workflow failed', tier: 'warning' }));
+    await waitFor(() => expect(batcher.items).toHaveLength(1));
+    batcher.ingest(row({ id: 'b', title: 'Workflow failed', tier: 'warning' }));
+    await waitFor(() => expect(batcher.items[0]?.count).toBe(2));
+    batcher.ingest(row({ id: 'c', title: 'Workflow failed', tier: 'critical' }));
+
+    await waitFor(() => expect(batcher.items).toHaveLength(2));
+    expect(batcher.items.map((item) => [item.id, item.count])).toEqual([
+      ['c', 1],
+      ['b', 2],
+    ]);
+    batcher.dispose();
+  });
+
+  test('seed() starts an empty window from rows that already happened, oldest first', () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    batcher.seed([
+      row({ id: 'a', title: 'Alert fired' }),
+      row({ id: 'b', title: 'Run finished' }),
+      row({ id: 'c', title: 'Run finished' }),
+    ]);
+
+    expect(batcher.items.map((item) => [item.id, item.count])).toEqual([
+      ['c', 2],
+      ['a', 1],
+    ]);
+    batcher.dispose();
+  });
+
+  test('seed() leaves a window that already has lines alone', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    batcher.ingest(row({ id: 'live' }));
+    await waitFor(() => expect(batcher.items).toHaveLength(1));
+
+    batcher.seed([row({ id: 'old' })]);
+
+    expect(batcher.items.map((item) => item.id)).toEqual(['live']);
+    batcher.dispose();
+  });
+
+  test('resume() folds held repeats into the line on screen', async () => {
+    const batcher = new ActivityFeedBatcher({ batchWindowMs: FAST_WINDOW_MS });
+    batcher.ingest(row({ id: 'a', title: 'Run finished' }));
+    await waitFor(() => expect(batcher.items).toHaveLength(1));
+    batcher.pause();
+    batcher.ingest(row({ id: 'b', title: 'Run finished' }));
+    await waitFor(() => expect(batcher.pendingCount).toBe(1));
+
+    batcher.resume();
+
+    expect(batcher.items.map((item) => [item.id, item.count])).toEqual([['b', 2]]);
+    batcher.dispose();
+  });
+
   test('starts empty, not paused', () => {
     const batcher = new ActivityFeedBatcher();
     expect(batcher.items).toEqual([]);

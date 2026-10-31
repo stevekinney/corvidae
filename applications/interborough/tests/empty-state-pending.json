@@ -1,20 +1,8 @@
 {
   "entries": [
     {
-      "file": "src/routes/dashboard/index.svelte",
-      "issue": "COR-1850"
-    },
-    {
-      "file": "src/routes/reviews/cards/dashboard-card.svelte",
-      "issue": "COR-1850"
-    },
-    {
       "file": "src/routes/reviews/reviews-inbox.svelte",
       "issue": "COR-1849"
-    },
-    {
-      "file": "src/routes/schedules/cards/dashboard-card.svelte",
-      "issue": "COR-1850"
     },
     {
       "file": "src/routes/schedules/schedule-detail.svelte",
@@ -25,20 +13,8 @@
       "issue": "COR-1859"
     },
     {
-      "file": "src/routes/system/alerts-tab.svelte",
-      "issue": "COR-1850"
-    },
-    {
       "file": "src/routes/system/dynamic-source-list.svelte",
       "issue": "COR-1847"
-    },
-    {
-      "file": "src/routes/system/lease-status-panel.svelte",
-      "issue": "COR-1850"
-    },
-    {
-      "file": "src/routes/system/realms-tab.svelte",
-      "issue": "COR-1850"
     },
     {
       "file": "src/routes/system/registry-contract-verification-panel.svelte",
@@ -50,67 +26,67 @@
     },
     {
       "file": "src/routes/workers/deployment-versions-view.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/deployments-panel.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/diagnostics-view.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/fleet-view.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/index.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/manifest-diagnostics-view.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/queue-list-view.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "file": "src/routes/workers/task-attempt-history.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "file": "src/routes/workers/task-dead-letter-panel.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "file": "src/routes/workers/task-delivery-history.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "file": "src/routes/workers/task-ledger-panel.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1972"
     },
     {
       "file": "src/routes/workers/verification-fault-view.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/worker-contract-verification-panel.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/worker-list-view.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/worker-manifest-panel.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workers/worker-session-panel.svelte",
-      "issue": "COR-1850"
+      "issue": "COR-1971"
     },
     {
       "file": "src/routes/workflows/detail/async-activity/activity-worker-provenance.svelte",

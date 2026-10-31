@@ -80,7 +80,8 @@
       (filter.tags && filter.tags.length > 0) ||
       filter.idPrefix ||
       (filter.attributes && filter.attributes.length > 0) ||
-      filter.createdAt,
+      filter.createdAt ||
+      filter.updatedAt,
     ),
   );
 

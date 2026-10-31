@@ -8,8 +8,6 @@
 export { readBackendDescriptors, withBackendDescriptors } from './backend-descriptor-attachment.ts';
 export { getProviderCapabilities } from './capabilities.ts';
 export type { ProviderCapabilities } from './capabilities.ts';
-export { createOllamaEmbedder, createVoyageEmbedder } from './embeddings/index.ts';
-export type { OllamaEmbedderOptions, VoyageEmbedderOptions } from './embeddings/index.ts';
 export {
   ProviderContractError,
   ProviderError,

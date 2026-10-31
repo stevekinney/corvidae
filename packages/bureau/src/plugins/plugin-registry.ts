@@ -90,6 +90,9 @@ export function pluginListingOf(
     status: record.status === 'running' && missing.length > 0 ? 'needs-setup' : record.status,
     problems: [
       ...record.problems,
+      ...(record.entry.developmentPath === undefined
+        ? []
+        : [{ code: 'development-source', path: record.entry.developmentPath } as const]),
       ...missing.map((key): PluginProblem => ({
         code: 'secret-missing',
         key,

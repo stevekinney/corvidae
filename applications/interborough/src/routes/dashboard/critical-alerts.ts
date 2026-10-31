@@ -1,10 +1,10 @@
 /**
- * Critical-alerts band data (plan §9.1, this track's brief): pure builders
+ * Health-line chip data (plan §9.1, this track's brief): pure builders
  * turning `weft.tasks.diagnostics`'s summary and the reviews-near-timeout
- * list into deep-linking chips (design `Weft UI.dc.html` dashboard
- * screen's "critical alerts band"). Kept framework-free so the chip logic
- * is unit-testable without a DOM (PROJECT-BRIEF "pure logic ... gets
- * colocated bun test unit tests").
+ * list into the deep-linking chips under the Health overview's health line
+ * (design `Weft UI.dc.html` dashboard screen's "critical alerts band"). Kept
+ * framework-free so the chip logic is unit-testable without a DOM
+ * (PROJECT-BRIEF "pure logic ... gets colocated bun test unit tests").
  *
  * The design mock's "Lease contested" chip is not in this band. It was first
  * omitted because no catalog operation exposed lease or ownership state

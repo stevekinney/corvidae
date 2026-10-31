@@ -135,6 +135,7 @@ import {
   resolveA2aPublicOrigin,
   resolvePort,
 } from './environment-configuration.ts';
+import { HOST_DEPENDENCIES, loadFolderPlugins, PLUGIN_FOLDER_NAME } from './folder-plugins.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
 import { hostStorageReport } from './host-storage.ts';
 import {
@@ -155,7 +156,7 @@ import {
 } from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { createHostMemory } from './memory.ts';
-import { createPluginManager, type PluginManager } from './plugin-manager.ts';
+import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
 import { providerSecrets, workspacePlugins } from './plugins.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
@@ -301,11 +302,19 @@ export type HostOptions = {
    */
   readonly a2aAgents?: readonly string[];
   /**
-   * The plugins to load, in order. Defaults to the workspace's own (`plugins.ts`). A host started
-   * with others, such as a test's fixtures, loads exactly these. The array is copied before the
-   * host opens anything.
+   * The package plugins to load, in order. Defaults to the workspace's own (`plugins.ts`). A host
+   * started with others, such as a test's fixtures, loads exactly these. The array is copied
+   * before the host opens anything. The folder plugins (COR-1881) load after them, whatever this is.
    */
   readonly plugins?: readonly BureauPluginEntry[];
+  /**
+   * Plugin folders to load as well, each marked `development-source` (`--plugin <path>` on the
+   * development entry). They load like the folders in Bungalow's `plugins/`. Copied before the host
+   * opens anything.
+   */
+  readonly developmentPlugins?: readonly string[];
+  /** Receives the host's progress lines, such as one per plugin at startup. Defaults to `console.info`. */
+  readonly log?: (message: string) => void;
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
   readonly seed?: boolean;
   /**
@@ -562,8 +571,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   const callerLocks = { ...options.settings?.locked };
   // The A2A allowlist is read the same way: after the first await it would be the caller's live array.
   const a2aAgents = options.a2aAgents === undefined ? undefined : [...options.a2aAgents];
-  // The plugin list is read the same way, so the Bureau and the routes see the plugins this host was started with.
-  const plugins = [...(options.plugins ?? workspacePlugins())];
+  // The plugin lists are read the same way, so the Bureau and the routes see the plugins this host was started with.
+  const packagePlugins = [...(options.plugins ?? workspacePlugins())];
+  const developmentPlugins = [...(options.developmentPlugins ?? [])];
+  const log = options.log ?? ((message: string) => console.info(message));
   // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
   // and a malformed one stops the host before anything opens.
   const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
@@ -593,11 +604,31 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // plans against a provider that is not configured. The seeded agents still answer from a
     // script.
     const configurationQueue = createConfigurationQueue();
+    // The folder plugins load now, once: Bungalow's `plugins/` folder, then the development ones.
+    // A folder that cannot load is reported and skipped, never a reason to stop the host.
+    const content = bungalow.content(PLUGIN_FOLDER_NAME);
+    const folderPlugins = await loadFolderPlugins({
+      directory: content.kind === 'directory' ? content.path : undefined,
+      dependencies: HOST_DEPENDENCIES,
+      developmentPaths: developmentPlugins,
+    });
+    const plugins = [...packagePlugins, ...folderPlugins.entries];
     // The plugins read their choices from the same file, before the Bureau composes them. A secret
     // the provider routes store reaches a plugin that waits on it through the same watchers.
     const pluginManager = await createPluginManager({
       bungalow,
       plugins,
+      unloaded: folderPlugins.failures.map((failure) => ({
+        source: 'folder',
+        location: failure.location,
+        status: 'skipped',
+        problems: [
+          { code: 'load-failed', message: failure.message },
+          ...(failure.developmentPath === undefined
+            ? []
+            : [{ code: 'development-source', path: failure.developmentPath } as const]),
+        ],
+      })),
       configurationQueue,
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
       reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
@@ -693,7 +724,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       storage,
       // The plugins this host loads, the owner's choices for them, and the secrets they declare
       // (COR-1880). Memory is built once their setup has run, with what they contribute to it.
-      plugins,
+      plugins: [...pluginManager.loadable()],
       pluginConfiguration: pluginManager.settings(),
       pluginSecrets: pluginManager.secrets,
       answerEncryption: answerKeys,
@@ -729,6 +760,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ...(settings === undefined ? {} : { settings }),
     });
     held.bureau = bureau;
+    // One line per plugin with its status and problem codes, once Bureau has composed them.
+    for (const line of pluginStartupLines(await pluginManager.snapshot())) {
+      log(line);
+    }
     // The skills the configuration names are discovered now and handed to the handler below. A
     // trust change is audited by the Bureau's trail, so the manager waits for the Bureau.
     const skills = await createSkillManager({

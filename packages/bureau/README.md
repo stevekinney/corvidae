@@ -757,6 +757,10 @@ const streaming = resolveProviderGenerate(definitions, configuration, streamEven
 
 The configuration reaches the definition whole, so a field `ProviderConfiguration` (`provider`, `model`, `maximumTokens`, `temperature`, `apiKey`) does not name, such as an injected `client`, arrives unchanged. A `provider` no definition carries throws an `Error` naming the missing provider and the registered names. Two definitions with one name throw at the call, whether or not the configuration selects that name.
 
+### Testing a plugin (`@lostgradient/bureau/testing`)
+
+`createPluginTestHost(plugin, { configuration })` starts a Bureau over memory storage that loads only `plugin`, with a value for every secret it declares, scripted models, and the agent files in the `agents/` directory of the plugin's `content` as its read-only layer. It returns `{ bureau, plugins, dispose }`; pass it to `pluginContract` from `@lostgradient/interborough-plugin/testing`. The `workflows/` and `skills/` directories of `content` are not loaded.
+
 ### Notifications
 
 `bureau.notifications` is the owner's notification inbox (COR-1941): persisted, owner-scoped, built in, and never sent anywhere (v1 has no email). Every record carries its `owner`, and every read and change names the owner it acts for, so a principal reaches its own notifications and nobody else's. They live under the `bureau-notification:v1:` key prefix.

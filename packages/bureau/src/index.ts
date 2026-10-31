@@ -54,6 +54,7 @@ export type {
   PluginProblem,
   PluginStatus,
 } from './plugins/plugin-types';
+export { pluginLoadOrder } from './plugins/compose-plugins';
 export type {
   AgentContributions,
   AgentContributionSource,

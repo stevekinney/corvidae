@@ -89,8 +89,8 @@
       "outputs": ["test-output/junit/self.xml"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "{applications,components,packages,testing,internal}/*/package.json",
-        "{applications,components,packages,testing,internal}/*/tsconfig*.json",
+        "{applications,components,packages,testing,internal,plugins}/*/package.json",
+        "{applications,components,packages,testing,internal,plugins}/*/tsconfig*.json",
         "scripts/browser-fixtures/package.json",
         "scripts/browser-fixtures/tsconfig*.json",
         "testing/testing/src/hang-guard.ts",
