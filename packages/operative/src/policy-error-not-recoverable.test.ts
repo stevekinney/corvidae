@@ -11,7 +11,7 @@ import { Conversation } from 'conversationalist';
 
 import { noToolCalls } from './conditions/predicates';
 import { createActiveRun } from './create-run';
-import { NonRecoverablePolicyError } from './errors';
+import { type AgentRunError, NonRecoverablePolicyError } from './errors';
 import type { OperativeHookMap } from './hooks';
 import { isNonRetryableGenerateError } from './run-step-utilities';
 import type { RunOptions } from './types';
@@ -23,14 +23,19 @@ class ForbiddenModelError extends NonRecoverablePolicyError {
   }
 }
 
-function runRefused(
-  options: Partial<RunOptions> & { readonly action?: 'skip' | 'retry' } = {},
-): Promise<{ result: Awaited<ReturnType<typeof createActiveRun>['result']>; calls: () => number }> {
+const errorOf = (result: { readonly error?: unknown }): AgentRunError =>
+  result.error as AgentRunError;
+
+async function runRefused(
+  options: { readonly action?: 'skip' | 'retry'; readonly retry?: RunOptions['retry'] } = {},
+) {
   let calls = 0;
-  const { action, ...rest } = options;
   const hooks = new HookRegistry<OperativeHookMap>();
-  if (action !== undefined) hooks.on('onError', async () => action);
-  const run = createActiveRun({
+  if (options.action !== undefined) {
+    const { action } = options;
+    hooks.on('onError', async () => action);
+  }
+  const result = await createActiveRun({
     generate: async () => {
       calls++;
       throw new ForbiddenModelError();
@@ -38,11 +43,11 @@ function runRefused(
     toolbox: createTestToolbox([]),
     conversation: new Conversation(),
     stopWhen: noToolCalls(),
-    maxSteps: 5,
+    maximumSteps: 5,
     hooks,
-    ...rest,
-  });
-  return run.result.then((result) => ({ result, calls: () => calls }));
+    ...(options.retry === undefined ? {} : { retry: options.retry }),
+  }).result;
+  return { result, calls: () => calls };
 }
 
 describe('a policy denial from generate', () => {
@@ -51,17 +56,17 @@ describe('a policy denial from generate', () => {
 
     expect(result.finishReason).not.toBe('max-steps');
     expect(result.error).toBeDefined();
-    expect(result.error?.kind).toBe('policy');
-    expect(result.error?.cause).toBeInstanceOf(ForbiddenModelError);
-    expect(result.error?.message).toContain('test/forbidden');
+    expect(errorOf(result).kind).toBe('policy');
+    expect(errorOf(result).cause).toBeInstanceOf(ForbiddenModelError);
+    expect(errorOf(result).message).toContain('test/forbidden');
     expect(calls()).toBe(1);
   });
 
   it('ends the run with the error when an onError hook returns retry', async () => {
     const { result, calls } = await runRefused({ action: 'retry' });
 
-    expect(result.error?.kind).toBe('policy');
-    expect(result.error?.cause).toBeInstanceOf(ForbiddenModelError);
+    expect(errorOf(result).kind).toBe('policy');
+    expect(errorOf(result).cause).toBeInstanceOf(ForbiddenModelError);
     expect(calls()).toBe(1);
   });
 
@@ -70,7 +75,7 @@ describe('a policy denial from generate', () => {
       retry: { attempts: 3, delay: 0, shouldRetry: () => true },
     });
 
-    expect(result.error?.kind).toBe('policy');
+    expect(errorOf(result).kind).toBe('policy');
     expect(calls()).toBe(1);
   });
 

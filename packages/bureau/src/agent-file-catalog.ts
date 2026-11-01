@@ -741,8 +741,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       { path: 'model', model: definition.model },
       ...(definition.models ?? []).map((model, index) => ({ path: `models.${index}`, model })),
     ];
-    const issues: Array<{ path: string; message: string; reference: string }> =
-      entries.flatMap(({ path, model }) => {
+    const issues: Array<{ path: string; message: string; reference: string }> = entries.flatMap(
+      ({ path, model }) => {
         const resolved = resolveModelDescriptor(model, descriptors);
         if (isProblem(resolved)) return [];
         const denial = modelPolicyDenialOf(resolved, policy);
@@ -754,7 +754,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             reference: model,
           },
         ];
-      });
+      },
+    );
     // COR-1996: a file that compacts summarizes with the deployment's summarizer, so a summarizer
     // the policy forbids would fail its first compaction. No summarizer is the scan's own check.
     if (definition.compaction?.enabled === true) {
