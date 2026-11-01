@@ -20,6 +20,13 @@ export const BUREAU_PATH = '/bureau';
 /** The origins the Bureau can be asked to filter sessions by. */
 export type ContextOrigin = 'chat' | 'goal' | 'schedule';
 
+/**
+ * Every origin a session can report: those a list can be filtered by in the chat views, and `try`,
+ * a throwaway chat with an unsaved agent definition (`bureau.agents.try`), which the Bureau leaves
+ * out of the list unless it is asked for.
+ */
+export type ReportedOrigin = ContextOrigin | 'try';
+
 /** A session (a Bureau context), as `bureau.contexts.get` and `.list` show it. */
 export const chatContextSchema = z.object({
   id: z.string(),
@@ -32,14 +39,16 @@ export const chatContextSchema = z.object({
   /** The message of the parent this one was branched at, or `null`. */
   forkedFromMessageId: z.string().nullable(),
   /**
-   * What started the session: a person's `chat`, a `goal`, or a `schedule`'s fire. The Bureau
+   * What started the session: a person's `chat`, a `goal`, a `schedule`'s fire, or `try`, a
+   * throwaway chat with an agent definition that is not saved (`bureau.agents.try`), which the list
+   * leaves out unless it is asked for. The Bureau
    * records it when a goal or a fire creates the session, and a session that records none is a chat,
    * which is also how an answer that names none reads here. A value this client does not know (a
    * Bureau newer than the browser) reads `other`: the session is kept, and since only a `chat`
    * is shown in Chat, it is not one.
    */
   origin: z
-    .enum(['chat', 'goal', 'schedule'])
+    .enum(['chat', 'goal', 'schedule', 'try'])
     .or(z.unknown().transform((): 'other' => 'other'))
     .default('chat'),
   messageCount: z.number(),
@@ -381,7 +390,7 @@ export type ContextDeleteReceipt = z.infer<typeof contextDeleteReceiptSchema>;
  */
 export async function deleteContext(
   contextId: string,
-  options?: { readonly signal?: AbortSignal },
+  options?: { readonly signal?: AbortSignal; readonly fetch?: Fetcher },
 ): Promise<ContextDeleteReceipt> {
   return z
     .object({ contextId: z.string(), receipt: contextDeleteReceiptSchema })
@@ -404,7 +413,7 @@ export type ContextPage = z.infer<typeof contextPageSchema>;
 export async function listContexts(
   input: {
     readonly agentName?: string;
-    readonly origin?: ContextOrigin;
+    readonly origin?: ReportedOrigin;
     /** Only the chats whose title contains this text, ignoring case, before the page is cut. */
     readonly titleContains?: string;
     /** Only the chats in this activity state right now, before the page is cut. */

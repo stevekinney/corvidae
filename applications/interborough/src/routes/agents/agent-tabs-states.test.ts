@@ -249,7 +249,7 @@ describe('the Settings tab, when something goes wrong', () => {
     expect(models.length).toBeGreaterThan(0);
   });
 
-  test('shows a file with no limits as having none', async () => {
+  test('shows a file with no step limit as running the default of 25 steps', async () => {
     landAt('/agents/researcher?tab=settings');
     serve();
     const { findByTestId } = mount();
@@ -257,7 +257,7 @@ describe('the Settings tab, when something goes wrong', () => {
     const settings = await findByTestId('agent-settings');
 
     await waitFor(() => expect(settings.textContent).toContain('anthropic/sonnet'));
-    expect(settings.textContent).toContain('No limit');
+    expect(settings.textContent).toContain('Default (25 steps)');
     // Guardrails and the spend and tool limits are on the Access tab.
     expect(settings.textContent).not.toContain('Spend limit');
   });

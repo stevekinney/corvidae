@@ -16,6 +16,13 @@
    * What the form offers comes from `bureau.agents.catalog` and nothing else, and the A2A
    * switch is saved with the rest of the definition. A catalog with no model offers
    * nothing a save could use, so the page shows where to configure a provider instead of the form.
+   *
+   * Try it, beside Save, opens a drawer that chats with the form as it stands, saved or not
+   * (`agent-try-drawer.svelte`): nothing is written, and closing it ends the chat.
+   *
+   * `/agents/new?from=<agent>` is Duplicate: the form for a new agent, filled from that agent (a
+   * file agent's definition whole, a built-in agent's own statement of itself, `agent-copy.ts`). It
+   * is named and created like any new agent, and a taken identifier is refused the same way.
    */
   import { onMount, untrack } from 'svelte';
 
@@ -53,10 +60,12 @@
   import { restrictionsOf } from './agent-editor-models.ts';
   import { MODEL_POLICY_KEY } from '../settings/settings-controls.ts';
   import { AgentEditorState, type ModelContext } from './agent-editor-state.svelte.ts';
+  import { copyIdentifierOf, copySeedOf } from './agent-copy.ts';
   import AgentEditorForm from './agent-editor-form.svelte';
   import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
   import AgentRevisionHistory from './agent-revision-history.svelte';
+  import AgentTryDrawer from './agent-try-drawer.svelte';
 
   interface Props {
     /** The identifier of the agent to edit; absent on `/agents/new`. */
@@ -70,6 +79,8 @@
 
   // One page belongs to one agent: the outlet mounts a new page when the path changes.
   const agentId = untrack(() => id);
+  // The agent a new agent is copied from (Duplicate), when the address names one.
+  const copiedFrom = untrack(() => (id === undefined ? router.search.get('from') : null));
 
   // What the page reads once and then holds. A background refetch must not replace a form the
   // person is typing in, so nothing here refetches on its own and the form is built once.
@@ -96,6 +107,13 @@
     queryKey: queryKeys.agents.definition(agentId ?? ''),
     queryFn: ({ signal }) => getAgentDefinition(agentId ?? '', { signal }),
     enabled: agentId !== undefined,
+  }));
+
+  const source = createQuery(() => ({
+    ...stable,
+    queryKey: queryKeys.agents.definition(copiedFrom ?? ''),
+    queryFn: ({ signal }) => getAgentDefinition(copiedFrom ?? '', { signal }),
+    enabled: copiedFrom !== null,
   }));
 
   // What narrows the model field besides the catalog: the host's providers, to name the ones with
@@ -152,6 +170,7 @@
   /** A write failed for a reason the person can act on, in the Bureau's words. */
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
   let confirmingDelete = $state(false);
+  let trying = $state(false);
 
   // Builds the form once, when everything it is filled from has arrived. A reload builds it again.
   // A catalog with no model builds none, and a provider added since is picked up when the catalog is
@@ -159,12 +178,18 @@
   $effect(() => {
     const catalogData = catalog.data;
     const detailData = detail.data;
+    const sourceData = source.data;
     const settled = modelContextSettled;
     const context = modelContext(providers.data, policy.data);
     untrack(() => {
       if (editor !== undefined || catalogData === undefined || !settled) return;
       if (catalogData.models.length === 0) return;
-      if (agentId === undefined) {
+      if (agentId === undefined && copiedFrom !== null) {
+        const seed = sourceData === undefined ? null : copySeedOf(sourceData);
+        if (seed !== null) {
+          editor = AgentEditorState.copy(seed, copyIdentifierOf(copiedFrom), catalogData, context);
+        }
+      } else if (agentId === undefined) {
         editor = AgentEditorState.create(catalogData, context);
       } else if (detailData?.state === 'ready' && detailData.definition !== null) {
         editor = AgentEditorState.edit(detailData, catalogData, context);
@@ -287,7 +312,13 @@
   }
 
   function cancel(): void {
-    router.navigate(agentId === undefined ? '/agents' : agentPath(agentId));
+    router.navigate(
+      agentId !== undefined
+        ? agentPath(agentId)
+        : copiedFrom !== null
+          ? agentPath(copiedFrom)
+          : '/agents',
+    );
   }
 
   /** Reads the file again and fills the form from it, which discards whatever was typed. */
@@ -324,16 +355,23 @@
   });
 
   const loadFailed = $derived(catalog.isError || (agentId !== undefined && detail.isError));
+  /** The agent to copy could not be read, or is a file with nothing to copy. */
+  const copyFailed = $derived(
+    copiedFrom !== null &&
+      !loadFailed &&
+      (source.isError || (source.data !== undefined && copySeedOf(source.data) === null)),
+  );
   /** The Bureau answered and offers no model, so no agent could be saved. */
   const noProvider = $derived(
     !loadFailed &&
+      !copyFailed &&
       invalidAgent === undefined &&
       editor === undefined &&
       catalog.data !== undefined &&
       catalog.data.models.length === 0,
   );
   const loading = $derived(
-    !loadFailed && !noProvider && editor === undefined && invalidAgent === undefined,
+    !loadFailed && !copyFailed && !noProvider && editor === undefined && invalidAgent === undefined,
   );
 
   /**
@@ -370,6 +408,15 @@
     {/snippet}
     {#snippet actions()}
       {#if editor !== undefined}
+        <!-- Starts a throwaway chat: a write to the Bureau, though it saves nothing. -->
+        <Button
+          data-changes
+          variant="secondary"
+          disabled={!editor.canTry || busy}
+          onclick={() => (trying = true)}
+        >
+          {copy.try.action}
+        </Button>
         <Button
           data-changes
           type="submit"
@@ -428,6 +475,12 @@
         }}>{RETRY_LABEL}</Button
       >
     </Alert>
+  {:else if copyFailed}
+    <Alert variant="danger">
+      <p class="weft-agent-editor__alert-title">{copy.copy.sourceFailed.title}</p>
+      <p class="weft-agent-editor__alert-body">{copy.copy.sourceFailed.description}</p>
+      <Button variant="secondary" onclick={() => void source.refetch()}>{RETRY_LABEL}</Button>
+    </Alert>
   {:else if invalidAgent !== undefined}
     <Alert variant="danger">
       <p class="weft-agent-editor__alert-title">{copy.invalid.title}</p>
@@ -458,6 +511,18 @@
       <Skeleton height="12rem" />
     </div>
   {:else if editor !== undefined}
+    {#if copiedFrom !== null}
+      <p class="weft-agent-editor__copied" data-testid="agent-copied-from">
+        {copy.copy.from(source.data?.name ?? copiedFrom)}
+      </p>
+      {#if editor.droppedTools.length > 0}
+        <Alert variant="warning">
+          <p class="weft-agent-editor__alert-body" data-testid="agent-copy-dropped">
+            {copy.copy.droppedTools(editor.droppedTools)}
+          </p>
+        </Alert>
+      {/if}
+    {/if}
     {#key editor}
       <AgentEditorForm
         {editor}
@@ -475,6 +540,10 @@
     </div>
   {/if}
 </div>
+
+{#if editor !== undefined}
+  <AgentTryDrawer {editor} bind:open={trying} />
+{/if}
 
 <ConfirmDialog
   bind:open={confirmingDelete}
@@ -510,6 +579,11 @@
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-subtle);
     overflow-wrap: anywhere;
+  }
+
+  .weft-agent-editor__copied {
+    margin: 0;
+    color: var(--cinder-text-muted);
   }
 
   .weft-agent-editor__alert-title {

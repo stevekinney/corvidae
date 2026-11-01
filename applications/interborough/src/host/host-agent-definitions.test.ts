@@ -8,9 +8,13 @@
  * identifier rules.
  */
 import { AGENT_FILE_STEM_PATTERN as BUREAU_IDENTIFIER_PATTERN } from '@lostgradient/bureau';
-import { createAgent as createCodeAgent, createScriptedGenerate } from '@lostgradient/operative';
+import {
+  createAgent as createCodeAgent,
+  createScriptedGenerate,
+  DEFAULT_MAXIMUM_STEPS,
+} from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,15 +23,18 @@ import {
   AGENT_IDENTIFIER_PATTERN,
   agentFaultOf,
   createAgent,
+  DEFAULT_STEP_LIMIT,
   deleteAgent,
   getAgentCatalog,
   getAgentDefinition,
   listAgentDefinitions,
   listAgentRevisions,
+  tryAgent,
   updateAgent,
   type AgentDefinitionInput,
 } from '../lib/agent-definitions.ts';
 import type { Fetcher } from '../lib/bureau-client.ts';
+import { callBureau } from '../lib/bureau-client.ts';
 import { urlOf } from '../lib/bureau-stub.test-support.ts';
 import { getHostPaths } from '../lib/host-paths.ts';
 import { enableDemoPlugin } from './demo-plugin.test-support.ts';
@@ -105,6 +112,12 @@ describe('the identifier rules the editor repeats', () => {
     expect(accepted.id).toBe(longest);
     const tooLong = await faultOf(createAgent(`${longest}a`, definition, { fetch: fetcher }));
     expect(tooLong.kind).toBe('rejected');
+  });
+});
+
+describe('the step limit the Settings tab names', () => {
+  test('is the default Operative applies when an agent sets none', () => {
+    expect(DEFAULT_STEP_LIMIT).toBe(DEFAULT_MAXIMUM_STEPS);
   });
 });
 
@@ -331,5 +344,71 @@ describe('the operations, against the real Bureau', () => {
     const revisions = await listAgentRevisions('researcher', { fetch: fetcher });
     expect(revisions.map((revision) => revision.hash)).toEqual([created.hash]);
     expect(Number.isNaN(Date.parse(revisions[0]?.lastRunAt ?? ''))).toBe(false);
+  });
+});
+
+type ChatRow = { readonly id: string; readonly origin: string; readonly agentName: string };
+
+/** The chats the Bureau lists, every one or only those of an `origin`. */
+async function chatRows(fetcher: Fetcher, origin?: string): Promise<ChatRow[]> {
+  const page = (await callBureau('bureau.contexts.list', origin === undefined ? {} : { origin }, {
+    fetch: fetcher,
+  })) as { contexts: ChatRow[] };
+  return page.contexts;
+}
+
+/** The ids of the throwaway chats (`origin: 'try'`) the Bureau holds. */
+async function triedChatIds(fetcher: Fetcher): Promise<string[]> {
+  const rows = await chatRows(fetcher, 'try');
+  return rows.map((entry) => entry.id);
+}
+
+describe('trying a definition that is not saved', () => {
+  test('starts a throwaway chat that writes no file, hides from the chat list, and ends with the chat', async () => {
+    const { home, fetcher } = await startConfigured();
+    const before = await readdir(join(home, 'agents'));
+    const tried = await tryAgent(definition, 'Hello', { fetch: fetcher });
+    expect(tried.agentName.startsWith('try:')).toBe(true);
+
+    // Nothing was written: no agent file, and no listing of the agent.
+    expect(await readdir(join(home, 'agents'))).toEqual(before);
+    const listed = await listAgentDefinitions({ fetch: fetcher });
+    expect(listed.some((agent) => agent.id === tried.agentName)).toBe(false);
+
+    // The chat is labelled `try`, and the chat list leaves it out unless it is asked for.
+    const context = await callBureau(
+      'bureau.contexts.get',
+      { contextId: tried.contextId },
+      { fetch: fetcher },
+    );
+    expect(context).toMatchObject({ origin: 'try', agentName: tried.agentName });
+    const everyChat = await chatRows(fetcher);
+    expect(everyChat.map((entry) => entry.id)).not.toContain(tried.contextId);
+    expect(await triedChatIds(fetcher)).toEqual([tried.contextId]);
+
+    // Deleting the chat ends it, and the agent with it.
+    const deleted = (await callBureau(
+      'bureau.contexts.delete',
+      { contextId: tried.contextId },
+      { fetch: fetcher },
+    )) as { receipt: string };
+    expect(['applied', 'cleaned-up']).toContain(deleted.receipt);
+    expect(await triedChatIds(fetcher)).toEqual([]);
+  });
+
+  test('refuses a definition that would not load as a file, and one that writes memory, with each field named', async () => {
+    const { host, fetcher } = await startConfigured();
+    const unknownModel = await faultOf(
+      tryAgent({ ...definition, model: 'anthropic/not-a-model' }, 'Hello', { fetch: fetcher }),
+    );
+    expect(unknownModel.kind).toBe('rejected');
+    const writesMemory = await faultOf(
+      tryAgent({ ...definition, tools: ['memory_store'] }, 'Hello', { fetch: fetcher }),
+    );
+    expect(writesMemory).toMatchObject({ kind: 'rejected' });
+    expect(writesMemory.kind === 'rejected' && writesMemory.message).toContain('tools.0');
+    // Nothing exists: no chat was started for either.
+    expect(await triedChatIds(fetcher)).toEqual([]);
+    expect(host.bureau.agents.list().some((agent) => agent.name.startsWith('try:'))).toBe(false);
   });
 });

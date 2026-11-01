@@ -23,6 +23,7 @@
   import { AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import {
     agentFaultOf,
+    DEFAULT_STEP_LIMIT,
     deleteAgent,
     type AgentDetail,
     type AgentFault,
@@ -145,7 +146,7 @@
         {#if isFile}
           <div class="ib-agent-settings__row">
             <dt>{copy.stepLimitLabel}</dt>
-            <dd>{settings.stepLimit ?? copy.none}</dd>
+            <dd>{settings.stepLimit ?? copy.stepLimitDefault(DEFAULT_STEP_LIMIT)}</dd>
           </div>
         {/if}
       </dl>
