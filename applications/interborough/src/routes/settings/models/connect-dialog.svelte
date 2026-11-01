@@ -74,6 +74,8 @@
       // The catalog changed under the page and under the agent editor's model choices.
       void queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.catalog() });
+      // The provider's plugin was waiting for this key.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() });
     } catch (error) {
       failure = wordsFor(error);
     } finally {

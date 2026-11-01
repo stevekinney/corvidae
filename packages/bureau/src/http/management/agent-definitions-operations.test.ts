@@ -42,11 +42,12 @@ import { MemoryStorage } from '@lostgradient/storage';
 afterEach(disposeServed);
 
 describe('the operations list', () => {
-  it('serves the ten agent definition operations, with their scopes registered', () => {
+  it('serves the eleven agent definition operations, with their scopes registered', () => {
     expect(bureauAgentDefinitionsOperations.map((operation) => operation.name)).toEqual([
       'bureau.agents.definitions.create',
       'bureau.agents.definitions.update',
       'bureau.agents.definitions.delete',
+      'bureau.agents.definitions.duplicate',
       'bureau.agents.definitions.get',
       'bureau.agents.definitions.list',
       'bureau.agents.definitions.revisions',
@@ -135,8 +136,13 @@ const CALLS: readonly Call[] = [
 
 describe('the owner predicate, with several principals', () => {
   it('covers every operation the module exports', () => {
+    // `duplicate` addresses a plugin's agent, which this file's Bureau has none of: its own file
+    // (`agent-definitions-duplicate.test.ts`) covers its scope and its faults over a plugin layer.
     expect(CALLS.map((call) => call.method).toSorted()).toEqual(
-      bureauAgentDefinitionsOperations.map((operation) => operation.name).toSorted(),
+      bureauAgentDefinitionsOperations
+        .map((operation) => operation.name)
+        .filter((name) => name !== 'bureau.agents.definitions.duplicate')
+        .toSorted(),
     );
   });
 

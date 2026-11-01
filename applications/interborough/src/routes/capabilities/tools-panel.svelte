@@ -24,6 +24,7 @@
     tierLabel,
     tierOf,
     tierVariant,
+    toolSourceLabel,
     toolSummary,
   } from './capability-presentation.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
@@ -102,6 +103,9 @@
             {#snippet title()}<span class="ib-capability__identifier">{tool.name}</span>{/snippet}
             {#snippet description()}{toolSummary(tool)}{/snippet}
             {#snippet meta()}
+              <Badge variant="neutral" size="sm" data-testid="tool-row-source"
+                >{toolSourceLabel(tool)}</Badge
+              >
               <Badge variant={tierVariant(tierOf(tool))} size="sm">{tierLabel(tierOf(tool))}</Badge>
             {/snippet}
           </SelectableRow>

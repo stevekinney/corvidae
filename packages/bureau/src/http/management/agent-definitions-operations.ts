@@ -101,6 +101,7 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
       | 'create'
       | 'update'
       | 'delete'
+      | 'duplicate'
       | 'try'
     >;
     /** Whether the `a2a` allowlist of `createBureauHandler` names the code-defined agent `id`. */
@@ -685,6 +686,55 @@ export const agentDefinitionsDeleteOperation = defineGuardedWrite(
   'agent.deleted',
 );
 
+const duplicateInput = z.object({
+  id: agentIdentifier.describe('The `plugin:name` identifier of the plugin’s agent to copy.'),
+});
+
+export const agentDefinitionsDuplicateOperation = defineOperation<
+  typeof duplicateInput,
+  typeof writeResultSchema,
+  BureauAgentDefinitionsOperationHost
+>({
+  name: 'bureau.agents.definitions.duplicate',
+  mcpExposable: false,
+  summary: 'Copy a plugin’s agent into the owner’s agents',
+  description:
+    'Copies the read-only agent `id` (`plugin:name`) that a running plugin ships into the owner’s agents as `name`, an agent file the owner can edit, with every tool it names written without a pinned version so the copy follows whichever version is loaded. Answers the new agent’s `id` and `hash`. An `id` that is not a plugin’s agent is `InvalidParams`; a plugin agent that is not loaded is `NotFound`; an owner’s agent that already has the name is a `Conflict` and nothing is written; an agent whose `references` name documents beside the plugin’s files cannot be copied and is `Unprocessable`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
+  destructive: true,
+  tags: ['Agents'],
+  inputSchema: duplicateInput,
+  outputSchema: writeResultSchema,
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'NotFound',
+    'Conflict',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const definitions = requireScope(
+      host,
+      principal,
+      'bureau.agents:write',
+      'Duplicating an agent',
+    );
+    try {
+      const result = await definitions.agents.duplicate(input.id, {
+        savedBy: ownerOfPrincipal(principal),
+      });
+      await audit(host, principal, 'agent.created', result);
+      return result;
+    } catch (error) {
+      return faultOf(error, input.id);
+    }
+  },
+});
+
 const getInput = z.object({ id: agentIdentifier });
 
 export const agentDefinitionsGetOperation = defineOperation<
@@ -986,8 +1036,10 @@ const catalogOutput = z.object({
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool: the `on-changes` rule applied to the tier. */
       defaultApproval: z.enum(['allow', 'ask']),
-      /** `bureau` for a tool Bureau adds itself, `host` for one the host passed in. */
-      source: z.enum(['host', 'bureau']),
+      /** `bureau` for a tool Bureau adds itself, `plugin` for one a plugin contributes, `host` for one the host passed in. */
+      source: z.enum(['host', 'bureau', 'plugin']),
+      /** The plugin that contributes the tool when `source` is `plugin`, else `null`. */
+      plugin: z.string().nullable(),
       /** The agents that use the tool now: ready agent files that list it, and code agents that name it. */
       users: z.array(z.string()),
     }),
@@ -1003,7 +1055,7 @@ export const agentsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models and tools an agent may name',
   description:
-    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: the `on-changes` rule a file agent’s tool follows when its `toolApproval` says nothing (COR-1913), applied to the tier; a file’s own `toolApproval` entry replaces it for that agent), its `source` (`bureau` for the settings and workflow tools Bureau adds, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: the `on-changes` rule a file agent’s tool follows when its `toolApproval` says nothing (COR-1913), applied to the tier; a file’s own `toolApproval` entry replaces it for that agent), its `source` (`bureau` for the settings and workflow tools Bureau adds, `plugin` for a tool a plugin contributes, with that plugin’s name as `plugin`, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: catalogInput,
@@ -1127,6 +1179,7 @@ export const bureauAgentDefinitionsOperations = [
   agentDefinitionsCreateOperation,
   agentDefinitionsUpdateOperation,
   agentDefinitionsDeleteOperation,
+  agentDefinitionsDuplicateOperation,
   agentDefinitionsGetOperation,
   agentDefinitionsListOperation,
   agentDefinitionsRevisionsOperation,

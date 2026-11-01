@@ -321,6 +321,7 @@ export type BureauHandlerSource = Pick<
     | 'create'
     | 'update'
     | 'delete'
+    | 'duplicate'
     | 'try'
   >;
 };
