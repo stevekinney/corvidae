@@ -7,8 +7,9 @@
    * server operation `weft.tasks.diagnostics.deadletters.clear` clears
    * exactly one `operationId`, so a queue with N dead-lettered tasks needs N
    * individually-confirmed clears, not one bulk action the API doesn't
-   * offer), and the workers on the queue. There is no Retry: Weft has no
-   * operation that retries a dead letter.
+   * offer), and the workers on the queue. Each dead letter also has a Retry,
+   * which puts that one task back in the queue under the same ID
+   * (`weft.tasks.deadletters.retry`); like Clear, it names one `operationId`.
    */
   import { Badge, Button, DescriptionList, EmptyState, Table, Tooltip } from '@lostgradient/cinder';
 
@@ -32,6 +33,7 @@
     readonly deadLetteredItems: readonly TaskDiagnosticItem[];
     readonly diagnosticItems?: readonly TaskDiagnosticItem[];
     readonly adminGate: ScopeGate;
+    readonly onRetryDeadLetter: (operationId: string) => void;
     readonly onClearDeadLetter: (operationId: string) => void;
     readonly onInspectTask?: (operationId: string) => void;
   }
@@ -43,6 +45,7 @@
     deadLetteredItems,
     diagnosticItems = deadLetteredItems,
     adminGate,
+    onRetryDeadLetter,
     onClearDeadLetter,
     onInspectTask = () => {},
   }: QueueDetailViewProps = $props();
@@ -82,8 +85,8 @@
       <Badge variant="danger">{deadLetteredItems.length} tasks</Badge>
     </h3>
     <p class="weft-dead-letter-panel__description">
-      Tasks that exhausted their retry policy. Clearing removes the retained record, is
-      irreversible, and does not retry the task.
+      Tasks that failed for good. Retry queues one again under the same ID; Clear removes its
+      retained record, is irreversible, and does not retry it.
     </p>
     {#if deadLetteredItems.length === 0}
       <EmptyState
@@ -128,9 +131,19 @@
                   />
                   {#if adminGate.disabled}
                     <Tooltip text={adminGate.title ?? ''}>
+                      <Button variant="secondary" size="sm" disabled label="Retry" />
+                    </Tooltip>
+                    <Tooltip text={adminGate.title ?? ''}>
                       <Button variant="secondary" size="sm" disabled label="Clear" />
                     </Tooltip>
                   {:else}
+                    <Button
+                      data-changes
+                      variant="secondary"
+                      size="sm"
+                      label="Retry"
+                      onclick={() => item.operationId && onRetryDeadLetter(item.operationId)}
+                    />
                     <Button
                       data-changes
                       variant="secondary"

@@ -8,6 +8,7 @@
  * the same `ScriptedFetch`/harness support (`workers-route-test-support.test-support.ts`,
  * `workers-route-test-harness.test-harness.svelte`).
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
@@ -21,6 +22,7 @@ import {
 } from './worker-catalog-types.ts';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
 import {
+  parseJsonObject,
   realClient,
   ScriptedFetch,
   taskLedgerDetailFixture,
@@ -224,6 +226,237 @@ describe('Workers route — Task queues tab, queue selection and dead-letter cle
     await fireEvent.click(await findByRole('button', { name: 'Clear dead letter' }));
 
     expect(await findByText(/That dead letter was cleared or changed/)).not.toBeNull();
+  });
+});
+
+/** The `params` of every JSON-RPC call to `method`, in the order they were made. */
+function rpcParams(script: ScriptedFetch, method: string): Record<string, unknown>[] {
+  return script.calls.flatMap((call) => {
+    const body = typeof call.init?.body === 'string' ? parseJsonObject(call.init.body) : undefined;
+    const params = body?.['params'];
+    return body?.['method'] === method && typeof params === 'object' && params !== null
+      ? [Object.fromEntries(Object.entries(params))]
+      : [];
+  });
+}
+
+const RETRIED = { operationId: 'op_target', state: 'queued', attempt: 3, requeueCount: 2 };
+
+describe('Workers route — retrying a dead letter from the queue', () => {
+  function routeQueueWithDeadLetter(script: ScriptedFetch): void {
+    routeHappyPaths(script, {
+      queues: [queue({ queue: 'payments' })],
+      diagnosticsItems: [diagnosticItem({ queue: 'payments', operationId: 'op_target' })],
+      diagnosticsSummary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+    });
+  }
+
+  test('Retry asks first, then retries that one task, and asks the queue again', async () => {
+    scripted = new ScriptedFetch();
+    routeQueueWithDeadLetter(scripted);
+    scripted.routeJsonRpcMethod('weft.tasks.deadletters.retry', RETRIED);
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByRole, findByText } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    expect(
+      await findByText(
+        /Queues ChargeCard on queue payments again under the same ID \(task op_target\)/,
+      ),
+    ).not.toBeNull();
+    expect(rpcParams(scripted, 'weft.tasks.deadletters.retry')).toEqual([]);
+    const diagnosticsReads = rpcParams(scripted, 'weft.tasks.diagnostics').length;
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+    await waitUntil(() => rpcParams(scripted!, 'weft.tasks.deadletters.retry').length === 1);
+
+    // Diagnostics do not carry the attempt, so none is named; the page stays on the queue.
+    expect(rpcParams(scripted, 'weft.tasks.deadletters.retry')).toEqual([
+      { operationId: 'op_target' },
+    ]);
+    await waitUntil(() => rpcParams(scripted!, 'weft.tasks.diagnostics').length > diagnosticsReads);
+    expect(router.search.get('queue')).toBe('payments');
+  });
+
+  test('cancelling the confirmation retries nothing', async () => {
+    scripted = new ScriptedFetch();
+    routeQueueWithDeadLetter(scripted);
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByRole, queryByRole } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: 'Cancel' }));
+
+    expect(queryByRole('button', { name: 'Retry task' })).toBeNull();
+    expect(rpcParams(scripted, 'weft.tasks.deadletters.retry')).toEqual([]);
+  });
+
+  test('a dead letter cleared elsewhere while the dialog was open is not retried, and the refusal says so', async () => {
+    scripted = new ScriptedFetch();
+    routeQueueWithDeadLetter(scripted);
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByRole, findByText, queryClient } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    scripted.routeJsonRpcMethod('weft.tasks.diagnostics', {
+      items: [],
+      summary: EMPTY_DIAGNOSTICS_SUMMARY,
+    });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.diagnostics() });
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+
+    expect(await findByText(/That dead letter was cleared, retried or changed/)).not.toBeNull();
+    expect(rpcParams(scripted, 'weft.tasks.deadletters.retry')).toEqual([]);
+  });
+
+  test('a retry the server refuses says why, in the words of its reason', async () => {
+    scripted = new ScriptedFetch();
+    routeQueueWithDeadLetter(scripted);
+    scripted.routeJsonRpcMethodError('weft.tasks.deadletters.retry', 409, 'refused', 'Conflict', {
+      reason: 'workflow-finished',
+    });
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByRole, findByText } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+
+    expect(await findByText(/The workflow that owns that task has finished/)).not.toBeNull();
+  });
+
+  test('Retry is disabled without system:admin and asks nothing', async () => {
+    scripted = new ScriptedFetch();
+    routeQueueWithDeadLetter(scripted);
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByRole, queryByRole } = await renderWorkersRoute(['system:read']);
+
+    const retry = await findByRole('button', { name: 'Retry' });
+    expect(retry.hasAttribute('disabled')).toBe(true);
+    expect(queryByRole('button', { name: 'Retry task' })).toBeNull();
+  });
+});
+
+describe('Workers route — a dead letter on a queue that is not listed', () => {
+  const DEAD_ATTEMPT = {
+    attempt: 2,
+    attemptTokenDigest: 'sha256:t2',
+    claimedAt: 1_700_000_000_000,
+    disposition: 'deadLettered',
+    dispositionAt: 1_700_000_050_000,
+  } as const;
+
+  function ghostDeadLetter(overrides: Record<string, unknown> = {}) {
+    return {
+      ...taskLedgerDetailFixture(),
+      state: 'deadLettered',
+      operationId: 'op_ghost',
+      queue: 'ghost',
+      availableAt: undefined,
+      attempts: [DEAD_ATTEMPT],
+      pendingStatus: 'completed',
+      resultDigest: 'sha256:digest',
+      deadLetteredAt: 1_700_000_050_000,
+      persistenceFailureReason: 'result-resolution-storage-exhausted',
+      ...overrides,
+    };
+  }
+
+  // The queue list and the diagnostics know nothing of the task: its queue is gone and it is
+  // beyond the diagnostics' page. Only its own ledger names it.
+  function routeUnlisted(script: ScriptedFetch): void {
+    routeHappyPaths(script, { queues: [queue({ queue: 'payments' })] });
+    script.routeJsonRpcMethod('weft.tasks.get', ghostDeadLetter());
+    script.routeJsonRpcMethod('weft.tasks.deliveries', { deliveries: [], droppedCount: 0 });
+  }
+
+  test('its ledger offers Retry, which names the attempt that was dead-lettered', async () => {
+    scripted = new ScriptedFetch();
+    routeUnlisted(scripted);
+    scripted.routeJsonRpcMethod('weft.tasks.deadletters.retry', {
+      ...RETRIED,
+      operationId: 'op_ghost',
+    });
+    resetLocation('/health/workers?tab=diagnostics&task=op_ghost');
+    const { findByRole, findByText } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry this dead letter' }));
+    expect(
+      await findByText(/Queues ghost on queue ghost|Queues charge.* on queue ghost/),
+    ).not.toBeNull();
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+    await waitUntil(() => rpcParams(scripted!, 'weft.tasks.deadletters.retry').length === 1);
+
+    expect(rpcParams(scripted, 'weft.tasks.deadletters.retry')).toEqual([
+      { operationId: 'op_ghost', attemptTokenDigest: 'sha256:t2' },
+    ]);
+  });
+
+  test('once retried, the ledger is read again and no longer offers a dead letter', async () => {
+    scripted = new ScriptedFetch();
+    routeUnlisted(scripted);
+    scripted.routeJsonRpcMethod('weft.tasks.deadletters.retry', {
+      ...RETRIED,
+      operationId: 'op_ghost',
+    });
+    resetLocation('/health/workers?tab=diagnostics&task=op_ghost');
+    const { findByRole, queryByRole } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry this dead letter' }));
+    scripted.routeJsonRpcMethod('weft.tasks.get', {
+      ...taskLedgerDetailFixture(),
+      operationId: 'op_ghost',
+      queue: 'ghost',
+      attempts: [DEAD_ATTEMPT],
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+
+    await waitUntil(() => queryByRole('button', { name: 'Retry this dead letter' }) === null);
+    expect(rpcParams(scripted, 'weft.tasks.get').length).toBeGreaterThan(1);
+  });
+
+  test('Clear reaches it too, and the id is typed to confirm', async () => {
+    scripted = new ScriptedFetch();
+    routeUnlisted(scripted);
+    let deleted = false;
+    scripted.routeRest(
+      (url, method) =>
+        method === 'DELETE' && url.pathname === '/api/v1/tasks/diagnostics/dead-letter/op_ghost',
+      () => {
+        deleted = true;
+        return new Response(null, { status: 204 });
+      },
+    );
+    resetLocation('/health/workers?tab=diagnostics&task=op_ghost');
+    const { findByLabelText, findByRole } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Clear this dead letter' }));
+    await fireEvent.input(await findByLabelText(/Type "op_ghost" to confirm/i), {
+      target: { value: 'op_ghost' },
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Clear dead letter' }));
+
+    await waitUntil(() => deleted);
+  });
+
+  test('a task dead-lettered again while the dialog was open is not retried', async () => {
+    scripted = new ScriptedFetch();
+    routeUnlisted(scripted);
+    resetLocation('/health/workers?tab=diagnostics&task=op_ghost');
+    const { findByRole, findByText, queryClient } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry this dead letter' }));
+    scripted.routeJsonRpcMethod(
+      'weft.tasks.get',
+      ghostDeadLetter({
+        attempt: 3,
+        attempts: [{ ...DEAD_ATTEMPT, attempt: 3, attemptTokenDigest: 'sha256:t3' }],
+      }),
+    );
+    await queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail('op_ghost') });
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+
+    expect(await findByText(/That dead letter was cleared, retried or changed/)).not.toBeNull();
+    expect(rpcParams(scripted, 'weft.tasks.deadletters.retry')).toEqual([]);
   });
 });
 

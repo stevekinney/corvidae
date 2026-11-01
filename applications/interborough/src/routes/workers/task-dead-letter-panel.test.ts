@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { createQueryClient } from '../../lib/query.ts';
 import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';
+import type { DeadLetterTarget } from './dead-letter-guard.ts';
 import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
 import TaskEvidenceHarness from './task-evidence-harness.test-harness.svelte';
 import type { TaskLedgerDetail } from './worker-catalog-types.ts';
@@ -53,13 +54,21 @@ const RETAINED = {
 function renderPanel(
   task: TaskLedgerDetail = TASK,
   principalScopes: readonly AuthorizationScope[] = ['system:read', 'system:admin'],
+  actions: {
+    readonly onRetryDeadLetter?: (target: DeadLetterTarget) => void;
+    readonly onClearDeadLetter?: (target: DeadLetterTarget) => void;
+  } = {},
 ) {
   return render(TaskEvidenceHarness, {
     props: {
       client: realClient(),
       queryClient: createQueryClient(),
       component: TaskDeadLetterPanel,
-      componentProps: { task },
+      componentProps: {
+        task,
+        onRetryDeadLetter: actions.onRetryDeadLetter ?? (() => {}),
+        onClearDeadLetter: actions.onClearDeadLetter ?? (() => {}),
+      },
       principalScopes,
     },
   });
@@ -72,6 +81,84 @@ function readCalls(script: ScriptedFetch): number {
       parseJsonObject(call.init.body)?.['method'] === 'weft.tasks.deadletters.get',
   ).length;
 }
+
+const DEAD_ATTEMPT = {
+  attempt: 2,
+  attemptTokenDigest: 'sha256:t2',
+  claimedAt: NOW - 90_000,
+  disposition: 'deadLettered',
+  dispositionAt: NOW,
+} as const;
+
+describe('TaskDeadLetterPanel — Retry and Clear', () => {
+  test('an admin retries or clears this dead letter, which is named with the attempt that was dead-lettered', async () => {
+    scripted = new ScriptedFetch();
+    const retried: DeadLetterTarget[] = [];
+    const cleared: DeadLetterTarget[] = [];
+    const task = {
+      ...TASK,
+      attempts: [
+        { ...DEAD_ATTEMPT, attempt: 1, attemptTokenDigest: 'sha256:t1', disposition: 'requeued' },
+        DEAD_ATTEMPT,
+      ],
+    } as const;
+    const { getByRole } = renderPanel(task, ['system:read', 'system:admin'], {
+      onRetryDeadLetter: (target) => retried.push(target),
+      onClearDeadLetter: (target) => cleared.push(target),
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Retry this dead letter' }));
+    await fireEvent.click(getByRole('button', { name: 'Clear this dead letter' }));
+
+    const expected = {
+      operationId: 'op_dead',
+      queue: 'payments',
+      activityName: 'charge',
+      deadLetteredAt: NOW,
+      attemptTokenDigest: 'sha256:t2',
+    };
+    expect(retried).toEqual([expected]);
+    expect(cleared).toEqual([expected]);
+    expect(readCalls(scripted)).toBe(0);
+  });
+
+  test('both are native buttons a keyboard reaches', () => {
+    scripted = new ScriptedFetch();
+    const { getByRole } = renderPanel();
+    for (const name of ['Retry this dead letter', 'Clear this dead letter']) {
+      const button = getByRole('button', { name });
+      expect(button.tagName).toBe('BUTTON');
+      expect(button.getAttribute('tabindex')).not.toBe('-1');
+      button.focus();
+      expect(document.activeElement).toBe(button);
+    }
+  });
+
+  test('without system:admin both are disabled, with the reason, and neither acts', () => {
+    scripted = new ScriptedFetch();
+    const { getByRole } = renderPanel(TASK, ['system:read'], {
+      onRetryDeadLetter: () => {
+        throw new Error('must not retry without system:admin');
+      },
+      onClearDeadLetter: () => {
+        throw new Error('must not clear without system:admin');
+      },
+    });
+    expect(getByRole('button', { name: 'Retry this dead letter' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(getByRole('button', { name: 'Clear this dead letter' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+  });
+
+  test('a task that is not dead-lettered offers neither', () => {
+    scripted = new ScriptedFetch();
+    const { queryByRole } = renderPanel({ ...TASK, state: 'queued' });
+    expect(queryByRole('button', { name: 'Retry this dead letter' })).toBeNull();
+    expect(queryByRole('button', { name: 'Clear this dead letter' })).toBeNull();
+  });
+});
 
 describe('TaskDeadLetterPanel', () => {
   test('shows the digest, reason, and time without reading the value', () => {
