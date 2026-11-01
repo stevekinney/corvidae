@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The Settings tab of an agent's page: the model and the models a chat may switch to, the step
-   * limit, Delete, and the saved versions with Restore. It shows what the agent's file says;
+   * limit, the default effort, Delete, and the saved versions with Restore. It shows what the agent's file says;
    * changing it is the editor's job. Guardrails, spend and tool limits, and tool approvals are on
    * the Access tab. An agent defined in code
    * has no file, so it shows its model and says the rest cannot be changed here, with no Delete and
@@ -147,6 +147,10 @@
           <div class="ib-agent-settings__row">
             <dt>{copy.stepLimitLabel}</dt>
             <dd>{settings.stepLimit ?? copy.stepLimitDefault(DEFAULT_STEP_LIMIT)}</dd>
+          </div>
+          <div class="ib-agent-settings__row">
+            <dt>{copy.defaultEffortLabel}</dt>
+            <dd data-testid="agent-default-effort">{settings.defaultEffort ?? copy.notSet}</dd>
           </div>
         {/if}
       </dl>

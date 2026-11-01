@@ -7,7 +7,10 @@
  * It also holds the host's `/host/paths` route and the editor's two copies of the Bureau's
  * identifier rules.
  */
-import { AGENT_FILE_STEM_PATTERN as BUREAU_IDENTIFIER_PATTERN } from '@lostgradient/bureau';
+import {
+  agentDefaultEffortSchema,
+  AGENT_FILE_STEM_PATTERN as BUREAU_IDENTIFIER_PATTERN,
+} from '@lostgradient/bureau';
 import {
   createAgent as createCodeAgent,
   createScriptedGenerate,
@@ -25,6 +28,7 @@ import {
   createAgent,
   DEFAULT_STEP_LIMIT,
   deleteAgent,
+  EFFORTS,
   getAgentCatalog,
   getAgentDefinition,
   listAgentDefinitions,
@@ -118,6 +122,55 @@ describe('the identifier rules the editor repeats', () => {
 describe('the step limit the Settings tab names', () => {
   test('is the default Operative applies when an agent sets none', () => {
     expect(DEFAULT_STEP_LIMIT).toBe(DEFAULT_MAXIMUM_STEPS);
+  });
+});
+
+describe('the efforts the editor repeats', () => {
+  test('are the Bureau’s, in the same order', () => {
+    expect([...EFFORTS]).toEqual(agentDefaultEffortSchema.options);
+  });
+
+  test('are the tiers the real catalog lists, which the Bureau checks a default effort against', async () => {
+    const { fetcher } = await startConfigured();
+    const catalog = await getAgentCatalog({ fetch: fetcher });
+    const portable = catalog.models[0]?.effort.portable ?? [];
+    expect(portable.length).toBeGreaterThan(0);
+    for (const tier of portable) expect(EFFORTS as readonly string[]).toContain(tier);
+  });
+
+  test('are written, read, kept by an update that omits them, and removed by null', async () => {
+    const { fetcher } = await startConfigured();
+    const catalog = await getAgentCatalog({ fetch: fetcher });
+    const portable = catalog.models[0]?.effort.portable ?? [];
+    const supported = EFFORTS.find((tier) => portable.includes(tier));
+    if (supported === undefined)
+      throw new Error('Expected the catalog model to support an effort.');
+
+    const created = await createAgent(
+      'researcher',
+      { ...definition, defaultEffort: supported },
+      { fetch: fetcher },
+    );
+    const read = await getAgentDefinition('researcher', { fetch: fetcher });
+    expect(read.definition?.defaultEffort).toBe(supported);
+
+    const kept = await updateAgent(
+      'researcher',
+      created.hash,
+      { ...definition, instructions: 'Changed.' },
+      { fetch: fetcher },
+    );
+    const afterKept = await getAgentDefinition('researcher', { fetch: fetcher });
+    expect(afterKept.definition?.defaultEffort).toBe(supported);
+
+    await updateAgent(
+      'researcher',
+      kept.hash,
+      { ...definition, defaultEffort: null },
+      { fetch: fetcher },
+    );
+    const afterRemoved = await getAgentDefinition('researcher', { fetch: fetcher });
+    expect(afterRemoved.definition?.defaultEffort).toBeNull();
   });
 });
 

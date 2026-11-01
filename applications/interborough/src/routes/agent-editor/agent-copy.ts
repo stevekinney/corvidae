@@ -42,6 +42,8 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
     // offered.
     model: codeDefinition.model ?? codeDefinition.models[0] ?? '',
     models: codeDefinition.models.length === 0 ? null : codeDefinition.models,
+    // A built-in agent states no effort.
+    defaultEffort: null,
     tools: codeDefinition.tools,
     skillDescriptors: codeDefinition.skillDescriptors,
     // A file agent has only the skills it names, so the copy names what the original can activate.

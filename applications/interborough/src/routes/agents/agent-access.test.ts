@@ -197,6 +197,29 @@ describe('the tab', () => {
     });
   });
 
+  test('leaves the default effort out of its write, so the file keeps the one it holds', async () => {
+    landAt('/agents/researcher?tab=access');
+    const served = serve(
+      { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ defaultEffort: 'high' }),
+    );
+    const { container, findByRole } = mount();
+
+    const save = await findByRole('button', { name: copy.saveAction });
+    const select = await waitFor(() => {
+      const found = container.querySelector<HTMLSelectElement>('[data-tool="lookup-order"] select');
+      if (found === null) throw new Error('waiting for the tool');
+      return found;
+    });
+    await fireEvent.change(select, { target: { value: 'always' } });
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    await fireEvent.click(save);
+
+    await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
+    // An update that omits `defaultEffort` keeps the file's; the editor owns the field.
+    expect(updatesOf(served)[0]?.params['definition']).not.toHaveProperty('defaultEffort');
+  });
+
   test('drops a tool’s approval in the same write that withdraws the tool', async () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(

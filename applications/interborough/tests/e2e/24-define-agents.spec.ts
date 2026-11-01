@@ -463,6 +463,37 @@ test.describe('an agent that exists', () => {
     );
   });
 
+  test('sets, changes and clears the default effort, and the agent page says it', async ({
+    page,
+    request,
+  }) => {
+    await makeAgent(request, 'e2e-effort', { defaultEffort: 'high' });
+    await page.goto('/agents/e2e-effort/edit');
+    const effort = page.getByLabel(copy.effort.label);
+    await expect(effort).toHaveValue('high');
+
+    await effort.selectOption('low');
+    await page.getByRole('button', { name: copy.saveAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-effort$/);
+    const changed = await readAgent(request, 'e2e-effort');
+    expect(changed.definition?.defaultEffort).toBe('low');
+    expect(await readFile(await agentFilePath(request, 'e2e-effort'), 'utf8')).toContain(
+      'defaultEffort: low',
+    );
+
+    await page.goto('/agents/e2e-effort?tab=settings');
+    await expect(page.getByTestId('agent-default-effort')).toHaveText('Low');
+
+    await page.goto('/agents/e2e-effort/edit');
+    await page.getByLabel(copy.effort.label).selectOption('');
+    await page.getByRole('button', { name: copy.saveAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-effort$/);
+    const cleared = await readAgent(request, 'e2e-effort');
+    expect(cleared.definition?.defaultEffort).toBeNull();
+    await page.goto('/agents/e2e-effort?tab=settings');
+    await expect(page.getByTestId('agent-default-effort')).toHaveText('Not set');
+  });
+
   test('opts into and out of A2A with its switch, saved with the form', async ({
     page,
     request,

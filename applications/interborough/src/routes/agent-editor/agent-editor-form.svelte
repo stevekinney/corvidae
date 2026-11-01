@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * The fields of the agent editor, in five titled sections: Identity (name, identifier,
-   * description), Model, Instructions, Tools, and Guardrails and limits. A footer holds what acts on
-   * the agent as a whole: the A2A switch, a delete for an agent that exists, and cancel. Save is
+   * description), Model (the model and its default effort), Instructions, Tools, and Guardrails and
+   * limits. A footer holds what acts on the agent as a whole: the A2A switch, a delete for an agent that exists, and cancel. Save is
    * the page header's, and submits this form by its id ({@link AGENT_EDITOR_FORM_ID}).
    * `skillDescriptors` has no field here; the state carries it through a save unchanged
    * (`agent-editor-state.svelte.ts`).
@@ -10,13 +10,14 @@
    * Tools are chosen from a drawer (`agent-editor-tool-picker.svelte`) and listed with a count (`agent-editor-tools.svelte`).
    *
    * The form owns no requests. The page that renders it sends a save and a delete, and says whether one is in flight. The page does not render the form for a catalog
-   * with no model (`agent-editor-no-provider.svelte`). The model is chosen in `agent-editor-model-field.svelte`.
+   * with no model (`agent-editor-no-provider.svelte`). The model is chosen in `agent-editor-model-field.svelte`, and its default effort in `agent-editor-effort-field.svelte`.
    */
   import { Button, EmptyState, FormSection, Input, Textarea, Toggle } from '@lostgradient/cinder';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
+  import AgentEditorEffortField from './agent-editor-effort-field.svelte';
   import AgentEditorModelField from './agent-editor-model-field.svelte';
   import AgentEditorToolPicker from './agent-editor-tool-picker.svelte';
   import AgentEditorTools from './agent-editor-tools.svelte';
@@ -83,6 +84,7 @@
   <!-- The section's title names each control below, so the control's own label is not shown twice. -->
   <FormSection heading={copy.sections.model} columns={1}>
     <AgentEditorModelField {editor} />
+    <AgentEditorEffortField {editor} />
   </FormSection>
 
   <FormSection heading={copy.sections.instructions} columns={1}>

@@ -381,6 +381,30 @@ describe('the Settings tab', () => {
     expect(container.querySelector('[data-testid="agent-versions"]')).not.toBeNull();
   });
 
+  test('says the default effort a chat starts at, and Not set when the file sets none', async () => {
+    landAt('/agents/researcher?tab=settings');
+    const agent = withSettings();
+    serve(
+      { 'bureau.agents.versions.list': () => ({ versions: [] }) },
+      {
+        ...agent,
+        definition: { ...agent.definition, defaultEffort: 'high' },
+      },
+    );
+    const { findByTestId } = mount();
+    const shown = await findByTestId('agent-default-effort');
+    expect(shown.textContent).toBe('High');
+    expect(shown.closest('div')?.textContent).toContain('Default effort');
+  });
+
+  test('says Not set for an agent whose file sets no default effort', async () => {
+    landAt('/agents/researcher?tab=settings');
+    serve({ 'bureau.agents.versions.list': () => ({ versions: [] }) }, withSettings());
+    const { findByTestId } = mount();
+    const shown = await findByTestId('agent-default-effort');
+    expect(shown.textContent).toBe('Not set');
+  });
+
   test('restores an older version over the hash of the file as read, and lists the result', async () => {
     landAt('/agents/researcher?tab=settings');
     let versions = [version(2, 'identity-2', ['instructions']), version(1, 'identity-1', ALL_KEYS)];

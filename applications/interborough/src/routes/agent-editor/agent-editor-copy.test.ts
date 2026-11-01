@@ -91,6 +91,7 @@ describe('the seed of a copy', () => {
       description: 'Helps with things',
       model: 'anthropic/claude-haiku-5',
       models: ['anthropic/claude-haiku-5'],
+      defaultEffort: null,
       tools: ['lookup-order'],
       skillDescriptors: [],
       allowedSkills: ['summarize'],
@@ -207,7 +208,7 @@ describe('Duplicate, on the new agent page', () => {
     expect(calls.callsTo('bureau.agents.definitions.create')[0]?.params['id']).toBe('my-assistant');
   });
 
-  test('keeps a file agent’s tool approvals, budgets, limits and model list, and drops its A2A opt-in', async () => {
+  test('keeps a file agent’s tool approvals, budgets, limits, default effort and model list, and drops its A2A opt-in', async () => {
     const file = readyAgent();
     const definition = file.definition;
     if (definition === null) throw new Error('expected a definition');
@@ -216,6 +217,7 @@ describe('Duplicate, on the new agent page', () => {
       definition: {
         ...definition,
         models: ['anthropic/sonnet', 'anthropic/claude-haiku-5'],
+        defaultEffort: 'high',
         allowedSkills: ['summarize'],
         a2a: true,
         stepLimit: 12,
@@ -237,6 +239,7 @@ describe('Duplicate, on the new agent page', () => {
       name: 'Researcher copy',
       model: 'anthropic/sonnet',
       models: ['anthropic/sonnet', 'anthropic/claude-haiku-5'],
+      defaultEffort: 'high',
       allowedSkills: ['summarize'],
       a2a: false,
       stepLimit: 12,

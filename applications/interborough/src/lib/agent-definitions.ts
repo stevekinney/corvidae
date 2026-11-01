@@ -53,6 +53,16 @@ export const TOOL_APPROVALS = ['never', 'on-changes', 'always', 'blocked'] as co
 /** One of the four answers to "when does this tool ask first?". */
 export type ToolApproval = (typeof TOOL_APPROVALS)[number];
 
+/**
+ * The reasoning efforts an agent file may start a chat at (`defaultEffort`), from least to most:
+ * the Bureau's `agentDefaultEffortSchema`, which the browser cannot import.
+ * `src/host/host-agent-definitions.test.ts` fails if the two drift apart.
+ */
+export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/** One of the efforts an agent file may name. */
+export type Effort = (typeof EFFORTS)[number];
+
 const definitionSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
@@ -63,6 +73,11 @@ const definitionSchema = z.object({
    * update that omits it removes the list.
    */
   models: z.array(z.string()).nullable().default(null),
+  /**
+   * The reasoning effort a chat of the agent starts at (COR-1961), or `null` when the file sets none
+   * and the provider's own default applies. The default model must support it.
+   */
+  defaultEffort: z.enum(EFFORTS).nullable().default(null),
   tools: z.array(z.string()),
   skillDescriptors: z.array(skillSchema),
   /** The executable skills a run may activate; `null` when the file lists none, and the agent has none. */
@@ -207,6 +222,12 @@ const catalogModelSchema = z.object({
   structuredOutput: z.boolean(),
   /** What the model takes and gives, by modality (`text`, `image`, ...): only `input` is read. */
   modalities: z.record(z.string(), z.object({ input: z.boolean() })),
+  /**
+   * The efforts the model supports: `portable` is the tiers an agent file's `defaultEffort` may
+   * name, and the Bureau refuses a save that names another (`effort-not-supported`). It is empty
+   * for a model with no effort control.
+   */
+  effort: z.object({ portable: z.array(z.string()) }),
 });
 
 /** One model of the catalog, with the abilities and standing the Bureau reports for it. */
@@ -258,6 +279,11 @@ export type AgentDefinitionInput = {
    * it does `tools`.
    */
   readonly models?: readonly string[] | null;
+  /**
+   * The reasoning effort a chat of the agent starts at, which the default `model` must support.
+   * `null` removes it; left out, an update keeps the file's.
+   */
+  readonly defaultEffort?: Effort | null;
   readonly tools: readonly string[];
   /** Carried through a save unchanged: the editor shows no control for them. */
   readonly skillDescriptors: readonly AgentSkill[];

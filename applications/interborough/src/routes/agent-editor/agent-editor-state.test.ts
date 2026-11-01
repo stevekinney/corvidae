@@ -7,6 +7,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import type { Effort } from '../../lib/agent-definitions.ts';
 import { catalogFixture, readyAgent } from '../../lib/bureau-stub.test-support.ts';
 import { restrictionsOf } from './agent-editor-models.ts';
 import { AgentEditorState, slugify } from './agent-editor-state.svelte.ts';
@@ -426,6 +427,123 @@ describe('the guardrails and limits', () => {
     form.spendPerChat = '';
     expect(form.limitErrors).toEqual({});
     expect(form.canSave).toBe(true);
+  });
+});
+
+describe('the default effort', () => {
+  const catalog = catalogFixture({
+    models: [
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        // Listed out of order: the select offers the tiers from least to most.
+        effort: { portable: ['high', 'low', 'medium', 'xhigh'] },
+      },
+      { provider: 'anthropic', model: 'claude-haiku-5', effort: { portable: ['low', 'medium'] } },
+      { provider: 'openai', model: 'gpt-4.1', effort: { portable: [] } },
+    ],
+  });
+
+  /** An agent whose file writes `defaultEffort` on `model`. */
+  function writing(defaultEffort: Effort | null, model: string) {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    detail.definition = { ...detail.definition, model, defaultEffort };
+    return AgentEditorState.edit(detail, catalog);
+  }
+
+  test('starts as none, offers the tiers the model supports from least to most, and sends nothing', () => {
+    const form = AgentEditorState.edit(readyAgent({ id: 'researcher' }), catalogFixture({}));
+    expect(form.defaultEffort).toBe('');
+    expect('defaultEffort' in form.toDefinition()).toBe(false);
+
+    const sonnet = writing(null, 'anthropic/claude-sonnet-5');
+    expect(sonnet.effortChoices).toEqual(['low', 'medium', 'high', 'xhigh']);
+    expect('defaultEffort' in sonnet.toDefinition()).toBe(false);
+    expect(sonnet.effortError).toBe('');
+    expect(sonnet.canSave).toBe(true);
+  });
+
+  test('is filled from the file and sent back, and a new agent sends the one that is chosen', () => {
+    const form = writing('high', 'anthropic/claude-sonnet-5');
+    expect(form.defaultEffort).toBe('high');
+    expect(form.toDefinition().defaultEffort).toBe('high');
+    expect(form.toTryDefinition().defaultEffort).toBe('high');
+
+    const created = AgentEditorState.create(catalog);
+    created.defaultEffort = 'medium';
+    expect(created.toDefinition().defaultEffort).toBe('medium');
+  });
+
+  test('sends null once the person clears an effort the file had, which removes it', () => {
+    const form = writing('high', 'anthropic/claude-sonnet-5');
+    form.defaultEffort = '';
+    expect(form.toDefinition().defaultEffort).toBeNull();
+  });
+
+  test('sends nothing for a new agent that never chose one, even after it chose and cleared', () => {
+    const created = AgentEditorState.create(catalog);
+    created.defaultEffort = 'low';
+    created.defaultEffort = '';
+    expect('defaultEffort' in created.toDefinition()).toBe(false);
+  });
+
+  test('keeps the effort when the new model supports it, with no notice', () => {
+    const form = writing('low', 'anthropic/claude-sonnet-5');
+    form.model = 'anthropic/claude-haiku-5';
+    expect(form.defaultEffort).toBe('low');
+    expect(form.effortNotice).toBe('');
+  });
+
+  test('clears an effort the new model does not support, says so, and drops the notice once another is chosen', () => {
+    const form = writing('xhigh', 'anthropic/claude-sonnet-5');
+    form.model = 'anthropic/claude-haiku-5';
+    expect(form.defaultEffort).toBe('');
+    expect(form.effortNotice).toBe(
+      AGENT_EDITOR_COPY.effort.cleared('Extra high', 'anthropic/claude-haiku-5'),
+    );
+    expect(form.toDefinition().defaultEffort).toBeNull();
+    form.defaultEffort = 'low';
+    expect(form.effortNotice).toBe('');
+  });
+
+  test('offers none for a model with no effort control, and clears what it cannot do', () => {
+    const form = writing('high', 'anthropic/claude-sonnet-5');
+    form.model = 'openai/gpt-4.1';
+    expect(form.effortChoices).toEqual([]);
+    expect(form.defaultEffort).toBe('');
+    expect(form.effortNotice).not.toBe('');
+  });
+
+  test('forgets a notice when the model changes again', () => {
+    const form = writing('xhigh', 'anthropic/claude-sonnet-5');
+    form.model = 'anthropic/claude-haiku-5';
+    form.model = 'anthropic/claude-sonnet-5';
+    expect(form.effortNotice).toBe('');
+  });
+
+  test('refuses to save an effort the file’s own model does not support, and saves once another is chosen', () => {
+    const form = writing('max', 'anthropic/claude-sonnet-5');
+    expect(form.defaultEffort).toBe('max');
+    expect(form.effortError).toBe(
+      AGENT_EDITOR_COPY.effort.unsupported('Maximum', 'anthropic/claude-sonnet-5'),
+    );
+    expect(form.canSave).toBe(false);
+    expect(form.canTry).toBe(false);
+    form.defaultEffort = 'high';
+    expect(form.effortError).toBe('');
+    expect(form.canSave).toBe(true);
+  });
+
+  test('leaves the effort of a model the catalog lacks as the file wrote it', () => {
+    const form = writing('low', 'anthropic/retired-model');
+    expect(form.effortChoices).toEqual([]);
+    expect(form.defaultEffort).toBe('low');
+    expect(form.effortError).toBe('');
+    form.model = 'anthropic/claude-haiku-5';
+    expect(form.defaultEffort).toBe('low');
+    form.model = 'anthropic/retired-model';
+    expect(form.defaultEffort).toBe('low');
   });
 });
 

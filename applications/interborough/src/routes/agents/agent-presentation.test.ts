@@ -154,6 +154,7 @@ describe('an agent’s facts', () => {
     description: null,
     model: 'anthropic/sonnet',
     models: null,
+    defaultEffort: null,
     tools: [...tools],
     skillDescriptors: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
     allowedSkills: null,

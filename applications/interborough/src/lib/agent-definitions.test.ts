@@ -78,6 +78,60 @@ describe('the models list', () => {
   });
 });
 
+describe('the default effort', () => {
+  test('get reads the effort a file sets, and null for a file that sets none', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent(),
+        definition: { ...readyAgent().definition, defaultEffort: 'xhigh' },
+      }),
+    });
+    const set = await getAgentDefinition('researcher');
+    expect(set.definition?.defaultEffort).toBe('xhigh');
+    stub.restore();
+    stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
+    const unset = await getAgentDefinition('researcher');
+    expect(unset.definition?.defaultEffort).toBeNull();
+  });
+
+  test('get reads a definition from a Bureau that predates the field as having none', async () => {
+    const { defaultEffort: _omitted, ...older } = readyAgent().definition ?? {};
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({ ...readyAgent(), definition: older }),
+    });
+    const read = await getAgentDefinition('researcher');
+    expect(read.definition?.defaultEffort).toBeNull();
+  });
+
+  test('get refuses an effort this client does not know', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent(),
+        definition: { ...readyAgent().definition, defaultEffort: 'extreme' },
+      }),
+    });
+    const failure = await getAgentDefinition('researcher').then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(Error);
+  });
+
+  test('update sends the effort it is given, null to remove it, and nothing when the definition has none', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
+    });
+
+    await updateAgent('researcher', 'hash-1', { ...definition, defaultEffort: 'high' });
+    await updateAgent('researcher', 'hash-1', { ...definition, defaultEffort: null });
+    await updateAgent('researcher', 'hash-1', definition);
+
+    expect(stub.calls[0]?.params).toMatchObject({ definition: { defaultEffort: 'high' } });
+    expect(stub.calls[1]?.params).toMatchObject({ definition: { defaultEffort: null } });
+    expect(stub.calls[2]?.params).not.toHaveProperty('definition.defaultEffort');
+  });
+});
+
 describe('the operations', () => {
   test('get asks for one agent by identifier and parses its detail', async () => {
     stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
@@ -168,6 +222,11 @@ describe('the operations', () => {
       tools: true,
       parallelTools: true,
       structuredOutput: true,
+      effort: {
+        portable: ['low', 'medium', 'high'],
+        nativeMapping: 'thinking-budget',
+        degradesTo: { xhigh: 'high' },
+      },
       availability: 'unavailable',
       health: 'healthy',
     };
@@ -188,6 +247,7 @@ describe('the operations', () => {
         tools: true,
         structuredOutput: true,
         modalities: { text: { input: true }, image: { input: true } },
+        effort: { portable: ['low', 'medium', 'high'] },
       },
     ]);
   });
