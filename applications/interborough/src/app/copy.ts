@@ -1173,41 +1173,113 @@ export const PLUGINS_COPY = {
       close: 'Close',
     },
   },
+  /**
+   * One card per problem code (COR-1895). The table of the first six is the owner's wording
+   * (Interborough plugins, boards 26–28); the cards after `developmentSource` are for codes the
+   * host added later, in the same voice. A body is a function of the fields its code carries.
+   */
   problems: {
     title: 'Needs attention',
     unknown: (code: string): string => `Reported as ${code}.`,
+    /** The status of a problem whose code this page has no words for. */
+    unknownStatus: 'Not recognised',
     secretMissing: {
+      status: 'Needs setup',
       title: 'A secret isn’t saved yet',
-      body: (key: string): string =>
+      body: (key: string, what: string): string =>
+        `${key} isn’t saved, so ${what} is unavailable. Save it and it works at once; no restart.`,
+      /** The body when the host lists nothing that waits for the secret. */
+      bodyWithoutContributions: (key: string): string =>
         `${key} isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.`,
       action: 'Add the key',
     },
     configurationInvalid: {
+      status: 'Not loaded',
       title: 'A setting is invalid',
       body: (field: string, message: string): string =>
         field === '' ? message : `${field}: ${message}`,
+      action: 'Fix the setting',
+    },
+    /** A provider plugin's `models` allowlist names a model nobody offers: `configuration-invalid` at `models[<index>]`. */
+    allowlistInvalid: {
+      status: 'Not loaded',
+      title: 'A model list names a model nobody offers',
+      action: 'Fix the setting',
     },
     referenceUnresolved: {
-      title: 'A file names something nobody adds',
+      status: 'Loaded, 1 file skipped',
+      title: 'An agent names something nobody adds',
       body: (file: string, id: string): string =>
-        `${file} names ${id}, which no loaded plugin adds. It is unavailable until the name matches.`,
-    },
-    pinnedVersionUnavailable: {
-      title: 'A waiting run needs a version that isn’t loaded',
-      body: (id: string, version: string, runs: number): string =>
-        `${String(runs)} waiting ${runs === 1 ? 'run' : 'runs'} recorded ${id} at version ${version}, which isn’t loaded, so ${runs === 1 ? 'it shows' : 'they show'} as unavailable.`,
+        `${file} lists ${id}, which no loaded plugin adds. The agent is unavailable until the name matches.`,
+      action: 'Open the file',
     },
     nameClash: {
+      status: 'Not loaded',
       title: 'Two plugins share a name',
-      body: (name: string, first: string, second: string): string =>
-        `${name} is claimed by ${first} and by ${second}. The first to load keeps it; rename the other.`,
+      body: (first: string, second: string, name: string, loaded: string): string =>
+        `${first} and ${second} are both named ${name}. ${loaded} loaded; rename the other.`,
+      action: 'Show both',
     },
-    failed: { title: 'It did not load' },
+    pinnedVersionUnavailable: {
+      status: 'After a restart',
+      title: 'A waiting run needs a version that isn’t loaded',
+      body: (id: string, version: string, runs: number): string =>
+        runs === 1
+          ? `1 waiting run is pinned to ${id}@${version}, so it shows as unavailable. Cancel it, or go back to ${version} and restart.`
+          : `${String(runs)} waiting runs are pinned to ${id}@${version}, so they show as unavailable. Cancel them, or go back to ${version} and restart.`,
+      action: 'Open the run',
+    },
     developmentSource: {
+      status: 'Development',
       title: 'Loaded from your working copy',
       body: (path: string): string =>
-        `Started from ${path}. Interborough restarts when its code changes.`,
+        `Started with --plugin ${path}. Interborough restarts when its code changes; its agents and workflows reload without one.`,
+      action: 'Open the folder',
+      /** What the page says once it has put the folder’s path on the clipboard: a browser cannot open a folder. */
+      copied: 'The folder’s path is copied.',
+      copyFailed: 'The folder’s path could not be copied.',
     },
+    /** The host refused a secret the plugin declared; the message names the key and never a value. */
+    secretRefused: {
+      status: 'Not loaded',
+      title: 'A secret can’t be kept here',
+      body: (key: string, message: string): string =>
+        message === '' ? `${key} can’t be used as this plugin’s secret.` : message,
+    },
+    /** The plugin’s code did not load from its folder, such as an import nothing provides. */
+    loadFailed: {
+      status: 'Not loaded',
+      title: 'The plugin’s code didn’t load',
+      body: (message: string): string => message,
+    },
+    /** The plugin’s `setup` threw, or returned something that cannot be registered. */
+    setupFailed: {
+      status: 'Not loaded',
+      title: 'The plugin’s setup failed',
+      body: (message: string): string => message,
+    },
+    /** The plugin’s `afterStart` threw; what it adds stays registered. */
+    afterStartFailed: {
+      status: 'Loaded, a step after startup failed',
+      title: 'A step after startup failed',
+      body: (message: string): string => message,
+    },
+    /** A page the plugin contributed could not be built; the plugin and its other parts run. */
+    mcpAppFailed: {
+      status: 'Loaded, a page was not built',
+      title: 'A page the plugin adds did not build',
+      body: (app: string, message: string): string => `The page ${app} is not served. ${message}`,
+    },
+  },
+  /** The banner every page shows after a startup where a plugin or a folder did not load. */
+  startupBanner: {
+    /** The accessible name of the region. */
+    label: 'Plugins that did not load',
+    message: (count: number): string =>
+      count === 1
+        ? '1 plugin didn’t load at startup. Agents and workflows that use it show as unavailable.'
+        : `${String(count)} plugins didn’t load at startup. Agents and workflows that use them show as unavailable.`,
+    action: 'Open Plugins',
   },
   unloaded: {
     heading: 'Folders that did not load',
