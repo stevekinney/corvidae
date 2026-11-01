@@ -1,14 +1,15 @@
 <script lang="ts">
   /**
    * One turn's tool calls: a row per call (glyph, tool, one line about the answer, and a Details
-   * disclosure for its arguments and result). Several calls fold into one line, "Used N tools",
-   * with a Show toggle, but a call that needs a decision is never inside the fold: its row stays,
+   * disclosure for its arguments and result). Calls are quiet: a finished or denied one is set in
+   * muted text, and only a failure or a call waiting on a person takes a colour. Several calls fold
+   * into one line, "Used N tools", with a Show toggle, but a call that needs a decision is never inside the fold: its row stays,
    * and its approval is the flat decision row directly under it.
    */
   import type { Snippet } from 'svelte';
 
   import { Button } from '@lostgradient/cinder';
-  import { Check, CircleAlert, Hourglass, X } from '@lucide/svelte';
+  import { Ban, Check, CircleAlert, Hourglass, X } from '@lucide/svelte';
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import { argumentEntries, displayValue } from '../../lib/tool-text.ts';
@@ -35,6 +36,7 @@
     'needs-you': 'Needs you',
     done: 'Done',
     failed: 'Failed',
+    denied: CHAT_COPY.tools.denied,
   } as const;
 
   const resultEntries = (entry: ToolCallEntry) =>
@@ -71,6 +73,8 @@
             <Check aria-hidden="true" size={16} />
           {:else if entry.state === 'failed'}
             <X aria-hidden="true" size={16} />
+          {:else if entry.state === 'denied'}
+            <Ban aria-hidden="true" size={16} />
           {:else if entry.state === 'needs-you'}
             <CircleAlert aria-hidden="true" size={16} />
           {:else}

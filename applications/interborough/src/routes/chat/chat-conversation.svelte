@@ -42,7 +42,7 @@
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
@@ -70,8 +70,11 @@
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
   import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
-  import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
-  import { listBureauReviews } from '../../lib/bureau-reviews.ts';
+  import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
+  import { resolveBureauReviewMutation } from '../reviews/reviews-data.ts';
+  import { isReviewRoundChanged, listBureauReviews } from '../../lib/bureau-reviews.ts';
+  import { faultTreatment } from '../../lib/faults.ts';
+  import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -475,13 +478,24 @@
       // The name the approval reports the tool by (`plugin:tool` for a plugin's tool), not the
       // provider's `plugin__tool` the model called it by (COR-1879); the call's name until the
       // Bureau's pending reviews have been read.
+      // Of this chat only: a call's identifier is the model's or the tool's, so another chat's
+      // pending review can carry the same one, and the grant would be made on that chat's.
       const reviewed = pendingReviews.data?.find(
-        (review) => review.kind === 'tool-approval' && review.approval.callId === result.callId,
+        (review) =>
+          review.kind === 'tool-approval' &&
+          review.sessionId === sessionId &&
+          review.approval.callId === result.callId,
       );
       const toolName = reviewed?.kind === 'tool-approval' ? reviewed.approval.toolName : call?.name;
       return {
         toolCallId: result.callId,
         toolName,
+        // The Bureau's review for the call, once its pending reviews have been read: the grant for
+        // the rest of the chat is made on it, at the round the person was shown.
+        review:
+          reviewed?.kind === 'tool-approval'
+            ? { id: reviewed.id, round: reviewed.round }
+            : undefined,
         question: approvalQuestion({
           toolName: toolName ?? 'a tool',
           arguments: call?.arguments,
@@ -587,6 +601,53 @@
     }
   }
 
+  const grant = resolveBureauReviewMutation();
+
+  /**
+   * Approves the call and allows its tool for the rest of the chat. Unlike a plain decision, which
+   * the controller sends with the next turn, the grant is only made by `bureau.reviews.resolve`
+   * (`remember`), so it is sent the way the reviews inbox sends it, on the review at the round the
+   * person was shown. The Bureau writes the outcome into the conversation, and the page reads it
+   * back the way it reads a decision made in the inbox (see `SeenReviews`).
+   */
+  function allowForChat(toolCallId: string): void {
+    const review = approvalsByCall.get(toolCallId)?.review;
+    if (review === undefined) return;
+    deciding = true;
+    grant.mutate(
+      { id: review.id, decision: 'approve', round: review.round, remember: true },
+      {
+        onSuccess: (resolution) => {
+          // The Bureau has written the outcome into the conversation, so the thread is read now and
+          // not at the next look at the reviews. A read that cannot be made (a turn is going) is
+          // made by that look, which finds the review gone (see `SeenReviews`).
+          void session.refresh().catch(() => false);
+          if (resolution.receipt === 'superseded') {
+            showToast(REVIEWS_COPY.superseded, { variant: 'warning', duration: 0 });
+          } else if (resolution.outcomeNotWritten === true) {
+            showToast(REVIEWS_COPY.outcomeNotWritten.message, { variant: 'warning', duration: 0 });
+          } else if (resolution.remembered === false) {
+            showToast(
+              `${REVIEWS_COPY.notRemembered.title}. ${REVIEWS_COPY.notRemembered.message}`,
+              { variant: 'warning', duration: 0 },
+            );
+          }
+        },
+        onError: (error) => {
+          showToast(
+            isReviewRoundChanged(error)
+              ? `${REVIEWS_COPY.roundChanged.title}: ${REVIEWS_COPY.roundChanged.message}`
+              : `${REVIEWS_COPY.decisionFailed}: ${faultTreatment(error).message}`,
+            { variant: 'danger', duration: 0 },
+          );
+        },
+        onSettled: () => {
+          deciding = false;
+        },
+      },
+    );
+  }
+
   onMount(() => {
     // 1 to 9 pick the open question's choices. A key does nothing while the question is held (its
     // buttons are disabled) or when none is open.
@@ -639,12 +700,13 @@
 {/snippet}
 
 <section class="weft-chat-route" aria-label={CHAT_COPY.regionLabel} data-session={sessionId}>
+  {#snippet markdownTitle()}<InlineMarkdown text={displayTitle} />{/snippet}
   {#if choosing}
-    <PageHeader data-testid="chat-header" title={displayTitle} headingLevel={1} />
+    <PageHeader data-testid="chat-header" title={markdownTitle} headingLevel={1} />
   {:else}
     <PageHeader
       data-testid="chat-header"
-      title={displayTitle}
+      title={markdownTitle}
       headingLevel={1}
       description={details}
       actions={headerActions}
@@ -779,6 +841,7 @@
       conversation={shown}
       adapter={session.chatAdapter}
       streaming={session.streaming}
+      surfaceMode="transparent"
       disabled={connection.unreachable || session.disconnected || gone}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
@@ -913,7 +976,10 @@
                   question={asked.question}
                   identifiers={asked.toolName === undefined ? [] : [asked.toolName]}
                   deciding={deciding || session.streaming}
+                  input={argumentEntries(entry.arguments)}
                   onDecide={(choice) => void decide(entry.callId, choice)}
+                  onAllowForChat={() => allowForChat(entry.callId)}
+                  canAllowForChat={asked.review !== undefined}
                 />
               {/if}
             {/snippet}

@@ -1,20 +1,37 @@
 /* ── Decisions: one approval or question, the same wherever it is asked ───────── */
 
-/* An approval is one flat tinted row. No border, no stripe, no card. */
+/* An approval is one flat row on a neutral surface: no border, no stripe, no card, no warning
+ * tint. It is 40px high and wraps only when the width cannot hold the question and its buttons. */
 .ib-decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+  padding-inline: var(--cinder-space-3);
+  border-radius: var(--cinder-radius-md);
+  background: var(--cinder-surface-inset);
+}
+
+.ib-decision__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--cinder-space-2) var(--cinder-space-3);
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  min-height: 2.5rem;
   min-width: 0;
-  padding: var(--cinder-space-2) var(--cinder-space-3);
-  border-radius: var(--cinder-radius-md);
-  background: var(--cinder-status-warning-background);
+}
+
+.ib-decision__mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--cinder-text-muted);
 }
 
 .ib-decision[data-kind='question'] {
   flex-direction: column;
   align-items: stretch;
+  padding-block: var(--cinder-space-2);
+  background: var(--cinder-status-warning-background);
 }
 
 .ib-decision[data-kind='question'] .ib-decision__question {
@@ -31,8 +48,30 @@
 
 .ib-decision__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--cinder-space-2);
+  /* Under the question when the width cannot hold both, and at the row's end when it can. */
+  margin-inline-start: auto;
+}
+
+.ib-decision__input {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  margin: 0;
+  padding-block-end: var(--cinder-space-2);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-decision__input dt {
+  color: var(--cinder-text-muted);
+}
+
+.ib-decision__input dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--cinder-font-mono);
 }
 
 .ib-decision__failure {
@@ -79,8 +118,9 @@
   display: inline-flex;
 }
 
-.ib-tool__glyph[data-state='done'] {
-  color: var(--cinder-status-success-text);
+.ib-tool__glyph[data-state='done'],
+.ib-tool__glyph[data-state='denied'] {
+  color: var(--cinder-text-muted);
 }
 
 .ib-tool__glyph[data-state='failed'] {
@@ -94,8 +134,14 @@
 
 .ib-tool__name {
   flex: none;
+  color: var(--cinder-text-muted);
   font-family: var(--cinder-font-mono);
   font-size: var(--cinder-text-sm);
+}
+
+.ib-tool[data-state='failed'] .ib-tool__name,
+.ib-tool[data-state='needs-you'] .ib-tool__name {
+  color: inherit;
 }
 
 .ib-tool__summary {

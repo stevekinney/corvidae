@@ -25,6 +25,7 @@ const SEED = {
   goal: 'goal-1',
   hook: 'hook-1',
   review: 'bureau:review-1',
+  reviewChat: 'chat-2',
   decidedReview: 'bureau:review-2',
 } as const;
 

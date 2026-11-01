@@ -2266,6 +2266,8 @@ export const CHAT_COPY = {
     running: 'Running',
     waitingForApproval: 'Waiting for your approval',
     resultPrefix: 'Result:',
+    /** A call the person refused reads Denied: it did not fail. */
+    denied: 'Denied',
   },
   /** The chat's header and its strip of runs. */
   strip: {
@@ -2296,6 +2298,9 @@ export const CHAT_COPY = {
   stopping: 'Stopping…',
   approve: 'Approve',
   deny: 'Deny',
+  /** The icon button that opens what the call would be given, on an approval. */
+  showInput: 'Show input',
+  hideInput: 'Hide input',
   failureTitle: 'The agent did not answer',
   dismiss: 'Dismiss',
   /** The accessible name of the transcript and composer region. */
