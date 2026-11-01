@@ -165,11 +165,10 @@ export const RUN_LOG_CASES: readonly RunLogCase[] = [
     ],
   },
   {
-    name: 'a fork, whose own lines start after the steps it copied',
+    name: 'a fork, whose entries start at the step it replayed to',
     entries: [
-      { step: 0, stepIndex: 0 },
-      { step: 1, stepIndex: 1 },
-      { step: 2, stepIndex: 2 },
+      { step: 0, stepIndex: 1 },
+      { step: 1, stepIndex: 2 },
     ],
     lines: [
       ['before-wait', 1],
@@ -177,8 +176,8 @@ export const RUN_LOG_CASES: readonly RunLogCase[] = [
     ],
     beforeFirst: [],
     byStep: [
-      [1, ['before-wait']],
-      [2, ['after-wait']],
+      [0, ['before-wait']],
+      [1, ['after-wait']],
     ],
   },
 ];

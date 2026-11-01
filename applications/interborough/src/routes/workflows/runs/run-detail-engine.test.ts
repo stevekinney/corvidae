@@ -638,6 +638,10 @@ describe('the lines a run logged', () => {
         .getAllByRole('listitem')
         .map((item) => item.textContent),
     ).toEqual([expect.stringContaining('shipping')]);
+    // The rail and the step read one query.
+    expect(
+      jsonRpcMethodsCalled().filter((method) => method === 'weft.workflows.logs.list'),
+    ).toHaveLength(1);
   });
 });
 

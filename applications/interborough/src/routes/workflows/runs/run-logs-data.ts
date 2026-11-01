@@ -16,8 +16,8 @@
  * stay with the entry before it. A line before every entry is kept apart, as the lines logged
  * before the first step.
  *
- * The engine's `?step=<n>` filter is a different rule: it returns the lines logged before step
- * `n`, an exact bound. The page reads the whole log once and groups it, so the two never meet.
+ * The engine's `?step=<n>` filter is an exact match, the lines whose `step` is exactly `n`, and the
+ * grouping is not, so the page reads the whole log once and groups it itself.
  *
  * A run whose entries predate `stepIndex`, or a line with no step, cannot be placed, and the page
  * shows the whole log alone.

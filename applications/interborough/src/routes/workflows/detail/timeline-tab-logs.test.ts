@@ -39,11 +39,7 @@ function entry(step: number, stepIndex: number | undefined): WorkflowTimelineEnt
   };
 }
 
-function renderTimeline(
-  entries: WorkflowTimelineEntry[],
-  lines: RunLogLine[] | undefined,
-  reads: { logs: number } = { logs: 0 },
-) {
+function renderTimeline(entries: WorkflowTimelineEntry[], lines: RunLogLine[] | undefined) {
   return render(TimelineTabHarness, {
     props: {
       client: {
@@ -54,7 +50,6 @@ function renderTimeline(
             ? {}
             : {
                 'weft.workflows.logs.list': async () => {
-                  reads.logs += 1;
                   return { lines, dropped: 0 };
                 },
               }),
@@ -123,18 +118,6 @@ describe('TimelineTab logs', () => {
     expect(queryByRole('list', { name: 'Log lines from before the first step' })).toBeNull();
     await fireEvent.click(trigger);
     expect(getByText('early')).not.toBeNull();
-  });
-
-  test('reads the lines once, under the key the Details rail shares', async () => {
-    const reads = { logs: 0 };
-    const { container, findByText } = renderTimeline(
-      [entry(0, 0), entry(1, 1)],
-      [logLine(0, 0, 'one'), logLine(1, 1, 'two')],
-      reads,
-    );
-    await openStepNumber(container, 1);
-    await findByText('two');
-    expect(reads.logs).toBe(1);
   });
 
   test('shows no lines under a step for a run recorded before entries carried a step index', async () => {
