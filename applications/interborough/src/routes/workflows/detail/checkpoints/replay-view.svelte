@@ -1,16 +1,22 @@
 <script lang="ts">
   /**
-   * Replay read-only view (plan T3.3, design `Weft Patterns.dc.html`
-   * "Replay · read-only"): blue left border + orange "no actions available"
-   * banner. Reconstructs historical state via `client.replayTo` — a
-   * side-effecting READ (`weft.workflows.replay`, `workflows:read` scope),
+   * Replay read-only view (plan T3.3): one notice, a Cinder Alert inside the frame, says this is a
+   * replay and changes nothing; the frame has no colored edge. Reconstructs historical state via
+   * `client.replayTo` — a side-effecting READ (`weft.workflows.replay`, `workflows:read` scope),
    * never mutates the live workflow.
    */
-  import { DescriptionList, EmptyState, PayloadInspector, Skeleton } from '@lostgradient/cinder';
+  import {
+    Alert,
+    DescriptionList,
+    EmptyState,
+    PayloadInspector,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient } from '@lostgradient/weft';
   import { Rewind } from '@lucide/svelte';
 
+  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy.ts';
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';
   import { formatBytes } from '../../../../lib/format/index.ts';
   import { EAGER_REVISION_HEDGE } from '../../../../lib/workflow-revision.ts';
@@ -27,6 +33,13 @@
   const principalStore = getPrincipalStore();
   const gate = $derived(scopeGate(principalStore, ['workflows:read']));
 
+  /** Whether a stored value holds nothing, which the inspector would draw as an empty box that scrolls. */
+  function isEmptyValue(value: unknown): boolean {
+    if (value === null || value === undefined) return true;
+    if (Array.isArray(value)) return value.length === 0;
+    return typeof value === 'object' && Object.keys(value).length === 0;
+  }
+
   const replayQuery = createQuery(() => ({
     queryKey: replayQueryKey(workflowId, step),
     queryFn: () => replayWorkflow(client, workflowId, step),
@@ -36,22 +49,26 @@
 
 <div class="weft-replay-view">
   {#if gate.disabled}
-    <EmptyState title="Replay unavailable" description={gate.title ?? ''} />
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      title={RUN_CHECKPOINTS_COPY.replayLockedTitle}
+      description={gate.title ?? ''}
+    />
   {:else}
-    <div class="weft-replay-view__banner">
-      <Rewind aria-hidden="true" size={14} />
-      This is a replay. No actions available.
-    </div>
-    <p class="weft-replay-view__description">
-      Re-executes from stored state at step {step}. Read-only; does not affect the live workflow.
-    </p>
+    <Alert variant="info">
+      {#snippet icon()}<Rewind aria-hidden="true" size={14} />{/snippet}
+      {RUN_CHECKPOINTS_COPY.replayNotice(step)}
+    </Alert>
 
     {#if replayQuery.isPending}
-      <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="6rem" /></div>
+      <Skeleton height="6rem" />
     {:else if replayQuery.data === null}
       <EmptyState
-        title="No replay available"
-        description={`No checkpoint is retained at step ${step}.`}
+        kind="first-use"
+        size="compact"
+        title={RUN_CHECKPOINTS_COPY.replayNoneTitle}
+        description={RUN_CHECKPOINTS_COPY.replayNoneDescription(step)}
       />
     {:else if replayQuery.data}
       {@const replay = replayQuery.data}
@@ -64,7 +81,7 @@
               definition:
                 replay.revision !== undefined
                   ? `${replay.revision}. ${EAGER_REVISION_HEDGE}`
-                  : 'Not attributable — the source record was purged, this checkpoint or the workflow record predates execution-token correlation, or the stable ID has since been reused by a different run.',
+                  : RUN_CHECKPOINTS_COPY.revisionUnknown,
             },
             { term: 'Recorded', definition: new Date(replay.checkpoint.createdAt).toISOString() },
             { term: 'Events at this step', definition: String(replay.events.length) },
@@ -72,7 +89,7 @@
               ? [
                   {
                     term: 'Compacted',
-                    definition: `Earlier events before sequence ${replay.compactedBefore} were dropped by retention.`,
+                    definition: RUN_CHECKPOINTS_COPY.compacted(replay.compactedBefore),
                   },
                 ]
               : []),
@@ -80,7 +97,15 @@
         />
         <div class="weft-replay-view__section">
           <div class="weft-replay-view__section-label">Local state</div>
-          <PayloadInspector value={replay.checkpoint.locals} label="Checkpoint locals" />
+          {#if isEmptyValue(replay.checkpoint.locals)}
+            <p class="weft-replay-view__none">{RUN_CHECKPOINTS_COPY.nothingStored}</p>
+          {:else}
+            <PayloadInspector
+              value={replay.checkpoint.locals}
+              label="Checkpoint locals"
+              view="json"
+            />
+          {/if}
         </div>
         <div class="weft-replay-view__section">
           <div class="weft-replay-view__section-label">
@@ -89,7 +114,15 @@
               {formatBytes(JSON.stringify(replay.accumulatedResults).length)}
             </span>
           </div>
-          <PayloadInspector value={replay.accumulatedResults} label="Accumulated results" />
+          {#if isEmptyValue(replay.accumulatedResults)}
+            <p class="weft-replay-view__none">{RUN_CHECKPOINTS_COPY.nothingStored}</p>
+          {:else}
+            <PayloadInspector
+              value={replay.accumulatedResults}
+              label="Accumulated results"
+              view="json"
+            />
+          {/if}
         </div>
       </div>
     {/if}
@@ -98,43 +131,29 @@
 
 <style>
   .weft-replay-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-width: 0;
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
-    border-inline-start: 3px solid var(--cinder-status-info-border);
     border-radius: var(--cinder-radius-lg);
+    padding: var(--cinder-space-3);
     overflow: hidden;
   }
 
-  .weft-replay-view__banner {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
-    background: var(--cinder-status-warning-background);
-    color: var(--cinder-status-warning-text);
-    border-bottom: 1px solid var(--cinder-status-warning-border);
-    font-size: var(--cinder-text-xs);
-    font-weight: 600;
-  }
-
-  .weft-replay-view__description {
-    margin: 0;
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline) 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-subtle);
-  }
-
   .weft-replay-view__body {
-    padding: var(--cinder-density-pad-card);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: var(--cinder-space-4);
+    min-width: 0;
   }
 
   .weft-replay-view__section {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--cinder-space-2);
+    min-width: 0;
   }
 
   .weft-replay-view__section-label {
@@ -143,10 +162,14 @@
     color: var(--cinder-text-disabled);
   }
 
+  .weft-replay-view__none {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-subtle);
+  }
+
   .weft-replay-view__section-meta {
     font-weight: 400;
-    text-transform: none;
-    letter-spacing: normal;
-    margin-inline-start: 6px;
+    margin-inline-start: var(--cinder-space-2);
   }
 </style>

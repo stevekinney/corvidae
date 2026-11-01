@@ -17,6 +17,7 @@ import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.
 import { queryKeys } from '../../../lib/query.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../lib/scopes.svelte.ts';
+import { openStepNumber } from '../detail/steps/open-step.test-support.ts';
 import {
   parseJsonObject,
   realClient,
@@ -571,6 +572,9 @@ describe('the sections a caller sees', () => {
 
     const view = mount(id, ALL_BUT());
 
+    // The link is in the stream step's detail, so the step is opened first.
+    await view.findByText('Stream');
+    await openStepNumber(view.container, 1);
     expect(await view.findByRole('button', { name: 'View chunks of progress' })).not.toBeNull();
   });
 
@@ -581,6 +585,7 @@ describe('the sections a caller sees', () => {
     const view = mount(id, ALL_BUT('streams:read'));
 
     await view.findByText('Stream');
+    await openStepNumber(view.container, 1);
     expect(view.queryByRole('button', { name: /View chunks/ })).toBeNull();
   });
 });

@@ -52,23 +52,22 @@ describe('filterTimelineEntries', () => {
     expect(result.map((e) => e.step)).toEqual([2, 5]);
   });
 
-  test('running matches only running steps', () => {
-    expect(filterTimelineEntries(entries, 'running').map((e) => e.step)).toEqual([3]);
-  });
-
-  test('coordination matches race/parallel/speculate', () => {
-    expect(filterTimelineEntries(entries, 'coordination').map((e) => e.step)).toEqual([3]);
-  });
-
-  test('saga matches compensate: activity entries only', () => {
-    expect(filterTimelineEntries(entries, 'saga').map((e) => e.step)).toEqual([4]);
+  test('waiting matches the steps that have begun and not ended, and no settled step', () => {
+    expect(filterTimelineEntries(entries, 'waiting').map((e) => e.step)).toEqual([3]);
+    expect(
+      filterTimelineEntries(
+        [entry({ status: 'cancelled' }), entry({ status: 'completed' })],
+        'waiting',
+      ),
+    ).toEqual([]);
   });
 });
 
 describe('timelineQuickFilterLabel', () => {
   test('has a label for every filter', () => {
-    expect(timelineQuickFilterLabel('all')).toBe('All steps');
+    expect(timelineQuickFilterLabel('all')).toBe('All');
     expect(timelineQuickFilterLabel('failed')).toBe('Failed');
+    expect(timelineQuickFilterLabel('waiting')).toBe('Waiting');
   });
 });
 

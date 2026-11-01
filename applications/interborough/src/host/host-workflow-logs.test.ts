@@ -3,7 +3,7 @@
  * the engine API per run and per step, they are there after the run ends and after the host restarts,
  * and the Bureau starts with the 7-day window and 500-line cap the Settings page can change.
  */
-import { workflow, type Engine, type WorkflowContext } from '@lostgradient/weft';
+import { HttpClient, workflow, type Engine, type WorkflowContext } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, spyOn, test, type Mock } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -115,6 +115,18 @@ describe('the host’s workflow logs', () => {
       'starting',
       'halfway',
       'finished',
+    ]);
+    // The run page reads them through the operation client (JSON-RPC), not REST: the same lines
+    // come back for the finished run after the restart, each with the step it was logged before.
+    const client = new HttpClient({ baseUrl: second.url.origin });
+    const listed = await client.operations['weft.workflows.logs.list']({
+      workflowId: 'logged-run',
+    });
+    expect(listed.dropped).toBe(0);
+    expect(listed.lines.map((line) => [line.step, line.message])).toEqual([
+      [0, 'starting'],
+      [1, 'halfway'],
+      [2, 'finished'],
     ]);
   });
 });

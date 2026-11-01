@@ -4,23 +4,19 @@
  */
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
-/** Quick-filter facets a step can be checked against (plan T3.1 "quick filters"). */
-export type TimelineQuickFilter = 'all' | 'failed' | 'running' | 'coordination' | 'saga';
+/**
+ * Quick-filter facets a step can be checked against: every step, the ones that failed, and the
+ * ones the run is waiting on. A step is waiting when it has begun and has not ended, which is how a
+ * run looks while it sleeps, waits for a signal, a review or a child, or a worker is still at it.
+ */
+export type TimelineQuickFilter = 'all' | 'failed' | 'waiting';
 
-export const TIMELINE_QUICK_FILTERS: readonly TimelineQuickFilter[] = [
-  'all',
-  'failed',
-  'running',
-  'coordination',
-  'saga',
-];
+export const TIMELINE_QUICK_FILTERS: readonly TimelineQuickFilter[] = ['all', 'failed', 'waiting'];
 
 const QUICK_FILTER_LABEL: Readonly<Record<TimelineQuickFilter, string>> = {
-  all: 'All steps',
+  all: 'All',
   failed: 'Failed',
-  running: 'Running',
-  coordination: 'Coordination',
-  saga: 'Saga',
+  waiting: 'Waiting',
 };
 
 export function timelineQuickFilterLabel(filter: TimelineQuickFilter): string {
@@ -33,16 +29,8 @@ function matchesQuickFilter(entry: WorkflowTimelineEntry, filter: TimelineQuickF
       return true;
     case 'failed':
       return entry.status === 'failed' || entry.status === 'timed-out';
-    case 'running':
+    case 'waiting':
       return entry.status === 'running';
-    case 'coordination':
-      return (
-        entry.operationType === 'race' ||
-        entry.operationType === 'parallel' ||
-        entry.operationType === 'speculate'
-      );
-    case 'saga':
-      return entry.operationType === 'activity' && entry.operationLabel.startsWith('compensate:');
     default:
       return false;
   }

@@ -1,8 +1,8 @@
 /**
  * COR-15 active-revision badges on the list-row surfaces, at 375/768/1280 in
- * both themes: the workflows list Revision column, the detail Children tab
- * (its grid column widened to fit the badge), and the Overview lineage
- * panel's children preview. Read-only against the seeded server.
+ * both themes: the workflows list Revision column and the run page's Related
+ * runs (the runs it started and the runs started alongside it). Read-only
+ * against the seeded server.
  */
 import { expect, test } from './fixtures.ts';
 
@@ -39,14 +39,9 @@ test('list-row active-revision badges fit across widths and themes', async ({ pa
         page.getByRole('heading', { level: 1, name: 'fulfillment-parent' }),
       ).toBeVisible();
 
-      // The Related runs section's lineage panel, with its children preview.
-      const preview = page.locator('a[href*="/runs/"]').filter({ hasText: BADGE });
-      await expect(preview.first()).toBeVisible();
-      expect(await noOverflow()).toBe(true);
-
-      // The children list sits under it in the same section: there is no tab to open.
-      await expect(page.getByRole('tab')).toHaveCount(0);
-      await expect(page.getByText(BADGE).nth(1)).toBeVisible();
+      // Related runs, in the Details rail: the runs this one started, each with its badge.
+      const related = page.locator('[data-related-run]').filter({ hasText: BADGE });
+      await expect(related.first()).toBeVisible();
       expect(await noOverflow()).toBe(true);
     }
   }

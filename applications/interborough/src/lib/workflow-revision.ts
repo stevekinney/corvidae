@@ -132,10 +132,11 @@ export function classifyRevisionAgainstActive(
  * authoritative description of the underlying behavior this hedges: a
  * default fork or recovery of an EAGER-registered type always runs whatever
  * this process currently has loaded, even when that differs from the
- * revision being displayed.
+ * revision being displayed. The sentence says only the outcome, because the
+ * page's reader does not know what eager registration is.
  */
 export const EAGER_REVISION_HEDGE: string =
-  "For an eager-registered workflow type, recovery and a default fork always run this process's currently loaded code, even if it differs from the revision shown here.";
+  'A recovery or a default fork may use a different revision than the one shown here.';
 
 /**
  * Single-source-of-truth hedge for every "fresh start" surface — the

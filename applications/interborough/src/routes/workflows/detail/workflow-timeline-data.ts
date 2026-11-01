@@ -29,10 +29,9 @@
  * from a DETACHED child's `{"id":"..."}` result), so every row rendered
  * with `workflowId: null` and no working link. `WorkflowState.
  * parentWorkflowId` + `ListFilter.parentWorkflowId` are now public
- * (weft#732 item 1), so `children-tab.svelte` and `lineage-panel.svelte`
+ * (weft#732 item 1), so the run page's Related runs (`runs/run-related-data.ts`)
  * query `client.list({ parentWorkflowId })` directly instead — real ids,
- * real links, no timeline coupling. See those two components' module docs
- * for the live verification.
+ * real links, no timeline coupling.
  */
 import type { WorkflowTimelineEntry, WorkflowTimelineStatus } from '@lostgradient/weft';
 import type { QueryKey } from '@tanstack/svelte-query';

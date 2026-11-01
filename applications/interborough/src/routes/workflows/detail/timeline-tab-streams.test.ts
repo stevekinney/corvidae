@@ -5,6 +5,7 @@ import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import type { FleetEventFrame } from '../../../lib/live-source/fleet-event-source.svelte.ts';
+import { openStepNumber } from './steps/open-step.test-support.ts';
 import TimelineTabHarness from './timeline-tab.test-harness.svelte';
 import { WorkflowLiveObservations } from './timeline/workflow-live-observations.svelte.ts';
 
@@ -92,7 +93,7 @@ function renderTimeline(
 }
 
 describe('TimelineTab stream links', () => {
-  test('links each stream step to a view listing its stored chunks in order', async () => {
+  test('links a stream step to a view listing its stored chunks in order', async () => {
     const { client, requests } = clientWith(
       [
         entry({ step: 0, operationLabel: 'prepare' }),
@@ -101,10 +102,12 @@ describe('TimelineTab stream links', () => {
       ],
       { progress: ['starting', 'halfway', 'done'], 'audit-log': ['x'] },
     );
-    const { findByRole, getByRole, queryByRole, container, findByText } = renderTimeline(client);
+    const { findByRole, queryByRole, container, findByText } = renderTimeline(client);
 
+    await openStepNumber(container, 1);
     const link = await findByRole('button', { name: 'View chunks of progress' });
-    expect(getByRole('button', { name: 'View chunks of audit-log' })).not.toBeNull();
+    // The link is in the open step, so another stream's is not offered yet.
+    expect(queryByRole('button', { name: 'View chunks of audit-log' })).toBeNull();
     // Nothing is read until a stream is opened.
     expect(requests).toEqual([]);
 
@@ -119,6 +122,12 @@ describe('TimelineTab stream links', () => {
     expect(container.querySelector('[data-stream-key]')?.textContent).toBe('progress');
 
     // The step that is not a stream has no link.
+    await openStepNumber(container, 0);
+    await waitFor(() =>
+      expect(
+        queryByRole('button', { name: 'View chunks of progress' })?.outerHTML ?? null,
+      ).toBeNull(),
+    );
     expect(queryByRole('button', { name: 'View chunks of prepare' })).toBeNull();
   });
 
@@ -129,8 +138,10 @@ describe('TimelineTab stream links', () => {
     });
     const { findByRole, findByText, queryByText, container } = renderTimeline(client);
 
+    await openStepNumber(container, 1);
     await fireEvent.click(await findByRole('button', { name: 'View chunks of progress' }));
     await findByText('starting');
+    await openStepNumber(container, 2);
     await fireEvent.click(await findByRole('button', { name: 'View chunks of audit-log' }));
     await findByText('entry-one');
     expect(queryByText('starting')).toBeNull();
@@ -141,10 +152,13 @@ describe('TimelineTab stream links', () => {
 
   test('renders no stream link without streams:read', async () => {
     const { client, requests } = clientWith([streamEntry(1, 'progress')], { progress: ['a'] });
-    const { findByText, queryByRole } = renderTimeline(client, { canReadStreams: false });
+    const { findByText, queryByRole, container } = renderTimeline(client, {
+      canReadStreams: false,
+    });
 
-    // The timeline itself renders.
+    // The steps themselves render.
     await findByText('Stream');
+    await openStepNumber(container, 1);
     expect(queryByRole('button', { name: /View chunks/ })).toBeNull();
     expect(requests).toEqual([]);
   });
@@ -154,9 +168,11 @@ describe('TimelineTab stream links', () => {
       entry({ step: 0, operationLabel: 'prepare' }),
       entry({ step: 1, operationType: 'sleep', operationLabel: 'sleep', status: 'completed' }),
     ]);
-    const { findByText, queryByRole } = renderTimeline(client);
+    const { findByText, queryByRole, container } = renderTimeline(client);
 
     await findByText('prepare');
+    await openStepNumber(container, 0);
+    await openStepNumber(container, 1);
     expect(queryByRole('button', { name: /View chunks/ })).toBeNull();
   });
 });

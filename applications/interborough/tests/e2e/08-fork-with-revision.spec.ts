@@ -61,12 +61,12 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await expect(page.getByText('Active', { exact: true })).toBeVisible();
   await checkA11y('workflow detail — header (revision + active-comparison badges)');
 
-  await page.getByRole('tab', { name: 'Checkpoints' }).click();
+  await page.getByRole('button', { name: 'Checkpoints' }).click();
   const checkpointList = page.locator('.weft-checkpoints-tab__list');
   await expect(checkpointList).toBeVisible();
   await checkpointList.locator('.weft-checkpoints-tab__row').first().click();
 
-  await page.getByRole('button', { name: 'Fork' }).click();
+  await page.getByRole('radio', { name: 'Fork' }).click();
   await expect(page.getByText(/^Retains rev /)).toBeVisible();
   await checkA11y('workflow detail — checkpoints, Fork panel (default retention line)');
 

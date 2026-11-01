@@ -28,6 +28,10 @@ export interface ResponsiveSeed {
   readonly runSetupFile: string;
   /** A run of that workflow type. */
   readonly run: string;
+  /** A finished run with steps, one named with 120 unbroken characters, and log lines, one with 300. */
+  readonly stepsRun: string;
+  /** The number of the step of that run whose logged line holds the 300-character value. */
+  readonly stepsRunStep: number;
   /** A schedule whose name holds a 300-character unbroken word, read in a zone with a long name. */
   readonly schedule: string;
   /** A goal, with the attempts its page lists. */
@@ -102,7 +106,8 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
  * as is the Workers page with the seeded worker open and its Task queues tab with a seeded queue
  * open (its dead letters and recovery diagnostics), and as are a waiting review open and the
- * Reviews page's Done tab, the run setup page opened on a schedule, and the picker on Runs.
+ * Reviews page's Done tab, the run setup page opened on a schedule, the picker on Runs, and a run's
+ * steps with one open and its whole log shown.
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
@@ -124,6 +129,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // builder's Repeats, At and Time zone), and the picker that leads to it from Runs.
     '/workflows/:workflow/run (code, on a schedule)': `/workflows/${encodeURIComponent(seed.workflow)}/run`,
     '/runs (start picker)': '/runs?view=start',
+    // The steps list with the long-named step beside the open step, which holds the 300-character
+    // logged value, and the whole log under Details, opened.
+    '/runs/:run (steps and logs)': `/runs/${encodeURIComponent(seed.stepsRun)}?step=${String(seed.stepsRunStep)}`,
     // The Skills tab, and a long-named skill open (one pane at a time below 900px, so at 375 and
     // 768 the detail replaces the list).
     // The Workers list with the seeded worker open: its detail is the widest part of the page, and

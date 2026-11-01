@@ -49,14 +49,15 @@ function baseClient(
 }
 
 describe('LineagePanel', () => {
-  test('renders no forked-from row, no continuation chain, and an empty children note for a normal run', async () => {
-    const { getByText, queryByText } = render(LineagePanelHarness, {
+  test('draws nothing for a normal run: no forked-from row, no continuation chain, no schedule, no heading', async () => {
+    const { container, queryByText } = render(LineagePanelHarness, {
       props: { client: baseClient(), workflow: workflow() },
     });
 
-    await waitFor(() => {
-      expect(getByText('No child workflows.')).not.toBeNull();
-    });
+    await waitFor(() =>
+      expect(container.querySelector('[data-section="lineage"]')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(queryByText('Lineage')).toBeNull();
     expect(queryByText('Forked from')).toBeNull();
     expect(queryByText('This run')).toBeNull();
     expect(queryByText('Launched by schedule')).toBeNull();
@@ -127,69 +128,5 @@ describe('LineagePanel', () => {
     await waitFor(() => {
       expect(getByText('Revision unavailable')).not.toBeNull();
     });
-  });
-
-  test('renders real, clickable child workflow rows from client.list({ parentWorkflowId }) (weft#732 item 1)', async () => {
-    const client = baseClient({
-      list: async () => ({
-        items: [
-          {
-            id: 'wf_child_1',
-            type: 'validate-shipment',
-            status: 'completed',
-            version: '1',
-            revision: 'validate-shipment-rev-1',
-            createdAt: 1_000,
-            updatedAt: 1_000,
-          },
-        ],
-        total: 1,
-        offset: 0,
-        limit: 5,
-      }),
-    });
-
-    const { getByText, getByRole } = render(LineagePanelHarness, {
-      props: { client, workflow: workflow() },
-    });
-
-    await waitFor(() => {
-      expect(getByText('validate-shipment')).not.toBeNull();
-    });
-    const link = getByRole('link', { name: /validate-shipment/ });
-    expect(link.getAttribute('href')).toContain('wf_child_1');
-    expect(link.textContent).toContain('rev validate…ev-1');
-  });
-
-  test('a child preview row carries the full revision id in a title, not only the truncated text (Codex review, PR #978)', async () => {
-    // Two installed revisions can share a truncated prefix+suffix; without
-    // the full id recoverable somewhere, an operator cannot tell them apart
-    // from this preview alone — matching the workflow table and Children
-    // tab's existing convention of exposing the full id on hover/focus.
-    const client = baseClient({
-      list: async () => ({
-        items: [
-          {
-            id: 'wf_child_1',
-            type: 'validate-shipment',
-            status: 'completed',
-            version: '1',
-            revision: 'validate-shipment-rev-1',
-            createdAt: 1_000,
-            updatedAt: 1_000,
-          },
-        ],
-        total: 1,
-        offset: 0,
-        limit: 5,
-      }),
-    });
-
-    const { findByTitle } = render(LineagePanelHarness, {
-      props: { client, workflow: workflow() },
-    });
-
-    const revisionElement = await findByTitle(/validate-shipment-rev-1/);
-    expect(revisionElement.textContent).toContain('rev validate…ev-1');
   });
 });

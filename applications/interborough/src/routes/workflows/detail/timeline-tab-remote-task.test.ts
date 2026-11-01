@@ -16,6 +16,7 @@ import { QueryClient } from '@tanstack/svelte-query';
 
 import { taskLedgerDetailFixture } from '../../workers/workers-route-test-support.test-support.ts';
 import { REMOTE_TASK_STATE_LABELS } from './remote-task-view.ts';
+import { openStepNumber } from './steps/open-step.test-support.ts';
 import TimelineTabHarness from './timeline-tab.test-harness.svelte';
 import { WorkflowLiveObservations } from './timeline/workflow-live-observations.svelte.ts';
 
@@ -96,6 +97,11 @@ function renderTab(
   });
 }
 
+/** Opens a step's detail, where the step's own affordances are. */
+async function openStep(view: ReturnType<typeof renderTab>, name: RegExp): Promise<void> {
+  await fireEvent.click(await view.findByRole('button', { name }));
+}
+
 function definitionFor(term: HTMLElement): string {
   return (term.nextElementSibling?.textContent ?? '').trim();
 }
@@ -110,6 +116,7 @@ describe('TimelineTab remote task', () => {
 
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
     expect(reads).toEqual([]);
+    await openStep(view, /Charge card/);
     await fireEvent.click(view.getByRole('button', { name: 'Remote task for chargeCard' }));
 
     expect(await view.findByText(REMOTE_TASK_STATE_LABELS.queued)).not.toBeNull();
@@ -126,8 +133,9 @@ describe('TimelineTab remote task', () => {
     }));
 
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+    await openStep(view, /Charge card/);
 
-    expect(view.getByRole('button', { name: 'Remote task for chargeCard' })).not.toBeNull();
+    expect(await view.findByRole('button', { name: 'Remote task for chargeCard' })).not.toBeNull();
   });
 
   test('each remote step reads its own record, whatever the steps are', async () => {
@@ -143,8 +151,9 @@ describe('TimelineTab remote task', () => {
       },
     );
     await waitFor(() => expect(view.getByText('second')).not.toBeNull());
+    await openStep(view, /Second/);
 
-    await fireEvent.click(view.getByRole('button', { name: 'Remote task for second' }));
+    await fireEvent.click(await view.findByRole('button', { name: 'Remote task for second' }));
 
     await waitFor(() => expect(reads).toEqual(['task-for-second']));
   });
@@ -163,13 +172,17 @@ describe('TimelineTab remote task', () => {
     );
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
 
-    expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
+    for (const step of [3, 4, 5]) {
+      await openStepNumber(view.container, step);
+      expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
+    }
     expect(view.queryByText(/Dispatch record not yet available/)).toBeNull();
   });
 
   test('omits the action when the client cannot read tasks', async () => {
     const view = renderTab([entry({})]);
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+    await openStep(view, /Charge card/);
 
     expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
   });
@@ -179,8 +192,9 @@ describe('TimelineTab remote task', () => {
       throw new HttpClientError(404, 'no such task');
     });
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+    await openStep(view, /Charge card/);
 
-    await fireEvent.click(view.getByRole('button', { name: 'Remote task for chargeCard' }));
+    await fireEvent.click(await view.findByRole('button', { name: 'Remote task for chargeCard' }));
 
     expect(await view.findByText('No task record')).not.toBeNull();
   });
@@ -212,6 +226,7 @@ describe('TimelineTab remote task', () => {
         PENDING,
       ]);
 
+      await openStep(view, /Charge card/);
       await fireEvent.click(
         await view.findByRole('button', { name: 'Remote task for chargeCard' }),
       );
@@ -230,8 +245,10 @@ describe('TimelineTab remote task', () => {
         [PENDING],
       );
 
-      await waitFor(() => expect(reads).toEqual([TOKEN]));
+      // The ledger is asked when the step is opened, since its record is part of the step's detail.
       await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+      await openStep(view, /Charge card/);
+      await waitFor(() => expect(reads).toEqual([TOKEN]));
 
       expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
       expect(view.queryByText(/Dispatch record not yet available/)).toBeNull();
@@ -248,6 +265,7 @@ describe('TimelineTab remote task', () => {
       );
 
       await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+      await openStep(view, /Charge card/);
 
       expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
     });
@@ -257,6 +275,7 @@ describe('TimelineTab remote task', () => {
       const view = renderTab([withoutTask({ status: 'running' })], ledgerKnowing(TOKEN, reads), []);
 
       await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+      await openStep(view, /Charge card/);
 
       expect(reads).toEqual([]);
       expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);

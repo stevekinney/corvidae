@@ -64,8 +64,8 @@ function renderTimeline(id: string, timeline: WorkflowTimelineEntry[]) {
 
 /**
  * Role queries for the pagination controls, scoped to the tab's
- * `Timeline pagination` landmark. Every page past the threshold mounts 200
- * `RunStepTimeline` rows, each carrying two buttons (the row's `Select
+ * `Steps pagination` landmark. Every page past the threshold mounts 200
+ * step rows, each carrying a button (the row's `Select
  * <label>` control and its collapsible `Input` trigger). An unscoped
  * `getByRole('button', { name })` computes the accessible name of all ~400 of
  * them before discarding the misses, and each name reads computed style from
@@ -77,7 +77,7 @@ function renderTimeline(id: string, timeline: WorkflowTimelineEntry[]) {
 function paginationControls(
   getByRole: (role: 'navigation', options: { name: string }) => HTMLElement,
 ) {
-  return within(getByRole('navigation', { name: 'Timeline pagination' }));
+  return within(getByRole('navigation', { name: 'Steps pagination' }));
 }
 
 describe('TimelineTab pagination', () => {
@@ -85,7 +85,7 @@ describe('TimelineTab pagination', () => {
     const { getByText, queryByRole } = renderTimeline('wf-unpaginated', entries(3));
 
     await waitFor(() => expect(getByText('step-3')).not.toBeNull());
-    expect(queryByRole('navigation', { name: 'Timeline pagination' })).toBeNull();
+    expect(queryByRole('navigation', { name: 'Steps pagination' })).toBeNull();
   });
 
   test('supports Previous, Next, and jump-to-step beyond the threshold', async () => {

@@ -15,6 +15,7 @@ import {
 import { QueryClient } from '@tanstack/svelte-query';
 
 import { taskLedgerDetailFixture } from '../../workers/workers-route-test-support.test-support.ts';
+import { openStepNumber } from './steps/open-step.test-support.ts';
 import TimelineTabHarness from './timeline-tab.test-harness.svelte';
 import { WorkflowLiveObservations } from './timeline/workflow-live-observations.svelte.ts';
 
@@ -127,7 +128,10 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
 
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
     expect(reads).toEqual([]);
-    await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for chargeCard' }));
+    await openStepNumber(view.container, 3);
+    await fireEvent.click(
+      await view.findByRole('button', { name: 'Worker provenance for chargeCard' }),
+    );
 
     expect(await view.findByText('Crossed build')).not.toBeNull();
     expect(reads).toEqual(['task-chargeCard']);
@@ -147,9 +151,13 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
       },
     );
     await waitFor(() => expect(view.getByText('second')).not.toBeNull());
-    await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for second' }));
+    await openStepNumber(view.container, 2);
+    await fireEvent.click(
+      await view.findByRole('button', { name: 'Worker provenance for second' }),
+    );
     await waitFor(() => expect(reads).toEqual(['task-for-second']));
-    await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for first' }));
+    await openStepNumber(view.container, 1);
+    await fireEvent.click(await view.findByRole('button', { name: 'Worker provenance for first' }));
     await waitFor(() => expect(reads).toEqual(['task-for-second', 'task-for-first']));
   });
 
@@ -158,7 +166,10 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
       throw new HttpClientError(404, 'no such task');
     });
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
-    await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for chargeCard' }));
+    await openStepNumber(view.container, 3);
+    await fireEvent.click(
+      await view.findByRole('button', { name: 'Worker provenance for chargeCard' }),
+    );
     expect(await view.findByText('No worker task recorded')).not.toBeNull();
     // A record can also have been reaped after the retention window, so the copy claims no more.
     expect(view.queryByText(/no worker has run it/)?.textContent ?? null).toBeNull();
@@ -176,8 +187,13 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
       },
     );
     await waitFor(() => expect(view.getByText('failedCharge')).not.toBeNull());
-    expect(view.getAllByRole('button', { name: /^Worker provenance for / })).toHaveLength(1);
+    await openStepNumber(view.container, 1);
+    expect(await view.findAllByRole('button', { name: /^Worker provenance for / })).toHaveLength(1);
     expect(view.getByRole('button', { name: 'Worker provenance for failedCharge' })).not.toBeNull();
+    for (const step of [2, 3]) {
+      await openStepNumber(view.container, step);
+      expect(view.queryAllByRole('button', { name: /^Worker provenance for / })).toHaveLength(0);
+    }
   });
 
   test('omits it for an in-process activity, whose entry names no record', async () => {
@@ -186,12 +202,14 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
       throw new HttpClientError(404, 'no such task');
     });
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+    await openStepNumber(view.container, 3);
     expect(view.queryAllByRole('button', { name: /^Worker provenance for / })).toHaveLength(0);
   });
 
   test('omits the action when the client cannot read tasks', async () => {
     const view = render_([entry({})]);
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+    await openStepNumber(view.container, 3);
     expect(view.queryAllByRole('button', { name: /^Worker provenance for / })).toHaveLength(0);
   });
 
@@ -200,7 +218,10 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
       throw new HttpClientError(403, 'forbidden');
     });
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
-    await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for chargeCard' }));
+    await openStepNumber(view.container, 3);
+    await fireEvent.click(
+      await view.findByRole('button', { name: 'Worker provenance for chargeCard' }),
+    );
     expect(await view.findByText('Worker provenance is locked')).not.toBeNull();
   });
 });
