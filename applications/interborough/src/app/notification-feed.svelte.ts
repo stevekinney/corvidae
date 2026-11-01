@@ -20,7 +20,7 @@ import { queryKeys } from '../lib/query.ts';
 import { recentTasksQuery } from '../lib/recent-tasks.ts';
 import { router } from '../lib/router.svelte.ts';
 import { REVIEW_POLL_MILLISECONDS, bureauReviewsQuery } from '../routes/reviews/reviews-data.ts';
-import { useBureauEventsLive } from './live-polling.svelte.ts';
+import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
 import { buildNotificationEntries } from './notification-items.ts';
 import { loadChats, loadMissedFires, loadScheduleNames } from './notification-sources.ts';
 import type { NotificationStore } from './notifications.svelte.ts';
@@ -100,9 +100,12 @@ export function connectNotificationFeed(
     };
   });
 
-  // The fires a schedule missed are not notifications the Bureau writes: the schedules hold them.
+  // The fires a schedule missed are not notifications the Bureau writes: the schedules hold them,
+  // and the engine's fleet feed (`schedule:missed-fire`) is what tells the bell, so it is that
+  // feed's liveness, not the Bureau's, that decides whether a timer is needed.
+  const fleetLive = useFleetEventsLive();
   const missedFires = createQuery(() => {
-    const polling = !bureauLive();
+    const polling = !fleetLive();
     return {
       queryKey: queryKeys.schedules.missedFires(),
       queryFn: ({ signal }: { signal: AbortSignal }) => loadMissedFires({ signal }),
@@ -118,9 +121,9 @@ export function connectNotificationFeed(
   // the item as read at once and as unread again when the Bureau does not accept it, and the list
   // is read again either way so it shows what the Bureau holds.
   store.setRemote({
-    markRead: async (notificationIds) => {
+    markRead: async (notificationIds, scope) => {
       try {
-        await markBureauNotificationsRead(notificationIds);
+        await markBureauNotificationsRead(notificationIds, scope);
       } finally {
         void queryClient.invalidateQueries({ queryKey: ['bureau-notifications'] });
       }
@@ -130,7 +133,8 @@ export function connectNotificationFeed(
       void tasks.refetch();
       void chats.refetch();
       void notifications.refetch();
-      void missedFires.refetch();
+      // An explicit refetch ignores `enabled`, so the schedules gate is applied here too.
+      if (options.canReadSchedules?.() ?? true) void missedFires.refetch();
     },
   });
 

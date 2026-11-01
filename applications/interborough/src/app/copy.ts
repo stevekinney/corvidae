@@ -3308,6 +3308,10 @@ export const PALETTE_COPY = {
   emptyDescription: 'Type the name of a chat or an agent, or an ID, to jump to it.',
   noMatchesTitle: 'No matches',
   noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
+  /** Said when a search could not read some of what it searches, so what is missing is not taken for "no matches". */
+  searchFailedTitle: 'The search did not finish',
+  searchFailedDescription: (domains: readonly string[]): string =>
+    `Could not read ${domains.join(', ').toLowerCase()}. Matches there may be missing; try the search again.`,
   /** The heading of each kind of result, in the order the palette lists them. */
   groups: {
     waiting: 'Waiting on you',

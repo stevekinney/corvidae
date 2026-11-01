@@ -137,12 +137,27 @@
   // A search settles after the query changed, so what the query is for decides what is shown of it.
   const shown = $derived<ConsoleSearchResults>(
     actionsOnly
-      ? { ...NO_RESULTS, newChats: results.newChats }
+      ? { ...NO_RESULTS, newChats: results.newChats, failed: results.failed }
       : agentsOnly
-        ? { ...NO_RESULTS, agents: results.agents }
+        ? { ...NO_RESULTS, agents: results.agents, failed: results.failed }
         : parsed.text.length === 0
           ? NO_RESULTS
           : results,
+  );
+  // The notice sits among the rows only when there are some; with none, the empty state says it.
+  const hasRows = $derived(
+    waiting.length +
+      actions.length +
+      shown.chats.length +
+      shown.definitions.length +
+      shown.workflows.length +
+      shown.schedules.length +
+      shown.workers.length +
+      shown.reviews.length +
+      shown.agents.length +
+      shown.tools.length +
+      shown.newChats.length >
+      0,
   );
 </script>
 
@@ -162,6 +177,13 @@
   placeholder={PALETTE_COPY.placeholder}
 >
   {#snippet items()}
+    {#if shown.failed.length > 0 && hasRows}
+      <li role="presentation" class="weft-command-group">
+        <span role="status" class="weft-command-group__label">
+          {PALETTE_COPY.searchFailedDescription(shown.failed)}
+        </span>
+      </li>
+    {/if}
     {#if waiting.length > 0}
       {#snippet waitingRows()}
         {#each waiting as item (item.id)}
@@ -369,13 +391,21 @@
     {/if}
   {/snippet}
   {#snippet empty()}
-    <EmptyState
-      kind={query.length === 0 ? 'first-use' : 'filtered'}
-      onClearFilters={() => (query = '')}
-      title={query.length === 0 ? PALETTE_COPY.emptyTitle : PALETTE_COPY.noMatchesTitle}
-      description={query.length === 0
-        ? PALETTE_COPY.emptyDescription
-        : PALETTE_COPY.noMatchesDescription(query)}
-    />
+    {#if shown.failed.length > 0 && query.length > 0}
+      <EmptyState
+        kind="first-use"
+        title={PALETTE_COPY.searchFailedTitle}
+        description={PALETTE_COPY.searchFailedDescription(shown.failed)}
+      />
+    {:else}
+      <EmptyState
+        kind={query.length === 0 ? 'first-use' : 'filtered'}
+        onClearFilters={() => (query = '')}
+        title={query.length === 0 ? PALETTE_COPY.emptyTitle : PALETTE_COPY.noMatchesTitle}
+        description={query.length === 0
+          ? PALETTE_COPY.emptyDescription
+          : PALETTE_COPY.noMatchesDescription(query)}
+      />
+    {/if}
   {/snippet}
 </CommandPalette>

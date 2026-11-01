@@ -7,11 +7,13 @@
  * A query that starts with `>` is for actions only and one that starts with `@` is for agents only
  * ({@link parseQuery}); the first reads nothing, the second reads only the agents.
  *
- * Each domain search runs independently and swallows its own failure (a 403
+ * Each domain search runs independently and survives its own failure (a 403
  * from a scope this principal lacks, a transient network error) rather than
  * failing the whole palette — a search-as-you-type surface degrading one
- * section to "no results" beats it going blank. Schedules are not searched at
- * all without `schedules:read`, which `weft.schedules.list` requires.
+ * section beats it going blank. The domains that could not be read are named in
+ * `failed`, so the palette never presents a failed search as "no matches".
+ * Schedules are not searched at all without `schedules:read`, which
+ * `weft.schedules.list` requires.
  */
 import type {
   HttpClient,
@@ -31,6 +33,7 @@ import { scheduleDetailPath } from '../../lib/router.svelte.ts';
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 import type { ShortcutAction } from '../../lib/shortcuts.ts';
 import { loadCatalog, type CatalogRow } from '../../lib/workflow-catalog.ts';
+import { PALETTE_COPY } from '../copy.ts';
 import type { NotificationItem } from '../notifications.svelte.ts';
 
 /** One tool of the catalog, as the palette lists it. */
@@ -68,6 +71,8 @@ export interface ConsoleSearchResults {
   readonly tools: CatalogTool[];
   /** The agents whose name matches, each of which a new chat can be opened with. */
   readonly newChats: AgentSummary[];
+  /** The headings of the domains that could not be read, so their absence is not taken for "no matches". */
+  readonly failed: readonly string[];
 }
 
 const OPEN_GATE: ScopeGate = { disabled: false, title: undefined };
@@ -231,7 +236,27 @@ export const NO_RESULTS: ConsoleSearchResults = {
   reviews: [],
   tools: [],
   newChats: [],
+  failed: [],
 };
+
+/**
+ * Settles one domain's read: its rows, or `fallback` when it could not be read, after noting its
+ * heading in `failed` so the palette can say the search was incomplete.
+ */
+function reading<Rows>(
+  failed: string[],
+  heading: string,
+  read: Promise<Rows>,
+  fallback: Rows,
+): Promise<Rows> {
+  return read.then(
+    (rows) => rows,
+    () => {
+      failed.push(heading);
+      return fallback;
+    },
+  );
+}
 
 /**
  * Search every domain for `rawQuery`. An empty query returns empty results, because the palette
@@ -258,13 +283,11 @@ export async function searchConsole(
   const { mode, text: query } = parseQuery(rawQuery);
   if (mode !== 'all') {
     // Only the agents are read: `@` lists them, and `>` lists the chats each can be opened with.
-    const agents = await listAgents().then(
-      (list) => list,
-      () => [] as readonly AgentSummary[],
-    );
+    const failed: string[] = [];
+    const agents = await reading(failed, PALETTE_COPY.groups.agents, listAgents(), []);
     return mode === 'agents'
-      ? { ...NO_RESULTS, agents: matchAgents(agents, query, NARROWED_RESULTS) }
-      : { ...NO_RESULTS, newChats: matchNewChats(agents, query, NARROWED_RESULTS) };
+      ? { ...NO_RESULTS, agents: matchAgents(agents, query, NARROWED_RESULTS), failed }
+      : { ...NO_RESULTS, newChats: matchNewChats(agents, query, NARROWED_RESULTS), failed };
   }
   if (query.length === 0) return NO_RESULTS;
 
@@ -274,62 +297,85 @@ export async function searchConsole(
   const idPrefix =
     !workflowGate.disabled && WORKFLOW_ID_PREFIX_PATTERN.test(query) ? query : undefined;
 
+  const failed: string[] = [];
+  const groups = PALETTE_COPY.groups;
   const [contexts, agents, definitions, tools, workflows, schedules, workers, reviews] =
     await Promise.all([
       // Chats a person started: a goal's or a schedule's session is reached from its run.
-      listContexts({ origin: 'chat', limit: CHATS_SEARCHED }).then(
-        (page) => page.contexts,
-        () => [] as ChatContext[],
+      reading(
+        failed,
+        groups.chats,
+        listContexts({ origin: 'chat', limit: CHATS_SEARCHED }).then((page) => page.contexts),
+        [] as ChatContext[],
       ),
-      listAgents().then(
-        (list) => list,
-        () => [] as readonly AgentSummary[],
-      ),
+      reading(failed, groups.agents, listAgents(), [] as readonly AgentSummary[]),
       workflowGate.disabled
         ? Promise.resolve([] as readonly CatalogRow[])
-        : (options.readWorkflows?.() ?? loadCatalog(client)).then(
-            (rows) => rows,
-            () => [] as readonly CatalogRow[],
+        : reading(
+            failed,
+            groups.workflows,
+            options.readWorkflows?.() ?? loadCatalog(client),
+            [] as readonly CatalogRow[],
           ),
-      (options.readTools?.() ?? getAgentCatalog().then((catalog) => catalog.tools)).then(
-        (list) => list,
-        () => [] as readonly CatalogTool[],
+      reading(
+        failed,
+        groups.tools,
+        options.readTools?.() ?? getAgentCatalog().then((catalog) => catalog.tools),
+        [] as readonly CatalogTool[],
       ),
       idPrefix
-        ? client.list({ idPrefix, limit: 50 }).then(
-            (result) =>
-              result.items
-                .filter((workflow) => workflow.id.startsWith(idPrefix))
-                .slice(0, RESULTS_PER_GROUP),
-            () => [] as WorkflowSummary[],
+        ? reading(
+            failed,
+            groups.runs,
+            client
+              .list({ idPrefix, limit: 50 })
+              .then((result) =>
+                result.items
+                  .filter((workflow) => workflow.id.startsWith(idPrefix))
+                  .slice(0, RESULTS_PER_GROUP),
+              ),
+            [] as WorkflowSummary[],
           )
         : Promise.resolve([] as WorkflowSummary[]),
       options.scheduleReadGate.disabled
         ? Promise.resolve([] as ScheduleSummary[])
-        : client.listSchedules({ limit: 100 }).then(
-            (result) =>
-              result.items
-                .filter((schedule) => containsQuery(query, schedule.id))
-                .slice(0, RESULTS_PER_GROUP),
-            () => [] as ScheduleSummary[],
+        : reading(
+            failed,
+            groups.schedules,
+            client
+              .listSchedules({ limit: 100 })
+              .then((result) =>
+                result.items
+                  .filter((schedule) => containsQuery(query, schedule.id))
+                  .slice(0, RESULTS_PER_GROUP),
+              ),
+            [] as ScheduleSummary[],
           ),
       systemGate.disabled
         ? Promise.resolve([] as { id: string; queue: string }[])
-        : client.operations['weft.workers.list']({}).then(
-            (result) =>
+        : reading(
+            failed,
+            groups.workers,
+            client.operations['weft.workers.list']({}).then((result) =>
               result.items
                 .filter((worker) => containsQuery(query, worker.id))
                 .slice(0, RESULTS_PER_GROUP),
-            () => [] as { id: string; queue: string }[],
+            ),
+            [] as { id: string; queue: string }[],
           ),
       reviewGate.disabled
         ? Promise.resolve([] as ReviewListEntry[])
-        : client.listReviews({}).then(
-            (result) =>
-              result
-                .filter((review) => containsQuery(query, review.reviewId))
-                .slice(0, RESULTS_PER_GROUP),
-            () => [] as ReviewListEntry[],
+        : reading(
+            failed,
+            groups.reviews,
+            client
+              .listReviews({})
+              .then((result) =>
+                result
+                  .filter((review) => containsQuery(query, review.reviewId))
+                  .slice(0, RESULTS_PER_GROUP),
+              ),
+            [] as ReviewListEntry[],
           ),
     ]);
   return {
@@ -342,6 +388,7 @@ export async function searchConsole(
     reviews,
     tools: matchTools(tools, query),
     newChats: matchNewChats(agents, query),
+    failed,
   };
 }
 

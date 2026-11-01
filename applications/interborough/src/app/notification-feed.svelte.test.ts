@@ -3,6 +3,7 @@
  * become the store's items, a decision made elsewhere removes its item at once, and opening a chat
  * reads what is about it.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -133,9 +134,11 @@ function callsTo(stub: { calls: readonly { method: string; params: unknown }[] }
   return stub.calls.filter((call) => call.method === method);
 }
 
-function mount(client: QueryClient = createQueryClient()) {
+function mount(client: QueryClient = createQueryClient(), canReadSchedules = true) {
   const store = memoryStore();
-  render(QueryPage, { props: { page: FeedHarness, pageProps: { store }, client } } as never);
+  render(QueryPage, {
+    props: { page: FeedHarness, pageProps: { store, canReadSchedules }, client },
+  } as never);
   return { store, client };
 }
 
@@ -451,6 +454,25 @@ describe('connectNotificationFeed', () => {
     expect(store.items.map((item) => item.kind)).toContain('approval');
   });
 
+  test('reloading does not ask for schedules a principal may not read', async () => {
+    let answering = false;
+    const bureauStub = served({
+      'bureau.reviews.list': () => {
+        if (!answering) throw new Error('the Bureau did not answer');
+        return { reviews: [APPROVAL] };
+      },
+    });
+    landAt('/agents');
+    const { store } = mount(createQueryClient(), false);
+    await waitFor(() => expect(store.loadFailed).toBe(true));
+
+    answering = true;
+    store.reload();
+
+    await waitFor(() => expect(store.loadFailed).toBe(false));
+    expect(callsTo(bureauStub, 'bureau.schedules.list')).toHaveLength(0);
+  });
+
   test('a schedule that missed a fire is an item that opens the schedule', async () => {
     const bureauStub = served({
       'bureau.reviews.list': () => ({ reviews: [] }),
@@ -515,7 +537,7 @@ describe('connectNotificationFeed', () => {
     await waitFor(() => expect(store.items).toEqual([]));
   });
 
-  test('marking a notification read tells the Bureau, in as many calls as it takes', async () => {
+  test('"mark all read" asks the Bureau to read every notification, not only the newest it listed', async () => {
     const many = Array.from({ length: 230 }, (_, index) =>
       failure({ id: `notification-${String(index)}` }),
     );
@@ -532,13 +554,29 @@ describe('connectNotificationFeed', () => {
     store.markAllRead();
 
     await waitFor(() =>
-      expect(callsTo(bureauStub, 'bureau.notifications.markread')).toHaveLength(3),
+      expect(callsTo(bureauStub, 'bureau.notifications.markread')).toHaveLength(1),
     );
-    expect(
-      callsTo(bureauStub, 'bureau.notifications.markread').map(
-        (call) => (call.params as { ids: string[] }).ids.length,
-      ),
-    ).toEqual([100, 100, 30]);
+    expect(callsTo(bureauStub, 'bureau.notifications.markread')[0]?.params).toEqual({ all: true });
+  });
+
+  test('an open chat whose read the Bureau refuses is asked once, and says so', async () => {
+    const bureauStub = served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({ notifications: [failure()], nextPageToken: null }),
+      'bureau.notifications.markread': () => {
+        throw new Error('the Bureau did not answer');
+      },
+    });
+    landAt('/chats/session-fire');
+
+    const { store } = mount();
+
+    await waitFor(() => expect(store.readFailed).toBe(true));
+    await quietFor(50);
+    expect(callsTo(bureauStub, 'bureau.notifications.markread')).toHaveLength(1);
+    expect(store.items[0]?.read).toBe(false);
   });
 
   test('a mark-as-read the Bureau refuses leaves the items unread, and says so', async () => {

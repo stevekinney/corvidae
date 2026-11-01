@@ -139,7 +139,7 @@ describe('searchConsole', () => {
     expect(results.workflows).toEqual([]);
   });
 
-  test('treats a domain whose search fails (for example a 403) as no results, not an error', async () => {
+  test('treats a domain whose search fails (for example a 403) as no rows, and names it as failed', async () => {
     const refuse = async (): Promise<never> => {
       throw new Error('403 Forbidden');
     };
@@ -150,9 +150,27 @@ describe('searchConsole', () => {
       operations: { 'weft.workers.list': refuse },
     } as unknown as HttpClient;
 
-    const results = await searchConsole(failing, 'nightly', { scheduleReadGate: OPEN });
+    const results = await searchConsole(failing, 'nightly', {
+      scheduleReadGate: OPEN,
+      readWorkflows: refuse,
+      readTools: refuse,
+    });
 
-    expect(results).toEqual(NOTHING);
+    expect(results).toEqual({ ...NOTHING, failed: expect.any(Array) });
+    expect(results.failed).toEqual(
+      expect.arrayContaining(['Schedules', 'Workers', 'Reviews', 'Workflows', 'Tools']),
+    );
+  });
+
+  test('a domain that was read, even with no match, is not named as failed', async () => {
+    const results = await searchConsole(fakeClient({ schedules: 0 }), 'nightly rollup', {
+      scheduleReadGate: OPEN,
+      readWorkflows: async () => [],
+      readTools: async () => [],
+    });
+
+    expect(results.failed).not.toContain('Schedules');
+    expect(results.failed).not.toContain('Workflows');
   });
 });
 

@@ -26,10 +26,14 @@ function landAt(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-function stubEngine(): void {
+/** The engine as the palette searches it; a path that ends with `unreachable` does not answer. */
+function stubEngine(unreachable?: string): void {
   restore = installFetchImplementation(async (input, init) => {
     const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(text, 'http://localhost');
+    if (unreachable !== undefined && url.pathname.endsWith(unreachable)) {
+      throw new Error('the host did not answer');
+    }
     if (typeof init?.body === 'string') {
       const call = JSON.parse(init.body) as { id?: unknown; method?: string };
       if (call.method === 'bureau.contexts.list') {
@@ -278,6 +282,36 @@ describe('the empty states', () => {
     expect(await view.findByText('Search the console')).not.toBeNull();
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'zzzqqq' } });
     expect(await view.findByText('No matches')).not.toBeNull();
+  });
+});
+
+describe('a search that failed', () => {
+  test('says the search did not finish, not that nothing matched, when every domain failed', async () => {
+    restore = installFetchImplementation(async () => {
+      throw new Error('the host did not answer');
+    });
+    landAt('/chats');
+    const view = render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    });
+
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'zzzqqq' } });
+
+    expect(await view.findByText(PALETTE_COPY.searchFailedTitle)).not.toBeNull();
+    expect(view.queryByText(PALETTE_COPY.noMatchesTitle)).toBeNull();
+  });
+
+  test('says which results may be missing when one domain failed and the others found a match', async () => {
+    stubEngine('/schedules');
+    landAt('/chats');
+    const view = render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    });
+
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'echo' } });
+
+    expect(await view.findByRole('option', { name: /Hello echo/ })).not.toBeNull();
+    expect(await view.findByText(/Could not read schedules/)).not.toBeNull();
   });
 });
 

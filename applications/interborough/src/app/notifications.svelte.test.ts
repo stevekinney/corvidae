@@ -2,6 +2,7 @@
  * `NotificationStore`: the read state kept apart from the derived items, the badge that counts only
  * what needs the person, and the host's own problem.
  */
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, test } from 'bun:test';
 
 import type { NotificationEntry } from './notification-items.ts';
@@ -97,6 +98,50 @@ describe('NotificationStore and the Bureau’s notifications', () => {
     const reloaded = new NotificationStore({ storage });
     reloaded.setActivity([stored('a'), stored('b'), entry({ id: 'review:c' })]);
     expect(reloaded.unreadCount).toBe(2);
+  });
+
+  test('an open chat whose read the Bureau refuses is not read again by a chat read, only by an explicit one', async () => {
+    const store = storeWith(stored('a', { sessionId: 'session-fire' }));
+    let calls = 0;
+    // Rejects at once, the way a write guard does while the browser is offline.
+    store.setRemote({
+      markRead: () => {
+        calls += 1;
+        return Promise.reject(new Error('offline'));
+      },
+    });
+
+    store.markSessionRead('session-fire');
+    await waitUntil(() => store.readFailed);
+    // The feed's effect runs again when the items change; that must not ask the Bureau again.
+    store.markSessionRead('session-fire');
+    store.markSessionRead('session-fire');
+    await quietFor(50);
+
+    expect(calls).toBe(1);
+    expect(store.items[0]?.read).toBe(false);
+    store.markRead('notification:a');
+    expect(calls).toBe(2);
+  });
+
+  test('"mark all read" tells the Bureau to read every notification, not only those listed', () => {
+    const options: unknown[] = [];
+    const store = storeWith(stored('a'), stored('b'));
+    store.setRemote({ markRead: (_ids, remoteOptions) => void options.push(remoteOptions) });
+
+    store.markAllRead();
+
+    expect(options).toEqual([{ all: true }]);
+  });
+
+  test('reading one notification names only that one', () => {
+    const options: unknown[] = [];
+    const store = storeWith(stored('a'));
+    store.setRemote({ markRead: (_ids, remoteOptions) => void options.push(remoteOptions) });
+
+    store.markRead('notification:a');
+
+    expect(options).toEqual([undefined]);
   });
 
   test('a remote that throws at once is a refusal too', () => {

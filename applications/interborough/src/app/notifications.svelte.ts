@@ -57,7 +57,10 @@ export interface NotificationRemote {
    * The Bureau's notifications with these identifiers were read here. It settles when the Bureau
    * has them as read; a rejection means it does not, and the store holds them as unread again.
    */
-  readonly markRead: (notificationIds: readonly string[]) => void | Promise<void>;
+  readonly markRead: (
+    notificationIds: readonly string[],
+    options?: { readonly all?: boolean },
+  ) => void | Promise<void>;
   /** Reads what the bell lists again, for a list that could not be loaded. */
   readonly reload?: () => void;
 }
@@ -169,23 +172,33 @@ export class NotificationStore {
   }
 
   /**
-   * Reads everything listed. The ids go in oldest first, because the buffer of read ids keeps the
+   * Reads everything listed, and tells the Bureau to read every notification it holds for the
+   * person, not only the newest it lists. The ids go in oldest first, because the buffer of read ids keeps the
    * newest ones when it is over its cap: with more items than the cap, it is the oldest that are
    * forgotten, never the ones just read.
    */
   markAllRead(): void {
     const oldestFirst = [...this.items].sort((left, right) => left.emittedAtMs - right.emittedAtMs);
-    this.#markRead(oldestFirst.map((item) => item.id));
+    this.#markRead(
+      oldestFirst.map((item) => item.id),
+      true,
+    );
   }
 
   markRead(id: string): void {
     this.#markRead([id]);
   }
 
-  /** Opening a chat reads what is about it: its approval, its question, its answer. */
+  /**
+   * Opening a chat reads what is about it: its approval, its question, its answer. An item the
+   * Bureau refused is left alone: this runs from an effect that tracks the items, so trying it
+   * again would loop; only an explicit read ({@link markRead}, {@link markAllRead}) tries again.
+   */
   markSessionRead(sessionId: string): void {
     this.#markRead(
-      this.items.filter((item) => item.sessionId === sessionId).map((item) => item.id),
+      this.items
+        .filter((item) => item.sessionId === sessionId && !this.#refused.includes(item.id))
+        .map((item) => item.id),
     );
   }
 
@@ -194,7 +207,7 @@ export class NotificationStore {
     if (this.items.some((item) => item.id === id && item.tier === 'critical')) this.markRead(id);
   }
 
-  #markRead(ids: readonly string[]): void {
+  #markRead(ids: readonly string[], all = false): void {
     const unread = ids.filter((id) => !this.#readIds.includes(id) && !this.#awaiting.includes(id));
     // Another browser reads the Bureau's copy, so a notification is read here only for as long as
     // the Bureau has not refused it, and is kept in this browser once the Bureau has taken it.
@@ -203,7 +216,7 @@ export class NotificationStore {
     const kept = unread.filter((id) => !waitingOn.has(id));
     if (kept.length > 0) this.#keep(kept);
     if (waitingOn.size > 0) this.#awaiting = [...this.#awaiting, ...waitingOn];
-    this.#tellRemote(told);
+    this.#tellRemote(told, all);
   }
 
   /** Keeps these items read in this browser, across a reload. */
@@ -225,7 +238,7 @@ export class NotificationStore {
    * once the Bureau holds them as read. An item the Bureau does not accept is unread again, so it
    * never reads as delivered in this browser and new in the other.
    */
-  #tellRemote(told: readonly NotificationItem[]): void {
+  #tellRemote(told: readonly NotificationItem[], all: boolean): void {
     if (this.#remote === undefined || told.length === 0) return;
     const ids = new Set(told.map((item) => item.id));
     const notificationIds = told.flatMap((item) =>
@@ -244,7 +257,7 @@ export class NotificationStore {
       this.#refused = [...this.#refused.filter((id) => !ids.has(id)), ...ids];
     };
     try {
-      Promise.resolve(this.#remote.markRead(notificationIds)).then(
+      Promise.resolve(this.#remote.markRead(notificationIds, all ? { all: true } : undefined)).then(
         () => {
           accepted();
           return undefined;
