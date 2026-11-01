@@ -214,6 +214,14 @@ export class AgentEditorState {
    */
   readonly #toolApproval: Readonly<Record<string, ToolApproval>> | null;
 
+  /**
+   * The documents the file's `references` name, beside it. A save of an existing agent leaves them
+   * to the file (an update that omits `references` keeps them); a copy is created with them, since it
+   * lands in the directory they sit in (a plugin's agent is refused by the Bureau); a trial runs
+   * without them, because there is no file for them to sit beside.
+   */
+  readonly references: readonly string[];
+
   /** The tools a copy was seeded with, before the catalog's offer was applied. */
   #seededTools: readonly string[] = [];
 
@@ -246,6 +254,7 @@ export class AgentEditorState {
     this.models = definition?.models ?? null;
     this.#warnAt = definition?.costBudget?.warnAt;
     this.#toolApproval = definition?.toolApproval ?? null;
+    this.references = definition?.references ?? [];
     this.#carried = {
       ...(definition?.retry == null ? {} : { retry: definition.retry }),
       ...(definition?.compaction == null ? {} : { compaction: definition.compaction }),
@@ -450,8 +459,21 @@ export class AgentEditorState {
     return kept.length === 0 ? null : Object.fromEntries(kept);
   }
 
-  /** The definition to write: the form's fields and the carried skill descriptors and models. */
+  /**
+   * The definition to write: the form's fields and the carried skill descriptors and models. A copy
+   * carries the original's `references`; an update leaves them out, which keeps the file's.
+   */
   toDefinition(): AgentDefinitionInput {
+    return {
+      ...this.toTryDefinition(),
+      ...(this.mode === 'create' && this.references.length > 0
+        ? { references: this.references }
+        : {}),
+    };
+  }
+
+  /** The definition to try: the form's fields without `references`, which `bureau.agents.try` refuses. */
+  toTryDefinition(): AgentDefinitionInput {
     const name = this.name.trim();
     const offered = this.toolChoices.map((tool) => tool.name);
     const chosen = offered.filter((tool) => this.tools.includes(tool));

@@ -334,7 +334,13 @@ export const AGENT_EDITOR_COPY = {
     action: 'Try it',
     title: 'Try this agent',
     description:
-      'Chat with the agent as the form describes it now. Nothing is saved: no file, no memory, and the chat is removed when you close this.',
+      'Chat with the agent as the form describes it now. No agent file or memory is saved, and the chat is removed when you close this. Tools are real: a tool that runs without asking really runs, with whatever effect it has.',
+    /** Said when the agent names reference documents, which a trial runs without. */
+    leftOut: (documents: readonly string[]): string =>
+      `This agent reads ${documents.length === 1 ? 'a document' : 'documents'} that ${documents.length === 1 ? 'is' : 'are'} not available in a trial, so the trial runs without ${documents.length === 1 ? 'it' : 'them'}: ${documents.join(', ')}.`,
+    /** Said when the agent stopped to ask before a tool, which a trial cannot answer. */
+    approvalEnded:
+      'The agent stopped to ask before using a tool, and a trial cannot take that answer, so the trial ended. Set the tool to run without asking, or save the agent and chat with it.',
     messageLabel: 'First message',
     messagePlaceholder: 'Say something to the agent',
     send: 'Start chatting',

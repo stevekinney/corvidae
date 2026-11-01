@@ -120,7 +120,7 @@ describe('the seed of a copy', () => {
     });
   });
 
-  test('is a file agent whole, without its references or its A2A opt-in', () => {
+  test('is a file agent whole, with its references but without its A2A opt-in', () => {
     const file = readyAgent();
     const seed = copySeedOf({
       ...file,
@@ -129,7 +129,11 @@ describe('the seed of a copy', () => {
           ? null
           : { ...file.definition, a2a: true, references: ['notes.md'] },
     });
-    expect(seed).toMatchObject({ name: 'Researcher copy', a2a: false, references: null });
+    expect(seed).toMatchObject({
+      name: 'Researcher copy',
+      a2a: false,
+      references: ['notes.md'],
+    });
     expect(seed?.skillDescriptors).toEqual(file.definition?.skillDescriptors ?? []);
   });
 
@@ -240,6 +244,59 @@ describe('Duplicate, on the new agent page', () => {
       toolBudget: { maxCalls: 10, maxDurationSeconds: 30 },
       toolApproval: { 'lookup-order': 'always' },
     });
+  });
+
+  test('creates the copy with the original’s references, which sit in the directory it lands in', async () => {
+    const file = readyAgent();
+    const definition = file.definition;
+    if (definition === null) throw new Error('expected a definition');
+    const calls = bureau({
+      ...file,
+      definition: { ...definition, references: ['notes.md', 'style/guide.md'] },
+    });
+    const { findByRole, getByRole } = copyOf('researcher');
+    await findByRole('textbox', { name: /^Name/ });
+    await fireEvent.click(getByRole('button', { name: copy.createAction }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher-copy'));
+    expect(
+      calls.callsTo('bureau.agents.definitions.create')[0]?.params['definition'],
+    ).toMatchObject({ references: ['notes.md', 'style/guide.md'] });
+  });
+
+  test('sends no references for a copy of an agent that has none', async () => {
+    const calls = bureau(readyAgent());
+    const { findByRole, getByRole } = copyOf('researcher');
+    await findByRole('textbox', { name: /^Name/ });
+    await fireEvent.click(getByRole('button', { name: copy.createAction }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher-copy'));
+    expect(
+      calls.callsTo('bureau.agents.definitions.create')[0]?.params['definition'],
+    ).not.toHaveProperty('references');
+  });
+
+  test('shows the Bureau’s refusal when a plugin agent’s references are out of reach', async () => {
+    const file = readyAgent({ id: 'demo:researcher' });
+    const definition = file.definition;
+    if (definition === null) throw new Error('expected a definition');
+    const refusal =
+      '"demo:researcher" names reference documents that sit beside the plugin’s files, so it cannot be duplicated.';
+    const calls = bureau(
+      { ...file, definition: { ...definition, references: ['notes.md'] } },
+      catalogFixture(),
+      {
+        'bureau.agents.definitions.create': () => {
+          throw faults.unprocessable(refusal);
+        },
+      },
+    );
+    const { findByRole, getByRole, findByText } = copyOf('demo:researcher');
+    await findByRole('textbox', { name: /^Name/ });
+    await fireEvent.click(getByRole('button', { name: copy.createAction }));
+    await findByText(refusal);
+    expect(router.pathname).toBe('/agents/new');
+    expect(
+      calls.callsTo('bureau.agents.definitions.create')[0]?.params['definition'],
+    ).toMatchObject({ references: ['notes.md'] });
   });
 
   test('refuses an identifier that is taken, and writes nothing more', async () => {

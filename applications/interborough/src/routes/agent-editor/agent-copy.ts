@@ -1,7 +1,7 @@
 /**
  * Duplicating an agent (`/agents/new?from=<id>`): the definition a copy's form is filled from, and
  * the identifier it starts with. A file agent is copied whole, so `toolApproval`, the budgets, the
- * guardrails and the model list come with it. A built-in agent has no file, so its
+ * guardrails, the model list and the `references` come with it. A built-in agent has no file, so its
  * `codeDefinition` (what the agent states about itself) is read as one; it states no approvals or
  * budgets, so the copy has none. Nothing is written until the person saves the form.
  */
@@ -28,8 +28,9 @@ export function copySeedOf(detail: AgentDetail): DefinitionSeed | null {
       ...definition,
       name: AGENT_EDITOR_COPY.copyName(definition.name),
       a2a: false,
-      // The files a `references` list names sit beside the original; a copy would not find them.
-      references: null,
+      // The documents a `references` list names sit beside the original, in the directory the copy
+      // is written to, so the copy finds them. Only a plugin's documents are out of reach, and the
+      // Bureau refuses that copy when it is saved.
     };
   }
   if (codeDefinition === null) return null;

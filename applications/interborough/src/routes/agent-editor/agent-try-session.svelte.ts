@@ -120,6 +120,13 @@ export class AgentTrySession {
     if (contextId !== undefined) await this.#remove(contextId);
   }
 
+  /** Ends the trial and says `reason`, for a run that cannot go on in a drawer. */
+  async endWith(reason: string): Promise<void> {
+    const ending = this.end();
+    this.failure = reason;
+    await ending;
+  }
+
   async #remove(contextId: string): Promise<void> {
     try {
       await deleteContext(contextId);

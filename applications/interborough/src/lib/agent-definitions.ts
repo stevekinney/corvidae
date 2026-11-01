@@ -290,6 +290,11 @@ export type AgentDefinitionInput = {
    * key must be one of `tools`, or the Bureau refuses the write.
    */
   readonly toolApproval?: Readonly<Record<string, ToolApproval>> | null;
+  /**
+   * Documents beside the agent's file that its instructions are read with. Only a create sends it (a
+   * copy of an agent that has them); left out, an update keeps the file's.
+   */
+  readonly references?: readonly string[] | null;
   readonly instructions: string;
 };
 

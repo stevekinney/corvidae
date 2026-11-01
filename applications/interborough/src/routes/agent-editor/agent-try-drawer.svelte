@@ -3,8 +3,9 @@
    * Try it: a drawer beside the agent editor that chats with the agent as the form describes it
    * now, saved or not (`bureau.agents.try`, COR-1911). The first message starts a throwaway chat
    * (`agent-try-session.svelte.ts`); from then on the conversation is the application's chat over
-   * that chat's context. Nothing is saved: no agent file, no memory, and the chat is not in the chat
-   * list.
+   * that chat's context. No agent file or memory is saved, and the chat is not in the chat list. The
+   * tools are real. A question the agent asks is answered here; a tool that would ask first ends the
+   * trial, because the drawer has no approval to give.
    *
    * Closing the drawer, starting over, and leaving the page each end the chat, which deletes its
    * context and the agent with it. The agent in the chat is the form as it was when the chat
@@ -13,7 +14,7 @@
   import { onDestroy } from 'svelte';
 
   import { Alert, Button, Drawer, Textarea } from '@lostgradient/cinder';
-  import { Chat } from '@lostgradient/chat';
+  import { Chat, ChatQuestion } from '@lostgradient/chat';
 
   import { AGENT_EDITOR_COPY, CHAT_COPY } from '../../app/copy.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
@@ -34,13 +35,22 @@
   let message = $state('');
 
   const changed = $derived(
-    trial.phase === 'chatting' && JSON.stringify(editor.toDefinition()) !== trial.triedWith,
+    trial.phase === 'chatting' && JSON.stringify(editor.toTryDefinition()) !== trial.triedWith,
   );
+  const references = $derived(editor.references);
   const startable = $derived(message.trim() !== '' && trial.phase === 'idle');
 
   // Closing the drawer ends the chat: there is nothing to come back to.
   $effect(() => {
     if (!open) void trial.end();
+  });
+
+  // A tool that asks first parks the run on an approval this drawer cannot show, so the next message
+  // would answer it unseen. The trial ends and says why.
+  $effect(() => {
+    if (trial.phase === 'chatting' && (trial.chat?.approvals.length ?? 0) > 0) {
+      void trial.endWith(copy.approvalEnded);
+    }
   });
 
   onDestroy(() => {
@@ -52,7 +62,7 @@
     if (!startable) return;
     const first = message.trim();
     message = '';
-    void trial.start(editor.toDefinition(), first);
+    void trial.start(editor.toTryDefinition(), first);
   }
 
   function startOver(): void {
@@ -63,6 +73,14 @@
 <Drawer bind:open title={copy.title} size="md">
   <div class="weft-agent-try" data-testid="agent-try" data-context-id={trial.contextId}>
     <p class="weft-agent-try__note">{copy.description}</p>
+
+    {#if references.length > 0}
+      <Alert variant="info">
+        <p class="weft-agent-try__alert-body" data-testid="agent-try-left-out">
+          {copy.leftOut(references)}
+        </p>
+      </Alert>
+    {/if}
 
     {#if trial.failure !== null}
       <Alert variant="danger" dismissible onDismiss={() => (trial.failure = null)}>
@@ -110,6 +128,23 @@
           capabilities={{ attachments: false, editing: false, quote: false }}
         />
       </div>
+      <!-- The run reports a question as it parks, a moment before the turn that carried it is over;
+           a message sent in between would be a follow-up, so the question waits for the turn's end. -->
+      {#each chat.streaming ? [] : chat.humanRequests.slice(0, 1) as request (request.interruptId)}
+        <div class="weft-agent-try__question" data-testid="agent-try-question">
+          <p class="weft-agent-try__alert-body">
+            {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+          </p>
+          <ChatQuestion
+            {...{ 'data-changes': true }}
+            id={`try-question-${request.interruptId}`}
+            schema={request.schema ?? { type: 'string', title: CHAT_COPY.questionAnswerLabel }}
+            answerInComposer
+            busy={chat.attaching}
+            onSubmit={(value) => void chat.answerQuestion(request.interruptId, value)}
+          />
+        </div>
+      {/each}
     {:else}
       <form class="weft-agent-try__start" onsubmit={start}>
         <Textarea
@@ -174,6 +209,12 @@
     flex-direction: column;
     block-size: min(60vh, 36rem);
     min-block-size: 20rem;
+  }
+
+  .weft-agent-try__question {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
   }
 
   .weft-agent-try__start {
