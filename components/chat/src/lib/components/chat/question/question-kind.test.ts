@@ -65,6 +65,42 @@ describe('choices and rating steps', () => {
     ]);
   });
 
+  test('a choice carries its x-descriptions entry, and only a non-empty string', () => {
+    expect(
+      choicesOf({
+        enum: ['stg', 'prod', 'dev'],
+        'x-descriptions': { stg: 'Safe to try', prod: '', dev: 7 },
+      }),
+    ).toEqual([
+      { value: 'stg', label: 'stg', description: 'Safe to try' },
+      { value: 'prod', label: 'prod' },
+      { value: 'dev', label: 'dev' },
+    ]);
+    const bare = choicesOf({ enum: ['a'] })[0];
+    expect(bare !== undefined && 'description' in bare).toBe(false);
+  });
+
+  test('a description is read from the enum of every choice shape', () => {
+    const descriptions = { 'x-descriptions': { a: 'first' } };
+    expect(
+      choicesOf({ type: 'array', items: { enum: ['a'] }, ...descriptions })[0]?.description,
+    ).toBe('first');
+    expect(
+      choicesOf({ anyOf: [{ enum: ['a'] }, { type: 'string' }], ...descriptions })[0]?.description,
+    ).toBe('first');
+  });
+
+  test('a description keyed like an inherited property is not read', () => {
+    const descriptions = JSON.parse('{"constructor":"x"}') as Record<string, unknown>;
+    expect(choicesOf({ enum: ['toString'], 'x-descriptions': descriptions })[0]).toEqual({
+      value: 'toString',
+      label: 'toString',
+    });
+    expect(
+      choicesOf({ enum: ['constructor'], 'x-descriptions': {} })[0]?.description,
+    ).toBeUndefined();
+  });
+
   test('a label keyed like an inherited property is not read', () => {
     const labels = JSON.parse('{"constructor":"x"}') as Record<string, unknown>;
     expect(choicesOf({ enum: ['toString'], 'x-labels': labels })[0]?.label).toBe('toString');

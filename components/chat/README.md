@@ -212,9 +212,9 @@ A tool result with `outcome: 'action_required'` and an `input` action that carri
 
 | Kind | Schema | Control |
 | --- | --- | --- |
-| Pick one | `enum` (labels from `x-labels`) | A button per choice; a click answers |
+| Pick one | `enum` (labels from `x-labels`, optional descriptions from `x-descriptions`) | A full-width button per choice, its description wrapped under the label; a click answers |
 | Pick one or something else | `anyOf` of an `enum` and a plain string, with `x-allowOther` | The choices, then Something else… opens a field |
-| Pick several | `type: 'array'` with `items.enum`, `minItems`, `maxItems` | Checkboxes and Send |
+| Pick several | `type: 'array'` with `items.enum`, `minItems`, `maxItems` | Checkboxes (with `x-descriptions` as each one's description) and Send |
 | Free text | `type: 'string'` | The composer when `answerInComposer` is on ("Answer below"), else a text field |
 | Yes or no | `type: 'boolean'` | Yes and No buttons |
 | Number | `type: 'number'` or `'integer'` | A number field |

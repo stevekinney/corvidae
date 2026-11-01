@@ -45,6 +45,39 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
     expect(submitted).toEqual(['prod']);
   });
 
+  test('pick one: a description shows under its label, wraps, and the name stays the label', async () => {
+    const long = 'Rolls out to every region at once and cannot be undone. '.repeat(6).trim();
+    const { container, submitted } = await ask({
+      type: 'string',
+      enum: ['stg', 'prod'],
+      'x-labels': { stg: 'Staging', prod: 'Production' },
+      'x-descriptions': { prod: long },
+    });
+    const described = screen.getByRole('button', { name: 'Production' });
+    const description = container.querySelector('.chat-question-choice-description');
+    expect(description?.textContent).toBe(long);
+    expect(described.contains(description)).toBe(true);
+    expect(described.getAttribute('aria-describedby')).toBe('q-choice-1-description');
+    const label = described.querySelector('.chat-question-choice-label');
+    expect(label?.nextElementSibling).toBe(description);
+    // A choice without a description draws the label alone, as it did before.
+    const plain = screen.getByRole('button', { name: 'Staging' });
+    expect(plain.querySelector('.chat-question-choice-description')).toBeNull();
+    expect(plain.hasAttribute('aria-describedby')).toBe(false);
+    expect(container.querySelectorAll('.chat-question-choice-description')).toHaveLength(1);
+    await fireEvent.click(described);
+    expect(submitted).toEqual(['prod']);
+  });
+
+  test('pick several: a description shows beside its checkbox', async () => {
+    const { container } = await ask({
+      type: 'array',
+      items: { enum: ['a', 'b'] },
+      'x-descriptions': { a: 'The first one' },
+    });
+    expect(container.textContent).toContain('The first one');
+  });
+
   test('pick one or something else: a choice answers, and Something else opens a field', async () => {
     const schema = {
       anyOf: [{ enum: ['red', 'blue'] }, { type: 'string', maxLength: 40 }],
