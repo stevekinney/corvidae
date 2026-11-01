@@ -1,8 +1,8 @@
 /**
  * COR-1893: a hook action kind a running plugin contributes is a choice under Then, and its
  * configuration is drawn from the schema the Bureau reports (`bureau.plugins.kinds`). An event in a
- * hook's deliveries shows the sentence a plugin's formatter writes for its kind
- * (`bureau.events.format`), and the raw kind when none claims it.
+ * hook's deliveries shows its plain words and its raw kind: a delivery holds no payload, so no
+ * formatter's sentence is written for it.
  */
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
@@ -167,6 +167,38 @@ describe('a contributed hook action under Then', () => {
     await waitFor(() => expect(router.pathname).toBe('/hooks/created'));
   });
 
+  test('creates a hook from an untouched form with the choices it shows', async () => {
+    const view = open('/hooks/new', {
+      'bureau.plugins.kinds': () => ({
+        triggerKinds: [],
+        hookActionKinds: [
+          {
+            ...PAGE_KIND,
+            configuration: {
+              type: 'object',
+              properties: { urgency: { enum: ['low', 'high'] } },
+              required: ['urgency'],
+            },
+          },
+        ],
+      }),
+    });
+    const select = (await view.findByLabelText(
+      HOOKS_COPY.editor.action.label,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(select.options.length).toBe(4));
+    await chooseEvent(view, 'review', 'Review requested');
+    await fireEvent.change(select, { target: { value: 'pager:page' } });
+    await view.findByTestId('contributed-configuration');
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.create')[0]?.params).toEqual({
+      events: ['review.requested'],
+      action: { type: 'plugin', plugin: 'pager', kind: 'page', configuration: { urgency: 'low' } },
+    });
+  });
+
   test('offers only the built-in actions when the host cannot say what plugins add', async () => {
     const view = open('/hooks/new', {
       'bureau.plugins.kinds': () => {
@@ -182,51 +214,26 @@ describe('a contributed hook action under Then', () => {
 });
 
 describe('an event in a hook’s deliveries', () => {
-  test('shows the sentence a formatter writes for its kind, and the raw kind for one no formatter claims', async () => {
+  test('shows its plain words and its raw kind, and never asks a formatter for a sentence', async () => {
     const view = open('/hooks/alpha', {
-      'bureau.events.format': (params) => ({
-        events: (params['events'] as Array<{ kind: string }>).map(({ kind }) =>
-          kind === 'review.requested'
-            ? { kind, title: 'Someone asked for a review', formattedBy: 'inbox/reviews' }
-            : { kind, title: kind },
-        ),
+      'bureau.events.format': () => ({
+        events: [
+          { kind: 'review.requested', title: 'Someone asked for a review', formattedBy: 'x' },
+        ],
       }),
     });
     const deliveries = await view.findByTestId('hook-deliveries');
-    await within(deliveries).findByText('Someone asked for a review');
-    const kinds = within(deliveries).getAllByTestId('event-kind');
-    expect(kinds.map((element) => element.textContent)).toEqual(['schedule.missed']);
-    // The plain words stay ahead of a raw kind, as the event picker has them.
-    expect(within(deliveries).getByText('Schedule missed')).toBeTruthy();
-  });
-
-  test('names the plugin an event came from', async () => {
-    const view = open('/hooks/alpha', {
-      'bureau.events.format': (params) => ({
-        events: (params['events'] as Array<{ kind: string }>).map(({ kind }) => ({
-          kind,
-          title: kind,
-          source: 'inbox',
-        })),
-      }),
-    });
-    const deliveries = await view.findByTestId('hook-deliveries');
-    const badges = await waitFor(() => {
-      const found = within(deliveries).getAllByTestId('event-source');
-      expect(found.length).toBeGreaterThan(0);
+    const kinds = await waitFor(() => {
+      const found = within(deliveries).getAllByTestId('event-kind');
+      expect(found.length).toBe(2);
       return found;
     });
-    expect(badges[0]?.textContent?.trim()).toBe(PLUGIN_KINDS_COPY.fromPlugin('inbox'));
-  });
-
-  test('shows the raw kind when the Bureau cannot format events', async () => {
-    const view = open('/hooks/alpha');
-    const deliveries = await view.findByTestId('hook-deliveries');
-    await waitFor(() => expect(stub?.callsTo('bureau.events.format').length).toBeGreaterThan(0));
-    const kinds = within(deliveries).getAllByTestId('event-kind');
     expect(kinds.map((element) => element.textContent)).toEqual([
       'review.requested',
       'schedule.missed',
     ]);
+    expect(within(deliveries).getByText(/Schedule missed/)).toBeTruthy();
+    expect(within(deliveries).queryByText('Someone asked for a review')).toBeNull();
+    expect(stub?.callsTo('bureau.events.format')).toHaveLength(0);
   });
 });

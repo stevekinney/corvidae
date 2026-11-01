@@ -121,8 +121,6 @@ export const queryKeys = {
   },
   /** The trigger and hook action kinds running plugins contribute (`bureau.plugins.kinds`). */
   pluginKinds: () => ['plugin-kinds'] as const,
-  /** An event kind in words, as `bureau.events.format` writes it for an event with this `source`. */
-  eventSentence: (kind: string, source: string | null) => ['event-sentence', kind, source] as const,
   /** The caller's hooks (`bureau.hooks.*`) and the event kinds a hook can listen to. */
   hooks: {
     list: () => ['hooks', 'list'] as const,

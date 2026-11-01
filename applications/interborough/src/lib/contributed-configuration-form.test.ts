@@ -65,4 +65,90 @@ describe('the form of a contributed kind', () => {
     });
     expect(getByText(PLUGIN_KINDS_COPY.fieldsUnavailable)).toBeTruthy();
   });
+
+  test('reports the displayed value of an untouched choice, so what is saved is what is shown', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'pager:page',
+        schema: {
+          type: 'object',
+          properties: { urgency: { enum: ['low', 'high'] }, loud: { type: 'boolean' } },
+          required: ['urgency', 'loud'],
+        },
+        onChange: (next) => received.push(next),
+      },
+    });
+    await waitFor(() => expect(received.at(-1)).toEqual({ urgency: 'low', loud: false }));
+  });
+
+  test('does not report a configuration that already holds what the form shows, so opening it is not an edit', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const { getByLabelText } = render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'pager:page',
+        schema: {
+          type: 'object',
+          properties: { urgency: { enum: ['low', 'high'] } },
+          required: ['urgency'],
+        },
+        value: { urgency: 'high' },
+        onChange: (next) => received.push(next),
+      },
+    });
+    expect((getByLabelText(/urgency/i) as HTMLSelectElement).value).toBe('"high"');
+    await quietFor(100);
+    expect(received).toEqual([]);
+  });
+
+  test('fills in what a held configuration lacks with what the form shows', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'pager:page',
+        schema: {
+          type: 'object',
+          properties: { urgency: { enum: ['low', 'high'] }, loud: { type: 'boolean' } },
+          required: ['urgency', 'loud'],
+        },
+        value: { urgency: 'high' },
+        onChange: (next) => received.push(next),
+      },
+    });
+    await waitFor(() => expect(received.at(-1)).toEqual({ urgency: 'high', loud: false }));
+  });
+
+  test('draws the record editor for a kind whose settings are free keys, and reports its entries', async () => {
+    const received: Array<Record<string, unknown>> = [];
+    const { getByRole, queryByText } = render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'pager:page',
+        schema: {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          type: 'object',
+          propertyNames: { type: 'string' },
+          additionalProperties: { type: 'string' },
+        },
+        onChange: (next) => received.push(next),
+      },
+    });
+    expect(queryByText(PLUGIN_KINDS_COPY.noFields)).toBeNull();
+    await fireEvent.click(getByRole('button', { name: /^Add .* entry$/ }));
+    const key = await waitFor(() => getByRole('textbox', { name: /key/i }));
+    await fireEvent.input(key, { target: { value: 'region' } });
+    const entry = getByRole('textbox', { name: /value/i });
+    await fireEvent.input(entry, { target: { value: 'eu' } });
+    await waitFor(() => expect(received.at(-1)).toEqual({ region: 'eu' }));
+  });
+
+  test('still says a kind takes no settings when its object is closed and empty', () => {
+    const { getByText } = render(ContributedConfigurationForm, {
+      props: {
+        kindId: 'inbox:message',
+        schema: { type: 'object', properties: {}, additionalProperties: false },
+        onChange: () => undefined,
+      },
+    });
+    expect(getByText(PLUGIN_KINDS_COPY.noFields)).toBeTruthy();
+  });
 });

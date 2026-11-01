@@ -47,7 +47,14 @@ const INBOX_MESSAGE = {
   },
 };
 
-function open(options: { kinds?: unknown[]; trigger?: Record<string, unknown> } = {}) {
+function open(
+  options: {
+    kinds?: unknown[];
+    trigger?: Record<string, unknown>;
+    /** Answers `bureau.plugins.kinds` in place of the list in `kinds`. */
+    answer?: () => unknown;
+  } = {},
+) {
   stub = installWorkflowWorld(
     emptyWorld({
       files: [
@@ -67,10 +74,14 @@ function open(options: { kinds?: unknown[]; trigger?: Record<string, unknown> } 
       ],
     }),
   );
-  stub.on('bureau.plugins.kinds', () => ({
-    triggerKinds: options.kinds ?? [INBOX_MESSAGE],
-    hookActionKinds: [],
-  }));
+  stub.on(
+    'bureau.plugins.kinds',
+    options.answer ??
+      (() => ({
+        triggerKinds: options.kinds ?? [INBOX_MESSAGE],
+        hookActionKinds: [],
+      })),
+  );
   router.navigate('/workflows/digest/edit', { replace: true });
   return render(Harness, { props: { client: stub.client, scopes: AUTHORIZATION_SCOPES } } as never);
 }
@@ -173,5 +184,92 @@ describe('a contributed trigger kind in the builder', () => {
     await builderReady(container);
     const select = field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement;
     expect([...select.options].map((option) => option.value)).toEqual(['schedule', 'signal']);
+  });
+
+  test('saves an untouched choice with the value it shows', async () => {
+    const { container, getByRole } = open({
+      kinds: [
+        {
+          ...INBOX_MESSAGE,
+          configuration: {
+            type: 'object',
+            properties: { priority: { enum: ['normal', 'urgent'] } },
+            required: ['priority'],
+          },
+        },
+      ],
+    });
+    await builderReady(container);
+    const select = field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement;
+    await waitFor(() => expect(select.options.length).toBe(3));
+    await fireEvent.change(select, { target: { value: 'inbox:message' } });
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="contributed-trigger"]')).toBeTruthy(),
+    );
+
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+    const definition = stub?.callsTo('bureau.workflows.update')[0]?.params['definition'] as Record<
+      string,
+      unknown
+    >;
+    expect(definition['trigger']).toEqual({ kind: 'inbox:message', priority: 'normal' });
+  });
+
+  test('keeps the stored kind and says it is checking while the plugin kinds load', async () => {
+    let release: (answer: unknown) => void = () => undefined;
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    const { container, getByLabelText } = open({
+      trigger: { kind: 'inbox:message', mailbox: 'billing' },
+      answer: () => pending,
+    });
+    await builderReady(container);
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="contributed-trigger-loading"]')).toBeTruthy(),
+    );
+    expect(container.textContent).not.toContain(
+      WORKFLOW_COPY.builder.unavailableTrigger('inbox:message'),
+    );
+    expect((field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement).value).toBe(
+      'inbox:message',
+    );
+
+    release({ triggerKinds: [INBOX_MESSAGE], hookActionKinds: [] });
+    await waitFor(() =>
+      expect((getByLabelText(/mailbox/i) as HTMLInputElement).value).toBe('billing'),
+    );
+  });
+
+  test('keeps the stored kind, says the read failed, and retries, instead of claiming the plugin is missing', async () => {
+    const { container, getByLabelText, getByRole } = open({
+      trigger: { kind: 'inbox:message', mailbox: 'billing' },
+      answer: () => {
+        throw new Error('down');
+      },
+    });
+    await builderReady(container);
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="contributed-trigger-error"]')).toBeTruthy(),
+    );
+    expect(container.textContent).toContain(
+      WORKFLOW_COPY.builder.triggerKindsFailed('inbox:message'),
+    );
+    expect(container.textContent).not.toContain(
+      WORKFLOW_COPY.builder.unavailableTrigger('inbox:message'),
+    );
+    expect((field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement).value).toBe(
+      'inbox:message',
+    );
+
+    stub?.on('bureau.plugins.kinds', () => ({
+      triggerKinds: [INBOX_MESSAGE],
+      hookActionKinds: [],
+    }));
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.builder.retryTriggerKinds }));
+    await waitFor(() =>
+      expect((getByLabelText(/mailbox/i) as HTMLInputElement).value).toBe('billing'),
+    );
   });
 });

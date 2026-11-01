@@ -83,7 +83,9 @@
 
   /**
    * The trigger kinds running plugins contribute. A host that cannot say (an older Bureau, a failed
-   * read) offers the built-in triggers alone: the answer only ever adds choices.
+   * read) offers the built-in triggers alone: the answer only ever adds choices. A file whose trigger
+   * names a contributed kind says it is checking while this loads, and after a failed read keeps the
+   * stored kind, says the read failed, and offers a retry: it never claims the plugin is missing.
    */
   const contributed = createQuery(
     () => ({
@@ -95,15 +97,6 @@
   );
   const triggerKinds = $derived(contributed.data?.triggerKinds ?? []);
 
-  const triggerOptions = $derived([
-    { value: 'schedule', label: copy.triggerKinds.schedule },
-    { value: 'signal', label: copy.triggerKinds.signal },
-    ...triggerKinds.map((kind) => ({
-      value: kind.id,
-      label: copy.contributedTrigger(kind.id),
-    })),
-  ]);
-
   /** The contributed kind the file's trigger names, when a running plugin contributes it. */
   const contributedTrigger = $derived.by(() => {
     const trigger = view?.trigger;
@@ -112,12 +105,32 @@
       : undefined;
   });
 
+  /** The contributed kind id the file's trigger names, running or not. */
+  const storedTriggerId = $derived(
+    view?.trigger?.kind === 'contributed' ? view.trigger.id : undefined,
+  );
+
+  const triggerOptions = $derived([
+    { value: 'schedule', label: copy.triggerKinds.schedule },
+    { value: 'signal', label: copy.triggerKinds.signal },
+    ...triggerKinds.map((kind) => ({
+      value: kind.id,
+      label: copy.contributedTrigger(kind.id),
+    })),
+    // A trigger the file holds but no loaded kind matches stays visible by its own kind, so the
+    // select never reads as another trigger while kinds load, after a failed read, or when the
+    // plugin is off.
+    ...(storedTriggerId !== undefined && contributedTrigger === undefined
+      ? [{ value: storedTriggerId, label: copy.contributedTrigger(storedTriggerId) }]
+      : []),
+  ]);
+
   /** The trigger the select shows: a built-in kind, or a contributed kind that is running. */
   const triggerValue = $derived(
     view?.trigger?.kind === 'signal'
       ? 'signal'
-      : contributedTrigger !== undefined
-        ? contributedTrigger.id
+      : storedTriggerId !== undefined
+        ? storedTriggerId
         : 'schedule',
   );
 
@@ -206,6 +219,22 @@
                   onChange={(next) =>
                     onTextChange(setContributedTrigger(text, contributedTrigger.id, next))}
                 />
+              </div>
+            {:else if view.trigger?.kind === 'contributed' && contributed.isPending}
+              <p class="weft-workflow-builder__note" data-testid="contributed-trigger-loading">
+                {copy.checkingTrigger(view.trigger.id)}
+              </p>
+            {:else if view.trigger?.kind === 'contributed' && contributed.isError}
+              <div
+                class="weft-workflow-builder__contributed"
+                data-testid="contributed-trigger-error"
+              >
+                <p class="weft-workflow-builder__note" role="alert">
+                  {copy.triggerKindsFailed(view.trigger.id)}
+                </p>
+                <Button variant="secondary" onclick={() => void contributed.refetch()}>
+                  {copy.retryTriggerKinds}
+                </Button>
               </div>
             {:else if view.trigger?.kind === 'contributed'}
               <p class="weft-workflow-builder__note">

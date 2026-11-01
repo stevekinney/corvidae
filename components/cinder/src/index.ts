@@ -753,6 +753,7 @@ export type {
 export {
   default as SchemaForm,
   readSchemaFormData,
+  schemaFormInitialDraft,
   validateSchemaFormValue,
 } from './components/schema-form/index.ts';
 export type {

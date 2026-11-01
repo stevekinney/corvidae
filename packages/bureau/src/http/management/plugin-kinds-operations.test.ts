@@ -127,6 +127,9 @@ describe('plugin registry kinds', () => {
   });
 });
 
+/** The envelope fields of a complete event, as `bureau.events` delivers them. */
+const COMPLETE = { bureauId: 'bureau-1', emittedAtMs: 1_000, payload: {} };
+
 describe('bureau.events.format', () => {
   it('is served, described, read-only, and open to any authenticated caller', () => {
     expect(BUREAU_HANDLER_OPERATIONS).toContain(eventsFormatOperation);
@@ -141,8 +144,8 @@ describe('bureau.events.format', () => {
       'bureau.events.format',
       {
         events: [
-          { kind: 'review.requested', payload: { runId: 'run-1' }, source: 'inbox' },
-          { kind: 'run.settled', payload: { runId: 'run-2' } },
+          { ...COMPLETE, kind: 'review.requested', payload: { runId: 'run-1' }, source: 'inbox' },
+          { ...COMPLETE, kind: 'run.settled', payload: { runId: 'run-2' } },
         ],
       },
       'alice-key',
@@ -162,8 +165,27 @@ describe('bureau.events.format', () => {
 
   it('refuses more events than one call formats', async () => {
     const opened = await open();
-    const events = Array.from({ length: 201 }, () => ({ kind: 'run.settled' }));
+    const events = Array.from({ length: 201 }, () => ({ ...COMPLETE, kind: 'run.settled' }));
     const body = await rpc(opened.handler, 'bureau.events.format', { events }, 'alice-key');
     expect(body.error).toBeDefined();
   });
+
+  it.each([
+    ['bureauId', { kind: 'run.settled', emittedAtMs: 1_000, payload: {} }],
+    ['emittedAtMs', { kind: 'run.settled', bureauId: 'bureau-1', payload: {} }],
+    ['payload', { kind: 'run.settled', bureauId: 'bureau-1', emittedAtMs: 1_000 }],
+  ])(
+    'refuses an event with no %s, instead of formatting a sentence from made-up fields',
+    async (_missing, event) => {
+      const opened = await open();
+      const body = await rpc(
+        opened.handler,
+        'bureau.events.format',
+        { events: [event] },
+        'alice-key',
+      );
+      expect(body.result).toBeUndefined();
+      expect(body.error).toBeDefined();
+    },
+  );
 });

@@ -626,6 +626,12 @@ export const WORKFLOW_COPY = {
     /** A trigger kind no running plugin contributes (the plugin is off, or the file is wrong). */
     unavailableTrigger: (id: string): string =>
       `No running plugin contributes the trigger ${id}. Change it in the JSON tab.`,
+    /** Shown while the plugin trigger kinds load and the file's trigger names one. */
+    checkingTrigger: (id: string): string => `Checking the trigger ${id}…`,
+    /** The plugin trigger kinds could not be read, so the file's own trigger cannot be checked. */
+    triggerKindsFailed: (id: string): string =>
+      `The trigger ${id} is kept as the file has it, but the list of plugin triggers did not load, so its settings cannot be shown.`,
+    retryTriggerKinds: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
     signalNameLabel: 'Signal name',
@@ -3504,7 +3510,7 @@ export const STORAGE_COPY = {
   },
 } as const;
 
-/** What plugins add to hooks and workflows, and events in a plugin's words (COR-1893). */
+/** What plugins add to hooks and workflows (COR-1893). */
 export const PLUGIN_KINDS_COPY = {
   /** The fields of a contributed kind, shown by a form drawn from its schema. */
   fieldsHeading: 'Settings',
@@ -3514,8 +3520,4 @@ export const PLUGIN_KINDS_COPY = {
   fieldsUnavailable: 'The settings of this kind cannot be shown here.',
   /** The hook editor's choice for a contributed action: what it does, then the plugin. */
   hookAction: (plugin: string, kind: string): string => `Run ${kind} from ${plugin}`,
-  /** The label on an event that a plugin's contribution caused. */
-  fromPlugin: (plugin: string): string => `From ${plugin}`,
-  /** The accessible name of the group that names an event in words and by kind. */
-  eventLabel: 'Event',
 } as const;

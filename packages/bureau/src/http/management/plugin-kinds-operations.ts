@@ -101,23 +101,22 @@ export const MAXIMUM_EVENTS_TO_FORMAT = 200;
 const formatInput = z.object({
   events: z
     .array(
-      z.strictObject({
-        kind: z.string().min(1).max(256).describe('The event’s kind.'),
-        bureauId: z.string().max(256).optional().describe('The Bureau that published it.'),
-        emittedAtMs: z
-          .number()
-          .optional()
-          .describe('When it was published, in epoch milliseconds.'),
-        payload: z
-          .unknown()
-          .optional()
-          .describe('The event’s payload; `{}` when the caller holds none.'),
-        source: z
-          .string()
-          .max(256)
-          .optional()
-          .describe('The plugin that caused the event, from the envelope’s `source`.'),
-      }),
+      z
+        .strictObject({
+          kind: z.string().min(1).max(256).describe('The event’s kind.'),
+          bureauId: z.string().min(1).max(256).describe('The Bureau that published it.'),
+          emittedAtMs: z.number().describe('When it was published, in epoch milliseconds.'),
+          payload: z.unknown().describe('The event’s payload, required: a formatter reads it.'),
+          source: z
+            .string()
+            .max(256)
+            .optional()
+            .describe('The plugin that caused the event, from the envelope’s `source`.'),
+        })
+        .refine((event) => Object.hasOwn(event, 'payload'), {
+          error: 'An event to format carries its payload.',
+          path: ['payload'],
+        }),
     )
     .max(MAXIMUM_EVENTS_TO_FORMAT)
     .describe('The events to format, as `bureau.events` delivered them.'),
@@ -156,7 +155,7 @@ export const eventsFormatOperation = defineOperation<
   mcpExposable: false,
   summary: 'Format events as a person reads them',
   description:
-    'Formats each event of `events`, in order: the sentence a plugin’s event formatter writes for its kind (`title`, `body`, and `formattedBy`, `<plugin>/<formatter>`), or the raw kind as the `title` for an event no formatter claims. `runId` is the run the payload names, so a view can link to it, and `source` is the plugin that caused the event. A formatter that fails is reported to the Bureau’s diagnostics and its event is shown raw. At most 200 events per call. Read-only; any authenticated caller may read it.',
+    'Formats each event of `events`, in order. Each event is complete, as `bureau.events` delivered it (`kind`, `bureauId`, `emittedAtMs`, `payload`), and an incomplete one is refused, because a formatter would write its sentence from fields that were never there. The result is the sentence a plugin’s event formatter writes for its kind (`title`, `body`, and `formattedBy`, `<plugin>/<formatter>`), or the raw kind as the `title` for an event no formatter claims. `runId` is the run the payload names, so a view can link to it, and `source` is the plugin that caused the event. A formatter that fails is reported to the Bureau’s diagnostics and its event is shown raw. At most 200 events per call. Read-only; any authenticated caller may read it.',
   destructive: false,
   tags: ['Events'],
   inputSchema: formatInput,
@@ -171,9 +170,9 @@ export const eventsFormatOperation = defineOperation<
       events: input.events.map((event) => {
         const formatted = host.formatEvent({
           kind: event.kind,
-          bureauId: event.bureauId ?? '',
-          emittedAtMs: event.emittedAtMs ?? 0,
-          payload: event.payload ?? {},
+          bureauId: event.bureauId,
+          emittedAtMs: event.emittedAtMs,
+          payload: event.payload,
           ...(event.source === undefined ? {} : { source: event.source }),
         });
         return { ...formatted };
