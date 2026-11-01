@@ -272,7 +272,7 @@
         <Tabs.Trigger value="instructions">{AGENT_PAGE_COPY.tabs.instructions}</Tabs.Trigger>
         <Tabs.Trigger value="access">{AGENT_PAGE_COPY.tabs.access}</Tabs.Trigger>
         <Tabs.Trigger value="hooks">{AGENT_PAGE_COPY.tabs.hooks}</Tabs.Trigger>
-        <Tabs.Trigger value={MEMORY_TAB}>{memoryLabel}</Tabs.Trigger>
+        <Tabs.Trigger value={MEMORY_TAB} data-opens-page>{memoryLabel}</Tabs.Trigger>
         <Tabs.Trigger value="settings">{AGENT_PAGE_COPY.tabs.settings}</Tabs.Trigger>
       </Tabs.List>
       <Tabs.Panel value="chats">

@@ -63,12 +63,15 @@ describe('page width by kind of page', () => {
     expect(widthOf('/agents')).toBe('full');
     expect(widthOf('/agents/:agent')).toBe('reading');
     expect(widthOf('/agents/:agent/memories')).toBe('full');
+    expect(widthOf('/agents/:agent/memories/:memory')).toBe('full');
     expect(widthOf('/agents/new')).toBe('full');
     expect(widthOf('/agents/:agent/edit')).toBe('full');
     // The memory page and an agent's page share the `agents` view and differ in width.
     const memory = routes.find((route) => route.pattern === '/agents/:agent/memories');
+    const openMemory = routes.find((route) => route.pattern === '/agents/:agent/memories/:memory');
     const detail = routes.find((route) => route.pattern === '/agents/:agent');
     expect(memory?.view).toBe(detail?.view);
+    expect(openMemory?.view).toBe(detail?.view);
   });
 
   test('the operator tables stay wide and the settings form keeps the reading width', () => {

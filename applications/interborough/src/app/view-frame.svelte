@@ -38,6 +38,7 @@
     AGENT_MEMORY_PATTERN,
     agentMemoryViewInstance,
     queryKeys,
+    viewFramePattern,
     workflowViewInstance,
   } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
@@ -70,7 +71,7 @@
   const initial = untrack(() => ({
     view,
     parameters,
-    pattern,
+    pattern: viewFramePattern(pattern),
     search: new URLSearchParams(router.current.search),
   }));
   const copy = VIEW_COPY[initial.view];

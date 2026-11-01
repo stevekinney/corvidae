@@ -12,7 +12,12 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { agentEditPath, agentPath } from '../lib/agent-paths.ts';
+import {
+  agentEditPath,
+  agentMemoryItemPath,
+  agentMemoryPath,
+  agentPath,
+} from '../lib/agent-paths.ts';
 import {
   matchRoute,
   scheduleCreatePath,
@@ -366,6 +371,14 @@ describe('a link to an agent', () => {
     expect(agentPath('a b/c')).toBe('/agents/a%20b%2Fc');
     expect(agentEditPath('assistant')).toBe('/agents/assistant/edit');
     expect(matchRoute(agentPath('a b/c'))?.params).toEqual({ agent: 'a b/c' });
+    expect(agentMemoryPath('assistant')).toBe('/agents/assistant/memories');
+    // An open memory is one path segment, whatever its identifier holds.
+    expect(agentMemoryItemPath('a b', 'm/1?x#y')).toBe('/agents/a%20b/memories/m%2F1%3Fx%23y');
+    expect(matchRoute(agentMemoryItemPath('a b', 'm/1?x#y'))).toEqual({
+      pattern: '/agents/:agent/memories/:memory',
+      params: { agent: 'a b', memory: 'm/1?x#y' },
+    });
+    expect(matchRoute(agentMemoryPath('assistant'))?.pattern).toBe('/agents/:agent/memories');
 
     const offenders: string[] = [];
     for await (const path of new Glob('**/*.{svelte,ts}').scan(sourceRoot)) {

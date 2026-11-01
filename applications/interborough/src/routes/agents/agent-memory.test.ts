@@ -504,16 +504,63 @@ describe('one memory', () => {
     expect(factOf(detail, MEMORY_COPY.detail.fields.legalHold)).toBeNull();
   });
 
-  test('keeps the open memory in the address, and opens the one the address names', async () => {
+  test('keeps the open memory in the path, and opens the one the path names', async () => {
     bureau();
-    const view = open('/agents/assistant/memories?memory=memory-window');
+    const view = open('/agents/assistant/memories/memory-window');
 
     const detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
     await waitFor(() =>
       expect(detail.querySelector('blockquote')?.textContent).toContain(WINDOW.content),
     );
     await fireEvent.click(rowOf(view, AISLE.id));
-    await waitFor(() => expect(router.search.get('memory')).toBe(AISLE.id));
+    await waitFor(() => expect(router.pathname).toBe(`/agents/assistant/memories/${AISLE.id}`));
+    // The path names the memory, so no `?memory=` is left beside it.
+    expect(router.search.get('memory')).toBeNull();
+    expect(router.current.route?.pattern).toBe('/agents/:agent/memories/:memory');
+    expect(router.current.params['memory']).toBe(AISLE.id);
+  });
+
+  test('writes an identifier that is not a plain segment into the path whole, and reads it back', async () => {
+    const odd = { ...AISLE, id: 'memory/with space?and#more', content: 'An odd identifier.' };
+    bureau({ 'bureau.memory.list': () => ({ memories: [odd], nextOffset: null }) });
+    const view = open();
+
+    await fireEvent.click(await waitFor(() => rowOf(view, odd.id)));
+    await waitFor(() =>
+      expect(router.pathname).toBe(`/agents/assistant/memories/${encodeURIComponent(odd.id)}`),
+    );
+    expect(router.current.params['memory']).toBe(odd.id);
+    expect(router.search.toString()).toBe('');
+  });
+
+  test('stays on the memory page, with the same typed search, when a memory is chosen', async () => {
+    const served = bureau({
+      'bureau.memory.search': () => ({ hits: [{ memory: AISLE, score: 0.9 }] }),
+    });
+    const view = open();
+    await view.findByText(AISLE.content);
+    const search = view.getByRole('searchbox', { name: MEMORY_COPY.searchLabel });
+    await fireEvent.input(search, { target: { value: 'aisle' } });
+    await waitFor(() =>
+      expect(served.calls.some((call) => call.method === 'bureau.memory.search')).toBe(true),
+    );
+
+    await fireEvent.click(rowOf(view, AISLE.id));
+    await waitFor(() => expect(router.pathname).toBe(`/agents/assistant/memories/${AISLE.id}`));
+
+    // Choosing a memory is not a new page: what was typed is still in the box.
+    expect((search as HTMLInputElement).value).toBe('aisle');
+  });
+
+  test('shows the list alone when the path stops naming a memory, as Back does', async () => {
+    bureau();
+    const view = open(`/agents/assistant/memories/${AISLE.id}`);
+    await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+
+    router.navigate('/agents/assistant/memories');
+
+    await view.findByText(MEMORY_COPY.nothingOpen.title);
+    expect(view.container.querySelector('[data-memory-detail]')).toBeNull();
   });
 
   test('opens the memory a correction replaced from its “corrects” link, though no list holds it', async () => {
@@ -563,7 +610,7 @@ describe('one memory', () => {
     const link = within(detail).getByRole('link', { name: MEMORY_COPY.detail.openChat });
 
     link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
-    expect(router.pathname).toBe('/agents/assistant/memories');
+    expect(router.pathname).toBe(`/agents/assistant/memories/${AISLE.id}`);
     link.click();
 
     expect(router.pathname).toBe('/chats/session-1');
@@ -571,7 +618,7 @@ describe('one memory', () => {
 
   test('keeps a row for a memory the list does not hold while it is read, and says when it cannot be', async () => {
     bureau({ 'bureau.memory.get': () => new Promise(() => {}) });
-    const view = open('/agents/assistant/memories?memory=memory-elsewhere');
+    const view = open('/agents/assistant/memories/memory-elsewhere');
 
     // While it is read the row is a placeholder, not a blank.
     await waitFor(() =>
@@ -585,7 +632,7 @@ describe('one memory', () => {
         throw new StubFault('EngineFailure', 500, 'The server broke.');
       },
     });
-    const failed = open('/agents/assistant/memories?memory=memory-elsewhere');
+    const failed = open('/agents/assistant/memories/memory-elsewhere');
     await waitFor(() =>
       expect(textOf(rowOf(failed, 'memory-elsewhere'))).toContain(MEMORY_COPY.detail.failed),
     );
@@ -985,12 +1032,12 @@ describe('correcting a memory', () => {
     await waitFor(() => expect(served.callsTo('bureau.memory.correct')).toHaveLength(1));
     // The person moves on to another memory while the correction is still being saved.
     await fireEvent.click(rowOf(view, WINDOW.id));
-    await waitFor(() => expect(router.search.get('memory')).toBe(WINDOW.id));
+    await waitFor(() => expect(router.current.params['memory']).toBe(WINDOW.id));
 
     release({ id: AISLE.id, memory: { ...AISLE, id: 'memory-corrected', source: 'operator' } });
 
     expect(await view.findByText(MEMORY_COPY.correct.saved.title)).not.toBeNull();
-    expect(router.search.get('memory')).toBe(WINDOW.id);
+    expect(router.current.params['memory']).toBe(WINDOW.id);
   });
 });
 
@@ -1045,7 +1092,7 @@ describe('adding a memory', () => {
     });
     await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
-    await waitFor(() => expect(router.search.get('memory')).toBe(ADDED.id));
+    await waitFor(() => expect(router.current.params['memory']).toBe(ADDED.id));
   });
 
   test('starts empty the next time, once a memory was saved', async () => {
@@ -1850,7 +1897,7 @@ describe('a correction that was refused', () => {
     await waitFor(() => expect(served.callsTo('bureau.memory.correct')).toHaveLength(1));
     // The person moves on to another memory while the correction is being saved.
     await fireEvent.click(rowOf(view, WINDOW.id));
-    await waitFor(() => expect(router.search.get('memory')).toBe(WINDOW.id));
+    await waitFor(() => expect(router.current.params['memory']).toBe(WINDOW.id));
     await waitFor(() =>
       expect(
         view.container.querySelector(`[data-memory-detail="${AISLE.id}"]`)?.outerHTML ?? null,
@@ -1864,13 +1911,13 @@ describe('a correction that was refused', () => {
       MEMORY_COPY.correct.refusal['successor-not-admitted'].title,
     );
     expect(textOf(view.container.querySelector('[data-correction-draft]'))).toBe(CORRECTION);
-    expect(router.search.get('memory')).toBe(WINDOW.id);
+    expect(router.current.params['memory']).toBe(WINDOW.id);
 
     await fireEvent.click(
       view.getByRole('button', { name: MEMORY_COPY.correct.notSaved.editAgain }),
     );
 
-    expect(router.search.get('memory')).toBe(AISLE.id);
+    expect(router.current.params['memory']).toBe(AISLE.id);
     await waitFor(() =>
       expect(
         (view.getByLabelText(MEMORY_COPY.correct.edit.label) as HTMLTextAreaElement).value,
@@ -2031,15 +2078,14 @@ describe('what a governance note claims', () => {
 });
 
 describe('the agent’s page', () => {
-  test('links to its memory, which keeps the Agents view', async () => {
+  test('has a Memory tab that opens its memory, which keeps the Agents view', async () => {
     bureau({ 'bureau.agents.list': () => ({ agents: [AGENT] }) });
     stub?.on('bureau.contexts.list', () => ({ contexts: [], nextOffset: null }));
     landAt('/agents/assistant');
     const { findByRole } = mount(AgentDetail);
 
-    const link = await findByRole('link', { name: MEMORY_COPY.link });
-    expect(link.getAttribute('href')).toBe('/agents/assistant/memories');
-    link.click();
+    const tab = await findByRole('tab', { name: /^Memory/ });
+    await fireEvent.click(tab);
 
     expect(router.pathname).toBe('/agents/assistant/memories');
     expect(router.current.route?.view).toBe('agents');

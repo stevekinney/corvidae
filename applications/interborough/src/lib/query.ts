@@ -301,6 +301,18 @@ export function memoryListingsFilter(agentId: string): {
 /** The route of an agent's memory page, which the Agents view's frame probes differently from the agent's own. */
 export const AGENT_MEMORY_PATTERN = '/agents/:agent/memories';
 
+/** The route of the same page with one memory open: it asks the frame the same questions. */
+export const AGENT_MEMORY_ITEM_PATTERN = '/agents/:agent/memories/:memory';
+
+/**
+ * The pattern a view frame words and probes a route under. A route that is another address of a
+ * page the frame already knows (a memory open in the memory page) is that page's pattern, so its
+ * loading, failure and locked words and its probe are the page's, whichever address it was opened at.
+ */
+export function viewFramePattern(pattern: string | undefined): string | undefined {
+  return pattern === AGENT_MEMORY_ITEM_PATTERN ? AGENT_MEMORY_PATTERN : pattern;
+}
+
 /**
  * The instance the Agents view's frame keys the memory page's probe under, apart from the agent's
  * own page's: the two ask different questions about the same `:id`.

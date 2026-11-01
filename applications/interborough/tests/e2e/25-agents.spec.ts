@@ -87,7 +87,7 @@ test.describe('the list of agents', () => {
 });
 
 test.describe('one agent', () => {
-  test('shows its name once, its model, and a memory count that opens its memory', async ({
+  test('shows its name once, its model, and a Memory tab with its count that opens its memory', async ({
     page,
     request,
   }) => {
@@ -105,7 +105,7 @@ test.describe('one agent', () => {
     await expect(frame).not.toContainText('Model');
     await expect(frame).not.toContainText('Defined in');
     await expect(frame).not.toContainText('Revision');
-    const memory = frame.getByRole('link', { name: /^Memory \(\d+\+?\)$/ });
+    const memory = frame.getByRole('tab', { name: /^Memory \d+\+?$/ });
     await expect(memory).toHaveCount(1);
     await memory.click();
     await expect(page).toHaveURL(new RegExp(`/agents/${TEXT_ECHO_AGENT_NAME}/memories$`));

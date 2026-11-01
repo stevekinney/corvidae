@@ -117,7 +117,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/agents/:agent/edit': /Guardrails and limits/,
   '/agents/:agent/memories': /mmmmmmmmmm/,
   // The open memory prints its text and the facts under it; the row's text is clamped.
-  '/agents/:agent/memories (memory open)': /Where it came from/,
+  '/agents/:agent/memories/:memory': /Where it came from/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,
   '/workflows/:workflow (file)': /Writes the daily digest/,
@@ -393,10 +393,13 @@ async function problemsAt(page: Page, pattern: string, width: number): Promise<s
         selected: element.getAttribute('aria-selected') === 'true',
         disabled:
           element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true',
+        // A tab that opens another page (an agent's Memory) is never the selected tab: that page
+        // is measured at its own address.
+        opensPage: element.hasAttribute('data-opens-page'),
       })),
     );
     for (const tab of tabs) if (tab.selected) visited.add(tab.name);
-    const next = tabs.find((tab) => !visited.has(tab.name) && !tab.disabled);
+    const next = tabs.find((tab) => !visited.has(tab.name) && !tab.disabled && !tab.opensPage);
     if (next === undefined) break;
     visited.add(next.name);
     const trigger = outlet.getByRole('tab').filter({ hasText: next.name }).first();

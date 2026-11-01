@@ -764,6 +764,19 @@ describe('an agent’s memory page, under the Agents view', () => {
     expect(frame(container).dataset['state']).toBe('ready');
   });
 
+  test('is worded and probed as the memory page when a memory is open in its path', async () => {
+    stubBureau(() => fault(403, 'Forbidden'));
+    const { container, findByRole } = mount('agents', {
+      pattern: '/agents/:agent/memories/:memory',
+      parameters: { agent: 'assistant', memory: 'memory-1' },
+    });
+    const words = copy.forbiddenByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain('bureau.memory:read');
+    expect(frame(container).dataset['state']).toBe('forbidden');
+  });
+
   test('is not found for an agent the Bureau does not list, before the memory is asked for', async () => {
     const asked: string[] = [];
     restore = installFetchImplementation(async (_input, init) => {

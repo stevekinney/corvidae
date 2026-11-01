@@ -90,11 +90,19 @@ export const routes: readonly RouteDefinition[] = [
     view: 'agent-editor',
     load: agentEditor,
   },
-  // What an agent remembers. It keeps the `agents` view, whose frame probes the memory too.
+  // What an agent remembers, and the one memory open in it. They keep the `agents` view, whose frame probes the memory too.
   {
     pattern: '/agents/:agent/memories',
     kind: 'list-detail',
     crumb: 'Memory',
+    view: 'agents',
+    load: () => import('../routes/agents/agent-memory.svelte'),
+  },
+  // One memory open beside the list: the same page, so it shares the page's view and kind.
+  {
+    pattern: '/agents/:agent/memories/:memory',
+    kind: 'list-detail',
+    crumb: { param: 'memory' },
     view: 'agents',
     load: () => import('../routes/agents/agent-memory.svelte'),
   },
