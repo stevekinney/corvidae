@@ -21,6 +21,7 @@ import {
   CHILD_RUN_STARTED_EVENT_NAME,
   MEMORY_STORE_TOOL_NAME,
   MEMORY_WRITTEN_EVENT_NAME,
+  TOOL_GRANT_SETTLED_EVENT_NAME,
   WAKEUP_SCHEDULED_EVENT_NAME,
   carryLiveNotes,
   noteAnnouncementOf,
@@ -67,6 +68,7 @@ describe('the announcements the page restates', () => {
     expect(defined('WAKEUP_SCHEDULED_EVENT_NAME')).toBe(WAKEUP_SCHEDULED_EVENT_NAME);
     expect(defined('CHILD_RUN_STARTED_EVENT_NAME')).toBe(CHILD_RUN_STARTED_EVENT_NAME);
     expect(defined('CHILD_RUN_SETTLED_EVENT_NAME')).toBe(CHILD_RUN_SETTLED_EVENT_NAME);
+    expect(defined('TOOL_GRANT_SETTLED_EVENT_NAME')).toBe(TOOL_GRANT_SETTLED_EVENT_NAME);
     const projection = readFileSync(
       join(import.meta.dir, '../../../../../packages/bureau/src/http/ag-ui-projection.ts'),
       'utf8',

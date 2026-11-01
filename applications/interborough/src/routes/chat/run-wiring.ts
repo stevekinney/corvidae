@@ -79,6 +79,7 @@ import {
   noteAnnouncementKey,
   noteAnnouncementOf,
   placeEventNotes,
+  TOOL_GRANT_SETTLED_EVENT_NAME,
   withStopReason,
   withStoredMemoryNotes,
   type NoteAnnouncement,
@@ -179,7 +180,36 @@ export type ChatRunWiringOptions = {
    * them.
    */
   readonly onHumanRequests?: (requests: readonly HumanRequest[]) => void;
+  /**
+   * Told, once for each approval, when the Bureau reports that a grant the person asked for
+   * (Allow for the rest of this chat) did not loosen the tool: the tool will ask again. The
+   * grant was stored when `remembered` is true, and not stored when it is false. A repeat of the
+   * announcement, as a retried resume sends, does not tell again.
+   */
+  readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
 };
+
+/** What the page is told when a grant the person asked for did not loosen the tool. */
+export type GrantNotLoosened = {
+  readonly interruptId: string;
+  readonly toolName: string;
+  readonly remembered: boolean;
+};
+
+/**
+ * The notice a `bureau.tool-grant-settled` announcement makes, or `undefined` for any other event
+ * and for a grant that loosened the tool.
+ */
+export function grantNotLoosenedOf(event: unknown): GrantNotLoosened | undefined {
+  if (!isRecord(event) || event['type'] !== 'CUSTOM') return undefined;
+  if (event['name'] !== TOOL_GRANT_SETTLED_EVENT_NAME) return undefined;
+  const value = event['value'];
+  if (!isRecord(value) || value['loosened'] !== false) return undefined;
+  const { interruptId, toolName, remembered } = value;
+  if (typeof interruptId !== 'string' || typeof toolName !== 'string') return undefined;
+  if (typeof remembered !== 'boolean') return undefined;
+  return { interruptId, toolName, remembered };
+}
 
 export type ChatRunWiring = {
   readonly transport: ChatSessionTransport;
@@ -624,6 +654,9 @@ function answerTo(interrupt: Interrupt, resolution: ApprovalResolution): ResumeE
         ...(resolution.decision === 'approve_with_edits' && resolution.editedArgs !== undefined
           ? { arguments: resolution.editedArgs }
           : {}),
+        // Allow for the rest of this chat: the grant rides the same resume as the approval, so the
+        // turn continues as Approve's does (COR-1990). The mount refuses it on a deny.
+        ...(resolution.remember ? { remember: true } : {}),
       },
     };
   }
@@ -862,6 +895,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let interrupts: readonly Interrupt[] = [];
   /** The decisions on approvals, by interrupt, that no request the mount answered has carried. */
   const decisions = new Map<string, ResumeEntry>();
+  /** The approvals a grant that did not loosen the tool has been told for, by interrupt. */
+  const toldGrants = new Set<string>();
   /** The text typed to answer each question, by interrupt, with the row it was typed in. */
   const answers = new Map<
     string,
@@ -1061,6 +1096,11 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         if (announcement !== undefined) {
           rememberAnnouncement(announced, announcement);
           if (assetRun !== undefined) rememberAnnouncement(assetRun.announcements, announcement);
+        }
+        const ungranted = grantNotLoosenedOf(event);
+        if (ungranted !== undefined && !toldGrants.has(ungranted.interruptId)) {
+          toldGrants.add(ungranted.interruptId);
+          options.onGrantNotLoosened?.(ungranted);
         }
         const ended = interruptsOf(event);
         if (ended !== undefined) setInterrupts(ended);

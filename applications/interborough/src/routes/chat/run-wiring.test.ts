@@ -33,7 +33,7 @@ type Sent = { url: string; method: string; body: unknown };
 type SentInput = {
   runId: string;
   messages: Array<{ id: string; content?: unknown }>;
-  resume?: Array<{ interruptId: string; status: string; payload?: unknown }>;
+  resume?: Array<{ interruptId: string; status: string; payload?: unknown; metadata?: unknown }>;
 };
 
 /** The `RunAgentInput` a request carried. */
@@ -1547,6 +1547,99 @@ describe('a resume the mount refused', () => {
       expect(inputOf(sent[1]).resume).toEqual([
         { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
       ]);
+    });
+  });
+
+  describe('when the person asks to remember the approval (COR-1990)', () => {
+    const settled = (fields: Record<string, unknown> = {}) => ({
+      type: 'CUSTOM',
+      name: 'bureau.tool-grant-settled',
+      value: {
+        interruptId: INTERRUPT.id,
+        toolCallId: 'call-refund',
+        toolName: 'issue-refund',
+        runId: 'native-1',
+        remembered: true,
+        loosened: true,
+        ...fields,
+      },
+    });
+
+    async function allowed(
+      interrupt: unknown,
+      continuation: unknown[],
+      onGrantNotLoosened: (notice: unknown) => void = () => undefined,
+    ) {
+      const conversation = appendUserMessage(empty(), 'Refund it');
+      const stubbed = mount([
+        stream([started(), finished({ type: 'interrupt', interrupts: [interrupt] })]),
+        stream([started('run-2'), ...continuation, finished(undefined, 'run-2')]),
+      ]);
+      const wiring = createChatRunWiring({
+        agentName: () => 'tool-runner',
+        fetch: stubbed.fetch,
+        conversation: () => conversation,
+        onGrantNotLoosened,
+      });
+      await frames(wiring, conversation);
+      await wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: true });
+      await frames(wiring, conversation);
+      return { sent: stubbed.sent };
+    }
+
+    test('sends remember with the approve, on the round the approval was shown at', async () => {
+      const { sent } = await allowed(
+        { ...INTERRUPT, metadata: { '@lostgradient/bureau': { kind: 'tool-approval', round: 2 } } },
+        [],
+      );
+
+      expect(inputOf(sent[1]).resume).toEqual([
+        {
+          interruptId: INTERRUPT.id,
+          status: 'resolved',
+          payload: { decision: 'approve', remember: true },
+          metadata: { '@lostgradient/bureau': { round: 2 } },
+        },
+      ]);
+    });
+
+    test('sends no remember when the person did not ask for it', async () => {
+      const { wiring, sent, conversation } = await approved([
+        stream([started('run-2'), finished(undefined, 'run-2')]),
+      ]);
+
+      await frames(wiring, conversation);
+
+      expect(inputOf(sent[1]).resume?.[0]?.payload).toEqual({ decision: 'approve' });
+    });
+
+    test('names the grant that did not loosen the tool, once, however often the event repeats', async () => {
+      const notices: unknown[] = [];
+      await allowed(INTERRUPT, [settled({ loosened: false }), settled({ loosened: false })], (n) =>
+        notices.push(n),
+      );
+
+      expect(notices).toEqual([
+        { interruptId: INTERRUPT.id, toolName: 'issue-refund', remembered: true },
+      ]);
+    });
+
+    test('says the grant was not stored when the event reports remembered false', async () => {
+      const notices: unknown[] = [];
+      await allowed(INTERRUPT, [settled({ remembered: false, loosened: false })], (n) =>
+        notices.push(n),
+      );
+
+      expect(notices).toEqual([
+        { interruptId: INTERRUPT.id, toolName: 'issue-refund', remembered: false },
+      ]);
+    });
+
+    test('says nothing when the grant loosened the tool', async () => {
+      const notices: unknown[] = [];
+      await allowed(INTERRUPT, [settled()], (n) => notices.push(n));
+
+      expect(notices).toEqual([]);
     });
   });
 

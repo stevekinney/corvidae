@@ -75,9 +75,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
   import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
-  import { resolveBureauReviewMutation } from '../reviews/reviews-data.ts';
-  import { isReviewRoundChanged, listBureauReviews } from '../../lib/bureau-reviews.ts';
-  import { faultTreatment } from '../../lib/faults.ts';
+  import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import InlineMarkdown from '../../lib/inline-markdown.svelte';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
@@ -101,6 +99,7 @@
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
+  import type { GrantNotLoosened } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
   import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
   import ModelPicker from './model-picker.svelte';
@@ -147,6 +146,7 @@
     // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
     closed: () => gone,
     onNotFound: () => void context.refetch(),
+    onGrantNotLoosened: (notice) => grantNotLoosened(notice),
     onRunStarted: () => {
       if (!choosing) return;
       choosing = false;
@@ -496,12 +496,6 @@
       return {
         toolCallId: result.callId,
         toolName,
-        // The Bureau's review for the call, once its pending reviews have been read: the grant for
-        // the rest of the chat is made on it, at the round the person was shown.
-        review:
-          reviewed?.kind === 'tool-approval'
-            ? { id: reviewed.id, round: reviewed.round }
-            : undefined,
         question: approvalQuestion({
           toolName: toolName ?? 'a tool',
           arguments: call?.arguments,
@@ -607,50 +601,33 @@
     }
   }
 
-  const grant = resolveBureauReviewMutation();
-
   /**
-   * Approves the call and allows its tool for the rest of the chat. Unlike a plain decision, which
-   * the controller sends with the next turn, the grant is only made by `bureau.reviews.resolve`
-   * (`remember`), so it is sent the way the reviews inbox sends it, on the review at the round the
-   * person was shown. The Bureau writes the outcome into the conversation, and the page reads it
-   * back the way it reads a decision made in the inbox (see `SeenReviews`).
+   * Approves the call and allows its tool for the rest of the chat. It is sent as the resume that
+   * Approve sends, with `remember`, so the turn continues the same way and a refused round or a
+   * superseded approval is reported the same way (COR-1990).
    */
-  function allowForChat(toolCallId: string): void {
-    const review = approvalsByCall.get(toolCallId)?.review;
-    if (review === undefined) return;
+  async function allowForChat(toolCallId: string): Promise<void> {
     deciding = true;
-    grant.mutate(
-      { id: review.id, decision: 'approve', round: review.round, remember: true },
-      {
-        onSuccess: (resolution) => {
-          // The Bureau has written the outcome into the conversation, so the thread is read now and
-          // not at the next look at the reviews. A read that cannot be made (a turn is going) is
-          // made by that look, which finds the review gone (see `SeenReviews`).
-          void session.refresh().catch(() => false);
-          if (resolution.receipt === 'superseded') {
-            showToast(REVIEWS_COPY.superseded, { variant: 'warning', duration: 0 });
-          } else if (resolution.outcomeNotWritten === true) {
-            showToast(REVIEWS_COPY.outcomeNotWritten.message, { variant: 'warning', duration: 0 });
-          } else if (resolution.remembered === false) {
-            showToast(
-              `${REVIEWS_COPY.notRemembered.title}. ${REVIEWS_COPY.notRemembered.message}`,
-              { variant: 'warning', duration: 0 },
-            );
-          }
-        },
-        onError: (error) => {
-          showToast(
-            isReviewRoundChanged(error)
-              ? `${REVIEWS_COPY.roundChanged.title}: ${REVIEWS_COPY.roundChanged.message}`
-              : `${REVIEWS_COPY.decisionFailed}: ${faultTreatment(error).message}`,
-            { variant: 'danger', duration: 0 },
-          );
-        },
-        onSettled: () => {
-          deciding = false;
-        },
-      },
+    try {
+      await session.controller.adapter.resolveToolApproval?.(toolCallId, {
+        decision: 'approve',
+        remember: true,
+      });
+    } catch {
+      // The controller reported it, and the approval is still pending for another try.
+    } finally {
+      deciding = false;
+      void invalidateReviewQueries(queryClient);
+    }
+  }
+
+  /** Said when the Bureau took the approval but the grant did not loosen the tool. */
+  function grantNotLoosened(notice: GrantNotLoosened): void {
+    showToast(
+      notice.remembered
+        ? `${REVIEWS_COPY.notLoosened.title}. ${REVIEWS_COPY.notLoosened.message(notice.toolName)}`
+        : `${REVIEWS_COPY.notRemembered.title}. ${REVIEWS_COPY.notRemembered.message}`,
+      { variant: 'warning', duration: 0 },
     );
   }
 
@@ -992,8 +969,7 @@
                   deciding={deciding || session.streaming}
                   input={argumentEntries(entry.arguments)}
                   onDecide={(choice) => void decide(entry.callId, choice)}
-                  onAllowForChat={() => allowForChat(entry.callId)}
-                  canAllowForChat={asked.review !== undefined}
+                  onAllowForChat={() => void allowForChat(entry.callId)}
                 />
               {/if}
             {/snippet}

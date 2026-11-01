@@ -1,7 +1,7 @@
 /**
  * The chat transcript's approvals and polish against the real host (COR-1984): an approval is one
- * 40px row with Show input, Deny, Approve and Allow for the rest of this chat, which sends the
- * Bureau's `remember`; a call the person denied reads Denied and is counted so, not as failed; the
+ * 40px row with Show input, Deny, Approve and Allow for the rest of this chat, which resumes the run
+ * with `remember` as Approve does (COR-1990); a call the person denied reads Denied and is counted so, not as failed; the
  * transcript sits on the page background; and the header title draws the Markdown it was given.
  * Sessions are started through the AG-UI mount, the way a client other than the page would.
  */
@@ -22,13 +22,27 @@ async function waitingSession(
   return threadId;
 }
 
-/** The decision requests the page sends to the Bureau, each as the JSON it sent. */
-function recordResolutions(page: Page): Array<{ params: Record<string, unknown> }> {
-  const sent: Array<{ params: Record<string, unknown> }> = [];
+/** One entry of a resume, as the page sent it. */
+type SentEntry = { interruptId: string; payload?: Record<string, unknown>; metadata?: unknown };
+
+/** The resume entries the page sends to the AG-UI mount, each run's entries in order. */
+function recordResumes(page: Page): SentEntry[][] {
+  const sent: SentEntry[][] = [];
+  page.on('request', (outgoing) => {
+    if (outgoing.method() !== 'POST' || !outgoing.url().includes('/agents/')) return;
+    const body = outgoing.postDataJSON() as { resume?: SentEntry[] } | null;
+    if (body?.resume !== undefined) sent.push(body.resume);
+  });
+  return sent;
+}
+
+/** The reviews resolved through `bureau.reviews.resolve`, which a chat's decision no longer uses. */
+function recordResolutions(page: Page): Array<Record<string, unknown>> {
+  const sent: Array<Record<string, unknown>> = [];
   page.on('request', (outgoing) => {
     if (outgoing.method() !== 'POST' || !outgoing.url().endsWith('/bureau/jsonrpc')) return;
     const body = outgoing.postDataJSON() as { method?: string; params?: Record<string, unknown> };
-    if (body.method === 'bureau.reviews.resolve') sent.push({ params: body.params ?? {} });
+    if (body.method === 'bureau.reviews.resolve') sent.push(body.params ?? {});
   });
   return sent;
 }
@@ -62,24 +76,28 @@ test.describe('an approval in the chat', () => {
     await expect(approval.locator('.ib-decision__input')).toHaveCount(0);
   });
 
-  test('sends remember on the review when allowed for the rest of the chat, and the call is settled', async ({
+  test('resumes the run with remember when allowed for the rest of the chat, and the call is settled', async ({
     page,
     request,
   }) => {
     const threadId = await waitingSession(request);
-    const sent = recordResolutions(page);
+    const resumes = recordResumes(page);
+    const resolutions = recordResolutions(page);
     await page.goto(`/chats/${threadId}`);
     const approval = page.locator('.ib-decision');
     const allow = approval.getByRole('button', { name: 'Allow for the rest of this chat' });
-    // The grant is made on the Bureau's review, so the button waits until the reviews were read.
     await expect(allow).toBeEnabled();
 
     await allow.click();
 
     await expect(approval).toHaveCount(0);
-    expect(sent).toHaveLength(1);
-    expect(sent[0]?.params).toMatchObject({ decision: 'approve', remember: true });
-    expect(typeof sent[0]?.params['round']).toBe('number');
+    expect(resumes).toHaveLength(1);
+    expect(resumes[0]).toHaveLength(1);
+    expect(resumes[0]?.[0]?.payload).toEqual({ decision: 'approve', remember: true });
+    expect(resumes[0]?.[0]?.metadata).toMatchObject({
+      '@lostgradient/bureau': { round: expect.any(Number) },
+    });
+    expect(resolutions).toEqual([]);
     // The Bureau ran the refund, and the transcript shows the call as done.
     await expect(conversation(page).getByRole('img', { name: 'Needs you' })).toHaveCount(0);
   });
@@ -89,14 +107,14 @@ test.describe('an approval in the chat', () => {
     request,
   }) => {
     const threadId = await waitingSession(request);
-    const sent = recordResolutions(page);
+    const resumes = recordResumes(page);
     await page.goto(`/chats/${threadId}`);
 
     await page.locator('.ib-decision').getByRole('button', { name: 'Approve' }).click();
 
     await expect(page.locator('.ib-decision')).toHaveCount(0);
-    // A plain decision goes with the next turn, not through the reviews, so nothing is remembered.
-    expect(sent.filter((request) => request.params['remember'] === true)).toHaveLength(0);
+    expect(resumes).toHaveLength(1);
+    expect(resumes[0]?.[0]?.payload).toEqual({ decision: 'approve' });
   });
 });
 

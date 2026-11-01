@@ -1,13 +1,12 @@
 /**
  * The approval row of the conversation page: it asks in one row, offers to allow the tool for the
- * rest of the chat, sends that as the Bureau's `remember` on the review the person was shown, and
- * reads a refused call as Denied. The header title shows the Markdown it was given.
+ * rest of the chat, sends that as the resume Approve sends with `remember`, and says when the grant
+ * did not loosen the tool. The header title shows the Markdown it was given.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
-import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import ChatConversation from './chat-conversation.svelte';
 import ChatToasts from './chat-toasts.test-harness.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
@@ -29,6 +28,7 @@ const APPROVAL = {
   reason: 'tool-approval',
   toolCallId: 'call-refund',
   message: 'Refund order-1001?',
+  metadata: { '@lostgradient/bureau': { kind: 'tool-approval', round: 2 } },
 };
 
 /** A run that calls `issue-refund` and stops on the approval for it. */
@@ -101,170 +101,98 @@ describe('an approval in the chat', () => {
     }
   });
 
-  test('sends remember on the review and its round when allowed for the rest of the chat', async () => {
-    const served = bureau(
-      {
-        'bureau.contexts.get': () => CONTEXT,
-        'bureau.reviews.list': () => ({ reviews: [pendingApproval()] }),
-        'bureau.reviews.resolve': (params) => ({
-          id: String(params['id']),
-          kind: 'tool-approval',
-          decision: 'approve',
-          receipt: 'applied',
-          remembered: true,
-        }),
+  describe('when allowed for the rest of the chat (COR-1990)', () => {
+    const settled = (fields: Record<string, unknown> = {}) => ({
+      type: 'CUSTOM',
+      name: 'bureau.tool-grant-settled',
+      value: {
+        interruptId: APPROVAL.id,
+        toolCallId: 'call-refund',
+        toolName: 'issue-refund',
+        runId: 'native-1',
+        remembered: true,
+        loosened: true,
+        ...fields,
       },
-      approvalRun,
-    );
-    restore = served.restore;
-    landAt('/chats/session-1');
-    const { container, findByRole } = mount();
-    await askForApproval(container);
+    });
 
-    const allow = await findByRole('button', { name: 'Allow for the rest of this chat' });
-    // The grant is made on the Bureau's review, so it waits for the pending reviews to be read.
-    await waitFor(() => expect((allow as HTMLButtonElement).disabled).toBe(false));
-    await fireEvent.click(allow);
+    /** A start stops on the approval at round 2; a resume answers with `continuation`. */
+    function allowRun(continuation: readonly unknown[], resumes: unknown[]) {
+      return (url: string, init?: RequestInit): Response | undefined => {
+        const body: { runId: string; resume?: unknown } = JSON.parse(
+          typeof init?.body === 'string' ? init.body : '{}',
+        );
+        if (url.includes('/agents/') && body.resume !== undefined) {
+          resumes.push(body.resume);
+          return sse([
+            { type: 'RUN_STARTED', threadId: 'session-1', runId: body.runId },
+            ...continuation,
+            { type: 'RUN_FINISHED', threadId: 'session-1', runId: body.runId },
+          ]);
+        }
+        return approvalRun(url, init);
+      };
+    }
 
-    await waitFor(() =>
-      expect(served.calls.filter((call) => call.method === 'bureau.reviews.resolve')).toEqual([
-        {
-          method: 'bureau.reviews.resolve',
-          params: { id: pendingApproval().id, decision: 'approve', round: 2, remember: true },
-        },
-      ]),
-    );
-  });
-
-  test('makes the grant on this chat’s review when another chat’s pending review has the same call', async () => {
-    const served = bureau(
-      {
-        'bureau.contexts.get': () => CONTEXT,
-        'bureau.reviews.list': () => ({
-          reviews: [
-            // Another chat's review comes first and carries the same call identifier.
-            toolApprovalFixture({
-              id: 'approval:run-9:call-refund',
-              sessionId: 'session-9',
-              round: 7,
-              approval: { ...toolApprovalFixture().approval, callId: 'call-refund' },
-            }),
-            pendingApproval(),
-          ],
-        }),
-        'bureau.reviews.resolve': (params) => ({
-          id: String(params['id']),
-          kind: 'tool-approval',
-          decision: 'approve',
-          receipt: 'applied',
-          remembered: true,
-        }),
-      },
-      approvalRun,
-    );
-    restore = served.restore;
-    landAt('/chats/session-1');
-    const { container, findByRole } = mount();
-    await askForApproval(container);
-    const allow = await findByRole('button', { name: 'Allow for the rest of this chat' });
-    await waitFor(() => expect((allow as HTMLButtonElement).disabled).toBe(false));
-
-    await fireEvent.click(allow);
-
-    await waitFor(() =>
-      expect(
-        served.calls
-          .filter((call) => call.method === 'bureau.reviews.resolve')
-          .map((c) => c.params),
-      ).toEqual([{ id: pendingApproval().id, decision: 'approve', round: 2, remember: true }]),
-    );
-  });
-
-  test('says so when the Bureau approved the call but did not keep the grant', async () => {
-    restore = bureau(
-      {
-        'bureau.contexts.get': () => CONTEXT,
-        'bureau.reviews.list': () => ({ reviews: [pendingApproval()] }),
-        'bureau.reviews.resolve': (params) => ({
-          id: String(params['id']),
-          kind: 'tool-approval',
-          decision: 'approve',
-          receipt: 'applied',
-          remembered: false,
-        }),
-      },
-      approvalRun,
-    ).restore;
-    landAt('/chats/session-1');
-    const { container, findByRole, findByText } = mount();
-    await askForApproval(container);
-    const allow = await findByRole('button', { name: 'Allow for the rest of this chat' });
-    await waitFor(() => expect((allow as HTMLButtonElement).disabled).toBe(false));
-
-    await fireEvent.click(allow);
-
-    expect(await findByText(/Approved, but not remembered/)).not.toBeNull();
-  });
-
-  describe('when the Bureau does not take the grant as asked', () => {
-    /** Opens the waiting chat, with the review resolving as `resolve` says, and presses the grant. */
-    async function allowWith(resolve: (params: Record<string, unknown>) => unknown) {
-      restore = bureau(
+    async function allowed(continuation: readonly unknown[]) {
+      const resumes: unknown[] = [];
+      const served = bureau(
         {
           'bureau.contexts.get': () => CONTEXT,
           'bureau.reviews.list': () => ({ reviews: [pendingApproval()] }),
-          'bureau.reviews.resolve': resolve,
         },
-        approvalRun,
-      ).restore;
+        allowRun(continuation, resumes),
+      );
+      restore = served.restore;
       landAt('/chats/session-1');
       const view = mount();
       await askForApproval(view.container);
-      const allow = await view.findByRole('button', { name: 'Allow for the rest of this chat' });
-      await waitFor(() => expect((allow as HTMLButtonElement).disabled).toBe(false));
-      await fireEvent.click(allow);
-      return view;
+      await fireEvent.click(
+        await view.findByRole('button', { name: 'Allow for the rest of this chat' }),
+      );
+      return { ...view, served, resumes };
     }
 
-    test('says the approval was gated again when the Bureau answers superseded', async () => {
-      const { findByText } = await allowWith((params) => ({
-        id: String(params['id']),
-        kind: 'tool-approval',
-        decision: 'approve',
-        receipt: 'superseded',
-      }));
+    test('sends the resume Approve sends, with remember and the round, and the turn continues', async () => {
+      const { findByText, served, resumes } = await allowed([
+        { type: 'TEXT_MESSAGE_START', messageId: 'reply-2', role: 'assistant' },
+        { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-2', delta: 'Refunded order-1001.' },
+        { type: 'TEXT_MESSAGE_END', messageId: 'reply-2' },
+        settled(),
+      ]);
 
-      expect(await findByText(/gated again/)).not.toBeNull();
+      expect(await findByText(/Refunded order-1001\./)).not.toBeNull();
+      expect(resumes).toEqual([
+        [
+          {
+            interruptId: APPROVAL.id,
+            status: 'resolved',
+            payload: { decision: 'approve', remember: true },
+            metadata: { '@lostgradient/bureau': { round: 2 } },
+          },
+        ],
+      ]);
+      expect(served.calls.filter((call) => call.method === 'bureau.reviews.resolve')).toEqual([]);
     });
 
-    test('says the decision took effect when only its outcome could not be written', async () => {
-      const { findByText } = await allowWith(() => {
-        throw new StubFault('Conflict', 409, 'The decision was recorded.', {
-          reason: 'APPROVAL_OUTCOME_NOT_WRITTEN: not written',
-        });
-      });
+    test('says the grant was kept but the tool will ask again when it did not loosen it', async () => {
+      const { findByText } = await allowed([settled({ loosened: false })]);
 
-      expect(await findByText(/outcome could not be written/)).not.toBeNull();
+      expect(await findByText(/Approved, but it will ask again/)).not.toBeNull();
+      expect(await findByText(/issue-refund always asks/)).not.toBeNull();
     });
 
-    test('says the review changed, and that nothing was decided, when its round moved', async () => {
-      const { findByText } = await allowWith(() => {
-        throw new StubFault('Conflict', 409, 'The review moved on.', {
-          reason: 'REVIEW_ROUND_CHANGED: now at round 3',
-        });
-      });
+    test('says the approval was not remembered when the Bureau did not store the grant', async () => {
+      const { findByText } = await allowed([settled({ remembered: false, loosened: false })]);
 
-      expect(await findByText(/changed while you read it/)).not.toBeNull();
+      expect(await findByText(/Approved, but not remembered/)).not.toBeNull();
     });
 
-    test('says the decision was not recorded for any other failure, and lets it be tried again', async () => {
-      const { findByText, findByRole } = await allowWith(() => {
-        throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
-      });
+    test('says nothing when the grant loosened the tool', async () => {
+      const { queryByText, resumes } = await allowed([settled()]);
 
-      expect(await findByText(/The decision was not recorded/)).not.toBeNull();
-      const allow = await findByRole('button', { name: 'Allow for the rest of this chat' });
-      await waitFor(() => expect((allow as HTMLButtonElement).disabled).toBe(false));
+      await waitFor(() => expect(resumes).toHaveLength(1));
+      expect(queryByText(/Approved, but/)).toBeNull();
     });
   });
 
