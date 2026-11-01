@@ -145,8 +145,22 @@ test.describe('⌘K over every kind of record', () => {
     const groups = await groupsOf(page);
     expect(groups[0]).toBe(PALETTE_COPY.groups.waiting);
     await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.actions);
-    const approval = waiting.getByRole('option', { name: /needs your approval/ });
-    await approval.first().click();
+    // The palette lists the eight longest-waiting, and other specifications leave their own
+    // approvals waiting on this host, so what is first is not known here: it opens a chat.
+    await waiting
+      .getByRole('option', { name: /needs your approval/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/chats\/(?!new)[^/?]+$/);
+
+    // Typing narrows the waiting group to what the query is about, so this case's own approval is
+    // found by the marker in its chat's title and opens that chat.
+    await openPalette(page);
+    await search(page).fill(MARKER);
+    await palette(page)
+      .getByRole('group', { name: PALETTE_COPY.groups.waiting })
+      .getByRole('option', { name: new RegExp(`needs your approval.*${MARKER}`) })
+      .click();
     await expect(page).toHaveURL(new RegExp(`/chats/${waitingThread}$`));
   });
 

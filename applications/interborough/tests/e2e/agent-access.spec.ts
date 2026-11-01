@@ -41,7 +41,15 @@ async function definitionOf(request: Parameters<typeof readAgent>[0], id: string
 async function save(page: Page): Promise<void> {
   const button = page.getByRole('button', { name: copy.saveAction });
   await expect(button).toBeEnabled();
+  // The button is disabled while the save is in flight as well as after it, so it cannot say that
+  // the Bureau took the form; the answer to the update can.
+  const answered = page.waitForResponse(
+    (response) =>
+      response.request().postData()?.includes('bureau.agents.definitions.update') === true,
+  );
   await button.click();
+  const response = await answered;
+  expect(response.ok()).toBe(true);
   await expect(button).toBeDisabled();
 }
 
