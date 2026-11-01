@@ -5,7 +5,11 @@
  * compacting file over a forbidden summarizer is refused at `compaction`; a scan still lists such a
  * file ready.
  */
-import { createModelCatalog, type GenerateFunction } from '@lostgradient/operative';
+import {
+  type AgentRunError,
+  createModelCatalog,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -114,11 +118,12 @@ describe('a compacting file agent’s run under a model policy', () => {
     // Saved while nothing was forbidden; the policy tightens before the run compacts.
     policy = DENY_SUMMARIZER;
     const result = await agent.run(LONG_INPUT).result();
+    const error = result.error as AgentRunError;
 
-    expect(result.error?.kind).toBe('policy');
-    expect(result.error?.cause).toBeInstanceOf(ModelPolicyDeniedError);
-    expect(result.error?.message).toContain('anthropic/claude-opus-5');
-    expect(result.error?.message).toContain('bureau');
+    expect(error.kind).toBe('policy');
+    expect(error.cause).toBeInstanceOf(ModelPolicyDeniedError);
+    expect(error.message).toContain('anthropic/claude-opus-5');
+    expect(error.message).toContain('bureau');
     expect(script.summarizerCalls()).toBe(0);
   });
 
