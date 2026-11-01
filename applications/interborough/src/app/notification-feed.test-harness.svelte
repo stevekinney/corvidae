@@ -11,9 +11,14 @@
 
   interface NotificationFeedHarnessProps {
     store: NotificationStore;
+    /** Whether the principal may read schedules. Allowed when omitted. */
+    canReadSchedules?: boolean;
   }
 
-  let { store }: NotificationFeedHarnessProps = $props();
+  let { store, canReadSchedules = true }: NotificationFeedHarnessProps = $props();
 
-  connectNotificationFeed(untrack(() => store));
+  connectNotificationFeed(
+    untrack(() => store),
+    { canReadSchedules: () => canReadSchedules },
+  );
 </script>

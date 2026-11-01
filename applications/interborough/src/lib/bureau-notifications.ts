@@ -42,6 +42,11 @@ const changeSchema = z.object({ updated: z.number().int().nonnegative() });
 
 type Options = { readonly signal?: AbortSignal };
 
+type MarkReadOptions = Options & {
+  /** Marks every notification the caller has read, not only the identifiers given. */
+  readonly all?: boolean;
+};
+
 /** How many notifications the bell asks for: the Bureau's page size cap. */
 export const NOTIFICATION_PAGE_LIMIT = 100;
 
@@ -53,14 +58,36 @@ export async function listBureauNotifications(options?: Options): Promise<Bureau
   return page.notifications;
 }
 
-/** Marks the given notifications read. Resolves how many it changed. */
+/** How many identifiers `bureau.notifications.markread` takes in one call. */
+const MARK_READ_BATCH = 100;
+
+/**
+ * Marks the given notifications read, a call for each {@link MARK_READ_BATCH}, so none is left
+ * unread by a list longer than one call takes. With `all`, one call marks every notification the
+ * caller has, including those the bell has not loaded (it lists the newest 100 only). Resolves how
+ * many it changed; rejects when any call does.
+ */
 export async function markBureauNotificationsRead(
   ids: readonly string[],
-  options?: Options,
+  options?: MarkReadOptions,
 ): Promise<number> {
-  if (ids.length === 0) return 0;
-  const sent = [...ids].slice(0, 100);
-  return changeSchema.parse(
-    await callBureau('bureau.notifications.markread', { ids: sent }, options),
-  ).updated;
+  if (options?.all === true) {
+    return changeSchema.parse(
+      await callBureau(
+        'bureau.notifications.markread',
+        { all: true },
+        options.signal === undefined ? undefined : { signal: options.signal },
+      ),
+    ).updated;
+  }
+  // A snapshot: the caller's list is not read again after the first call is awaited.
+  const wanted = [...ids];
+  let updated = 0;
+  for (let start = 0; start < wanted.length; start += MARK_READ_BATCH) {
+    const batch = wanted.slice(start, start + MARK_READ_BATCH);
+    updated += changeSchema.parse(
+      await callBureau('bureau.notifications.markread', { ids: batch }, options),
+    ).updated;
+  }
+  return updated;
 }

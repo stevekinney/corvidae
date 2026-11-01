@@ -2,6 +2,7 @@
  * `NotificationStore`: the read state kept apart from the derived items, the badge that counts only
  * what needs the person, and the host's own problem.
  */
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, test } from 'bun:test';
 
 import type { NotificationEntry } from './notification-items.ts';
@@ -39,7 +40,7 @@ describe('NotificationStore and the Bureau’s notifications', () => {
   function connected(...entries: NotificationEntry[]) {
     const told: string[][] = [];
     const store = storeWith(...entries);
-    store.setRemote({ markRead: (ids) => told.push([...ids]) });
+    store.setRemote({ markRead: (ids) => void told.push([...ids]) });
     return { store, told };
   }
 
@@ -69,6 +70,158 @@ describe('NotificationStore and the Bureau’s notifications', () => {
     store.markAllRead();
 
     expect(told).toEqual([['b'], ['a']]);
+  });
+
+  test('an item the Bureau does not accept as read is unread again, here and after a reload, and says so', async () => {
+    const storage = memoryStorage();
+    const store = new NotificationStore({ storage });
+    store.setActivity([stored('a'), stored('b'), entry({ id: 'review:c' })]);
+    store.setRemote({
+      markRead: async () => {
+        throw new Error('the Bureau did not answer');
+      },
+    });
+
+    store.markAllRead();
+    // Read at once, because the person did read it, until the Bureau says it cannot keep that.
+    expect(store.unreadCount).toBe(0);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.readFailed).toBe(true);
+    // The two the Bureau holds are unread again; a review is nobody else's to read, so it stays read.
+    expect(store.items.map((item) => [item.id, item.read])).toEqual([
+      ['notification:a', false],
+      ['notification:b', false],
+      ['review:c', true],
+    ]);
+    const reloaded = new NotificationStore({ storage });
+    reloaded.setActivity([stored('a'), stored('b'), entry({ id: 'review:c' })]);
+    expect(reloaded.unreadCount).toBe(2);
+  });
+
+  test('an open chat whose read the Bureau refuses is not read again by a chat read, only by an explicit one', async () => {
+    const store = storeWith(stored('a', { sessionId: 'session-fire' }));
+    let calls = 0;
+    // Rejects at once, the way a write guard does while the browser is offline.
+    store.setRemote({
+      markRead: () => {
+        calls += 1;
+        return Promise.reject(new Error('offline'));
+      },
+    });
+
+    store.markSessionRead('session-fire');
+    await waitUntil(() => store.readFailed);
+    // The feed's effect runs again when the items change; that must not ask the Bureau again.
+    store.markSessionRead('session-fire');
+    store.markSessionRead('session-fire');
+    await quietFor(50);
+
+    expect(calls).toBe(1);
+    expect(store.items[0]?.read).toBe(false);
+    store.markRead('notification:a');
+    expect(calls).toBe(2);
+  });
+
+  test('"mark all read" tells the Bureau to read every notification, not only those listed', () => {
+    const options: unknown[] = [];
+    const store = storeWith(stored('a'), stored('b'));
+    store.setRemote({ markRead: (_ids, remoteOptions) => void options.push(remoteOptions) });
+
+    store.markAllRead();
+
+    expect(options).toEqual([{ all: true }]);
+  });
+
+  test('reading one notification names only that one', () => {
+    const options: unknown[] = [];
+    const store = storeWith(stored('a'));
+    store.setRemote({ markRead: (_ids, remoteOptions) => void options.push(remoteOptions) });
+
+    store.markRead('notification:a');
+
+    expect(options).toEqual([undefined]);
+  });
+
+  test('a remote that throws at once is a refusal too', () => {
+    const store = storeWith(stored('a'));
+    store.setRemote({
+      markRead: () => {
+        throw new Error('the request was refused');
+      },
+    });
+
+    store.markRead('notification:a');
+
+    expect(store.readFailed).toBe(true);
+    expect(store.unreadCount).toBe(1);
+  });
+
+  test('a refusal stands until the item is read again, whatever else the Bureau accepts', async () => {
+    const store = storeWith(stored('a'), stored('b'));
+    let refuse = 'a';
+    store.setRemote({
+      markRead: async (ids) => {
+        if (ids.includes(refuse)) throw new Error('did not answer');
+      },
+    });
+    store.markRead('notification:a');
+    store.markRead('notification:b');
+    await Promise.resolve();
+    await Promise.resolve();
+    // One was accepted and one was refused: the refused one is unread, and the notice stays.
+    expect(store.readFailed).toBe(true);
+    expect(store.items.map((item) => [item.id, item.read])).toEqual([
+      ['notification:a', false],
+      ['notification:b', true],
+    ]);
+
+    refuse = '';
+    store.markRead('notification:a');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.readFailed).toBe(false);
+    expect(store.unreadCount).toBe(0);
+  });
+
+  test('an item read while the Bureau has not answered is read here, but kept only once it answers', async () => {
+    const storage = memoryStorage();
+    const store = new NotificationStore({ storage });
+    store.setActivity([stored('a')]);
+    let answer: () => void = () => {};
+    store.setRemote({ markRead: () => new Promise<void>((resolve) => (answer = resolve)) });
+
+    store.markRead('notification:a');
+
+    expect(store.unreadCount).toBe(0);
+    // A tab closed now would leave the Bureau holding it unread, so nothing is kept in storage yet.
+    const closedNow = new NotificationStore({ storage });
+    closedNow.setActivity([stored('a')]);
+    expect(closedNow.unreadCount).toBe(1);
+
+    answer();
+    await Promise.resolve();
+    await Promise.resolve();
+    const reopened = new NotificationStore({ storage });
+    reopened.setActivity([stored('a')]);
+    expect(reopened.unreadCount).toBe(0);
+  });
+
+  test('a list that could not be read is said, and reloading asks the Bureau for it again', () => {
+    const store = storeWith();
+    let reloads = 0;
+    store.setRemote({ markRead: () => {}, reload: () => void (reloads += 1) });
+    expect(store.loadFailed).toBe(false);
+
+    store.setLoadFailed(true);
+    store.reload();
+
+    expect(store.loadFailed).toBe(true);
+    expect(reloads).toBe(1);
+    store.setLoadFailed(false);
+    expect(store.loadFailed).toBe(false);
   });
 
   test('an item the Bureau holds as read is read, and does not count', () => {

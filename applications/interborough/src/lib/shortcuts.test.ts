@@ -281,3 +281,71 @@ describe('a shortcut held with ⌘', () => {
     ]);
   });
 });
+
+describe('the actions', () => {
+  test('are the handled shortcuts that act everywhere, without a modifier, in the order registered', () => {
+    const registry = new ShortcutRegistry();
+    const ran: string[] = [];
+    registry.register({
+      keys: ['g', 'c'],
+      label: 'Go to Chats',
+      group: 'Go to',
+      scope: 'global',
+      handler: () => ran.push('chats'),
+    });
+    registry.register({
+      keys: ['a'],
+      label: 'Approve',
+      group: 'Reviews',
+      scope: { route: '/reviews' },
+      handler: () => {},
+    });
+    registry.register({
+      keys: ['Enter'],
+      modifier: 'mod',
+      label: 'Save',
+      group: 'General',
+      scope: 'global',
+      handler: () => {},
+    });
+    registry.describe({ keys: ['J'], label: 'Next row', group: 'Lists', scope: 'global' });
+
+    expect(registry.actions().map((action) => [action.label, action.keys])).toEqual([
+      ['Go to Chats', ['G', 'C']],
+      // Next row is described, not handled, so it has nothing to run.
+    ]);
+    registry.actions()[0]?.run();
+    expect(ran).toEqual(['chats']);
+  });
+});
+
+describe('a letter held with ⌘', () => {
+  test('matches the capital Caps Lock reports, and a named key matches exactly', () => {
+    const registry = new ShortcutRegistry();
+    const ran: string[] = [];
+    registry.register({
+      keys: ['k'],
+      modifier: 'mod',
+      label: 'Search',
+      group: 'General',
+      scope: 'global',
+      handler: () => ran.push('k'),
+    });
+    registry.register({
+      keys: ['Enter'],
+      modifier: 'mod',
+      label: 'Save',
+      group: 'General',
+      scope: 'global',
+      handler: () => ran.push('enter'),
+    });
+    const held = { metaKey: true, ctrlKey: false, altKey: false, editable: false };
+    const where = { routePattern: null, regions: [] };
+
+    expect(registry.handleKey({ key: 'K', ...held }, where, 0)).toBe(true);
+    expect(registry.handleKey({ key: 'k', ...held }, where, 1)).toBe(true);
+    expect(registry.handleKey({ key: 'Enter', ...held }, where, 2)).toBe(true);
+    expect(registry.handleKey({ key: 'enter', ...held }, where, 3)).toBe(false);
+    expect(ran).toEqual(['k', 'k', 'enter']);
+  });
+});

@@ -22,7 +22,15 @@
 </script>
 
 <Modal bind:open title={SHORTCUT_COPY.mapTitle} onDismiss={() => (open = false)}>
-  <KeyboardShortcuts
-    groups={groups.map((group) => ({ ...group, shortcuts: [...group.shortcuts] }))}
-  />
+  <!--
+    The map is longer than a short window, so it scrolls, and a region that scrolls must be reachable
+    from the keyboard. Cinder's modal body scrolls without being focusable, so the list scrolls here
+    instead, and takes focus.
+  -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="weft-shortcut-map" role="region" aria-label={SHORTCUT_COPY.mapTitle} tabindex="0">
+    <KeyboardShortcuts
+      groups={groups.map((group) => ({ ...group, shortcuts: [...group.shortcuts] }))}
+    />
+  </div>
 </Modal>

@@ -544,3 +544,81 @@ describe('buildNotificationEntries', () => {
     });
   });
 });
+
+describe('the fires a schedule missed', () => {
+  const missed = (
+    overrides: { recordedMinutesAgo?: number; reason?: 'late' | 'dst-gap' } = {},
+  ) => ({
+    scheduleId: 's-1',
+    name: { name: 'Nightly digest', identifier: false },
+    missed: {
+      occurrence: NOW - 90 * 60_000,
+      reason: overrides.reason ?? 'late',
+      count: 1,
+      recordedAt: NOW - (overrides.recordedMinutesAgo ?? 30) * 60_000,
+    },
+  });
+
+  test('is an item that names the schedule, says why, and opens it', () => {
+    const [entry] = buildNotificationEntries(sources({ missedFires: [missed()] }));
+
+    expect(entry).toMatchObject({
+      kind: 'missed',
+      tier: 'warning',
+      icon: 'calendar-x',
+      title: 'Nightly digest missed a run',
+      detail: 'The host was down or too slow to start it',
+      href: '/schedules/s-1',
+      identifiers: [],
+    });
+    expect(entry?.id).toBe(`schedule-missed:s-1:${String(NOW - 90 * 60_000)}`);
+  });
+
+  test('says when the time was skipped by a clock change, and sets an agent’s name in monospace', () => {
+    const [entry] = buildNotificationEntries(
+      sources({
+        missedFires: [
+          { ...missed({ reason: 'dst-gap' }), name: { name: 'assistant', identifier: true } },
+        ],
+      }),
+    );
+
+    expect(entry?.detail).toBe('Its time was skipped by a clock change');
+    expect(entry?.identifiers).toEqual(['assistant']);
+  });
+
+  test('is news for a day, and history after', () => {
+    const recent = missed({ recordedMinutesAgo: 60 * 23 });
+    const old = { ...missed({ recordedMinutesAgo: 60 * 25 }), scheduleId: 's-2' };
+
+    const entries = buildNotificationEntries(sources({ missedFires: [recent, old] }));
+
+    expect(entries.map((entry) => entry.href)).toEqual(['/schedules/s-1']);
+  });
+
+  test('a later miss of the same schedule is a new item, so it is unread again', () => {
+    const first = buildNotificationEntries(sources({ missedFires: [missed()] }))[0];
+    const later = buildNotificationEntries(
+      sources({
+        missedFires: [{ ...missed(), missed: { ...missed().missed, occurrence: NOW - 60_000 } }],
+      }),
+    )[0];
+
+    expect(first?.id).not.toBe(later?.id);
+  });
+
+  test('counts as needing the person, ahead of an answer', () => {
+    const entries = buildNotificationEntries(
+      sources({
+        chats: new Map([['one', null]]),
+        tasks: [task({ id: 'a', contextId: 'one' })],
+        missedFires: [missed()],
+      }),
+    );
+
+    expect(entries.map((entry) => [entry.kind, entry.tier])).toEqual([
+      ['missed', 'warning'],
+      ['answered', 'info'],
+    ]);
+  });
+});

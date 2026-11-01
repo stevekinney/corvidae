@@ -5,12 +5,6 @@
       "file": "src/styles/agents.css",
       "subject": ".ib-agents__header",
       "issue": "COR-1843"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/foundation.css",
-      "subject": ".weft-notification-panel__header",
-      "issue": "COR-1861"
     }
   ]
 }

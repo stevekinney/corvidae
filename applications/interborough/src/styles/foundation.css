@@ -374,7 +374,7 @@
   overflow: hidden;
 }
 
-.weft-notification-panel__header {
+.weft-notification-panel__bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -479,12 +479,29 @@
   white-space: nowrap;
 }
 
-.weft-notification-panel__empty {
-  padding: var(--cinder-space-6) var(--cinder-density-pad-inline);
+.weft-notification-panel__alert {
+  margin: var(--cinder-space-2) var(--cinder-density-pad-inline);
+}
+
+.weft-notification-panel__alert-title {
   margin: 0;
-  text-align: center;
+  font-weight: 600;
+}
+
+.weft-notification-panel__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--cinder-space-2) var(--cinder-space-4);
+  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
+  border-top: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-subtle);
+}
+
+/* The keyboard map scrolls here, a focusable region, because Cinder's modal body scrolls without one. */
+.weft-shortcut-map {
+  max-height: min(60vh, 32rem);
+  overflow-y: auto;
 }
 
 /* Critical-alert strip (design §C: "below header, dismissible"). */

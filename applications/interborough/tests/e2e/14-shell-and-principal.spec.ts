@@ -7,7 +7,12 @@
  */
 import type { Page } from '@playwright/test';
 
-import { ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import {
+  NOTIFICATION_COPY,
+  PALETTE_COPY,
+  ROUTE_LOAD_FAILURE_COPY,
+  VIEW_COPY,
+} from '../../src/app/copy.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -85,7 +90,7 @@ test.describe('the notification bell, about the person and not the engine', () =
     await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
 
     await bell(page, 'Notifications').click();
-    await expect(page.getByText('Nothing needs you right now.')).toBeVisible();
+    await expect(page.getByText(NOTIFICATION_COPY.empty.title)).toBeVisible();
     await expect(rows(page)).toHaveCount(0);
     await checkA11y('the empty notification panel');
   });
@@ -233,7 +238,7 @@ for (const { name, width, height } of WIDTHS) {
   });
 }
 
-test('the palette lists the chat and the agent a few letters name above any run', async ({
+test('the palette lists the chat before the agent a few letters name, and the actions after both', async ({
   page,
   request,
   checkA11y,
@@ -242,7 +247,7 @@ test('the palette lists the chat and the agent a few letters name above any run'
   await page.goto('/');
   await page.getByRole('button', { name: /^Search everything/ }).click();
   const search = page.getByRole('dialog', { name: 'Command palette' }).getByRole('combobox');
-  await expect(search).toHaveAttribute('placeholder', 'Search everything');
+  await expect(search).toHaveAttribute('placeholder', PALETTE_COPY.placeholder);
   await search.fill('ech');
 
   const options = page.getByRole('option');
@@ -254,12 +259,14 @@ test('the palette lists the chat and the agent a few letters name above any run'
   const agentIndex = names.findIndex((label) => label.startsWith('demo:echo, '));
   expect(chatIndex).toBeGreaterThanOrEqual(0);
   expect(agentIndex).toBeGreaterThan(chatIndex);
-  // Neither group of runs the palette also searches (`ech…` ids) comes before them.
+  // Chats come before agents, and the actions (New chat with demo:echo) after both.
   const groups = await page
     .getByRole('dialog', { name: 'Command palette' })
     .getByRole('group')
     .evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-label')));
-  expect(groups.slice(0, 2)).toEqual(['Chats', 'Agents']);
+  expect(groups.indexOf('Chats')).toBeGreaterThanOrEqual(0);
+  expect(groups.indexOf('Agents')).toBeGreaterThan(groups.indexOf('Chats'));
+  expect(groups.indexOf('Actions')).toBeGreaterThan(groups.indexOf('Agents'));
   await checkA11y('the palette');
 });
 

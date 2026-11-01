@@ -8,12 +8,11 @@
    * one level up in `../app.svelte`.
    *
    * Keyboard (plan §13 T1.6's "⌘K opens palette, Esc closes overlays"):
-   * ⌘K is registered by `./command-palette.svelte`; Esc-closes-overlays is
-   * already Cinder's own contract for `CommandPalette` and `Dropdown` (both
-   * close on Escape internally). Every other key goes through the shortcut
-   * registry (`../../lib/shortcuts.ts`): the shell registers `g` then a letter
-   * for each destination and `?` for the map (`./destinations.ts`), and reads
-   * each key press against it.
+   * Esc-closes-overlays is already Cinder's own contract for `CommandPalette`
+   * and `Dropdown` (both close on Escape internally). Every key goes through
+   * the shortcut registry (`../../lib/shortcuts.ts`): the shell registers ⌘K
+   * for the palette, `g` then a letter for each destination and `?` for the
+   * map (`./destinations.ts`), and reads each key press against it.
    */
   import { Banner, SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
@@ -143,14 +142,18 @@
   });
 
   // What is waiting on the person, and what finished, comes from the Bureau.
-  connectNotificationFeed(notifications);
+  connectNotificationFeed(notifications, {
+    canReadSchedules: () => principalStore.hasScope('schedules:read'),
+  });
 
   let shortcutMapOpen = $state(false);
+  let paletteOpen = $state(false);
 
   $effect(() =>
     registerShellShortcuts(shortcuts, {
       navigate: (path) => router.navigate(path),
       openShortcutMap: () => (shortcutMapOpen = true),
+      openPalette: () => (paletteOpen = true),
     }),
   );
 
@@ -239,8 +242,6 @@
     else layout.setSidebarCollapsed(collapsed);
   }
 
-  let paletteOpen = $state(false);
-
   // While the server does not answer, every control that changes something is held back: dimmed by
   // the shell's `data-connection` attribute, refused on activation, and marked `aria-disabled`.
   // The page's own `disabled` state is never touched (`./changing-actions.ts`).
@@ -277,7 +278,12 @@
 <CommandPaletteLauncher
   bind:open={paletteOpen}
   {client}
+  store={notifications}
+  registry={shortcuts}
   scheduleReadGate={scopeGate(principalStore, ['schedules:read'])}
+  workflowReadGate={scopeGate(principalStore, ['workflows:read'])}
+  reviewReadGate={scopeGate(principalStore, ['reviews:read'])}
+  systemReadGate={scopeGate(principalStore, ['system:read'])}
 />
 
 <ShortcutMap registry={shortcuts} bind:open={shortcutMapOpen} />

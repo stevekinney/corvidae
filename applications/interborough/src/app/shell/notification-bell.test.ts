@@ -2,7 +2,7 @@
  * Component tests for `<NotificationBell>`: the badge counts what needs the person, each row is
  * one sentence and the chat it is about, and opening a row reads it.
  */
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -118,25 +118,120 @@ describe('NotificationBell', () => {
     ).toBe('echo');
   });
 
-  test('has no footer, no alerts link, and no unread badge in the header', async () => {
+  test('has no alerts link and no unread badge in the bar', async () => {
     const store = memoryStore();
     store.setActivity([entry()]);
     const { getByRole } = render(NotificationBell, { props: { store } });
 
     await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
 
-    expect(document.body.querySelector('.weft-notification-panel__footer')).toBeNull();
     expect(document.body.textContent).not.toContain('Open alerts view');
     expect(document.body.textContent).not.toContain('unread');
   });
 
-  test('says nothing needs the person when the list is empty', async () => {
+  test('says nothing needs the person with the done empty state when the list is empty', async () => {
     const store = memoryStore();
     const { getByRole, getByText } = render(NotificationBell, { props: { store } });
 
     await fireEvent.click(getByRole('button', { name: 'Notifications' }));
 
-    expect(getByText('Nothing needs you right now.')).not.toBeNull();
+    expect(getByText('Nothing needs you right now')).not.toBeNull();
+    expect(document.body.querySelector('[data-cinder-kind="done"]')).not.toBeNull();
+    expect(document.body.querySelector('.weft-notification-panel__empty')).toBeNull();
+  });
+
+  test('a list that could not be read says so, and never that nothing needs the person', async () => {
+    const store = memoryStore();
+    let reloads = 0;
+    store.setRemote({ markRead: () => {}, reload: () => void (reloads += 1) });
+    store.setLoadFailed(true);
+    const { getByRole, getByText, queryByText } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications' }));
+
+    expect(getByText('Notifications could not be loaded')).not.toBeNull();
+    expect(queryByText('Nothing needs you right now')).toBeNull();
+    await fireEvent.click(getByText('Try again'));
+    expect(reloads).toBe(1);
+  });
+
+  test('a list that could not be read keeps showing what was last read', async () => {
+    const store = memoryStore();
+    store.setActivity([entry()]);
+    store.setLoadFailed(true);
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+
+    expect(getByText('Notifications could not be loaded')).not.toBeNull();
+    expect(document.body.querySelectorAll('.weft-notification-panel__item')).toHaveLength(1);
+  });
+
+  test('a mark-as-read the Bureau refused is said, and the items are unread again', async () => {
+    const store = memoryStore();
+    store.setActivity([entry({ notificationId: 'n-1', id: 'notification:n-1' })]);
+    store.setRemote({
+      markRead: async () => {
+        throw new Error('did not answer');
+      },
+    });
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+
+    await fireEvent.click(getByText('Mark all read'));
+
+    await waitFor(() => expect(getByText(/could not be marked as read/)).not.toBeNull());
+    expect(store.unreadCount).toBe(1);
+  });
+
+  test('ends with where notifications are set up: their settings, and Hooks', async () => {
+    landAt('/agents');
+    const store = memoryStore();
+    const { getByRole } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications' }));
+
+    const links = document.body.querySelector<HTMLElement>('.weft-notification-panel__links');
+    expect(links?.getAttribute('aria-label')).toBe('Where notifications are set up');
+    expect(
+      [...(links?.querySelectorAll('a') ?? [])].map((link) => link.textContent?.trim()),
+    ).toEqual(['Notification settings', 'Hooks for email or webhooks']);
+
+    await fireEvent.click(within(links as HTMLElement).getByText('Hooks for email or webhooks'));
+    expect(router.pathname).toBe('/hooks');
+    await waitFor(() =>
+      expect(document.body.querySelectorAll('.weft-notification-panel')).toHaveLength(0),
+    );
+  });
+
+  test('Mark all read is marked as a control that changes something', async () => {
+    const store = memoryStore();
+    const { getByRole, getByText } = render(NotificationBell, { props: { store } });
+    await fireEvent.click(getByRole('button', { name: 'Notifications' }));
+
+    expect(getByText('Mark all read').closest('button')?.hasAttribute('data-changes')).toBe(true);
+  });
+
+  test('a schedule that missed a run is a row with its own icon', async () => {
+    const store = memoryStore();
+    store.setActivity([
+      entry({
+        id: 'schedule-missed:s-1:1',
+        kind: 'missed',
+        icon: 'calendar-x',
+        title: 'Nightly digest missed a run',
+        identifiers: [],
+        detail: 'The host was down or too slow to start it',
+        joiner: ': ',
+        href: '/schedules/s-1',
+      }),
+    ]);
+    const { getByRole } = render(NotificationBell, { props: { store } });
+
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 needs you' }));
+
+    const row = document.body.querySelector('[data-kind="missed"]');
+    expect(row?.textContent?.replace(/\s+/g, ' ')).toContain('Nightly digest missed a run');
+    expect(row?.querySelector('svg')).not.toBeNull();
   });
 
   test('"Mark all read" clears the badge and keeps the rows', async () => {
@@ -176,7 +271,7 @@ describe('NotificationBell', () => {
     await fireEvent.click(getByRole('button', { name: 'Notifications, 30 need you' }));
 
     const list = document.body.querySelector('.weft-notification-panel__list');
-    const header = document.body.querySelector('.weft-notification-panel__header');
+    const header = document.body.querySelector('.weft-notification-panel__bar');
     expect(list?.querySelectorAll('.weft-notification-panel__item').length).toBe(30);
     expect(header?.contains(list ?? null)).toBe(false);
   });

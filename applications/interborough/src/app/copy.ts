@@ -3353,12 +3353,31 @@ export const REVIEWS_COPY = {
 /** The words of the ⌘K palette. */
 export const PALETTE_COPY = {
   label: 'Command palette',
-  placeholder: 'Search everything',
+  placeholder: 'Search everything, > for actions, @ for agents',
   untitledChat: CHAT_COPY.untitled,
   emptyTitle: 'Search the console',
   emptyDescription: 'Type the name of a chat or an agent, or an ID, to jump to it.',
   noMatchesTitle: 'No matches',
   noMatchesDescription: (query: string): string => `Nothing matched "${query}".`,
+  /** Said when a search could not read some of what it searches, so what is missing is not taken for "no matches". */
+  searchFailedTitle: 'The search did not finish',
+  searchFailedDescription: (domains: readonly string[]): string =>
+    `Could not read ${domains.join(', ').toLowerCase()}. Matches there may be missing; try the search again.`,
+  /** The heading of each kind of result, in the order the palette lists them. */
+  groups: {
+    waiting: 'Waiting on you',
+    chats: 'Chats',
+    workflows: 'Workflows',
+    runs: 'Runs',
+    schedules: 'Schedules',
+    workers: 'Workers',
+    reviews: 'Reviews',
+    agents: 'Agents',
+    tools: 'Tools',
+    actions: 'Actions',
+  },
+  /** What reads between a shortcut's keys when they are pressed one after the other. */
+  keysThen: ' then ',
 } as const;
 
 /**
@@ -3368,7 +3387,22 @@ export const PALETTE_COPY = {
 export const NOTIFICATION_COPY = {
   panelTitle: 'Notifications',
   markAllRead: 'Mark all read',
-  empty: 'Nothing needs you right now.',
+  /** The empty list: everything that needed the person is done. */
+  empty: {
+    title: 'Nothing needs you right now',
+    description: 'Approvals, questions, failures and missed schedules show up here.',
+  },
+  /** The list could not be read, so it must not read as empty. */
+  loadFailed: {
+    title: 'Notifications could not be loaded',
+    description: 'What is shown may be out of date. Nothing here says that nothing needs you.',
+  },
+  /** A mark-as-read the Bureau refused: the items are unread again, here and in every browser. */
+  readFailed: 'The notifications could not be marked as read. They are unread again.',
+  /** Where email or webhooks are set up, and where the bell's own settings are. */
+  linksLabel: 'Where notifications are set up',
+  settingsLink: 'Notification settings',
+  hooksLink: 'Hooks for email or webhooks',
   /** What the bell button is called; the count says how many items need the person. */
   bellLabel: (count: number): string =>
     count === 0 ? 'Notifications' : `Notifications, ${count} need${count === 1 ? 's' : ''} you`,
@@ -3377,6 +3411,10 @@ export const NOTIFICATION_COPY = {
   answered: (agent: string): string => `${agent} answered`,
   failed: (subject: string): string => `${subject} failed`,
   budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
+  missedFire: (subject: string): string => `${subject} missed a run`,
+  /** Why a schedule did not fire: the host was down or too slow to start it, or its time did not exist on the clock. */
+  missedLate: 'The host was down or too slow to start it',
+  missedClockGap: 'Its time was skipped by a clock change',
   /** What an agent is called when the Bureau names none. */
   unnamedAgent: 'An agent',
   /** Read between a sentence and the chat it is about, by a screen reader only. */
@@ -3414,6 +3452,7 @@ export const NAVIGATION_COPY = {
 export const SHORTCUT_COPY = {
   mapTitle: 'Keyboard shortcuts',
   openMap: 'Show keyboard shortcuts',
+  openSearch: 'Search everything',
   generalGroup: 'General',
   navigationGroup: 'Go to',
   chatGroup: 'Chat',
