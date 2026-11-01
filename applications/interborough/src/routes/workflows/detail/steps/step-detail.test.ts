@@ -3,6 +3,7 @@ import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
+import { logLine } from '../../runs/run-log-cases.test-support.ts';
 import StepDetail from './step-detail.svelte';
 import type { WaterfallBar } from './step-waterfall.ts';
 
@@ -153,5 +154,32 @@ describe('StepDetail', () => {
       props: { entry: entry(), bar, open: true, actions },
     });
     expect(getByRole('button', { name: 'Complete…' })).not.toBeNull();
+  });
+
+  test('lists the lines logged under the step, in the order logged', () => {
+    const { container } = render(StepDetail, {
+      props: {
+        entry: entry(),
+        bar,
+        open: true,
+        logs: [logLine(0, 1, 'charging'), logLine(1, 1, 'charged')],
+      },
+    });
+    const section = container.querySelector('[data-section="step-logs"]');
+    expect(section?.querySelector('h4')?.textContent).toBe('Logs');
+    expect([...(section?.querySelectorAll('li') ?? [])].map((item) => item.textContent)).toEqual([
+      expect.stringContaining('charging'),
+      expect.stringContaining('charged'),
+    ]);
+  });
+
+  test('has no Logs section for a step with no lines, or when none could be placed', () => {
+    for (const logs of [undefined, []] as const) {
+      const { container, unmount } = render(StepDetail, {
+        props: { entry: entry(), bar, open: true, logs },
+      });
+      expect(container.querySelector('[data-section="step-logs"]')).toBeNull();
+      unmount();
+    }
   });
 });

@@ -2,8 +2,9 @@
   /**
    * One step, read from the top: its name, one line of status (the dot, the word, when it started,
    * how long it took, and its name in code), then what went in and what came out side by side, the
-   * branches of a step that ran several things at once, whatever the step offers to do (complete an
-   * activity, open a stream, read a worker's record). Everything is open and nothing sits in a box.
+   * branches of a step that ran several things at once, the lines the run logged under it, whatever
+   * the step offers to do (complete an activity, open a stream, read a worker's record). Everything is
+   * open and nothing sits in a box.
    */
   import { StatusDot } from '@lostgradient/cinder';
   import type { WorkflowTimelineEntry } from '@lostgradient/weft';
@@ -11,6 +12,8 @@
 
   import { RUN_STEPS_COPY } from '../../../../app/copy.ts';
   import { formatDuration } from '../../../../lib/format/index.ts';
+  import LogLines from '../../runs/log-lines.svelte';
+  import type { RunLogLine } from '../../runs/run-logs-data.ts';
   import { isDegradedCoordinationEntry } from '../timeline/timeline-mapping.ts';
   import { prettySummary, stepName, stepStatus } from './step-presentation.ts';
   import type { WaterfallBar } from './step-waterfall.ts';
@@ -20,11 +23,13 @@
     readonly bar: WaterfallBar | undefined;
     /** Whether the run is still in this step; false for a `running` entry it has left. */
     readonly open: boolean;
+    /** The lines the run logged under this step (`placeLogLines`); none when it has none or they cannot be placed. */
+    readonly logs?: readonly RunLogLine[] | undefined;
     /** What the step offers to do, rendered after the branches. */
     readonly actions?: Snippet | undefined;
   }
 
-  let { entry, bar, open, actions }: StepDetailProps = $props();
+  let { entry, bar, open, logs, actions }: StepDetailProps = $props();
 
   const name = $derived(stepName(entry));
   const status = $derived(stepStatus(entry.status, open));
@@ -104,6 +109,17 @@
       {#if omitted > 0}
         <p class="ib-step-detail__none">{RUN_STEPS_COPY.omitted(omitted)}</p>
       {/if}
+    </section>
+  {/if}
+
+  {#if logs !== undefined && logs.length > 0}
+    <section
+      class="ib-step-detail__field"
+      aria-label={RUN_STEPS_COPY.logs}
+      data-section="step-logs"
+    >
+      <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.logs}</h4>
+      <LogLines lines={logs} label={RUN_STEPS_COPY.logsListLabel} />
     </section>
   {/if}
 

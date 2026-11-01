@@ -18,10 +18,18 @@
    * An activity waiting on an outside completion offers Complete, a stream offers its stored
    * chunks, and an activity that ran on a worker offers that worker's record. Each is a separate
    * component mounted in the open step, so a step that offers none shows none.
+   *
+   * ## Logs
+   *
+   * The lines the run logged are read once, under the same query as the Details rail's whole log,
+   * and placed under the entry they belong to (`../runs/run-logs-data.ts`). The open step lists
+   * its own lines, and the lines logged before the first step sit above the list. A run whose lines
+   * cannot be placed shows none here; the rail still lists them whole.
    */
   import {
     Alert,
     Button,
+    Collapsible,
     EmptyState,
     ErrorState,
     Input,
@@ -43,6 +51,14 @@
   import { RETRY_LABEL, RUN_STEPS_COPY, RUN_DETAIL_COPY } from '../../../app/copy.ts';
   import { routerSelectionLocationFor } from '../../../lib/router-selection-location.ts';
   import { router } from '../../../lib/router.svelte.ts';
+  import LogLines from '../runs/log-lines.svelte';
+  import {
+    LOGS_OPERATION,
+    fetchRunLogs,
+    placeLogLines,
+    workflowLogsQueryKey,
+    type LogsClient,
+  } from '../runs/run-logs-data.ts';
 
   import { attachPendingActivitiesToSteps } from './async-activity/async-activity-matching.ts';
   import {
@@ -81,7 +97,8 @@
     readonly client: Pick<HttpClient, 'getTimeline'> & {
       readonly operations: Pick<HttpClient['operations'], typeof PENDING_ASYNC_ACTIVITY_OPERATION> &
         Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>> &
-        Partial<StreamChunksClient['operations']>;
+        Partial<StreamChunksClient['operations']> &
+        LogsClient['operations'];
       readonly activity: Pick<WeftClientActivity, 'complete' | 'completeExceptionally'>;
     };
     readonly workflow: WorkflowState;
@@ -119,6 +136,21 @@
   }));
 
   const entries = $derived(timelineQuery.data ?? []);
+
+  // The same query as the Details rail's Logs section, so the two share one read.
+  const logsQuery = createQuery(() => ({
+    queryKey: workflowLogsQueryKey(workflow.id),
+    queryFn: () => fetchRunLogs(client, workflow.id),
+    enabled: client.operations[LOGS_OPERATION] !== undefined,
+  }));
+  const placement = $derived(placeLogLines(entries, logsQuery.data?.lines ?? []));
+  const linesBeforeFirstStep = $derived(placement.kind === 'by-step' ? placement.beforeFirst : []);
+  let beforeFirstOpen = $state(false);
+
+  /** The lines placed under one entry, by its checkpoint key. */
+  function linesUnder(step: number) {
+    return placement.kind === 'by-step' ? placement.byStep.get(step) : undefined;
+  }
 
   // One scale for every step of the run, whatever page or filter is showing.
   const openSteps = $derived(openStepNumbers(entries, workflow.status));
@@ -328,6 +360,16 @@
       description={RUN_STEPS_COPY.emptyDescription}
     />
   {:else}
+    {#if linesBeforeFirstStep.length > 0}
+      <section data-section="logs-before-first-step">
+        <Collapsible
+          bind:open={beforeFirstOpen}
+          trigger={RUN_STEPS_COPY.logsBeforeFirst(linesBeforeFirstStep.length)}
+        >
+          <LogLines lines={linesBeforeFirstStep} label={RUN_STEPS_COPY.logsBeforeFirstListLabel} />
+        </Collapsible>
+      </section>
+    {/if}
     <div class="ib-steps-frame" data-testid="run-steps">
       <ListDetail
         items={pageEntries}
@@ -424,6 +466,7 @@
             {entry}
             bar={bars.get(entry.step)}
             open={openSteps.has(entry.step)}
+            logs={linesUnder(entry.step)}
             actions={stepActions}
           />
         {/snippet}

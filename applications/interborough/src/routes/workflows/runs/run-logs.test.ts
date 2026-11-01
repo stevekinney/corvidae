@@ -1,6 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { RUN_LOG_CASES, linesOf } from './run-log-cases.test-support.ts';
 import type { RunLogLine } from './run-logs-data.ts';
 import RunLogsHarness from './run-logs.test-harness.svelte';
 
@@ -37,6 +38,22 @@ describe('RunLogs', () => {
       expect.stringContaining('second'),
     ]);
   });
+
+  for (const runCase of RUN_LOG_CASES) {
+    test(`keeps the whole log of ${runCase.name} in the rail, whatever the steps took`, async () => {
+      const { getByRole, getAllByRole } = render(RunLogsHarness, {
+        props: {
+          workflowId: 'run-1',
+          client: client(async () => ({ lines: linesOf(runCase), dropped: 0 })),
+        },
+      });
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: /Logs/ })));
+      const items = await waitFor(() => getAllByRole('listitem'));
+      expect(items.map((item) => item.textContent)).toEqual(
+        runCase.lines.map(([message]) => expect.stringContaining(message)),
+      );
+    });
+  }
 
   test('says how many older lines were removed', async () => {
     const { getByRole, findByText } = render(RunLogsHarness, {

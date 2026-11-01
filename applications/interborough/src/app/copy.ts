@@ -123,6 +123,11 @@ export const RUN_STEPS_COPY = {
   complete: 'Complete…',
   unattachedNote: 'This could not be tied to a single step. Complete it from here.',
   workerProvenanceFor: (label: string): string => `Worker provenance for ${label}`,
+  logs: 'Logs',
+  logsListLabel: 'Log lines of this step',
+  logsBeforeFirstListLabel: 'Log lines from before the first step',
+  logsBeforeFirst: (lines: number): string =>
+    `Logged before the first step · ${lines === 1 ? '1 line' : `${String(lines)} lines`}`,
 } as const;
 
 /** The words for the runs related to one run, in its Details rail and the topology that opens from it. */
