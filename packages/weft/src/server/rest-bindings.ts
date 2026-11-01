@@ -17,6 +17,7 @@
 import type { Storage } from '@lostgradient/storage';
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { RegistryAgnosticEngine } from '../core/engine.ts';
+import type { RemoteTaskQueued } from '../core/task-ledger/task-ledger-types.ts';
 import type { MetricsCollector } from '../observability/metrics.ts';
 import type { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../worker/registry.ts';
@@ -62,6 +63,7 @@ import {
   createListWorkersRestBinding,
   listWorkersOperation,
 } from './operations/list-workers.ts';
+import { createRetryTaskDeadLetterOperation } from './operations/retry-task-dead-letter.ts';
 import { createStartOrSignalWorkflowOperation } from './operations/start-or-signal-workflow.ts';
 import { createStartWorkflowOperation } from './operations/start-workflow.ts';
 import { STATIC_OPERATIONS } from './operations/static-operations.ts';
@@ -171,6 +173,12 @@ export type LiveOperationRegistryOptions = {
   /** Receives the events operations raise after a mutation commits; `serve()` passes the engine's `dispatchEvent`. */
   dispatchEvent?: (event: Event) => void;
   storage?: Storage;
+  /**
+   * Hand a task queued by `weft.tasks.deadletters.retry` to the dispatcher at
+   * once; `serve()` supplies it. Without it the retried record waits for the
+   * ledger sweep, which dispatches a queued record nothing is tracking.
+   */
+  redispatchQueuedTask?: (record: RemoteTaskQueued) => void;
   taskQueue?: TaskQueue;
   clock?: () => number;
   /** Where `weft.workers.diagnostics` reads each worker's reconnect-grace and session-lease instants. */
@@ -243,6 +251,13 @@ function buildClearDeploymentDrainOperationForRegistry(options: LiveOperationReg
     ...(options.workerDeploymentCatalog === undefined
       ? {}
       : { catalog: options.workerDeploymentCatalog }),
+  });
+}
+
+function buildRetryTaskDeadLetterOperationForRegistry(options: LiveOperationRegistryOptions) {
+  return createRetryTaskDeadLetterOperation({
+    metricsCollector: options.metricsCollector,
+    redispatchQueuedTask: options.redispatchQueuedTask,
   });
 }
 
@@ -379,7 +394,9 @@ export function createLiveOperationRegistry(
           ? buildStartOrSignalWorkflowOperationForRegistry(resolved)
           : operation.name === 'weft.worker.startoverrides.preview'
             ? buildWorkerStartOverridePreviewOperation(resolved)
-            : operation,
+            : operation.name === 'weft.tasks.deadletters.retry'
+              ? buildRetryTaskDeadLetterOperationForRegistry(resolved)
+              : operation,
     ),
     buildTaskDiagnosticsOperationForRegistry(resolved),
     buildSystemMetricsOperation(resolved),

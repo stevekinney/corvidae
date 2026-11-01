@@ -142,7 +142,8 @@ export const METRICS = {
   },
   taskRequeues: {
     name: 'weft.task.requeues',
-    description: 'Total visibility-timeout or disconnect task requeues',
+    description:
+      'Total task requeues: visibility-timeout, disconnect, and operator retries of a dead-lettered task',
     unit: 'requeues',
     type: 'counter',
   },

@@ -34,7 +34,7 @@ import { SERVER_IDLE_TIMEOUT_SECONDS } from './idle-timeout.ts';
 import type { ServeOptions } from './index.ts';
 import type { WebSocketData } from './json-rpc-websocket-runtime.ts';
 import { closeJsonRpcSessionsForShutdown } from './json-rpc-websocket-runtime.ts';
-import { createLiveOperationRegistry, createLiveRestBindings } from './rest-bindings.ts';
+import { createLiveRestBindings } from './rest-bindings.ts';
 import {
   createServerWebSocketHandlers,
   deriveSupportedOpenApiSecuritySchemes,
@@ -52,6 +52,7 @@ import {
   type EventBroadcastingHandle,
 } from './runtime/event-broadcasting.ts';
 import { installRemoteActivityEventBridges } from './runtime/remote-activity-event-bridges.ts';
+import { createServerOperationRegistry } from './runtime/server-operation-registry.ts';
 import { shutdownAllWorkers } from './runtime/shutdown.ts';
 import { runTaskLedgerRecovery } from './runtime/task-ledger-recovery.ts';
 import {
@@ -377,19 +378,14 @@ export function buildServerContext(
     operationToWorkflow: new Map(),
     pendingTimers: new Set(),
     deadlineTracker: new DeadlineTracker(),
-    liveOperationRegistry: createLiveOperationRegistry({
+    liveOperationRegistry: createServerOperationRegistry({
+      options,
+      context: () => context,
       workerRegistry,
       taskQueue,
       metricsCollector: serverMetricsCollector,
       workerDeploymentCatalog,
-      dispatchEvent: (event) => options.engine.dispatchEvent(event),
       workerSessionTiming,
-      storage: options.engine.storage,
-      ...(options.workerStartOverrideSigningSecret === undefined
-        ? {}
-        : { workerStartOverrideSigningSecret: options.workerStartOverrideSigningSecret }),
-      ...(options.operations === undefined ? {} : { additionalOperations: options.operations }),
-      conformanceTargetRunner: options.conformanceTargetRunner,
     }),
     liveRestBindings: createLiveRestBindings(),
     supportedAuthenticationSchemes: deriveSupportedOpenApiSecuritySchemes(options.auth),

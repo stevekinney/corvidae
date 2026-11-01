@@ -64,6 +64,7 @@ import { removeWorkflowTagsRestBinding } from './remove-workflow-tags.ts';
 import { replayWorkflowRestBinding } from './replay-workflow.ts';
 import { resumeScheduleRestBinding } from './resume-schedule.ts';
 import { resumeWorkflowRestBinding } from './resume-workflow.ts';
+import { retryTaskDeadLetterRestBinding } from './retry-task-dead-letter.ts';
 import { setWorkflowAttributesRestBinding } from './set-workflow-attributes.ts';
 import { signalWorkflowRestBinding } from './signal-workflow.ts';
 import { skipNextScheduleRestBinding } from './skip-next-schedule.ts';
@@ -174,6 +175,7 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   getTaskDetailRestBinding,
   getTaskResultDeliveriesRestBinding,
   getTaskDeadLetterRestBinding,
+  retryTaskDeadLetterRestBinding,
   // Operation-catalog-backed routes
   listSchedulesRestBinding,
   getScheduleRestBinding,

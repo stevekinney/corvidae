@@ -58,6 +58,7 @@ Two dashboard issues own work that no `tracked` row can carry today. COR-162 (co
 | `weft.system.registry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-registry-data.test.ts` | COR-162 |  |
 | `weft.task.queues.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
 | `weft.tasks.deadletters.get` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-dead-letter-panel.test.ts` | COR-284 |  |
+| `weft.tasks.deadletters.retry` | tracked |  |  |  | COR-1973 |  |
 | `weft.tasks.deliveries` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-delivery-history.test.ts` | COR-284 |  |
 | `weft.tasks.diagnostics` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` | COR-274, COR-281 |  |
 | `weft.tasks.diagnostics.deadletters.clear` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/clear-dead-letter-dialog.test.ts` |  |  |
