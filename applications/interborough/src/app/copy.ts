@@ -459,9 +459,24 @@ export const AGENT_EDITOR_COPY = {
       retired: 'Retired by its provider.',
       'not-in-catalog': 'This installation no longer offers this model.',
     },
-    /** What the field says about the agent's own model when it cannot be chosen now. */
+    /**
+     * What the field says about the agent's own model when it is only turned off in Settings ›
+     * Models: the Bureau does not judge availability at a save, so a save writes it back.
+     */
     keptNotice: (model: string, reason: string): string =>
       `This agent’s model, ${model}, is not offered now. ${reason} Saving keeps it unless you choose another.`,
+    /**
+     * What the field says when the model policy forbids the agent's own model: the Bureau refuses a
+     * save that keeps it, and a run of the agent fails until the policy or the model changes.
+     */
+    refusedNotice: (model: string, reason: string): string =>
+      `This agent’s model, ${model}, is not offered now. ${reason} Saving needs another model, and a run fails until you choose one.`,
+    /**
+     * What the field says when the agent's own model is retired or gone from the catalog: the
+     * Bureau resolves the model at every save and refuses one it cannot find (`unknown-model`).
+     */
+    replacementNotice: (model: string, reason: string): string =>
+      `This agent’s model, ${model}, is not offered now. ${reason} Saving needs another model.`,
     abilitiesLabel: 'Abilities of the chosen model',
     abilities: {
       tools: 'Tools',
@@ -1900,11 +1915,11 @@ export const HEALTH_OVERVIEW_COPY = {
 /** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
 export const MODEL_POLICY_COPY = {
   intro:
-    'Choose which providers and models agents may use. Everything not ruled out here stays allowed.',
+    'Choose which providers and models agent files and plans may use. Everything not ruled out here stays allowed.',
   allowedModels: {
     title: 'Allowed models',
     description:
-      'Nothing listed here can be used by any agent or plan, whoever starts it. Leave a list empty to allow everything in it.',
+      'Nothing listed here can be used by an agent file or a plan, whoever starts it. Leave a list empty to allow everything in it.',
   },
   yourPreferences: {
     title: 'Your preferences',
