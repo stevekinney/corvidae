@@ -98,8 +98,8 @@ test.describe('a new agent', () => {
       const catalog = await readCatalog(request);
       const unconnectedOptions = await unconnectedProviderOptions(request);
       const model = page.getByRole('combobox', { name: 'Model' });
-      // The field shows the chosen model, which filters the list; clearing it lists every option.
-      await model.fill('');
+      // The field holds the chosen model, and opening it as it stands lists every option.
+      await model.click();
       const options = page.locator('.cinder-combobox__option-label');
       await expect(options).toHaveText([
         ...catalog.models.map((row) => `${row.provider}/${row.model}`),

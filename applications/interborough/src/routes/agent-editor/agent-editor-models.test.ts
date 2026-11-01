@@ -110,6 +110,31 @@ describe('the groups', () => {
     expect(groups[2]?.choices).toEqual([]);
   });
 
+  test('put a kept model the catalog lacks in its own provider’s group, connected or not', () => {
+    const hostProviders = [
+      { name: 'gemini', hasKey: false },
+      { name: 'openai', hasKey: true },
+    ];
+    const inOpenai = modelGroups(catalog, hostProviders, NO_RESTRICTIONS, 'openai/gpt-3.5');
+    expect(inOpenai.map((group) => [group.provider, group.connected])).toEqual([
+      ['openai', true],
+      ['anthropic', true],
+      ['gemini', false],
+    ]);
+    expect(inOpenai[0]?.choices.at(-1)).toMatchObject({
+      value: 'openai/gpt-3.5',
+      unavailable: 'not-in-catalog',
+    });
+
+    // A provider with no row and no report of a missing key is not called unconnected.
+    const elsewhere = modelGroups(catalog, undefined, NO_RESTRICTIONS, 'mistral/large');
+    expect(elsewhere.at(-1)).toMatchObject({ provider: 'mistral', connected: true });
+
+    const keyless = modelGroups(catalog, hostProviders, NO_RESTRICTIONS, 'gemini/pro');
+    expect(keyless.at(-1)).toMatchObject({ provider: 'gemini', connected: false });
+    expect(keyless.at(-1)?.choices.map((choice) => choice.value)).toEqual(['gemini/pro']);
+  });
+
   test('pick the first model that can be chosen, and find a choice by its value', () => {
     const groups = modelGroups(
       catalog,

@@ -5,9 +5,16 @@
  */
 import { fireEvent, waitFor } from '@testing-library/svelte';
 
-/** Opens the model field and returns its options, in the order the list shows them. */
-export async function openModelOptions(field: HTMLElement): Promise<HTMLElement[]> {
-  await fireEvent.input(field, { target: { value: '' } });
+/**
+ * Opens the model field and returns its options, in the order the list shows them. The field holds
+ * the chosen model's name, as it does for a person who has not typed; `clear` empties it first, for
+ * a test that is about something other than opening the list as it stands.
+ */
+export async function openModelOptions(
+  field: HTMLElement,
+  { clear = true }: { readonly clear?: boolean } = {},
+): Promise<HTMLElement[]> {
+  if (clear) await fireEvent.input(field, { target: { value: '' } });
   await fireEvent.focus(field);
   const listbox = await waitFor(() => {
     const found = document.querySelector<HTMLElement>('[role="listbox"]');

@@ -48,6 +48,20 @@
     };
   }
 
+  /**
+   * Cinder filters on the text in the input, which holds the chosen model's name, so the default
+   * would list only that model on focus. While the text is the chosen model's own name, nothing has
+   * been typed to narrow by, so every option shows; once the text changes it narrows as Cinder does.
+   */
+  function filterOption(option: ComboboxOption, query: string): boolean {
+    const text = query.trim().toLowerCase();
+    if (text === '' || query === editor.model) return true;
+    return (
+      option.label.toLowerCase().includes(text) ||
+      (option.description?.toLowerCase().includes(text) ?? false)
+    );
+  }
+
   const options = $derived(
     editor.modelGroups.flatMap((group): ComboboxOption[] => {
       const name = providerDisplayName(group.provider);
@@ -100,6 +114,7 @@
     description={AGENT_EDITOR_COPY.modelDescription}
     placeholder={AGENT_EDITOR_COPY.modelPlaceholder}
     {options}
+    filter={filterOption}
     value={editor.model}
     onValueChange={(next) => (editor.model = next)}
   />

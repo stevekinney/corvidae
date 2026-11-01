@@ -119,6 +119,24 @@ describe('the models of a new agent', () => {
     ]);
   });
 
+  test('are all listed when the field is opened as it stands, with the chosen model in it', async () => {
+    bureau({ hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    const { findByRole } = mountEditor();
+    const field = await findByRole('combobox', { name: 'Model' });
+    expect(field).toHaveValue('anthropic/claude-sonnet-5');
+
+    // Nothing is cleared: the text is the chosen model's name, which must not narrow the list to it.
+    await openModelOptions(field, { clear: false });
+    expect(groupsOf()).toEqual([
+      { name: 'Anthropic', options: ['anthropic/claude-sonnet-5'] },
+      { name: 'OpenAI', options: ['openai/gpt-4.1'] },
+    ]);
+
+    // Typing narrows it as before.
+    await fireEvent.input(field, { target: { value: 'gpt' } });
+    expect(groupsOf()).toEqual([{ name: 'OpenAI', options: ['openai/gpt-4.1'] }]);
+  });
+
   test('list a provider with no key as one disabled option, and point to Settings › Models', async () => {
     bureau({
       hostProviders: [
@@ -351,6 +369,26 @@ describe('an agent whose model is no longer offered', () => {
       name: 'Gemini',
       options: [copy.notConnected('Gemini'), 'gemini/gemini-2.5-pro'],
     });
+  });
+
+  test('is not called unconnected when its provider is connected', async () => {
+    bureau({
+      agent: written('openai/gpt-3.5'),
+      hostProviders: [
+        { name: 'anthropic', hasKey: true },
+        { name: 'openai', hasKey: true },
+      ],
+    });
+    const { findByRole, queryByTestId } = mountEditor('researcher');
+    const field = await findByRole('combobox', { name: 'Model' });
+    expect(field).toHaveValue('openai/gpt-3.5');
+    await openModelOptions(field);
+    expect(groupsOf()).toEqual([
+      { name: 'Anthropic', options: ['anthropic/claude-sonnet-5'] },
+      { name: 'OpenAI', options: ['openai/gpt-4.1', 'openai/gpt-3.5'] },
+    ]);
+    expect(queryByTestId('agent-model-unconnected')).toBeNull();
+    expect(document.body.textContent).not.toContain('is not connected');
   });
 
   test('shows no notice for a model that is offered, and none for a new agent', async () => {

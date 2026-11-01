@@ -100,7 +100,8 @@
 
   // What narrows the model field besides the catalog: the host's providers, to name the ones with
   // no key, and the model policy, to leave out what it forbids. The page works without either, and
-  // offers what the catalog lists; the Bureau still refuses a model the policy forbids.
+  // offers what the catalog lists. The page only marks a forbidden model; the Bureau does not yet refuse
+  // one, which COR-1980 tracks.
   const providers = createQuery(() => ({
     ...stable,
     queryKey: queryKeys.hostProviders(),

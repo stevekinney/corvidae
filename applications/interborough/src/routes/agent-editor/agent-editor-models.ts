@@ -5,8 +5,9 @@
  * unfiltered, each with the abilities it declares. Three things narrow it for a person choosing a
  * model for an agent file:
  *
- * - The model policy (Settings › Model policy). Its `deployment` and `bureau` layers bind every
- *   run, so a provider or model they deny is not offered. Operative's selector matches a denied
+ * - The model policy (Settings › Model policy). Its `deployment` and `bureau` layers are the
+ *   operator's rules, so a provider or model they deny is not offered. The Bureau does not yet
+ *   refuse such a model in an agent file (COR-1980), so this is the only place it is held back. Operative's selector matches a denied
  *   provider by its name and a denied model by the catalog row's own model name (`policy.ts`,
  *   `narrowedByList`), and so does this module. The `users` layer holds one caller's preferences,
  *   not a rule about an agent, and is not read.
@@ -62,7 +63,7 @@ function namesIn(layer: unknown, field: string): string[] {
 }
 
 /**
- * The denials of a `modelPolicy` setting's `deployment` and `bureau` layers, which bind every run.
+ * The denials of a `modelPolicy` setting's `deployment` and `bureau` layers, which the page reads as binding every run (the Bureau does not yet enforce them: COR-1980).
  * A value that is not a policy denies nothing.
  */
 export function restrictionsOf(policyValue: unknown): ModelRestrictions {
@@ -152,8 +153,17 @@ export function modelGroups(
       row: undefined,
       unavailable: 'not-in-catalog',
     };
-    const listed = unconnected.get(provider) ?? [];
-    unconnected.set(provider, [...listed, choice]);
+    // The model is gone from the catalog, which says nothing about its provider: a provider with
+    // rows, or one the host does not report as keyless, is connected, and the model joins it.
+    const group = groups.find((entry) => entry.provider === provider);
+    const listed = unconnected.get(provider);
+    if (group !== undefined) {
+      groups[groups.indexOf(group)] = { ...group, choices: [...group.choices, choice] };
+    } else if (listed !== undefined) {
+      unconnected.set(provider, [...listed, choice]);
+    } else {
+      groups.push({ provider, connected: true, choices: [choice] });
+    }
   }
   for (const [provider, choices] of unconnected) {
     groups.push({ provider, connected: false, choices });

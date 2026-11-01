@@ -31,7 +31,9 @@ for (const width of WIDTHS) {
       await page.goto('/agents/new');
       const model = page.getByRole('combobox', { name: 'Model' });
       await expect(model).toBeVisible();
-      await model.fill('');
+      // Opened as it stands, with the chosen model in the field, the list is not narrowed to it.
+      await model.click();
+      await expect(model).toHaveValue('anthropic/claude-sonnet-5');
 
       await expect(page.locator('.cinder-_option-group__label').first()).toHaveText('Anthropic');
       for (const provider of unconnected) {
