@@ -51,7 +51,14 @@ const staleWorkerOperation: ContextOperationRequest = {
 
 function createStaleWorkerPersistCallbacks(workflowId: string): PersistCheckpointCallbacks {
   return {
-    appendTimelineBatchOperations: (_workflowId, _operation, step, timestamp, operations) => {
+    appendTimelineBatchOperations: (
+      _workflowId,
+      _operation,
+      step,
+      _stepIndex,
+      timestamp,
+      operations,
+    ) => {
       operations.push({
         type: 'put',
         key: KEYS.timeline(workflowId, step),
@@ -179,6 +186,7 @@ describe('persistWorkerCheckpoint vs. a start-new replacement — WFT-21 Codex r
             staleWorkerOperation,
             toExactArrayBuffer(serializeCheckpoint(staleCheckpoint)),
             createStaleWorkerPersistCallbacks(originalHandle.id),
+            { pendingStepIndex: 0 },
           ),
         ),
       ).toThrow('targets a different execution generation');

@@ -107,6 +107,7 @@ const persistCallbacks = {
     workflowId: string,
     _operation: ContextOperationRequest,
     step: number,
+    _stepIndex: number,
     timestamp: number,
     operations: BatchOperation[],
   ) => {
@@ -142,7 +143,9 @@ async function commitNextCheckpoint(
   const buffer = new ArrayBuffer(next.byteLength);
   new Uint8Array(buffer).set(next);
   const reason = await rejectionOf(
-    persistCheckpoint(internals, workflowId, checkpointOperation, buffer, persistCallbacks),
+    persistCheckpoint(internals, workflowId, checkpointOperation, buffer, persistCallbacks, {
+      pendingStepIndex: 0,
+    }),
   );
   return { reason, internals };
 }

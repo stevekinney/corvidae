@@ -210,6 +210,20 @@ export type WorkflowTimelineOperationDetail = {
  */
 export type WorkflowTimelineEntry = {
   step: number;
+  /**
+   * The index of the durable step the operation occupies: the value a `ctx.log` line's `step`
+   * carries, so a client places a log line against the entries around it. `step` is the checkpoint
+   * key and counts checkpoints, not durable steps, so it cannot do that. A line logged in front of
+   * an operation carries that operation's `stepIndex`, because logging consumes no step.
+   *
+   * Operations that take a step without writing an entry leave a gap: a session state write and a
+   * `ctx.memo` call that finds its key cached. Each retry of an activity has its own entry with
+   * the activity's `stepIndex`, and each retry sleep between them has its own. A `ctx.speculate`
+   * entry carries the step of the `speculate` call, and a line logged inside the speculation
+   * carries that same step, whether it commits or rolls back. Absent on entries persisted before
+   * this field existed.
+   */
+  stepIndex?: number;
   operationType: string;
   operationLabel: string;
   inputSummary: string;

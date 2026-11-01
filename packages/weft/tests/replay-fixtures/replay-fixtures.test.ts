@@ -11,10 +11,12 @@
  *    regenerate fixtures to add records under that new namespace, PROVIDED
  *    the diff is purely additive — every existing key's value and every
  *    existing key's presence is byte-for-byte unchanged.
- * 2. A PR that adds a new field to an EXISTING `WorkflowState`- or
- *    `Checkpoint`-shaped record (e.g. WFT-17's `WorkflowState.revision`,
- *    sibling to `versionTuple`; WFT-21's `Checkpoint.workflowExecutionToken`,
- *    sibling to `createdAt`) may regenerate fixtures because every embedded
+ * 2. A PR that adds a new field to an EXISTING `WorkflowState`-,
+ *    `Checkpoint`- or `WorkflowTimelineEntry`-shaped record (e.g. WFT-17's
+ *    `WorkflowState.revision`, sibling to `versionTuple`; WFT-21's
+ *    `Checkpoint.workflowExecutionToken`, sibling to `createdAt`; COR-1988's
+ *    `WorkflowTimelineEntry.stepIndex`, sibling to `step`) may regenerate
+ *    fixtures because every embedded
  *    record of that shape's serialized value changes — PROVIDED every
  *    other field on that record, every other key, and key/record ordering
  *    are byte-for-byte unchanged apart from the one new field's addition.

@@ -519,6 +519,7 @@ async function processGeneratorStep(
       workflowId,
       checkpoint: copyBytesToArrayBuffer(serializeCheckpoint(replayState.checkpoint)),
       operationRequest,
+      pendingStepIndex: stepIndex,
     };
   }
 }

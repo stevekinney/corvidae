@@ -195,6 +195,7 @@ describe('engine inline parking helpers', () => {
       getInternals(engine),
       {
         type: 'checkpoint',
+        pendingStepIndex: 0,
         workflowId,
         checkpoint: new ArrayBuffer(0),
         operationRequest: {} as never,

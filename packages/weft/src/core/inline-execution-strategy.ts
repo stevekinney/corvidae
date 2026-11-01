@@ -22,6 +22,7 @@ import type {
   InlineStartWorkflowParameters,
 } from './inline-execution-strategy.context-options.ts';
 import { createInlineContextOptions } from './inline-execution-strategy.context-options.ts';
+import { resolvePendingOperationStep } from './pending-operation-step.ts';
 import type { FailureCategory, OperationOutcome, WorkerOutboundMessage } from './types.ts';
 
 // ---------------------------------------------------------------------------
@@ -428,11 +429,17 @@ export class InlineExecutionStrategy implements ExecutionStrategy {
     // The yielded value is a ContextOperationRequest. Emit it as a checkpoint
     // message so the engine can process the operation.
     const operation = iterationResult.value as ContextOperationRequest;
+    const context = this.#contexts.get(workflowId);
     this.#emit({
       type: 'checkpoint',
       workflowId,
       checkpoint: new ArrayBuffer(0),
       operationRequest: operation as never,
+      // A step-less operation sits one step back: the context has taken its step already.
+      pendingStepIndex: resolvePendingOperationStep(
+        operation,
+        context === undefined ? 0 : Math.max(0, context.stepIndex - 1),
+      ),
     });
   }
 

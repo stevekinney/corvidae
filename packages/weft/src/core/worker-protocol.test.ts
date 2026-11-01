@@ -60,6 +60,7 @@ describe('Worker protocol message accounting', () => {
   it('counts binary payload bytes without requiring JSON-shaped messages', () => {
     const message = {
       type: 'checkpoint',
+      pendingStepIndex: 0,
       workflowId: 'wf-binary',
       checkpoint: new Uint8Array(256),
       nested: {
@@ -118,6 +119,7 @@ describe('Worker protocol message accounting', () => {
     expect(() =>
       assertWorkerOutboundMessageShape({
         type: 'checkpoint',
+        pendingStepIndex: 0,
         workflowId: 'wf-malformed',
         checkpoint: 'not-bytes',
         operationRequest: { type: 'wait-signal' },
@@ -206,6 +208,7 @@ describe('Worker replay operation signatures', () => {
     const operation = {
       type: 'race' as const,
       operationId: 'race-keyed',
+      step: 0,
       operations: [
         {
           type: 'sleep' as const,
@@ -315,6 +318,7 @@ describe('Worker replay operation signatures', () => {
       {
         type: 'race',
         operationId: 'race-1',
+        step: 0,
         operations: [
           {
             type: 'sleep',
@@ -667,6 +671,21 @@ describe('Worker outbound message shape rejections', () => {
     );
   });
 
+  it('rejects a checkpoint whose pending step index is missing or is not a non-negative integer', () => {
+    const base = {
+      type: 'checkpoint',
+      workflowId: 'wf',
+      checkpoint: new ArrayBuffer(0),
+      operationRequest: { type: 'sleep' },
+    };
+    for (const pendingStepIndex of [undefined, -1, 1.5, '2', Number.NaN, null]) {
+      rejects(
+        { ...base, pendingStepIndex },
+        'Worker checkpoint message pendingStepIndex must be a non-negative integer',
+      );
+    }
+  });
+
   it('rejects a checkpoint without an operation request and a failure without an error string', () => {
     rejects(
       { type: 'checkpoint', workflowId: 'wf', checkpoint: new ArrayBuffer(0) },
@@ -675,6 +694,7 @@ describe('Worker outbound message shape rejections', () => {
     rejects(
       {
         type: 'checkpoint',
+        pendingStepIndex: 0,
         workflowId: 'wf',
         checkpoint: new ArrayBuffer(0),
         operationRequest: null,

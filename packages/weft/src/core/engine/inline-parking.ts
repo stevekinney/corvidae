@@ -46,6 +46,7 @@ export type InlineParkingCallbacks = {
     workflowId: string,
     operation: ContextOperationRequest,
     workerCheckpointBytes?: ArrayBuffer,
+    pendingStepIndex?: number,
   ) => Promise<void>;
   processOperation: (workflowId: string, operation: ContextOperationRequest) => Promise<void>;
   readCheckpointBytes: (workflowId: string) => Promise<Uint8Array | null>;
@@ -238,7 +239,12 @@ async function dispatchStrategyMessage(
       const inFlight = beginInFlightOperation(internals, message.workflowId, operation);
       try {
         // Persist checkpoint at this yield boundary
-        await callbacks.persistCheckpoint(message.workflowId, operation, message.checkpoint);
+        await callbacks.persistCheckpoint(
+          message.workflowId,
+          operation,
+          message.checkpoint,
+          message.pendingStepIndex,
+        );
         recordDurableInlineOperation(internals, message.workflowId, operation);
 
         // Development mode: validate checkpoint round-trip

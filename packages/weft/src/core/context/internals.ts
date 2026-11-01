@@ -9,6 +9,8 @@ export interface ContextInternals {
   context: Context;
   abortController: AbortController;
   stepIndex: number;
+  /** See {@link ContextOptions.logStep}; `undefined` stamps `ctx.log` records with `stepIndex`. */
+  logStep: number | undefined;
   accumulatedResults: Map<number, unknown> | undefined;
   /**
    * True from the moment a relaunched run's body starts until it first yields an operation (or
@@ -68,6 +70,7 @@ export function initializeInternals(
     context,
     abortController: options.abortController,
     stepIndex: options.initialStep ?? 0,
+    logStep: options.logStep,
     accumulatedResults: options.accumulatedResults,
     replayingToPark: options.resumed === true,
     stateSession: initialSessionState,

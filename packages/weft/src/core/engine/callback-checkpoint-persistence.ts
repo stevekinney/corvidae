@@ -19,12 +19,20 @@ export function createCheckpointPersistenceCallbacks<
   TActivities extends object,
 >(engine: Engine<TWorkflows, TActivities>): PersistCheckpointCallbacks {
   return {
-    appendTimelineBatchOperations: (id, checkpointOperation, step, timestamp, operations) =>
+    appendTimelineBatchOperations: (
+      id,
+      checkpointOperation,
+      step,
+      stepIndex,
+      timestamp,
+      operations,
+    ) =>
       appendTimelineBatchOperations(
         getInternals(engine),
         id,
         checkpointOperation,
         step,
+        stepIndex,
         timestamp,
         operations,
       ),

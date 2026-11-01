@@ -217,6 +217,12 @@ function assertWorkerCheckpointOutbound(record: Record<string, unknown>): void {
   if (typeof record['operationRequest'] !== 'object' || record['operationRequest'] === null) {
     throw new WorkerProtocolError('Worker checkpoint message must include operationRequest');
   }
+  const pendingStepIndex = record['pendingStepIndex'];
+  if (!Number.isSafeInteger(pendingStepIndex) || (pendingStepIndex as number) < 0) {
+    throw new WorkerProtocolError(
+      'Worker checkpoint message pendingStepIndex must be a non-negative integer',
+    );
+  }
 }
 
 function assertWorkerFailedOutbound(record: Record<string, unknown>): void {

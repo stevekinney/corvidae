@@ -140,7 +140,8 @@ export function createWorkflowLogger(bindings: WorkflowLoggerBindings): Workflow
  * its earlier execution until its body first yields an operation: the operation it was parked
  * on is not cached, but that execution already ran the body up to it and logged what sits in
  * front, so those records are delivered marked `replayed`. `getInternals` is read per emit so the probe tracks
- * the frontier as durable ops advance `stepIndex`. The `sink` is captured by value:
+ * the frontier as durable ops advance `stepIndex`. The stamped `step` is `logStep` when the context
+ * has one (a `ctx.speculate` child stamps the step of the call that owns it), else `stepIndex`. The `sink` is captured by value:
  * `EngineOptions.onLog` is fixed at engine construction, so it never changes for the
  * life of the context.
  */
@@ -149,7 +150,7 @@ export function createInlineWorkflowLogger(
   workflowType: string,
   getInternals: () => Pick<
     ContextInternals,
-    'accumulatedResults' | 'replayingToPark' | 'stepIndex' | 'getNow'
+    'accumulatedResults' | 'replayingToPark' | 'stepIndex' | 'logStep' | 'getNow'
   >,
   sink?: (record: WorkflowLogRecord) => void,
 ): WorkflowLogger {
@@ -162,7 +163,10 @@ export function createInlineWorkflowLogger(
     },
     isRepeatOfEarlierExecution: () => getInternals().replayingToPark,
     now: () => getInternals().getNow(),
-    step: () => getInternals().stepIndex,
+    step: () => {
+      const internals = getInternals();
+      return internals.logStep ?? internals.stepIndex;
+    },
     ...(sink !== undefined && { sink }),
   });
 }
