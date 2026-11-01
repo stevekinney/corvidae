@@ -24,6 +24,13 @@ export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
 
 /**
+ * The most steps a run takes when its agent sets no limit: Operative's `DEFAULT_MAXIMUM_STEPS`,
+ * which the browser cannot import. `src/host/host-agent-definitions.test.ts` fails if the two
+ * drift apart.
+ */
+export const DEFAULT_STEP_LIMIT = 25;
+
+/**
  * The agent's `skillDescriptors` entry. The editor never edits one, but a save sends them back unchanged, so
  * a key this page does not know is kept as it was read and never stripped.
  */
@@ -61,6 +68,15 @@ const definitionSchema = z.object({
   a2a: z.boolean(),
   /** The most steps one run may take; `null` when the file sets none. */
   stepLimit: z.number().int().nullable().default(null),
+  /**
+   * How a run retries a failed generate call (`attempts`, `delayMilliseconds`, `jitter`); `null`
+   * when the file sets none. The editor never edits it: a save sends it back, and a copy keeps it.
+   */
+  retry: z.looseObject({ attempts: z.number() }).nullable().default(null),
+  /** Whether and when a run compacts its conversation; `null` when the file sets none. Carried like `retry`. */
+  compaction: z.looseObject({ enabled: z.boolean() }).nullable().default(null),
+  /** The plugin run hook sets (`plugin:name`) the file lists; `null` when it lists none. Carried like `retry`. */
+  hooks: z.array(z.string()).nullable().default(null),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: z.array(z.string()).nullable().default(null),
   /** The plugin guardrails (`plugin:name`) the file lists besides the default preset; `null` when it lists none. */
@@ -87,6 +103,9 @@ const definitionSchema = z.object({
   toolApproval: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
   instructions: z.string(),
 });
+
+/** The definition of a file agent, as `bureau.agents.definitions.get` shows it. */
+type AgentDefinition = z.infer<typeof definitionSchema>;
 
 const problemSchema = z.object({
   code: z.string(),
@@ -246,6 +265,15 @@ export type AgentDefinitionInput = {
   readonly stepLimit?: number | null;
   /** The plugin guardrails (`plugin:name`). `null` removes them; left out, an update keeps the file's. */
   readonly guardrails?: readonly string[] | null;
+  /**
+   * How a run retries a failed generate call. The editor shows no control for it: a save carries it
+   * through and a copy keeps it. Left out, an update keeps the file's.
+   */
+  readonly retry?: AgentDefinition['retry'];
+  /** Whether and when a run compacts its conversation; carried like `retry`. */
+  readonly compaction?: AgentDefinition['compaction'];
+  /** The plugin run hook sets (`plugin:name`); carried like `retry`. */
+  readonly hooks?: readonly string[] | null;
   /** What one run, and one chat, may spend. `null` removes the limit; left out, an update keeps the file's. */
   readonly costBudget?: {
     readonly perRunUsd: number;
@@ -262,6 +290,11 @@ export type AgentDefinitionInput = {
    * key must be one of `tools`, or the Bureau refuses the write.
    */
   readonly toolApproval?: Readonly<Record<string, ToolApproval>> | null;
+  /**
+   * Documents beside the agent's file that its instructions are read with. Only a create sends it (a
+   * copy of an agent that has them); left out, an update keeps the file's.
+   */
+  readonly references?: readonly string[] | null;
   readonly instructions: string;
 };
 
@@ -363,6 +396,31 @@ export async function updateAgent(
 export async function duplicateAgent(id: string, options?: Options): Promise<AgentWriteResult> {
   return writeResultSchema.parse(
     await callBureau('bureau.agents.definitions.duplicate', { id }, options),
+  );
+}
+
+const triedAgentSchema = z.object({
+  contextId: z.string(),
+  agentName: z.string(),
+  taskId: z.string(),
+});
+
+/** What `bureau.agents.try` started: the throwaway chat, and the name its agent runs under. */
+export type TriedAgent = z.infer<typeof triedAgentSchema>;
+
+/**
+ * Starts a throwaway chat with a definition that is not saved (`bureau.agents.try`, COR-1911) and
+ * sends it `message`. Nothing is written: no agent file, no memory, and the chat is left out of the
+ * chat list. The agent lives for that chat alone, so deleting the chat (`deleteContext`) ends it.
+ * A definition the Bureau would refuse as a file is an `Unprocessable` fault naming each field.
+ */
+export async function tryAgent(
+  definition: AgentDefinitionInput,
+  message: string,
+  options?: Options,
+): Promise<TriedAgent> {
+  return triedAgentSchema.parse(
+    await callBureau('bureau.agents.try', { definition, message }, options),
   );
 }
 

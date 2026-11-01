@@ -14,6 +14,11 @@ export function agentEditPath(name: string): string {
   return `${agentPath(name)}/edit`;
 }
 
+/** The form for a new agent filled from the agent `name`: Duplicate. */
+export function agentDuplicatePath(name: string): string {
+  return `/agents/new?from=${encodeURIComponent(name)}`;
+}
+
 /** What an agent remembers. */
 export function agentMemoryPath(name: string): string {
   return `${agentPath(name)}/memories`;

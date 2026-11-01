@@ -25,6 +25,7 @@
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, AGENTS_COPY, CHAT_COPY } from '../../app/copy.ts';
   import {
+    agentDuplicatePath,
     agentEditPath,
     agentMemoryPath,
     agentPath,
@@ -118,6 +119,8 @@
   }));
 
   const editPath = agentEditPath(id);
+  // Duplicate on an agent that is not a plugin's opens the form for a new agent filled from it.
+  const duplicatePath = agentDuplicatePath(id);
   const settingsPath = `${agentPath(id)}?tab=settings`;
   const memoryPath = agentMemoryPath(id);
 
@@ -173,7 +176,7 @@
 {/snippet}
 
 {#snippet headerActions()}
-  <!-- An agent defined in code has no file, so there is nothing to edit. -->
+  <!-- An agent defined in code has no file, so there is nothing to edit; it can still be duplicated. -->
   {#if plugin !== null}
     <Button
       data-changes
@@ -182,12 +185,21 @@
       loading={duplicate.isPending}
       onclick={() => duplicate.mutate()}>{AGENT_PAGE_COPY.plugin.duplicate}</Button
     >
-  {:else if agent?.kind === 'file'}
+  {:else}
+    {#if agent?.kind === 'file'}
+      <Button
+        href={router.href(editPath)}
+        variant="secondary"
+        size="sm"
+        onclick={(event) => goTo(event, editPath)}>{AGENT_EDITOR_COPY.editAction}</Button
+      >
+    {/if}
+    <!-- Nothing is written here: the copy is named and created in the form. -->
     <Button
-      href={router.href(editPath)}
+      href={router.href(duplicatePath)}
       variant="secondary"
       size="sm"
-      onclick={(event) => goTo(event, editPath)}>{AGENT_EDITOR_COPY.editAction}</Button
+      onclick={(event) => goTo(event, duplicatePath)}>{AGENT_PAGE_COPY.duplicate}</Button
     >
   {/if}
   <Button

@@ -309,6 +309,50 @@ export const NOT_FOUND_ROUTE_COPY = {
 /** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:agent/edit`). */
 export const AGENT_EDITOR_COPY = {
   createHeading: 'New agent',
+  /** The name a copy of an agent starts with. */
+  copyName: (name: string): string => `${name} copy`,
+  /** Duplicate (`/agents/new?from=`): what the page says about the agent it copies. */
+  copy: {
+    /** The line under the heading of a form filled from another agent. */
+    from: (agent: string): string =>
+      `Copied from ${agent}. Nothing is saved until you create the agent: name it, change what you like, then create it.`,
+    /** What the page says when the agent to copy cannot be read, or has nothing to copy. */
+    sourceFailed: {
+      title: 'This agent could not be copied',
+      description:
+        'The agent could not be read, or it has no usable definition. Check that it exists and its file is valid, then try again.',
+    },
+    /** The tools of the original the catalog does not offer, so the copy leaves them out. */
+    droppedTools: (tools: readonly string[]): string =>
+      `${tools.length === 1 ? 'This tool is' : 'These tools are'} not offered by this installation, so the copy leaves ${tools.length === 1 ? 'it' : 'them'} out: ${tools.join(', ')}.`,
+  },
+  /**
+   * Try it (COR-1911): a throwaway chat with the definition as it stands in the form, saved or
+   * not. It writes no file and no memory, and ends when the drawer closes or the page is left.
+   */
+  try: {
+    action: 'Try it',
+    title: 'Try this agent',
+    description:
+      'Chat with the agent as the form describes it now. No agent file or memory is saved, and the chat is removed when you close this. Tools are real: a tool that runs without asking really runs, with whatever effect it has.',
+    /** Said when the agent names reference documents, which a trial runs without. */
+    leftOut: (documents: readonly string[]): string =>
+      `This agent reads ${documents.length === 1 ? 'a document' : 'documents'} that ${documents.length === 1 ? 'is' : 'are'} not available in a trial, so the trial runs without ${documents.length === 1 ? 'it' : 'them'}: ${documents.join(', ')}.`,
+    /** Said when the agent stopped to ask before a tool, which a trial cannot answer. */
+    approvalEnded:
+      'The agent stopped to ask before using a tool, and a trial cannot take that answer, so the trial ended. Set the tool to run without asking, or save the agent and chat with it.',
+    messageLabel: 'First message',
+    messagePlaceholder: 'Say something to the agent',
+    send: 'Start chatting',
+    chatLabel: 'Trial chat',
+    startOver: 'Start over',
+    close: 'End trial',
+    /** Said when the form has changed since the trial chat started. */
+    changed: 'The form changed after this chat started, so the agent here is the earlier version.',
+    notRemoved: 'The trial chat could not be removed. It is left out of your chat list.',
+    forbidden: 'This installation does not let you try agents.',
+    failed: 'The agent could not be tried',
+  },
   editHeading: (name: string): string => `Edit ${name}`,
   /** The accessible name of the form. */
   formLabel: 'Agent definition',
@@ -2131,6 +2175,11 @@ export const AGENT_PAGE_COPY = {
     filteredDescription: 'None of this agent’s chats match these filters.',
     clearFilters: 'Clear filters',
   },
+  /**
+   * Duplicate on an agent defined in code or kept in a file: opens the form for a new agent filled
+   * from it. The copy is named there, so nothing exists until it is created.
+   */
+  duplicate: 'Duplicate',
   /** A plugin's agent: read-only, with Duplicate to make a copy the owner can edit (COR-1873). */
   plugin: {
     duplicate: 'Duplicate',
@@ -2210,6 +2259,8 @@ export const AGENT_PAGE_COPY = {
     modelLabel: 'Model',
     modelsLabel: 'Models it can be switched to',
     stepLimitLabel: 'Step limit',
+    /** The step limit of an agent whose file sets none: Operative's default applies. */
+    stepLimitDefault: (steps: number): string => `Default (${String(steps)} steps)`,
     none: 'No limit',
     notSet: 'Not set',
     builtIn: 'This agent is built in, so its settings cannot be changed here.',

@@ -1,7 +1,8 @@
 /**
  * What the Settings tab shows of an agent, put as words: the model and the models a chat may be
  * switched to, and, for an agent with a file, its step limit. A limit the file does not set is
- * `null`, which the tab says as "No limit".
+ * `null`, which the tab says as the default Operative applies (`DEFAULT_STEP_LIMIT`), never as no
+ * limit: a run whose agent sets none still stops at that default.
  */
 import type { AgentDetail } from '../../lib/agent-definitions.ts';
 

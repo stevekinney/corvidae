@@ -160,6 +160,9 @@ export type ModelContext = {
   readonly restrictions?: ModelRestrictions | undefined;
 };
 
+/** The fields of an agent definition a form is filled from: a file agent's, or a copy's. */
+export type DefinitionSeed = NonNullable<AgentDetail['definition']>;
+
 export class AgentEditorState {
   readonly mode: 'create' | 'edit';
   /** The identifier of the agent being edited. A new agent has none until it is named. */
@@ -211,6 +214,23 @@ export class AgentEditorState {
    */
   readonly #toolApproval: Readonly<Record<string, ToolApproval>> | null;
 
+  /**
+   * The documents the file's `references` name, beside it. A save of an existing agent leaves them
+   * to the file (an update that omits `references` keeps them); a copy is created with them, since it
+   * lands in the directory they sit in (a plugin's agent is refused by the Bureau); a trial runs
+   * without them, because there is no file for them to sit beside.
+   */
+  readonly references: readonly string[];
+
+  /** The tools a copy was seeded with, before the catalog's offer was applied. */
+  #seededTools: readonly string[] = [];
+
+  /**
+   * What the file says about retries, compaction and run hooks, which the editor shows no control
+   * for: carried through a save, and into a copy.
+   */
+  readonly #carried: Pick<AgentDefinitionInput, 'retry' | 'compaction' | 'hooks'>;
+
   /** What the person typed into the identifier field, or `null` while it follows the name. */
   #typedIdentifier = $state<string | null>(null);
   /** The identifier the Bureau refused, and why, so the answer goes when the identifier changes. */
@@ -224,15 +244,22 @@ export class AgentEditorState {
     catalog: AgentCatalog,
     detail: AgentDetail | undefined,
     context: ModelContext,
+    seed?: DefinitionSeed,
   ) {
     this.mode = mode;
     this.toolChoices = catalog.tools;
-    const definition = detail?.definition ?? null;
+    const definition = seed ?? detail?.definition ?? null;
     this.#editedId = detail?.id;
     this.skillDescriptors = definition?.skillDescriptors ?? [];
     this.models = definition?.models ?? null;
     this.#warnAt = definition?.costBudget?.warnAt;
     this.#toolApproval = definition?.toolApproval ?? null;
+    this.references = definition?.references ?? [];
+    this.#carried = {
+      ...(definition?.retry == null ? {} : { retry: definition.retry }),
+      ...(definition?.compaction == null ? {} : { compaction: definition.compaction }),
+      ...(definition?.hooks == null ? {} : { hooks: definition.hooks }),
+    };
     this.#writtenModel = definition?.model ?? '';
     // The option the file's model names. A model the catalog lacks stays the selection under the
     // name the file wrote, so a save does not change it for another.
@@ -251,8 +278,13 @@ export class AgentEditorState {
     }
     this.name = definition.name;
     this.description = definition.description ?? '';
-    this.model = this.#writtenModelOption;
+    // A copy of an agent that names no model (a scripted one) starts on the first model offered.
+    this.model =
+      this.#writtenModelOption === ''
+        ? firstAvailableModel(this.modelGroups)
+        : this.#writtenModelOption;
     this.tools = [...definition.tools];
+    if (mode === 'create') this.#seededTools = definition.tools;
     this.instructions = definition.instructions;
     this.hash = detail?.hash ?? null;
     this.a2a = definition.a2a;
@@ -275,6 +307,24 @@ export class AgentEditorState {
   /** A form for a new agent, with the first model that can be chosen. */
   static create(catalog: AgentCatalog, context: ModelContext = {}): AgentEditorState {
     return new AgentEditorState('create', catalog, undefined, context);
+  }
+
+  /**
+   * A form for a new agent filled from `seed`, the definition of an agent being duplicated: a file
+   * agent's, or a built-in agent's `codeDefinition` read as one (`agent-copy.ts`). Nothing is
+   * written until it is saved, and the copy has no hash, so a save creates it. The identifier
+   * starts as `identifier` (empty follows the name), which the person may change, and a taken one
+   * is refused as for any new agent.
+   */
+  static copy(
+    seed: DefinitionSeed,
+    identifier: string,
+    catalog: AgentCatalog,
+    context: ModelContext = {},
+  ): AgentEditorState {
+    const state = new AgentEditorState('create', catalog, undefined, context, seed);
+    if (identifier !== '') state.#typedIdentifier = identifier;
+    return state;
   }
 
   /** A form filled from an agent file that loaded. */
@@ -325,6 +375,15 @@ export class AgentEditorState {
     );
   }
 
+  /**
+   * The tools a copy was seeded with and the catalog does not offer, which a save leaves out. Empty
+   * for a form that was not seeded, and for an agent whose tools are all offered.
+   */
+  get droppedTools(): readonly string[] {
+    const offered = new Set(this.toolChoices.map((tool) => tool.name));
+    return this.#seededTools.filter((tool) => !offered.has(tool));
+  }
+
   /** Whether the catalog holds any model at all. */
   get hasModels(): boolean {
     return this.#catalogHasModels;
@@ -338,6 +397,14 @@ export class AgentEditorState {
   /** Why each limit field cannot be saved as typed, in words; a field with nothing wrong has no entry. */
   get limitErrors(): Readonly<Partial<Record<LimitField, string>>> {
     return limitErrorsOf(this);
+  }
+
+  /**
+   * Whether the form holds what Try it needs: a model, and limits that parse. The identifier is not
+   * needed, because nothing is saved.
+   */
+  get canTry(): boolean {
+    return this.hasModels && this.model !== '' && Object.keys(this.limitErrors).length === 0;
   }
 
   /** Whether the form holds what a save needs. A save also waits for any request in flight. */
@@ -392,8 +459,21 @@ export class AgentEditorState {
     return kept.length === 0 ? null : Object.fromEntries(kept);
   }
 
-  /** The definition to write: the form's fields and the carried skill descriptors and models. */
+  /**
+   * The definition to write: the form's fields and the carried skill descriptors and models. A copy
+   * carries the original's `references`; an update leaves them out, which keeps the file's.
+   */
   toDefinition(): AgentDefinitionInput {
+    return {
+      ...this.toTryDefinition(),
+      ...(this.mode === 'create' && this.references.length > 0
+        ? { references: this.references }
+        : {}),
+    };
+  }
+
+  /** The definition to try: the form's fields without `references`, which `bureau.agents.try` refuses. */
+  toTryDefinition(): AgentDefinitionInput {
     const name = this.name.trim();
     const offered = this.toolChoices.map((tool) => tool.name);
     const chosen = offered.filter((tool) => this.tools.includes(tool));
@@ -406,6 +486,7 @@ export class AgentEditorState {
       tools: chosen,
       skillDescriptors: this.skillDescriptors,
       a2a: this.a2a,
+      ...this.#carried,
       ...(toolApproval === undefined ? {} : { toolApproval }),
       ...this.#limits(),
       instructions: this.instructions,
