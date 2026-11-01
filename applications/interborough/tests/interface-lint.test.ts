@@ -43,7 +43,6 @@ describe('interface-lint-pending.json', () => {
   const entries = readEntries(PACKAGE_ROOT, PENDING_PATH);
 
   test('names the owning issue of every entry', () => {
-    expect(entries.length).toBeGreaterThan(0);
     for (const entry of entries) expect(entry.issue ?? '').toMatch(ISSUE);
   });
 

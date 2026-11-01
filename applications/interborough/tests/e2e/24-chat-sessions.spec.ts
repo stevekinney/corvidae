@@ -21,6 +21,13 @@ import { expectEngineMissesForRuns } from './task-support.ts';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
+/**
+ * The New chat action of the empty Chat page. A fresh host also shows the first-run checklist,
+ * whose last step links to /chats/new; the page's own action is the primary button.
+ */
+const newChatAction = (page: Page) =>
+  page.getByRole('link', { name: 'New chat' }).and(page.locator('[data-cinder-variant="primary"]'));
+
 // A new chat with no `?agent=` starts with the host's default agent, the barrier agent
 // (`E2E_DEFAULT_AGENT`), which holds its run until the barrier is released. A spec that sends to it
 // leaves that run held, and a later spec that counts the runs held would read it.
@@ -102,7 +109,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
         VIEW_COPY.chat.empty?.title ?? '',
       );
-      await expect(page.getByRole('link', { name: 'New chat' })).toBeVisible();
+      await expect(newChatAction(page)).toBeVisible();
       // The welcome names the agents a chat can start with, each identifier in monospace.
       const agents = page.getByTestId('welcome-agents');
       await expect(agents).toContainText('Agents:');
@@ -123,7 +130,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     page,
   }) => {
     await page.goto('/chats');
-    await page.getByRole('link', { name: 'New chat' }).click();
+    await newChatAction(page).click();
     await expect(page).toHaveURL(/\/chats\/new$/);
 
     await send(page, chatTitle);

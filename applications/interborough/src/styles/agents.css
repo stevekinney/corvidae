@@ -9,14 +9,6 @@
   min-width: 0;
 }
 
-.ib-agents__header {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2) var(--cinder-space-3);
-  align-items: center;
-  justify-content: space-between;
-}
-
 .ib-agent-row__actions {
   display: flex;
   flex-wrap: wrap;

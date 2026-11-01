@@ -74,30 +74,40 @@ for (const width of WIDTHS) {
     checkA11y,
   }) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/settings');
-    await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
 
     const published = (
       (await bureauCall(request, 'bureau.settings.schema', {})) as {
         schema: { properties: Record<string, unknown> };
       }
     ).schema.properties;
-    // The model policy has a section of its own, and the decisions are on Settings › Models.
+    // The model policy has a section of its own, the decisions are on Settings › Models, and the
+    // A2A push settings are on Settings › A2A; every other key is on the General page.
     const keys = Object.keys(published).filter(
       (key) => key !== 'modelPolicy' && !key.startsWith('decisions.'),
     );
-    await expect(page.locator('[data-setting]')).toHaveCount(keys.length);
-    for (const key of keys) {
-      // A value that has none is Not set, with a button to set it; every other has a control.
-      await expect(
-        settingRow(page, key)
-          .locator('button, input, select, textarea, [role="textbox"]')
-          .filter({ visible: true })
-          .first(),
-      ).toBeVisible();
+    const sections = [
+      { path: '/settings', keys: keys.filter((key) => !key.startsWith('a2a.')) },
+      { path: '/settings/a2a', keys: keys.filter((key) => key.startsWith('a2a.')) },
+    ];
+    // Every published key is drawn on exactly one of the pages checked.
+    expect(sections.flatMap((section) => section.keys)).toEqual(keys);
+
+    for (const section of sections) {
+      await page.goto(section.path);
+      await expect(page.locator('[data-view="settings"]')).toHaveAttribute('data-state', 'ready');
+      await expect(page.locator('[data-setting]')).toHaveCount(section.keys.length);
+      for (const key of section.keys) {
+        // A value that has none is Not set, with a button to set it; every other has a control.
+        await expect(
+          settingRow(page, key)
+            .locator('button, input, select, textarea, [role="textbox"]')
+            .filter({ visible: true })
+            .first(),
+        ).toBeVisible();
+      }
+      await expect(page.getByText(/unsupported/i)).toHaveCount(0);
+      await checkA11y(`settings ${section.path} at ${width}px`);
     }
-    await expect(page.getByText(/unsupported/i)).toHaveCount(0);
-    await checkA11y(`settings at ${width}px`);
   });
 }
 
