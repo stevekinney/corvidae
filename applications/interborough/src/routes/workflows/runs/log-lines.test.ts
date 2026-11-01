@@ -2,7 +2,7 @@ import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import LogLines from './log-lines.svelte';
-import type { RunLogLine } from './step-logs.ts';
+import type { RunLogLine } from './run-logs-data.ts';
 
 function line(overrides: Partial<RunLogLine>): RunLogLine {
   return {
@@ -45,5 +45,20 @@ describe('LogLines', () => {
     const time = container.querySelector('time');
     expect(time?.getAttribute('datetime')).toBe('2026-10-31T12:00:00.007Z');
     expect(container.querySelector('.ib-log-lines__attributes')).toBeNull();
+  });
+
+  test('marks a line the log cut short, and only that line', () => {
+    const { getAllByRole } = render(LogLines, {
+      props: {
+        label: 'Log lines',
+        lines: [
+          line({ sequence: 0, message: 'whole' }),
+          line({ sequence: 1, message: 'cut', truncated: true }),
+        ],
+      },
+    });
+    const items = getAllByRole('listitem');
+    expect(items[0]?.textContent).not.toContain('Cut short');
+    expect(items[1]?.textContent).toContain('Cut short');
   });
 });

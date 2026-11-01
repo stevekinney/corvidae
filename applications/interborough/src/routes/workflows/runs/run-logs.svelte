@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
-   * Every line the run logged, under the run's Details, oldest first. The same lines appear in the
-   * step each was logged before; this is the whole log, including the lines after the last step.
-   * They are read from the engine's log store, which keeps them with the run, so a finished run
+   * Every line the run logged, under the run's Details, oldest first. It is the run's whole log: a
+   * line is not placed under a step, because a line's step and a timeline entry's step count
+   * different things (COR-1988). A line cut short at the store is marked, and lines removed by the
+   * per-run cap are counted in a note. They are read from the engine's log store, which keeps them with the run, so a finished run
    * still has them after the host restarts. Closed until asked for, because a busy run logs a lot.
    */
   import { Alert, Collapsible, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
@@ -10,13 +11,13 @@
 
   import { RETRY_LABEL, RUN_LOGS_COPY } from '../../../app/copy.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
-  import LogLines from '../detail/steps/log-lines.svelte';
+  import LogLines from './log-lines.svelte';
   import {
     LOGS_OPERATION,
     fetchRunLogs,
     workflowLogsQueryKey,
     type LogsClient,
-  } from '../detail/steps/step-logs.ts';
+  } from './run-logs-data.ts';
 
   interface RunLogsProps {
     readonly client: LogsClient;

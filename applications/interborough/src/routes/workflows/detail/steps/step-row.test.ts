@@ -29,14 +29,18 @@ function row(overrides: Partial<{ selected: boolean; open: () => void }> = {}) {
 
 describe('StepRow', () => {
   test('names the step in words and in code, with how long it took', () => {
-    const { getByText } = render(StepRow, { props: { entry: entry(), bar, row: row() } });
+    const { getByText } = render(StepRow, {
+      props: { entry: entry(), bar, open: true, row: row() },
+    });
     expect(getByText('Charge card')).not.toBeNull();
     expect(getByText('chargeCard')).not.toBeNull();
     expect(getByText('18ms')).not.toBeNull();
   });
 
   test('places the bar by the step’s start and duration, as a share of the run', () => {
-    const { container } = render(StepRow, { props: { entry: entry(), bar, row: row() } });
+    const { container } = render(StepRow, {
+      props: { entry: entry(), bar, open: true, row: row() },
+    });
     const drawn = container.querySelector<HTMLElement>('.ib-step-row__bar');
     expect(drawn?.getAttribute('style')).toContain('inset-inline-start: 25%');
     expect(drawn?.getAttribute('style')).toContain('inline-size: 50%');
@@ -47,7 +51,7 @@ describe('StepRow', () => {
 
   test('draws a track and no bar for a step with no start time, and says so', () => {
     const { container } = render(StepRow, {
-      props: { entry: entry(), bar: undefined, row: row() },
+      props: { entry: entry(), bar: undefined, open: true, row: row() },
     });
     expect(container.querySelector('.ib-step-row__bar')).toBeNull();
     expect(container.querySelector('[data-waterfall]')?.getAttribute('aria-label')).toBe(
@@ -60,6 +64,7 @@ describe('StepRow', () => {
       props: {
         entry: entry({ status: 'running', duration: undefined }),
         bar: { ...bar, open: true },
+        open: true,
         row: row(),
       },
     });
@@ -67,10 +72,24 @@ describe('StepRow', () => {
     expect(getByText('running')).not.toBeNull();
   });
 
+  test('shows a running entry the run has left as ended, with a neutral bar', () => {
+    const { container, getByRole, queryByText } = render(StepRow, {
+      props: {
+        entry: entry({ status: 'running', duration: undefined }),
+        bar: { ...bar, open: false },
+        open: false,
+        row: row(),
+      },
+    });
+    expect(getByRole('img', { name: 'Ended' })).not.toBeNull();
+    expect(queryByText('running')).toBeNull();
+    expect(container.querySelector('.ib-step-row__bar')?.getAttribute('data-status')).toBe('ended');
+  });
+
   test('opens the step when it is chosen', async () => {
     let opened = 0;
     const { getByRole } = render(StepRow, {
-      props: { entry: entry(), bar, row: row({ open: () => (opened += 1) }) },
+      props: { entry: entry(), bar, open: true, row: row({ open: () => (opened += 1) }) },
     });
     await fireEvent.click(getByRole('button', { name: /Charge card/ }));
     expect(opened).toBe(1);

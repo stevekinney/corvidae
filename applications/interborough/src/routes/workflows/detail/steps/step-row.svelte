@@ -15,13 +15,15 @@
   interface StepRowProps {
     readonly entry: WorkflowTimelineEntry;
     readonly bar: WaterfallBar | undefined;
+    /** Whether the run is still in this step; false for a `running` entry it has left. */
+    readonly open: boolean;
     readonly row: ListDetailRowContext;
   }
 
-  let { entry, bar, row }: StepRowProps = $props();
+  let { entry, bar, open, row }: StepRowProps = $props();
 
   const name = $derived(stepName(entry));
-  const status = $derived(stepStatus(entry.status));
+  const status = $derived(stepStatus(entry.status, open));
   const duration = $derived(
     bar?.open === true
       ? RUN_STEPS_COPY.runningDuration
@@ -60,7 +62,7 @@
       {#if bar !== undefined}
         <span
           class="ib-step-row__bar"
-          data-status={entry.status}
+          data-status={entry.status === 'running' && !open ? 'ended' : entry.status}
           data-open={bar.open ? '' : undefined}
           data-instant={bar.instant ? '' : undefined}
           style={`inset-inline-start: ${bar.offset}%; inline-size: ${bar.width}%`}
@@ -116,7 +118,8 @@
     background: var(--cinder-accent-solid);
   }
 
-  .ib-step-row__bar[data-status='cancelled'] {
+  .ib-step-row__bar[data-status='cancelled'],
+  .ib-step-row__bar[data-status='ended'] {
     background: var(--cinder-text-disabled);
   }
 

@@ -6,7 +6,8 @@
    */
   import { Badge, type BadgeVariant } from '@lostgradient/cinder';
 
-  import type { RunLogLine } from './step-logs.ts';
+  import { RUN_LOGS_COPY } from '../../../app/copy.ts';
+  import type { RunLogLine } from './run-logs-data.ts';
 
   interface LogLinesProps {
     readonly lines: readonly RunLogLine[];
@@ -45,6 +46,11 @@
           >{clockTime(line.timestamp)}</time
         >
         <Badge variant={LEVEL_VARIANT[line.level]} size="xs">{line.level}</Badge>
+        {#if line.truncated}
+          <span title={RUN_LOGS_COPY.truncatedTitle}>
+            <Badge variant="neutral" size="xs">{RUN_LOGS_COPY.truncated}</Badge>
+          </span>
+        {/if}
       </span>
       <span class="ib-log-lines__message">{line.message}</span>
       {#if attributes !== undefined}

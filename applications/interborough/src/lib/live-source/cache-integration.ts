@@ -75,7 +75,7 @@ export function workflowFinalizerKey(workflowId: string): QueryKey {
 /** Every run's log lines (`workflowLogsQueryKey`), asked again after a gap in the feed. */
 export const WORKFLOWS_LOGS_KEY_PREFIX: QueryKey = ['workflows', 'logs'];
 
-/** Matches `workflowLogsQueryKey(id)` (`../../routes/workflows/detail/steps/step-logs.ts`) — kept as a literal for the same reason. */
+/** Matches `workflowLogsQueryKey(id)` (`../../routes/workflows/runs/run-logs-data.ts`) — kept as a literal for the same reason. */
 export function workflowLogsKey(workflowId: string): QueryKey {
   return ['workflows', 'logs', workflowId];
 }

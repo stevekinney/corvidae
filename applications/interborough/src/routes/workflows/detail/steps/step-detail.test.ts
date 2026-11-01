@@ -4,7 +4,6 @@ import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
 import StepDetail from './step-detail.svelte';
-import type { RunLogLine } from './step-logs.ts';
 import type { WaterfallBar } from './step-waterfall.ts';
 
 type EntryOverrides = { [K in keyof WorkflowTimelineEntry]?: WorkflowTimelineEntry[K] | undefined };
@@ -26,22 +25,10 @@ function entry(overrides: EntryOverrides = {}): WorkflowTimelineEntry {
 
 const bar: WaterfallBar = { offset: 0, width: 10, open: false, instant: false, startedAfter: 5 };
 
-function logLine(sequence: number, message: string): RunLogLine {
-  return {
-    sequence,
-    step: 1,
-    level: 'warn',
-    message,
-    timestamp: 1_000,
-    workflowType: 'work',
-    truncated: false,
-  };
-}
-
 describe('StepDetail', () => {
   test('opens with the name and one status line: the word, when it started, how long it took, and the raw name', () => {
     const { getByRole, container } = render(StepDetail, {
-      props: { entry: entry(), bar, logs: [] },
+      props: { entry: entry(), bar, open: true },
     });
     expect(getByRole('heading', { level: 3, name: 'Charge card' })).not.toBeNull();
     const status = container.querySelector('.ib-step-detail__status')?.textContent ?? '';
@@ -52,7 +39,7 @@ describe('StepDetail', () => {
   });
 
   test('shows input and output side by side, indented', () => {
-    const { container } = render(StepDetail, { props: { entry: entry(), bar, logs: [] } });
+    const { container } = render(StepDetail, { props: { entry: entry(), bar, open: true } });
     const fields = container.querySelectorAll('.ib-step-detail__fields > section');
     expect(fields).toHaveLength(2);
     expect(fields[0]?.textContent).toContain('Input');
@@ -63,7 +50,11 @@ describe('StepDetail', () => {
 
   test('labels the output Error for a failed step', () => {
     const { container } = render(StepDetail, {
-      props: { entry: entry({ status: 'failed', outputSummary: 'card declined' }), bar, logs: [] },
+      props: {
+        entry: entry({ status: 'failed', outputSummary: 'card declined' }),
+        bar,
+        open: true,
+      },
     });
     const field = container.querySelectorAll('.ib-step-detail__fields > section')[1];
     expect(field?.textContent).toContain('Error');
@@ -75,7 +66,7 @@ describe('StepDetail', () => {
       props: {
         entry: entry({ status: 'running', outputSummary: undefined, duration: undefined }),
         bar: { ...bar, open: true },
-        logs: [],
+        open: true,
       },
     });
     expect(getByText('Nothing was kept.')).not.toBeNull();
@@ -109,7 +100,7 @@ describe('StepDetail', () => {
           branchesOmitted: 3,
         }),
         bar,
-        logs: [],
+        open: true,
       },
     });
     const branches = container.querySelectorAll('.ib-step-detail__branch');
@@ -127,28 +118,29 @@ describe('StepDetail', () => {
       props: {
         entry: entry({ operationType: 'parallel', operationLabel: 'parallel' }),
         bar,
-        logs: [],
+        open: true,
       },
     });
     expect(getByText('This step’s branches were not reported.')).not.toBeNull();
   });
 
-  test('shows the lines logged just before the step', () => {
+  test('says a running entry the run has left has ended, not that it is running', () => {
     const { container } = render(StepDetail, {
-      props: { entry: entry(), bar, logs: [logLine(0, 'about to charge')] },
+      props: {
+        entry: entry({ status: 'running', duration: undefined }),
+        bar: { ...bar, open: false },
+        open: false,
+      },
     });
-    expect(container.textContent).toContain('about to charge');
-    expect(container.textContent).toContain('Logged just before this step ran.');
-  });
-
-  test('has no Logs section for a step with no lines', () => {
-    const { queryByText } = render(StepDetail, { props: { entry: entry(), bar, logs: [] } });
-    expect(queryByText('Logged just before this step ran.')).toBeNull();
+    const status = container.querySelector('.ib-step-detail__status')?.textContent ?? '';
+    expect(status).toContain('Ended');
+    expect(status).not.toContain('Running');
+    expect(status).not.toContain('still going');
   });
 
   test('has no start to show for a step with no bar', () => {
     const { container } = render(StepDetail, {
-      props: { entry: entry({ duration: undefined }), bar: undefined, logs: [] },
+      props: { entry: entry({ duration: undefined }), bar: undefined, open: true },
     });
     expect(container.querySelector('.ib-step-detail__status')?.textContent).toContain(
       'no start time kept',
@@ -157,7 +149,9 @@ describe('StepDetail', () => {
 
   test('renders what the step offers to do', () => {
     const actions = createRawSnippet(() => ({ render: () => '<button>Complete…</button>' }));
-    const { getByRole } = render(StepDetail, { props: { entry: entry(), bar, logs: [], actions } });
+    const { getByRole } = render(StepDetail, {
+      props: { entry: entry(), bar, open: true, actions },
+    });
     expect(getByRole('button', { name: 'Complete…' })).not.toBeNull();
   });
 });

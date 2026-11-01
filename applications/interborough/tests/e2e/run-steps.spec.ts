@@ -2,7 +2,7 @@
  * COR-1860: a run's steps, logs, related runs and checkpoint replay.
  *
  * - Steps are a list with a waterfall bar each, and the open step beside it with input and output
- *   side by side and the lines the run logged just before it ran. The whole log is under Details.
+ *   side by side. The run's whole log, oldest first, is under Details.
  * - Related runs, in the Details rail, list the run that started this one, the runs it started and
  *   the runs started alongside it, with a topology that opens in a drawer.
  * - A checkpoint's replay has no colored edge, and says it is a replay in an Alert.
@@ -85,25 +85,19 @@ test('each step has a waterfall bar placed by its start, and the open step shows
   await checkA11y('run steps — a step open');
 });
 
-test('a step shows the lines logged just before it, and the whole log is under Details', async ({
+test('the whole log is under Details, and no step carries a log of its own', async ({
   page,
   request,
 }) => {
   const timeline = await timelineOf(request, RUN_STEPS_RUN_ID);
-  const [firstStep, secondStep] = timeline;
-  if (firstStep === undefined || secondStep === undefined) throw new Error('Too few steps seeded.');
+  const [firstStep] = timeline;
+  if (firstStep === undefined) throw new Error('Too few steps seeded.');
   await page.goto(`/runs/${RUN_STEPS_RUN_ID}`);
 
   await openStep(page, firstStep.step);
-  const detail = page.locator('article[data-step]');
-  await expect(detail.getByText('run started')).toBeVisible();
-  await expect(detail.getByText('prepared, about to settle')).toHaveCount(0);
+  await expect(page.locator('article[data-step]').getByText('run started')).toHaveCount(0);
 
-  await openStep(page, secondStep.step);
-  await expect(detail.getByText('prepared, about to settle')).toBeVisible();
-  await expect(detail.getByText('run started')).toHaveCount(0);
-
-  // The whole log, in the rail: it includes the line logged after the last step, which no step shows.
+  // The whole log, in the rail: every line the run logged, including the one logged after the last step.
   const logs = page.locator('[data-section="logs"]');
   await logs.getByRole('button', { name: /^Logs/ }).click();
   const lines = logs.getByRole('list', { name: 'Log lines' }).getByRole('listitem');

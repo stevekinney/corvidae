@@ -1,11 +1,13 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 import { flushSync } from 'svelte';
 
 import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import type { FleetEventFrame } from '../../../lib/live-source/fleet-event-source.svelte.ts';
+import { router } from '../../../lib/router.svelte.ts';
 import TimelineTabHarness from './timeline-tab.test-harness.svelte';
 import { WorkflowLiveObservations } from './timeline/workflow-live-observations.svelte.ts';
 
@@ -80,7 +82,25 @@ function paginationControls(
   return within(getByRole('navigation', { name: 'Steps pagination' }));
 }
 
+/** Opens the run page at `search`, on a window with the real origin `history` needs. */
+function openAt(search: string): void {
+  if (window instanceof Window) window.happyDOM.setURL('http://localhost/');
+  router.navigate(`/runs/wf-deep-link${search}`, { replace: true });
+}
+
+afterEach(() => openAt(''));
+
 describe('TimelineTab pagination', () => {
+  test('opens a step named in the address even when it is on a later page', async () => {
+    openAt('?step=450');
+    const { getByText, container } = renderTimeline('wf-deep-link', entries(501));
+
+    await waitFor(() => {
+      expect(getByText('Page 3 of 3')).not.toBeNull();
+      expect(container.querySelector('article[data-step="450"]')).not.toBeNull();
+    });
+  });
+
   test('renders no pagination landmark at or below the threshold', async () => {
     const { getByText, queryByRole } = renderTimeline('wf-unpaginated', entries(3));
 

@@ -1,7 +1,12 @@
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { MINIMUM_BAR_WIDTH, stepWaterfall, waterfallOrigin } from './step-waterfall.ts';
+import {
+  MINIMUM_BAR_WIDTH,
+  openStepNumbers,
+  stepWaterfall,
+  waterfallOrigin,
+} from './step-waterfall.ts';
 
 function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry {
   return {
@@ -104,5 +109,86 @@ describe('stepWaterfall', () => {
       now: 2_000,
     });
     expect(bars.get(0)?.startedAfter).toBe(0);
+  });
+
+  test('closes a running entry once a later entry exists, ending its bar where the next began', () => {
+    // A run that parked on a signal and resumed: step 0 stayed `running`, and the run is still going.
+    const bars = stepWaterfall(
+      [
+        entry({ step: 0, timestamp: 1_000, status: 'running' }),
+        entry({ step: 1, timestamp: 1_400, duration: 100 }),
+        entry({ step: 2, timestamp: 1_500, duration: 500 }),
+      ],
+      { runStartedAt: 1_000, runStatus: 'running', now: 61_500 },
+    );
+    expect(bars.get(0)).toMatchObject({ open: false, instant: false, offset: 0 });
+    // 400 of the 1,000 ms the scale spans; it does not run to `now`.
+    expect(bars.get(0)?.width).toBeCloseTo(40, 5);
+  });
+
+  test('keeps the scale from growing with now when the only running entry is a stale one', () => {
+    const entries = [
+      entry({ step: 0, timestamp: 1_000, status: 'running' }),
+      entry({ step: 1, timestamp: 1_400, duration: 100 }),
+    ];
+    const early = stepWaterfall(entries, { runStartedAt: 1_000, runStatus: 'running', now: 2_000 });
+    const late = stepWaterfall(entries, {
+      runStartedAt: 1_000,
+      runStatus: 'running',
+      now: 9_999_999,
+    });
+    expect(late.get(0)).toEqual(early.get(0));
+    expect(late.get(1)).toEqual(early.get(1));
+  });
+
+  test('closes the last running entry of a finished run, as a point in time', () => {
+    for (const runStatus of ['completed', 'failed', 'cancelled', 'timed-out']) {
+      const bars = stepWaterfall(
+        [
+          entry({ step: 0, timestamp: 1_000, duration: 500 }),
+          entry({ step: 1, timestamp: 1_500, status: 'running' }),
+        ],
+        { runStartedAt: 1_000, runStatus, now: 99_999_999 },
+      );
+      expect(bars.get(1)).toMatchObject({ open: false, instant: true, width: MINIMUM_BAR_WIDTH });
+    }
+  });
+
+  test('draws a running last step of a run that is still going up to now', () => {
+    const bars = stepWaterfall([entry({ step: 0, timestamp: 1_000, status: 'running' })], {
+      runStartedAt: 1_000,
+      runStatus: 'running',
+      now: 2_000,
+    });
+    expect(bars.get(0)).toMatchObject({ open: true });
+  });
+});
+
+describe('openStepNumbers', () => {
+  const running = (step: number) => entry({ step, status: 'running' });
+
+  test('is the last step only, and only while the run is going', () => {
+    expect(openStepNumbers([running(0), running(1)], 'running')).toEqual(new Set([1]));
+    expect(openStepNumbers([running(0), running(1)], 'suspended')).toEqual(new Set([1]));
+    expect(openStepNumbers([running(0), running(1)], undefined)).toEqual(new Set([1]));
+  });
+
+  test('is empty for a run that has finished, whatever its entries say', () => {
+    for (const status of ['completed', 'failed', 'cancelled', 'timed-out']) {
+      expect(openStepNumbers([running(0)], status).size).toBe(0);
+    }
+  });
+
+  test('does not count a settled last step, or a running one that has a duration', () => {
+    expect(openStepNumbers([entry({ step: 0 })], 'running').size).toBe(0);
+    expect(
+      openStepNumbers([entry({ step: 0, status: 'running', duration: 5 })], 'running').size,
+    ).toBe(0);
+  });
+
+  test('finds the last step whatever order the entries arrive in', () => {
+    expect(openStepNumbers([running(2), entry({ step: 0 }), running(1)], 'running')).toEqual(
+      new Set([2]),
+    );
   });
 });

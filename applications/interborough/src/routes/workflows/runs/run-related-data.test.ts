@@ -106,6 +106,16 @@ describe('fetchRelatedRuns', () => {
   });
 });
 
+describe('fetchRelatedRuns when the run is off the sibling page', () => {
+  test('does not count the run among its siblings when the parent has more children than the page holds', async () => {
+    // The parent has 51 children; the page holds three of them and not `z`.
+    const { client: source } = client({ siblingTotal: 51 });
+    const related = await fetchRelatedRuns(source, { id: 'z', parentWorkflowId: 'parent' });
+    expect(related.siblings.runs.map((run) => run.id)).toEqual(['a', 'b', 'c']);
+    expect(related.siblings.total).toBe(50);
+  });
+});
+
 describe('hasRelatedRuns', () => {
   test('is true when any side has a run and false when none does', async () => {
     const { client: source } = client();

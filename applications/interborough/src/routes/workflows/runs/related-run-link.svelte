@@ -54,6 +54,13 @@
   {/if}
   <RevisionComparisonBadge {comparison} />
   <code class="ib-related-run__id" title={run.id}>{truncateId(run.id)}</code>
+  {#if run.revision !== undefined}
+    <code
+      class="ib-related-run__id"
+      data-related-revision
+      title={RUN_RELATED_COPY.revisionTitle(run.revision)}>{truncateId(run.revision)}</code
+    >
+  {/if}
 </span>
 
 <style>

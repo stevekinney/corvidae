@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import type { RunLogLine } from '../detail/steps/step-logs.ts';
+import type { RunLogLine } from './run-logs-data.ts';
 import RunLogsHarness from './run-logs.test-harness.svelte';
 
 function line(sequence: number, message: string): RunLogLine {

@@ -43,23 +43,29 @@ describe('filterTimelineEntries', () => {
   ];
 
   test('all returns every entry', () => {
-    expect(filterTimelineEntries(entries, 'all')).toHaveLength(4);
+    expect(filterTimelineEntries(entries, 'all', new Set())).toHaveLength(4);
   });
 
   test('failed matches failed and timed-out', () => {
     const timedOut = entry({ step: 5, status: 'timed-out' });
-    const result = filterTimelineEntries([...entries, timedOut], 'failed');
+    const result = filterTimelineEntries([...entries, timedOut], 'failed', new Set());
     expect(result.map((e) => e.step)).toEqual([2, 5]);
   });
 
   test('waiting matches the steps that have begun and not ended, and no settled step', () => {
-    expect(filterTimelineEntries(entries, 'waiting').map((e) => e.step)).toEqual([3]);
+    expect(filterTimelineEntries(entries, 'waiting', new Set([3])).map((e) => e.step)).toEqual([3]);
     expect(
       filterTimelineEntries(
         [entry({ status: 'cancelled' }), entry({ status: 'completed' })],
         'waiting',
+        new Set(),
       ),
     ).toEqual([]);
+  });
+
+  test('waiting leaves out a running entry the run has left', () => {
+    // Step 3 is kept as running, but the run is not in it, so it is not among the open steps.
+    expect(filterTimelineEntries(entries, 'waiting', new Set())).toEqual([]);
   });
 });
 

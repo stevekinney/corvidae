@@ -23,24 +23,33 @@ export function timelineQuickFilterLabel(filter: TimelineQuickFilter): string {
   return QUICK_FILTER_LABEL[filter];
 }
 
-function matchesQuickFilter(entry: WorkflowTimelineEntry, filter: TimelineQuickFilter): boolean {
+function matchesQuickFilter(
+  entry: WorkflowTimelineEntry,
+  filter: TimelineQuickFilter,
+  openSteps: ReadonlySet<number>,
+): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'failed':
       return entry.status === 'failed' || entry.status === 'timed-out';
     case 'waiting':
-      return entry.status === 'running';
+      return openSteps.has(entry.step);
     default:
       return false;
   }
 }
 
+/**
+ * The entries a quick filter keeps. `openSteps` is the steps the run is still in (`openStepNumbers`),
+ * which is what Waiting means: an entry the engine kept as `running` is not waiting once the run left it.
+ */
 export function filterTimelineEntries(
   entries: readonly WorkflowTimelineEntry[],
   filter: TimelineQuickFilter,
+  openSteps: ReadonlySet<number>,
 ): WorkflowTimelineEntry[] {
-  return entries.filter((entry) => matchesQuickFilter(entry, filter));
+  return entries.filter((entry) => matchesQuickFilter(entry, filter, openSteps));
 }
 
 /**

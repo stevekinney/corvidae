@@ -112,8 +112,6 @@ export const RUN_STEPS_COPY = {
   branchesUnreported: 'This step’s branches were not reported.',
   branchOutcome: { won: 'won', lost: 'lost', fulfilled: 'finished', rejected: 'failed' } as const,
   omitted: (count: number): string => `${String(count)} more not listed`,
-  logs: 'Logs',
-  logsBefore: 'Logged just before this step ran.',
   eventsFilteredHint: 'The Events section shows only this step’s events.',
   page: (page: number, pages: number): string => `Page ${String(page)} of ${String(pages)}`,
   previous: 'Previous',
@@ -139,6 +137,9 @@ export const RUN_RELATED_COPY = {
   thisRun: 'This run',
   parentGone: 'No longer kept',
   more: (count: number): string => `${String(count)} more`,
+  partial: (shown: number, total: number): string =>
+    `Showing ${String(shown)} of ${String(total)}. Filter the workflow list by this run’s parent to see the rest.`,
+  revisionTitle: (revision: string): string => `Revision (exact executable artifact): ${revision}`,
   noneTitle: 'No related runs',
   noneDescription: 'No run started this one, and it has not started any.',
   loadFailedTitle: 'Related runs could not be read',
@@ -179,7 +180,8 @@ export const RUN_LOGS_COPY = {
   heading: 'Logs',
   count: (lines: number): string => (lines === 1 ? '1 line' : `${String(lines)} lines`),
   listLabel: 'Log lines',
-  stepListLabel: 'Log lines for this step',
+  truncated: 'Cut short',
+  truncatedTitle: 'The message was longer than the log keeps, so the end of it is missing.',
   emptyTitle: 'Nothing was logged',
   emptyDescription:
     'This run has not logged anything. Lines are kept with the run for a limited time, so an old run may have lost them.',

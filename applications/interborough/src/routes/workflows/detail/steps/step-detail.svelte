@@ -3,8 +3,7 @@
    * One step, read from the top: its name, one line of status (the dot, the word, when it started,
    * how long it took, and its name in code), then what went in and what came out side by side, the
    * branches of a step that ran several things at once, whatever the step offers to do (complete an
-   * activity, open a stream, read a worker's record), and the lines the run logged just before the
-   * step ran. Everything is open and nothing sits in a box.
+   * activity, open a stream, read a worker's record). Everything is open and nothing sits in a box.
    */
   import { StatusDot } from '@lostgradient/cinder';
   import type { WorkflowTimelineEntry } from '@lostgradient/weft';
@@ -12,8 +11,6 @@
 
   import { RUN_STEPS_COPY } from '../../../../app/copy.ts';
   import { formatDuration } from '../../../../lib/format/index.ts';
-  import LogLines from './log-lines.svelte';
-  import type { RunLogLine } from './step-logs.ts';
   import { isDegradedCoordinationEntry } from '../timeline/timeline-mapping.ts';
   import { prettySummary, stepName, stepStatus } from './step-presentation.ts';
   import type { WaterfallBar } from './step-waterfall.ts';
@@ -21,16 +18,16 @@
   interface StepDetailProps {
     readonly entry: WorkflowTimelineEntry;
     readonly bar: WaterfallBar | undefined;
-    /** The lines the run logged just before this step ran. */
-    readonly logs: readonly RunLogLine[];
-    /** What the step offers to do, rendered between the branches and the logs. */
+    /** Whether the run is still in this step; false for a `running` entry it has left. */
+    readonly open: boolean;
+    /** What the step offers to do, rendered after the branches. */
     readonly actions?: Snippet | undefined;
   }
 
-  let { entry, bar, logs, actions }: StepDetailProps = $props();
+  let { entry, bar, open, actions }: StepDetailProps = $props();
 
   const name = $derived(stepName(entry));
-  const status = $derived(stepStatus(entry.status));
+  const status = $derived(stepStatus(entry.status, open));
   const failed = $derived(entry.status === 'failed' || entry.status === 'timed-out');
   const branches = $derived(entry.operationType === 'speculate' ? entry.children : entry.branches);
   const degradedGroup = $derived(isDegradedCoordinationEntry(entry));
@@ -112,14 +109,6 @@
 
   {#if actions !== undefined}
     <div class="ib-step-detail__actions">{@render actions()}</div>
-  {/if}
-
-  {#if logs.length > 0}
-    <section class="ib-step-detail__field" aria-label={RUN_STEPS_COPY.logs}>
-      <h4 class="ib-step-detail__label">{RUN_STEPS_COPY.logs}</h4>
-      <p class="ib-step-detail__none">{RUN_STEPS_COPY.logsBefore}</p>
-      <LogLines lines={logs} label={RUN_STEPS_COPY.logs} />
-    </section>
   {/if}
 </article>
 

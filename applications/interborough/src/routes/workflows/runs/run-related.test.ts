@@ -34,6 +34,7 @@ function client(
     empty?: boolean;
     manyChildren?: number;
     kidRevision?: string;
+    childTotal?: number;
   } = {},
 ) {
   return {
@@ -63,7 +64,7 @@ function client(
           ...summary(`kid-run-id-${String(index).padStart(4, '0')}`, 'kid-type'),
           ...(options.kidRevision === undefined ? {} : { revision: options.kidRevision }),
         })),
-        total: count,
+        total: options.childTotal ?? count,
       };
     },
   } as unknown as RelatedRunsClient;
@@ -121,6 +122,25 @@ describe('RunRelated', () => {
     });
     await findByText('3 more');
     expect(container.querySelectorAll('[data-group="Started"] li')).toHaveLength(6);
+  });
+
+  test('shows the revision a related run ran against, in full on hover', async () => {
+    const { container, findByText } = render(RunRelatedHarness, {
+      props: { client: client({ kidRevision: 'rev-0123456789abcdef' }), workflow: selfRun },
+    });
+    await findByText('kid-type');
+    const revision = container.querySelector('[data-related-revision]');
+    expect(revision?.getAttribute('title')).toContain('rev-0123456789abcdef');
+    expect(revision?.textContent).not.toBe('');
+  });
+
+  test('says how many of a long list it read, and where to find the rest', async () => {
+    const { container, findByText } = render(RunRelatedHarness, {
+      props: { client: client({ manyChildren: 3, childTotal: 120 }), workflow: selfRun },
+    });
+    await findByText(/Showing 3 of 120/);
+    const note = container.querySelector('[data-group="Started"] [data-partial]');
+    expect(note?.textContent).toContain('Showing 3 of 120');
   });
 
   test('says a run has no relatives once, in one empty state, and offers no topology', async () => {

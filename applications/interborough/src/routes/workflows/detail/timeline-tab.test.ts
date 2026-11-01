@@ -5,7 +5,6 @@ import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
 
 import type { FleetEventFrame } from '../../../lib/live-source/fleet-event-source.svelte.ts';
-import type { RunLogLine } from './steps/step-logs.ts';
 import TimelineTabHarness from './timeline-tab.test-harness.svelte';
 import { timelineSelectionFor } from './timeline/timeline-selection-store.svelte.ts';
 import { WorkflowLiveObservations } from './timeline/workflow-live-observations.svelte.ts';
@@ -58,18 +57,6 @@ function inertQueryClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-function logLine(sequence: number, step: number | null, message: string): RunLogLine {
-  return {
-    sequence,
-    step,
-    level: 'info',
-    message,
-    timestamp: 1_000 + sequence,
-    workflowType: 'trip-booking-saga',
-    truncated: false,
-  };
-}
-
 function baseClient(
   entries: WorkflowTimelineEntry[],
   pendingItems: ReadonlyArray<{
@@ -80,13 +67,11 @@ function baseClient(
     attempt: number;
     createdAt: number;
   }> = [],
-  logLines: RunLogLine[] = [],
 ) {
   return {
     getTimeline: async () => entries,
     operations: {
       'weft.workflows.activities.pending.list': async () => ({ items: pendingItems }),
-      'weft.workflows.logs.list': async () => ({ lines: logLines, dropped: 0 }),
     },
     activity: {
       complete: async () => {},
@@ -187,28 +172,6 @@ describe('TimelineTab', () => {
       'true',
     );
     expect(timelineSelectionFor('wf-select-1').selectedStepId).toBe('step-1');
-  });
-
-  test('shows the lines the run logged just before the open step, and not another step’s', async () => {
-    const entries = [
-      entry({ step: 0, operationLabel: 'first' }),
-      entry({ step: 1, operationLabel: 'second' }),
-    ];
-    const lines = [logLine(0, 0, 'before the first'), logLine(1, 1, 'before the second')];
-
-    const { getByRole, findByText, queryByText } = render(TimelineTabHarness, {
-      props: {
-        client: baseClient(entries, [], lines),
-        workflow: workflow({ id: 'wf-logs-1' }),
-        liveObservations: liveObservations(),
-        finalizerStatus: null,
-      },
-    });
-
-    await fireEvent.click(await waitFor(() => getByRole('button', { name: /Second/ })));
-
-    expect(await findByText('before the second')).not.toBeNull();
-    expect(queryByText('before the first')).toBeNull();
   });
 
   test('filters to Failed and to Waiting, and offers a way back when nothing matches', async () => {

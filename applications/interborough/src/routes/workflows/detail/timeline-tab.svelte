@@ -1,8 +1,7 @@
 <script lang="ts">
   /**
    * The run's steps: a list of every durable step the engine recorded (`getTimeline()`), each with
-   * a waterfall bar, and the open step beside it with what went in, what came out, and the lines
-   * the run logged just before it ran. The list is a ListDetail, so it moves with `j` and `k`,
+   * a waterfall bar, and the open step beside it with what went in, what came out. The list is a ListDetail, so it moves with `j` and `k`,
    * keeps the open step in the address (`?step=`), and shows one pane at a time on a narrow screen.
    * The filter offers All, Failed and Waiting (steps that have begun and not ended); past
    * 500 steps the list pages and offers a jump to a step number. This component is orchestration:
@@ -56,13 +55,7 @@
   import RemoteTaskStep from './remote-task-step.svelte';
   import StepDetail from './steps/step-detail.svelte';
   import StepRow from './steps/step-row.svelte';
-  import {
-    fetchRunLogs,
-    linesByTimelineStep,
-    workflowLogsQueryKey,
-    type LogsClient,
-  } from './steps/step-logs.ts';
-  import { stepWaterfall } from './steps/step-waterfall.ts';
+  import { openStepNumbers, stepWaterfall } from './steps/step-waterfall.ts';
   import StreamChunksView from './streams/stream-chunks-view.svelte';
   import type { StreamChunksClient } from './streams/stream-chunks-data.ts';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
@@ -88,8 +81,7 @@
     readonly client: Pick<HttpClient, 'getTimeline'> & {
       readonly operations: Pick<HttpClient['operations'], typeof PENDING_ASYNC_ACTIVITY_OPERATION> &
         Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>> &
-        Partial<StreamChunksClient['operations']> &
-        LogsClient['operations'];
+        Partial<StreamChunksClient['operations']>;
       readonly activity: Pick<WeftClientActivity, 'complete' | 'completeExceptionally'>;
     };
     readonly workflow: WorkflowState;
@@ -128,18 +120,18 @@
 
   const entries = $derived(timelineQuery.data ?? []);
 
-  const logsQuery = createQuery(() => ({
-    queryKey: workflowLogsQueryKey(workflow.id),
-    queryFn: () => fetchRunLogs(client, workflow.id),
-  }));
-  const logsByStep = $derived(linesByTimelineStep(logsQuery.data?.lines ?? [], entries));
   // One scale for every step of the run, whatever page or filter is showing.
+  const openSteps = $derived(openStepNumbers(entries, workflow.status));
   const bars = $derived(
-    stepWaterfall(entries, { runStartedAt: workflow.createdAt, now: now ?? Date.now() }),
+    stepWaterfall(entries, {
+      runStartedAt: workflow.createdAt,
+      now: now ?? Date.now(),
+      runStatus: workflow.status,
+    }),
   );
 
   let quickFilter = $state<TimelineQuickFilter>('all');
-  const filteredEntries = $derived(filterTimelineEntries(entries, quickFilter));
+  const filteredEntries = $derived(filterTimelineEntries(entries, quickFilter, openSteps));
 
   let pageIndex = $state(0);
 
@@ -189,6 +181,25 @@
     const target = timelinePageForStep(filteredEntries, step);
     if (target !== null) pageIndex = target;
   }
+
+  // A step opened from the address (`?step=450`) can be on a later page than the first, and the list
+  // finds an open step only among the rows it shows. So when the selection changes to a step on
+  // another page, the page follows it once. The page is left alone after that, so paging away from
+  // the open step does not snap back.
+  let pageFollowedKey: string | null = null;
+  $effect(() => {
+    const key = selectedKey;
+    const candidates = filteredEntries;
+    if (key === null) {
+      pageFollowedKey = null;
+      return;
+    }
+    if (key === pageFollowedKey) return;
+    const target = timelinePageForStep(candidates, Number(key));
+    if (target === null) return;
+    pageFollowedKey = key;
+    if (untrack(() => pageIndex) !== target) pageIndex = target;
+  });
 
   const attachedPendingActivities = $derived(
     attachPendingActivitiesToSteps(
@@ -387,7 +398,7 @@
           {/if}
         {/snippet}
         {#snippet list(entry, row)}
-          <StepRow {entry} bar={bars.get(entry.step)} {row} />
+          <StepRow {entry} bar={bars.get(entry.step)} open={openSteps.has(entry.step)} {row} />
         {/snippet}
         {#snippet listEmpty()}
           <EmptyState
@@ -412,7 +423,7 @@
           <StepDetail
             {entry}
             bar={bars.get(entry.step)}
-            logs={logsByStep.get(entry.step) ?? []}
+            open={openSteps.has(entry.step)}
             actions={stepActions}
           />
         {/snippet}

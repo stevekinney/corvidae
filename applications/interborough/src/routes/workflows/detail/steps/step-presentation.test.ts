@@ -57,6 +57,9 @@ describe('stepStatus', () => {
     expect(stepStatus('completed')).toEqual({ label: 'Succeeded', dot: 'success' });
     expect(stepStatus('running').label).toBe('Running');
     expect(stepStatus('timed-out').dot).toBe('danger');
+    // A running entry the run has left is not running, whatever the engine kept.
+    expect(stepStatus('running', false)).toEqual({ label: 'Ended', dot: 'neutral' });
+    expect(stepStatus('completed', false).label).toBe('Succeeded');
   });
 });
 

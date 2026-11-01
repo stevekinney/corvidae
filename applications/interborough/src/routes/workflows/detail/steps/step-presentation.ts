@@ -22,9 +22,15 @@ const STEP_STATUS: Readonly<Record<WorkflowTimelineStatus, StepStatus>> = {
   'timed-out': { label: 'Timed out', dot: 'danger' },
 };
 
-/** The word and dot for a step's status. */
-export function stepStatus(status: WorkflowTimelineStatus): StepStatus {
-  return STEP_STATUS[status];
+/** A step the engine kept as running that the run has since left: it ended, and how is not recorded. */
+const STEP_ENDED: StepStatus = { label: 'Ended', dot: 'neutral' };
+
+/**
+ * The word and dot for a step's status. `open` is false for a `running` entry the run is no longer
+ * in (see `openStepNumbers`), which is not running whatever the entry says.
+ */
+export function stepStatus(status: WorkflowTimelineStatus, open = true): StepStatus {
+  return status === 'running' && !open ? STEP_ENDED : STEP_STATUS[status];
 }
 
 /**

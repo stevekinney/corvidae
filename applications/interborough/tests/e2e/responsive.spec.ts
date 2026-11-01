@@ -130,8 +130,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/workflows/:workflow/run (code, on a schedule)': /Starts a run as soon as you confirm/,
   '/runs (start picker)': /Choose the workflow to run/,
   '/runs/:run': /Input and output/,
-  // The open step prints the lines logged before it, one of them the 300-character value.
-  '/runs/:run (steps and logs)': /vvvvvvvvvv/,
+  // The step list is there; the 300-character value is in the whole log, which `reveal` opens.
+  '/runs/:run (steps and logs)': /Input and output/,
   // The list prints the question each waiting review asks, and the open review its source line,
   // which links to the chat whose title is the long word.
   '/reviews': /Refund order order-1001 for/,
@@ -288,6 +288,7 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     const logs = page.locator('[data-section="logs"]');
     await logs.getByRole('button', { name: /^Logs/ }).click();
     await expect(logs.getByText('finished after the last step')).toBeVisible();
+    await expect(logs.getByText(/vvvvvvvvvv/)).toBeVisible();
   },
   // When opens on a schedule, so the builder's Repeats, At and Time zone are measured too.
   '/workflows/:workflow/run (code, on a schedule)': async (page) => {

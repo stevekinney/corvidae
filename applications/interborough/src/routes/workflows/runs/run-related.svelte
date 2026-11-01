@@ -69,6 +69,11 @@
           <li class="ib-run-related__more">{RUN_RELATED_COPY.more(runs.total - RAIL_LIMIT)}</li>
         {/if}
       </ul>
+      {#if runs.total > runs.runs.length}
+        <p class="ib-run-related__more" data-partial>
+          {RUN_RELATED_COPY.partial(runs.runs.length, runs.total)}
+        </p>
+      {/if}
     </section>
   {/if}
 {/snippet}
@@ -165,6 +170,7 @@
   }
 
   .ib-run-related__more {
+    margin: 0;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-subtle);
   }

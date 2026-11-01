@@ -93,14 +93,14 @@ export async function fetchRelatedRuns(
         : summarized(parentState);
 
   const siblingRuns = (siblingPage?.items ?? []).filter((sibling) => sibling.id !== runId);
-  // The run itself is among its parent's children, so the total counts it out.
-  const selfListed = siblingPage?.items.length !== siblingRuns.length;
+  // The run is one of its parent's children, listed or not: a parent with more children than the
+  // page holds can leave it off the page, and the total still counts it.
   return {
     parent,
     children: { runs: childPage.items.map(summarized), total: childPage.total },
     siblings: {
       runs: siblingRuns.map(summarized),
-      total: Math.max(0, (siblingPage?.total ?? 0) - (selfListed ? 1 : 0)),
+      total: Math.max(0, (siblingPage?.total ?? 0) - 1),
     },
   };
 }
