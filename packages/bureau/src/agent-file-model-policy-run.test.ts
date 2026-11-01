@@ -5,8 +5,12 @@
  * tightened while the Bureau ran. A steer to a forbidden model is refused `policy-denied`; one
  * admitted before the policy tightened fails at its next step.
  */
+import { EventType } from '@ag-ui/core';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { createBureauHandler } from './http/create-bureau-handler';
+import { runAgentInput, startRequest } from './http/ag-ui-fixtures.test-support';
+import { readAgUiStream } from './http/ag-ui-stream.test-support';
 import type { BureauModelPolicyOptions } from './model-policy';
 import { OWNER } from './http/management/management-fixtures.test-support';
 import { waitForTaskState } from './test';
@@ -93,6 +97,26 @@ describe('a run of a file agent whose default model the policy forbids', () => {
     expect(summary?.error).toContain('deployment');
     expect(calls).toEqual([]);
     expect(harness.observed).toEqual([]);
+  });
+
+  it('reaches an AG-UI client as a RUN_ERROR that names the model', async () => {
+    const { harness, calls } = await start(DENY_DEFAULT);
+    const handler = createBureauHandler(harness.bureau, {
+      unauthenticatedAccess: 'allow',
+      agUi: {},
+    });
+
+    const response = await handler(
+      startRequest(runAgentInput({ threadId: 'policy-thread', runId: 'policy-run' }), {}, 'picker'),
+    );
+    const frames = await readAgUiStream(response);
+    const events = frames.map((frame) => frame.event);
+
+    const failure = events.find((event) => event.type === EventType.RUN_ERROR);
+    expect(failure).toMatchObject({
+      message: expect.stringContaining('anthropic/claude-opus-5-5'),
+    });
+    expect(calls).toEqual([]);
   });
 
   it('still lists the file ready, because only a write and a run ask the policy', async () => {
