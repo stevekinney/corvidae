@@ -19,6 +19,7 @@ const SHORTCUTS = [
   { letter: 'r', path: '/runs', label: VIEW_COPY.runs.label },
   { letter: 's', path: '/schedules', label: VIEW_COPY.schedules.label },
   { letter: 'l', path: '/goals', label: VIEW_COPY.goals.label },
+  { letter: 'h', path: '/hooks', label: VIEW_COPY.hooks.label },
   { letter: 'e', path: '/health', label: VIEW_COPY.health.label },
   { letter: 'n', path: '/settings', label: VIEW_COPY.settings.label },
 ] as const;

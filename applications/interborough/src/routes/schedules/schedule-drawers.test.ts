@@ -1,5 +1,5 @@
 /**
- * COR-1494: what the create and edit drawers offer for each kind of schedule.
+ * COR-1494: what the create drawer and the edit page offer for each kind of schedule.
  *
  * - Editing an agent run offers exactly the cadence, the description, and the overlap policy
  *   (`skip` or `allow`), which are the fields `bureau.schedules.update` takes. A code-defined
@@ -17,6 +17,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { requireElement } from '../../../tests/dom.test-support.ts';
 import { SCHEDULE_COPY } from '../../app/copy.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
@@ -97,6 +98,10 @@ function open(
 /** The drawer, once it has the form for the schedule's kind. */
 async function drawer(name: 'Edit schedule' | 'Create schedule') {
   const view = within(document.body);
+  if (name === 'Edit schedule') {
+    await view.findByRole('heading', { level: 1, name });
+    return requireElement(document.querySelector('[data-page="schedule-edit"]'), HTMLElement);
+  }
   return view.findByRole('dialog', { name });
 }
 
@@ -121,7 +126,7 @@ const SKIP = SCHEDULE_COPY.form.skipOverlapLabel;
 
 describe('editing an agent run', () => {
   test('offers exactly the cadence, the description, and whether a fire is skipped while a run is going', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 
@@ -150,7 +155,7 @@ describe('editing an agent run', () => {
   });
 
   test('saves through bureau.schedules.update, with the cadence and the revision the drawer read', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
 
@@ -174,7 +179,7 @@ describe('editing an agent run', () => {
   });
 
   test('sends only the cadence when nothing else changed', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 
@@ -189,7 +194,7 @@ describe('editing an agent run', () => {
   });
 
   test('says it changed since it was loaded when the schedule changed first, keeps what was typed, and starts over on request', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
     // Another actor changed the schedule after the drawer read it.
@@ -226,7 +231,7 @@ describe('editing an agent run', () => {
 
 describe('editing a code-defined schedule', () => {
   test('keeps the engine’s full drawer, and saves through the engine', async () => {
-    open(`/schedules/${CODE_SCHEDULE}?edit=1`);
+    open(`/schedules/${CODE_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Jitter');
 
@@ -247,13 +252,13 @@ describe('editing a code-defined schedule', () => {
 
 describe('editing a workflow file’s schedule', () => {
   test('has no form, because its cadence is the trigger in the workflow’s file, and links to the editor', async () => {
-    open(`/schedules/${FILE_SCHEDULE}?edit=1`);
+    open(`/schedules/${FILE_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
 
     const note = await dialog.findByTestId('schedule-edit-in-workflow');
     expect(note.textContent).toContain(SCHEDULE_COPY.editWorkflowNote);
     expect(dialog.queryByLabelText('Description')).toBeNull();
-    expect(dialog.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(dialog.queryByRole('button', { name: 'Save changes' })).toBeNull();
     await fireEvent.click(dialog.getByRole('link', { name: SCHEDULE_COPY.editWorkflowAction }));
 
     expect(router.pathname).toBe('/workflows/digest/edit');
@@ -569,7 +574,7 @@ describe('the drawers when something is not as it was', () => {
 
   test('an edit says so when the Bureau has not said what the schedule is, and offers nothing', async () => {
     // A workflow file's schedule: only the Bureau says whose it is, and it did not answer.
-    open(`/schedules/${FILE_SCHEDULE}?edit=1`, {
+    open(`/schedules/${FILE_SCHEDULE}/edit`, {
       failBureauSchedules: true,
       failBureauFiles: true,
     });
@@ -580,10 +585,10 @@ describe('the drawers when something is not as it was', () => {
   });
 
   test('an edit of a schedule that is not there says so', async () => {
-    open('/schedules/no-such-schedule?edit=1');
+    open('/schedules/no-such-schedule/edit');
     const dialog = within(await drawer('Edit schedule'));
 
-    await dialog.findByText(/No schedule with ID "no-such-schedule" exists/);
+    await dialog.findByText(SCHEDULE_COPY.detail.notFound.description);
   });
 
   test('a code-defined schedule on an interval is edited and saved as an interval', async () => {
@@ -594,7 +599,7 @@ describe('the drawers when something is not as it was', () => {
       description: 'Hourly',
     });
     delete hourly.cronExpression;
-    open(`/schedules/every-hour?edit=1`, { schedules: [hourly] });
+    open(`/schedules/every-hour/edit`, { schedules: [hourly] });
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
 
@@ -609,7 +614,7 @@ describe('the drawers when something is not as it was', () => {
   });
 
   test('an agent run’s cadence can be changed to an interval, which is sent as a duration', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 
@@ -625,6 +630,39 @@ describe('the drawers when something is not as it was', () => {
 
     await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
     expect(stub?.callsTo('bureau.schedules.update')[0]?.params['spec']).toBe('20m');
+  });
+
+  test('an agent run is not saved while the cadence builder shows a field out of range', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
+    const dialog = within(await drawer('Edit schedule'));
+    await dialog.findByLabelText('Description');
+
+    await fireEvent.change(await dialog.findByLabelText('Repeats'), { target: { value: 'cron' } });
+    await fireEvent.input(dialog.getByLabelText('Hour'), { target: { value: '99' } });
+    // The builder keeps the last cadence it emitted, so the draft is still valid and Save is on.
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await dialog.findByText(SCHEDULE_COPY.edit.invalidCadence);
+    expect(stub?.callsTo('bureau.schedules.update')).toEqual([]);
+    expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}/edit`);
+  });
+
+  test('a new agent run is not created while the cadence builder shows a field out of range', async () => {
+    open('/schedules?create=1');
+    const dialog = within(await drawer('Create schedule'));
+    await fireEvent.change(
+      await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel }),
+      { target: { value: 'tool-runner' } },
+    );
+    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
+      target: { value: 'Hello' },
+    });
+    await fireEvent.change(await dialog.findByLabelText('Repeats'), { target: { value: 'cron' } });
+    await fireEvent.input(dialog.getByLabelText('Hour'), { target: { value: '99' } });
+    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
+
+    await dialog.findByText(SCHEDULE_COPY.edit.invalidCadence);
+    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
   });
 
   test('a new agent run’s cadence can be a cron expression, which is sent as written', async () => {
@@ -677,7 +715,7 @@ describe('a cadence of less than a minute', () => {
   }
 
   test('an agent run shows its cadence as it is, and an edit of only the description sends it exactly', async () => {
-    open(`/schedules/${SECONDS_AGENT}?edit=1`, secondsWorld());
+    open(`/schedules/${SECONDS_AGENT}/edit`, secondsWorld());
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
 
@@ -699,7 +737,7 @@ describe('a cadence of less than a minute', () => {
   });
 
   test('a code-defined schedule does the same, and sends every as milliseconds', async () => {
-    open(`/schedules/${SECONDS_CODE}?edit=1`, secondsWorld());
+    open(`/schedules/${SECONDS_CODE}/edit`, secondsWorld());
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
 
@@ -721,7 +759,7 @@ describe('a cadence of less than a minute', () => {
       revision: 1,
     });
     delete code.cronExpression;
-    open(`/schedules/thirty-seconds-code?edit=1`, { schedules: [code] });
+    open(`/schedules/thirty-seconds-code/edit`, { schedules: [code] });
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
     await fireEvent.click(dialog.getByRole('switch', { name: 'Backfill missed occurrences' }));
@@ -734,7 +772,7 @@ describe('a cadence of less than a minute', () => {
   });
 
   test('Change cadence brings back the builder, and a cadence chosen in it is sent instead', async () => {
-    open(`/schedules/${SECONDS_AGENT}?edit=1`, secondsWorld());
+    open(`/schedules/${SECONDS_AGENT}/edit`, secondsWorld());
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
     expect(dialog.queryByLabelText('Repeats')).toBeNull();
@@ -759,7 +797,7 @@ describe('a cadence of less than a minute', () => {
   });
 
   test('a whole-minute cadence still opens in the builder', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 
@@ -774,7 +812,7 @@ describe('a description that is too long', () => {
   const TOO_LONG = 'x'.repeat(2_001);
 
   test('says why Save is disabled when an agent run is edited, and is saved once it is short enough', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
 
@@ -812,7 +850,7 @@ describe('a description that is too long', () => {
 
 describe('a code-defined schedule’s cadence changed in the builder', () => {
   test('sends the cadence chosen in the builder, not the stored one', async () => {
-    open(`/schedules/${CODE_SCHEDULE}?edit=1`);
+    open(`/schedules/${CODE_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Description');
 

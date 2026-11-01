@@ -1,5 +1,5 @@
 /**
- * Pause, resume, and cancel for the schedules list and a schedule's page, sharing one way of
+ * Pause, resume, skip next, run now, and cancel for the schedules list and a schedule's page, sharing one way of
  * answering a write that did not go through. Called while a component initialises, because it
  * creates mutations.
  *
@@ -13,10 +13,19 @@ import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 import { SCHEDULE_COPY } from '../../app/copy.ts';
 import { showFault } from '../../app/toast-host.svelte';
 import { agentFaultOf } from '../../lib/agent-definitions.ts';
+import type { RunNowOutcome } from '../../lib/bureau-schedules.ts';
 import { getClient } from '../../lib/client.ts';
 import { faultTreatment } from '../../lib/faults.ts';
 import { isApplyFailure } from '../../lib/workflow-files.ts';
-import { cancelTarget, pauseTarget, resumeTarget, type ScheduleTarget } from './schedule-writes.ts';
+import {
+  cancelTarget,
+  pauseTarget,
+  resumeTarget,
+  runNowTarget,
+  skipNextTarget,
+  StaleScheduleError,
+  type ScheduleTarget,
+} from './schedule-writes.ts';
 
 /** What the page says after a write that was refused for being stale, or applied late. */
 export type ScheduleNotice = {
@@ -28,6 +37,8 @@ export function createScheduleActions() {
   const client = getClient();
   const queryClient = useQueryClient();
   let notice = $state<ScheduleNotice | null>(null);
+  /** What the last run now did, for the page to say and to link to the run. */
+  let runNowResult = $state.raw<(RunNowOutcome & { readonly scheduleId: string }) | null>(null);
 
   /** Reads every schedule query again: the list, the page, its runs, and what the Bureau knows. */
   function reload(): void {
@@ -40,7 +51,7 @@ export function createScheduleActions() {
       reload();
       return;
     }
-    if (agentFaultOf(error).kind === 'stale') {
+    if (error instanceof StaleScheduleError || agentFaultOf(error).kind === 'stale') {
       notice = { kind: 'stale', scheduleId: target.schedule.id };
       reload();
       return;
@@ -62,11 +73,33 @@ export function createScheduleActions() {
   const pause = writer(pauseTarget, SCHEDULE_COPY.pauseFailed);
   const resume = writer(resumeTarget, SCHEDULE_COPY.resumeFailed);
   const cancel = writer(cancelTarget, SCHEDULE_COPY.cancelFailed);
+  const skipNext = writer(skipNextTarget, SCHEDULE_COPY.skipFailed);
+  const runNow = createMutation(() => ({
+    mutationFn: (target: ScheduleTarget) => runNowTarget(client, target),
+    onMutate: () => {
+      notice = null;
+      runNowResult = null;
+    },
+    onSuccess: (outcome: RunNowOutcome, target: ScheduleTarget) => {
+      runNowResult = { ...outcome, scheduleId: target.schedule.id };
+      reload();
+    },
+    onError: (error: unknown, target: ScheduleTarget) =>
+      answer(error, target, SCHEDULE_COPY.runNowFailed),
+  }));
 
   return {
     pause,
     resume,
     cancel,
+    skipNext,
+    runNow,
+    get runNowResult(): (RunNowOutcome & { readonly scheduleId: string }) | null {
+      return runNowResult;
+    },
+    dismissRunNow(): void {
+      runNowResult = null;
+    },
     get notice(): ScheduleNotice | null {
       return notice;
     },
@@ -74,7 +107,13 @@ export function createScheduleActions() {
       notice = null;
     },
     get busy(): boolean {
-      return pause.isPending || resume.isPending || cancel.isPending;
+      return (
+        pause.isPending ||
+        resume.isPending ||
+        cancel.isPending ||
+        skipNext.isPending ||
+        runNow.isPending
+      );
     },
   };
 }

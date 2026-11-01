@@ -275,18 +275,23 @@ describe('a link to a run', () => {
 });
 
 describe('the routes for schedules and goals', () => {
-  test('put the schedules list at /schedules and one schedule at /schedules/:schedule, both in the schedules view', () => {
+  test('put the schedules list at /schedules, one schedule at /schedules/:schedule, and its edit page at /schedules/:schedule/edit, all in the schedules view', () => {
     expect(matchRoute('/schedules')).toEqual({ pattern: '/schedules', params: {} });
     expect(matchRoute('/schedules/nightly-rollup')).toEqual({
       pattern: '/schedules/:schedule',
       params: { schedule: 'nightly-rollup' },
     });
-    for (const pattern of ['/schedules', '/schedules/:schedule']) {
+    expect(matchRoute('/schedules/nightly-rollup/edit')).toEqual({
+      pattern: '/schedules/:schedule/edit',
+      params: { schedule: 'nightly-rollup' },
+    });
+    for (const pattern of ['/schedules', '/schedules/:schedule', '/schedules/:schedule/edit']) {
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
         'schedules',
       );
     }
     expect(componentPathOf('/schedules/:schedule')).toBe(componentPathOf('/schedules'));
+    expect(componentPathOf('/schedules/:schedule/edit')).toBe(componentPathOf('/schedules'));
   });
 
   test('keep /goals, /goals/new and /goals/:goal in one view, in the sidebar after Schedules', () => {
@@ -317,14 +322,15 @@ describe('a link to a schedule', () => {
   test('is /schedules/<id>, built in one place', () => {
     expect(scheduleDetailPath('nightly-rollup')).toBe('/schedules/nightly-rollup');
     expect(scheduleDetailPath('a b/c')).toBe('/schedules/a%20b%2Fc');
-    expect(scheduleEditPath('nightly-rollup')).toBe('/schedules/nightly-rollup?edit=1');
+    expect(scheduleEditPath('nightly-rollup')).toBe('/schedules/nightly-rollup/edit');
+    expect(matchRoute(scheduleEditPath('a b/c'))?.params).toEqual({ schedule: 'a b/c' });
     expect(scheduleCreatePath()).toBe('/schedules?create=1');
     expect(matchRoute(scheduleDetailPath('a b/c'))?.params).toEqual({ schedule: 'a b/c' });
   });
 
   test('keeps a dot-only id out of the path, which a browser would normalise away', () => {
     expect(scheduleDetailPath('..')).toStartWith('/schedules/_?');
-    expect(scheduleEditPath('..')).toContain('edit=1');
+    expect(scheduleEditPath('..')).toStartWith('/schedules/_/edit?');
   });
 
   test('is never the old query-string form anywhere in the source', async () => {

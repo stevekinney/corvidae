@@ -4,7 +4,7 @@
       "rule": "app-header-class",
       "file": "src/routes/schedules/schedule-form-drawer.svelte",
       "subject": ".weft-schedule-drawer__header",
-      "issue": "COR-1859"
+      "issue": "COR-1979"
     },
     {
       "rule": "cinder-selector",
@@ -41,36 +41,6 @@
       "file": "src/styles/foundation.css",
       "subject": ".weft-notification-panel__header",
       "issue": "COR-1861"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/schedules.css",
-      "subject": ".ib-schedules__header",
-      "issue": "COR-1859"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/schedules.css",
-      "subject": ".ib-schedule__header",
-      "issue": "COR-1859"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/styles/schedules.css",
-      "subject": ".cinder-page-header__row",
-      "issue": "COR-1859"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/styles/schedules.css",
-      "subject": ".cinder-page-header__actions",
-      "issue": "COR-1859"
-    },
-    {
-      "rule": "cinder-selector",
-      "file": "src/styles/schedules.css",
-      "subject": ".cinder-form-field",
-      "issue": "COR-1859"
     }
   ]
 }

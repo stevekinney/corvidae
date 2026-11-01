@@ -72,13 +72,12 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await expect(
     page.getByRole('heading', { level: 1, name: 'Schedule for order-processing' }),
   ).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Next fires' })).toBeVisible();
-  await expect(page.getByText('Not scheduled')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Next runs' })).toBeVisible();
+  await expect(page.getByText('Nothing is coming up')).toHaveCount(0);
   await expect(page.getByTestId('schedule-next-fires').locator('li')).toHaveCount(5);
-  // The engine's own fields are there only once the disclosure opens.
-  await expect(page.getByText('Revision policy', { exact: true })).toHaveCount(0);
-  await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
-  await expect(page.getByText('Revision policy', { exact: true })).toBeVisible();
-  await expect(page.getByText('0 3 * * *')).toBeVisible();
+  // The schedule's own fields are in the details beside the runs, with the cron it was made with.
+  const rail = page.getByTestId('schedule-rail');
+  await expect(rail.getByText('Workflow version', { exact: true })).toBeVisible();
+  await expect(rail.getByText('Runs the fires it missed')).toBeVisible();
   await checkA11y('schedule detail — next fires populated');
 });

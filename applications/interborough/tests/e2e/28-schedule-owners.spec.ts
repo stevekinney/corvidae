@@ -4,7 +4,7 @@
  * 09:00, and sends its text; its identifier is "Copy ID" in the actions menu. Each schedule says what
  * it starts and links to it: an agent run links to its agent, and a workflow's is its trigger and
  * links to the workflow. The seeded schedule is paused and resumed from the list, its cadence is
- * edited in the drawer an agent run has, which holds the cadence, the description, and whether to
+ * edited on the page an agent run has, which holds the cadence, the description, and whether to
  * skip a fire while a run is going, and the next fire time changes. A workflow file's schedule is
  * paused and resumed too, and is edited in the workflow. A schedule is made for an agent from the
  * create drawer, without choosing a kind.
@@ -64,7 +64,7 @@ async function restoreSeeded(request: APIRequestContext, id: string): Promise<vo
   });
 }
 
-const row = (page: Page, id: string) => page.locator(`li[data-schedule="${id}"]`);
+const row = (page: Page, id: string) => page.locator(`tr[data-schedule="${id}"]`);
 
 /** A row's actions menu, which is named for the schedule's name and not its identifier. */
 const actionsOf = (target: Locator) => target.getByRole('button', { name: /^Actions for / });
@@ -114,28 +114,24 @@ test.describe('what each schedule starts', () => {
         'Runs demo:assistant every day at 09:00',
       );
       await expect(page.getByTestId('schedule-input')).toContainText(SEEDED_INPUT);
-      const target = page.getByTestId('schedule-target');
+      const target = page.getByTestId('schedule-status-line').getByTestId('schedule-target');
       await expect(target.getByRole('link', { name: 'demo:assistant' })).toHaveAttribute(
         'href',
         '/agents/demo%3Aassistant',
       );
-      // The engine's fields are not there until the disclosure opens.
-      await expect(page.getByText('Jitter', { exact: true })).toHaveCount(0);
-      await expect(page.getByText('Revision policy', { exact: true })).toHaveCount(0);
-      await expect(page.getByText('Worker version for scheduled runs')).toHaveCount(0);
+      // The details beside the runs hold the schedule's own fields and the worker rule.
+      const rail = page.getByTestId('schedule-rail');
+      await expect(rail.getByText('Jitter', { exact: true })).toBeVisible();
+      await expect(rail.getByText('Workflow version', { exact: true })).toBeVisible();
+      await expect(rail.getByText('Worker version for scheduled runs')).toBeVisible();
       await checkA11y(`schedule detail — an agent run at ${width}px`);
-      await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
-      await expect(page.getByText('Jitter', { exact: true })).toBeVisible();
-      await expect(page.getByText('Revision policy', { exact: true })).toBeVisible();
-      await expect(page.getByText('Worker version for scheduled runs')).toBeVisible();
-      await checkA11y(`schedule detail — the Advanced disclosure open at ${width}px`);
     });
   }
 
   test('labels a workflow file’s schedule, linked to its workflow', async ({ page }) => {
     await page.goto('/schedules');
 
-    const file = page.locator('li[data-kind="workflow-file"]').first();
+    const file = page.locator('tr[data-kind="workflow-file"]').first();
     await expect(file).toContainText(SCHEDULE_COPY.kind['workflow-file']);
     await expect(file.getByRole('link', { name: 'e2e-digest', exact: true })).toHaveAttribute(
       'href',
@@ -149,7 +145,7 @@ test.describe('what each schedule starts', () => {
     test('is labelled and linked to its workflow', async ({ page }) => {
       await page.goto('/schedules');
 
-      const code = page.locator('li[data-kind="code"]').first();
+      const code = page.locator('tr[data-kind="code"]').first();
       await expect(code).toContainText(SCHEDULE_COPY.kind.code);
       await expect(code.locator('a[href^="/workflows/"]')).toHaveCount(1);
     });
@@ -177,7 +173,7 @@ test.describe('the seeded agent run', () => {
     }
   });
 
-  test('has its cadence edited in a drawer of the cadence, the description, and the overlap policy, and the next fire time changes', async ({
+  test('has its cadence edited on the edit page, which holds the cadence, the description and the overlap policy, and the next fire time changes', async ({
     page,
     request,
     checkA11y,
@@ -191,25 +187,26 @@ test.describe('the seeded agent run', () => {
       await expect(nextFire).toContainText('every day at 09:00');
       const shownBefore = await nextFire.innerText();
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
-      const drawer = page.getByRole('dialog', { name: 'Edit schedule' });
-      await expect(drawer).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`/schedules/${id}/edit$`));
+      const editor = page.locator('[data-page="schedule-edit"]');
+      await expect(editor.getByRole('heading', { level: 1, name: 'Edit schedule' })).toBeVisible();
 
       // What an agent run is edited with, and nothing the engine's own schedule adds.
-      await expect(drawer.getByLabel('Description')).toHaveValue(SEEDED_DESCRIPTION);
-      await expect(drawer.getByLabel(SKIP)).toBeChecked();
-      await expect(drawer.getByRole('radio')).toHaveCount(0);
-      await expect(drawer.getByLabel('Jitter')).toHaveCount(0);
-      await expect(drawer.getByRole('switch', { name: 'Backfill missed occurrences' })).toHaveCount(
+      await expect(editor.getByLabel('Description')).toHaveValue(SEEDED_DESCRIPTION);
+      await expect(editor.getByLabel(SKIP)).toBeChecked();
+      await expect(editor.getByRole('radio')).toHaveCount(0);
+      await expect(editor.getByLabel('Jitter')).toHaveCount(0);
+      await expect(editor.getByRole('switch', { name: 'Backfill missed occurrences' })).toHaveCount(
         0,
       );
       await checkA11y('schedules — editing an agent run');
 
       // From a cron cadence to an interval of two hours, whose first fire is two hours away.
-      await drawer.getByLabel('Repeats', { exact: true }).selectOption('interval');
-      await drawer.getByRole('spinbutton', { name: 'Every' }).fill('2');
-      await drawer.getByLabel('Unit').selectOption('hours');
-      await drawer.getByRole('button', { name: 'Save changes' }).click();
-      await expect(drawer).not.toBeVisible();
+      await editor.getByLabel('Repeats', { exact: true }).selectOption('interval');
+      await editor.getByRole('spinbutton', { name: 'Every' }).fill('2');
+      await editor.getByLabel('Unit').selectOption('hours');
+      await editor.getByRole('button', { name: 'Save changes' }).click();
+      await expect(page).toHaveURL(new RegExp(`/schedules/${id}$`));
 
       await expect.poll(async () => nextFireAt(request, id), { timeout: 15_000 }).not.toBe(before);
       await expect(nextFire).toContainText('every 2 hours');
@@ -227,7 +224,7 @@ test.describe('a workflow file’s schedule', () => {
     page,
   }) => {
     await page.goto('/schedules');
-    const file = page.locator('li[data-kind="workflow-file"]').filter({ hasText: 'e2e-digest' });
+    const file = page.locator('tr[data-kind="workflow-file"]').filter({ hasText: 'e2e-digest' });
     await expect(file).toHaveAttribute('data-status', 'active');
 
     await actionsOf(file).click();
@@ -276,7 +273,10 @@ test.describe('creating a schedule', () => {
       'Summarize what happened this week.',
     );
     await expect(
-      page.getByTestId('schedule-target').getByRole('link', { name: 'demo:assistant' }),
+      page
+        .getByTestId('schedule-status-line')
+        .getByTestId('schedule-target')
+        .getByRole('link', { name: 'demo:assistant' }),
     ).toBeVisible();
     // It is a Bureau schedule, owned by the caller, so the Bureau lists it with its agent.
     const response = await request.post('/bureau/jsonrpc', {

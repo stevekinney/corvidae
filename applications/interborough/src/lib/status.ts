@@ -130,3 +130,14 @@ export function workflowStatusWord(workflow: {
   if (workflow.running > 0) return 'Running';
   return workflow.started ? 'Scheduled' : null;
 }
+
+const SCHEDULE_WORDS: Readonly<Record<'active' | 'paused' | 'cancelled', StatusWord>> = {
+  active: 'Scheduled',
+  paused: 'Paused',
+  cancelled: 'Canceled',
+};
+
+/** The word a schedule reads as: an active one is Scheduled, because it is waiting for its next fire. */
+export function scheduleStatusWord(status: keyof typeof SCHEDULE_WORDS): StatusWord {
+  return SCHEDULE_WORDS[status];
+}

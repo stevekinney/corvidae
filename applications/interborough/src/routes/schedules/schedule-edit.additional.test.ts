@@ -31,9 +31,9 @@ import { describe, expect, test } from 'bun:test';
 import { HttpClient } from '@lostgradient/weft';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
-import ScheduleFormDrawerHarness from './schedule-form-drawer-test-harness.test-harness.svelte';
+import ScheduleEditHarness from './schedule-edit-test-harness.test-harness.svelte';
 
-describe('ScheduleFormDrawer — edit additional', () => {
+describe('ScheduleEdit additional', () => {
   test('prefills the cadence from the existing schedule and updates it on save', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
@@ -46,10 +46,9 @@ describe('ScheduleFormDrawer — edit additional', () => {
 
     let closed = false;
     try {
-      const { getByRole } = render(ScheduleFormDrawerHarness, {
+      const { getByRole } = render(ScheduleEditHarness, {
         props: {
           client,
-          mode: 'edit',
           scheduleId: 'nightly-rollup',
           onClose: () => (closed = true),
         },
@@ -88,10 +87,9 @@ describe('ScheduleFormDrawer — edit additional', () => {
 
     let closed = false;
     try {
-      const { getByRole } = render(ScheduleFormDrawerHarness, {
+      const { getByRole } = render(ScheduleEditHarness, {
         props: {
           client,
-          mode: 'edit',
           scheduleId: 'pinned-rollup',
           onClose: () => (closed = true),
         },
