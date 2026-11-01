@@ -1,9 +1,11 @@
 /**
  * The host's saved tool sources, as Capabilities › Sources reads and changes them
  * (`/host/tool-sources`; `src/host/tool-source-routes.ts`). The host never answers with a
- * credential or a URL, only the names of the credentials it holds, and this module sends none: a
- * source is connected from a description a later change builds. A failure is described by the
- * host's message, which names a field and never a value.
+ * credential or a URL, only the names of the credentials it holds. A source is connected, or
+ * probed before it is saved, from a description and the credentials it names
+ * (`tool-source-form.ts` builds both); those values go out in one request body and are never kept
+ * here, logged, or put in an error. A failure is described by the host's message, which names a
+ * field and never a value.
  */
 import { z } from 'zod';
 
@@ -75,6 +77,16 @@ const removalPreviewSchema = z.object({
 
 const removedSchema = changeSchema.extend({ affectedAgents: z.array(affectedAgentSchema) });
 
+const probeSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('listed'),
+    tools: z.array(z.object({ name: z.string(), tool: z.string(), tier: z.string().nullable() })),
+    skipped: z.array(z.object({ tool: z.string(), reason: z.string() })),
+  }),
+  z.object({ outcome: z.literal('needs-authorization') }),
+  z.object({ outcome: z.literal('failed'), message: z.string() }),
+]);
+
 const authorizationSchema = z.union([
   z.object({ authorized: z.literal(true) }),
   z.object({ authorized: z.literal(false), authorizationUrl: z.string() }),
@@ -98,6 +110,22 @@ export type ToolSourceRemoval = z.infer<typeof removalPreviewSchema>;
 /** What a removal did: the agent files that name the removed source's tools, as the host read them when it removed it. */
 export type ToolSourceRemoved = z.infer<typeof removedSchema>;
 
+/** What a probe found: the tools the source lists, that it asks for a sign-in, or why it did not answer. */
+export type ToolSourceProbe = z.infer<typeof probeSchema>;
+
+/** What a connect or a probe sends: Armorer's description of the source, and the value of each credential it names. */
+export type ToolSourceRequest = {
+  /** The description (`armorer/tool-sources`): plain JSON that names credentials and holds none. */
+  readonly source: Readonly<Record<string, unknown>>;
+  /** Credential name to value, for each credential `source` names. */
+  readonly credentials: Readonly<Record<string, string>>;
+  /** For a connect: refuse, instead of replacing, a source already saved under the same name. */
+  readonly create?: true;
+};
+
+/** What a connect reports: the source is saved, and its tools are listed when the host starts again. */
+export type ToolSourceChange = z.infer<typeof changeSchema>;
+
 /** What starting a sign-in reports: the address to open, or that the stored tokens already work. */
 export type ToolSourceAuthorization = z.infer<typeof authorizationSchema>;
 
@@ -105,6 +133,8 @@ export type ToolSourceAuthorization = z.infer<typeof authorizationSchema>;
 export type HostToolSourceFaultKind =
   /** The host refuses the write: it keeps its configuration in its deployment. */
   | 'locked'
+  /** A source is already saved under that name, and the request asked not to replace it. */
+  | 'exists'
   /** Only the owner may do this. */
   | 'owner-only'
   /** The host has no such source. */
@@ -157,6 +187,7 @@ async function faultOf(response: Response): Promise<HostToolSourceError> {
   const message = typeof rawMessage === 'string' ? rawMessage : '';
   switch (error) {
     case 'locked':
+    case 'exists':
     case 'owner-only':
     case 'not-found':
     case 'partial':
@@ -189,6 +220,50 @@ export async function getToolSources(options: Options = {}): Promise<ToolSources
   const response = await send(HOST_TOOL_SOURCES_ROUTE, {}, options);
   if (!response.ok) throw new Error(`The host answered ${response.status}.`);
   return snapshotSchema.parse(await response.json());
+}
+
+/**
+ * Contacts a source that is not saved, with the credentials in `request` and none from the host,
+ * and reports the tools it lists, that it asks for a sign-in, or why it did not answer. Nothing is
+ * saved. The reason holds no address, command or value.
+ *
+ * @throws {HostToolSourceError} When the host refuses the request: it cannot be used (`invalid`,
+ * naming the field), the host is `locked`, or a local command is asked for by anyone but the owner.
+ */
+export async function probeToolSource(
+  id: string,
+  request: ToolSourceRequest,
+  options: Options = {},
+): Promise<ToolSourceProbe> {
+  const response = await send(sourcePath(id, '/probe'), jsonRequest('POST', request), options);
+  return readJson(response, probeSchema);
+}
+
+/**
+ * Saves a source, or replaces the one with the same `id`. It is listed, with its tools, when the
+ * host starts again.
+ *
+ * @throws {HostToolSourceError} When the host refuses it, with the field it names.
+ */
+export async function connectToolSource(
+  id: string,
+  request: ToolSourceRequest,
+  options: Options = {},
+): Promise<ToolSourceChange> {
+  const response = await send(sourcePath(id), jsonRequest('PUT', request), options);
+  return readJson(response, changeSchema);
+}
+
+function jsonRequest(method: string, request: ToolSourceRequest): RequestInit {
+  return {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      source: request.source,
+      credentials: request.credentials,
+      ...(request.create === true ? { create: true } : {}),
+    }),
+  };
 }
 
 /**
@@ -276,6 +351,7 @@ export function toolSourceFaultTreatment(error: unknown): FaultTreatment {
       return { kind: 'unauthorized', message, mode: 'forbidden' };
     case 'not-found':
       return { kind: 'not-found', message };
+    case 'exists':
     case 'invalid':
       return { kind: 'invalid', message, fieldErrors: [] };
     case 'partial':

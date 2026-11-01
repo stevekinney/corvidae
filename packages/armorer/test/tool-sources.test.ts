@@ -306,6 +306,66 @@ describe('loadToolSource for OpenAPI', () => {
     );
   });
 
+  it('gives the document fetch the load signal, and stops at the signal', async () => {
+    const description = openApiSource({
+      specification: { type: 'url', url: 'https://specs.example.test/pets.json' },
+    });
+    const controller = new AbortController();
+    let received: AbortSignal | null | undefined;
+    const hanging = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      received = init?.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch;
+
+    const loading = loadToolSource(description, {
+      resolveCredential: () => undefined,
+      fetch: hanging,
+      signal: controller.signal,
+    });
+    controller.abort(new Error('deadline'));
+
+    await expectPromiseToReject(loading, (error) => expect(String(error)).toContain('deadline'));
+    expect(received).toBe(controller.signal);
+  });
+
+  it('refuses a document larger than the limit, by its declared length or by what it sends', async () => {
+    const description = openApiSource({
+      specification: { type: 'url', url: 'https://specs.example.test/pets.json' },
+    });
+    const declared = (async () =>
+      new Response('{}', {
+        headers: { 'content-length': '3000001' },
+      })) as unknown as typeof fetch;
+    let cancelled = false;
+    let sent = 0;
+    const endless = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            sent += 1_000_000;
+            controller.enqueue(new Uint8Array(1_000_000));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      )) as unknown as typeof fetch;
+    const resolveCredential = () => undefined;
+
+    await expectPromiseToReject(
+      loadToolSource(description, { resolveCredential, fetch: declared }),
+      (error) => expect(String(error)).toContain('larger than 3000000 bytes'),
+    );
+    await expectPromiseToReject(
+      loadToolSource(description, { resolveCredential, fetch: endless }),
+      (error) => expect(String(error)).toContain('larger than 3000000 bytes'),
+    );
+    expect(cancelled).toBe(true);
+    expect(sent).toBeLessThanOrEqual(5_000_000);
+  });
+
   it('fails with a named error, never a value, when the resolver has no credential', async () => {
     const { resolveCredential } = recordingResolver({});
     const failure = await loadToolSource(

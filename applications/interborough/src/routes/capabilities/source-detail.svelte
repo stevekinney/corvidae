@@ -106,14 +106,22 @@
   const signedIn = $derived(
     signedInNow || (source.authorized === true && source.tokensRejected !== true),
   );
+  // An OAuth source saved since the host started is signed in to before the restart that lists its
+  // tools; `authorized` is only present for an OAuth source.
+  const signInFirst = $derived(source.state === 'pending-restart' && source.authorized === false);
+  const canSignIn = $derived(source.state === 'needs-authorization' || signInFirst);
   const stateWords = $derived(
-    source.state !== 'needs-authorization'
-      ? sourceStateDescription(source.state)
-      : signedIn
+    signInFirst
+      ? copy.signIn.savedFirst
+      : source.state === 'pending-restart' && source.authorized === true
         ? copy.signIn.signedIn
-        : source.tokensRejected === true
-          ? copy.signIn.rejected
-          : sourceStateDescription(source.state),
+        : source.state !== 'needs-authorization'
+          ? sourceStateDescription(source.state)
+          : signedIn
+            ? copy.signIn.signedIn
+            : source.tokensRejected === true
+              ? copy.signIn.rejected
+              : sourceStateDescription(source.state),
   );
 </script>
 
@@ -147,7 +155,7 @@
     <p class="ib-source__help" data-testid="source-locked">{copy.tools.locked}</p>
   {/if}
 
-  {#if source.state === 'needs-authorization'}
+  {#if canSignIn}
     <div class="ib-source__sign-in">
       <Button
         data-changes

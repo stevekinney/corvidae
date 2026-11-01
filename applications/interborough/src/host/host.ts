@@ -339,6 +339,12 @@ export type HostOptions = {
    * such route, so the path is a 404.
    */
   readonly onRestartRequested?: () => void | Promise<void>;
+  /**
+   * How long a probe of a tool source that is not saved yet (`POST /host/tool-sources/<id>/probe`)
+   * may take to connect and list its tools before the host answers that the source did not
+   * answer. Defaults to ten seconds.
+   */
+  readonly toolSourceProbeTimeoutMilliseconds?: number;
 };
 
 /**
@@ -405,6 +411,7 @@ export type Host = {
    */
   readonly toolSources: Pick<
     ToolSourceManager,
+    | 'probe'
     | 'connect'
     | 'configureTools'
     | 'remove'
@@ -675,6 +682,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         held.bureau === undefined ? [] : agentToolUseOf(held.bureau.agents)(),
       origin: () => hostOrigin ?? `http://${LOOPBACK}:${startPort}`,
       warn: options.warn ?? ((message) => console.warn(message)),
+      ...(options.toolSourceProbeTimeoutMilliseconds === undefined
+        ? {}
+        : { probeTimeoutMilliseconds: options.toolSourceProbeTimeoutMilliseconds }),
     });
     held.toolSources = toolSources;
     await toolSources.start();
@@ -1031,6 +1041,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       generateFor,
       configurationQueue,
       toolSources: {
+        probe: (request) => toolSources.probe(request),
         connect: (request) => toolSources.connect(request),
         configureTools: (request) => toolSources.configureTools(request),
         remove: (request) => toolSources.remove(request),

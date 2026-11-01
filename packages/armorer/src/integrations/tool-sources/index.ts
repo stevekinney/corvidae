@@ -553,7 +553,12 @@ async function loadOpenApiSource(
   const { specification, documentUrl } =
     source.specification.type === 'document'
       ? { specification: source.specification.document, documentUrl: undefined }
-      : await fetchSpecification(source.id, source.specification.url, fetchImplementation);
+      : await fetchSpecification(
+          source.id,
+          source.specification.url,
+          fetchImplementation,
+          options.signal,
+        );
   const authentication = source.authentication;
   const auth: OpenAPIAuth | undefined =
     authentication?.type === 'bearer'
@@ -621,22 +626,40 @@ function resolveBaseUrl(
   return resolved.href;
 }
 
-/** The document is fetched without credentials: they belong to the API, which may be another host. */
+/** The largest OpenAPI document fetched from a URL; a larger one is refused before it is parsed. */
+const MAXIMUM_SPECIFICATION_BYTES = 3_000_000;
+
+/**
+ * The document is fetched without credentials: they belong to the API, which may be another host.
+ * The fetch ends when `signal` aborts, and the body is read only up to
+ * {@link MAXIMUM_SPECIFICATION_BYTES}, so a host that never answers or never stops sending cannot
+ * hold the load.
+ */
 async function fetchSpecification(
   sourceId: string,
   url: string,
   fetchImplementation: typeof fetch,
+  signal: AbortSignal | undefined,
 ): Promise<{ specification: OpenAPISpec; documentUrl: string }> {
-  const response = await fetchImplementation(url, { headers: { accept: 'application/json' } });
+  const response = await fetchImplementation(url, {
+    headers: { accept: 'application/json' },
+    ...(signal === undefined ? {} : { signal }),
+  });
   if (!response.ok) {
     throw new Error(
       `Tool source "${sourceId}": fetching its OpenAPI document failed with HTTP ${response.status}.`,
     );
   }
+  const text = await readBoundedText(response, MAXIMUM_SPECIFICATION_BYTES);
+  if (text === undefined) {
+    throw new Error(
+      `Tool source "${sourceId}": its OpenAPI document is larger than ${MAXIMUM_SPECIFICATION_BYTES} bytes.`,
+    );
+  }
   try {
     // `response.url` is the final URL after redirects; a relative server URL resolves against it.
     return {
-      specification: (await response.json()) as OpenAPISpec,
+      specification: JSON.parse(text) as OpenAPISpec,
       documentUrl: response.url || url,
     };
   } catch (error) {
@@ -645,6 +668,36 @@ async function fetchSpecification(
       { cause: error },
     );
   }
+}
+
+/** The body as text, or `undefined` once it passes `limit` bytes, when the rest is not read. */
+async function readBoundedText(response: Response, limit: number): Promise<string | undefined> {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > limit) {
+    await response.body?.cancel().catch(() => undefined);
+    return undefined;
+  }
+  if (response.body === null) return '';
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > limit) {
+      await reader.cancel().catch(() => undefined);
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function onceAsync(work: () => Promise<void>): () => Promise<void> {

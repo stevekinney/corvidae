@@ -35,7 +35,14 @@
  * - **Local only.** A remote home keeps its configuration in a bucket and its secrets in the
  *   environment, which the host cannot write, so every change is refused with the lock reason
  *   `deployment` ({@link ToolSourceWriteLockedError}), as for providers and skills.
- * - **A local command is the owner's.** A source that spawns a process on this machine is added
+ * - **A probe contacts a source before it is saved.** {@link ToolSourceManager.probe} checks a
+ *   request as {@link ToolSourceManager.connect} does, loads the source with the credentials the
+ *   request carries and nothing from the vault, and answers with the tools it lists. It stores,
+ *   writes and records nothing, closes the connection before it answers, runs against its own
+ *   deadline ({@link DEFAULT_PROBE_TIMEOUT_MILLISECONDS}), and reports a source that does not
+ *   answer as a sentence that holds no address, command or value. An OAuth server that asks for
+ *   a sign-in is reported as `needs-authorization`: the sign-in belongs to a saved source.
+ * - **A local command is the owner's.** A source that spawns a process on this machine is probed or added
  *   only by the owner principal ({@link ToolSourceOwnerOnlyError}), and the addition is recorded
  *   in the audit trail with its command line (never its environment).
  * - **The sign-in.** {@link ToolSourceManager.authorize} starts an MCP OAuth flow and returns the
@@ -134,6 +141,12 @@ export function oauthCallbackPath(sourceId: string): string {
 export const DEFAULT_LOAD_TIMEOUT_MILLISECONDS = 30_000;
 
 /**
+ * How long a probe (`ToolSourceManager.probe`) may take to connect and list a source's tools, by
+ * default. It is shorter than a load at boot because a person is waiting on the dialog.
+ */
+export const DEFAULT_PROBE_TIMEOUT_MILLISECONDS = 10_000;
+
+/**
  * How long a sign-in stays good after the host hands out its authorization URL: a person who has
  * not finished by then starts again, and a callback that arrives later is refused.
  */
@@ -171,6 +184,14 @@ export class ToolSourceInputError extends Error {
     this.name = 'ToolSourceInputError';
     this.field = field;
     this.kind = kind;
+  }
+}
+
+/** A source added with `createOnly` under an identifier a source already holds. */
+export class ToolSourceExistsError extends Error {
+  constructor(sourceId: string) {
+    super(`Tool source "${sourceId}" is already saved. Choose another name, or remove it first.`);
+    this.name = 'ToolSourceExistsError';
   }
 }
 
@@ -319,6 +340,44 @@ export type ToolSourceSnapshot = {
   readonly lockReason?: SettingLockReason;
 };
 
+/** What a probe asks for. Every field is `unknown` because it arrives from a request: the manager checks it. */
+export type ToolSourceProbeRequest = {
+  /** The description (`armorer/tool-sources`), as {@link ToolSourceConnection.source}. */
+  readonly source: unknown;
+  /** Credential name to value, for every credential the description names: a probe reads none from the vault. */
+  readonly credentials?: unknown;
+  /** The identifier the request addresses, which the description's `id` must equal. */
+  readonly id: unknown;
+  /** Who is asking. A local command is spawned only for the owner. */
+  readonly principal: string;
+};
+
+/** One tool a probe found, under the name an agent file would use once the source is saved. */
+export type ToolSourceProbeTool = {
+  /** The name an agent file lists (`<id>__<tool>`). */
+  readonly name: string;
+  /** The tool's own name at the source. */
+  readonly tool: string;
+  /** Its capability tier (`read-only`, `mutating`, `dangerous`), or `null` when it has none. */
+  readonly tier: string | null;
+};
+
+/**
+ * What a probe found. A source that cannot be reached is an answer, not an error: `message` says
+ * why in words that hold no URL, command, header or value.
+ */
+export type ToolSourceProbe =
+  /** The source answered and listed these tools. Nothing was saved. */
+  | {
+      readonly outcome: 'listed';
+      readonly tools: readonly ToolSourceProbeTool[];
+      readonly skipped: readonly { readonly tool: string; readonly reason: string }[];
+    }
+  /** The server is there and asks for a sign-in, which can only happen once the source is saved. */
+  | { readonly outcome: 'needs-authorization' }
+  /** The source did not answer as an MCP server or OpenAPI service should. */
+  | { readonly outcome: 'failed'; readonly message: string };
+
 /** What a connection asks for. Every field is `unknown` because it arrives from a request: the manager checks it. */
 export type ToolSourceConnection = {
   /** The description (`armorer/tool-sources`): plain JSON with credentials named, never held. */
@@ -329,6 +388,12 @@ export type ToolSourceConnection = {
   readonly id: unknown;
   /** Who is asking. A local command is added only by the owner. */
   readonly principal: string;
+  /**
+   * Refuse with {@link ToolSourceExistsError}, changing nothing, when a source is already saved
+   * under the identifier, instead of replacing it. The check is made in the source's turn, so two
+   * requests for one new name cannot both succeed.
+   */
+  readonly createOnly?: boolean;
 };
 
 /** What a change to the per-tool settings of a source asks for. Every field is `unknown` because it arrives from a request. */
@@ -383,6 +448,11 @@ export type ToolSourceManager = {
   lockReason(): SettingLockReason | undefined;
   /** The configuration as it is on disk, with where each source stands. */
   snapshot(): Promise<ToolSourceSnapshot>;
+  /**
+   * Contact a source that is not saved, with the credentials the request carries, and report the
+   * tools it lists. Writes, stores and records nothing, and holds no connection afterwards.
+   */
+  probe(request: ToolSourceProbeRequest): Promise<ToolSourceProbe>;
   /** Store a source's credentials and list the source in the configuration. */
   connect(request: ToolSourceConnection): Promise<ToolSourceChange>;
   /** Set the per-tool settings (`acceptsSecrets`) of a configured source. Loaded at the next start. */
@@ -436,6 +506,8 @@ export type ToolSourceManagerOptions = {
   readonly fetch?: typeof fetch;
   /** How long one source may take to load. Defaults to {@link DEFAULT_LOAD_TIMEOUT_MILLISECONDS}. */
   readonly loadTimeoutMilliseconds?: number;
+  /** How long a probe may take. Defaults to {@link DEFAULT_PROBE_TIMEOUT_MILLISECONDS}. */
+  readonly probeTimeoutMilliseconds?: number;
   /** The clock a sign-in's age is read from. Defaults to `Date.now`. */
   readonly now?: () => number;
   /**
@@ -682,6 +754,56 @@ function recipientOf(source: ToolSourceDescription): string {
   ]);
 }
 
+/**
+ * The identifier and description of a request to connect or probe a source, checked before the
+ * first `await` (the caller owns the request) and before anything is contacted or written. A
+ * source that runs a command on this machine is refused to everyone but `owner`.
+ */
+function checkedDescription(
+  request: { readonly id: unknown; readonly source: unknown; readonly principal: string },
+  owner: string,
+): { readonly id: string; readonly source: ToolSourceDescription } {
+  const id = checkedIdentifier(request.id, 'id');
+  // Only a new source is refused the name: one stored before the name was reserved must stay removable.
+  if (RESERVED_TOOL_SOURCE_IDENTIFIERS.includes(id)) {
+    throw new ToolSourceInputError('id', `"${id}" is reserved for the host's own tools.`);
+  }
+  checkUrls(request.source);
+  let source: ToolSourceDescription;
+  try {
+    // A copy, because the description's document is read after the first `await` and the caller owns the original.
+    source = parseToolSourceDescription(copyOfJson(request.source));
+  } catch (error) {
+    if (error instanceof ToolSourceDescriptionError) {
+      throw new ToolSourceInputError('source', error.message);
+    }
+    throw error;
+  }
+  if (source.id !== id) {
+    throw new ToolSourceInputError('source.id', 'expected the identifier the request addresses.');
+  }
+  if (isLocalCommand(source) && request.principal !== owner) {
+    throw new ToolSourceOwnerOnlyError();
+  }
+  return { id, source };
+}
+
+/** OAuth state that lives only as long as a probe: nothing it learns is kept. */
+function probeTokenStorage(): McpOAuthTokenStorage {
+  let state: Awaited<ReturnType<McpOAuthTokenStorage['load']>> = {};
+  return {
+    load: () => ({ ...state }),
+    save: (patch) => {
+      state = { ...state, ...patch };
+    },
+    clear: (keys) => {
+      const next = { ...state };
+      for (const key of keys) delete next[key];
+      state = next;
+    },
+  };
+}
+
 /** Create the manager. It loads nothing until {@link ToolSourceManager.start}. */
 export function createToolSourceManager(options: ToolSourceManagerOptions): ToolSourceManager {
   const { bungalow } = options;
@@ -690,6 +812,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   const configurationQueue = options.configurationQueue ?? createConfigurationQueue();
   const vault: ToolSourceVault = createToolSourceVault({ bungalow, keys: options.keys });
   const timeout = options.loadTimeoutMilliseconds ?? DEFAULT_LOAD_TIMEOUT_MILLISECONDS;
+  const probeTimeout = options.probeTimeoutMilliseconds ?? DEFAULT_PROBE_TIMEOUT_MILLISECONDS;
   const warn = options.warn ?? (() => undefined);
   const now = options.now ?? Date.now;
   const schedule =
@@ -837,6 +960,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
    */
   async function within(
     start: (signal: AbortSignal) => Promise<LoadedToolSource>,
+    milliseconds: number = timeout,
   ): Promise<LoadedToolSource> {
     const controller = new AbortController();
     loading.add(controller);
@@ -848,7 +972,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         timedOut = true;
         reject(new LoadTimeoutError());
         controller.abort();
-      }, timeout);
+      }, milliseconds);
     });
     try {
       return await Promise.race([work, deadline]);
@@ -1132,41 +1256,80 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const reason = lockReason();
       return { sources: standings, ...(reason === undefined ? {} : { lockReason: reason }) };
     },
+    // The request is checked, as `connect` checks it, before anything is contacted. Nothing is
+    // stored, written to the configuration, put in the audit trail, or taken from the vault: the
+    // credentials live in this call, and a source that answers is closed before it returns.
+    async probe(request) {
+      assertWritable();
+      const { id, source } = checkedDescription(request, owner);
+      const supplied = checkedCredentials(request.credentials, referencedCredentials(source));
+      for (const name of referencedCredentials(source)) {
+        if (!supplied.has(name)) {
+          throw new ToolSourceInputError(`credentials.${name}`, 'a value is required.');
+        }
+      }
+      if (closed) throw new Error('The host is shutting down.');
+      // One storage for the whole probe: the loader asks for it more than once.
+      const storage = probeTokenStorage();
+      let loaded: LoadedToolSource;
+      try {
+        loaded = await within(
+          (signal) =>
+            loadToolSource(source, {
+              resolveCredential: ({ credential }) => supplied.get(credential),
+              oauth: oauthOptions(
+                () => undefined,
+                'take',
+                () => storage,
+              ),
+              signal,
+              ...fetchOption,
+            }),
+          probeTimeout,
+        );
+      } catch (error) {
+        if (error instanceof ToolSourceAuthorizationRequiredError) {
+          return { outcome: 'needs-authorization' as const };
+        }
+        // Nothing from the failure is repeated: it may hold the address, the command, or a value.
+        return { outcome: 'failed' as const, message: describeFailure(error) };
+      }
+      try {
+        const names = qualifyToolNames(
+          id,
+          loaded.tools.map((tool) => tool.name),
+        );
+        const byName = new Map(names.named.map(({ tool, name }) => [tool, name]));
+        const tools: ToolSourceProbeTool[] = [];
+        for (const tool of loaded.tools) {
+          const name = byName.get(tool.name);
+          if (name === undefined) continue;
+          tools.push({
+            name,
+            tool: tool.name,
+            tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
+          });
+        }
+        return { outcome: 'listed' as const, tools, skipped: names.skipped };
+      } finally {
+        await loaded.close().catch(() => undefined);
+      }
+    },
     // The request is read, checked, and copied before the first `await`: the caller owns it, and
     // may change it while this waits its turn.
     async connect(request) {
       assertWritable();
-      const id = checkedIdentifier(request.id, 'id');
-      // Only a new source is refused the name: one stored before the name was reserved must stay removable.
-      if (RESERVED_TOOL_SOURCE_IDENTIFIERS.includes(id)) {
-        throw new ToolSourceInputError('id', `"${id}" is reserved for the host's own tools.`);
-      }
-      checkUrls(request.source);
-      let source: ToolSourceDescription;
-      try {
-        // A copy, because the description's document is read after the first `await` and the caller owns the original.
-        source = parseToolSourceDescription(copyOfJson(request.source));
-      } catch (error) {
-        if (error instanceof ToolSourceDescriptionError) {
-          throw new ToolSourceInputError('source', error.message);
-        }
-        throw error;
-      }
-      if (source.id !== id) {
-        throw new ToolSourceInputError(
-          'source.id',
-          'expected the identifier the request addresses.',
-        );
-      }
-      if (isLocalCommand(source) && request.principal !== owner) {
-        throw new ToolSourceOwnerOnlyError();
-      }
+      const { id, source } = checkedDescription(request, owner);
       const referenced = referencedCredentials(source);
       const supplied = checkedCredentials(request.credentials, referenced);
+      const createOnly = request.createOnly === true;
       return serialized(() =>
         vault.exclusive(id, async () => {
           const { text: currentText, document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
+          if (createOnly && existing !== undefined) {
+            throw new ToolSourceExistsError(id);
+          }
           // What is held is carried over only for the same source going to the same place. A new
           // source starts with nothing, whatever an earlier source of the same id left in its
           // secret, and a source that now points elsewhere does not send the old credentials there.

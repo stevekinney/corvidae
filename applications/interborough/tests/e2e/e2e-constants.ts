@@ -62,6 +62,19 @@ export const E2E_JOURNEY_URL = `http://127.0.0.1:${E2E_JOURNEY_PORT}`;
 export const E2E_FIRST_RUN_PORT = E2E_PORT + 4;
 export const E2E_FIRST_RUN_URL = `http://127.0.0.1:${E2E_FIRST_RUN_PORT}`;
 
+/**
+ * The sixth host, on the port after the first-run host's, which only the connect specification
+ * (`connect-tools-restart.spec.ts`) opens. It is the production entry (`src/host/serve.ts`) run
+ * under the real supervisor (`connect-host.ts`), so `POST /host/restart` really stops it and the
+ * supervisor starts it again; the main host cannot do that without losing the console engine's
+ * fixtures. Its home starts empty, and the specification connects every source it lists.
+ */
+export const E2E_CONNECT_PORT = E2E_PORT + 5;
+export const E2E_CONNECT_URL = `http://127.0.0.1:${E2E_CONNECT_PORT}`;
+
+/** The bearer token the connect host's MCP server accepts. It is made up, and printed nowhere. */
+export const E2E_CONNECT_TOKEN = 'e2e-connect-token-4f81c2a9d6';
+
 /** The `workerId` of the E2E `RemoteWorker`, the worker the Workers pages open in the specifications. */
 export const E2E_FLEET_WORKER_ID = 'e2e-fleet-worker-1';
 
