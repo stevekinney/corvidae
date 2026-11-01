@@ -1,0 +1,24 @@
+{
+  "plugin": "inspectors",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "kind": "configuration",
+      "id": "inspectors",
+      "version": "1.0.0",
+      "schema": "sha256:93ab7499dc3c616f8db8780fed0d9f69270803cda913882ad2ef3943db8d7225"
+    },
+    {
+      "kind": "mcp-app",
+      "id": "inspectors:pending-review",
+      "version": "1.0.0",
+      "schema": "sha256:35b2a7d4770fe6ba40c5620b0b9744f36ab2279501f1cf8a63c83821466f72bf"
+    },
+    {
+      "kind": "mcp-app",
+      "id": "inspectors:run-inspector",
+      "version": "1.0.0",
+      "schema": "sha256:6500e38d4ac04f1632fbced15b6b576dbdeebce9aa05d285eb326e072b5e709b"
+    }
+  ]
+}

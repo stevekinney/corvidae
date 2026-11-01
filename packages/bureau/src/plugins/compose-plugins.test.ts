@@ -18,6 +18,7 @@ import {
   HOST_HELD_KINDS,
   registersKind,
 } from './compose-plugins';
+import { createPluginRegistry } from './plugin-registry';
 import type { BureauPluginEntry, PluginContributionKind } from './plugin-types';
 
 function pluginEntry(name: string, setup: () => PluginSetupResult): BureauPluginEntry {
@@ -162,7 +163,10 @@ const HOST_ENTRY: Record<
     noHostEntry:
       'A provider is handed to the host’s `models.catalog` factory, which holds no names.',
   },
-  'mcp-app': { noHostEntry: 'Bureau has no MCP app option; the host wires them (COR-1880).' },
+  'mcp-app': {
+    noHostEntry:
+      'Bureau has no MCP app option; the host reads them from `bureau.plugins.mcpApps()`.',
+  },
   embedder: {
     noHostEntry:
       'The host registers its embedders inside its own memory factory; a plugin id is `p:x`, never `hashing`.',
@@ -378,5 +382,93 @@ describe('composePlugins', () => {
     const { records } = await composing;
     expect(records).toHaveLength(2);
     expect(seen).toEqual([1, 2]);
+  });
+});
+
+describe('MCP apps a plugin contributes', () => {
+  const mcpApp = (name: string, uri: string, tool = 'bureau.tasks.inspect') => ({
+    name,
+    title: name,
+    uri,
+    entry: new URL(`file:///${name}/app.ts`),
+    allowedTools: [tool],
+    opensFromTool: tool,
+  });
+
+  it('lists the apps of the running plugins, in load order, for the host to serve', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('first', () => ({ mcpApps: [mcpApp('one', 'ui://first/one/v1')] })),
+        pluginEntry('second', () => ({ mcpApps: [mcpApp('two', 'ui://second/two/v1')] })),
+      ],
+      pluginConfiguration: { second: { enabled: false } },
+    });
+    const { plugins } = createPluginRegistry(records);
+    expect(plugins.mcpApps().map(({ plugin, version, app }) => [plugin, version, app.uri])).toEqual(
+      [['first', '1.0.0', 'ui://first/one/v1']],
+    );
+  });
+
+  it('skips a plugin whose app is opened from a tool it may not call', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({
+          mcpApps: [{ ...mcpApp('one', 'ui://a/one/v1'), opensFromTool: 'bureau.tasks.cancel' }],
+        })),
+      ],
+    });
+    expect(records[0]?.status).toBe('skipped');
+  });
+
+  it('skips a plugin whose app has no ui:// URI, or whose URI another plugin holds', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({ mcpApps: [mcpApp('one', 'https://example.test/one')] })),
+        pluginEntry('b', () => ({ mcpApps: [mcpApp('one', 'ui://shared/v1', 'tool.b')] })),
+        pluginEntry('c', () => ({ mcpApps: [mcpApp('two', 'ui://shared/v1', 'tool.c')] })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual(['skipped', 'running', 'skipped']);
+    expect(records[0]?.problems).toEqual([expect.objectContaining({ code: 'setup-failed' })]);
+    expect(records[2]?.problems).toEqual([
+      expect.objectContaining({ code: 'name-clash', name: 'ui://shared/v1' }),
+    ]);
+  });
+
+  it('skips the later plugin whose app opens from a tool an earlier app already opens', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({ mcpApps: [mcpApp('one', 'ui://a/one/v1')] })),
+        pluginEntry('b', () => ({ mcpApps: [mcpApp('two', 'ui://b/two/v1')] })),
+      ],
+    });
+    expect(records.map(({ status }) => status)).toEqual(['running', 'skipped']);
+    expect(records[1]?.problems).toEqual([
+      expect.objectContaining({ code: 'name-clash', name: 'bureau.tasks.inspect' }),
+    ]);
+    const { plugins } = createPluginRegistry(records);
+    expect(plugins.mcpApps().map(({ plugin }) => plugin)).toEqual(['a']);
+  });
+
+  it('records a build failure the host reports against the plugin and stops listing the app', async () => {
+    const { records } = await composePlugins<ComposableOptions>({
+      plugins: [
+        pluginEntry('a', () => ({
+          mcpApps: [
+            mcpApp('one', 'ui://a/one/v1'),
+            mcpApp('two', 'ui://a/two/v1', 'bureau.tasks.events'),
+          ],
+        })),
+      ],
+    });
+    const registry = createPluginRegistry(records);
+    registry.plugins.reportMcpAppFailure('a', 'one', 'The entry does not build.');
+    registry.plugins.reportMcpAppFailure('absent', 'one', 'No such plugin.');
+    expect(registry.plugins.mcpApps().map(({ app }) => app.name)).toEqual(['two']);
+    const [listing] = await registry.plugins.list();
+    expect(listing?.status).toBe('running');
+    expect(listing?.problems).toEqual([
+      { code: 'mcp-app-failed', app: 'one', message: 'The entry does not build.' },
+    ]);
   });
 });

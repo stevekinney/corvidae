@@ -1264,6 +1264,12 @@ export const PLUGINS_COPY = {
       title: 'A step after startup failed',
       body: (message: string): string => message,
     },
+    /** A page the plugin contributed could not be built; the plugin and its other parts run. */
+    mcpAppFailed: {
+      status: 'Loaded, a page was not built',
+      title: 'A page the plugin adds did not build',
+      body: (app: string, message: string): string => `The page ${app} is not served. ${message}`,
+    },
   },
   /** The banner every page shows after a startup where a plugin or a folder did not load. */
   startupBanner: {

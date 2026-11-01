@@ -202,6 +202,9 @@ interface PluginContributionPlan {
   readonly tools: ReadonlyMap<string, Tool>;
 }
 
+/** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
+const MCP_APP_URI_PATTERN = /^ui:\/\/\S+$/;
+
 /**
  * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
  * name outside the plugin name grammar (which also keeps `plugin__name` injective), a tool that
@@ -283,7 +286,23 @@ function planOf(
     contribute('memory-detector', detector.name);
   }
   for (const judge of contributions.evalJudges ?? []) contribute('eval-judge', judge.name);
-  for (const app of contributions.mcpApps ?? []) contribute('mcp-app', app.name);
+  for (const app of contributions.mcpApps ?? []) {
+    // A host serves the page by this URI alone, so it must be a `ui://` resource and unique.
+    if (!MCP_APP_URI_PATTERN.test(app.uri)) {
+      throw new TypeError(
+        `setup returned the MCP app "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
+      );
+    }
+    if (!app.allowedTools.includes(app.opensFromTool)) {
+      throw new TypeError(
+        `setup returned the MCP app "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
+      );
+    }
+    contribute('mcp-app', app.name);
+    claims.push({ space: 'mcp-app-uri', name: app.uri });
+    // A tool links to one page, so the host cannot serve two apps opened from the same tool.
+    claims.push({ space: 'mcp-app-tool', name: app.opensFromTool });
+  }
   for (const formatter of contributions.eventFormatters ?? []) {
     contribute('event-formatter', formatter.name);
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
@@ -352,7 +371,7 @@ function heldByHost(options: ComposableOptions): Claims {
   // Embedders and memory detectors reach memory only through the host's `memory` factory, which
   // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
   // meets memory's built-in `hashing`, and two plugins' ids are kept apart by the claims above.
-  // Providers reach the host's `models.catalog` factory, not a held name; MCP apps have no Bureau entry point yet: the host wires them (COR-1880).
+  // Providers reach the host's `models.catalog` factory, not a held name; MCP apps have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.mcpApps()`.
   return claims;
 }
 

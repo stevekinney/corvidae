@@ -142,7 +142,11 @@ export interface PluginEmbedder {
   readonly embed: Embedder;
 }
 
-/** An interface panel, an MCP app, that renders inside the host. */
+/**
+ * An interface panel, an MCP app, that renders inside the host. The host bundles `entry` into one
+ * self-contained page and serves it as the `ui://` resource `uri`, under a content security policy
+ * that denies every origin and permission.
+ */
 export interface PluginMcpApp {
   /** The app's name, unique within the plugin. */
   readonly name: string;
@@ -152,10 +156,24 @@ export interface PluginMcpApp {
   readonly title: string;
   /** What the panel shows. */
   readonly description?: string;
-  /** The panel's document: HTML text, or a URL the host reads it from. */
-  readonly html: string | URL;
+  /**
+   * The `ui://` resource the page is served at, unique across plugins. The version is part of the
+   * URI: a changed contract is a new one.
+   */
+  readonly uri: string;
+  /** The browser entry module (TypeScript or JavaScript) the host bundles into the page. */
+  readonly entry: URL;
+  /** The CSS inlined into the page's `<style>` element, so it needs no origin to load from. */
+  readonly styles?: string;
   /** The Bureau MCP tool names the panel may call. A panel may call no other tool. */
   readonly allowedTools: string[];
+  /**
+   * The one Bureau MCP tool a client runs to open the page: the host links this tool to the page.
+   * It is one of `allowedTools`, and unique across plugins: a tool links to one page, so a plugin
+   * whose app opens from a tool another app already opens is skipped with `name-clash`. An app
+   * whose entry does not build leaves the plugin running with an `mcp-app-failed` problem.
+   */
+  readonly opensFromTool: string;
 }
 
 /** A rendering of one event for the host's activity views. */
