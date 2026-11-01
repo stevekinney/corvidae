@@ -2,16 +2,17 @@
   /**
    * `/agents/:agent/memories`: what an agent remembers of the caller's chats, as a list with the
    * open memory beside it (Cinder's `ListDetail`, the same layout as Chats and Reviews). The list's
-   * header holds the title, Export, a search that runs as you type, and a kind filter in plain
-   * names. A memory opens beside the list with Correct and Forget on its context line and the
-   * governance actions below it (`memory-detail.svelte`).
+   * header holds the title, Add a memory (`memory-add.svelte`), Export, a search that runs as you
+   * type, and a kind filter in plain names. A memory opens beside the list with Correct and Forget
+   * on its context line and the governance actions below it (`memory-detail.svelte`).
    *
    * The Agents view's frame (`app/view-frame.svelte`) asks the server first and owns the words for
-   * loading, empty, failing, locked, and an agent that is not there, so this page renders only once
-   * the agent has at least one memory. A blank search lists, newest first; a search ranks every
-   * memory the agent has, because ranking has no score floor, so a search never answers "nothing
-   * matched" from the server: the page counts the memories that hold a word of the query. The kind
-   * filter works over the pages read so far, and says so while there are more.
+   * loading, failing, locked, and an agent that is not there. An agent with no memory is not one of
+   * those: this page says so itself, because it is where the first memory is added. A blank search
+   * lists, newest first; a search ranks every memory the agent has, because ranking has no score
+   * floor, so a search never answers "nothing matched" from the server: the page counts the
+   * memories that hold a word of the query. The kind filter works over the pages read so far, and
+   * says so while there are more.
    */
   import { untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
@@ -25,7 +26,7 @@
     Select,
     Skeleton,
   } from '@lostgradient/cinder';
-  import { Download } from '@lucide/svelte';
+  import { Download, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
@@ -40,6 +41,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
+  import MemoryAdd from './memory-add.svelte';
   import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
   import MemoryDetail from './memory-detail.svelte';
   import MemoryGovernance from './memory-governance.svelte';
@@ -61,7 +63,7 @@
   const applied = $derived(typed.trim());
   let kindFilter = $state<KindFilter>('all');
   let selectedId = $state<string | null>(null);
-  let notice = $state<'corrected' | undefined>(undefined);
+  let notice = $state<'corrected' | 'added' | undefined>(undefined);
   /** A correction that was refused, with the text that was sent, until it is dismissed or retried. */
   let refused = $state<
     { readonly id: string; readonly fault: MemoryFault; readonly content: string } | undefined
@@ -75,6 +77,7 @@
   let governancePending = $state(false);
   let changes = $state<ReturnType<typeof MemoryChanges> | undefined>(undefined);
   let governance = $state<ReturnType<typeof MemoryGovernance> | undefined>(undefined);
+  let adding = $state<ReturnType<typeof MemoryAdd> | undefined>(undefined);
 
   const listing = createInfiniteQuery(
     () => ({
@@ -203,6 +206,13 @@
     if (selectedId === replaced) selectedId = correction.id;
   }
 
+  /** A memory was added: say so, and open it, which keeps it in view whatever the list is narrowed to. */
+  function added(memory: Memory): void {
+    notice = 'added';
+    resume = undefined;
+    selectedId = memory.id;
+  }
+
   /** A correction was refused: say so here, because the panel that asked is gone once the person moves on. */
   function correctionFailed(id: string, fault: MemoryFault, content: string): void {
     notice = undefined;
@@ -225,10 +235,11 @@
 </script>
 
 <div class="ib-memory" data-agent={agentId}>
-  {#if notice === 'corrected'}
+  {#if notice !== undefined}
+    {@const saved = notice === 'added' ? MEMORY_COPY.add.saved : MEMORY_COPY.correct.saved}
     <Alert variant="success" dismissible onDismiss={() => (notice = undefined)}>
-      <p class="ib-memory__alert-title">{MEMORY_COPY.correct.saved.title}</p>
-      <p class="ib-memory__alert-body">{MEMORY_COPY.correct.saved.description}</p>
+      <p class="ib-memory__alert-title">{saved.title}</p>
+      <p class="ib-memory__alert-body">{saved.description}</p>
     </Alert>
   {/if}
 
@@ -277,6 +288,7 @@
     bind:pending={governancePending}
     onQuarantined={gone}
   />
+  <MemoryAdd bind:this={adding} {agentId} onAdded={added} />
 
   <!-- A kind that hides the search hits is not "no match": the hits are there. -->
   {#snippet emptiness()}
@@ -309,12 +321,18 @@
       />
     {:else}
       <EmptyState
-        kind="done"
+        kind="first-use"
         size="compact"
         headingLevel={2}
-        title={MEMORY_COPY.nothingLeft.title}
-        description={MEMORY_COPY.nothingLeft.description}
-      />
+        title={MEMORY_COPY.nothing.title}
+        description={MEMORY_COPY.nothing.description}
+      >
+        {#snippet action()}
+          <Button data-changes variant="primary" size="sm" onclick={() => adding?.ask()}
+            >{MEMORY_COPY.add.action}</Button
+          >
+        {/snippet}
+      </EmptyState>
     {/if}
   {/snippet}
 
@@ -335,16 +353,22 @@
       {#snippet header()}
         <div class="ib-memory__title-row">
           <h1 class="ib-memory__title">{MEMORY_COPY.heading}</h1>
-          <Button
-            data-changes
-            variant="secondary"
-            size="sm"
-            disabled={governancePending}
-            onclick={() => governance?.exportAll()}
-          >
-            {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
-            {MEMORY_COPY.govern.export.action}
-          </Button>
+          <div class="ib-memory__title-actions">
+            <Button data-changes variant="secondary" size="sm" onclick={() => adding?.ask()}>
+              {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
+              {MEMORY_COPY.add.action}
+            </Button>
+            <Button
+              data-changes
+              variant="secondary"
+              size="sm"
+              disabled={governancePending}
+              onclick={() => governance?.exportAll()}
+            >
+              {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
+              {MEMORY_COPY.govern.export.action}
+            </Button>
+          </div>
         </div>
         <SearchField
           id="ib-memory-search"
@@ -457,6 +481,12 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
     align-items: center;
     justify-content: space-between;
+  }
+
+  .ib-memory__title-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
   }
 
   .ib-memory__title {

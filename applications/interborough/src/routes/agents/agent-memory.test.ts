@@ -1,10 +1,10 @@
 /**
  * The Memory page (`/agents/:agent/memories`) against a stand-in for the server's memory operations:
  * the list with the open memory beside it, the search that runs as you type, the kind filter, one
- * memory's facts, what forgetting answers in each of the deletion's states, correcting in place
- * (the original is kept in the history), and the governance actions (share, hold, quarantine,
- * export). The Agents view's frame owns the page's loading, empty, failing, locked and not-found
- * states (`app/view-frame.test.ts`). The real server is exercised in the Playwright suite.
+ * memory's facts, adding a memory, what forgetting answers in each of the deletion's states,
+ * correcting in place (the original is kept in the history), and the governance actions (share,
+ * hold, quarantine, export). The Agents view's frame owns the page's loading, failing, locked and
+ * not-found states (`app/view-frame.test.ts`). The real server is exercised in the Playwright suite.
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
@@ -759,7 +759,7 @@ describe('forgetting a memory', () => {
     );
 
     // An empty state, not a status line, and the receipt is still there to read.
-    expect(await view.findByText(MEMORY_COPY.nothingLeft.title, { selector: 'h2' })).not.toBeNull();
+    expect(await view.findByText(MEMORY_COPY.nothing.title, { selector: 'h2' })).not.toBeNull();
     expect(view.getByText(MEMORY_COPY.forget.outcome.completed.title)).not.toBeNull();
     expect(view.container.querySelector('[data-view="agents"]')?.getAttribute('data-state')).toBe(
       'ready',
@@ -991,6 +991,235 @@ describe('correcting a memory', () => {
 
     expect(await view.findByText(MEMORY_COPY.correct.saved.title)).not.toBeNull();
     expect(router.search.get('memory')).toBe(WINDOW.id);
+  });
+});
+
+describe('adding a memory', () => {
+  const TEXT = 'The user flies out of Oakland.';
+  const ADDED = {
+    ...WINDOW,
+    id: 'memory-added',
+    content: TEXT,
+    source: 'operator',
+    trust: 'verified',
+    memoryClass: 'semantic',
+    sessionId: null,
+  };
+
+  const refusing = (reason: string) => () => {
+    throw new StubFault('Unprocessable', 422, 'Refused.', { reason });
+  };
+
+  /** The page with the form open from its header and `content` typed into it. */
+  async function formWith(answer: BureauHandler, content = TEXT) {
+    const served = bureau({
+      'bureau.memory.remember': answer,
+      'bureau.memory.get': () => ({ memory: ADDED, lineage: NO_LINEAGE }),
+    });
+    const view = open();
+    await view.findByText(AISLE.content);
+    await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.add.action }));
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
+    const field = within(dialog).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label);
+    await fireEvent.input(field, { target: { value: content } });
+    const submit = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: MEMORY_COPY.add.dialog.submit,
+    });
+    return { served, view, dialog, field, submit };
+  }
+
+  test('saves what was typed, says so, closes, and opens the new memory', async () => {
+    const { served, view, submit } = await formWith(() => ({ memory: ADDED }));
+
+    await fireEvent.click(submit);
+
+    expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
+    expect(served.callsTo('bureau.memory.remember')[0]?.params).toEqual({
+      agentId: 'assistant',
+      content: TEXT,
+    });
+    await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
+    await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
+    await waitFor(() => expect(router.search.get('memory')).toBe(ADDED.id));
+  });
+
+  test('starts empty the next time, once a memory was saved', async () => {
+    const { view, submit } = await formWith(() => ({ memory: ADDED }));
+    await fireEvent.click(submit);
+    await view.findByText(MEMORY_COPY.add.saved.title);
+
+    await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.add.action }));
+
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
+    expect(
+      within(dialog).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label).value,
+    ).toBe('');
+  });
+
+  test('keeps the text and stays open when the add fails, and saves it on the next try', async () => {
+    let refuse = true;
+    const { served, view, dialog, field, submit } = await formWith(() => {
+      if (refuse) refusing('memory-not-admitted')();
+      return { memory: ADDED };
+    });
+
+    await fireEvent.click(submit);
+
+    const words = MEMORY_COPY.add.refusal['not-admitted'];
+    expect(await within(dialog).findByText(words.title)).not.toBeNull();
+    expect(within(dialog).getByText(words.description)).not.toBeNull();
+    expect(field.value).toBe(TEXT);
+    expect(view.queryByText(MEMORY_COPY.add.saved.title)).toBeNull();
+
+    refuse = false;
+    await fireEvent.click(submit);
+
+    expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
+    expect(served.callsTo('bureau.memory.remember')).toHaveLength(2);
+  });
+
+  test('says text was set aside, which is not the same as refused', async () => {
+    const { dialog, field, submit } = await formWith(refusing('memory-quarantined'));
+
+    await fireEvent.click(submit);
+
+    expect(
+      await within(dialog).findByText(MEMORY_COPY.add.refusal.quarantined.title),
+    ).not.toBeNull();
+    expect(field.value).toBe(TEXT);
+  });
+
+  test('names the scope when the server refuses it, and the agent when it is gone', async () => {
+    const { dialog, submit } = await formWith(() => {
+      throw new StubFault('Forbidden', 403, 'No scope.', {
+        reason: 'missing scope bureau.memory:write',
+      });
+    });
+
+    await fireEvent.click(submit);
+
+    expect(
+      await within(dialog).findByText(MEMORY_COPY.correct.refusal.forbidden.description),
+    ).not.toBeNull();
+    cleanup();
+    stub?.restore();
+
+    const gone = await formWith(() => {
+      throw new StubFault('NotFound', 404, 'No agent.', { resource: 'agent' });
+    });
+    await fireEvent.click(gone.submit);
+    expect(
+      await within(gone.dialog).findByText(MEMORY_COPY.add.refusal['not-found'].title),
+    ).not.toBeNull();
+  });
+
+  test('shows the server’s own words for a failure it has no name for', async () => {
+    const { dialog, submit } = await formWith(() => {
+      throw new StubFault('EngineFailure', 500, 'The disk is full.');
+    });
+
+    await fireEvent.click(submit);
+
+    expect(await within(dialog).findByText('The disk is full.')).not.toBeNull();
+    expect(within(dialog).getByText(MEMORY_COPY.add.notSaved)).not.toBeNull();
+  });
+
+  test('keeps a draft the person closed, and drops the old refusal when it opens again', async () => {
+    const { view, dialog, submit } = await formWith(refusing('memory-not-admitted'));
+    await fireEvent.click(submit);
+    const words = MEMORY_COPY.add.refusal['not-admitted'];
+    await within(dialog).findByText(words.title);
+
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.add.dialog.cancel }),
+    );
+    await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
+    await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.add.action }));
+
+    const again = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
+    expect(
+      within(again).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label).value,
+    ).toBe(TEXT);
+    expect(within(again).queryByText(words.title)).toBeNull();
+  });
+
+  test('reopens with the refusal when a save fails after the form was closed', async () => {
+    let refuse: (error: unknown) => void = () => {};
+    const { served, view, dialog, submit } = await formWith(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+    await fireEvent.click(submit);
+    await waitFor(() => expect(served.callsTo('bureau.memory.remember')).toHaveLength(1));
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.add.dialog.cancel }),
+    );
+    await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
+
+    refuse(new StubFault('Unprocessable', 422, 'Refused.', { reason: 'memory-not-admitted' }));
+
+    const again = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
+    expect(
+      await within(again).findByText(MEMORY_COPY.add.refusal['not-admitted'].title),
+    ).not.toBeNull();
+    expect(
+      within(again).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label).value,
+    ).toBe(TEXT);
+  });
+
+  test('sends one add while one is being saved', async () => {
+    const { served, submit } = await formWith(() => new Promise(() => {}));
+
+    await fireEvent.click(submit);
+    await waitFor(() => expect(submit.disabled).toBe(true));
+    await fireEvent.submit(submit.closest('form')!);
+
+    expect(served.callsTo('bureau.memory.remember')).toHaveLength(1);
+  });
+
+  test('has nothing to save while the text is blank', async () => {
+    const { served, submit } = await formWith(() => ({ memory: ADDED }), '   ');
+
+    expect(submit.disabled).toBe(true);
+    await fireEvent.submit(submit.closest('form')!);
+
+    expect(served.callsTo('bureau.memory.remember')).toEqual([]);
+  });
+
+  test('adds the first memory of an agent that has none, from the page the frame shows', async () => {
+    let memories: unknown[] = [];
+    const served = bureau({
+      'bureau.memory.list': () => ({ memories, nextOffset: null }),
+      'bureau.memory.remember': () => {
+        memories = [ADDED];
+        return { memory: ADDED };
+      },
+      'bureau.memory.get': () => ({ memory: ADDED, lineage: NO_LINEAGE }),
+    });
+    landAt('/agents/assistant/memories');
+    const view = render(FramedMemory, { props: { agentId: 'assistant' } } as never);
+
+    const heading = await view.findByText(MEMORY_COPY.nothing.title, { selector: 'h2' });
+    const empty = heading.closest('[data-cinder-kind]');
+    expect(empty?.getAttribute('data-cinder-kind')).toBe('first-use');
+    await fireEvent.click(
+      within(empty as HTMLElement).getByRole('button', { name: MEMORY_COPY.add.action }),
+    );
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
+    await fireEvent.input(within(dialog).getByLabelText(MEMORY_COPY.add.dialog.label), {
+      target: { value: TEXT },
+    });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.add.dialog.submit }),
+    );
+
+    expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
+    await waitFor(() =>
+      expect(view.queryByText(MEMORY_COPY.nothing.title)?.outerHTML ?? null).toBeNull(),
+    );
+    expect(served.callsTo('bureau.memory.remember')).toHaveLength(1);
   });
 });
 

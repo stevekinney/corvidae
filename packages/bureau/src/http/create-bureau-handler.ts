@@ -1238,7 +1238,11 @@ export function buildBureauHandlerHost(
       mayName: (principal, agentName) =>
         mayNameAgent(principal, agentName, () => listedAgentsOf(bureau, a2aAgents)),
     },
-    memory: { governed: bureau.memory, tenantId: bureau.id },
+    memory: {
+      governed: bureau.memory,
+      tenantId: bureau.id,
+      hasAgent: (name) => bureau.agents.find(name) !== undefined,
+    },
     audit: {
       keepsTrail: () => bureau.internals.auditTrail !== undefined,
       query: bureau.audit.query,

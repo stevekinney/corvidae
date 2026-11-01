@@ -169,6 +169,22 @@ export async function correctMemory(
   );
 }
 
+const rememberSchema = z.object({ memory: memorySchema });
+
+/** What adding a memory answers: the memory, as the list shows it now. */
+export type RememberResult = z.infer<typeof rememberSchema>;
+
+/** Adds a memory in the caller's own words. Asking twice adds it twice: the call has no key. */
+export async function rememberMemory(
+  agentId: string,
+  content: string,
+  options?: Options,
+): Promise<RememberResult> {
+  return rememberSchema.parse(
+    await callBureau('bureau.memory.remember', { agentId, content }, options),
+  );
+}
+
 const transitionSchema = z.object({ id: z.string(), changed: z.boolean() });
 
 const shareSchema = transitionSchema.extend({ granteeOwnerId: z.string(), grantedBy: z.string() });
@@ -255,6 +271,10 @@ export type MemoryFault =
   | { readonly kind: 'superseded' }
   /** Governed memory did not admit the correction. */
   | { readonly kind: 'successor-not-admitted' }
+  /** Governed memory did not admit a new memory, so nothing was stored. */
+  | { readonly kind: 'not-admitted' }
+  /** Governed memory set a new memory aside for an inspector, so the agent will not recall it. */
+  | { readonly kind: 'quarantined' }
   /** A memory was shared with its own owner, or with no one. */
   | { readonly kind: 'invalid-grantee' }
   | { readonly kind: 'other'; readonly message: string };
@@ -281,6 +301,8 @@ export function memoryFaultOf(error: unknown): MemoryFault {
       if (data['reason'] === 'memory-successor-not-admitted') {
         return { kind: 'successor-not-admitted' };
       }
+      if (data['reason'] === 'memory-not-admitted') return { kind: 'not-admitted' };
+      if (data['reason'] === 'memory-quarantined') return { kind: 'quarantined' };
       return data['reason'] === 'memory-invalid-grantee'
         ? { kind: 'invalid-grantee' }
         : { kind: 'other', message: error.message };

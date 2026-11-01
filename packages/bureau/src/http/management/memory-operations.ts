@@ -13,8 +13,8 @@
  * about access depart from the rest of the management plane, deliberately:
  *
  * - A scope is required, not an alternative to ownership. `bureau.memory:read` serves `list`,
- *   `search`, `get` and `export`, `bureau.memory:write` serves `forget`, `correct`, `share`,
- *   `revokeShare` and `quarantine`, and `bureau.memory:govern` serves `hold` and `releaseHold`
+ *   `search`, `get` and `export`, `bureau.memory:write` serves `remember`, `forget`, `correct`,
+ *   `share`, `revokeShare` and `quarantine`, and `bureau.memory:govern` serves `hold` and `releaseHold`
  *   (COR-1809). A caller without the operation's scope is answered `Forbidden`, though every record
  *   is its own. No scope grants another owner's memory; the one door to it is a share, which lets
  *   the grantee `get` the record and nothing else.
@@ -44,6 +44,7 @@ import { z } from 'zod';
 
 import type { BureauScope } from '../bureau-scopes.ts';
 import { ownerOfPrincipal } from '../owner-predicate.ts';
+import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -54,12 +55,14 @@ import {
 import { holdsScope } from './tasks-operations.ts';
 
 /** What the memory operations read from the handler's `host`. */
-export type BureauMemoryOperationHost = {
+export type BureauMemoryOperationHost = BureauAgentVisibilityHost & {
   readonly memory: {
     /** The Bureau's governed memory, or `undefined` for one composed without it. */
     readonly governed: GovernedMemory | undefined;
     /** The Bureau's identifier: the tenant every run's memory is partitioned under. */
     readonly tenantId: string;
+    /** Whether the Bureau's agent catalog holds an agent named `name`: `remember` writes for one. */
+    readonly hasAgent: (name: string) => boolean;
   };
 };
 
@@ -82,8 +85,16 @@ const nonBlankText = (maximum: number) =>
     .max(maximum)
     .refine((text) => text.trim().length > 0, { message: 'Must not be blank' });
 
-/** The longest a correction may be, which is the default admission policy's own limit. */
+/** The longest a memory's text may be, which is the default admission policy's own limit. */
 const MAXIMUM_CONTENT_LENGTH = 32_768;
+
+/**
+ * The class an operator's own memory is kept in. Not governed memory's default, `episodic`, which
+ * is the class of chat memory: its retention is a duration a sweep enforces, and a host can shorten
+ * it with `retention.memory`, so a memory a person wrote on purpose would quietly disappear.
+ * `semantic` is kept until a correction supersedes it.
+ */
+const OPERATOR_MEMORY_CLASS = 'semantic';
 
 const deletionStatus = z.enum(['completed', 'pending', 'exempt', 'failed', 'unknown']);
 
@@ -200,6 +211,8 @@ const ACCESS = {
   // `get` also reads the record's own ledger events for its lineage, which `listEvents` serves
   // under `memory:list`.
   get: { scope: 'bureau.memory:read', capabilities: ['memory:get', 'memory:list'] },
+  // `remember` reads back the record it wrote, to answer it as the list shows it.
+  remember: { scope: 'bureau.memory:write', capabilities: ['memory:get', 'memory:write'] },
   forget: { scope: 'bureau.memory:write', capabilities: ['memory:delete'] },
   // `correct` reads the record it supersedes, to carry its class, and the successor it wrote.
   correct: { scope: 'bureau.memory:write', capabilities: ['memory:get', 'memory:write'] },
@@ -440,6 +453,91 @@ export const memoryGetOperation = defineOperation<
     // the memory and an empty lineage, because the write and supersession events carry the owner.
     const events = await memory.listEvents(authority, { recordId: input.id });
     return { memory: viewOf(record), lineage: lineageOf(input.id, events) };
+  },
+});
+
+const rememberInput = z.object({
+  agentId: agentIdentifier,
+  content: nonBlankText(MAXIMUM_CONTENT_LENGTH).describe(
+    'The text of the memory, in the caller’s own words.',
+  ),
+});
+const rememberOutput = z.object({
+  /** The new memory, as listed now. */
+  memory: memoryViewSchema,
+});
+
+/** `bureau.memory.remember`: adds a memory from scratch, where `correct` needs one to replace. */
+export const memoryRememberOperation = defineOperation<
+  typeof rememberInput,
+  typeof rememberOutput,
+  BureauMemoryOperationHost
+>({
+  name: 'bureau.memory.remember',
+  mcpExposable: false,
+  summary: 'Add a memory',
+  description:
+    'Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers it as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as a `semantic` memory, kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is `Unprocessable` with `data.reason` `memory-quarantined`: it is stored quarantined for an inspector, and never listed, searched, read or recalled. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+  destructive: false,
+  tags: ['Memory'],
+  inputSchema: rememberInput,
+  outputSchema: rememberOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'NotFound',
+    'Unprocessable',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const { memory, authority } = acting(host, principal, ACCESS.remember);
+    // Unlike a read, a write has no empty answer to give: there is no partition to put it in.
+    if (authority === undefined) {
+      throw {
+        code: 'Forbidden',
+        message: 'A memory needs an owner, and this credential names none',
+        data: { reason: 'no owner of record' },
+      } satisfies OperationFault;
+    }
+    // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks, and
+    // a collection named for neither is a memory no run would ever recall.
+    if (
+      !host.agentVisibility.mayName(principal, input.agentId) ||
+      !host.memory.hasAgent(input.agentId)
+    ) {
+      throw resourceNotFound('agent', input.agentId);
+    }
+    const receipt = await memory.write(authority, input.content, {
+      collection: input.agentId,
+      source: 'operator',
+      memoryClass: OPERATOR_MEMORY_CLASS,
+    });
+    if (receipt.status === 'quarantined') {
+      throw {
+        code: 'Unprocessable',
+        message: 'The memory was set aside for inspection, so the agent will not recall it',
+        data: { reason: 'memory-quarantined' },
+      } satisfies OperationFault;
+    }
+    if (receipt.status === 'rejected') {
+      throw {
+        code: 'Unprocessable',
+        message: 'The text was not admitted as a memory',
+        data: { reason: 'memory-not-admitted' },
+      } satisfies OperationFault;
+    }
+    const record =
+      receipt.recordId === undefined
+        ? undefined
+        : await memory.get(authority, { id: receipt.recordId, collection: input.agentId });
+    if (record === undefined) {
+      throw new Error('Governed memory answered an admitted write with no readable record.');
+    }
+    return { memory: viewOf(record) };
   },
 });
 
@@ -884,11 +982,12 @@ export const memoryExportOperation = defineOperation<
   },
 });
 
-/** The eleven memory operations, in the order the documentation lists them. */
+/** The twelve memory operations, in the order the documentation lists them. */
 export const bureauMemoryOperations = [
   memoryListOperation,
   memorySearchOperation,
   memoryGetOperation,
+  memoryRememberOperation,
   memoryForgetOperation,
   memoryCorrectOperation,
   memoryShareOperation,

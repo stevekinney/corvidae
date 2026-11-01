@@ -2860,9 +2860,10 @@ export const MEMORY_COPY = {
       : `${matched}${plus} ${matched === 1 && plus === '' ? 'memory matches' : 'memories match'}`;
   },
   /** The list is empty because the agent forgot its last memory while the page was open. */
-  nothingLeft: {
-    title: 'This agent remembers nothing now',
-    description: 'What it learns in a chat from here on is listed here.',
+  nothing: {
+    title: 'This agent remembers nothing',
+    description:
+      'A memory is saved when the agent answers in a chat, and you can add one in your own words.',
   },
   /** The list is empty because a search matched nothing. */
   noMatch: {
@@ -2909,7 +2910,7 @@ export const MEMORY_COPY = {
   },
   /** The kind in the engine's own terms, with a sentence for the person who did not choose it. */
   kind: {
-    operator: { label: 'Operator', description: 'Operator: a correction you wrote' },
+    operator: { label: 'Operator', description: 'Operator: words you wrote' },
     working: {
       label: 'Working',
       description: 'Working: a note the agent keeps while it works on something',
@@ -3051,6 +3052,39 @@ export const MEMORY_COPY = {
     } satisfies Record<MemoryDeletionState, string>,
     failed: 'The memory was not forgotten',
   },
+  add: {
+    action: 'Add a memory',
+    dialog: {
+      title: 'Add a memory',
+      description:
+        'Your words are kept until you correct or forget them, and the agent recalls them in its chats with you.',
+      label: 'What the agent should remember',
+      submit: 'Save memory',
+      cancel: 'Cancel',
+    },
+    saved: {
+      title: 'Memory added',
+      description: 'The agent recalls it in its chats with you.',
+    },
+    /** The title of a refusal the Bureau gave its own words for. */
+    notSaved: 'The memory was not saved',
+    refusal: {
+      'not-admitted': {
+        title: 'The memory was not accepted',
+        description:
+          'Interborough’s content rules or this agent’s memory limit refused it, so nothing was saved. Reword it and try again.',
+      },
+      quarantined: {
+        title: 'The memory was set aside',
+        description:
+          'Interborough’s content rules flagged it, so it is kept for inspection and the agent will not recall it. Reword it to save it.',
+      },
+      'not-found': {
+        title: 'This agent was not found',
+        description: 'It may have been deleted, or it may not be yours to change.',
+      },
+    },
+  },
   correct: {
     action: 'Correct',
     /** The name of the icon button that edits the open memory in place. */
@@ -3085,7 +3119,8 @@ export const MEMORY_COPY = {
       },
       forbidden: {
         title: 'Changing memory is locked',
-        description: 'Correcting or forgetting a memory needs the bureau.memory:write scope.',
+        description:
+          'Adding, correcting or forgetting a memory needs the bureau.memory:write scope.',
       },
       'not-found': {
         title: 'This memory was not found',
@@ -3941,13 +3976,6 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       '/agents/:agent/memories': {
         title: 'Loading memory',
         description: 'Asking the server what this agent remembers of your chats.',
-      },
-    },
-    emptyByPattern: {
-      '/agents/:agent/memories': {
-        title: 'This agent remembers nothing yet',
-        description:
-          'A memory is saved when the agent answers in a chat. Start a chat with it, then come back.',
       },
     },
     errorByPattern: {

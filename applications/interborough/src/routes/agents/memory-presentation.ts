@@ -215,9 +215,19 @@ export function refusalWords(fault: MemoryFault): { title: string; description: 
     case 'forbidden':
     case 'not-found':
       return words[fault.kind];
+    case 'not-admitted':
+    case 'quarantined':
+      return MEMORY_COPY.add.refusal[fault.kind];
     case 'invalid-grantee':
       return MEMORY_COPY.govern.refusal['invalid-grantee'];
     case 'other':
       return { title: words.other.title, description: fault.message };
   }
+}
+
+/** {@link refusalWords} for adding a memory, where what can be missing is the agent. */
+export function addRefusalWords(fault: MemoryFault): { title: string; description: string } {
+  if (fault.kind === 'not-found') return MEMORY_COPY.add.refusal['not-found'];
+  const words = refusalWords(fault);
+  return fault.kind === 'other' ? { ...words, title: MEMORY_COPY.add.notSaved } : words;
 }
