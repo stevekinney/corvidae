@@ -129,7 +129,9 @@ function toBase64(bytes: Uint8Array): string {
 /**
  * Uploads `file` and answers the asset it became. Rejects with an {@link AttachmentUploadError}
  * for a fault the Bureau answered, and with the signal's own reason when the signal aborts, in
- * which case nothing more is sent.
+ * which case no more bytes are sent and the open upload is aborted on the Bureau
+ * (`bureau.assets.uploads.abort`). An abort during the call that creates the upload leaves a
+ * session this page never learned the identifier of, which expires on its own.
  */
 export async function uploadAsset(
   file: File,
@@ -162,14 +164,42 @@ export async function uploadAsset(
       ...(file.type === '' ? {} : { declaredMediaType: file.type }),
     }),
   );
-  for (let start = 0; start < file.size; start += UPLOAD_CHUNK_BYTES) {
-    const chunk = new Uint8Array(await file.slice(start, start + UPLOAD_CHUNK_BYTES).arrayBuffer());
-    await call('append', 'bureau.assets.uploads.append', {
-      uploadId: session.uploadId,
-      chunk: toBase64(chunk),
-    });
+  try {
+    for (let start = 0; start < file.size; start += UPLOAD_CHUNK_BYTES) {
+      const chunk = new Uint8Array(
+        await file.slice(start, start + UPLOAD_CHUNK_BYTES).arrayBuffer(),
+      );
+      await call('append', 'bureau.assets.uploads.append', {
+        uploadId: session.uploadId,
+        chunk: toBase64(chunk),
+      });
+    }
+    return assetSchema.parse(
+      await call('complete', 'bureau.assets.uploads.complete', { uploadId: session.uploadId }),
+    );
+  } catch (error) {
+    // A cancelled upload leaves an open session holding its chunks until it expires, so the
+    // Bureau is asked to discard it now.
+    if (signal?.aborted === true) await abortUpload(session.uploadId, options.fetch);
+    throw error;
   }
-  return assetSchema.parse(
-    await call('complete', 'bureau.assets.uploads.complete', { uploadId: session.uploadId }),
-  );
+}
+
+/**
+ * Asks the Bureau to discard an open upload and the chunks appended to it
+ * (`bureau.assets.uploads.abort`). It runs after the upload's own signal has aborted, so it sends
+ * under no signal. It is best effort: an upload that already completed or expired answers
+ * `aborted: false`, and a Bureau that cannot be reached leaves the session to expire, so neither
+ * changes the cancellation the caller is told of.
+ */
+async function abortUpload(uploadId: string, fetch: Fetcher | undefined): Promise<void> {
+  try {
+    await callBureau(
+      'bureau.assets.uploads.abort',
+      { uploadId },
+      fetch === undefined ? {} : { fetch },
+    );
+  } catch {
+    // The session expires on its own.
+  }
 }

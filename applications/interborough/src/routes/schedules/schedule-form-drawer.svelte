@@ -1,32 +1,29 @@
 <script lang="ts">
   /**
-   * Create/Edit schedule slide-over (Track B, plan §9.3; design
+   * Create schedule slide-over (Track B, plan §9.3; design
    * `Weft New Surfaces.dc.html` §A2 — 440px right slide-over, BINDING
-   * layout). Owns data fetching (edit-mode prefill, registry-driven
-   * workflow picker), submission, and the Drawer chrome; field rendering is
-   * `schedule-form-fields.svelte`.
+   * layout). Owns data fetching (the registry-driven workflow picker),
+   * submission, and the Drawer chrome; field rendering is
+   * `schedule-form-fields.svelte`. Editing a schedule is its own page
+   * (`schedule-edit.svelte`); this drawer is retired with the new schedule page.
    */
-  import { Alert, Button, Collapsible, Drawer, Skeleton } from '@lostgradient/cinder';
+  import { Button, Collapsible, Drawer } from '@lostgradient/cinder';
   import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
   import { CalendarPlus, Lock } from '@lucide/svelte';
 
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
 
   import { SCHEDULE_COPY } from '../../app/copy.ts';
-  import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
-  import { createAgentSchedule, updateAgentSchedule } from '../../lib/bureau-schedules.ts';
+  import { createAgentSchedule } from '../../lib/bureau-schedules.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
-  import { AGENT_RUN_TYPE, kindOf, type ScheduleOverlay } from '../../lib/schedule-kinds.ts';
+  import { AGENT_RUN_TYPE, type ScheduleOverlay } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
-  import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import AgentScheduleFields from './agent-schedule-fields.svelte';
   import { AgentScheduleFormState } from './agent-schedule-form-state.svelte.ts';
-  import { cadenceOf, cadenceToScheduleValue } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
@@ -35,20 +32,14 @@
   import {
     createSchedule,
     fetchRegisteredWorkflowTypes,
-    fetchScheduleDetail,
     pauseSchedule,
-    scheduleDetailQueryKey,
-    updateScheduleSpec,
   } from './schedule-queries.ts';
 
   interface Props {
-    mode: 'create' | 'edit';
-    /** Required when `mode === 'edit'`. */
-    scheduleId?: string | undefined;
     onClose: () => void;
   }
 
-  let { mode, scheduleId, onClose }: Props = $props();
+  let { onClose }: Props = $props();
 
   const client = getClient();
   const principal = getPrincipalStore();
@@ -69,7 +60,6 @@
   const agentsQuery = createQuery(() => ({
     queryKey: queryKeys.agents.list(),
     queryFn: ({ signal }) => listAgents({ signal }),
-    enabled: mode === 'create',
     retry: false,
   }));
   const agentNames = $derived(
@@ -114,88 +104,12 @@
   let workflowOpen = $state(false);
   const starts = $derived<'agent' | 'workflow'>(workflowOpen ? 'workflow' : 'agent');
 
-  const editDetailQuery = createQuery(() => ({
-    queryKey: scheduleDetailQueryKey(scheduleId ?? ''),
-    queryFn: () => fetchScheduleDetail(client, scheduleId ?? ''),
-    enabled: mode === 'edit' && scheduleId !== undefined,
-  }));
-
   let form = $state<ScheduleFormState>();
   let agentForm = $state<AgentScheduleFormState>();
 
-  /** Who owns the schedule being edited, once the Bureau has said. */
-  const editKind = $derived(
-    mode === 'edit' && editDetailQuery.data
-      ? kindOf(editDetailQuery.data, overlayQuery.data)
-      : undefined,
-  );
-
-  /**
-   * `updatedAt` of the schedule the current `form` was built from. Plain
-   * (non-reactive) bookkeeping for the effect below.
-   */
-  let builtFromUpdatedAt: number | undefined;
-
-  /**
-   * Edit-mode form rebuild (COR-15). The query result changes identity
-   * whenever a background refetch (tab refocus, live-update invalidation,
-   * another operator's edit) delivers different server data. Rebuilding
-   * `form` on every such change discarded an operator's unsaved edits, so:
-   * the form is (re)built only when the schedule's `updatedAt` has actually
-   * moved since the last build, and even then a form with unsaved edits
-   * (`isDirty`) is kept as-is rather than replaced. A clean form still
-   * follows server changes, so an externally applied change shows up.
-   */
-  /** The schedule the agent form was built from, and when it was last changed. Plain bookkeeping for the effect below. */
-  let agentBuiltFor: { readonly id: string; readonly updatedAt: number } | undefined;
-
   $effect(() => {
-    if (mode === 'create') {
-      form = new ScheduleFormState();
-      agentForm = new AgentScheduleFormState({ mode: 'create' });
-      builtFromUpdatedAt = undefined;
-      return;
-    }
-    const schedule = editDetailQuery.data;
-    const kind = editKind;
-    // Which form to build is the owner's to say, so nothing is built until the Bureau has.
-    if (!schedule || kind === undefined) return;
-    if (kind.kind === 'agent-run') {
-      // The same rule as the Weft form below: rebuilt only when the schedule changed, and never over unsaved edits.
-      const currentAgentForm = untrack(() => agentForm);
-      const same = currentAgentForm !== undefined && agentBuiltFor?.id === schedule.id;
-      if (same && agentBuiltFor?.updatedAt === schedule.updatedAt) return;
-      if (same && currentAgentForm.isDirty) return;
-      agentBuiltFor = { id: schedule.id, updatedAt: schedule.updatedAt };
-      agentForm = new AgentScheduleFormState({
-        mode: 'edit',
-        cadence: cadenceToScheduleValue(schedule),
-        originalCadence: cadenceOf(schedule),
-        description: schedule.description ?? '',
-        overlap: schedule.overlap === 'allow' ? 'allow' : 'skip',
-        revision: schedule.revision,
-      });
-      return;
-    }
-    if (kind.kind !== 'code') return;
-    const current = untrack(() => form);
-    // A form built for a different schedule is never kept: saving it would
-    // write that schedule's edits onto this one.
-    const sameSchedule = current !== undefined && current.id === schedule.id;
-    if (sameSchedule && builtFromUpdatedAt === schedule.updatedAt) return;
-    if (sameSchedule && current.isDirty) return;
-    builtFromUpdatedAt = schedule.updatedAt;
-    form = new ScheduleFormState({
-      id: schedule.id,
-      workflowType: schedule.workflowType,
-      ...(schedule.description !== undefined ? { description: schedule.description } : {}),
-      cadence: cadenceToScheduleValue(schedule),
-      originalCadence: cadenceOf(schedule),
-      overlap: schedule.overlap,
-      jitterText: schedule.jitterMs !== undefined ? `${schedule.jitterMs}ms` : '',
-      backfill: schedule.backfill,
-      revisionPolicy: schedule.revisionPolicy,
-    });
+    form = new ScheduleFormState();
+    agentForm = new AgentScheduleFormState({ mode: 'create' });
   });
 
   // A type that is not the engine's to schedule is refused for a typed name as well as left out of the list.
@@ -234,79 +148,31 @@
     },
   }));
 
-  const updateScheduleMutation = createMutation(() => ({
-    mutationFn: async () => {
-      if (!form || scheduleId === undefined) throw new Error('Form not ready.');
-      await updateScheduleSpec(client, scheduleId, form.cadenceSpec, form.toUpdateOptions());
-    },
-    onSuccess: () => {
-      invalidateSchedules();
-      onClose();
-    },
-  }));
-
-  /** An edit was refused because the schedule changed after the drawer read it. */
-  let stale = $state(false);
-
-  const updateAgentScheduleMutation = createMutation(() => ({
-    mutationFn: async () => {
-      if (!agentForm || scheduleId === undefined) throw new Error('Form not ready.');
-      await updateAgentSchedule(scheduleId, agentForm.toUpdate(), agentForm.revision);
-    },
-    onMutate: () => {
-      stale = false;
-    },
-    onSuccess: () => {
-      invalidateSchedules();
-      onClose();
-    },
-    onError: (error: unknown) => {
-      if (agentFaultOf(error).kind !== 'stale') return;
-      // The page behind the drawer reads the schedule again; the drawer keeps what was typed
-      // until the person asks to start over from what the schedule is now.
-      stale = true;
-      invalidateSchedules();
-    },
-  }));
-
-  /** Drops the draft and builds it again from the schedule as it is now. */
-  async function reloadFromSchedule(): Promise<void> {
-    agentForm = undefined;
-    agentBuiltFor = undefined;
-    stale = false;
-    updateAgentScheduleMutation.reset();
-    await editDetailQuery.refetch();
-  }
-
-  /** The mutation this drawer's submit button runs, by what is being made or changed. */
-  const active = $derived.by(() => {
-    if (mode === 'create') {
-      return starts === 'agent' ? createAgentScheduleMutation : createScheduleMutation;
-    }
-    return editKind?.kind === 'agent-run' ? updateAgentScheduleMutation : updateScheduleMutation;
-  });
+  /** The mutation this drawer's submit button runs, by what is being made. */
+  const active = $derived(
+    starts === 'agent' ? createAgentScheduleMutation : createScheduleMutation,
+  );
   const submitting = $derived(active.isPending);
   const submitError = $derived(active.error);
 
-  /** The draft being edited, whichever form it is. */
-  const draft = $derived(
-    (mode === 'create' ? starts === 'agent' : editKind?.kind === 'agent-run') ? agentForm : form,
-  );
+  /** The draft being made, whichever form it is. */
+  const draft = $derived(starts === 'agent' ? agentForm : form);
   /** A workflow type is only chosen once the Bureau has said which are agent-authored. */
-  const checking = $derived(
-    mode === 'create' && starts === 'workflow' && overlayQuery.data?.files === undefined,
-  );
+  const checking = $derived(starts === 'workflow' && overlayQuery.data?.files === undefined);
   const canSubmit = $derived(
-    draft !== undefined &&
-      draft.isValid &&
-      !checking &&
-      !stale &&
-      !writeGate.disabled &&
-      !submitting,
+    draft !== undefined && draft.isValid && !checking && !writeGate.disabled && !submitting,
   );
+
+  let region = $state<HTMLElement>();
+  /** The cadence builder shows a field that is out of range. */
+  let invalidCadence = $state(false);
 
   function submit(): void {
     if (!canSubmit) return;
+    // The builder keeps the last cadence it emitted while a custom field is out of range, so the
+    // draft is not the cadence on screen: refuse until what is shown is valid.
+    invalidCadence = region?.querySelector('[aria-invalid="true"]') != null;
+    if (invalidCadence) return;
     active.mutate();
   }
 
@@ -317,84 +183,31 @@
   });
 </script>
 
-<Drawer bind:open title={mode === 'create' ? 'Create schedule' : 'Edit schedule'} size="md">
+<Drawer bind:open title="Create schedule" size="md">
   {#snippet header()}
     <div class="weft-schedule-drawer__header">
       <CalendarPlus aria-hidden="true" size={16} />
-      <span class="weft-schedule-drawer__title">
-        {mode === 'create' ? 'Create schedule' : 'Edit schedule'}
-      </span>
+      <span class="weft-schedule-drawer__title">Create schedule</span>
     </div>
   {/snippet}
 
-  {#if mode === 'edit' && (editDetailQuery.isPending || (editDetailQuery.isSuccess && editDetailQuery.data !== null && overlayQuery.isPending))}
-    <div role="status" aria-busy="true" aria-label="Loading schedule">
-      <Skeleton height="220px" />
-    </div>
-  {:else if mode === 'edit' && editDetailQuery.isError}
-    <FaultBanner
-      treatment={faultTreatment(editDetailQuery.error)}
-      onRetry={() => void editDetailQuery.refetch()}
-    />
-  {:else if mode === 'edit' && editDetailQuery.data === null}
-    <FaultBanner
-      treatment={{
-        kind: 'not-found',
-        message: `No schedule with ID "${scheduleId}" exists — it may have been cancelled and purged.`,
-      }}
-    />
-  {:else if mode === 'edit' && editKind?.kind === 'unknown' && overlayQuery.data?.failed}
-    <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlayQuery.refetch()} />
-  {:else if mode === 'edit' && editKind?.kind === 'workflow-file'}
-    <!-- A workflow file's schedule is its trigger: everything about it is edited in the workflow. -->
-    <Alert variant="info" data-testid="schedule-edit-in-workflow">
-      <p class="weft-schedule-drawer__alert-title">{SCHEDULE_COPY.form.notEditable}</p>
-      <p class="weft-schedule-drawer__alert-body">{SCHEDULE_COPY.editWorkflowNote}</p>
-      <Button
-        variant="secondary"
-        size="sm"
-        href={router.href(workflowEditPath(editKind.file.id))}
-        onclick={(event) => {
-          event.preventDefault();
-          router.navigate(workflowEditPath(editKind.file.id));
-        }}>{SCHEDULE_COPY.editWorkflowAction}</Button
-      >
-    </Alert>
-  {:else if draft !== undefined}
-    {#if mode === 'edit' ? editKind?.kind === 'agent-run' : starts === 'agent'}
-      <!-- A new draft is a fresh mount, as the Weft fields below need. -->
-      {#key agentForm}
-        {#if agentForm}
-          <AgentScheduleFields form={agentForm} agents={agentNames} />
-        {/if}
-      {/key}
-    {:else if form && mode === 'edit'}
-      <!--
-        Keyed on `form` itself (WFT-117, Codex review round 2): the `$effect`
-        above can reconstruct `form` as a brand-new `ScheduleFormState` while
-        this drawer stays open (e.g. a background `editDetailQuery` refetch).
-        `ScheduleFormFields` captures `form.revisionPolicy` into a one-shot
-        local draft at mount, which is correct only if a NEW `form` instance
-        always gets a FRESH mount: `{#key}` guarantees that instead of
-        leaving a stale draft to silently overwrite the new form's value.
-      -->
-      {#key form}
-        <ScheduleFormFields
-          {form}
-          {mode}
-          {workflowTypeOptions}
-          registeredTypeCount={registryQuery.isSuccess ? registryQuery.data.length : 0}
-        />
-      {/key}
-    {/if}
-    {#if mode === 'create'}
+  <div bind:this={region}>
+    {#if draft !== undefined}
+      {#if starts === 'agent'}
+        <!-- A new draft is a fresh mount, as the Weft fields below need. -->
+        {#key agentForm}
+          {#if agentForm}
+            <AgentScheduleFields form={agentForm} agents={agentNames} />
+          {/if}
+        {/key}
+      {/if}
       <Collapsible bind:open={workflowOpen} trigger={SCHEDULE_COPY.form.advancedWorkflowLabel}>
         {#if form}
           <!-- Mounted only while the disclosure is open, so each opening is a fresh mount of the fields. -->
           {#key form}
             <ScheduleFormFields
               {form}
-              {mode}
+              mode="create"
               {workflowTypeOptions}
               registeredTypeCount={registryQuery.isSuccess ? registryQuery.data.length : 0}
             />
@@ -408,26 +221,26 @@
           {/if}
         {/if}
       </Collapsible>
+      {#if invalidCadence}
+        <FaultBanner
+          treatment={{
+            kind: 'invalid',
+            message: SCHEDULE_COPY.edit.invalidCadence,
+            fieldErrors: [],
+          }}
+        />
+      {:else if submitError}
+        <FaultBanner treatment={faultTreatment(submitError)} />
+      {/if}
     {/if}
-    {#if stale && scheduleId !== undefined}
-      <Alert variant="warning" data-testid="schedule-notice" data-notice="stale">
-        <p class="weft-schedule-drawer__alert-title">{SCHEDULE_COPY.stale.title(scheduleId)}</p>
-        <p class="weft-schedule-drawer__alert-body">{SCHEDULE_COPY.stale.description}</p>
-        <Button variant="secondary" size="sm" onclick={() => void reloadFromSchedule()}
-          >Start over from the current schedule</Button
-        >
-      </Alert>
-    {:else if submitError}
-      <FaultBanner treatment={faultTreatment(submitError)} />
-    {/if}
-  {/if}
+  </div>
 
   {#snippet footer()}
     <div class="weft-schedule-drawer__footer">
       <span class="weft-schedule-drawer__service-note">Runs as schedules service account</span>
       <Button variant="ghost" size="sm" onclick={() => (open = false)}>Cancel</Button>
       <Button data-changes variant="primary" size="sm" disabled={!canSubmit} onclick={submit}>
-        {mode === 'create' ? 'Create schedule' : 'Save changes'}
+        Create schedule
       </Button>
       {#if writeGate.disabled}
         <span class="weft-schedule-drawer__scope-pill">
@@ -449,15 +262,6 @@
   .weft-schedule-drawer__title {
     font-size: var(--cinder-text-md);
     font-weight: 600;
-  }
-
-  .weft-schedule-drawer__alert-title {
-    margin: 0;
-    font-weight: 600;
-  }
-
-  .weft-schedule-drawer__alert-body {
-    margin: 4px 0 8px;
   }
 
   .weft-schedule-drawer__note {

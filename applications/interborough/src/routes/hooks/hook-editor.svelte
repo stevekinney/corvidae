@@ -26,7 +26,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { STALE_COPY } from '../../app/copy.ts';
+  import { PLUGIN_KINDS_COPY, STALE_COPY } from '../../app/copy.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import {
@@ -41,6 +41,8 @@
     type Hook,
     type HookActionType,
   } from '../../lib/bureau-hooks.ts';
+  import { hookActionKindId, listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
+  import ContributedConfigurationForm from '../../lib/contributed-configuration-form.svelte';
   import { classifyFault, faultTreatment } from '../../lib/faults.ts';
   import { hookPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -86,6 +88,20 @@
     () => ({
       queryKey: queryKeys.hooks.events(),
       queryFn: ({ signal }: { signal: AbortSignal }) => listHookEventKinds({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  /**
+   * The action kinds running plugins contribute. A host that cannot say offers the built-in
+   * actions alone: the answer only ever adds choices. Only a new hook chooses one, because the
+   * kind of action is fixed once a hook is made.
+   */
+  const contributed = createQuery(
+    () => ({
+      queryKey: queryKeys.pluginKinds(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listContributedKinds({ signal }),
+      enabled: isNew,
       retry: false,
     }),
     undefined,
@@ -155,9 +171,38 @@
       ? hookSentence(hook)
       : hookSentence({ events: form.events, action: form.draftAction }),
   );
-  const actionOptions = $derived(
-    HOOK_ACTION_TYPES.map((type) => ({ value: type, label: actionLabel(type) })),
+  const contributedKinds = $derived(contributed.data?.hookActionKinds ?? []);
+  const actionOptions = $derived([
+    ...HOOK_ACTION_TYPES.map((type) => ({ value: type, label: actionLabel(type) })),
+    ...contributedKinds.map((kind) => ({
+      value: hookActionKindId(kind),
+      label: PLUGIN_KINDS_COPY.hookAction(kind.plugin, kind.kind),
+    })),
+  ]);
+  /** The contributed kind the form has chosen, with its description and configuration schema. */
+  const chosenKind = $derived(
+    form.contributedKind === null
+      ? undefined
+      : contributedKinds.find(
+          (kind) =>
+            kind.plugin === form.contributedKind?.plugin && kind.kind === form.contributedKind.kind,
+        ),
   );
+  const actionValue = $derived(
+    form.contributedKind === null ? form.actionType : hookActionKindId(form.contributedKind),
+  );
+
+  function chooseAction(value: string): void {
+    const kind = contributedKinds.find((candidate) => hookActionKindId(candidate) === value);
+    if (kind === undefined) {
+      form.contributedKind = null;
+      form.contributedConfiguration = {};
+      form.actionType = value as HookActionType;
+      return;
+    }
+    form.contributedKind = { plugin: kind.plugin, kind: kind.kind };
+    form.contributedConfiguration = {};
+  }
   const workflowOptions = $derived.by(() => {
     const ready = (workflows.data ?? [])
       .filter((file) => file.state === 'ready' && !file.paused)
@@ -175,7 +220,7 @@
   const refused = $derived(
     form.events.filter((kind) => {
       const entry = kinds.data?.find((candidate) => candidate.kind === kind);
-      return entry !== undefined && eventRefusal(form.actionType, entry) !== undefined;
+      return entry !== undefined && eventRefusal(form.effectiveType, entry) !== undefined;
     }),
   );
 
@@ -247,6 +292,8 @@
 
   function submit(event: SubmitEvent): void {
     event.preventDefault();
+    // A contributed action's fields are a form of their own inside this one; its submit is not a save.
+    if (event.target !== event.currentTarget) return;
     if (canSave) saving.mutate();
   }
 
@@ -296,7 +343,7 @@
             </h2>
             <HookEventPicker
               kinds={kinds.data ?? []}
-              action={form.actionType}
+              action={form.effectiveType}
               bind:events={form.events}
             />
             {#if kinds.isError}
@@ -325,11 +372,22 @@
                 description={isNew ? copy.action.choose : copy.action.fixed}
                 disabled={!isNew}
                 options={actionOptions}
-                value={form.actionType}
-                onchange={(event) =>
-                  (form.actionType = event.currentTarget.value as HookActionType)}
+                value={actionValue}
+                onchange={(event) => chooseAction(event.currentTarget.value)}
               />
-              {#if form.actionType === 'webhook'}
+              {#if form.contributedKind !== null}
+                <div class="ib-hook-editor__contributed" data-testid="contributed-action">
+                  {#if chosenKind !== undefined}
+                    <p class="ib-hook-editor__plain">{chosenKind.description}</p>
+                    <ContributedConfigurationForm
+                      kindId={hookActionKindId(chosenKind)}
+                      schema={chosenKind.configuration}
+                      value={form.contributedConfiguration}
+                      onChange={(next) => (form.contributedConfiguration = next)}
+                    />
+                  {/if}
+                </div>
+              {:else if form.actionType === 'webhook'}
                 <Input
                   id="ib-hook-url"
                   type="url"
@@ -549,6 +607,13 @@
     display: block;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-xs);
+  }
+
+  .ib-hook-editor__contributed {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-width: 0;
   }
 
   .ib-hook-editor__plain,

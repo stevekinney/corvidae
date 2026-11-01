@@ -67,7 +67,7 @@ export type EventChoice = {
 
 /** Why `action` may not listen to an event, or `undefined` when it may. */
 export function eventRefusal(
-  action: HookActionType,
+  action: HookActionType | 'plugin',
   event: Pick<HookEventKind, 'kind' | 'origin'>,
 ): string | undefined {
   if (action === 'notify' && event.kind === NOTIFICATION_CREATED) return COPY.event.notifyLoop;
@@ -80,7 +80,7 @@ export function eventRefusal(
 /** Every event kind as a choice, grouped by area, with the ones `action` cannot listen to disabled. */
 export function eventChoices(
   kinds: readonly HookEventKind[],
-  action: HookActionType,
+  action: HookActionType | 'plugin',
 ): EventChoice[] {
   return kinds
     .map((event) => {
@@ -152,7 +152,8 @@ export function actionPhrase(action: Hook['action'] | DraftAction): string {
 export type DraftAction =
   | { readonly type: 'webhook'; readonly url: string }
   | { readonly type: 'start-workflow'; readonly workflowId: string }
-  | { readonly type: 'notify' };
+  | { readonly type: 'notify' }
+  | { readonly type: 'plugin'; readonly plugin: string; readonly kind: string };
 
 /** A hook as a sentence: `When Review requested, send a signed message to https://example.com`. */
 export function hookSentence(hook: {

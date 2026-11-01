@@ -662,6 +662,17 @@ export const WORKFLOW_COPY = {
     triggerHeading: 'Trigger',
     triggerKindLabel: 'Starts',
     triggerKinds: { schedule: 'On a schedule', signal: 'When a signal arrives' },
+    /** A trigger kind a plugin contributes, named by its `plugin:name`. */
+    contributedTrigger: (id: string): string => `When ${id} fires`,
+    /** A trigger kind no running plugin contributes (the plugin is off, or the file is wrong). */
+    unavailableTrigger: (id: string): string =>
+      `No running plugin contributes the trigger ${id}. Change it in the JSON tab.`,
+    /** Shown while the plugin trigger kinds load and the file's trigger names one. */
+    checkingTrigger: (id: string): string => `Checking the trigger ${id}…`,
+    /** The plugin trigger kinds could not be read, so the file's own trigger cannot be checked. */
+    triggerKindsFailed: (id: string): string =>
+      `The trigger ${id} is kept as the file has it, but the list of plugin triggers did not load, so its settings cannot be shown.`,
+    retryTriggerKinds: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
     signalNameLabel: 'Signal name',
@@ -841,11 +852,24 @@ export const SCHEDULE_COPY = {
   newAction: 'New schedule',
   filtersLabel: 'Filter schedules',
   statusLabel: 'Status',
-  anyStatus: 'All statuses',
+  anyStatus: 'Any status',
   agentLabel: 'Agent',
-  anyAgent: 'All agents',
+  anyAgent: 'Any agent',
+  clearFilters: 'Clear filters',
   loading: 'Loading schedules',
-  empty: { title: 'No schedules', description: 'Create one to run an agent on a cadence.' },
+  /** How many schedules the list shows, as a sentence. */
+  count: (count: number): string => `${String(count)} ${count === 1 ? 'schedule' : 'schedules'}`,
+  /** The caption of the table. */
+  caption: 'Schedules, with the workflow each one runs',
+  columns: {
+    schedule: 'Schedule',
+    runs: 'Runs',
+    repeats: 'Repeats',
+    next: 'Next run',
+    last: 'Last run',
+    status: 'Status',
+    actions: 'Actions',
+  },
   noMatch: {
     title: 'No matching schedules',
     description: 'No schedule matches the current filters. Clear a filter to see more.',
@@ -854,38 +878,17 @@ export const SCHEDULE_COPY = {
   copyId: 'Copy ID',
   idCopied: 'Schedule ID copied',
   idCopyFailed: 'The schedule ID was not copied',
-  next: (when: string): string => `next ${when}`,
   neverFired: 'not fired yet',
   lastSucceeded: 'last run succeeded',
   lastFailed: 'last run did not succeed',
   missed: (count: number): string => `${String(count)} missed`,
   lastMissed: (when: string): string => `last missed ${when}`,
-  missedWindows: 'Missed fires',
-  missedWindow: (range: string, count: number): string => `${range} · ${String(count)} missed`,
-  sends: 'Sends',
-  nextFires: 'Next fires',
-  recentRuns: 'Recent runs',
-  noRuns: 'No runs yet. This schedule has not fired.',
-  notScheduled: (status: string): string => `Not scheduled. This schedule is ${status}.`,
-  engine: 'Advanced',
-  engineRows: {
-    cron: 'Cron',
-    interval: 'Interval',
-    jitter: 'Jitter',
-    revisionPolicy: 'Revision policy',
-  },
-  runningNow: 'Running now',
-  queuedRuns: 'Queued runs',
-  noActiveRuns: 'No active or queued runs.',
-  /** The one line that says what happens when a fire is due while a run is still going. */
-  overlapLine: {
-    skip: 'Skips a fire if the previous run is still going',
-    queue: 'Queues a fire if the previous run is still going',
-    'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
-    allow: 'Starts a fire even if the previous run is still going',
-  },
+  /** A file's own schedule, which the list shows beside the workflow it is the trigger of. */
+  inFile: 'In the workflow’s file',
+  /** The cadence of a cron schedule, with the zone it is read in. */
+  inZone: (zone: string): string => `in ${zone}`,
   moreActions: 'More actions',
-  backToList: 'Back to schedules',
+  backToList: 'All schedules',
   /** The action that opens the editor of the workflow whose file holds a schedule's trigger. */
   editWorkflowAction: 'Edit workflow',
   editWorkflowNote:
@@ -906,6 +909,102 @@ export const SCHEDULE_COPY = {
   pauseFailed: 'The schedule was not paused',
   resumeFailed: 'The schedule was not resumed',
   cancelFailed: 'The schedule was not cancelled',
+  skipFailed: 'The next run was not skipped',
+  runNowFailed: 'The schedule was not run',
+  cancelDialog: {
+    title: 'Cancel this schedule?',
+    confirm: 'Cancel schedule',
+    description: (name: string): string =>
+      `“${name}” will stop firing. This can’t be undone. Create a new schedule to resume this cadence.`,
+  },
+  /** One schedule's page (`/schedules/:id`). */
+  detail: {
+    loading: 'Loading schedule',
+    loadFailed: 'The schedule could not be loaded',
+    locked: { title: 'Schedule is locked' },
+    notFound: {
+      title: 'Schedule not found',
+      description: 'No schedule with this address exists. It may have been cancelled and purged.',
+    },
+    onSwitch: 'On',
+    onSwitchLabel: 'Schedule on',
+    runNow: 'Run now',
+    edit: 'Edit',
+    sends: 'Sends',
+    /** The verb and the zone of the sentence under the title. */
+    nextRunsHeading: 'Next runs',
+    nextRunsCaption: (zone: string): string => `Shown in ${zone}`,
+    skipNext: 'Skip the next one',
+    skipped: 'Skipped',
+    skippedNote: 'This run is skipped. The one after it runs as usual.',
+    noNextRuns: {
+      title: 'Nothing is coming up',
+      description: (status: string): string =>
+        `This schedule is ${status}, so it has no next runs. Turn it on to schedule them again.`,
+    },
+    pastRunsHeading: 'Past runs',
+    pastRunsCaption: 'Runs this schedule started, and the fires it missed, newest first',
+    pastColumns: { when: 'When', outcome: 'Outcome', took: 'Took' },
+    noPastRuns: {
+      title: 'No runs yet',
+      description: 'This schedule has not fired. Its runs and any fires it missed are listed here.',
+    },
+    runLink: (when: string): string => `Run ${when}`,
+    manual: 'Run now',
+    missedOutcome: 'Missed',
+    missedReason: {
+      late: 'The host was not running, or was too slow, when it was due.',
+      'dst-gap': 'The clock skipped this time when it moved forward.',
+    },
+    missedCount: (count: number): string => `${String(count)} missed`,
+    runsFailed: 'Past runs could not be loaded',
+    missedFailed: 'Missed fires could not be loaded',
+    railHeading: 'Details',
+    rail: {
+      workflow: 'Workflow',
+      agent: 'Agent',
+      input: 'Input',
+      noInput: 'None',
+      repeats: 'Repeats',
+      zone: 'Time zone',
+      overlap: 'If a run is still going',
+      catchUp: 'Catch up after downtime',
+      catchUpOn: 'Runs the fires it missed',
+      catchUpOff: 'Skips the fires it missed',
+      jitter: 'Jitter',
+      noJitter: 'None',
+      revision: 'Workflow version',
+      runningNow: 'Running now',
+      queued: 'Queued',
+      nothingRunning: 'Nothing is running',
+      created: 'Created',
+    },
+    runNowOutcome: {
+      started: 'Started a run.',
+      queued: 'A run is going, so this one is queued behind it.',
+      skipped: 'A run is still going, so this one was skipped.',
+      viewRun: 'View the run',
+    },
+  },
+  /** The cadence editor's page (`/schedules/:id/edit`). */
+  edit: {
+    title: 'Edit schedule',
+    save: 'Save changes',
+    cancel: 'Cancel',
+    loading: 'Loading schedule',
+    startOver: 'Start over from the current schedule',
+    invalidCadence: 'The cadence is not valid. Fix the highlighted field, then save.',
+    skipPending:
+      'The next run is skipped. Saving any change to this schedule restores that run, and it starts as usual.',
+    saveFailed: 'The schedule was not saved',
+  },
+  /** One line that says what happens when a fire is due while a run is still going. */
+  overlapLine: {
+    skip: 'Skips a fire if the previous run is still going',
+    queue: 'Queues a fire if the previous run is still going',
+    'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
+    allow: 'Starts a fire even if the previous run is still going',
+  },
   form: {
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
@@ -2205,6 +2304,83 @@ export const CHAT_COPY = {
     },
     /** The reply no longer exists in the chat, and any other fault. */
     fault: 'The chat could not be branched. You are still in this chat.',
+  },
+  /** The chat header's More menu: rename, branch, export and delete the chat. */
+  more: {
+    /** The menu button's name; the button is an icon. */
+    label: 'More actions',
+    rename: 'Rename',
+    branch: 'Branch from the last reply',
+    /** Said as the hint on Branch when there is no finished reply to branch from. */
+    noBranchPoint: 'There is no finished reply to branch from yet.',
+    /** Said as the hint on Branch while a run is going. */
+    branchWhileRunning: 'Wait for the run to finish, then branch from its last reply.',
+    export: 'Export as Markdown',
+    /** Said as the hint on Export when the chat has no messages. */
+    nothingToExport: 'There is nothing in this chat to export yet.',
+    exportFault: 'The chat could not be exported.',
+    delete: 'Delete',
+    /** The rename dialog. */
+    renameDialog: {
+      title: 'Rename this chat',
+      label: 'Title',
+      description:
+        'Up to 200 characters. Leave it empty to use the title taken from the first message.',
+      save: 'Save',
+      cancel: 'Cancel',
+      /** Shown when the title changed on the Bureau while the person had typed a different one. */
+      changed: 'This chat was renamed somewhere else while you were typing.',
+      reload: 'Use the new title',
+      tooLong: 'The title is over 200 characters.',
+      renamed: 'Chat renamed.',
+      fault: 'The chat could not be renamed.',
+      /** The Bureau answered not-found, and a read of the chat shows it is still there: the change was refused. */
+      refused: 'The chat could not be renamed: the change was refused.',
+      /** The Bureau answered not-found, and a read of the chat says it is gone. */
+      gone: 'This chat no longer exists.',
+    },
+    /** The delete confirmation: what is lost, and what happens to a run that is going. */
+    deleteDialog: {
+      title: (chat: string) => `Delete “${chat}”?`,
+      /** What is lost, and what happens to a run that is going; chats branched from it keep their own copy. */
+      description: (runGoing: boolean) =>
+        `The chat and its messages are removed for good, and this cannot be undone. ${
+          runGoing ? 'Its run is going now, and deleting the chat stops it. ' : ''
+        }Chats branched from it keep their own copy of the history.`,
+      confirm: 'Delete chat',
+      cancel: 'Cancel',
+      deleted: 'Chat deleted.',
+      /** The chat is gone, but stopping its run did not finish cleanly. */
+      deletedRunning: 'Chat deleted. Its run may take a moment to stop.',
+      refused: 'The server is shutting down, so the chat was not deleted.',
+      fault: 'The chat could not be deleted.',
+      alreadyGone: 'This chat was already deleted.',
+      /** The Bureau answered not-found, and a read of the chat shows it is still there. */
+      notAllowed: 'The chat was not deleted: the change was refused.',
+    },
+  },
+  /** Shown when the chat on screen has been deleted: nothing more can be sent to it. */
+  gone: {
+    title: 'This chat was deleted',
+    description: 'It no longer exists, so nothing more can be sent here.',
+    back: 'Back to chats',
+  },
+  /** Editing a message you sent: the chat is branched before it and the edited text is sent there. */
+  edit: {
+    /** Said when the message follows no finished reply, so there is nowhere to branch before it. */
+    unavailable:
+      'That message was sent while a run was going, so it cannot be edited. Edit one that follows a finished reply.',
+    /** Said when the message carries files, which an edited copy would leave behind. */
+    withFiles:
+      'That message has files attached, so it cannot be edited. Send a new message instead.',
+    /** Any other fault; the chat the person is in is untouched. */
+    fault: 'The message could not be edited. You are still in this chat.',
+    /** Heads the edited text kept after an edit that did not branch. */
+    kept: 'Your edited text is kept here:',
+    copy: 'Copy text',
+    copied: 'Copied.',
+    copyFailed: 'The text could not be copied. Select it and copy it by hand.',
+    tryAgain: 'Try again',
   },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {
@@ -3545,4 +3721,16 @@ export const STORAGE_COPY = {
     popoverLabel: 'What the storage can do',
     popoverHint: 'Storage details',
   },
+} as const;
+
+/** What plugins add to hooks and workflows (COR-1893). */
+export const PLUGIN_KINDS_COPY = {
+  /** The fields of a contributed kind, shown by a form drawn from its schema. */
+  fieldsHeading: 'Settings',
+  /** A contributed kind whose configuration takes no fields. */
+  noFields: 'This takes no settings.',
+  /** A contributed kind whose schema the form cannot draw. */
+  fieldsUnavailable: 'The settings of this kind cannot be shown here.',
+  /** The hook editor's choice for a contributed action: what it does, then the plugin. */
+  hookAction: (plugin: string, kind: string): string => `Run ${kind} from ${plugin}`,
 } as const;

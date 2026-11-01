@@ -1,14 +1,6 @@
 {
   "entries": [
     {
-      "file": "src/routes/schedules/schedule-detail.svelte",
-      "issue": "COR-1859"
-    },
-    {
-      "file": "src/routes/schedules/schedule-list.svelte",
-      "issue": "COR-1859"
-    },
-    {
       "file": "src/routes/workflows/detail/async-activity/activity-worker-provenance.svelte",
       "issue": "COR-1860"
     },

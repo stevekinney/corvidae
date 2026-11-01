@@ -203,6 +203,12 @@ import {
 } from './management/tasks-inspect-operation.ts';
 import { eventsCatalogOperation } from './management/events-catalog-operation.ts';
 import {
+  type BureauEventFormatOperationHost,
+  type BureauPluginKindsOperationHost,
+  eventsFormatOperation,
+  pluginKindsOperation,
+} from './management/plugin-kinds-operations.ts';
+import {
   type BureauTasksOperationHost,
   tasksCancelOperation,
   tasksGetOperation,
@@ -235,6 +241,8 @@ export type BureauHandlerSource = Pick<
   | 'workflows'
   | 'deployments'
   | 'hooks'
+  | 'plugins'
+  | 'formatEvent'
   | 'goals'
   | 'memory'
   | 'assets'
@@ -351,6 +359,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauWorkflowsOperationHost &
   BureauWorkerDeploymentsOperationHost &
   BureauHooksOperationHost &
+  BureauPluginKindsOperationHost &
+  BureauEventFormatOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
@@ -752,6 +762,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   eventsCatalogOperation,
+  eventsFormatOperation,
+  pluginKindsOperation,
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
   ...bureauSchedulesOperations,
@@ -1203,6 +1215,8 @@ export function buildBureauHandlerHost(
     },
     deployments: bureau.deployments,
     hooks: bureau.hooks,
+    plugins: bureau.plugins,
+    formatEvent: bureau.formatEvent,
     schedules: {
       create: bureau.schedules.create,
       get: bureau.schedules.get,

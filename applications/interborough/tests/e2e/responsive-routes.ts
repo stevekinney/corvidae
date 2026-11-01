@@ -28,7 +28,7 @@ export interface ResponsiveSeed {
   readonly runSetupFile: string;
   /** A run of that workflow type. */
   readonly run: string;
-  /** A schedule. It need not exist: the page says so in a short sentence. */
+  /** A schedule whose name holds a 300-character unbroken word, read in a zone with a long name. */
   readonly schedule: string;
   /** A goal, with the attempts its page lists. */
   readonly goal: string;
@@ -72,6 +72,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/runs/:run': `/runs/${run}`,
     '/schedules': '/schedules',
     '/schedules/:schedule': `/schedules/${encodeURIComponent(seed.schedule)}`,
+    '/schedules/:schedule/edit': `/schedules/${encodeURIComponent(seed.schedule)}/edit`,
     '/reviews': '/reviews',
     '/goals': '/goals',
     '/goals/new': '/goals/new',

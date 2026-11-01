@@ -103,9 +103,10 @@ export function scheduleDetailPath(
   return identifierPath('schedules', '/schedules/:schedule', scheduleId, search);
 }
 
-/** A schedule's page with its edit drawer open. */
+/** The page that edits a schedule's cadence. A dot-only identifier is carried as `scheduleDetailPath` carries one. */
 export function scheduleEditPath(scheduleId: string): string {
-  return scheduleDetailPath(scheduleId, new URLSearchParams({ edit: '1' }));
+  const [path = '', query] = scheduleDetailPath(scheduleId).split('?');
+  return `${path}/edit${query === undefined ? '' : `?${query}`}`;
 }
 
 /** The schedules list with the create drawer open. */

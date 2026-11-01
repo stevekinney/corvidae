@@ -3,8 +3,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import {
   bureauSpecOf,
   createAgentSchedule,
+  listAgentScheduleMissed,
   listBureauSchedules,
   pauseAgentSchedule,
+  runNowAgentSchedule,
+  skipNextAgentSchedule,
   updateAgentSchedule,
 } from './bureau-schedules.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
@@ -27,7 +30,9 @@ const VIEW = {
   status: 'active',
   overlap: 'skip',
   revision: 1,
+  timeZone: 'UTC',
   nextFireAt: null,
+  skipUntil: null,
   lastFireAt: null,
   missedFireCount: 0,
   skippedCount: 0,
@@ -107,5 +112,78 @@ describe('the Bureau’s schedules', () => {
       spec: '2h',
       expectedRevision: 3,
     });
+  });
+});
+
+describe('the controls of a Bureau schedule', () => {
+  test('skip the next fire naming the revision the caller read, and send none when there is none', async () => {
+    stub = installBureauStub({
+      'bureau.schedules.skipnext': () => ({ id: 's-1', status: 'active', revision: 3 }),
+    });
+
+    await skipNextAgentSchedule('s-1', 3);
+    await skipNextAgentSchedule('s-1', undefined);
+
+    expect(stub.callsTo('bureau.schedules.skipnext').map((call) => call.params)).toEqual([
+      { scheduleId: 's-1', expectedRevision: 3 },
+      { scheduleId: 's-1' },
+    ]);
+  });
+
+  test('run now answers what the overlap policy did, with the run it started or the one in the way', async () => {
+    stub = installBureauStub({
+      'bureau.schedules.runnow': (params) =>
+        params['scheduleId'] === 'started'
+          ? { outcome: 'started', taskId: 'run-1' }
+          : params['scheduleId'] === 'queued'
+            ? { outcome: 'queued', taskId: 'run-2' }
+            : { outcome: 'skipped', blockingTaskId: null },
+    });
+
+    expect(await runNowAgentSchedule('started')).toEqual({ outcome: 'started', runId: 'run-1' });
+    expect(await runNowAgentSchedule('queued')).toEqual({ outcome: 'queued', runId: 'run-2' });
+    expect(await runNowAgentSchedule('busy')).toEqual({ outcome: 'skipped', blockingRunId: null });
+  });
+
+  test('list the fires the schedule missed, as the moments they were recorded at', async () => {
+    stub = installBureauStub({
+      'bureau.schedules.missed': () => ({
+        missed: [
+          {
+            scheduleId: 's-1',
+            owner: 'anonymous:local',
+            occurrence: '2026-10-19T09:00:00.000Z',
+            reason: 'late',
+            count: 1,
+            recordedAt: '2026-10-19T09:05:00.000Z',
+          },
+        ],
+      }),
+    });
+
+    expect(await listAgentScheduleMissed('s-1')).toEqual([
+      {
+        occurrence: Date.parse('2026-10-19T09:00:00.000Z'),
+        reason: 'late',
+        count: 1,
+        recordedAt: Date.parse('2026-10-19T09:05:00.000Z'),
+      },
+    ]);
+    expect(stub.callsTo('bureau.schedules.missed')[0]?.params).toEqual({ scheduleId: 's-1' });
+  });
+
+  test('read the zone and the skipped fire of a schedule', async () => {
+    stub = installBureauStub({
+      'bureau.schedules.list': () => ({
+        schedules: [
+          { ...VIEW, timeZone: 'America/Los_Angeles', skipUntil: '2026-10-20T16:00:00.000Z' },
+        ],
+        nextOffset: null,
+      }),
+    });
+
+    const [schedule] = await listBureauSchedules();
+    expect(schedule?.timeZone).toBe('America/Los_Angeles');
+    expect(schedule?.skipUntil).toBe('2026-10-20T16:00:00.000Z');
   });
 });

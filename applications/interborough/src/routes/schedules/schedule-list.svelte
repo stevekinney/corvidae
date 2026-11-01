@@ -1,11 +1,16 @@
 <script lang="ts">
   /**
-   * `/schedules`: what is set to run, each named by what it does and not by its identifier. A row
-   * says what the schedule is called (its description, or what it starts), which agent it runs and
-   * how often in words, when it fires next and how the last run ended, and the start of the text it
-   * sends. The title and the filters are one bar, and the status and the agent are the address's, so
-   * a filtered list can be shared. The identifier is "Copy id" in a row's actions menu. Actions are
-   * gated on `schedules:write`.
+   * `/schedules`: every schedule as a table, whichever way it was made: the Bureau's schedules that
+   * run an agent, the engine's that start a workflow defined in code, and the trigger in an
+   * agent-authored workflow's file. A row says what the schedule is called (its description, or what
+   * it starts), the workflow it runs (an agent, or the workflow with the kind it is), how often in
+   * words with the zone a cron is read in, when it fires next, how the last run ended, and one of
+   * the seven status words. The status and the agent are the address's, so a filtered list can be
+   * shared. The identifier is "Copy ID" in a row's actions menu. Actions are gated on
+   * `schedules:write`, and cancelling asks first with the revision of the schedule the row showed.
+   *
+   * Whether there is nothing to list, or the server is failing or refusing, is the view frame's to
+   * say (`app/view-probes.ts`).
    */
   import {
     Badge,
@@ -13,9 +18,10 @@
     ConfirmDialog,
     Dropdown,
     EmptyState,
+    FilterBar,
     PageHeader,
-    Select,
     Skeleton,
+    Table,
     VisuallyHidden,
   } from '@lostgradient/cinder';
   import { CalendarClock, CircleX, Copy, Ellipsis, Pause, Pencil, Play } from '@lucide/svelte';
@@ -25,6 +31,7 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import RecordsToolbar from '../../app/records/records-toolbar.svelte';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
@@ -38,6 +45,8 @@
   } from '../../lib/router.svelte.ts';
   import { kindOf } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import { scheduleStatusWord } from '../../lib/status.ts';
+  import StatusLabel from '../../lib/status-label.svelte';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import { describeCadence } from './cadence.ts';
   import { copyScheduleId } from './copy-schedule-id.ts';
@@ -53,8 +62,8 @@
     scheduleNameIdentifiers,
   } from './schedule-presentation.ts';
   import { fetchScheduleList } from './schedule-queries.ts';
-  import { scheduleStatusDescriptor } from './schedule-status.ts';
   import ScheduleTarget from './schedule-target.svelte';
+  import { formatInZone, scheduleZone, sentenceZone } from './schedule-time.ts';
   import { actionsOf, type ScheduleTarget as Target } from './schedule-writes.ts';
 
   const client = getClient();
@@ -62,30 +71,30 @@
 
   const SCHEDULE_STATUSES: readonly ScheduleStatus[] = ['active', 'paused', 'cancelled'];
 
-  function isScheduleStatus(value: string | null): value is ScheduleStatus {
-    return value !== null && (SCHEDULE_STATUSES as readonly string[]).includes(value);
-  }
-
   /**
    * The URL owns the filters: the status (the Health overview's Schedules count deep-links here via
    * `/schedules?status=active`) and the agent.
    */
-  const statusFilter = $derived<ScheduleStatus | 'all'>(
-    isScheduleStatus(router.current.search.get('status'))
-      ? (router.current.search.get('status') as ScheduleStatus)
-      : 'all',
+  const statusFilter = $derived<ScheduleStatus | undefined>(
+    SCHEDULE_STATUSES.find((status) => status === router.current.search.get('status')),
   );
-  const agentFilter = $derived(router.current.search.get('agent') ?? '');
+  const agentFilter = $derived(router.current.search.get('agent') ?? undefined);
 
-  function setFilter(key: 'status' | 'agent', next: string): void {
+  function changeFilter(key: string, value: string): void {
     const params = new URLSearchParams(router.current.search);
-    if (next === 'all' || next === '') params.delete(key);
-    else params.set(key, next);
+    if (value === '' || value === 'all') params.delete(key);
+    else params.set(key, value);
     const query = params.toString();
     router.navigate(query ? `/schedules?${query}` : '/schedules', { replace: true });
   }
 
-  const filter = $derived<ScheduleFilter>(statusFilter === 'all' ? {} : { status: statusFilter });
+  function clearFilters(): void {
+    router.navigate('/schedules', { replace: true });
+  }
+
+  const filter = $derived<ScheduleFilter>(
+    statusFilter === undefined ? {} : { status: statusFilter },
+  );
 
   const readGate = $derived(scopeGate(principal, ['schedules:read']));
   const writeGate = $derived(scopeGate(principal, ['schedules:write']));
@@ -105,30 +114,55 @@
     [
       ...new Set([
         ...(overlay.data?.agents?.values() ?? []),
-        ...(agentFilter === '' ? [] : [agentFilter]),
+        ...(agentFilter === undefined ? [] : [agentFilter]),
       ]),
     ].toSorted(),
   );
-  const statusOptions = [
-    { value: 'all', label: SCHEDULE_COPY.anyStatus },
-    ...SCHEDULE_STATUSES.map((status) => ({
-      value: status,
-      label: scheduleStatusDescriptor(status).label,
-    })),
-  ];
-  const agentOptions = $derived([
-    { value: 'all', label: SCHEDULE_COPY.anyAgent },
-    ...agentNames.map((name) => ({ value: name, label: name })),
+  const facets = $derived([
+    {
+      type: 'select' as const,
+      key: 'status',
+      label: SCHEDULE_COPY.statusLabel,
+      placeholder: SCHEDULE_COPY.anyStatus,
+      options: SCHEDULE_STATUSES.map((status) => ({
+        value: status,
+        label: scheduleStatusWord(status),
+      })),
+    },
+    {
+      type: 'select' as const,
+      key: 'agent',
+      label: SCHEDULE_COPY.agentLabel,
+      placeholder: SCHEDULE_COPY.anyAgent,
+      options: agentNames.map((name) => ({ value: name, label: name })),
+    },
+  ]);
+  const appliedFilters = $derived([
+    ...(statusFilter === undefined
+      ? []
+      : [
+          {
+            key: 'status',
+            value: statusFilter,
+            label: `${SCHEDULE_COPY.statusLabel}: ${scheduleStatusWord(statusFilter)}`,
+          },
+        ]),
+    ...(agentFilter === undefined
+      ? []
+      : [
+          {
+            key: 'agent',
+            value: agentFilter,
+            label: `${SCHEDULE_COPY.agentLabel}: ${agentFilter}`,
+          },
+        ]),
   ]);
 
   const visibleItems = $derived(
-    agentFilter === ''
+    agentFilter === undefined
       ? allItems
       : allItems.filter((schedule) => overlay.data?.agents?.get(schedule.id) === agentFilter),
   );
-
-  /** True once a filter narrows the result set: "no schedules yet" and "none match" have different next steps. */
-  const isFiltered = $derived(statusFilter !== 'all' || agentFilter !== '');
 
   const actions = createScheduleActions();
 
@@ -137,25 +171,12 @@
     return { schedule, kind: kindOf(schedule, overlay.data) };
   }
 
-  function openCreate(): void {
-    router.navigate(scheduleCreatePath());
-  }
-
-  function openDetail(event: MouseEvent, id: string): void {
+  function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }
     event.preventDefault();
-    router.navigate(scheduleDetailPath(id));
-  }
-
-  function openEdit(id: string): void {
-    router.navigate(scheduleEditPath(id));
-  }
-
-  /** The editor of the workflow whose file holds a schedule's trigger. */
-  function openWorkflowEditor(workflowType: string): void {
-    router.navigate(workflowEditPath(workflowType));
+    router.navigate(path);
   }
 
   function togglePause(schedule: ScheduleSummary): void {
@@ -187,47 +208,36 @@
   }
 </script>
 
-<section class="ib-schedules" aria-label={SCHEDULE_COPY.title}>
-  {#snippet headerActions()}
-    <form
-      class="ib-schedules__filters"
-      aria-label={SCHEDULE_COPY.filtersLabel}
-      onsubmit={(event) => event.preventDefault()}
-    >
-      <Select
-        id="ib-schedules-status"
-        label={SCHEDULE_COPY.statusLabel}
-        labelVisible={false}
-        options={statusOptions}
-        value={statusFilter}
-        onchange={(event) => setFilter('status', event.currentTarget.value)}
-      />
-      <Select
-        id="ib-schedules-agent"
-        label={SCHEDULE_COPY.agentLabel}
-        labelVisible={false}
-        options={agentOptions}
-        value={agentFilter === '' ? 'all' : agentFilter}
-        onchange={(event) => setFilter('agent', event.currentTarget.value)}
-      />
-      <Button
-        variant="primary"
-        size="md"
-        disabled={writeGate.disabled}
-        title={writeGate.title}
-        onclick={openCreate}
-      >
-        <CalendarClock aria-hidden="true" size={14} />
-        {SCHEDULE_COPY.newAction}
-      </Button>
-    </form>
-  {/snippet}
+<section class="ib-records" aria-label={SCHEDULE_COPY.title} data-page="schedules">
+  <PageHeader title={SCHEDULE_COPY.title} headingLevel={1} />
 
-  <PageHeader
-    class="ib-schedules__header"
-    title={SCHEDULE_COPY.title}
-    headingLevel={1}
-    actions={headerActions}
+  {#snippet filterBar()}
+    <FilterBar
+      aria-label={SCHEDULE_COPY.filtersLabel}
+      searchVisible={false}
+      {facets}
+      {appliedFilters}
+      onFacetChange={changeFilter}
+      onFilterRemove={(key) => changeFilter(key, '')}
+      onClearAll={clearFilters}
+    />
+  {/snippet}
+  {#snippet newSchedule()}
+    <Button
+      variant="primary"
+      size="sm"
+      disabled={writeGate.disabled}
+      title={writeGate.title}
+      onclick={() => router.navigate(scheduleCreatePath())}
+    >
+      <CalendarClock aria-hidden="true" size={14} />
+      {SCHEDULE_COPY.newAction}
+    </Button>
+  {/snippet}
+  <RecordsToolbar
+    count={SCHEDULE_COPY.count(visibleItems.length)}
+    filters={filterBar}
+    action={newSchedule}
   />
 
   {#if actions.notice !== null}
@@ -238,9 +248,7 @@
     <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
   {/if}
 
-  {#if readGate.disabled}
-    <EmptyState title="Schedules are locked" description={readGate.title ?? ''} />
-  {:else if listQuery.isPending}
+  {#if listQuery.isPending}
     <div role="status" aria-busy="true" aria-label={SCHEDULE_COPY.loading}>
       <Skeleton height="3.5rem" />
       <Skeleton height="3.5rem" />
@@ -250,130 +258,149 @@
       treatment={faultTreatment(listQuery.error)}
       onRetry={() => void listQuery.refetch()}
     />
-  {:else if visibleItems.length === 0 && !isFiltered}
-    <EmptyState title={SCHEDULE_COPY.empty.title} description={SCHEDULE_COPY.empty.description}>
-      {#snippet icon()}
-        <CalendarClock aria-hidden="true" size={26} />
-      {/snippet}
-      {#snippet action()}
-        <Button variant="primary" disabled={writeGate.disabled} onclick={openCreate}>
-          {SCHEDULE_COPY.newAction}
-        </Button>
-      {/snippet}
-    </EmptyState>
   {:else if visibleItems.length === 0}
     <EmptyState
+      kind="filtered"
       title={SCHEDULE_COPY.noMatch.title}
       description={SCHEDULE_COPY.noMatch.description}
+      headingLevel={2}
+      clearFiltersLabel={SCHEDULE_COPY.clearFilters}
+      onClearFilters={clearFilters}
     />
   {:else}
-    <ul class="ib-schedules__list" aria-label={SCHEDULE_COPY.title}>
-      {#each visibleItems as schedule (schedule.id)}
-        {@const status = scheduleStatusDescriptor(schedule.status)}
-        {@const target = targetOf(schedule)}
-        {@const allowed = actionsOf(target)}
-        {@const name = scheduleName(schedule, target.kind)}
-        {@const input = overlay.data?.inputs?.get(schedule.id)}
-        <li
-          class="ib-schedule-row"
-          data-schedule={schedule.id}
-          data-kind={target.kind.kind}
-          data-status={schedule.status}
-        >
-          <div class="ib-schedule-row__body">
-            <div class="ib-schedule-row__title">
+    <Table caption={SCHEDULE_COPY.caption} density="condensed">
+      <Table.Header>
+        <Table.Row>
+          <Table.HeaderCell>{SCHEDULE_COPY.columns.schedule}</Table.HeaderCell>
+          <Table.HeaderCell>{SCHEDULE_COPY.columns.runs}</Table.HeaderCell>
+          <Table.HeaderCell>{SCHEDULE_COPY.columns.repeats}</Table.HeaderCell>
+          <Table.HeaderCell>{SCHEDULE_COPY.columns.next}</Table.HeaderCell>
+          <Table.HeaderCell>{SCHEDULE_COPY.columns.last}</Table.HeaderCell>
+          <Table.HeaderCell>{SCHEDULE_COPY.columns.status}</Table.HeaderCell>
+          <Table.HeaderCell
+            ><VisuallyHidden>{SCHEDULE_COPY.columns.actions}</VisuallyHidden></Table.HeaderCell
+          >
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {#each visibleItems as schedule (schedule.id)}
+          {@const target = targetOf(schedule)}
+          {@const allowed = actionsOf(target)}
+          {@const name = scheduleName(schedule, target.kind)}
+          {@const zone = sentenceZone(schedule)}
+          {@const input = overlay.data?.inputs?.get(schedule.id)}
+          <Table.Row
+            data-schedule={schedule.id}
+            data-kind={target.kind.kind}
+            data-status={schedule.status}
+            data-status-word={scheduleStatusWord(schedule.status)}
+          >
+            <Table.Cell class="ib-records__wrap">
               <a
-                class="ib-schedule-row__name"
                 href={router.href(scheduleDetailPath(schedule.id))}
-                onclick={(event) => openDetail(event, schedule.id)}
+                onclick={(event) => go(event, scheduleDetailPath(schedule.id))}
                 ><IdentifierText
                   text={name}
                   identifiers={scheduleNameIdentifiers(schedule, target.kind)}
                 /></a
               >
-              {#if schedule.status !== 'active'}
-                <Badge variant={status.variant}>{status.label}</Badge>
-              {/if}
               {#if schedule.missedFireCount > 0}
                 <Badge variant="warning">{SCHEDULE_COPY.missed(schedule.missedFireCount)}</Badge>
               {/if}
-            </div>
-            <p class="ib-schedule-row__facts">
+              {#if input !== undefined}
+                <p class="ib-schedule__input" data-testid="schedule-input">{`“${input}”`}</p>
+              {/if}
+            </Table.Cell>
+            <Table.Cell class="ib-records__wrap">
               <ScheduleTarget {schedule} kind={target.kind} />
-              <span
-                ><IdentifierText
-                  text={describeCadence(schedule)}
-                  identifiers={cadenceIdentifiers(schedule)}
-                /></span
-              >
+            </Table.Cell>
+            <Table.Cell class="ib-records__wrap">
+              <IdentifierText
+                text={describeCadence(schedule)}
+                identifiers={cadenceIdentifiers(schedule)}
+              />
+              {#if zone !== null}
+                <span class="ib-records__muted">{SCHEDULE_COPY.inZone(zone)}</span>
+              {/if}
+            </Table.Cell>
+            <Table.Cell class="ib-records__muted">
               {#if schedule.status === 'active' && schedule.nextFireAt !== null}
-                <span>{SCHEDULE_COPY.next(formatRelativeTime(schedule.nextFireAt))}</span>
+                <span title={formatInZone(schedule.nextFireAt, scheduleZone(schedule))}
+                  >{formatRelativeTime(schedule.nextFireAt)}</span
+                >
               {/if}
+            </Table.Cell>
+            <Table.Cell class="ib-records__muted">
               <ScheduleLastFire scheduleId={schedule.id} lastFireAt={schedule.lastFireAt} />
-            </p>
-            {#if input !== undefined}
-              <p class="ib-schedule-row__input" data-testid="schedule-input">“{input}”</p>
-            {/if}
-          </div>
-          <Dropdown id={`ib-schedule-actions-${schedule.id}`} placement="bottom-end">
-            <Dropdown.Trigger caretVisible={false}>
-              <Ellipsis aria-hidden="true" size={16} />
-              <VisuallyHidden>{SCHEDULE_COPY.actionsFor(name)}</VisuallyHidden>
-            </Dropdown.Trigger>
-            <Dropdown.Menu>
-              {#if allowed.pause || allowed.resume}
-                <Dropdown.Item
-                  data-changes
-                  disabled={writeGate.disabled || actions.busy}
-                  onclick={() => togglePause(schedule)}
-                >
-                  {#if schedule.status === 'paused'}
-                    <Play aria-hidden="true" size={14} /> Resume
-                  {:else}
-                    <Pause aria-hidden="true" size={14} /> Pause
+            </Table.Cell>
+            <Table.Cell>
+              <StatusLabel word={scheduleStatusWord(schedule.status)} />
+            </Table.Cell>
+            <Table.Cell align="right">
+              <Dropdown id={`ib-schedule-actions-${schedule.id}`} placement="bottom-end">
+                <Dropdown.Trigger caretVisible={false}>
+                  <Ellipsis aria-hidden="true" size={16} />
+                  <VisuallyHidden>{SCHEDULE_COPY.actionsFor(name)}</VisuallyHidden>
+                </Dropdown.Trigger>
+                <Dropdown.Menu>
+                  {#if allowed.pause || allowed.resume}
+                    <Dropdown.Item
+                      data-changes
+                      disabled={writeGate.disabled || actions.busy}
+                      onclick={() => togglePause(schedule)}
+                    >
+                      {#if schedule.status === 'paused'}
+                        <Play aria-hidden="true" size={14} /> Resume
+                      {:else}
+                        <Pause aria-hidden="true" size={14} /> Pause
+                      {/if}
+                    </Dropdown.Item>
                   {/if}
-                </Dropdown.Item>
-              {/if}
-              {#if allowed.edit}
-                <Dropdown.Item disabled={writeGate.disabled} onclick={() => openEdit(schedule.id)}>
-                  <Pencil aria-hidden="true" size={14} /> Edit
-                </Dropdown.Item>
-              {/if}
-              {#if allowed.editInWorkflow}
-                <Dropdown.Item onclick={() => openWorkflowEditor(schedule.workflowType)}>
-                  <Pencil aria-hidden="true" size={14} />
-                  {SCHEDULE_COPY.editWorkflowAction}
-                </Dropdown.Item>
-              {/if}
-              <Dropdown.Item onclick={() => void copyScheduleId(schedule.id)}>
-                <Copy aria-hidden="true" size={14} />
-                {SCHEDULE_COPY.copyId}
-              </Dropdown.Item>
-              {#if allowed.cancel}
-                <Dropdown.Item
-                  data-changes
-                  variant="danger"
-                  disabled={writeGate.disabled || actions.busy}
-                  onclick={() => requestCancel(schedule, name)}
-                >
-                  <CircleX aria-hidden="true" size={14} /> Cancel
-                </Dropdown.Item>
-              {/if}
-            </Dropdown.Menu>
-          </Dropdown>
-        </li>
-      {/each}
-    </ul>
+                  {#if allowed.edit}
+                    <Dropdown.Item
+                      disabled={writeGate.disabled}
+                      onclick={() => router.navigate(scheduleEditPath(schedule.id))}
+                    >
+                      <Pencil aria-hidden="true" size={14} /> Edit
+                    </Dropdown.Item>
+                  {/if}
+                  {#if allowed.editInWorkflow}
+                    <Dropdown.Item
+                      onclick={() => router.navigate(workflowEditPath(schedule.workflowType))}
+                    >
+                      <Pencil aria-hidden="true" size={14} />
+                      {SCHEDULE_COPY.editWorkflowAction}
+                    </Dropdown.Item>
+                  {/if}
+                  <Dropdown.Item onclick={() => void copyScheduleId(schedule.id)}>
+                    <Copy aria-hidden="true" size={14} />
+                    {SCHEDULE_COPY.copyId}
+                  </Dropdown.Item>
+                  {#if allowed.cancel}
+                    <Dropdown.Item
+                      data-changes
+                      variant="danger"
+                      disabled={writeGate.disabled || actions.busy}
+                      onclick={() => requestCancel(schedule, name)}
+                    >
+                      <CircleX aria-hidden="true" size={14} /> Cancel
+                    </Dropdown.Item>
+                  {/if}
+                </Dropdown.Menu>
+              </Dropdown>
+            </Table.Cell>
+          </Table.Row>
+        {/each}
+      </Table.Body>
+    </Table>
   {/if}
 </section>
 
 <ConfirmDialog
   bind:open={cancelDialogOpen}
-  title="Cancel this schedule?"
-  description={cancelTarget
-    ? `“${cancelName}” will stop firing. This can't be undone — create a new schedule to resume this cadence.`
-    : ''}
-  confirmLabel="Cancel schedule"
+  title={SCHEDULE_COPY.cancelDialog.title}
+  description={cancelTarget ? SCHEDULE_COPY.cancelDialog.description(cancelName) : ''}
+  confirmLabel={SCHEDULE_COPY.cancelDialog.confirm}
   destructive
   onConfirm={confirmCancel}
 />

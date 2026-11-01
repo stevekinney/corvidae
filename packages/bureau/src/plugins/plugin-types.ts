@@ -303,6 +303,45 @@ export interface PluginListing {
   readonly contributions: readonly PluginContributionListing[];
 }
 
+/**
+ * A trigger kind a running plugin contributes, as a client that edits workflow files needs it: the
+ * name a file's `trigger.kind` uses, what it listens for, and the fields its configuration takes
+ * (COR-1893). Carries no function.
+ */
+export interface PluginTriggerKindListing {
+  /** The contributing plugin's name. */
+  readonly plugin: string;
+  /** `plugin:name`, the `kind` a workflow file's trigger names. */
+  readonly id: string;
+  /** What the trigger listens for. */
+  readonly description: string;
+  /** The version a revision that uses it pins: the kind's own, else its plugin's. */
+  readonly version: string;
+  /**
+   * The kind's configuration schema as JSON Schema (the fields a trigger holds besides `kind`), or
+   * `null` when the schema cannot be written as one.
+   */
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+}
+
+/**
+ * A hook action kind a running plugin contributes, with the hooks subsystem on (COR-1893): the
+ * `plugin` and `kind` an action `{ type: 'plugin' }` names, what it does, and the fields its
+ * configuration takes. Carries no function.
+ */
+export interface PluginHookActionKindListing {
+  /** The contributing plugin's name. */
+  readonly plugin: string;
+  /** The kind's name within the plugin. */
+  readonly kind: string;
+  /** What the action does. */
+  readonly description: string;
+  /** The version a delivery pins: the kind's own, else its plugin's. */
+  readonly version: string;
+  /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+}
+
 /** `bureau.plugins`: the plugins the Bureau was given, in load order. */
 export interface BureauPlugins {
   /**
@@ -336,6 +375,17 @@ export interface BureauPlugins {
    * ignored.
    */
   reportMcpAppFailure(plugin: string, app: string, message: string): void;
+  /**
+   * The trigger kinds of the running plugins, in load order: what a workflow file's trigger can
+   * name besides `schedule` and `signal`. Fixed once the Bureau is built.
+   */
+  triggerKinds(): readonly PluginTriggerKindListing[];
+  /**
+   * The hook action kinds of the running plugins, in load order: what a hook's action
+   * `{ type: 'plugin' }` can name. Empty when the Bureau composes no hooks. Fixed once the Bureau
+   * is built.
+   */
+  hookActionKinds(): readonly PluginHookActionKindListing[];
   /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
   ready(): Promise<void>;
 }

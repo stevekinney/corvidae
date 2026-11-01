@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   callBureau,
   type ContextWindow,
+  deleteContext,
   type Fetcher,
   forkContext,
   forkRefusalReason,
@@ -14,6 +15,7 @@ import {
   getThreadMessages,
   listAgents,
   listContexts,
+  renameContext,
   sendContextInput,
   steerContext,
   type SteerOutcome,
@@ -368,6 +370,62 @@ describe('switching a session’s model and branching it', () => {
     expect(unreasoned).toBeInstanceOf(HttpClientError);
     expect(forkRefusalReason(unreasoned)).toBeUndefined();
     expect(forkRefusalReason(new Error('The network failed.'))).toBeUndefined();
+  });
+});
+
+describe('renaming and deleting a session', () => {
+  async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
+    const restore = installFetchImplementation(stub);
+    try {
+      return await body();
+    } finally {
+      restore();
+    }
+  }
+
+  test('renameContext sends the title and returns the one now stored', async () => {
+    const stub = answering(result({ contextId: 'c1', title: 'Plan' }));
+
+    const stored = await withStub(stub.fetch, () =>
+      renameContext({ contextId: 'c1', title: 'Plan' }),
+    );
+
+    expect(stored).toBe('Plan');
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.rename',
+      params: { contextId: 'c1', title: 'Plan' },
+    });
+  });
+
+  test('renameContext with null asks for the derived title back', async () => {
+    const stub = answering(result({ contextId: 'c1', title: null }));
+
+    const stored = await withStub(stub.fetch, () =>
+      renameContext({ contextId: 'c1', title: null }),
+    );
+
+    expect(stored).toBeNull();
+    expect(stub.calls[0]?.body.params).toEqual({ contextId: 'c1', title: null });
+  });
+
+  test('deleteContext returns the receipt for the runs it cancelled', async () => {
+    const stub = answering(result({ contextId: 'c1', receipt: 'cleanup-pending', tasks: [] }));
+
+    const receipt = await withStub(stub.fetch, () => deleteContext('c1'));
+
+    expect(receipt).toBe('cleanup-pending');
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.delete',
+      params: { contextId: 'c1' },
+    });
+  });
+
+  test('deleteContext throws the not-found fault of a session that is already gone', async () => {
+    const stub = answering(fault(404, 'NotFound', 'No such context.'));
+
+    const error = await withStub(stub.fetch, () => failureOf(deleteContext('c1')));
+
+    expect(error).toBeInstanceOf(HttpClientError);
   });
 });
 

@@ -1,7 +1,7 @@
 import { requireElement } from '../../../tests/dom.test-support.ts';
 
 /**
- * Component tests for `<ScheduleFormDrawer>` against a REAL in-process weft
+ * Component tests for `<ScheduleEdit>` against a REAL in-process weft
  * server.
  *
  * The registry-driven workflow-type picker still exercises its free-text
@@ -38,11 +38,12 @@ import {
 } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
+import { SCHEDULE_COPY } from '../../app/copy.ts';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
-import ScheduleFormDrawerHarness from './schedule-form-drawer-test-harness.test-harness.svelte';
+import ScheduleEditHarness from './schedule-edit-test-harness.test-harness.svelte';
 import { scheduleDetailQueryKey } from './schedule-queries.ts';
 
-describe('ScheduleFormDrawer — edit', () => {
+describe('ScheduleEdit', () => {
   test('changing revisionPolicy from active-at-fire to pinned and saving sends the new value (WFT-117)', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
@@ -55,10 +56,9 @@ describe('ScheduleFormDrawer — edit', () => {
 
     let closed = false;
     try {
-      const { getByRole } = render(ScheduleFormDrawerHarness, {
+      const { getByRole } = render(ScheduleEditHarness, {
         props: {
           client,
-          mode: 'edit',
           scheduleId: 'to-be-pinned',
           onClose: () => (closed = true),
         },
@@ -98,10 +98,9 @@ describe('ScheduleFormDrawer — edit', () => {
     let closed = false;
     let queryClient: QueryClient | undefined;
     try {
-      const { getByRole } = render(ScheduleFormDrawerHarness, {
+      const { getByRole } = render(ScheduleEditHarness, {
         props: {
           client,
-          mode: 'edit',
           scheduleId: 'externally-pinned',
           onClose: () => (closed = true),
           onQueryClient: (qc) => (queryClient = qc),
@@ -141,7 +140,7 @@ describe('ScheduleFormDrawer — edit', () => {
     }
   });
 
-  test('a background refetch with changed server data does not discard an unsaved revisionPolicy edit, and the edit still saves (COR-15)', async () => {
+  test('a background refetch with changed server data does not discard an unsaved revisionPolicy edit, refuses to save it over the changed schedule, and starts over on request (COR-15)', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -154,10 +153,9 @@ describe('ScheduleFormDrawer — edit', () => {
     let closed = false;
     let queryClient: QueryClient | undefined;
     try {
-      const { getByRole } = render(ScheduleFormDrawerHarness, {
+      const { getByRole, getByTestId } = render(ScheduleEditHarness, {
         props: {
           client,
-          mode: 'edit',
           scheduleId: 'mid-edit',
           onClose: () => (closed = true),
           onQueryClient: (qc) => (queryClient = qc),
@@ -187,6 +185,28 @@ describe('ScheduleFormDrawer — edit', () => {
         true,
       );
 
+      // The schedule changed after the draft was built, so saving it is refused and writes nothing.
+      await fireEvent.click(getByRole('button', { name: 'Save changes' }));
+      const notice = await waitFor(() => getByTestId('schedule-notice'));
+      expect(notice.getAttribute('data-notice')).toBe('stale');
+      expect(closed).toBe(false);
+      const refused = await server.engine.getSchedule('mid-edit');
+      expect(refused?.revisionPolicy).toBe('active-at-fire');
+      expect(requireElement(getByRole('radio', { name: 'Pinned' }), HTMLInputElement).checked).toBe(
+        true,
+      );
+
+      // Starting over builds the draft from the schedule as it is now, and that saves.
+      await fireEvent.click(getByRole('button', { name: 'Start over from the current schedule' }));
+      await waitFor(() =>
+        expect(
+          requireElement(getByRole('textbox', { name: 'Description' }), HTMLInputElement).value,
+        ).toBe('edited elsewhere'),
+      );
+      expect(requireElement(getByRole('radio', { name: 'Pinned' }), HTMLInputElement).checked).toBe(
+        false,
+      );
+      await fireEvent.click(getByRole('radio', { name: 'Pinned' }));
       await fireEvent.click(getByRole('button', { name: 'Save changes' }));
       await waitFor(() => expect(closed).toBe(true));
       const after = await server.engine.getSchedule('mid-edit');
@@ -209,10 +229,9 @@ describe('ScheduleFormDrawer — edit', () => {
     let closed = false;
     let queryClient: QueryClient | undefined;
     try {
-      const { container, getByRole } = render(ScheduleFormDrawerHarness, {
+      const { container, getByRole } = render(ScheduleEditHarness, {
         props: {
           client,
-          mode: 'edit',
           scheduleId: 'cadence-edit',
           onClose: () => (closed = true),
           onQueryClient: (qc) => (queryClient = qc),
@@ -227,12 +246,10 @@ describe('ScheduleFormDrawer — edit', () => {
       });
       await fireEvent.change(at, { target: { value: '05:00' } });
 
-      // The schedule fires (or a run completes): `updatedAt` moves while the
-      // cadence stays what the server has.
+      // The schedule is run: `updatedAt` moves while the revision, which only a change to the
+      // schedule moves, stays what the draft was built from.
       const before = await server.engine.getSchedule('cadence-edit');
-      await server.engine.updateSchedule('cadence-edit', '0 2 * * *', {
-        description: 'touched by a fire',
-      });
+      await server.engine.triggerSchedule('cadence-edit');
       if (queryClient === undefined) throw new Error('queryClient was never captured');
       await queryClient.invalidateQueries({ queryKey: scheduleDetailQueryKey('cadence-edit') });
       await waitFor(() => {
@@ -265,13 +282,13 @@ describe('ScheduleFormDrawer — edit', () => {
     }
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
     try {
-      const { getByRole, rerender } = render(ScheduleFormDrawerHarness, {
-        props: { client, mode: 'edit', scheduleId: 'switch-a', onClose: () => {} },
+      const { getByRole, rerender } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'switch-a', onClose: () => {} },
       });
       const description = await waitFor(() => getByRole('textbox', { name: 'Description' }));
       await fireEvent.input(description, { target: { value: 'dirty edit for a' } });
 
-      await rerender({ client, mode: 'edit', scheduleId: 'switch-b', onClose: () => {} });
+      await rerender({ client, scheduleId: 'switch-b', onClose: () => {} });
       await waitFor(() =>
         expect(
           requireElement(getByRole('textbox', { name: 'Description' }), HTMLInputElement).value,
@@ -295,8 +312,8 @@ describe('ScheduleFormDrawer — edit', () => {
 
     let closed = false;
     try {
-      const { getByRole } = render(ScheduleFormDrawerHarness, {
-        props: { client, mode: 'edit', scheduleId: 'all-options', onClose: () => (closed = true) },
+      const { getByRole } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'all-options', onClose: () => (closed = true) },
       });
 
       const description = await waitFor(() => getByRole('textbox', { name: 'Description' }));
@@ -388,10 +405,9 @@ describe('ScheduleFormDrawer — edit', () => {
 
     let closed = false;
     try {
-      const { getByRole, getByText } = render(ScheduleFormDrawerHarness, {
+      const { getByRole, getByText } = render(ScheduleEditHarness, {
         props: {
           client,
-          mode: 'edit',
           scheduleId: 'ambiguous-pin-schedule',
           onClose: () => (closed = true),
         },
@@ -418,11 +434,78 @@ describe('ScheduleFormDrawer — edit', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText } = render(ScheduleFormDrawerHarness, {
-        props: { client, mode: 'edit', scheduleId: 'missing', onClose: () => {} },
+      const { getByText } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'missing', onClose: () => {} },
       });
 
       await waitFor(() => expect(getByText('Not found')).not.toBeNull());
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('says the schedule could not be loaded, and tries again on request', async () => {
+    const client = new HttpClient({ baseUrl: 'http://127.0.0.1:1' });
+
+    const { getByRole, getByText } = render(ScheduleEditHarness, {
+      props: { client, scheduleId: 'nightly-rollup' },
+    });
+
+    await waitFor(() => expect(getByText(SCHEDULE_COPY.detail.loadFailed)).not.toBeNull());
+    expect(getByRole('button', { name: 'Try again' })).not.toBeNull();
+  });
+  test('says a save restores the run that was skipped, because the engine drops the skip on any update', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'skip-then-edit',
+      cron: '0 2 * * *',
+      timeZone: 'UTC',
+      input: { warehouseId: 'wh-main' },
+    });
+    await server.engine.skipNextScheduleOccurrence('skip-then-edit');
+    const skipped = await server.engine.getSchedule('skip-then-edit');
+    expect(skipped?.skipUntil).toBeDefined();
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    let closed = false;
+    try {
+      const { getByRole, getByTestId } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'skip-then-edit', onClose: () => (closed = true) },
+      });
+
+      await waitFor(() => getByRole('radio', { name: 'Pinned' }));
+      expect(getByTestId('schedule-edit-skip-pending').textContent).toContain(
+        SCHEDULE_COPY.edit.skipPending,
+      );
+      await fireEvent.click(getByRole('radio', { name: 'Pinned' }));
+      await fireEvent.click(getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(closed).toBe(true));
+      // The warning is true: the save dropped the skip.
+      const saved = await server.engine.getSchedule('skip-then-edit');
+      expect(saved?.skipUntil).toBeUndefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('says nothing about a skip when none is pending', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'no-skip-edit',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { getByRole, queryByTestId } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'no-skip-edit', onClose: () => {} },
+      });
+
+      await waitFor(() => getByRole('radio', { name: 'Pinned' }));
+      expect(queryByTestId('schedule-edit-skip-pending')).toBeNull();
     } finally {
       await server.stop();
     }

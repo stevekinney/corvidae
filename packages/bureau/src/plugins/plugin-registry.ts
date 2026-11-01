@@ -8,6 +8,7 @@
  */
 
 import { formatToolId, fromNamespacedToolName, parseToolId } from 'armorer';
+import { z } from 'zod';
 
 import type {
   PluginHostApi,
@@ -21,9 +22,11 @@ import type {
   PluginContribution,
   PluginContributionListing,
   PluginContributionReferences,
+  PluginHookActionKindListing,
   PluginListing,
   PluginProblem,
   PluginStatus,
+  PluginTriggerKindListing,
 } from './plugin-types';
 import type { AgentListing } from '../agent-file-catalog';
 import type { PluginSecretGate } from './plugin-secret-gate';
@@ -246,6 +249,26 @@ function referenceProblemsOf(plugin: string, agents: readonly AgentListing[]): P
 /** The waiting runs of each unavailable pinned version, by plugin, then by `plugin:name@version`. */
 type PinnedTally = Map<string, Map<string, { id: string; version: string; runs: Set<string> }>>;
 
+/**
+ * A configuration schema as JSON Schema for a client that draws its fields, or `null` when Zod
+ * cannot write it as one (a transform, say). It describes what a person types, so the input side.
+ */
+function jsonSchemaOf(schema: z.ZodType): Readonly<Record<string, unknown>> | null {
+  try {
+    return z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' });
+  } catch {
+    return null;
+  }
+}
+
+/** Whether `record` registered the contribution `kind` named `plugin:name`. */
+function registered(record: PluginRecord, kind: PluginContribution['kind'], name: string): boolean {
+  const id = `${record.entry.descriptor.name}:${name}`;
+  return record.contributions.some(
+    (contribution) => contribution.kind === kind && contribution.id === id,
+  );
+}
+
 /** The registry over the records composition produced. */
 export function createPluginRegistry(records: readonly PluginRecord[]): PluginRegistry {
   const laterProblems = new Map<string, PluginProblem[]>();
@@ -293,6 +316,34 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                   plugin: record.entry.descriptor.name,
                   version: record.entry.descriptor.version,
                   app,
+                }))
+            : [],
+        ),
+      triggerKinds: () =>
+        records.flatMap((record): PluginTriggerKindListing[] =>
+          record.status === 'running'
+            ? (record.setup?.result.triggerKinds ?? [])
+                .filter((kind) => registered(record, 'trigger-kind', kind.name))
+                .map((kind) => ({
+                  plugin: record.entry.descriptor.name,
+                  id: `${record.entry.descriptor.name}:${kind.name}`,
+                  description: kind.description,
+                  version: kind.version ?? record.entry.descriptor.version,
+                  configuration: jsonSchemaOf(kind.configuration),
+                }))
+            : [],
+        ),
+      hookActionKinds: () =>
+        records.flatMap((record): PluginHookActionKindListing[] =>
+          record.status === 'running'
+            ? (record.setup?.result.hookActionKinds ?? [])
+                .filter((kind) => registered(record, 'hook-action', kind.name))
+                .map((kind) => ({
+                  plugin: record.entry.descriptor.name,
+                  kind: kind.name,
+                  description: kind.description,
+                  version: kind.version ?? record.entry.descriptor.version,
+                  configuration: jsonSchemaOf(kind.configuration),
                 }))
             : [],
         ),

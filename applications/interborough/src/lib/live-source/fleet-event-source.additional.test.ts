@@ -159,6 +159,41 @@ describe('additional coverage', () => {
     source.close();
   });
 
+  test('passes the envelope’s source through to the frame, and leaves it off an event from core', async () => {
+    scripted = new ScriptedFetch();
+    scripted.enqueue(
+      openSseResponse([
+        pingChunk(true),
+        envelopeChunk({
+          kind: 'schedule.created',
+          sequence: 1,
+          cursor: '1',
+          emittedAtMs: 100,
+          payload: {},
+          source: 'inbox',
+        }),
+        envelopeChunk({
+          kind: 'run.settled',
+          sequence: 2,
+          cursor: '2',
+          emittedAtMs: 200,
+          payload: {},
+        }),
+      ]),
+    );
+
+    const source = new FleetEventSource({ baseUrl: '', computeReconnectDelayMs: () => 1 });
+    const received: FleetEventFrame[] = [];
+    source.subscribe((frame) => received.push(frame));
+
+    await waitFor(() => {
+      expect(received).toHaveLength(2);
+    });
+    expect(received[0]?.source).toBe('inbox');
+    expect(received[1]).not.toHaveProperty('source');
+    source.close();
+  });
+
   test('reconnects (with backoff) when the response is not ok', async () => {
     scripted = new ScriptedFetch();
     scripted.enqueue(() => new Response('nope', { status: 500 }));

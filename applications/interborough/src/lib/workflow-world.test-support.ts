@@ -74,6 +74,10 @@ export type ScheduleFixture = {
   overlap: string;
   backfill: boolean;
   revisionPolicy: string;
+  /** The revision a `pinned` policy resolves to. */
+  pinnedRevision?: string;
+  /** How far a fire may be moved, in milliseconds. */
+  jitterMs?: number;
   timeZone: string;
   /** How many times the schedule itself has changed: `1` when created, then one more per change. */
   revision: number;
@@ -82,6 +86,8 @@ export type ScheduleFixture = {
   missedFireCount: number;
   skippedCount: number;
   nextFireAt: number | null;
+  /** The fire a person asked to skip, set by the Bureau's skip next. */
+  skipUntil?: number;
   queuedRuns: unknown[];
 };
 
@@ -313,6 +319,8 @@ export type World = {
   scheduleAgents: Record<string, string>;
   /** The text each Bureau schedule sends its agent, by schedule id. */
   scheduleInputs: Record<string, string>;
+  /** The fires each Bureau schedule missed, by schedule id, as `bureau.schedules.missed` lists them. */
+  missedFires: Record<string, { occurrence: number; reason: 'late' | 'dst-gap'; count: number }[]>;
   /** What `bureau.agents.list` answers. */
   agents: Array<Record<string, unknown>>;
   /** Makes `bureau.schedules.list` answer with a fault, as a Bureau that is down would. */
@@ -337,6 +345,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     failSchedules: false,
     scheduleAgents: {},
     scheduleInputs: {},
+    missedFires: {},
     agents: [],
     failBureauSchedules: false,
     failBureauFiles: false,
@@ -422,11 +431,12 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     description: schedule.description ?? null,
     cronExpression: schedule.cronExpression ?? null,
     intervalMs: schedule.intervalMs ?? null,
+    timeZone: schedule.timeZone,
     status: schedule.status,
     overlap: schedule.overlap,
     revision: schedule.revision,
     nextFireAt: iso(schedule.nextFireAt),
-    skipUntil: null,
+    skipUntil: iso(schedule.skipUntil ?? null),
     lastFireAt: null,
     missedFireCount: schedule.missedFireCount,
     skippedCount: schedule.skippedCount,
@@ -500,6 +510,29 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
         touch(schedule);
       }
       return receipt(schedule);
+    },
+    'bureau.schedules.skipnext': (params) => {
+      const schedule = bureauGuarded(params);
+      if (schedule.status !== 'active') throw workflowFaults.notFound('an active schedule');
+      if (schedule.nextFireAt !== null) schedule.skipUntil = schedule.nextFireAt;
+      return receipt(schedule);
+    },
+    'bureau.schedules.runnow': (params) => {
+      const schedule = bureauGuarded(params);
+      return { outcome: 'started', taskId: `task-run-now-${schedule.id}` };
+    },
+    'bureau.schedules.missed': (params) => {
+      const schedule = bureauGuarded(params);
+      return {
+        missed: (world.missedFires[schedule.id] ?? []).map((row) => ({
+          scheduleId: schedule.id,
+          owner: 'anonymous:local',
+          occurrence: iso(row.occurrence),
+          reason: row.reason,
+          count: row.count,
+          recordedAt: iso(row.occurrence + 1),
+        })),
+      };
     },
     'bureau.schedules.update': (params) => {
       const schedule = bureauGuarded(params);

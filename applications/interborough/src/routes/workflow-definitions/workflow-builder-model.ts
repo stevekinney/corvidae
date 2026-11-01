@@ -25,6 +25,12 @@ export type BuilderStep =
 export type BuilderTrigger =
   | { readonly kind: 'schedule'; readonly spec: string }
   | { readonly kind: 'signal'; readonly name: string }
+  /** A trigger kind a plugin contributes (`plugin:name`), with the rest of the trigger as its configuration. */
+  | {
+      readonly kind: 'contributed';
+      readonly id: string;
+      readonly configuration: Readonly<Record<string, unknown>>;
+    }
   | { readonly kind: 'other'; readonly label: string };
 
 /** What the builder shows for a text that is a JSON object. */
@@ -86,6 +92,11 @@ function stepOf(step: unknown): BuilderStep {
   return { kind: 'other', label: stepLabel({ ...step, kind }) };
 }
 
+/** Whether a trigger's `kind` is a plugin's: `plugin:name`, each part a lowercase identifier. */
+export function isContributedTriggerId(kind: string): boolean {
+  return /^[a-z](?:[a-z0-9-]*[a-z0-9])?:[a-z](?:[a-z0-9-]*[a-z0-9])?$/.test(kind);
+}
+
 function triggerOf(trigger: unknown): BuilderTrigger | null {
   if (trigger === undefined) return null;
   // A trigger that is not an object is a file the Bureau refuses; an edit would replace it.
@@ -93,6 +104,10 @@ function triggerOf(trigger: unknown): BuilderTrigger | null {
   const kind = asText(trigger['kind']);
   if (kind === 'schedule') return { kind, spec: asText(trigger['spec']) };
   if (kind === 'signal') return { kind, name: asText(trigger['name']) };
+  if (isContributedTriggerId(kind)) {
+    const { kind: _kind, ...configuration } = trigger;
+    return { kind: 'contributed', id: kind, configuration };
+  }
   return { kind: 'other', label: triggerLabel({ ...trigger, kind }) };
 }
 
@@ -174,6 +189,24 @@ export function setTrigger(text: string, kind: BuilderTriggerKind, value: string
   const field = kind === 'schedule' ? 'spec' : 'name';
   document['trigger'] =
     current['kind'] === kind ? { ...current, [field]: value } : { kind, [field]: value };
+  return toText(document);
+}
+
+/**
+ * `text` with its trigger a contributed kind `id` (`plugin:name`) holding `configuration`, the
+ * fields of the kind's schema. The trigger is replaced: a file's trigger is the kind and its
+ * configuration, nothing else.
+ */
+export function setContributedTrigger(
+  text: string,
+  id: string,
+  configuration: Readonly<Record<string, unknown>>,
+): string {
+  const document = parseObject(text);
+  if (document === undefined) return text;
+  if (document['trigger'] !== undefined && !isRecord(document['trigger'])) return text;
+  const { kind: _kind, ...fields } = configuration;
+  document['trigger'] = { kind: id, ...fields };
   return toText(document);
 }
 

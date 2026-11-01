@@ -68,11 +68,12 @@ afterEach(() => {
   sessions = [];
 });
 
-function open(fetchAgUi: Fetcher): ChatSessionState {
+function open(fetchAgUi: Fetcher, closed?: () => boolean): ChatSessionState {
   const session = new ChatSessionState({
     sessionId: THREAD,
     agentName: () => 'assistant',
     fetch: fetchAgUi,
+    ...(closed === undefined ? {} : { closed }),
   });
   sessions.push(session);
   return session;
@@ -423,5 +424,21 @@ describe('a question answered in its control when the resume is not applied', ()
       },
     ]);
     expect(session.humanRequests).toEqual([]);
+  });
+});
+
+describe('a question answered in a chat that was deleted', () => {
+  test('sends nothing and says why', async () => {
+    let deleted = false;
+    const mounted = mount([parkedStart([environment]), success]);
+    const session = open(mounted.fetch, () => deleted);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+    deleted = true;
+
+    const answered = await session.answerQuestion(environment.id, 'staging');
+
+    expect(answered).toBe(false);
+    expect(mounted.bodies).toHaveLength(1);
+    expect(session.failure).toBe(CHAT_COPY.gone.title);
   });
 });

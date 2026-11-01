@@ -3,7 +3,9 @@
    * The recent deliveries of one hook, beside its editor, as plain lines: where each stands, which
    * event it carried (or that it was a test), what the receiver answered or why there was no
    * answer, how many attempts it took, and when. Newest first. They are read again when the editor
-   * sends a test event or saves, and each time the page opens.
+   * sends a test event or saves, and each time the page opens. A delivery holds no payload, so no
+   * plugin formatter's sentence is written for it: formatters read payloads, and a sentence built on
+   * an empty one would name nothing.
    */
   import { Alert, RelativeTime, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -55,9 +57,14 @@
           data-status={delivery.status}
         >
           <StatusLabel word={deliveryWord(delivery.status)} />
-          <span class="ib-hook-deliveries__what"
-            >{delivery.test ? copy.testEvent : eventWords(delivery.kind)}</span
-          >
+          <span class="ib-hook-deliveries__what">
+            {#if delivery.test}
+              {copy.testEvent}
+            {:else}
+              {eventWords(delivery.kind)}
+              <code class="ib-hook-deliveries__kind" data-testid="event-kind">{delivery.kind}</code>
+            {/if}
+          </span>
           <span class="ib-hook-deliveries__line">{deliveryLine(delivery)}</span>
           {#if delivery.attempts.length > 1}
             <span class="ib-hook-deliveries__muted"
@@ -113,6 +120,12 @@
   }
 
   .ib-hook-deliveries__muted {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .ib-hook-deliveries__kind {
+    font-family: var(--cinder-font-mono);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
   }

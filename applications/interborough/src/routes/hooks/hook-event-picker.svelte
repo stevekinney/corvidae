@@ -17,7 +17,7 @@
     /** Every event kind the Bureau describes. */
     kinds: readonly HookEventKind[];
     /** The action the hook performs, which decides the events that cannot be chosen. */
-    action: HookActionType;
+    action: HookActionType | 'plugin';
     /** The kinds chosen. */
     events: string[];
   }

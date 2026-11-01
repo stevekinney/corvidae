@@ -66,6 +66,8 @@ export const OPERATION_MAP = {
   'bureau.events.catalog': {
     exempt: 'a static description of the published event kinds; it reads no Bureau state',
   },
+  'bureau.events.format': { member: 'formatEvent' },
+  'bureau.plugins.kinds': { member: 'plugins' },
   'operative.runs.events': { exempt: 'a transport subscription over a run’s event feed' },
   'bureau.agents.catalog': { exempt: 'composed from the catalog, the opt-ins, and the models' },
   'bureau.skills.list': {
