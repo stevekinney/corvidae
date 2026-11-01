@@ -56,7 +56,11 @@ export const listWorkflowLogsOperation = defineOperation({
     '(the host sets the cap): `dropped` counts the older lines the cap evicted or retention ' +
     'removed. A line holds at most 2 KiB, its message and attributes together: a long message is ' +
     'cut and ends in a truncation marker, and attributes that do not fit beside it are dropped ' +
-    '(`truncated` is true either way). Lines are kept with the run; once the run has finished they ' +
+    '(`truncated` is true either way). Attributes are redacted before they are stored: any value ' +
+    'under a key that names a secret outright (`card`, `cvv`, `ssn`, `pin`, `password`, `secret`, ' +
+    '`apiKey`, ...) is `[REDACTED]`, as is a string, object or array under a looser key (`token`, ' +
+    '`session`, `auth`) and any bearer token, JSON Web Token or card number, while a number or ' +
+    'boolean under a loose key (`inputTokens: 12`) is kept. The message is not redacted. Lines are kept with the run; once the run has finished they ' +
     "are pruned after the host's retention window, and a run that is still active keeps its " +
     'lines. A line is written asynchronously, so a crash can lose the last moments of a run. A ' +
     'workflow that is unknown, purged, or pruned lists no lines, and so does an engine that ' +
