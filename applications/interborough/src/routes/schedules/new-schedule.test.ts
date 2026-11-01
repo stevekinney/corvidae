@@ -9,11 +9,12 @@
  */
 import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
 import { quietFor } from '@lostgradient/testing/wait-until';
+import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { SCHEDULE_COPY } from '../../app/copy.ts';
+import { SCHEDULE_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
 import { contextFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
@@ -89,11 +90,14 @@ function open(
   overrides: Partial<World> = {},
   before: (installed: WorkflowStub) => void = () => undefined,
   scopes: readonly AuthorizationScope[] = AUTHORIZATION_SCOPES,
+  onQueryClient?: (queryClient: QueryClient) => void,
 ) {
   stub = installWorkflowWorld(world(overrides));
   before(stub);
   router.navigate('/schedules/new', { replace: true });
-  return render(IndexHarness, { props: { client: stub.client, externalBureau: true, scopes } });
+  return render(IndexHarness, {
+    props: { client: stub.client, externalBureau: true, scopes, onQueryClient },
+  });
 }
 
 const view = () => within(document.body);
@@ -110,6 +114,17 @@ async function choose(label: string, query: string, optionText: string): Promise
   );
   if (option === undefined) throw new Error(`Expected ${optionText} to be offered.`);
   await fireEvent.mouseDown(option);
+}
+
+/** Sets one field of the cron builder to a specific value. */
+async function setCronField(name: string, value: string): Promise<void> {
+  await fireEvent.change(view().getByLabelText(`${name} pattern`), {
+    target: { value: 'specific' },
+  });
+  const field = view().getByLabelText(`${name} value`);
+  await fireEvent.input(field, { target: { value } });
+  await fireEvent.change(field, { target: { value } });
+  await fireEvent.blur(field);
 }
 
 /** The labels of the options the picker lists now, by the group heading above each. */
@@ -479,11 +494,13 @@ describe('a workflow', () => {
     expect(view().queryByRole('button', { name: 'Advanced' })).toBeNull();
   });
 
-  test('says it takes no input when it declares no schema, and makes the schedule without one', async () => {
+  test('offers an optional JSON input when it declares no schema, and makes the schedule without one when it is left empty', async () => {
     open();
     await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
-    const none = await view().findByTestId('new-schedule-no-input');
-    expect(none.textContent).toBe(COPY.noInput);
+    await view().findByTestId('new-schedule-input');
+    // Schemas are optional, so a workflow without one may still read its input: it is not "no input".
+    expect(view().queryByTestId('new-schedule-no-input')).toBeNull();
+    expect(view().getByLabelText(WORKFLOW_COPY.runSetup.jsonLabel)).not.toBeNull();
     await waitFor(() => expect(create()).not.toBeDisabled());
     await fireEvent.click(create());
 
@@ -494,6 +511,104 @@ describe('a workflow', () => {
     expect(stub?.callsTo('POST /schedules')[0]?.params).not.toHaveProperty('input');
     expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
     await waitFor(() => expect(router.pathname).toMatch(/^\/schedules\/schedule-engine-/));
+  });
+
+  test('sends the JSON that was typed for a workflow that declares no schema, and refuses text that is not JSON', async () => {
+    open();
+    await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
+    await view().findByTestId('new-schedule-input');
+    const editor = view().getByLabelText(WORKFLOW_COPY.runSetup.jsonLabel);
+    await fireEvent.input(editor, { target: { value: '{ nope' } });
+    await fireEvent.click(create());
+    await view().findByText(WORKFLOW_COPY.runSetup.invalidJson);
+    expect(stub?.callsTo('POST /schedules')).toEqual([]);
+
+    await fireEvent.input(editor, { target: { value: '{"warehouse":"north"}' } });
+    await fireEvent.click(create());
+    await waitFor(() => expect(stub?.callsTo('POST /schedules').length).toBe(1));
+    expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({
+      input: { warehouse: 'north' },
+    });
+  });
+
+  test('says it takes no input only when its schema says so, and makes the schedule without one', async () => {
+    open({
+      definitions: [
+        ...world().definitions,
+        codeDefinition('heartbeat', {
+          contract: {
+            name: 'heartbeat',
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          },
+        }),
+      ],
+    });
+    await choose('Workflow', 'heartbeat', 'Heartbeat');
+    const none = await view().findByTestId('new-schedule-no-input');
+    expect(none.textContent).toBe(COPY.noInput);
+    expect(view().queryByTestId('new-schedule-input')).toBeNull();
+    await waitFor(() => expect(create()).not.toBeDisabled());
+    await fireEvent.click(create());
+
+    await waitFor(() => expect(stub?.callsTo('POST /schedules').length).toBe(1));
+    expect(stub?.callsTo('POST /schedules')[0]?.params).not.toHaveProperty('input');
+  });
+
+  test('keeps the form, and what was typed, when a later read of the workflow fails', async () => {
+    let queryClient: QueryClient | undefined;
+    open({}, undefined, AUTHORIZATION_SCOPES, (created) => {
+      queryClient = created;
+    });
+    await chooseOrder();
+    await fireEvent.input(orderField(), { target: { value: 'A-1001' } });
+    stub?.on('weft.workflows.definitions.get', () => {
+      throw workflowFaults.unavailable();
+    });
+    await queryClient?.refetchQueries({ queryKey: ['workflow-catalog'] });
+    await waitFor(() =>
+      expect(
+        queryClient
+          ?.getQueryCache()
+          .findAll({ queryKey: ['workflow-catalog'] })
+          .some((query) => query.state.status === 'error'),
+      ).toBe(true),
+    );
+    expect(view().queryByText(COPY.workflowFailed)).toBeNull();
+    expect((orderField() as HTMLInputElement).value).toBe('A-1001');
+  });
+
+  test('says the Bureau’s refusal of a chat, after the page was a workflow with a form', async () => {
+    open({}, (installed) =>
+      installed.on('bureau.schedules.create', (params) => {
+        if (params['spec'] !== '0 0 31 2 *') return undefined;
+        throw workflowFaults.invalidInput([{ path: [], message: 'That date never comes.' }]);
+      }),
+    );
+    // The form mounts, and unmounts when the chat is chosen, which sets its binding back to null.
+    await chooseOrder();
+    await choose('Workflow', 'chat', COPY.chat.label);
+    await view().findByTestId('new-schedule-chat-input');
+    await fireEvent.change(
+      await view().findByLabelText(new RegExp(`^${SCHEDULE_COPY.form.agentLabel}`)),
+      { target: { value: 'tool-runner' } },
+    );
+    await fireEvent.input(view().getByLabelText(new RegExp(`^${SCHEDULE_COPY.form.inputLabel}`)), {
+      target: { value: 'Hello' },
+    });
+    await fireEvent.change(await view().findByLabelText('Repeats'), { target: { value: 'cron' } });
+    await setCronField('Hour', '0');
+    await setCronField('Day of month', '31');
+    await setCronField('Month', '2');
+    await waitFor(() => expect(create()).not.toBeDisabled());
+    await fireEvent.click(create());
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.create')[0]?.params).toMatchObject({
+      spec: '0 0 31 2 *',
+    });
+    // The refusal is a banner, because no field of an input form is there to carry it.
+    await view().findByText(/does not match the workflow/);
+    expect(router.pathname).toBe('/schedules/new');
   });
 
   test('makes the schedule through the engine with the input the form collected', async () => {
@@ -547,7 +662,7 @@ describe('a workflow', () => {
   test('starts turned off when asked, by making the schedule and then pausing it', async () => {
     open();
     await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
-    await view().findByTestId('new-schedule-no-input');
+    await view().findByTestId('new-schedule-input');
     await fireEvent.click(view().getByLabelText(COPY.startPausedLabel));
     await fireEvent.click(create());
 
@@ -563,7 +678,7 @@ describe('a workflow', () => {
       }),
     );
     await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
-    await view().findByTestId('new-schedule-no-input');
+    await view().findByTestId('new-schedule-input');
     await fireEvent.click(view().getByLabelText(COPY.startPausedLabel));
     await fireEvent.click(create());
 
@@ -587,7 +702,7 @@ describe('a workflow', () => {
   test('sends an interval as a cadence in milliseconds, in no zone', async () => {
     open();
     await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
-    await view().findByTestId('new-schedule-no-input');
+    await view().findByTestId('new-schedule-input');
     await everyTwentyMinutes();
     await fireEvent.click(create());
 
@@ -600,7 +715,7 @@ describe('a workflow', () => {
   test('is made in the zone that was chosen', async () => {
     open();
     await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
-    await view().findByTestId('new-schedule-no-input');
+    await view().findByTestId('new-schedule-input');
     await choose('Time zone', 'Asia/Tokyo', 'Asia/Tokyo');
     await waitFor(() =>
       expect(view().getByTestId('new-schedule-summary').textContent).toContain('Asia/Tokyo'),
@@ -617,7 +732,7 @@ describe('a workflow', () => {
   test('refuses while the cadence builder shows a field out of range, and makes nothing', async () => {
     open();
     await choose('Workflow', 'inventory', 'Inventory Sync Sweep');
-    await view().findByTestId('new-schedule-no-input');
+    await view().findByTestId('new-schedule-input');
     await fireEvent.change(await view().findByLabelText('Repeats'), { target: { value: 'cron' } });
     await fireEvent.input(view().getByLabelText('Hour'), { target: { value: '99' } });
     // The builder keeps the last cadence it emitted, so the draft is still valid and Create is on.

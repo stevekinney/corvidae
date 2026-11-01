@@ -88,7 +88,6 @@ export interface CreateScheduleArgs {
   readonly workflowType: string;
   readonly input: unknown;
   readonly spec: ScheduleSpec;
-  readonly id?: string;
   readonly description?: string;
   readonly overlap?: ScheduleOverlapPolicy;
   readonly backfill?: boolean;
@@ -114,7 +113,6 @@ export async function createSchedule(
   args: CreateScheduleArgs,
 ): Promise<{ id: string }> {
   const handle = await client.schedule(args.workflowType, args.input, args.spec, {
-    ...(args.id !== undefined ? { id: args.id } : {}),
     ...(args.description !== undefined ? { description: args.description } : {}),
     ...(args.overlap !== undefined ? { overlap: args.overlap } : {}),
     ...(args.backfill !== undefined ? { backfill: args.backfill } : {}),

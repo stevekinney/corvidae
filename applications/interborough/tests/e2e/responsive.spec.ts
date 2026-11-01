@@ -317,10 +317,10 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
       /responsive-memory/,
     );
   },
-  // A code-defined workflow follows with its input (this host's declares none) and the engine's options.
+  // A code-defined workflow follows with its input (this host's declares none, so it is an optional JSON field) and the engine's options.
   '/schedules/new (workflow)': async (page) => {
     await choosePicker(page, /^Workflow/, 'order', 'Order Processing');
-    await expect(page.getByTestId('new-schedule-no-input')).toBeVisible();
+    await expect(page.getByTestId('new-schedule-input')).toBeVisible();
     await expect(page.getByLabel('Jitter')).toBeVisible();
   },
   // The file's header carries its four actions; measure the page only once all four are there.

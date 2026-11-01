@@ -152,7 +152,6 @@ describe('createSchedule', () => {
       workflowType: 'report-gen',
       input: null,
       spec: { cron: '0 9 * * *' },
-      id: 'custom-id',
       description: 'Nightly report',
       overlap: 'queue',
       backfill: true,
@@ -161,7 +160,6 @@ describe('createSchedule', () => {
     });
 
     expect(receivedOptions).toEqual({
-      id: 'custom-id',
       description: 'Nightly report',
       overlap: 'queue',
       backfill: true,

@@ -1020,7 +1020,6 @@ export const SCHEDULE_COPY = {
     workflowHeading: 'Workflow',
     workflowLabel: 'Workflow',
     workflowPlaceholder: 'Search workflows',
-    workflowDescription: 'The workflow each run starts.',
     groups: { builtIn: 'Built in', recent: 'Recent', all: 'All workflows' },
     chat: {
       label: 'Chat with an agent',
@@ -1034,13 +1033,11 @@ export const SCHEDULE_COPY = {
       title: 'The workflows could not be listed',
       description: 'Only the built-in choice is available until they can. Try again.',
     },
-    chosenHeading: 'Chosen workflow',
     checking: 'Reading the workflow',
     workflowFailed: 'The workflow’s input could not be read',
     workflowGone:
       'This workflow no longer exists, or cannot be scheduled from here. Choose another.',
     inputHeading: 'Input',
-    inputLead: 'What every run starts with.',
     noInput: 'Takes no input.',
     chatLabel: 'Continue one chat',
     chatDescription:
@@ -1074,7 +1071,6 @@ export const SCHEDULE_COPY = {
     summaryNothing: 'Choose a workflow to schedule.',
     submit: 'Create schedule',
     cancel: 'Cancel',
-    createFailed: 'The schedule was not created',
     pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
     invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
     noAgents: {

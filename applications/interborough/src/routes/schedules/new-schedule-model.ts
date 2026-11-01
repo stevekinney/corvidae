@@ -71,6 +71,23 @@ export function isChatDraft(draft: Pick<NewScheduleDraft, 'workflowType'>): bool
   return draft.workflowType === AGENT_RUN_TYPE;
 }
 
+/**
+ * Whether a workflow's declared input schema says it takes no input: a `null` input, or an object
+ * that names no field and allows none. A workflow that declares no schema is not that: schemas are
+ * optional, and such a workflow may read its `input` all the same.
+ */
+export function takesNoInput(schema: unknown): boolean {
+  if (!isRecord(schema)) return false;
+  if (schema['type'] === 'null') return true;
+  if (schema['type'] !== 'object' || schema['additionalProperties'] !== false) return false;
+  const properties = schema['properties'];
+  return properties === undefined || (isRecord(properties) && Object.keys(properties).length === 0);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /** A workflow type named for a person: its words, not its identifier. */
 export function workflowLabel(type: string): string {
   return type === AGENT_RUN_TYPE ? copy.chat.label : humanizeIdentifier(type);

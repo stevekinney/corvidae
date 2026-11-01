@@ -7,7 +7,8 @@
    * the workflows the newest schedules start, and All workflows the rest, each named in words and
    * described. Only the built-in chat asks for an agent and a message (and a chat to continue, in
    * place of a raw session identifier); any other workflow asks for its own input, drawn from its
-   * schema, or says it takes none. When is the block the run setup page shares.
+   * schema (an optional JSON field when it declares none, because a schema is optional and the
+   * workflow may still read `input`), or says it takes none when its schema says so. When is the block the run setup page shares.
    *
    * The primary action is outside the input form, and a submit counts only when Create asked for
    * it, so Enter in a field never makes a schedule. A second ask while one is in flight is dropped
@@ -60,6 +61,7 @@
     isDraftValid,
     recentTypes,
     summaryOf,
+    takesNoInput,
     workflowOptions,
     optionMatches,
     type NewScheduleDraft,
@@ -169,23 +171,28 @@
     }),
     undefined,
   );
+  /** What the chosen workflow's page says it can be started with; `undefined` until it is read, or when it is gone. */
+  const target = $derived(
+    chat || draft.workflowType === '' || resolution.data === undefined || resolution.data === null
+      ? undefined
+      : runSetupTarget(draft.workflowType, resolution.data),
+  );
   /** Whether the chosen workflow was read and cannot be scheduled from here: it is gone, or it is not a code-defined workflow. */
   const unavailable = $derived(
-    resolution.isSuccess &&
-      (resolution.data === null ||
-        runSetupTarget(draft.workflowType, resolution.data).status !== 'ready'),
+    !chat &&
+      resolution.data !== undefined &&
+      (resolution.data === null || target?.status !== 'ready'),
   );
-  /** The schema of the chosen workflow's input once it is read; `undefined` while it is not, and `null` for none. */
-  const inputSchema = $derived.by(() => {
-    if (chat || draft.workflowType === '') return undefined;
-    if (resolution.data === undefined || resolution.data === null) return undefined;
-    const target = runSetupTarget(draft.workflowType, resolution.data);
-    return target.status === 'ready' ? (target.schema ?? null) : undefined;
-  });
+  /** Whether the chosen workflow's input was read, so the page knows what to ask for. */
+  const inputRead = $derived(target?.status === 'ready');
+  /** The schema of the chosen workflow's input, or `undefined` when it declares none (the input is then optional JSON). */
+  const inputSchema = $derived(target?.status === 'ready' ? target.schema : undefined);
+  /** Whether the workflow's schema says it takes no input, which is not the same as declaring none. */
+  const noInput = $derived(inputRead && takesNoInput(inputSchema));
 
   type Choice = NewScheduleDraft;
 
-  let inputField = $state<ReturnType<typeof WorkflowInput<Choice>>>();
+  let inputField = $state<ReturnType<typeof WorkflowInput<Choice>> | null>(null);
   let whenBlock = $state<ReturnType<typeof ScheduleWhen>>();
   /** The cadence builder shows a field that is out of range. */
   let invalidCadence = $state(false);
@@ -228,10 +235,13 @@
         showFault({ kind: 'invalid', message: copy.pauseFailed, fieldErrors: [] });
       router.navigate(scheduleDetailPath(made.id));
     },
-    onError: (error) => {
-      const refused = inputField === undefined ? null : inputIssuesOf(error);
-      if (refused !== null) {
-        inputField?.refuse(refused);
+    onError: (error, variables) => {
+      // The input's fields exist only for a workflow that draws them: Svelte sets the binding back
+      // to null when they unmount, so what was submitted decides, not what the binding last held.
+      const refused =
+        isChatDraft(variables.choice) || inputField === null ? null : inputIssuesOf(error);
+      if (refused !== null && inputField !== null) {
+        inputField.refuse(refused);
         onFields = true;
         return;
       }
@@ -247,7 +257,7 @@
   const fault = $derived(maybeMade || onFields || invalidCadence ? undefined : creation.error);
 
   /** Whether the page has what it needs to ask: a valid draft, and for a workflow its input read. */
-  const ready = $derived(isDraftValid(draft) && (chat || inputSchema !== undefined));
+  const ready = $derived(isDraftValid(draft) && (chat || inputRead));
   const canCreate = $derived(ready && !writeGate.disabled && !creation.isPending);
 
   function begin(input: unknown, choice: Choice): void {
@@ -265,7 +275,7 @@
     if (invalidCadence) return;
     // The mutation reads the draft after its first `await`, so it gets a copy nothing can change.
     const choice = $state.snapshot(draft);
-    if (chat || inputSchema === null) {
+    if (chat || noInput) {
       begin(undefined, choice);
       return;
     }
@@ -416,7 +426,7 @@
   {:else if draft.workflowType !== ''}
     <div class="ib-schedule-new__section" data-testid="new-schedule-workflow-input">
       <h2 class="ib-schedule-new__heading">{copy.inputHeading}</h2>
-      {#if resolution.isError}
+      {#if resolution.isError && resolution.data === undefined}
         <ErrorState
           variant="flat"
           title={copy.workflowFailed}
@@ -432,11 +442,11 @@
           description={copy.workflowGone}
           headingLevel={3}
         />
-      {:else if inputSchema === undefined}
+      {:else if !inputRead}
         <div role="status" aria-busy="true" aria-label={copy.checking}>
           <Skeleton height="6rem" />
         </div>
-      {:else if inputSchema === null}
+      {:else if noInput}
         <p class="ib-schedule-new__note" data-testid="new-schedule-no-input">{copy.noInput}</p>
       {:else}
         {#key draft.workflowType}
