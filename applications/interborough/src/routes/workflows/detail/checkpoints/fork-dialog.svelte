@@ -323,9 +323,7 @@
     {:else}
       <span>
         Unpinned source — this run predates revision pinning, so which revision the fork targets
-        can't be stated here. Most types resolve whichever revision is currently active, but an
-        eager-registered type instead runs whatever this process currently has loaded, and a sole
-        dynamic-source candidate can be selected without consulting the active pointer at all.
+        can't be stated here. It usually follows the active revision, but it can be a different one.
       </span>
     {/if}
   </div>

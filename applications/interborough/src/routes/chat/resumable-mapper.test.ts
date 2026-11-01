@@ -260,3 +260,58 @@ test('the argument chunks of one tool call are kept as one, and a resumed attach
 
   expect(after.at(-1)).toMatchObject({ type: 'run.completed' });
 });
+
+test('reasoning and announcements read before a disconnect are kept when the run is attached again', async () => {
+  const mapper = new ResumableMapper(() => undefined);
+  const first: ChatStreamEvent[] = [];
+  try {
+    for await (const frame of mapper.map(
+      source(
+        [
+          started,
+          { type: 'REASONING_START', messageId: 'think' },
+          { type: 'REASONING_MESSAGE_START', messageId: 'think:0', role: 'reasoning' },
+          { type: 'REASONING_MESSAGE_CONTENT', messageId: 'think:0', delta: 'Check ' },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.memory-written',
+            value: { messageId: 'message', recordId: 'r', collection: 'c', class: 'k' },
+          },
+        ],
+        true,
+      ),
+      empty(),
+    ))
+      first.push(frame);
+  } catch (error) {
+    expect(error).toBeInstanceOf(TypeError);
+  }
+  expect(first.filter((frame) => frame.type === 'stream:block-delta')).toHaveLength(1);
+
+  const second = await Array.fromAsync(
+    mapper.map(
+      source([
+        started,
+        { type: 'REASONING_MESSAGE_CONTENT', messageId: 'think:0', delta: 'the order.' },
+        { type: 'REASONING_MESSAGE_END', messageId: 'think:0' },
+        { type: 'REASONING_END', messageId: 'think' },
+        { type: 'TEXT_MESSAGE_START', role: 'assistant', messageId: 'message' },
+        { type: 'TEXT_MESSAGE_CONTENT', messageId: 'message', delta: 'Done.' },
+        { type: 'TEXT_MESSAGE_END', messageId: 'message' },
+        finished,
+      ]),
+      empty(),
+    ),
+  );
+
+  // The block was opened once, by the first attachment, and the second only continues it.
+  expect(second.filter((frame) => frame.type === 'stream:block-start')).toHaveLength(0);
+  expect(second.filter((frame) => frame.type === 'stream:block-delta')).toMatchObject([
+    { block: { content: 'Check the order.' } },
+  ]);
+  const terminal = second.at(-1);
+  if (terminal?.type !== 'run.completed') throw new Error('Missing completion');
+  expect(terminal.conversation.messages['message']?.content).toContainEqual(
+    expect.objectContaining({ type: 'thinking', thinking: 'Check the order.' }),
+  );
+});

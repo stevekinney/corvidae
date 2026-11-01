@@ -2,9 +2,8 @@
  * Linked-selection store (plan design §E, BINDING — `Weft New Surfaces.dc.html`
  * §E; adopted from `temporal-explorer`'s linked-selection pattern, plan
  * §9.9(2)): `{ selectedStepId: string | null }`, shared by the Timeline tab
- * and the Events tab (Logs stays a permanent empty state — see
- * `logs-tab.svelte` — so there is nothing there to filter; the store still
- * "clears" correctly if a future data source lands).
+ * and the Events tab. The steps list sets it as its open step changes, and the
+ * Events section filters to that step until it is cleared there.
  *
  * Module-scoped rather than passed down as a prop: `workflow-detail.svelte`
  * unmounts/remounts each `Tabs.Panel` on tab switch (Cinder's `tab-panel.svelte`
@@ -42,6 +41,11 @@ export function timelineSelectionFor(workflowId: string): TimelineSelectionState
 /** Selects a step, or deselects it if it was already the selection (click again to clear). */
 export function selectTimelineStep(stepId: string): void {
   selection.selectedStepId = selection.selectedStepId === stepId ? null : stepId;
+}
+
+/** Sets the selection to a step, or clears it with `null`; the steps list calls this as its open step changes. */
+export function setTimelineSelection(stepId: string | null): void {
+  selection.selectedStepId = stepId;
 }
 
 export function clearTimelineSelection(): void {

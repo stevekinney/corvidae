@@ -32,6 +32,12 @@
  * - `cinder-selector`: a selector that names a `.cinder-` class, or the class list by prefix
  *   (`[class*='cinder-']`), reaches into Cinder's markup.
  * - `uppercase-label`: a rule that sets `text-transform: uppercase` with letter spacing.
+ * - `stripe-accent` (row 09f, extended by 15j): a colored stripe down one side of a box, which
+ *   marks it as the odd one out instead of saying so in words. A rule that gives one inline side
+ *   (`border-inline-start`, `border-inline-end`, `border-left`, `border-right`) a border of 2px
+ *   or more in a color, or an inset `box-shadow` that offsets sideways with no blur and no vertical
+ *   offset. A one-pixel divider and a border that starts transparent are not stripes. A notice
+ *   uses Cinder's `Alert`, which carries its own tone.
  *
  * A violation passes only through one of two lists in `tests/`, and each is enforced both ways: a
  * listed entry that no longer violates fails (remove it), and an unlisted violation fails.
@@ -61,7 +67,8 @@ export type InterfaceRule =
   | 'empty-state-title'
   | 'app-header-class'
   | 'cinder-selector'
-  | 'uppercase-label';
+  | 'uppercase-label'
+  | 'stripe-accent';
 
 /** One breach: the rule, where it is, and the thing that breaks it. */
 export type InterfaceViolation = {
@@ -662,6 +669,60 @@ function hasUppercaseLabel(body: string): boolean {
   return value !== 'normal' && !/^0(?:\.0+)?(?:px|em|rem)?$/.test(value);
 }
 
+/** The narrowest border, in pixels, that reads as a stripe rather than a divider. */
+const STRIPE_MINIMUM_WIDTH = 2;
+
+const STRIPE_SIDE_BORDER =
+  /(?:^|[;\s])border-(?:inline-start|inline-end|left|right)\s*:\s*([^;]+)/g;
+const INSET_SIDE_SHADOW = /box-shadow\s*:\s*([^;]+)/g;
+
+/** A CSS length in pixels, or `undefined` when the token is not a pixel or rem length. */
+function pixelLength(token: string): number | undefined {
+  const match = /^(-?\d*\.?\d+)(px|rem)$/.exec(token);
+  if (match === null) return undefined;
+  return Number(match[1]) * (match[2] === 'rem' ? 16 : 1);
+}
+
+/** Whether a side-border shorthand is a colored stripe: wide enough, drawn, and not transparent. */
+function isStripeBorder(value: string): boolean {
+  const tokens = value.trim().split(/\s+(?![^(]*\))/);
+  const width = tokens.map(pixelLength).find((length) => length !== undefined);
+  if (width === undefined || width < STRIPE_MINIMUM_WIDTH) return false;
+  if (tokens.some((token) => token === 'none' || token === 'hidden' || token === 'transparent')) {
+    return false;
+  }
+  return true;
+}
+
+/** Whether an inset shadow offsets sideways with no blur and no vertical offset, which draws a stripe. */
+function isStripeShadow(value: string): boolean {
+  return value.split(/,(?![^(]*\))/).some((layer) => {
+    const tokens = layer.trim().split(/\s+(?![^(]*\))/);
+    if (tokens[0] !== 'inset') return false;
+    const [horizontal, vertical, blur] = tokens.slice(1).map((token) => pixelLength(token) ?? 0);
+    const offsets = tokens
+      .slice(1, 4)
+      .every((token) => pixelLength(token) !== undefined || token === '0');
+    return (
+      offsets &&
+      Math.abs(horizontal ?? 0) >= STRIPE_MINIMUM_WIDTH &&
+      (vertical ?? 0) === 0 &&
+      (blur ?? 0) === 0
+    );
+  });
+}
+
+/** Whether a rule's own declarations draw a stripe down one side. */
+export function hasStripeAccent(body: string): boolean {
+  for (const match of body.matchAll(STRIPE_SIDE_BORDER)) {
+    if (isStripeBorder(match[1]!)) return true;
+  }
+  for (const match of body.matchAll(INSET_SIDE_SHADOW)) {
+    if (isStripeShadow(match[1]!)) return true;
+  }
+  return false;
+}
+
 /** The violations in one stylesheet. */
 export function styleViolations(root: string, file: string): InterfaceViolation[] {
   const css = readFileSync(file, 'utf8');
@@ -695,6 +756,9 @@ function cssViolations(
     }
     if (hasUppercaseLabel(rule.body)) {
       add('uppercase-label', rule.selector.replace(/\s+/g, ' '), rule.offset);
+    }
+    if (hasStripeAccent(rule.body)) {
+      add('stripe-accent', rule.selector.replace(/\s+/g, ' '), rule.offset);
     }
   }
   return violations;

@@ -19,6 +19,8 @@ const SEED = {
   workflowFile: 'digest',
   runSetupFile: 'run-setup',
   run: 'run-1',
+  stepsRun: 'steps-run-1',
+  stepsRunStep: 1,
   schedule: 'schedule-1',
   goal: 'goal-1',
   hook: 'hook-1',

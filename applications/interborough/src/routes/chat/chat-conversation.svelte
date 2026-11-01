@@ -38,7 +38,7 @@
   import { onMount, untrack } from 'svelte';
 
   import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
-  import { Chat, ChatQuestion } from '@lostgradient/chat';
+  import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -332,6 +332,18 @@
   const branchPoints = $derived(
     branchPointIds(session.conversation, session.streaming || session.attaching),
   );
+  /** A link in a line under a message (a memory record, a child run) opens its page inside the app. */
+  function openNoteLink(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    const link =
+      event.target instanceof Element ? event.target.closest('a[data-chat-note-link]') : null;
+    const href = link?.getAttribute('href');
+    if (href === null || href === undefined) return;
+    event.preventDefault();
+    router.navigate(href);
+  }
   let branching = $state(false);
   let branchFailure = $state<string | undefined>(undefined);
   // The text of an edit that did not branch. Chat closes its editor when the person saves, so this
@@ -759,7 +771,8 @@
     </Alert>
   {/if}
 
-  <div class="weft-chat-surface">
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="weft-chat-surface" onclick={openNoteLink}>
     <Chat
       bind:this={chat}
       id={`chat-${sessionId}`}
@@ -905,6 +918,14 @@
               {/if}
             {/snippet}
           </ToolCalls>
+          <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
+          {#each group.messageIds as rowId (rowId)}
+            {@const held = session.conversation.messages[rowId]}
+            {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
+            {#each notes as note (note.id)}
+              <ChatNote {note} />
+            {/each}
+          {/each}
         {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
           <!-- A message of only files has no bubble to show. A row with no file is Chat's own. A
                later call of a run of tool rows is shown with the first (`tool-activity.ts`). -->

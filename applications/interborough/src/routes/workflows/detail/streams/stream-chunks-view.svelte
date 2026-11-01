@@ -14,7 +14,7 @@
    * Without the feed, a stream written in the seconds between the last poll and the run turning
    * terminal can show a short tail until the view is reopened: no poll is made once the run is terminal.
    */
-  import { Button, Skeleton } from '@lostgradient/cinder';
+  import { Button, EmptyState, SectionHeading, Skeleton } from '@lostgradient/cinder';
   import type { WorkflowStatus } from '@lostgradient/weft';
   import { onDestroy, untrack } from 'svelte';
 
@@ -164,15 +164,18 @@
   aria-label={`${copy.heading}: ${streamKey}`}
   data-state={viewState}
 >
-  <header class="weft-stream-view__header">
-    <h3 class="weft-stream-view__heading">{copy.heading}</h3>
-    <code
-      class="weft-stream-view__key"
-      data-stream-key
-      title={keyLabel.truncated ? streamKey : undefined}>{keyLabel.text}</code
-    >
-    <Button variant="ghost" size="sm" label={copy.close} onclick={onClose} />
-  </header>
+  <SectionHeading level={3} title={copy.heading}>
+    {#snippet label()}
+      <code
+        class="weft-stream-view__key"
+        data-stream-key
+        title={keyLabel.truncated ? streamKey : undefined}>{keyLabel.text}</code
+      >
+    {/snippet}
+    {#snippet actions()}
+      <Button variant="ghost" size="sm" label={copy.close} onclick={onClose} />
+    {/snippet}
+  </SectionHeading>
 
   {#if fault !== null}
     <RunFaultBanner treatment={fault} />
@@ -193,7 +196,13 @@
       <p class="weft-stream-view__note">{copy.liveNote}</p>
     {/if}
   {:else if loaded}
-    <p class="weft-stream-view__empty">{swept ? copy.swept : copy.noChunks}</p>
+    <EmptyState
+      kind={swept ? 'done' : 'first-use'}
+      size="compact"
+      headingLevel={4}
+      title={swept ? copy.sweptTitle : copy.noChunksTitle}
+      description={swept ? copy.swept : copy.noChunks}
+    />
     {#if !terminal}
       <p class="weft-stream-view__note">{copy.liveNote}</p>
     {/if}
@@ -211,19 +220,6 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-  }
-
-  .weft-stream-view__header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .weft-stream-view__heading {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
   }
 
   .weft-stream-view__key {
@@ -266,7 +262,6 @@
     overflow-wrap: anywhere;
   }
 
-  .weft-stream-view__empty,
   .weft-stream-view__note {
     margin: 0;
     font-size: var(--cinder-text-sm);

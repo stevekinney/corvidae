@@ -128,7 +128,12 @@
         >
       </span>
       <div class="weft-async-activity-drawer__token">
-        <CodeBlock code={activity.token} highlight={false} languageLabelVisible={false} />
+        <CodeBlock
+          class="weft-async-activity-drawer__token-code"
+          code={activity.token}
+          highlight={false}
+          languageLabelVisible={false}
+        />
         <CopyButton value={activity.token} iconOnly label="Copy completion token" />
       </div>
     </div>
@@ -219,7 +224,7 @@
     gap: 8px;
   }
 
-  .weft-async-activity-drawer__token :global(.cinder-code-block) {
+  .weft-async-activity-drawer__token :global(.weft-async-activity-drawer__token-code) {
     flex: 1;
     min-width: 0;
   }

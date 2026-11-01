@@ -2,11 +2,12 @@
   /**
    * What the run did, in the order it reads best: the agent's tool calls (with a tool approval
    * decided under its call), then, for a run the workflow engine holds, its timeline, and, closed
-   * until asked for, its events, its checkpoints and its logs. Each part is gated on the scope its
+   * until asked for, its events and its checkpoints. The run's logs are under Details. Each part is gated on the scope its
    * own reads need, and says which one it needs when the caller lacks it, so a caller who can read
    * the timeline but not the events still has the timeline.
    */
-  import { Collapsible } from '@lostgradient/cinder';
+  import { Collapsible, EmptyState } from '@lostgradient/cinder';
+  import Lock from '@lucide/svelte/icons/lock';
   import type { WorkflowState } from '@lostgradient/weft';
 
   import { RUN_PAGE_COPY, TASK_COPY } from '../../../app/copy.ts';
@@ -14,7 +15,6 @@
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import CheckpointsTab from '../detail/checkpoints/checkpoints-tab.svelte';
   import EventsTab from '../detail/events-tab.svelte';
-  import LogsTab from '../detail/logs-tab.svelte';
   import RunTimeline from './run-timeline.svelte';
   import RunToolCalls from './run-tool-calls.svelte';
   import type { RunEngine } from './run-engine.svelte.ts';
@@ -41,7 +41,6 @@
 
   let eventsOpen = $state(false);
   let checkpointsOpen = $state(false);
-  let logsOpen = $state(false);
 </script>
 
 <section class="ib-run__section" aria-labelledby="ib-run-activity" data-section="activity">
@@ -56,7 +55,6 @@
   {/if}
 
   {#if engine !== undefined && workflow !== undefined}
-    <h3 class="ib-run__heading-3">{RUN_PAGE_COPY.timelineHeading}</h3>
     <RunTimeline {engine} {workflow} />
 
     <div class="ib-run__disclosures">
@@ -64,7 +62,15 @@
         {#if canReadEvents}
           <EventsTab client={engine.client} {workflow} />
         {:else}
-          <p class="ib-run__note">{RUN_PAGE_COPY.lockedSection('events:read')}</p>
+          <EmptyState
+            kind="first-use"
+            size="compact"
+            headingLevel={3}
+            title={RUN_PAGE_COPY.eventsLockedTitle}
+            description={RUN_PAGE_COPY.lockedSection('events:read')}
+          >
+            {#snippet icon()}<Lock size={24} aria-hidden="true" />{/snippet}
+          </EmptyState>
         {/if}
       </Collapsible>
       <Collapsible bind:open={checkpointsOpen} trigger={RUN_PAGE_COPY.checkpointsHeading}>
@@ -74,9 +80,6 @@
           workflowType={workflow.type}
           sourceRevision={workflow.revision}
         />
-      </Collapsible>
-      <Collapsible bind:open={logsOpen} trigger={RUN_PAGE_COPY.logsHeading}>
-        <LogsTab />
       </Collapsible>
     </div>
   {/if}

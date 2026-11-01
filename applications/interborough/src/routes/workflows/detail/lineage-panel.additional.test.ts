@@ -49,63 +49,6 @@ function baseClient(
 }
 
 describe('additional coverage', () => {
-  test('a child preview row shows an explicit "Unpinned" label when its revision is undefined', async () => {
-    const client = baseClient({
-      list: async () => ({
-        items: [
-          {
-            id: 'wf_child_1',
-            type: 'validate-shipment',
-            status: 'completed',
-            version: '1',
-            createdAt: 1_000,
-            updatedAt: 1_000,
-          },
-        ],
-        total: 1,
-        offset: 0,
-        limit: 5,
-      }),
-    });
-
-    const { getByRole } = render(LineagePanelHarness, {
-      props: { client, workflow: workflow() },
-    });
-
-    await waitFor(() => {
-      const link = getByRole('link', { name: /validate-shipment/ });
-      expect(link.textContent).toContain('Unpinned');
-    });
-  });
-
-  test('shows a "+N more" note when the parent has more children than the preview limit', async () => {
-    const client = baseClient({
-      list: async () => ({
-        items: [
-          {
-            id: 'wf_child_1',
-            type: 'validate-shipment',
-            status: 'completed',
-            version: '1',
-            createdAt: 1_000,
-            updatedAt: 1_000,
-          },
-        ],
-        total: 3,
-        offset: 0,
-        limit: 5,
-      }),
-    });
-
-    const { getByText } = render(LineagePanelHarness, {
-      props: { client, workflow: workflow() },
-    });
-
-    await waitFor(() => {
-      expect(getByText(/\+2 more/)).not.toBeNull();
-    });
-  });
-
   test('renders the real schedule-provenance row when the run was schedule-launched (weft#732 item 3)', async () => {
     const client = baseClient({
       scheduleProvenance: async () => ({
@@ -126,13 +69,13 @@ describe('additional coverage', () => {
   test('renders no schedule-provenance row for a non-schedule-launched run', async () => {
     const client = baseClient();
 
-    const { queryByText, getByText } = render(LineagePanelHarness, {
+    const { queryByText, container } = render(LineagePanelHarness, {
       props: { client, workflow: workflow() },
     });
 
-    await waitFor(() => {
-      expect(getByText('No child workflows.')).not.toBeNull();
-    });
+    await waitFor(() =>
+      expect(container.querySelector('[data-section="lineage"]')?.outerHTML ?? null).toBeNull(),
+    );
     expect(queryByText('Launched by schedule')).toBeNull();
   });
 
@@ -257,66 +200,16 @@ describe('additional coverage', () => {
     });
   });
 
-  test('children preview rows show an active-versus-bound badge from one active-pointer fetch per distinct type (COR-15)', async () => {
-    const requested: string[] = [];
-    const client = {
-      ...baseClient({
-        list: async () => ({
-          items: [
-            {
-              id: 'wf_c1',
-              type: 'validate-shipment',
-              status: 'completed',
-              version: '1',
-              revision: 'rev-current',
-              createdAt: 1_000,
-              updatedAt: 1_000,
-            },
-            {
-              id: 'wf_c2',
-              type: 'validate-shipment',
-              status: 'completed',
-              version: '1',
-              revision: 'rev-old',
-              createdAt: 1_000,
-              updatedAt: 1_000,
-            },
-          ],
-          total: 2,
-          offset: 0,
-          limit: 5,
-        }),
-      }),
-      operations: {
-        'weft.workflows.scheduleprovenance.get': noProvenance,
-        'weft.workflows.active.get': async (input: { name: string }) => {
-          requested.push(input.name);
-          return { revision: 'rev-current', generation: 1, activatedAt: 1 };
-        },
-      },
-    };
-
-    const { getAllByText, getByText } = render(LineagePanelHarness, {
-      props: { client, workflow: workflow() },
-    });
-
-    await waitFor(() => {
-      expect(getByText('Active')).not.toBeNull();
-    });
-    expect(getAllByText('Differs from active')).toHaveLength(1);
-    expect(requested).toEqual(['validate-shipment']);
-  });
-
   test('renders no continuation chain when the run was not started via start-new', async () => {
     const client = baseClient();
 
-    const { queryByText, getByText } = render(LineagePanelHarness, {
+    const { queryByText, container } = render(LineagePanelHarness, {
       props: { client, workflow: workflow() },
     });
 
-    await waitFor(() => {
-      expect(getByText('No child workflows.')).not.toBeNull();
-    });
+    await waitFor(() =>
+      expect(container.querySelector('[data-section="lineage"]')?.outerHTML ?? null).toBeNull(),
+    );
     expect(queryByText('This run')).toBeNull();
     expect(queryByText('Previous run')).toBeNull();
   });

@@ -3,8 +3,9 @@
    * The Details rail: the facts of one run, each label above its value so a long ID, hash or name
    * has the whole width of the rail to wrap in. What started the run leads (the lineage list), then
    * what ran, the run's ID, when it started and changed, and, for a run the workflow engine holds,
-   * its deadline, version, revision, cleanup and tags. The run's status is not here: it is in the
-   * header, once.
+   * its deadline, version, revision, cleanup and tags. Under the facts are the runs related to this
+   * one (with a topology that opens in a drawer) and every line the run logged. The run's status is
+   * not here: it is in the header, once.
    */
   import { DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
@@ -20,6 +21,8 @@
   import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
   import { finalizerStatusPresentation } from '../detail/workflow-status.ts';
   import RunLineage from './run-lineage.svelte';
+  import RunLogs from './run-logs.svelte';
+  import RunRelated from './run-related.svelte';
   import RunTags from './run-tags.svelte';
   import type { RunEngine } from './run-engine.svelte.ts';
 
@@ -222,5 +225,7 @@
   <DescriptionList {items} variant="default" />
   {#if engine !== undefined && workflow !== undefined}
     <RunTags client={engine.client} {workflow} {tagGate} />
+    <RunRelated client={engine.client} {workflow} />
+    <RunLogs client={engine.client} workflowId={workflow.id} />
   {/if}
 </aside>

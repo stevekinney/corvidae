@@ -36,6 +36,7 @@
   import {
     getMessageText,
     resolveMessageArtifactValue,
+    resolveMessageNotes,
     resolveMessageReasoning,
     resolveMessageTranscriptEntries,
     resolveMessageSteps,
@@ -1769,6 +1770,7 @@
          chat/utilities). A plain transcript yields `undefined` for all three. -->
       {@const derivedReasoning = resolveMessageReasoning(message, messageReasoning)}
       {@const derivedEntries = resolveMessageTranscriptEntries(message)}
+      {@const derivedNotes = resolveMessageNotes(message)}
       {@const derivedSteps = resolveMessageSteps(message, messageSteps)}
       {@const derivedSuggestions =
         message.id === lastMessageId
@@ -1819,6 +1821,7 @@
           {onInputSubmit}
           reasoning={derivedReasoning}
           entries={derivedEntries}
+          notes={derivedNotes}
           steps={derivedSteps}
           suggestions={derivedSuggestions}
           reasoningExpanded={reasoningState.isExpanded(message.id)}

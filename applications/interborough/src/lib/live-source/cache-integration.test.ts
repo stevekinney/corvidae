@@ -24,8 +24,10 @@ import {
   workflowDetailKey,
   workflowEventsKey,
   workflowFinalizerKey,
+  workflowLogsKey,
   WORKFLOWS_AGGREGATE_KEY_PREFIX,
   WORKFLOWS_LIST_KEY_PREFIX,
+  WORKFLOWS_RELATED_KEY_PREFIX,
   workflowUpdatesKey,
 } from './cache-integration.ts';
 import type { FleetEventFrame } from './fleet-event-source.svelte.ts';
@@ -239,6 +241,20 @@ describe('applyFleetEventFrame', () => {
     expect(queryClient.getQueryState(workflowFinalizerKey('wf_1'))?.isInvalidated).toBe(true);
   });
 
+  test("a workflow-scoped frame also invalidates that run's log lines and the runs related to any run", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(workflowLogsKey('wf_1'), () => []);
+    queryClient.setQueryData(workflowLogsKey('wf_2'), () => []);
+    queryClient.setQueryData([...WORKFLOWS_RELATED_KEY_PREFIX, 'wf_2', ''], () => null);
+    applyFleetEventFrame(queryClient, fleetFrame({ kind: 'workflow:started', workflowId: 'wf_1' }));
+    expect(queryClient.getQueryState(workflowLogsKey('wf_1'))?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(workflowLogsKey('wf_2'))?.isInvalidated).toBeFalsy();
+    // A child starting changes its parent's related runs, and the frame names only the child.
+    expect(
+      queryClient.getQueryState([...WORKFLOWS_RELATED_KEY_PREFIX, 'wf_2', ''])?.isInvalidated,
+    ).toBe(true);
+  });
+
   test("a workflow-scoped frame does not invalidate a different workflow's detail cache", () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(workflowDetailKey('wf_2'), () => ({}));
@@ -330,6 +346,8 @@ describe('applyFleetEventFrame', () => {
       workflowDetailKey('wf_1'),
       workflowFinalizerKey('wf_1'),
       workflowUpdatesKey('wf_1'),
+      workflowLogsKey('wf_1'),
+      [...WORKFLOWS_RELATED_KEY_PREFIX, 'wf_1', ''],
     ];
     for (const key of keys) queryClient.setQueryData(key, () => []);
     queryClient.setQueryData(WORKFLOWS_LIST_KEY_PREFIX, () => []);

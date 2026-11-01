@@ -12,7 +12,7 @@
    * async token, not the pending record's own `operationId` (the workflow operation's, regenerated
    * on every yield).
    */
-  import { EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import Lock from '@lucide/svelte/icons/lock';
 
@@ -56,6 +56,9 @@
     </div>
   {:else if error && isForbidden(error)}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
       title="Worker provenance is locked"
       description={`${scopeReason('system:read')} to read which worker ran each attempt.`}
     >
@@ -64,15 +67,28 @@
       {/snippet}
     </EmptyState>
   {:else if error instanceof MalformedTaskLedgerError}
-    <EmptyState title="Malformed server response" description={error.message} />
+    <ErrorState
+      variant="flat"
+      title="Malformed server response"
+      description={error.message}
+      headingLevel={4}
+    />
   {:else if notRecorded}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
       title="No worker task recorded"
       description="The task ledger holds no record for this activity. It may never have run on a worker, or its record may have aged out of the retention window."
     />
   {:else if error}
     {@const treatment = faultTreatment(error)}
-    <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+    <ErrorState
+      variant="flat"
+      title={FAULT_TREATMENT_TITLE[treatment.kind]}
+      description={treatment.message}
+      headingLevel={4}
+    />
   {:else if taskQuery.data}
     <TaskAttemptHistory task={taskQuery.data} />
     <a

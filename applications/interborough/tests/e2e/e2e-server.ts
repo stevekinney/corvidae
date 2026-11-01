@@ -17,7 +17,8 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
-import { Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
+import { MemoryStorage } from '@lostgradient/storage';
+import { createWorkflowLogStore, Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -92,7 +93,10 @@ for (const [name, document] of Object.entries(SEEDED_WORKFLOW_FILES)) {
 // Bureau's database would put two engines' timers and ownership claims on one set of keys, which
 // the fixtures' own sleeps and restarts would trip over.
 function createFixtureEngine() {
-  return Engine.create({ workflows });
+  // The run page shows the lines a run logged, so the engine keeps them (as the host's own does).
+  const storage = new MemoryStorage();
+  const logs = createWorkflowLogStore(storage);
+  return Engine.create({ workflows, storage, onLog: logs.sink, workflowLogs: logs });
 }
 
 // The host takes any engine; the fixtures want the typed one, so it is kept as it is created.

@@ -72,14 +72,22 @@ import {
   type AssetPartReference,
 } from '../../lib/bureau-assets.ts';
 import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-client.ts';
+import { getLastRun } from '../../lib/bureau-tasks.ts';
 import { readEvents } from './ag-ui-events.ts';
+import {
+  FOLLOW_UP_METADATA_KEY,
+  noteAnnouncementKey,
+  noteAnnouncementOf,
+  placeEventNotes,
+  withStopReason,
+  withStoredMemoryNotes,
+  type NoteAnnouncement,
+  type Placement,
+} from './event-notes.ts';
 import { ResumableMapper } from './resumable-mapper.ts';
 
 /** The AG-UI mount's path, under the Bureau's. */
 export const AG_UI_PATH = `${BUREAU_PATH}/ag-ui`;
-
-/** The marker `@lostgradient/chat` stamps on a row the user sent while a run was working. */
-const FOLLOW_UP_KEY = '_followUp';
 
 /** Whether `event` is a valid `MESSAGES_SNAPSHOT`. */
 function isMessagesSnapshot(event: unknown): event is MessagesSnapshotEvent {
@@ -228,9 +236,14 @@ export type ChatRunWiring = {
   /**
    * The assets the last turn announced that no terminal frame stamped on a row: a turn that ended
    * in an error or a stop carries no history to stamp them on. Answers them once, and the caller
-   * puts them on the rows with {@link withAssetParts}.
+   * puts them on the rows with {@link withAnnouncements}.
    */
-  drainAssets(): readonly AssetAnnouncement[];
+  drainAssets(): readonly Announced[];
+  /**
+   * Whether the last turn made the row `id`, as opposed to the page holding it when the turn began.
+   * The announcements {@link drainAssets} answers go on the turn's own rows.
+   */
+  ownsRow(id: string): boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -333,7 +346,7 @@ function heldCalls(conversation: ConversationHistory): ReadonlySet<string> {
 }
 
 function isFollowUp(message: ConversationHistory['messages'][string] | undefined): boolean {
-  return message?.metadata?.[FOLLOW_UP_KEY] === true;
+  return message?.metadata?.[FOLLOW_UP_METADATA_KEY] === true;
 }
 
 /**
@@ -523,7 +536,9 @@ async function* parkApprovals(
   frames: AsyncIterable<ChatStreamEvent>,
   interrupts: () => readonly Interrupt[],
   answerRowIds: ReadonlySet<string>,
-  announced: AssetAnnouncement[],
+  announced: Announced[],
+  agentName: () => string,
+  owns: (id: string) => boolean,
   stamped: () => void,
 ): AsyncGenerator<ChatStreamEvent> {
   for await (const frame of frames) {
@@ -531,9 +546,21 @@ async function* parkApprovals(
       yield frame;
       continue;
     }
-    const parked = withAssetParts(withApprovalRows(frame.conversation, interrupts()), announced);
-    // Stamped, so nothing is left for the end of the turn to put on a row a second time.
-    announced.splice(0);
+    const placed = placeAnnouncements(
+      withApprovalRows(frame.conversation, interrupts()),
+      announced,
+      { owns, ownedOnly: true },
+    );
+    const parked = withStoredMemoryNotes(placed.conversation, agentName());
+    // Stamped, so nothing is left for the end of the turn to put on a row a second time. Two kinds
+    // stay: what found no row of the run's own, and the end of a child run. The merge keeps the
+    // page's copy of every row the page held, and the terminal's copy that took the end is thrown
+    // away with it, so the end of the turn puts both on the page's rows. Changing a note to the
+    // status it already has is no change, so an end that was stamped here is stamped again safely.
+    const settled = announced.filter(
+      (announcement) => isNoteAnnouncement(announcement) && announcement.kind === 'child-settled',
+    );
+    announced.splice(0, announced.length, ...new Set([...placed.unplaced, ...settled]));
     stamped();
     yield {
       ...frame,
@@ -595,6 +622,22 @@ function resultFor(toolCallId: string, resolution: ApprovalResolution): ToolResu
 /** One `bureau.asset-part` event: an asset the assistant row `messageId` carries. */
 export type AssetAnnouncement = AssetPartReference & { readonly messageId: string };
 
+/**
+ * What a run announced while it streamed that its history does not hold: an asset a row carries,
+ * or a line under a message (memory written, a wakeup, a child run).
+ */
+export type Announced = AssetAnnouncement | NoteAnnouncement;
+
+function isNoteAnnouncement(announced: Announced): announced is NoteAnnouncement {
+  return 'kind' in announced;
+}
+
+function announcedKey(announced: Announced): string {
+  return isNoteAnnouncement(announced)
+    ? noteAnnouncementKey(announced)
+    : `asset:${announced.messageId}:${String(announced.index)}`;
+}
+
 /** The announcement a `CUSTOM` event carries, or `undefined` for any other event. */
 function announcementOf(event: unknown): AssetAnnouncement | undefined {
   if (!isRecord(event) || event['type'] !== 'CUSTOM' || event['name'] !== ASSET_PART_EVENT_NAME) {
@@ -618,11 +661,10 @@ function announcementOf(event: unknown): AssetAnnouncement | undefined {
   };
 }
 
-/** One asset part per row and index, even if an announcement is replayed. */
-function rememberAsset(announcements: AssetAnnouncement[], announcement: AssetAnnouncement): void {
-  const index = announcements.findIndex(
-    (entry) => entry.messageId === announcement.messageId && entry.index === announcement.index,
-  );
+/** One asset part per row and index, and one line per note, even if an announcement is replayed. */
+function rememberAnnouncement(announcements: Announced[], announcement: Announced): void {
+  const key = announcedKey(announcement);
+  const index = announcements.findIndex((entry) => announcedKey(entry) === key);
   if (index < 0) announcements.push(announcement);
   else announcements[index] = announcement;
 }
@@ -635,8 +677,11 @@ function rememberAsset(announcements: AssetAnnouncement[], announcement: AssetAn
  */
 export function withAssetParts(
   conversation: ConversationHistory,
-  announced: readonly AssetAnnouncement[],
+  everything: readonly Announced[],
 ): ConversationHistory {
+  const announced = everything.filter(
+    (announcement): announcement is AssetAnnouncement => !isNoteAnnouncement(announcement),
+  );
   if (announced.length === 0) return conversation;
   const messages = { ...conversation.messages };
   for (const messageId of new Set(announced.map((announcement) => announcement.messageId))) {
@@ -652,6 +697,37 @@ export function withAssetParts(
     };
   }
   return { ...conversation, messages };
+}
+
+/**
+ * The conversation with everything the run announced on the rows it belongs to: the assets a row
+ * carries, and the lines under a message (memory written, a wakeup, a child run). `unplaced` holds
+ * the lines that found no row (see {@link placeEventNotes}).
+ */
+export function placeAnnouncements(
+  conversation: ConversationHistory,
+  announced: readonly Announced[],
+  placement: Placement = {},
+): { readonly conversation: ConversationHistory; readonly unplaced: NoteAnnouncement[] } {
+  return placeEventNotes(
+    withAssetParts(conversation, announced),
+    announced.filter(isNoteAnnouncement),
+    placement,
+  );
+}
+
+/** {@link placeAnnouncements} without the lines it could not place. */
+export function withAnnouncements(
+  conversation: ConversationHistory,
+  announced: readonly Announced[],
+  placement: Placement = {},
+): ConversationHistory {
+  return placeAnnouncements(conversation, announced, placement).conversation;
+}
+
+/** Drops the assets from `announcements`: a snapshot holds them, and says nothing of the notes. */
+function forgetAssets(announcements: Announced[]): void {
+  announcements.splice(0, announcements.length, ...announcements.filter(isNoteAnnouncement));
 }
 
 /** The AG-UI part type an attachment of `mimeType` is sent as. A text file is a document. */
@@ -761,9 +837,11 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let attachGeneration = 0;
   let detached = false;
   /** The assets the turn on screen announced that no terminal frame has put on a row. */
-  let unstamped: AssetAnnouncement[] = [];
+  let unstamped: Announced[] = [];
+  /** The rows on screen when the last turn began. */
+  let turnStartIds: ReadonlySet<string> = new Set();
   /** Recovery survives an unsuccessful turn draining its UI handoff after rollback. */
-  let assetRun: { readonly id: string; readonly announcements: AssetAnnouncement[] } | undefined;
+  let assetRun: { readonly id: string; readonly announcements: Announced[] } | undefined;
   let transportGeneration = 0;
   /** What the last turn was refused with, until it is taken. */
   let refusal: Refusal | undefined;
@@ -893,7 +971,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     events: AsyncIterable<unknown>,
     signal: AbortSignal,
     started: boolean,
-    announced: AssetAnnouncement[],
+    announced: Announced[],
     gate: FirstEventGate | undefined,
     generation: number,
   ): AsyncGenerator<unknown> {
@@ -934,13 +1012,16 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         if (isRecord(event) && (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR'))
           options.onTerminal?.();
         if (isRecord(event) && event['type'] === 'MESSAGES_SNAPSHOT') {
-          announced.splice(0);
-          assetRun?.announcements.splice(0);
+          // A snapshot holds the rows' assets, and not the lines a run announced: a wakeup or a
+          // child run is not in the thread, so an unusable cursor must not drop them.
+          forgetAssets(announced);
+          if (assetRun !== undefined) forgetAssets(assetRun.announcements);
         }
-        const announcement = announcementOf(event);
+        const announcement =
+          announcementOf(event) ?? noteAnnouncementOf(event, options.agentName());
         if (announcement !== undefined) {
-          rememberAsset(announced, announcement);
-          if (assetRun !== undefined) rememberAsset(assetRun.announcements, announcement);
+          rememberAnnouncement(announced, announcement);
+          if (assetRun !== undefined) rememberAnnouncement(assetRun.announcements, announcement);
         }
         const ended = interruptsOf(event);
         if (ended !== undefined) setInterrupts(ended);
@@ -1193,7 +1274,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       opened = { events: attachedStream, answerRowIds: new Set() };
     }
     const generation = ++transportGeneration;
-    const announced: AssetAnnouncement[] = [];
+    const startIds = new Set(request.conversation.ids);
+    turnStartIds = startIds;
+    const announced: Announced[] = [];
     unstamped = announced;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
@@ -1214,6 +1297,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       () => interrupts.filter((interrupt) => !decisions.has(interrupt.id)),
       opened.answerRowIds,
       announced,
+      options.agentName,
+      // The rows on screen when the turn began are the page's own: the terminal history leaves its
+      // copy of them in place, so the run's notes belong on the rows the run made.
+      (id) => !startIds.has(id),
       () => {
         if (generation === transportGeneration) assetRun = undefined;
       },
@@ -1277,7 +1364,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       // history so no stale row can survive the replacement.
       const restored =
         snapshot.done !== true && isMessagesSnapshot(snapshot.value)
-          ? mergeAGUIMessages(createConversationHistory({ id: threadId }), messages)
+          ? withStoredMemoryNotes(
+              mergeAGUIMessages(createConversationHistory({ id: threadId }), messages),
+              options.agentName(),
+            )
           : options.conversation();
       attached = (async function* () {
         try {
@@ -1314,7 +1404,18 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       if (!isMessagesSnapshot(snapshot)) {
         throw new Error('The server answered with messages this page cannot read.');
       }
-      return mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages);
+      const thread = withStoredMemoryNotes(
+        mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages),
+        options.agentName(),
+      );
+      // The stream said why a run stopped while it was watched and does not say it again, so the
+      // run's own record is read. The line is a courtesy: a record that cannot be read leaves the
+      // thread as it is rather than failing the page's read of it.
+      const lastRun = await getLastRun(threadId, {
+        fetch: send,
+        ...(signal === undefined ? {} : { signal }),
+      }).catch(() => undefined);
+      return withStopReason(thread, lastRun);
     },
     detach() {
       detached = true;
@@ -1335,6 +1436,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     drainAssets() {
       return unstamped.splice(0);
     },
+    ownsRow: (id) => !turnStartIds.has(id),
     async discardAttach() {
       const dropped = attached;
       attached = undefined;

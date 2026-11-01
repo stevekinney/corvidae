@@ -267,6 +267,44 @@ describe('the style rules', () => {
     ).toEqual(['uppercase-label']);
   });
 
+  test('fail a colored stripe down one side, in a border or an inset shadow', () => {
+    for (const declaration of [
+      'border-inline-start: 3px solid var(--cinder-status-info-border)',
+      'border-left: 4px solid red',
+      'border-inline-end: 0.25rem solid currentColor',
+      'border-right: 2px dashed #08f',
+      'box-shadow: inset 3px 0 0 var(--cinder-accent-solid)',
+      'box-shadow: 0 1px 2px black, inset -4px 0 0 0 blue',
+    ]) {
+      expect(rulesIn({ 'src/styles/a.css': `.row { ${declaration}; }` })).toEqual([
+        'stripe-accent',
+      ]);
+    }
+  });
+
+  test('pass a divider, a border that starts transparent, and an ordinary shadow', () => {
+    for (const declaration of [
+      'border-inline-start: 1px solid var(--cinder-border)',
+      'border-inline-start: 2px solid transparent',
+      'border-left: none',
+      'border-top: 3px solid red',
+      'border: 3px solid red',
+      'box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2)',
+      'box-shadow: inset 0 -3px 0 red',
+      'box-shadow: inset 2px 0 4px red',
+    ]) {
+      expect(rulesIn({ 'src/styles/a.css': `.row { ${declaration}; }` })).toEqual([]);
+    }
+  });
+
+  test('judge the stripe by the rule that declares it, in a component style block too', () => {
+    expect(
+      rulesIn(
+        component('<p>x</p>\n<style>\n.frame { border-inline-start: 3px solid red; }\n</style>'),
+      ),
+    ).toEqual(['stripe-accent']);
+  });
+
   test('report the line of the rule', () => {
     const [violation] = collectViolations(
       packageRoot({ 'src/styles/a.css': '/* note */\n\n.ib-x__header {\n  gap: 0;\n}\n' }),

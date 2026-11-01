@@ -28,6 +28,7 @@ export type {
   TypingParticipant,
 } from './chat.types.ts';
 export type { ChatMarkdownNode, MarkdownNodeOverride } from './message/chat-message-parts.ts';
+export { default as ChatNote } from './message/parts/note-part.svelte';
 export { default as ChatQuestion } from './question/chat-question.svelte';
 export type { ChatQuestionProps } from './question/chat-question.svelte';
 export { ChatQuestionAnswerError, recordAnswer } from './question/question-answer.ts';
@@ -140,6 +141,7 @@ export type {
 // Utilities
 export {
   CINDER_ARTIFACT_METADATA_KEY,
+  CINDER_NOTES_METADATA_KEY,
   findToolResultMessage,
   formatMessageAsMarkdown,
   formatToolCallProse,
@@ -152,12 +154,15 @@ export {
   pairToolCallsWithResults,
   resolveMessageArtifact,
   resolveMessageArtifactValue,
+  resolveMessageNotes,
   type ChatExportOptions,
   type DeliveryStatus,
   type ToolResultMessage,
   type UnresolvedToolApproval,
 } from './utilities/index.ts';
 export type {
+  ChildRunStatus,
+  MessageNoteInfo,
   ReasoningInfo,
   StepInfo,
   ToolCallKind,

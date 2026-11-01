@@ -330,6 +330,34 @@ describe('deriveMessageParts — context parts', () => {
     expect(parts.map((part) => part.type)).toEqual(['transcript-entry', 'tool-result']);
   });
 
+  it('emits notes after the markdown body and before suggestions', () => {
+    const parts = deriveMessageParts(message({ id: 'n', role: 'assistant', content: 'done' }), {
+      notes: [
+        { kind: 'memory', id: 'memory:r1', recordId: 'r1', collection: 'c', memoryClass: 'k' },
+        { kind: 'stopped', id: 'stopped', reason: 'Budget exceeded' },
+      ],
+      suggestions: ['Go on'],
+    });
+    expect(parts.map((part) => part.type)).toEqual(['markdown', 'note', 'note', 'suggestion']);
+    expect(parts.filter((part) => part.type === 'note').map((part) => part.key)).toEqual([
+      'n:note:memory:r1',
+      'n:note:stopped',
+    ]);
+  });
+
+  it('emits notes after the tool parts of a tool row', () => {
+    const toolMessage = message({
+      id: 'tool-note',
+      role: 'tool-result',
+      toolResult: { callId: 'call', outcome: 'success', content: { ok: true } },
+    });
+    const parts = deriveMessageParts(toolMessage, {
+      notes: [{ kind: 'wakeup', id: 'wakeup:r:1', wakeAt: 1 }],
+    });
+
+    expect(parts.map((part) => part.type)).toEqual(['tool-result', 'note']);
+  });
+
   it('emits suggestions after the markdown body and before images', () => {
     const content: MultiModalContent[] = [
       { type: 'text', text: 'choose one' },

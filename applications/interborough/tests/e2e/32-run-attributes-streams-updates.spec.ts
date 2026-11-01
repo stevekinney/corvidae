@@ -6,7 +6,7 @@
  * - Attributes: edits one value of every type the console edits (string, number, boolean, date, list)
  *   and sees what a fresh read returns. The date edit is the one that only works because
  *   `weft.workflows.attributes.set` turns an ISO string into a `Date` for a `date-time` attribute.
- * - Streams: opens `progress` from the Timeline and reads its three stored chunks.
+ * - Streams: opens `progress` from its step and reads its three stored chunks.
  * - Updates: reads a history that holds updates sent before the page loaded, then sends one that
  *   outlasts its one-second wait, sees the wait end with the update still listed, and sees its result
  *   arrive.
@@ -108,11 +108,13 @@ test('operator edits a run’s search attributes, one of every type, and reads b
   expect(unchanged['reviewBy']).toBe('2027-01-15T10:00:00.000Z');
 });
 
-test('operator opens a stream from the timeline and reads its chunks in order', async ({
+test('operator opens a stream from its step and reads its chunks in order', async ({
   page,
   checkA11y,
 }) => {
   await page.goto(`/runs/${CHUNK_STREAMER_RUN_ID}`);
+  // The stream's link is in its step's detail, so the step is opened first.
+  await page.locator('[data-step-row]').filter({ hasText: 'progress' }).click();
   await page.getByRole('button', { name: 'View chunks of progress' }).click();
 
   const chunks = page.locator('[data-chunk-sequence]');

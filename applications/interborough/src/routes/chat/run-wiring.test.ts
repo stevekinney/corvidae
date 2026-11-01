@@ -23,6 +23,7 @@ import { describe, expect, test } from 'bun:test';
 import { RESUME_ROUND_CHANGED_MESSAGE } from '@lostgradient/bureau';
 import { quietFor, waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
+import { BUREAU_PATH } from '../../lib/bureau-client.ts';
 import { AG_UI_PATH, createChatRunWiring, openingTurn } from './run-wiring.ts';
 
 const THREAD = 'thread-1';
@@ -1939,4 +1940,284 @@ test('a late obsolete transport cannot overwrite the current native run’s reco
     { index: 0, assetId: 'current-asset', mediaType: 'image/png' },
   ]);
   expect(wiring.drainAssets()).toEqual([]);
+});
+
+describe('the lines a run leaves under its messages', () => {
+  const announce = (name: string, value: unknown) => ({ type: 'CUSTOM', name, value });
+  const memoryWritten = announce('bureau.memory-written', {
+    messageId: 'reply-1',
+    recordId: 'rec-1',
+    collection: 'preferences',
+    class: 'episodic',
+    runId: 'native-1',
+    sessionId: THREAD,
+  });
+  const wakeup = announce('bureau.wakeup-scheduled', {
+    runId: 'native-1',
+    duration: '6h',
+    note: 'check the deploy',
+    wakeAt: 1_900_000_000_000,
+  });
+  const childStarted = announce('bureau.child-run-started', {
+    parentRunId: 'native-1',
+    childRunId: 'child-1',
+    childAgentName: 'researcher',
+    durable: false,
+  });
+  const childSettled = announce('bureau.child-run-settled', {
+    childRunId: 'child-1',
+    status: 'completed',
+  });
+
+  const notesOf = (conversation: ConversationHistory, id: string): unknown =>
+    conversation.messages[id]?.metadata?.['cinder:notes'];
+
+  async function completed(events: readonly unknown[]) {
+    const conversation = appendUserMessage(empty(), 'Remember it');
+    const { wiring } = wiringOver([stream([started(), ...events, finished()])], () => conversation);
+    const result = await frames(wiring, conversation);
+    const terminal = result.at(-1);
+    if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+    return { wiring, conversation: terminal.conversation };
+  }
+
+  test('are on the rows they belong to when the run completes, through the mapper', async () => {
+    const { conversation, wiring } = await completed([
+      ...text('reply-1', 'Noted.'),
+      memoryWritten,
+      wakeup,
+      childStarted,
+      childSettled,
+    ]);
+
+    expect(notesOf(conversation, 'reply-1')).toMatchObject([
+      { kind: 'memory', recordId: 'rec-1', collection: 'preferences', memoryClass: 'episodic' },
+      { kind: 'wakeup', wakeAt: 1_900_000_000_000, note: 'check the deploy' },
+      { kind: 'child-run', childRunId: 'child-1', agentName: 'researcher', status: 'completed' },
+    ]);
+    // Stamped, so nothing is left for the end of the turn to stamp a second time, but a child run's
+    // end: the terminal's copy of a row the page held is thrown away by the merge, so the end is
+    // said again to the page's own row.
+    expect(wiring.drainAssets()).toEqual([
+      { kind: 'child-settled', childRunId: 'child-1', status: 'completed' },
+    ]);
+  });
+
+  test('are handed over, once, when the run ended without a history to stamp them on', async () => {
+    const conversation = appendUserMessage(empty(), 'Remember it');
+    const { wiring } = wiringOver(
+      [
+        stream([
+          started(),
+          ...text('reply-1', 'Noted.'),
+          memoryWritten,
+          { type: 'RUN_ERROR', message: 'Budget exceeded: max calls 1', code: 'BUDGET_EXCEEDED' },
+        ]),
+      ],
+      () => conversation,
+    );
+    await frames(wiring, conversation).catch(() => undefined);
+
+    expect(wiring.drainAssets()).toMatchObject([{ kind: 'note', note: { kind: 'memory' } }]);
+    expect(wiring.drainAssets()).toEqual([]);
+  });
+
+  test('an announcement the Bureau repeats on a second attachment to the run is one line', async () => {
+    const conversation = appendUserMessage(empty(), 'Remember it');
+    const { wiring } = wiringOver(
+      [
+        stream([started(), ...text('reply-1', 'Noted.'), memoryWritten, wakeup]),
+        stream([started(), memoryWritten, wakeup, finished()]),
+      ],
+      () => conversation,
+    );
+    await frames(wiring, conversation).catch(() => undefined);
+    const second = await frames(wiring, conversation);
+    const terminal = second.at(-1);
+    if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+
+    expect(notesOf(terminal.conversation, 'reply-1')).toHaveLength(2);
+  });
+
+  test('a reasoning block is part of the reply it came before, live', async () => {
+    const { conversation } = await completed([
+      { type: 'REASONING_START', messageId: 'think-1' },
+      { type: 'REASONING_MESSAGE_START', messageId: 'think-1:0', role: 'reasoning' },
+      {
+        type: 'REASONING_MESSAGE_CONTENT',
+        messageId: 'think-1:0',
+        delta: 'Check the order first.',
+      },
+      { type: 'REASONING_MESSAGE_END', messageId: 'think-1:0' },
+      { type: 'REASONING_END', messageId: 'think-1' },
+      ...text('reply-1', 'Looked.'),
+    ]);
+
+    expect(conversation.messages['reply-1']?.content).toContainEqual(
+      expect.objectContaining({ type: 'thinking', thinking: 'Check the order first.' }),
+    );
+  });
+});
+
+describe('a snapshot in the middle of a run', () => {
+  test('drops the assets it holds and keeps the lines it says nothing of', async () => {
+    const conversation = appendUserMessage(empty(), 'Remember it');
+    const { wiring } = wiringOver(
+      [
+        stream([
+          started(),
+          {
+            type: 'CUSTOM',
+            name: 'bureau.asset-part',
+            value: { messageId: 'reply-1', index: 1, assetId: 'asset-a', mediaType: 'image/png' },
+          },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.wakeup-scheduled',
+            value: { runId: 'native-1', duration: '6h', wakeAt: 1_900_000_000_000 },
+          },
+          { type: 'MESSAGES_SNAPSHOT', messages: [] },
+          { type: 'RUN_ERROR', message: 'No.', code: 'UNKNOWN' },
+        ]),
+      ],
+      () => conversation,
+    );
+    await frames(wiring, conversation).catch(() => undefined);
+
+    expect(wiring.drainAssets()).toMatchObject([{ kind: 'note', note: { kind: 'wakeup' } }]);
+  });
+});
+
+describe('what a reloaded thread says of its last run', () => {
+  const taskList = (tasks: unknown[]) =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 'bureau.tasks.list',
+      result: { tasks, nextPageToken: null },
+    });
+  const task = (overrides: Record<string, unknown>) => ({
+    id: 'task-1',
+    contextId: THREAD,
+    agentName: 'assistant',
+    owner: 'owner',
+    actor: null,
+    kind: 'chat',
+    origin: { kind: 'chat' },
+    status: 'failed',
+    finishReason: 'budget-exceeded',
+    statusMessage: 'Budget exceeded: max calls 1',
+    createdAt: '2026-11-01T00:00:00.000Z',
+    updatedAt: '2026-11-01T00:00:01.000Z',
+    cleanup: null,
+    openWaits: [],
+    ...overrides,
+  });
+  const messages = [
+    { id: 'u1', role: 'user', content: 'Look it up' },
+    { id: 'a1', role: 'assistant', content: 'Looking.' },
+  ];
+
+  test('says why the last run stopped under the last message, as the live chat did', async () => {
+    const { wiring, sent } = wiringOver(
+      [Response.json({ threadId: THREAD, messages }), taskList([task({})])],
+      empty,
+    );
+
+    const history = await wiring.history(THREAD);
+
+    expect(sent[1]).toMatchObject({ url: `${BUREAU_PATH}/jsonrpc`, method: 'POST' });
+    expect(sent[1]?.body).toMatchObject({
+      method: 'bureau.tasks.list',
+      params: { contextId: THREAD },
+    });
+    expect(history?.messages['a1']?.metadata?.['cinder:notes']).toEqual([
+      { kind: 'stopped', id: 'stopped', reason: 'Budget exceeded: max calls 1' },
+    ]);
+  });
+
+  test('passes over the child runs of the last run to find the chat’s own', async () => {
+    const { wiring } = wiringOver(
+      [
+        Response.json({ threadId: THREAD, messages }),
+        taskList([
+          task({
+            id: 'child',
+            origin: { kind: 'agent' },
+            status: 'failed',
+            statusMessage: 'child failed',
+          }),
+          task({ status: 'completed', finishReason: 'stop-condition', statusMessage: null }),
+        ]),
+      ],
+      empty,
+    );
+
+    const history = await wiring.history(THREAD);
+
+    expect(history?.messages['a1']?.metadata?.['cinder:notes']).toBeUndefined();
+  });
+
+  test('shows nothing for a run that ended its normal way, or while one is going', async () => {
+    for (const status of ['completed', 'working'] as const) {
+      const { wiring } = wiringOver(
+        [
+          Response.json({ threadId: THREAD, messages }),
+          taskList([task({ status, finishReason: null, statusMessage: null })]),
+        ],
+        empty,
+      );
+
+      const history = await wiring.history(THREAD);
+
+      expect(history?.messages['a1']?.metadata?.['cinder:notes']).toBeUndefined();
+    }
+  });
+
+  test('is still the thread when the run’s record cannot be read', async () => {
+    const { wiring } = wiringOver(
+      [Response.json({ threadId: THREAD, messages }), new Response('nope', { status: 500 })],
+      empty,
+    );
+
+    const history = await wiring.history(THREAD);
+
+    expect(history?.ids).toEqual(['u1', 'a1']);
+    expect(history?.messages['a1']?.metadata?.['cinder:notes']).toBeUndefined();
+  });
+
+  test('shows the memory it wrote under the reply that wrote it', async () => {
+    const stored = [
+      { id: 'u1', role: 'user', content: 'Remember it' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Saving.',
+        toolCalls: [
+          { id: 'call-1', type: 'function', function: { name: 'memory_store', arguments: '{}' } },
+        ],
+      },
+      {
+        id: 'tool-1',
+        role: 'tool',
+        toolCallId: 'call-1',
+        content: JSON.stringify({
+          stored: true,
+          id: 'rec-1',
+          collection: 'prefs',
+          memoryClass: 'semantic',
+        }),
+      },
+      { id: 'a2', role: 'assistant', content: 'Saved.' },
+    ];
+    const { wiring } = wiringOver(
+      [Response.json({ threadId: THREAD, messages: stored }), taskList([])],
+      empty,
+    );
+
+    const history = await wiring.history(THREAD);
+
+    expect(history?.messages['a1']?.metadata?.['cinder:notes']).toMatchObject([
+      { kind: 'memory', recordId: 'rec-1', collection: 'prefs', memoryClass: 'semantic' },
+    ]);
+  });
 });

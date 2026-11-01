@@ -25,10 +25,17 @@
    * correct for genuine faults, it just isn't the dev harness's steady
    * state anymore.
    */
-  import { Badge, Button, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import {
+    EmptyState,
+    ErrorState,
+    Segment,
+    SegmentedControl,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient } from '@lostgradient/weft';
 
+  import { RETRY_LABEL, RUN_CHECKPOINTS_COPY } from '../../../../app/copy.ts';
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../../../lib/faults.ts';
   import { formatBytes, formatRelativeTime } from '../../../../lib/format/index.ts';
   import DivergenceView from './divergence-view.svelte';
@@ -79,24 +86,22 @@
 
 <div class="weft-checkpoints-tab">
   {#if checkpointsQuery.isPending}
-    <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="6rem" /></div>
+    <Skeleton height="6rem" />
   {:else if treatment}
-    <div class="weft-checkpoints-tab__fault" role="alert">
-      <Badge variant={treatment.kind === 'not-found' ? 'neutral' : 'danger'}>
-        {FAULT_TREATMENT_TITLE[treatment.kind]}
-      </Badge>
-      <p>{treatment.message}</p>
-      <Button
-        size="sm"
-        variant="secondary"
-        label="Retry"
-        onclick={() => void checkpointsQuery.refetch()}
-      />
-    </div>
+    <ErrorState
+      variant="flat"
+      title={FAULT_TREATMENT_TITLE[treatment.kind]}
+      description={treatment.message}
+      headingLevel={3}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => void checkpointsQuery.refetch()}
+    />
   {:else if (checkpointsQuery.data ?? []).length === 0}
     <EmptyState
-      title="No checkpoint history retained"
-      description="This server's checkpoint history window is 0, or none has been recorded yet for this run."
+      kind="first-use"
+      size="compact"
+      title={RUN_CHECKPOINTS_COPY.emptyTitle}
+      description={RUN_CHECKPOINTS_COPY.emptyDescription}
     />
   {:else}
     <div class="weft-checkpoints-tab__layout">
@@ -120,23 +125,24 @@
       <div class="weft-checkpoints-tab__detail">
         {#if selectedStep === null}
           <EmptyState
-            title="Select a checkpoint"
-            description="Choose a step to replay or fork from."
+            kind="first-use"
+            size="compact"
+            title={RUN_CHECKPOINTS_COPY.chooseTitle}
+            description={RUN_CHECKPOINTS_COPY.chooseDescription}
           />
         {:else}
-          <div class="weft-checkpoints-tab__tabs">
-            <Button
-              variant={panel === 'replay' ? 'secondary' : 'ghost'}
-              size="sm"
-              label="Replay"
-              onclick={() => (panel = 'replay')}
-            />
-            <Button
-              variant={panel === 'fork' ? 'secondary' : 'ghost'}
-              size="sm"
-              label="Fork"
-              onclick={() => (panel = 'fork')}
-            />
+          <div class="weft-checkpoints-tab__mode">
+            <SegmentedControl
+              id={`checkpoint-mode-${workflowId}`}
+              label={RUN_CHECKPOINTS_COPY.modeLabel}
+              labelVisible={false}
+              density="toolbar"
+              value={panel}
+              onValueChange={(next: 'replay' | 'fork') => (panel = next)}
+            >
+              <Segment value="replay">{RUN_CHECKPOINTS_COPY.replay}</Segment>
+              <Segment value="fork">{RUN_CHECKPOINTS_COPY.fork}</Segment>
+            </SegmentedControl>
           </div>
 
           {#if panel === 'replay'}
@@ -157,7 +163,9 @@
 
     {#if forkedWorkflowId !== null}
       <div class="weft-checkpoints-tab__divergence">
-        <div class="weft-checkpoints-tab__divergence-label">Divergence from the forked run</div>
+        <div class="weft-checkpoints-tab__divergence-label">
+          {RUN_CHECKPOINTS_COPY.divergenceLabel}
+        </div>
         <DivergenceView {client} originalWorkflowId={workflowId} {forkedWorkflowId} />
       </div>
     {/if}
@@ -165,23 +173,6 @@
 </div>
 
 <style>
-  .weft-checkpoints-tab__fault {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-  }
-
-  .weft-checkpoints-tab__fault p {
-    margin: 0;
-    flex: 1;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-subtle);
-  }
-
   .weft-checkpoints-tab__layout {
     display: grid;
     grid-template-columns: minmax(200px, 260px) 1fr;
@@ -249,10 +240,8 @@
     min-width: 0;
   }
 
-  .weft-checkpoints-tab__tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 10px;
+  .weft-checkpoints-tab__mode {
+    margin-block-end: var(--cinder-space-3);
   }
 
   .weft-checkpoints-tab__divergence {

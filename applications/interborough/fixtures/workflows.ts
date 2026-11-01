@@ -44,6 +44,7 @@ import {
   type RestartLineageEngine,
 } from './restart-lineage.ts';
 import { reviewWorkflows, seedReviews, type ReviewsEngine } from './reviews.ts';
+import { runStepsWorkflows, seedRunSteps, type RunStepsEngine } from './run-steps.ts';
 import { sagaWorkflows, seedSaga, type SagaEngine } from './saga.ts';
 import { scheduleWorkflows, seedSchedules, type SchedulesEngine } from './schedules.ts';
 import { seedTagged, taggedWorkflows, type TaggedEngine } from './tagged.ts';
@@ -231,6 +232,7 @@ export const workflows = {
   ...scheduleWorkflows,
   ...restartLineageWorkflows,
   ...engineConsoleWorkflows,
+  ...runStepsWorkflows,
 };
 
 /**
@@ -272,7 +274,8 @@ export type FixtureEngine = FixtureWorkflowStarter &
   ReviewsEngine &
   SchedulesEngine &
   RestartLineageEngine &
-  EngineConsoleEngine;
+  EngineConsoleEngine &
+  RunStepsEngine;
 
 /**
  * Starts one run of every fixture workflow, plus every domain-specific
@@ -326,4 +329,5 @@ export async function seed(engine: FixtureEngine): Promise<void> {
   await seedSchedules(engine);
   await seedRestartLineage(engine);
   await seedEngineConsole(engine);
+  await seedRunSteps(engine);
 }
