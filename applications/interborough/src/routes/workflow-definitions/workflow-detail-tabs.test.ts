@@ -1,6 +1,7 @@
 /**
  * `/workflows/:workflow` by its tabs: the Code tab for a file and for a code-defined type, the
- * History tab's compatibility verdicts, the tab in the address, and starting a run from the header.
+ * History tab's compatibility verdicts, the tab in the address, and the header's Start run, which
+ * opens the run setup page.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -326,93 +327,34 @@ describe('the tab in the address', () => {
 });
 
 describe('starting a run', () => {
-  /** The dialog's own button, which is named like the header's and comes after it in the document. */
-  const confirmButton = (): HTMLElement => {
-    const buttons = [...document.querySelectorAll('button')].filter(
-      (button) => button.textContent?.trim() === WORKFLOW_COPY.startDialog.confirm,
-    );
-    return buttons[buttons.length - 1] as HTMLElement;
-  };
-
-  const startButton = (root: ParentNode) =>
-    [...root.querySelectorAll('button')].find(
-      (button) => button.textContent?.trim() === WORKFLOW_COPY.page.startAction,
+  /** The header's Start run, which is a link to the run setup page. */
+  const startLink = (root: ParentNode) =>
+    [...root.querySelectorAll('a')].find(
+      (link) => link.textContent?.trim() === WORKFLOW_COPY.page.startAction,
     );
 
   test.each([
-    ['a ready file that is not paused', '/workflows/digest', true],
-    ['a paused file', '/workflows/paused-one', false],
-    ['a code-defined type', '/workflows/order-processing', false],
-    ['a type the Bureau registers for itself', '/workflows/agentRun', false],
-    ['an invalid file', '/workflows/broken', false],
-  ])('%s: the header offers Start run is %p', async (_name, path, offered) => {
+    ['a ready file that is not paused', '/workflows/digest', '/workflows/digest/run'],
+    ['a code-defined type', '/workflows/order-processing', '/workflows/order-processing/run'],
+    ['a paused file', '/workflows/paused-one', undefined],
+    ['a type the Bureau registers for itself', '/workflows/agentRun', undefined],
+    ['an invalid file', '/workflows/broken', undefined],
+  ])('%s: the header offers Start run, to %p', async (_name, path, destination) => {
     const { container } = open(path);
     const root = await ready(container);
-    expect(startButton(root) !== undefined).toBe(offered);
+    expect(startLink(root)?.getAttribute('href')).toBe(destination);
   });
 
-  test('starts with the input as JSON, and goes to the new run', async () => {
-    const { container, findByRole } = open('/workflows/digest');
+  test('opens the run setup page, and starts nothing on the way', async () => {
+    const { container } = open('/workflows/digest');
     const root = await ready(container);
-    await fireEvent.click(startButton(root) as HTMLElement);
-    await fireEvent.input(
-      await findByRole('textbox', { name: WORKFLOW_COPY.startDialog.inputLabel }),
-      {
-        target: { value: '{ "topic": "weather" }' },
-      },
-    );
-    await fireEvent.click(confirmButton());
-
-    await waitFor(() =>
-      expect(stub?.world.startedRuns).toEqual([{ id: 'digest', input: { topic: 'weather' } }]),
-    );
-    expect(stub?.callsTo('bureau.workflows.start')[0]?.params).toMatchObject({
-      id: 'digest',
-      surface: 'web',
-    });
-    await waitFor(() => expect(router.pathname).toBe('/workflows/digest/runs/run-started-1'));
-  });
-
-  test('starts with no input when the field is empty', async () => {
-    const { container, findByRole } = open('/workflows/digest');
-    const root = await ready(container);
-    await fireEvent.click(startButton(root) as HTMLElement);
-    await findByRole('textbox', { name: WORKFLOW_COPY.startDialog.inputLabel });
-    await fireEvent.click(confirmButton());
-    await waitFor(() => expect(stub?.world.startedRuns).toEqual([{ id: 'digest', input: null }]));
-    expect(stub?.callsTo('bureau.workflows.start')[0]?.params).not.toHaveProperty('input');
-  });
-
-  test('refuses input that is not JSON, and starts nothing', async () => {
-    const { container, findByRole, findByText } = open('/workflows/digest');
-    const root = await ready(container);
-    await fireEvent.click(startButton(root) as HTMLElement);
-    await fireEvent.input(
-      await findByRole('textbox', { name: WORKFLOW_COPY.startDialog.inputLabel }),
-      {
-        target: { value: '{ nope' },
-      },
-    );
-    await fireEvent.click(confirmButton());
-    expect(await findByText(WORKFLOW_COPY.startDialog.invalidInput)).not.toBeNull();
+    await fireEvent.click(startLink(root) as HTMLElement);
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest/run'));
     expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
   });
 
-  test('shows the Bureau’s refusal in the dialog and stays on the page', async () => {
-    const { container, findByRole, findByText } = open('/workflows/digest');
-    stub?.on('bureau.workflows.start', () => {
-      throw workflowFaults.unprocessable('The input breaks the schema.');
-    });
-    const root = await ready(container);
-    await fireEvent.click(startButton(root) as HTMLElement);
-    await findByRole('textbox', { name: WORKFLOW_COPY.startDialog.inputLabel });
-    await fireEvent.click(confirmButton());
-    expect(await findByText('The input breaks the schema.')).not.toBeNull();
-    expect(router.pathname).toBe('/workflows/digest');
-  });
-
   test('is the action of the Runs tab’s empty state', async () => {
-    const { container, findByRole } = open('/workflows/digest', { runs: [] });
+    const { container } = open('/workflows/digest', { runs: [] });
     const root = await ready(container);
     await openTab(root, TABS.runs);
     await waitFor(() =>
@@ -425,34 +367,7 @@ describe('starting a run', () => {
     );
     expect(action?.textContent?.trim()).toBe(WORKFLOW_COPY.page.startAction);
     await fireEvent.click(action as HTMLElement);
-    expect(
-      await findByRole('textbox', { name: WORKFLOW_COPY.startDialog.inputLabel }),
-    ).not.toBeNull();
-  });
-
-  test('closes with Cancel and starts nothing, and opens again empty', async () => {
-    const { container, findByRole } = open('/workflows/digest');
-    const root = await ready(container);
-    await fireEvent.click(startButton(root) as HTMLElement);
-    await fireEvent.input(
-      await findByRole('textbox', { name: WORKFLOW_COPY.startDialog.inputLabel }),
-      { target: { value: '{ nope' } },
-    );
-    await fireEvent.click(confirmButton());
-    const cancel = [...document.querySelectorAll('button')].find(
-      (button) => button.textContent?.trim() === WORKFLOW_COPY.startDialog.cancel,
-    );
-    await fireEvent.click(cancel as HTMLElement);
-    await waitFor(() => expect(testId(document.body, 'workflow-start-form')).toBeNull());
-    expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
-    expect(router.pathname).toBe('/workflows/digest');
-
-    await fireEvent.click(startButton(root) as HTMLElement);
-    const reopened = await findByRole('textbox', {
-      name: WORKFLOW_COPY.startDialog.inputLabel,
-    });
-    expect((reopened as HTMLTextAreaElement).value).toBe('');
-    expect(document.body.textContent).not.toContain(WORKFLOW_COPY.startDialog.invalidInput);
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest/run'));
   });
 });
 
@@ -480,8 +395,8 @@ describe('the Runs tab of a workflow that cannot be started from the page', () =
     );
   });
 
-  test('a code-defined type promises no trigger and offers no action', async () => {
-    const { container } = open('/workflows/order-processing', { runs: [] });
+  test('a type the Bureau registers for itself promises no trigger and offers no action', async () => {
+    const { container } = open('/workflows/agentRun', { runs: [] });
     const root = await ready(container);
     await openTab(root, TABS.runs);
     const runs = (): HTMLElement => testId(root, 'workflow-recent-runs') as HTMLElement;

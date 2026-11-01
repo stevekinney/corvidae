@@ -17,6 +17,7 @@ const SEED = {
   memory: 'memory-1',
   workflow: 'order-processing',
   workflowFile: 'digest',
+  runSetupFile: 'run-setup',
   run: 'run-1',
   schedule: 'schedule-1',
   goal: 'goal-1',

@@ -12,6 +12,7 @@ import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { bureau } from './agent-support.ts';
 import { expect, test } from './fixtures.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
+import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
   listWorkflowRuns,
@@ -47,7 +48,9 @@ test.describe('a workflow built from rows', () => {
       page,
       request,
       checkA11y,
+      pageErrors,
     }) => {
+      expectEngineMissesForFileRuns(pageErrors);
       const id = 'e2e-built';
       created.add(id);
       await page.setViewportSize({ width, height: 900 });
@@ -79,11 +82,8 @@ test.describe('a workflow built from rows', () => {
       const made = await readWorkflow(request, id);
       expect(made.state).toBe('ready');
 
-      await page.getByRole('button', { name: WORKFLOW_COPY.page.startAction }).click();
-      await page
-        .getByRole('dialog')
-        .getByRole('button', { name: WORKFLOW_COPY.startDialog.confirm })
-        .click();
+      await page.getByRole('link', { name: WORKFLOW_COPY.page.startAction }).click();
+      await page.getByRole('button', { name: WORKFLOW_COPY.runSetup.startAction }).click();
       await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
       const [run] = await listWorkflowRuns(request, id);
       expect(run?.status).toBe('running');

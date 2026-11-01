@@ -1,7 +1,7 @@
 /**
  * `/workflows/:workflow` by its tabs, against the real host: Overview (steps as rows, input and
  * output as field lists), Code (a file's source, or what a code-defined type registered), Runs, and
- * History. The tab is in the address, and Start run in the header starts a real instance. Each
+ * History. The tab is in the address, and Start run in the header opens the run setup page. Each
  * tab meets axe at the two widths the application is built for.
  *
  * The host serves the engine's console from the fixtures' engine, which is not the Bureau's, so a
@@ -16,6 +16,7 @@ import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { bureau } from './agent-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
   listWorkflowRuns,
@@ -186,7 +187,11 @@ test.describe('the Runs tab', () => {
 });
 
 test.describe('Start run', () => {
-  test('starts a real instance with the input, and opens it', async ({ page, request }) => {
+  test('opens the run setup page, which starts a real instance with the input', async ({
+    page,
+    request,
+    pageErrors,
+  }) => {
     const id = 'e2e-page-start';
     created.add(id);
     await createWorkflowFile(request, id, {
@@ -195,17 +200,19 @@ test.describe('Start run', () => {
     });
     await page.goto(`/workflows/${id}`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.startAction }).click();
-    const dialog = page.getByRole('dialog');
-    await dialog
-      .getByRole('textbox', { name: WORKFLOW_COPY.startDialog.inputLabel })
+    await detail(page).getByRole('link', { name: WORKFLOW_COPY.page.startAction }).click();
+    await expect(page).toHaveURL(new RegExp(`/workflows/${id}/run$`));
+    // A file that declares no schema takes its input as JSON.
+    await page
+      .getByRole('textbox', { name: WORKFLOW_COPY.runSetup.jsonLabel })
       .fill('{ "topic": "weather" }');
-    await dialog.getByRole('button', { name: WORKFLOW_COPY.startDialog.confirm }).click();
+    expectEngineMissesForFileRuns(pageErrors);
+    await page.getByRole('button', { name: WORKFLOW_COPY.runSetup.startAction }).click();
 
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
     const [run] = await listWorkflowRuns(request, id);
     expect(run?.status).toBe('running');
-    // The instance took the input the dialog held, as JSON, and was started from the web surface.
+    // The instance took the input the page held, as JSON, and was started from the web surface.
     const started = await bureau(request, 'bureau.workflows.runs.get', { runId: run?.id });
     expect(started.fault).toBeUndefined();
     expect((started.result as { trigger: unknown }).trigger).toMatchObject({
@@ -270,7 +277,7 @@ test.describe('Start run', () => {
     await page.goto(`/workflows/${id}`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     await expect(
-      detail(page).getByRole('button', { name: WORKFLOW_COPY.page.startAction }),
+      detail(page).getByRole('link', { name: WORKFLOW_COPY.page.startAction }),
     ).toHaveCount(0);
     await expect(
       detail(page).getByRole('button', { name: WORKFLOW_COPY.resumeAction }),

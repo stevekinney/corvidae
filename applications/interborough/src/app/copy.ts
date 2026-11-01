@@ -460,7 +460,7 @@ export const WORKFLOW_COPY = {
       /** A paused file starts nothing, so its empty state says so rather than promising a trigger. */
       emptyDescriptionPaused:
         'This workflow is paused, so its trigger starts nothing. Resume it and a run appears here once one starts.',
-      /** A code-defined type has no Start action on this page (COR-1855), so something else starts it. */
+      /** A type that code registered is also started by its schedules, so the empty state names no one starter. */
       emptyDescriptionCode: 'A run appears here as soon as something starts one.',
     },
     /** The Code tab. */
@@ -478,16 +478,77 @@ export const WORKFLOW_COPY = {
       unavailableDescription: 'It is not defined in code, or you may not read workflows.',
     },
   },
-  /** Starting a run from the page's header. */
-  startDialog: {
-    title: 'Start a run',
-    description: (name: string): string => `Starts one run of ${name}.`,
-    inputLabel: 'Input',
-    inputDescription: 'JSON. Leave empty to start with no input.',
-    invalidInput: 'The input must be valid JSON, or left empty.',
-    confirm: 'Start run',
+  /** `/workflows/:workflow/run`: one run of the workflow in the path, started now or on a schedule. */
+  runSetup: {
+    /** The page's entry in the breadcrumb trail. */
+    crumb: 'Run',
+    title: (name: string): string => `Run ${name}`,
+    inputHeading: 'Input',
+    inputDescription: 'What the run starts with.',
+    /** A workflow that declares no schema takes its input as JSON. */
+    jsonLabel: 'Input (JSON)',
+    jsonDescription: 'JSON. Leave empty to start with no input.',
+    invalidJson: 'The input must be valid JSON, or left empty.',
+    whenHeading: 'When',
+    whenLabel: 'When to run',
+    now: 'Now',
+    nowDescription: 'Starts a run as soon as you confirm.',
+    schedule: 'On a schedule',
+    scheduleDescription: 'Starts a run each time the schedule fires, with this input.',
+    /** The schedule choice for a workflow whose schedule is the trigger in its file. */
+    scheduleInFile:
+      'This workflow is agent-authored, so its schedule is the trigger in its file. Change it in the workflow.',
+    scheduleLabel: 'Schedule',
+    summaryNow: (name: string): string => `Starts ${name} now with this input.`,
+    /** An interval counts elapsed time, so it names no zone. */
+    summarySchedule: (name: string, cadence: string, timeZone: string | undefined): string =>
+      timeZone === undefined
+        ? `Runs ${name}: ${cadence}.`
+        : `Runs ${name}: ${cadence}, in ${timeZone}.`,
+    startAction: 'Start run',
+    scheduleAction: 'Create schedule',
     cancel: 'Cancel',
-    failed: 'The run was not started',
+    startFailed: 'The run was not started',
+    scheduleFailed: 'The schedule was not created',
+    /** The answer was lost, so the Bureau may have acted: say so, and do not suggest trying again blindly. */
+    scheduleInvalid: 'A field in the schedule is not valid. Correct it, then create the schedule.',
+    startMaybe: 'The run may have started',
+    scheduleMaybe: 'The schedule may have been created',
+    lostDescription:
+      'The server did not answer. Check before trying again, so it is not done twice.',
+    checkRuns: 'Check the runs',
+    checkSchedules: 'Check the schedules',
+    forbidden: 'You may not start runs or create schedules here.',
+    loadFailed: {
+      title: 'This workflow could not be loaded',
+      description: 'Try again, or check that you may read workflows.',
+    },
+    /** A workflow that cannot be run from this page, and where to go instead. */
+    blocked: {
+      openWorkflow: 'Open the workflow',
+      engineTitle: 'Interborough starts this workflow itself',
+      engineDescription: 'There is nothing to set up here.',
+      invalidTitle: 'This workflow cannot run yet',
+      invalidDescription: 'Its file has a problem. Fix it in the workflow, and it can run.',
+      pausedTitle: 'This workflow is paused',
+      pausedDescription: 'Resume it in the workflow, and it can run.',
+    },
+  },
+  /** Choosing the workflow to run, from the runs list. */
+  runPicker: {
+    title: 'Start a run',
+    description: 'Choose the workflow to run. The next page sets up its input and when it runs.',
+    listLabel: 'Workflows you can run',
+    /** The filter is offered once there are more workflows than fit at a glance. */
+    filterLabel: 'Find a workflow',
+    noMatchTitle: 'No workflow matches that search',
+    noMatchDescription: 'Change the search to see more workflows.',
+    cancel: 'Cancel',
+    loadFailedTitle: 'The workflows could not be loaded',
+    loadFailedDescription: 'Try again, or check that you may read workflows.',
+    emptyTitle: 'No workflow can run yet',
+    emptyDescription: 'Make a workflow, and it appears here to run.',
+    emptyAction: 'New workflow',
   },
   /** `/workflows/new`. */
   creator: {

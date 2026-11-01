@@ -271,6 +271,18 @@ export const workflowFaults = {
     new StubFault('Unavailable', 503, 'The change was written but the engine did not apply it.', {
       reason: 'workflow-apply-failed',
     }),
+  /**
+   * An input that breaks the workflow's schema, as `bureau.workflows.start` refuses it: the issues
+   * locate every failure, with each path rooted at the `input` that was sent.
+   */
+  invalidInput: (issues: ReadonlyArray<{ path: Array<string | number>; message: string }>) =>
+    new StubFault('InvalidParams', 400, 'The input does not match the workflow’s schema.', {
+      issues: issues.map((issue) => ({
+        path: ['input', ...issue.path],
+        message: issue.message,
+        code: 'custom',
+      })),
+    }),
   /** A name the engine refuses before it looks, as a name with a dot in it. */
   invalidParams: () =>
     new StubFault('InvalidParams', 400, 'workflow name "foo.bar" contains a dot.', {}),
@@ -287,6 +299,8 @@ export type World = {
   installedRevisions: Record<string, unknown[]>;
   /** The starts `bureau.workflows.start` accepted, in order. */
   startedRuns: Array<{ id: string; input: unknown }>;
+  /** The starts the engine accepted through `POST /workflows`, in order: a code-defined type is started there. */
+  engineStarts: Array<{ type: string; input: unknown }>;
   /** What `bureau.workflows.signal` answers. */
   signalAnswer: SignalResult;
   /** The directory `/host/paths` reports, or `null` for a host that does not say. */
@@ -316,6 +330,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     revisions: {},
     installedRevisions: {},
     startedRuns: [],
+    engineStarts: [],
     signalAnswer: { started: [], delivered: [], rejected: [] },
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
     hostMode: 'local',
@@ -762,6 +777,19 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       : /\/schedules(?:\/([^/]+)(?:\/(pause|resume))?)?$/.exec(url.pathname);
     if (scheduleRoute !== null) {
       return answerSchedule(scheduleRoute[1], scheduleRoute[2], init, url);
+    }
+    if (
+      init?.method === 'POST' &&
+      typeof init.body === 'string' &&
+      url.pathname.endsWith('/workflows')
+    ) {
+      const body: unknown = JSON.parse(init.body);
+      const request = isRecord(body) ? body : {};
+      calls.push({ method: 'POST /workflows', params: request });
+      const override = overrides.get('POST /workflows');
+      if (override !== undefined) return Response.json(await override(request));
+      world.engineStarts.push({ type: String(request['type']), input: request['input'] ?? null });
+      return Response.json({ id: `engine-run-${String(world.engineStarts.length)}` });
     }
     if (typeof init?.body === 'string') {
       const body: unknown = JSON.parse(init.body);
