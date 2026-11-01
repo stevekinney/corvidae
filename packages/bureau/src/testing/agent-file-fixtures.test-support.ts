@@ -23,6 +23,7 @@ import {
   type AgentFileCatalogOptions,
   createAgentFileCatalog,
 } from '../agent-file-catalog.ts';
+import type { BureauModelPolicyOptions } from '../model-policy.ts';
 import type { AgentSource } from '../sources/definition-source.ts';
 import { agentFileDirectory } from '../sources/agent-file-directory.ts';
 import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
@@ -138,6 +139,8 @@ export interface AgentFileFixtureOptions {
   readonly openWatcher?: NonNullable<Parameters<typeof agentFileDirectory>[1]>['watchFactory'];
   /** The guardrails and run hooks a file may list; none by default. */
   readonly contributions?: AgentFileCatalogOptions['contributions'];
+  /** The model policy in force (COR-1980), read on every write; none by default, so nothing is denied. */
+  readonly modelPolicy?: () => BureauModelPolicyOptions | undefined;
 }
 
 export async function createAgentFileFixture(
@@ -190,6 +193,7 @@ export async function createAgentFileFixture(
     runtime,
     diagnose,
     ...(options.contributions === undefined ? {} : { contributions: options.contributions }),
+    ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
     ...(options.revisionStore === undefined ? {} : { revisionStore: options.revisionStore }),
     ...(options.retainedRevisions === undefined
       ? {}

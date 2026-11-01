@@ -116,6 +116,25 @@ describe('bureau.agents.try', () => {
     expect(await served.bureau.contexts.list({ origin: 'try' })).toEqual([]);
   });
 
+  it('refuses a definition whose model the policy forbids, naming it, and starts nothing (COR-1980)', async () => {
+    const served = await serve({
+      overrides: {
+        modelPolicy: { deployment: { deniedModels: ['claude-opus-5-5'] }, policyRevision: 1 },
+      },
+    });
+
+    const response = await rpc(
+      served.keyed,
+      'bureau.agents.try',
+      { definition: DEFINITION, message: 'hello' },
+      'agents-writer-key',
+    );
+
+    expect(response.error?.data?.['reason']).toBe('model-policy-denied');
+    expect(response.error?.message).toContain('anthropic/claude-opus-5-5');
+    expect(await served.bureau.contexts.list({ origin: 'try' })).toEqual([]);
+  });
+
   it('is continued over AG-UI in its own context, and its name starts no other', async () => {
     const served = await serve({ overrides: { durable: true } });
     const handler = createBureauHandler(served.bureau, {

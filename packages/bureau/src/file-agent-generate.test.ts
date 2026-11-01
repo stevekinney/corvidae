@@ -14,7 +14,12 @@ import {
 } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
-import { createFileAgentGenerate, ModelOverrideUnusableError } from './file-agent-generate';
+import {
+  createFileAgentGenerate,
+  ModelOverrideUnusableError,
+  ModelPolicyDeniedError,
+} from './file-agent-generate';
+import { modelPolicyDenialOf } from './model-policy';
 
 const rows = createModelCatalog().descriptors;
 const row = (provider: string, model: string): BackendDescriptor => {
@@ -36,7 +41,12 @@ function step(steering?: { model?: string; modelProvider?: string; provider?: st
     : { steering: { paused: false, configVersion: 1, ...steering } }) as unknown as GenerateContext;
 }
 
-function harness(allowed: BackendDescriptor[], resolveFailsFor?: string, costBudgeted = false) {
+function harness(
+  allowed: BackendDescriptor[],
+  resolveFailsFor?: string,
+  costBudgeted = false,
+  policyDenial?: (row: BackendDescriptor) => ReturnType<typeof modelPolicyDenialOf>,
+) {
   const used: string[] = [];
   const resolved: string[] = [];
   const generateFor =
@@ -50,6 +60,7 @@ function harness(allowed: BackendDescriptor[], resolveFailsFor?: string, costBud
     defaultGenerate: withBackendDescriptors(generateFor(DEFAULT), [DEFAULT]),
     allowed: () => allowed,
     costBudgeted,
+    ...(policyDenial === undefined ? {} : { policyDenial }),
     resolveGenerate: (descriptor) => {
       if (descriptor.model === resolveFailsFor) throw new Error('no credentials');
       resolved.push(descriptor.model);
@@ -173,5 +184,91 @@ describe('a file agent’s generate', () => {
     expect(readBackendDescriptors(generate).map((descriptor) => descriptor.model)).toEqual([
       'claude-opus-5-5',
     ]);
+  });
+});
+
+describe('a file agent’s generate under the model policy (COR-1980)', () => {
+  const deny = (...models: string[]) => {
+    const policy = { deployment: { deniedModels: models }, policyRevision: 7 };
+    return (row: BackendDescriptor) => modelPolicyDenialOf(row, policy);
+  };
+  const failureOf = (work: Promise<unknown>) =>
+    work.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+  it('fails a step on a forbidden default model with a typed error naming it, and calls nothing', async () => {
+    const { generate, used } = harness([DEFAULT, OPUS_5], undefined, false, deny(DEFAULT.model));
+
+    const failure = await failureOf(generate(step()));
+
+    expect(failure).toBeInstanceOf(ModelPolicyDeniedError);
+    const error = failure as ModelPolicyDeniedError;
+    expect(error.code).toBe('model-policy-denied');
+    expect(error.provider).toBe('anthropic');
+    expect(error.model).toBe('claude-opus-5-5');
+    expect(error.layer).toBe('deployment');
+    expect(error.policyRevision).toBe(7);
+    expect(error.message).toContain('anthropic/claude-opus-5-5');
+    expect(used).toEqual([]);
+  });
+
+  it('fails a step switched to a forbidden model, and never falls back to the default', async () => {
+    const { generate, used, resolved } = harness(
+      [DEFAULT, OPUS_5],
+      undefined,
+      false,
+      deny('claude-opus-5'),
+    );
+
+    const failure = await failureOf(generate(step({ model: 'claude-opus-5' })));
+
+    expect(failure).toBeInstanceOf(ModelPolicyDeniedError);
+    expect((failure as ModelPolicyDeniedError).model).toBe('claude-opus-5');
+    expect(used).toEqual([]);
+    expect(resolved).toEqual([]);
+  });
+
+  it('fails a step that names the forbidden default by name', async () => {
+    const { generate, used } = harness([DEFAULT, OPUS_5], undefined, false, deny(DEFAULT.model));
+
+    const failure = await failureOf(generate(step({ model: DEFAULT.model })));
+
+    expect(failure).toBeInstanceOf(ModelPolicyDeniedError);
+    expect(used).toEqual([]);
+  });
+
+  it('lets a step switched to an allowed model run though the default is forbidden', async () => {
+    const { generate, used } = harness([DEFAULT, OPUS_5], undefined, false, deny(DEFAULT.model));
+
+    await generate(step({ model: 'claude-opus-5' }));
+
+    expect(used).toEqual(['anthropic/claude-opus-5']);
+  });
+
+  it('reads the policy at every step, so a change applies from the next one', async () => {
+    let denied: string[] = [];
+    const { generate, used } = harness([DEFAULT, OPUS_5], undefined, false, (row) =>
+      deny(...denied)(row),
+    );
+
+    await generate(step());
+    denied = [DEFAULT.model];
+    const failure = await failureOf(generate(step()));
+    denied = [];
+    await generate(step());
+
+    expect(failure).toBeInstanceOf(ModelPolicyDeniedError);
+    expect(used).toEqual(['anthropic/claude-opus-5-5', 'anthropic/claude-opus-5-5']);
+  });
+
+  it('judges a forbidden model before the cost budget does', async () => {
+    const twin: BackendDescriptor = { ...DEFAULT, provider: 'twin', pricing: undefined };
+    const { generate } = harness([twin, DEFAULT], undefined, true, deny(DEFAULT.model));
+
+    const failure = await failureOf(generate(step({ model: DEFAULT.model })));
+
+    expect(failure).toBeInstanceOf(ModelPolicyDeniedError);
   });
 });

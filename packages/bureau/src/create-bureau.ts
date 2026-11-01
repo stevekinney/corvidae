@@ -314,6 +314,7 @@ import { createSettings, type SettingsComposition } from './settings/create-sett
 import type { SettingsValues } from './settings/settings-schema';
 import { summarizerFailures } from './settings/settings-validation';
 import { createMemoryEmbedderSetting, type MemoryEmbedderSetting } from './memory-embedder-setting';
+import { modelPolicyDenialOf } from './model-policy';
 import {
   bootSettings,
   enginePatchOf,
@@ -3224,6 +3225,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               pluginToolNames,
               models,
               resolveGenerate: (row) => models.generate(row),
+              // COR-1980: the settings are live, so a write is judged by the policy as it is now.
+              modelPolicy: () => modelPolicyOf(currentSettings()),
               ...(options.agentApprovalSecret === undefined
                 ? {}
                 : { approvalSecret: options.agentApprovalSecret }),
@@ -16353,6 +16356,29 @@ async function constructBureau<const D extends AgentDefinitions>(
           },
           configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
         );
+      }
+      // COR-1980: the model policy's deployment and Bureau layers bind a steering choice however it
+      // was made, so a model every catalog row of which the policy forbids is refused now, as
+      // `policy-denied`, rather than admitted for a step to fail on. A policy profile's resolved
+      // model is held to it too: a profile cannot admit what an override could not. A name that
+      // also matches an allowed row (another provider's) is admitted; the step judges the row it
+      // uses. The policy is read live, so a command admitted before it tightened fails at its step.
+      if (steeringTarget === 'model' && override !== undefined) {
+        const policy = modelPolicyOf(currentSettings());
+        const named = descriptors.filter(
+          (descriptor) =>
+            descriptor.model === override &&
+            (overrideProvider === undefined || descriptor.provider === overrideProvider),
+        );
+        if (named.every((descriptor) => modelPolicyDenialOf(descriptor, policy) !== undefined)) {
+          return refuseSteering(
+            {
+              outcome: 'rejected',
+              failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+            },
+            configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
+          );
+        }
       }
     }
 

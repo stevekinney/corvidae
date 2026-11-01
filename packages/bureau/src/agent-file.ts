@@ -96,6 +96,7 @@ export type AgentFileProblemCode =
   | 'reference-unresolved'
   | 'reference-too-large'
   | 'skill-not-grantable'
+  | 'model-policy-denied'
   | 'shadows-code-agent'
   | 'missing-frontmatter'
   | 'invalid-yaml'
@@ -110,7 +111,8 @@ export interface AgentFileIssue {
   /**
    * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
    * or run hook set for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
-   * (COR-1975). Absent on every other issue.
+   * (COR-1975), a model for `model-policy-denied` (COR-1980), as `<provider>/<model-or-alias>`
+   * exactly as the file wrote it. Absent on every other issue.
    */
   readonly reference?: string;
 }
@@ -122,7 +124,8 @@ export interface AgentFileProblem {
   /**
    * Every schema failure, for `invalid-frontmatter`; the missing names, for `unknown-tool`; the
    * names `toolApproval` gives a value that `tools` does not list, for `unknown-approval-tool`;
-   * the skills a write could not grant, for `skill-not-grantable`.
+   * the skills a write could not grant, for `skill-not-grantable`; the models the model policy
+   * forbids, for `model-policy-denied` (COR-1980).
    */
   readonly issues?: readonly AgentFileIssue[];
 }

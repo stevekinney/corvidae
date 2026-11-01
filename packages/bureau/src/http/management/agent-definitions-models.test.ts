@@ -166,3 +166,60 @@ describe('bureau.agents.definitions.create', () => {
     expect(refused.error?.data).toMatchObject({ weftCode: 'InvalidParams' });
   });
 });
+
+describe('the model policy over bureau.agents.definitions.* (COR-1980)', () => {
+  const policy = {
+    deployment: { deniedModels: ['claude-opus-5'] },
+    policyRevision: 1,
+  };
+
+  it('refuses a create that names a forbidden model, as Unprocessable with the reason, and writes nothing', async () => {
+    const served = await serve({ overrides: { modelPolicy: policy } });
+
+    const body = await callAs(served.local, 'bureau.agents.definitions.create', {
+      id: 'researcher',
+      definition: definitionOf({ model: OTHER_MODEL }),
+    });
+
+    expect(body.error?.data?.['reason']).toBe('model-policy-denied');
+    expect(body.error?.message).toContain(OTHER_MODEL);
+    expect(served.bureau.agents.list().some((listing) => listing.id === 'researcher')).toBe(false);
+  });
+
+  it('refuses a forbidden entry in models at its index, and still creates an allowed list', async () => {
+    const served = await serve({ overrides: { modelPolicy: policy } });
+
+    const refused = await callAs(served.local, 'bureau.agents.definitions.create', {
+      id: 'researcher',
+      definition: definitionOf({ models: [KNOWN_MODEL, OTHER_MODEL] }),
+    });
+    const created = await callAs(served.local, 'bureau.agents.definitions.create', {
+      id: 'researcher',
+      definition: definitionOf({ models: [KNOWN_MODEL] }),
+    });
+
+    expect(refused.error?.data?.['reason']).toBe('model-policy-denied');
+    expect(refused.error?.message).toContain('models.1');
+    expect(created.error).toBeUndefined();
+  });
+
+  it('refuses an update of a file saved before the policy that keeps its model, and lets it change', async () => {
+    const served = await serve({ overrides: { modelPolicy: policy } });
+    await served.put('researcher.md', LISTED);
+    await served.bureau.agents.refresh();
+
+    const kept = await callAs(served.local, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: served.hashOf('researcher'),
+      definition: definitionOf({ models: [KNOWN_MODEL, OTHER_MODEL] }),
+    });
+    const changed = await callAs(served.local, 'bureau.agents.definitions.update', {
+      id: 'researcher',
+      expectedHash: served.hashOf('researcher'),
+      definition: definitionOf({ models: [KNOWN_MODEL] }),
+    });
+
+    expect(kept.error?.data?.['reason']).toBe('model-policy-denied');
+    expect(changed.error).toBeUndefined();
+  });
+});

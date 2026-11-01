@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
+import type { BureauModelPolicyOptions } from './model-policy';
 import { waitForTaskState } from './test';
 import {
   appendSteeringLogEvent,
@@ -56,6 +57,7 @@ async function openBureau(
     durable?: boolean;
     catalog?: ReturnType<typeof twinModels>;
     allowed?: Parameters<typeof createAgent>[0]['allowedCandidates'];
+    modelPolicy?: BureauModelPolicyOptions;
   } = {},
 ) {
   const generate = options.generate ?? (async () => ({ content: 'ok', toolCalls: [] as never[] }));
@@ -73,6 +75,7 @@ async function openBureau(
     storage: options.storage ?? new MemoryStorage(),
     ...(options.durable === false ? {} : { durable: true }),
     ...(options.catalog === undefined ? {} : { models: options.catalog }),
+    ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
   });
   cleanups.push(() => bureau.dispose());
   return bureau;
@@ -475,5 +478,53 @@ describe('a routed or opaque agent lists no models', () => {
     });
 
     expect(outcome.outcome).toBe('accepted');
+  });
+});
+
+describe('admission checks the model against the model policy (COR-1980)', () => {
+  it('rejects a model the deployment or Bureau layer forbids with policy-denied, for a code-defined agent too', async () => {
+    const stepped = createSteppedGenerate();
+    const bureau = await openBureau({
+      generate: stepped.generate,
+      modelPolicy: { bureau: { deniedModels: [OPUS_5.model] }, policyRevision: 1 },
+    });
+    const run = await startRun(bureau);
+    await stepped.firstStepEntered;
+    const before = await bureau.contexts.steering(run.contextId);
+
+    const forbidden = await steer(bureau, run.contextId, 'forbidden', OPUS_5.model);
+
+    expect(forbidden).toEqual({
+      outcome: 'rejected',
+      failure: { failedAt: expect.any(String), reason: 'policy-denied' },
+    });
+    expect(await bureau.contexts.steering(run.contextId)).toEqual(before);
+    stepped.releaseFirstStep();
+  });
+
+  it('judges the pair when a provider is named, and admits a name another provider serves allowed', async () => {
+    const stepped = createSteppedGenerate();
+    const bureau = await openBureau({
+      generate: stepped.generate,
+      catalog: twinModels(),
+      allowed: [OPUS_5_5, TWIN_OF_OPUS_5_5],
+      modelPolicy: { deployment: { deniedProviders: ['openai'] }, policyRevision: 1 },
+    });
+    const run = await startRun(bureau);
+    await stepped.firstStepEntered;
+
+    const twin = await steer(
+      bureau,
+      run.contextId,
+      'twin',
+      TWIN_OF_OPUS_5_5.model,
+      TWIN_OF_OPUS_5_5.provider,
+    );
+    const bare = await steer(bureau, run.contextId, 'bare', OPUS_5_5.model);
+
+    expect(twin).toMatchObject({ outcome: 'rejected', failure: { reason: 'policy-denied' } });
+    // Not every row of the name is forbidden, so it is admitted; the step judges the row it uses.
+    expect(bare.outcome).toBe('accepted');
+    stepped.releaseFirstStep();
   });
 });

@@ -25,6 +25,7 @@
 
 import type {
   AgentPreferences,
+  BackendDescriptor,
   BureauInvariants,
   DelegatedAuthority,
   DeploymentInvariants,
@@ -40,7 +41,12 @@ import type {
   TaskClassification,
   UserModelConfiguration,
 } from '@lostgradient/operative';
-import { createSelectionGate, readGenerationProfile, select } from '@lostgradient/operative';
+import {
+  composePolicy,
+  createSelectionGate,
+  readGenerationProfile,
+  select,
+} from '@lostgradient/operative';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { Models } from './models/create-models';
@@ -69,6 +75,55 @@ export interface BureauModelPolicyOptions {
   readonly bureau?: BureauInvariants;
   readonly users?: Readonly<Record<string, UserModelConfiguration>>;
   readonly policyRevision: number;
+}
+
+/**
+ * Why the model policy forbids a catalog row, and which binding layer said so (COR-1980).
+ * `policyRevision` is the revision of the policy that decided, so a refusal can be tied to it.
+ */
+export interface ModelPolicyDenial {
+  /** The first layer to deny the row; the deployment's is read before the Bureau's. */
+  readonly layer: 'deployment' | 'bureau';
+  /** The policy layer's own reason, such as `model denied: claude-opus-5-5`. */
+  readonly reason: string;
+  /** The `policyRevision` of the policy that decided. */
+  readonly policyRevision: number;
+}
+
+/**
+ * Whether `policy` forbids `row`, and why, or `undefined` when it does not (COR-1980). Only the
+ * deployment and Bureau layers bind: they are invariants no agent, user or steering choice can
+ * widen. The `users` layer is a person's own narrowing and binds nothing here.
+ *
+ * The row is judged as if it were available and healthy, so a model that is turned off or down
+ * and also forbidden is still reported as forbidden: availability is a fact about the provider,
+ * and this is a statement about authority. Pure and synchronous, and shared by every place the
+ * policy is enforced (a save, a run step, and steering admission), so they cannot disagree.
+ */
+export function modelPolicyDenialOf(
+  row: BackendDescriptor,
+  policy: BureauModelPolicyOptions | undefined,
+): ModelPolicyDenial | undefined {
+  if (policy === undefined) return undefined;
+  if (policy.deployment === undefined && policy.bureau === undefined) return undefined;
+  const [candidate] = composePolicy({
+    descriptors: [{ ...row, availability: 'available', health: 'healthy' }],
+    ...(policy.deployment === undefined ? {} : { deployment: policy.deployment }),
+    ...(policy.bureau === undefined ? {} : { bureau: policy.bureau }),
+  });
+  if (candidate === undefined || candidate.eligible) return undefined;
+  const layer =
+    candidate.exclusionCode === 'denied-by-deployment'
+      ? 'deployment'
+      : candidate.exclusionCode === 'denied-by-bureau'
+        ? 'bureau'
+        : undefined;
+  if (layer === undefined) return undefined;
+  return {
+    layer,
+    reason: candidate.exclusionReason ?? `denied by the ${layer} policy`,
+    policyRevision: policy.policyRevision,
+  };
 }
 
 /**
