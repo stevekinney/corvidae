@@ -197,6 +197,59 @@ export type TranscriptEntryMessagePart = TranscriptEntryInfo & {
   key: string;
 };
 
+/** Where a child run stands: running, or one of the three ways it ends. */
+export type ChildRunStatus = 'running' | 'completed' | 'failed' | 'aborted';
+
+/**
+ * A line a run leaves under a message, sourced from `message.metadata['cinder:notes']`: a memory
+ * record the agent wrote (`memory`), a time the run parked itself until (`wakeup`), a run it handed
+ * work to (`child-run`), or why the run stopped (`stopped`). `id` is the note's stable identity
+ * within its message. An `href` is a path inside the host application; Chat renders it as a link
+ * only when it starts with `/` and still resolves inside the host (not `//host` or `/\host`).
+ */
+export type MessageNoteInfo =
+  | {
+      kind: 'memory';
+      id: string;
+      /** The record's identifier. */
+      recordId: string;
+      /** The collection the record was written to. */
+      collection: string;
+      /** The record's memory class, for example `episodic`. */
+      memoryClass: string;
+      href?: string;
+    }
+  | {
+      kind: 'wakeup';
+      id: string;
+      /** When the run is due to continue, in milliseconds since the Unix epoch. */
+      wakeAt: number;
+      /** The note the run left for itself, when it left one. */
+      note?: string;
+    }
+  | {
+      kind: 'child-run';
+      id: string;
+      childRunId: string;
+      /** The agent the child runs as. */
+      agentName: string;
+      status: ChildRunStatus;
+      href?: string;
+    }
+  | {
+      kind: 'stopped';
+      id: string;
+      /** Why the last run stopped, in words. */
+      reason: string;
+    };
+
+/** A {@link MessageNoteInfo} as a render part. */
+export type NoteMessagePart = MessageNoteInfo & {
+  type: 'note';
+  /** Stable identity, derived from the message id and the note's id. */
+  key: string;
+};
+
 /**
  * Step status for a single step in a plan/step list.
  */
@@ -266,6 +319,7 @@ export type ChatMessagePart =
   | ToolInputMessagePart
   | ReasoningMessagePart
   | TranscriptEntryMessagePart
+  | NoteMessagePart
   | StepMessagePart
   | SuggestionMessagePart;
 
@@ -326,6 +380,13 @@ export type MessagePartDerivationContext = {
   reasoning?: string | ReasoningInfo | undefined;
   /** Additional structured transcript rows emitted before reasoning and body content. */
   entries?: ReadonlyArray<TranscriptEntryInfo> | undefined;
+  /**
+   * Lines a run left under this message (memory written, a wakeup, child runs, why it stopped),
+   * emitted after the body and before any suggestions.
+   *
+   * Source: `message.metadata['cinder:notes']`. Never a required transcript field.
+   */
+  notes?: ReadonlyArray<MessageNoteInfo> | undefined;
   /**
    * Ordered plan/step list. When present and non-empty, one `step` part
    * per entry is emitted before the reasoning and markdown body parts.

@@ -11,6 +11,7 @@ import type { Message, MultiModalContent, ToolResult } from '../conversation-mod
 import type {
   ChatMessagePart,
   ImageMessagePart,
+  MessageNoteInfo,
   MessagePartDerivationContext,
   ReasoningInfo,
   StepInfo,
@@ -25,6 +26,8 @@ import type {
 /** Namespaced metadata keys the overlay parts read (ignorable by plain rendering). */
 export const CINDER_REASONING_METADATA_KEY = 'cinder:reasoning';
 export const CINDER_ENTRIES_METADATA_KEY = 'cinder:entries';
+/** The metadata key a message keeps the lines a run left under it (`MessageNoteInfo[]`) under. */
+export const CINDER_NOTES_METADATA_KEY = 'cinder:notes';
 export const CINDER_STEPS_METADATA_KEY = 'cinder:steps';
 export const CINDER_SUGGESTIONS_METADATA_KEY = 'cinder:suggestions';
 export const CINDER_ARTIFACT_METADATA_KEY = 'cinder:artifact';
@@ -78,6 +81,73 @@ function isTranscriptEntryInfo(value: unknown): value is TranscriptEntryInfo {
     typeof value.content === 'string' &&
     value.content.trim().length > 0
   );
+}
+
+const CHILD_RUN_STATUSES: ReadonlySet<string> = new Set([
+  'running',
+  'completed',
+  'failed',
+  'aborted',
+]);
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+function isMessageNoteInfo(value: unknown): value is MessageNoteInfo {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!('id' in value) || !isNonEmptyString(value.id) || !('kind' in value)) return false;
+  const href = 'href' in value ? value.href : undefined;
+  switch (value.kind) {
+    case 'memory':
+      return (
+        'recordId' in value &&
+        isNonEmptyString(value.recordId) &&
+        'collection' in value &&
+        isNonEmptyString(value.collection) &&
+        'memoryClass' in value &&
+        isNonEmptyString(value.memoryClass) &&
+        isOptionalString(href)
+      );
+    case 'wakeup':
+      return (
+        'wakeAt' in value &&
+        typeof value.wakeAt === 'number' &&
+        // A finite number is not always a moment: `1e17` makes `toISOString()` throw in the render.
+        !Number.isNaN(new Date(value.wakeAt).getTime()) &&
+        isOptionalString('note' in value ? value.note : undefined)
+      );
+    case 'child-run':
+      return (
+        'childRunId' in value &&
+        isNonEmptyString(value.childRunId) &&
+        'agentName' in value &&
+        isNonEmptyString(value.agentName) &&
+        'status' in value &&
+        typeof value.status === 'string' &&
+        CHILD_RUN_STATUSES.has(value.status) &&
+        isOptionalString(href)
+      );
+    case 'stopped':
+      return 'reason' in value && isNonEmptyString(value.reason);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Resolves the validated lines a run left under a message from `cinder:notes` metadata, dropping
+ * any entry that is not a well-formed {@link MessageNoteInfo}. Returns `undefined` when none apply.
+ */
+export function resolveMessageNotes(message: Message): MessageNoteInfo[] | undefined {
+  const candidate: unknown = message.metadata[CINDER_NOTES_METADATA_KEY];
+  if (!Array.isArray(candidate)) return undefined;
+  const notes = candidate.filter(isMessageNoteInfo);
+  return notes.length > 0 ? notes : undefined;
 }
 
 /**
@@ -494,6 +564,11 @@ export function deriveMessageParts(
     kind: entry.kind,
     content: entry.content,
   }));
+  const noteParts: ChatMessagePart[] = (context.notes ?? []).map((note) => ({
+    ...note,
+    type: 'note',
+    key: `${message.id}:note:${note.id}`,
+  }));
 
   // Tool-call body: emit a tool-call part only when the container resolved a
   // pair for this message (mirrors the original `isToolCall && toolPair`
@@ -524,6 +599,7 @@ export function deriveMessageParts(
       ...entryParts,
       ...(answeredQuestion ? [] : [toolCallPart]),
       ...(actionPart ? [actionPart] : []),
+      ...noteParts,
       ...imageParts,
     ];
   }
@@ -541,7 +617,7 @@ export function deriveMessageParts(
     const result = message.toolResult;
     const actionPart = deriveToolActionPart(message.id, result, context);
     if (actionPart) {
-      return [...entryParts, actionPart, ...imageParts];
+      return [...entryParts, actionPart, ...noteParts, ...imageParts];
     }
     return [
       ...entryParts,
@@ -550,6 +626,7 @@ export function deriveMessageParts(
         key: `${message.id}:tool-result:${result.callId}`,
         result,
       },
+      ...noteParts,
       ...imageParts,
     ];
   }
@@ -604,6 +681,9 @@ export function deriveMessageParts(
     streaming: context.streaming ?? false,
     expanded: context.expanded ?? true,
   });
+
+  // Notes a run left under the message follow the body, ahead of any suggestions.
+  bodyParts.push(...noteParts);
 
   // C5: Suggestion parts — one per entry in context.suggestions[], after the
   // markdown body but before images. An empty or absent array adds nothing,

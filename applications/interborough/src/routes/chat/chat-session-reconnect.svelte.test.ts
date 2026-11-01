@@ -319,6 +319,13 @@ test('a refresh that replaces the transcript reads the run from its snapshot, no
   const runCursors: Array<string | null> = [];
   const session = open(async (input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
+    // The page also reads the chat's last run for why it stopped; this chat has none.
+    if (url.endsWith('/jsonrpc'))
+      return Response.json({
+        jsonrpc: '2.0',
+        id: 'tasks',
+        result: { tasks: [], nextPageToken: null },
+      });
     // The Bureau's history of a parked run holds only the turn that started it.
     if (url.endsWith('/messages')) return Response.json({ threadId: 'thread', messages: [opener] });
     const cursor = new Headers(init?.headers).get('Last-Event-ID');
