@@ -262,6 +262,32 @@ describe('TaskQueue', () => {
     });
   });
 
+  describe('release', () => {
+    it('stops tracking a claimed task without invoking its completion callback', async () => {
+      using queue = new TaskQueue();
+      const results: TaskResult[] = [];
+      queue.enqueue('default', makeTask({ operationId: 'op-released' }), (result) =>
+        results.push(result),
+      );
+      expect(await queue.poll('default', ['charge'], 0)).not.toBeNull();
+      expect(queue.isTracked('op-released')).toBe(true);
+
+      queue.release('op-released');
+
+      expect(queue.isTracked('op-released')).toBe(false);
+      expect(results).toHaveLength(0);
+      // The dropped callback belonged to the released attempt; a later attempt of the same id is a fresh enqueue.
+      expect(queue.enqueue('default', makeTask({ operationId: 'op-released' }))).toBe(true);
+      expect(queue.complete({ operationId: 'op-released', status: 'completed' })).toBe(false);
+    });
+
+    it('does nothing for an id the queue does not track', () => {
+      using queue = new TaskQueue();
+      expect(() => queue.release('op-unknown')).not.toThrow();
+      expect(queue.isTracked('op-unknown')).toBe(false);
+    });
+  });
+
   describe('complete', () => {
     it('invokes the completion callback registered during enqueue', () => {
       using queue = new TaskQueue();

@@ -278,6 +278,20 @@ export class TaskQueue implements Disposable {
   }
 
   /**
+   * Stop tracking a task without reporting an outcome: cancel its expiration
+   * timer and drop its dispatch tracking and completion callback, so the same
+   * operation id can be enqueued again. Use it for an attempt that ended in a
+   * way {@link complete} must not announce, such as a result that dead-lettered.
+   * The dropped callback belonged to that attempt and never fires for a later
+   * one. Idempotent: releasing an untracked id does nothing.
+   */
+  release(operationId: string): void {
+    this.#cancelExpiration(operationId);
+    this.#dispatched.delete(operationId);
+    this.#completionCallbacks.delete(operationId);
+  }
+
+  /**
    * Release all queue state on shutdown. Resolves every parked long-poll
    * waiter with `null` (so no poll promise is left unsettled), clears every
    * pending-task expiration timer, and drops all pending tasks, completion

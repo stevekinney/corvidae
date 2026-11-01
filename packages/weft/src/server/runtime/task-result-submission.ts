@@ -6,6 +6,7 @@ import {
 import type { ServeOptions } from '../index.ts';
 import { isAuthenticated, type Principal } from '../principal.ts';
 import { readRestJsonBody, type RestBodyReadOptions } from '../rest-body.ts';
+import type { TaskResult } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
 import type {
   TaskLedgerCompletionFailureReason,
@@ -209,6 +210,27 @@ function isLongPollCompletionAuthorized(
 }
 
 /**
+ * Release what a long-poll claim holds once its attempt is over: the task
+ * queue's tracking of the id and the registry's in-flight entry (the worker's
+ * slot), as the WebSocket transport does for every result. A dead letter is not
+ * a delivered result, so the queue is released without `complete()`, which
+ * would signal a completion to whatever waits on the task.
+ */
+function releaseLongPollAttempt(
+  context: ServerContext,
+  disposition: TaskResultDisposition,
+  result: TaskResult,
+): void {
+  if (disposition === 'dead-lettered') {
+    context.taskQueue.release(result.operationId);
+  } else {
+    context.taskQueue.complete(result);
+  }
+  context.registry?.completeTask(result.operationId);
+  recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
+}
+
+/**
  * Apply a validated task result through the shared result-application
  * implementation (`applyWorkerTaskResult`, COR-240 acceptance criterion 12),
  * then update the in-memory bookkeeping the durable write does not own —
@@ -245,18 +267,9 @@ async function applyTaskResult(
     };
   }
 
-  // Dead-lettered is terminal-ish: no further heartbeat/visibility extension
-  // will arrive for this operation, so stop tracking its deadline either
-  // way. taskQueue.complete() is deliberately skipped for a dead letter —
-  // that signals a normal delivered result to whatever is waiting, and a
-  // dead letter is the opposite: the result could not be durably applied as
-  // completed/failed.
+  // No further heartbeat/visibility extension will arrive, dead letter or not.
   context.deadlineTracker.remove(operationId);
-  if (applied.disposition !== 'dead-lettered') {
-    context.taskQueue.complete({ operationId, status, value, error });
-    context.registry?.completeTask(operationId);
-    recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
-  }
+  releaseLongPollAttempt(context, applied.disposition, { operationId, status, value, error });
 
   return { ok: true, disposition: applied.disposition };
 }
@@ -364,14 +377,11 @@ async function applyOversizedTaskResult(
   );
   if (rejected.ok) {
     context.deadlineTracker.remove(result.operationId);
-    if (rejected.disposition !== 'dead-lettered') {
-      context.taskQueue.complete({
-        operationId: result.operationId,
-        status: 'failed',
-        error: payloadError.message,
-      });
-      recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
-    }
+    releaseLongPollAttempt(context, rejected.disposition, {
+      operationId: result.operationId,
+      status: 'failed',
+      error: payloadError.message,
+    });
     return;
   }
   console.error(
