@@ -189,18 +189,35 @@ describe('retryRefusalMessage', () => {
   });
 
   test('every refusal says nothing was retried', () => {
-    for (const reason of ['not-dead-lettered', 'dead-letter-changed', 'workflow-finished', 'x']) {
+    for (const reason of ['not-dead-lettered', 'dead-letter-changed', 'workflow-finished']) {
       expect(retryRefusalMessage(conflict(reason))).toMatch(/nothing was retried/);
     }
   });
 
-  test('a task the server no longer holds, a lost scope, and any other fault each read differently', () => {
+  test('a task the server no longer holds and a lost scope are explicit refusals', () => {
     const notFound = new HttpClientError(404, 'gone', { faultCode: 'NotFound' });
     const forbidden = new HttpClientError(403, 'no', { faultCode: 'Forbidden' });
-    const broken = new HttpClientError(500, 'boom');
-    expect(retryRefusalMessage(notFound)).toMatch(/no longer holds/);
-    expect(retryRefusalMessage(forbidden)).toMatch(/system:admin/);
-    expect(retryRefusalMessage(broken)).toMatch(/boom/);
-    expect(retryRefusalMessage(new Error('x'))).toMatch(/nothing was retried/);
+    expect(retryRefusalMessage(notFound)).toMatch(/no longer holds.*nothing was retried/);
+    expect(retryRefusalMessage(forbidden)).toMatch(/system:admin.*nothing was retried/);
+  });
+
+  test('a failure that is not an explicit refusal says the outcome is unknown, never that nothing was retried', () => {
+    const failures = [
+      new HttpClientError(500, 'boom', { faultCode: 'EngineFailure' }),
+      new HttpClientError(500, 'boom'),
+      new HttpClientError(503, 'down', { faultCode: 'Unavailable' }),
+      new HttpClientError(504, 'slow', { faultCode: 'Timeout' }),
+      new HttpClientError(401, 'sign in', { faultCode: 'Unauthorized' }),
+      new HttpClientError(409, 'conflict', { faultCode: 'Conflict' }),
+      conflict('some-reason-this-client-does-not-know'),
+      new TypeError('fetch failed'),
+      new Error('x'),
+    ];
+    for (const failure of failures) {
+      const message = retryRefusalMessage(failure);
+      expect(message).toMatch(/outcome is unknown/);
+      expect(message).toMatch(/refreshed task ledger/);
+      expect(message).not.toMatch(/nothing was retried/);
+    }
   });
 });

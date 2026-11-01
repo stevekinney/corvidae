@@ -41,11 +41,18 @@
 
   interface TaskDeadLetterPanelProps {
     readonly task: TaskLedgerDetail;
+    /** Whether a retry of this task is in flight; Retry stays disabled until it settles. */
+    readonly retrying?: boolean;
     readonly onRetryDeadLetter: (target: DeadLetterTarget) => void;
     readonly onClearDeadLetter: (target: DeadLetterTarget) => void;
   }
 
-  let { task, onRetryDeadLetter, onClearDeadLetter }: TaskDeadLetterPanelProps = $props();
+  let {
+    task,
+    retrying = false,
+    onRetryDeadLetter,
+    onClearDeadLetter,
+  }: TaskDeadLetterPanelProps = $props();
 
   const client = getClient();
   const principalStore = getPrincipalStore();
@@ -106,6 +113,7 @@
             variant="secondary"
             size="sm"
             label="Retry this dead letter"
+            disabled={retrying}
             onclick={() => onRetryDeadLetter(target)}
           />
           <Button

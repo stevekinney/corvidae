@@ -324,6 +324,41 @@ describe('Workers route — retrying a dead letter from the queue', () => {
     expect(await findByText(/The workflow that owns that task has finished/)).not.toBeNull();
   });
 
+  test('while the retry is in flight Retry cannot be sent again, and it is available again once settled', async () => {
+    scripted = new ScriptedFetch();
+    routeQueueWithDeadLetter(scripted);
+    const gate = scripted.deferJsonRpcMethod('weft.tasks.deadletters.retry');
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByRole, getByRole } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+    await waitUntil(() => rpcParams(scripted!, 'weft.tasks.deadletters.retry').length === 1);
+
+    await waitUntil(() => getByRole('button', { name: 'Retry' }).hasAttribute('disabled'));
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    expect(rpcParams(scripted, 'weft.tasks.deadletters.retry')).toHaveLength(1);
+
+    gate.resolve(RETRIED);
+    await waitUntil(() => !getByRole('button', { name: 'Retry' }).hasAttribute('disabled'));
+  });
+
+  test('a retry whose answer never came says the outcome is unknown, not that nothing was retried, and reads the queue again', async () => {
+    scripted = new ScriptedFetch();
+    routeQueueWithDeadLetter(scripted);
+    scripted.routeJsonRpcMethodError('weft.tasks.deadletters.retry', 500, 'lost');
+    resetLocation('/health/workers?tab=queues&queue=payments');
+    const { findByRole, findByText, queryByText } = await renderWorkersRoute();
+    const diagnosticsReads = rpcParams(scripted, 'weft.tasks.diagnostics').length;
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await fireEvent.click(await findByRole('button', { name: 'Retry task' }));
+
+    expect(await findByText(/the outcome is unknown/)).not.toBeNull();
+    expect(queryByText(/nothing was retried/)).toBeNull();
+    await waitUntil(() => rpcParams(scripted!, 'weft.tasks.diagnostics').length > diagnosticsReads);
+  });
+
   test('Retry is disabled without system:admin and asks nothing', async () => {
     scripted = new ScriptedFetch();
     routeQueueWithDeadLetter(scripted);

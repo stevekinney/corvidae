@@ -214,6 +214,30 @@ describe('QueueDetailView — dead letter panel', () => {
     expect(retried).toEqual(['op_target']);
   });
 
+  test("while a retry of one task is in flight only that task's Retry is disabled", () => {
+    const { getAllByRole } = render(QueueDetailView, {
+      props: {
+        queue: queue(),
+        routingPolicy: 'least-loaded',
+        workersOnQueue: [],
+        deadLetteredItems: [
+          deadLetterItem({ operationId: 'op_a' }),
+          deadLetterItem({ operationId: 'op_b' }),
+        ],
+        adminGate: OPEN_GATE,
+        retryingOperationId: 'op_a',
+        onRetryDeadLetter: () => {
+          throw new Error('a retry in flight must not be sent twice');
+        },
+        onClearDeadLetter: () => {},
+      },
+    });
+
+    const [first, second] = getAllByRole('button', { name: 'Retry' });
+    expect(first?.hasAttribute('disabled')).toBe(true);
+    expect(second?.hasAttribute('disabled')).toBe(false);
+  });
+
   test('Retry and Clear are native buttons a keyboard reaches, in that order, after Inspect ledger', () => {
     const { getByRole } = render(QueueDetailView, {
       props: {

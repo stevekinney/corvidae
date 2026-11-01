@@ -33,6 +33,8 @@
     readonly deadLetteredItems: readonly TaskDiagnosticItem[];
     readonly diagnosticItems?: readonly TaskDiagnosticItem[];
     readonly adminGate: ScopeGate;
+    /** The task whose retry is in flight, if any; its Retry stays disabled until the retry settles. */
+    readonly retryingOperationId?: string | undefined;
     readonly onRetryDeadLetter: (operationId: string) => void;
     readonly onClearDeadLetter: (operationId: string) => void;
     readonly onInspectTask?: (operationId: string) => void;
@@ -45,6 +47,7 @@
     deadLetteredItems,
     diagnosticItems = deadLetteredItems,
     adminGate,
+    retryingOperationId = undefined,
     onRetryDeadLetter,
     onClearDeadLetter,
     onInspectTask = () => {},
@@ -142,6 +145,7 @@
                       variant="secondary"
                       size="sm"
                       label="Retry"
+                      disabled={item.operationId === retryingOperationId}
                       onclick={() => item.operationId && onRetryDeadLetter(item.operationId)}
                     />
                     <Button

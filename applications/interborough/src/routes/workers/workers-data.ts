@@ -361,9 +361,11 @@ export function clearDeadLetterMutation(
 export function invalidateDeadLetterQueries(
   queryClient: Pick<QueryClient, 'invalidateQueries'>,
   operationId: string,
-): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.deadLetter(operationId) });
-  void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(operationId) });
+): Promise<unknown> {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.tasks.deadLetter(operationId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(operationId) }),
+  ]);
 }
 
 export interface RetryDeadLetterVariables {
@@ -392,9 +394,14 @@ export function retryDeadLetterMutation(
         ...(attemptTokenDigest !== undefined ? { attemptTokenDigest } : {}),
       }),
     onError: (error: Error) => handlers.onRefused(error),
-    onSettled: (_result: unknown, _error: Error | null, variables: RetryDeadLetterVariables) => {
-      invalidateDeadLetterQueries(queryClient, variables.operationId);
+    // Returned, so the mutation stays pending until the task has been read again.
+    onSettled: async (
+      _result: unknown,
+      _error: Error | null,
+      variables: RetryDeadLetterVariables,
+    ) => {
       handlers.onSettled();
+      await invalidateDeadLetterQueries(queryClient, variables.operationId);
     },
   }));
 }

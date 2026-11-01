@@ -55,6 +55,7 @@ function renderPanel(
   task: TaskLedgerDetail = TASK,
   principalScopes: readonly AuthorizationScope[] = ['system:read', 'system:admin'],
   actions: {
+    readonly retrying?: boolean;
     readonly onRetryDeadLetter?: (target: DeadLetterTarget) => void;
     readonly onClearDeadLetter?: (target: DeadLetterTarget) => void;
   } = {},
@@ -66,6 +67,7 @@ function renderPanel(
       component: TaskDeadLetterPanel,
       componentProps: {
         task,
+        retrying: actions.retrying ?? false,
         onRetryDeadLetter: actions.onRetryDeadLetter ?? (() => {}),
         onClearDeadLetter: actions.onClearDeadLetter ?? (() => {}),
       },
@@ -149,6 +151,22 @@ describe('TaskDeadLetterPanel — Retry and Clear', () => {
     );
     expect(getByRole('button', { name: 'Clear this dead letter' }).hasAttribute('disabled')).toBe(
       true,
+    );
+  });
+
+  test('while a retry of this task is in flight Retry is disabled and cannot send a second one', async () => {
+    scripted = new ScriptedFetch();
+    const { getByRole } = renderPanel(TASK, ['system:read', 'system:admin'], {
+      retrying: true,
+      onRetryDeadLetter: () => {
+        throw new Error('a retry in flight must not be sent twice');
+      },
+    });
+    const retry = getByRole('button', { name: 'Retry this dead letter' });
+    expect(retry.hasAttribute('disabled')).toBe(true);
+    await fireEvent.click(retry);
+    expect(getByRole('button', { name: 'Clear this dead letter' }).hasAttribute('disabled')).toBe(
+      false,
     );
   });
 

@@ -82,6 +82,9 @@ export function sameDeadLetter(
 
 const NOTHING_RETRIED = 'nothing was retried';
 
+const UNKNOWN_OUTCOME =
+  'The retry may or may not have happened: the answer did not arrive, so the outcome is unknown. Check the refreshed task ledger before you retry again.';
+
 /** Why the server refused a retry, by the reason its Conflict named; each ends by saying nothing ran. */
 const CONFLICT_REASON_MESSAGE: Readonly<Record<string, string>> = {
   'not-dead-lettered': `That task is no longer a dead letter, so ${NOTHING_RETRIED}. Check how it is now.`,
@@ -90,24 +93,26 @@ const CONFLICT_REASON_MESSAGE: Readonly<Record<string, string>> = {
   'concurrent-change': `Someone changed that task at the same time, so ${NOTHING_RETRIED}. Check how it is now, then retry it again if you still mean to.`,
 };
 
-/** What to tell the person when a retry did not happen, in words that match why the server said so. */
+/**
+ * What the person is told when a retry did not end in an accepted answer. Only an explicit refusal
+ * (a Conflict with a reason the server names, NotFound, or Forbidden) says nothing was retried,
+ * because only then is it known. Anything else, such as a lost connection, a lost response or a
+ * server fault, may have happened on the server before the answer was lost, so the message says
+ * the outcome is unknown and sends the person to the refreshed ledger.
+ */
 export function retryRefusalMessage(error: unknown): string {
   const treatment = faultTreatment(error);
-  switch (treatment.kind) {
-    case 'conflict': {
-      const reason = error instanceof HttpClientError ? error.data?.['reason'] : undefined;
-      return (
-        (typeof reason === 'string' && Object.hasOwn(CONFLICT_REASON_MESSAGE, reason)
-          ? CONFLICT_REASON_MESSAGE[reason]
-          : undefined) ??
-        `The server refused the retry because the task changed, so ${NOTHING_RETRIED}. Check how it is now.`
-      );
+  if (treatment.kind === 'conflict') {
+    const reason = error instanceof HttpClientError ? error.data?.['reason'] : undefined;
+    if (typeof reason === 'string' && Object.hasOwn(CONFLICT_REASON_MESSAGE, reason)) {
+      return CONFLICT_REASON_MESSAGE[reason] ?? UNKNOWN_OUTCOME;
     }
-    case 'not-found':
-      return `The server no longer holds that dead letter, so ${NOTHING_RETRIED}. It may have been cleared.`;
-    case 'unauthorized':
-      return `Retrying a dead letter needs the system:admin scope, so ${NOTHING_RETRIED}.`;
-    default:
-      return `The retry failed (${treatment.message}), so ${NOTHING_RETRIED}.`;
   }
+  if (treatment.kind === 'not-found') {
+    return `The server no longer holds that dead letter, so ${NOTHING_RETRIED}. It may have been cleared.`;
+  }
+  if (treatment.kind === 'unauthorized' && treatment.mode === 'forbidden') {
+    return `Retrying a dead letter needs the system:admin scope, so ${NOTHING_RETRIED}.`;
+  }
+  return UNKNOWN_OUTCOME;
 }

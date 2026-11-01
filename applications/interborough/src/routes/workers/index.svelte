@@ -236,7 +236,7 @@
     invalidateWorkerSurfaceQueries(queryClient);
     if (selectedTaskId) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(selectedTaskId) });
-      invalidateDeadLetterQueries(queryClient, selectedTaskId);
+      void invalidateDeadLetterQueries(queryClient, selectedTaskId);
     }
   }
 
@@ -349,6 +349,12 @@
     }
     clearDeadLetterAction.mutate({ operationId: target.operationId });
   }
+
+  // The task a retry is in flight for: its Retry stays disabled until the retry, and the refetch it
+  // asks for, have settled, so a second click cannot send a second request.
+  const retryingOperationId = $derived(
+    retryDeadLetterAction.isPending ? retryDeadLetterAction.variables?.operationId : undefined,
+  );
 
   function openRetryDialog(source: DeadLetterSource, observed: DeadLetterTarget | null): void {
     retryRefusal = null;
@@ -524,6 +530,7 @@
               deadLetteredItems={deadLetteredOnSelectedQueue}
               diagnosticItems={diagnosticsOnSelectedQueue}
               {adminGate}
+              {retryingOperationId}
               onRetryDeadLetter={(operationId) =>
                 openRetryDialog(
                   'diagnostics',
@@ -589,6 +596,7 @@
             {#if taskDetailQuery.data.state === 'deadLettered'}
               <TaskDeadLetterPanel
                 task={taskDetailQuery.data}
+                retrying={retryingOperationId === taskDetailQuery.data.operationId}
                 onRetryDeadLetter={(target) => openRetryDialog('ledger', target)}
                 onClearDeadLetter={(target) => openClearDialog('ledger', target)}
               />
