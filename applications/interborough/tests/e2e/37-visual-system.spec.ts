@@ -204,7 +204,7 @@ test.describe('a chat', () => {
     await page.goto(`/chats/${threadId}`);
     await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
     // The tool calls open into their rows, the tallest the transcript gets.
-    await page.getByRole('button', { name: 'Show' }).click();
+    await page.getByRole('button', { name: 'Show tool calls' }).click();
     await expect(page.locator('[data-tool-call-row]').first()).toBeVisible();
 
     const timeline = page.locator('.chat-timeline');

@@ -2544,9 +2544,11 @@ export const CHAT_COPY = {
   approvalTitle: 'Needs your approval',
   /** The tool calls of a turn. */
   tools: {
-    show: 'Show',
-    hide: 'Hide',
-    details: 'Details',
+    /** The chevron on a folded group of calls, which opens its rows. */
+    show: 'Show tool calls',
+    hide: 'Hide tool calls',
+    /** The chevron on one call, which opens the arguments it was given and what it answered. */
+    detailsFor: (name: string): string => `Details for ${name}`,
     running: 'Running',
     waitingForApproval: 'Waiting for your approval',
     resultPrefix: 'Result:',

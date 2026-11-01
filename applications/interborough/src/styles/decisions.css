@@ -98,6 +98,13 @@
   font-size: var(--cinder-text-sm);
 }
 
+.ib-tools__fold-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ib-tool {
   display: flex;
   flex-direction: column;
