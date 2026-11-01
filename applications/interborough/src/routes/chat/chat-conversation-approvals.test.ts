@@ -175,11 +175,11 @@ describe('an approval in the chat', () => {
       expect(served.calls.filter((call) => call.method === 'bureau.reviews.resolve')).toEqual([]);
     });
 
-    test('says the grant was kept but the tool will ask again when it did not loosen it', async () => {
+    test('says the permission was saved but the agent will still ask when it did not loosen the tool', async () => {
       const { findByText } = await allowed([settled({ loosened: false })]);
 
       expect(await findByText(/Approved, but it will ask again/)).not.toBeNull();
-      expect(await findByText(/issue-refund always asks/)).not.toBeNull();
+      expect(await findByText(/still ask before using issue-refund again/)).not.toBeNull();
     });
 
     test('says the approval was not remembered when the Bureau did not store the grant', async () => {
