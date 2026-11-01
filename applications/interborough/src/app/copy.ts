@@ -2073,7 +2073,7 @@ export const CHAT_COPY = {
       'on-changes': 'Tools ask as each tool’s own setting says.',
       always: 'Every tool call asks first.',
       'allow-all':
-        'Skips the asks that Ask on changes would raise. A tool set to always ask still asks, a blocked tool is still refused, and a child agent keeps its own stricter mode.',
+        'Skips the asks that Ask on changes would raise. A tool set to always ask still asks, a tool that declares no setting of its own still asks, a blocked tool is still refused, and a child agent keeps its own stricter mode.',
       'read-only': 'Every tool that is not read-only is denied.',
     },
     /** When a change takes effect. A mode is read at each tool call; the model and effort at each step. */
@@ -2082,10 +2082,15 @@ export const CHAT_COPY = {
       toolCall: 'Applies from the run’s next tool call.',
       nextRun: 'Applies to the next run.',
     },
-    /** Said when an effort could not be changed. */
+    /** Why the controls are disabled for a chat this principal did not start. */
+    notYours: 'Only the person who started this chat can change its settings.',
+    /**
+     * Said when an effort could not be changed. An effort the catalog holds is accepted for any
+     * model, and the provider then clamps it or leaves it out for a model that lacks it.
+     */
     effortNotices: {
       staleRevision: 'This chat changed elsewhere. Showing its settings now.',
-      denied: 'This chat’s model does not take that effort.',
+      denied: 'This deployment’s model catalog does not hold that effort.',
       sessionTerminal: 'This chat has ended, so its effort cannot be changed.',
       unsupportedCapability: 'This agent cannot change its effort.',
       notChanged: 'The effort was not changed. The chat keeps its current effort.',

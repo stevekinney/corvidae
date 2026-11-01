@@ -36,6 +36,8 @@
     reload: () => Promise<boolean>;
     /** Whether another setting of the session is being changed. */
     locked: boolean;
+    /** Why this principal cannot change the chat's settings, when the page knows; it disables the select. */
+    unavailable?: string | undefined;
     /** Called as a change starts and as it ends. */
     onBusyChange: (busy: boolean) => void;
     /** Called when the Bureau took a change. */
@@ -54,6 +56,7 @@
     notices,
     reload,
     locked,
+    unavailable,
     onBusyChange,
     onApplied,
   }: SettingSelectProps = $props();
@@ -64,7 +67,8 @@
   let notice = $state<string | undefined>(undefined);
   const commands = createPendingCommandKey();
 
-  const shown = $derived(pending ?? current ?? '');
+  // Until the session is read there is nothing to select, which is no value, not an empty one.
+  const shown = $derived(pending ?? (current === undefined ? undefined : (current ?? '')));
   const shownOptions = $derived([
     ...(current === null && pending === undefined && unsetLabel !== undefined
       ? [{ value: '', label: unsetLabel, disabled: true }]
@@ -110,8 +114,9 @@
   {label}
   labelVisible={false}
   options={shownOptions}
-  value={shown}
+  {...shown === undefined ? {} : { value: shown }}
   onchange={(event) => void choose(event.currentTarget.value)}
-  disabled={busy || locked || revision === undefined}
+  disabled={busy || locked || unavailable !== undefined || revision === undefined}
+  title={unavailable}
   {...notice === undefined ? {} : { error: notice }}
 />

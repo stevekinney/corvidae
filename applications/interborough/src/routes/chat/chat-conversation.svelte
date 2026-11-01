@@ -65,6 +65,7 @@
   import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
+  import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import BranchOrigin from './branch-origin.svelte';
   import { branchPointIds } from './branch-points.ts';
@@ -239,14 +240,34 @@
   let steering = $state(false);
   // When the change the person made takes effect, which depends on whether a run is going.
   let appliesNote = $state<string | undefined>(undefined);
+  // A run is going while it streams, and also while it is parked on an approval or a question: it
+  // streams nothing then, but it resumes into the same run, which reads a mode at each tool call
+  // and the model and effort at each step. Only the Bureau's reading of the chat says it is parked
+  // (`activity`), and the page reads it again as the run stops streaming.
+  const runGoing = $derived(session.streaming || (context.data?.activity ?? 'idle') !== 'idle');
   $effect(() => {
     // A note about a run's next step is out of date once the run starts or ends.
-    void session.streaming;
+    void runGoing;
     untrack(() => (appliesNote = undefined));
   });
   function noted(setting: 'step' | 'toolCall'): void {
-    appliesNote = session.streaming ? SETTINGS.applies[setting] : SETTINGS.applies.nextRun;
+    appliesNote = runGoing ? SETTINGS.applies[setting] : SETTINGS.applies.nextRun;
   }
+
+  // Steering admits only the chat's own principal (`bureau.contexts.steer`). The page knows who that
+  // is only for the one local caller, whose subject is the owner of every chat it started; for any
+  // other credential the owner's form is the Bureau's to compare, so the controls stay and a refusal
+  // is shown when it comes.
+  const principals = hasPrincipalStore() ? getPrincipalStore() : undefined;
+  const cannotSteer = $derived.by(() => {
+    const principal = principals?.principal;
+    const owner = context.data?.owner;
+    if (principal === null || principal === undefined || owner === undefined) return undefined;
+    if (principal.unauthenticatedAccess === null || typeof principal.subject !== 'string') {
+      return undefined;
+    }
+    return owner !== null && owner !== principal.subject ? SETTINGS.notYours : undefined;
+  });
 
   function openAgent(event: MouseEvent, name: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
@@ -605,6 +626,7 @@
               revision={context.data?.configVersion}
               reload={reloadContext}
               locked={steering}
+              unavailable={cannotSteer}
               onBusyChange={(busy) => (steering = busy)}
               onApplied={() => noted('step')}
             />
@@ -626,6 +648,7 @@
               notices={SETTINGS.effortNotices}
               reload={reloadContext}
               locked={steering}
+              unavailable={cannotSteer}
               onBusyChange={(busy) => (steering = busy)}
               onApplied={() => noted('step')}
             />
@@ -646,6 +669,7 @@
               notices={SETTINGS.permissionNotices}
               reload={reloadContext}
               locked={steering}
+              unavailable={cannotSteer}
               onBusyChange={(busy) => (steering = busy)}
               onApplied={() => noted('toolCall')}
             />

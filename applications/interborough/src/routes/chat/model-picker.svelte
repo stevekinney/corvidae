@@ -36,6 +36,8 @@
     reload: () => Promise<boolean>;
     /** Whether another setting of the session is being changed, which takes no second change. */
     locked?: boolean;
+    /** Why this principal cannot change the chat's settings, when the page knows; it disables the picker. */
+    unavailable?: string | undefined;
     /** Called as a change starts and as it ends, so the other settings wait for the new revision. */
     onBusyChange?: (busy: boolean) => void;
     /** Called when the Bureau took a switch. */
@@ -49,6 +51,7 @@
     revision,
     reload,
     locked = false,
+    unavailable,
     onBusyChange,
     onApplied,
   }: ModelPickerProps = $props();
@@ -168,6 +171,11 @@
   {options}
   value={shown}
   onchange={(event) => void choose(event.currentTarget.value)}
-  disabled={busy || locked || revision === undefined || choices.length < 2}
+  disabled={busy ||
+    locked ||
+    unavailable !== undefined ||
+    revision === undefined ||
+    choices.length < 2}
+  title={unavailable}
   {...notice === undefined ? {} : { error: notice }}
 />

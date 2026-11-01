@@ -10,6 +10,7 @@ import { tick } from 'svelte';
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import { createQueryClient } from '../../lib/query.ts';
+import type { Principal } from '../../lib/scopes.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
@@ -89,12 +90,13 @@ function serve(answers: Answers = {}, running = false) {
   return served;
 }
 
-function mount() {
+function mount(principal?: Principal) {
   return render(QueryPage, {
     props: {
       page: ChatConversation,
       pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' },
       client: createQueryClient(),
+      ...(principal === undefined ? {} : { principal }),
     },
   } as never);
 }
@@ -304,6 +306,84 @@ describe('changing a setting from the composer', () => {
     await fireEvent.change(effort, { target: { value: 'high' } });
     await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.step));
     expect(note(container)).not.toContain(SETTINGS.applies.toolCall);
+  });
+
+  describe('a run parked on an approval or a question', () => {
+    // It streams nothing, but the Bureau's reading of the chat says it is waiting, and it resumes
+    // into the same run, which reads the mode at each tool call and the model and effort at each step.
+    const parked = () => ({
+      'bureau.contexts.get': () => ({ ...CONTEXT, configVersion: 1, activity: 'awaiting-input' }),
+      'bureau.contexts.steer': () => ({ outcome: 'accepted', command: {} }),
+    });
+
+    test('takes a mode from its next tool call', async () => {
+      serve(parked());
+      const { container } = mount();
+
+      await changePermission(container, 'allow-all');
+
+      await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.toolCall));
+      expect(note(container)).not.toContain(SETTINGS.applies.nextRun);
+    });
+
+    test('takes an effort from its next step', async () => {
+      serve(parked());
+      const { container } = mount();
+      await waitFor(() => expect(control(container, 'weft-chat-effort')?.disabled).toBe(false));
+      const effort = control(container, 'weft-chat-effort');
+      if (effort === null) throw new Error('The effort select did not render.');
+
+      await fireEvent.change(effort, { target: { value: 'high' } });
+
+      await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.step));
+      expect(note(container)).not.toContain(SETTINGS.applies.nextRun);
+    });
+
+    test('takes a model from its next step', async () => {
+      serve(parked());
+      const { container } = mount();
+      await waitFor(() => expect(control(container, 'weft-chat-model')?.options.length).toBe(2));
+      const model = control(container, 'weft-chat-model');
+      const haiku = [...(model?.options ?? [])].find((option) =>
+        option.value.endsWith('haiku-4-5'),
+      );
+      if (model === null || haiku === undefined)
+        throw new Error('The model picker did not render.');
+
+      await fireEvent.change(model, { target: { value: haiku.value } });
+
+      await waitFor(() => expect(note(container)).toContain(SETTINGS.applies.step));
+      expect(note(container)).not.toContain(SETTINGS.applies.nextRun);
+    });
+  });
+
+  describe('a chat another principal started', () => {
+    const local = {
+      scopes: [],
+      subject: 'anonymous:local',
+      unauthenticatedAccess: 'warn',
+    } as const;
+
+    test('holds the three controls, with the reason', async () => {
+      serve({
+        'bureau.contexts.get': () => ({ ...CONTEXT, owner: 'api-key:other', configVersion: 1 }),
+      });
+      const { container } = mount(local);
+      await waitFor(() => expect(control(container, 'weft-chat-model')?.options.length).toBe(2));
+
+      for (const id of ['weft-chat-model', 'weft-chat-effort', 'weft-chat-permission']) {
+        expect(control(container, id)?.disabled).toBe(true);
+        expect(control(container, id)?.title).toBe(SETTINGS.notYours);
+      }
+    });
+
+    test('leaves them to the person whose chat it is', async () => {
+      serve();
+      const { container } = mount(local);
+
+      await waitFor(() => expect(control(container, 'weft-chat-permission')?.disabled).toBe(false));
+      expect(control(container, 'weft-chat-permission')?.title).toBe('');
+    });
   });
 
   test('says nothing of when a change applies when the Bureau refused it', async () => {

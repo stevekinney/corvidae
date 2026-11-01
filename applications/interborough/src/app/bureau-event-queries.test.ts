@@ -83,7 +83,7 @@ describe('invalidateForBureauEvent', () => {
     },
   );
 
-  test.each(['session.created', 'session.saved', 'session.deleted'])(
+  test.each(['session.created', 'session.saved', 'session.deleted', 'steering.accepted'])(
     '%s asks for the chats, and nothing else',
     (kind) => {
       const queryClient = seeded();

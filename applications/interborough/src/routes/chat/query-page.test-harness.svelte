@@ -11,6 +11,7 @@
   import { provideBureauEventSource } from '../../app/live-polling.svelte.ts';
   import type { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
   import { createQueryClient } from '../../lib/query.ts';
+  import { providePrincipalStore, type Principal } from '../../lib/scopes.svelte.ts';
   import type { QueryClient } from '@tanstack/svelte-query';
 
   interface QueryPageProps {
@@ -20,12 +21,16 @@
     client?: QueryClient;
     /** The shell's Bureau event source, provided and applied to the cache as the shell does. */
     bureauEvents?: BureauEventSource;
+    /** The caller the page is shown to, for a page that reads who it is. */
+    principal?: Principal;
   }
 
-  let { page: Page, pageProps = {}, client, bureauEvents }: QueryPageProps = $props();
+  let { page: Page, pageProps = {}, client, bureauEvents, principal }: QueryPageProps = $props();
 
   const queryClient = untrack(() => client ?? createQueryClient());
   const events = untrack(() => bureauEvents);
+  const caller = untrack(() => principal);
+  if (caller !== undefined) providePrincipalStore().setPrincipal(caller);
   if (events !== undefined) provideBureauEventSource(events);
   $effect(() =>
     events === undefined ? undefined : subscribeBureauInvalidation(events, queryClient),
