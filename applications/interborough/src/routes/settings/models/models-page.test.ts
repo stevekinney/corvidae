@@ -384,7 +384,9 @@ describe('disconnecting a provider', () => {
     const named = await within(dialog).findByTestId('provider-disconnect-agents');
     expect(named.textContent).toContain('writer');
     expect(named.textContent).not.toContain('helper');
-    expect(named.textContent).toContain(MODELS_COPY.disconnectDialog.invalidHeading('Anthropic', 1));
+    expect(named.textContent).toContain(
+      MODELS_COPY.disconnectDialog.invalidHeading('Anthropic', 1),
+    );
     expect(writes()).toEqual([]);
 
     await fireEvent.click(confirm(dialog));
