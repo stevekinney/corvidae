@@ -25,6 +25,13 @@ import {
   type ScheduleTimerWork,
 } from './schedule-timer-occurrence.ts';
 import {
+  forgetRetainedTimer,
+  lateSinceOf,
+  reachedTooLate,
+  rememberRetainedTimer,
+  type TimerSighting,
+} from './schedule-timer-sightings.ts';
+import {
   pauseScheduleAfterTimerFailure,
   persistScheduleTimerState,
   ScheduleStatePersistenceError,
@@ -71,8 +78,9 @@ export async function handleScheduleTimer(
   entry: TimerEntry,
   callbacks: ScheduleCallbacks,
 ): Promise<TimerFiredOutcome> {
+  const sighting: TimerSighting = { at: undefined, late: false };
   let step = await runSerializedScheduleStateOperation(internals, entry.workflowId, () =>
-    beginScheduleTimer(internals, entry, callbacks),
+    beginScheduleTimer(internals, entry, callbacks, sighting),
   );
   while (step.kind === 'settle') {
     const pending = step;
@@ -86,7 +94,16 @@ export async function handleScheduleTimer(
       resumeScheduleTimer(internals, entry.workflowId, pending, callbacks),
     );
   }
-  return (await timerStillOwed(internals, entry)) ? 'retain' : undefined;
+  if (!(await timerStillOwed(internals, entry))) {
+    forgetRetainedTimer(internals, entry);
+    return undefined;
+  }
+  // A tick that was itself too late keeps the count where it was: the delivery that follows is
+  // late too, and a run is not made on time by standing aside.
+  if (sighting.at !== undefined && !sighting.late) {
+    rememberRetainedTimer(internals, entry, sighting.at, scheduleLateAfterMilliseconds(internals));
+  }
+  return 'retain';
 }
 
 /**
@@ -204,6 +221,7 @@ async function beginScheduleTimer(
   internals: EngineInternals,
   entry: TimerEntry,
   callbacks: ScheduleCallbacks,
+  sighting: TimerSighting,
 ): Promise<ScheduleTimerStep> {
   if (internals.deposed) return { kind: 'done' };
 
@@ -216,12 +234,11 @@ async function beginScheduleTimer(
   const progress: ScheduleTimerProgress = { state, stored: loaded };
   return guardScheduleTimerSection(internals, progress, async () => {
     const now = internals.options.getNow();
-    const planned = planScheduleTimerWork(
-      state,
-      entry,
-      now,
-      scheduleLateAfterMilliseconds(internals),
-    );
+    const lateAfter = scheduleLateAfterMilliseconds(internals);
+    const lateSince = lateSinceOf(internals, entry);
+    sighting.at = now;
+    sighting.late = reachedTooLate(state, lateSince, now, lateAfter);
+    const planned = planScheduleTimerWork(state, entry, now, lateAfter, lateSince);
     if (!planned) {
       return { kind: 'done' };
     }
@@ -360,7 +377,8 @@ function planScheduleTimerWork(
   state: ActiveScheduleTimerState,
   entry: TimerEntry,
   now: number,
-  lateGraceMilliseconds: number,
+  lateAfterMilliseconds: number,
+  lateSince: number,
 ): PlannedScheduleTimerWork | null {
   const { firedThrough, firstDueAt } = resumePointOfCatchUp(state);
   const dueTicks = collectDueScheduleTicks(
@@ -375,7 +393,7 @@ function planScheduleTimerWork(
       : { missed: [], occurrencesToProcess: [], anchor: firedThrough };
   }
 
-  if (!state.backfill && now - entry.fireAt > lateGraceMilliseconds) {
+  if (reachedTooLate(state, lateSince, now, lateAfterMilliseconds)) {
     const missedTicks = collectMissedScheduleTicks(state, state.nextFireAt, now);
     return {
       missed: [
