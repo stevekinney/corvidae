@@ -1,4 +1,5 @@
 import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import { LongPollWorker, type LongPollWorkerOptions } from './long-poll.ts';
@@ -58,6 +59,138 @@ function handleDefaultSessionLifecycleForTesting(request: Request, url: URL): Re
     return Response.json({ ok: true });
   }
   return undefined;
+}
+
+interface ScriptedSessionServerOptions {
+  /** Tasks handed out, in order, one per poll from the intended worker only. */
+  readonly tasks: readonly Record<string, unknown>[];
+  /** Whether the heartbeat for this body should be answered `cancelled: true`. */
+  readonly isCancelled: (heartbeat: { operationId: string; attemptToken: string }) => boolean;
+  /** Called with every result body the intended worker posts. */
+  readonly onResult: (result: any) => void;
+}
+
+interface ScriptedSessionServer {
+  readonly server: ReturnType<typeof Bun.serve>;
+  readonly serverUrl: string;
+  /** The `deploymentName` the intended worker must register under; any other registrant is refused. */
+  readonly deploymentName: string;
+  /** Requests refused because they came from a worker other than the intended one. */
+  readonly refusedRequests: string[];
+  /** Settles with the first refused request. */
+  readonly firstRefusal: Promise<string>;
+  /** Settles when a poll finds no task and parks, which is the point a spinning poll loop would reach again. */
+  readonly idlePollParked: Promise<void>;
+  /** The number of task polls the intended worker has made. */
+  readonly pollCount: () => number;
+  /**
+   * Settles `promise` unless a result with status `failed` arrives first, in which case it rejects
+   * with that result's error. A task executed by a worker that lacks the scenario's activity
+   * reports `Unknown activity: ...`, so a misrouted task fails the test with a clear message
+   * instead of leaving the awaited state unreachable.
+   */
+  readonly awaitOrFail: <T>(promise: Promise<T>) => Promise<T>;
+}
+
+/**
+ * A fake worker-session server that serves a fixed list of tasks to exactly one intended worker.
+ *
+ * Routing is deterministic rather than counted: the session id, session token and `deploymentName`
+ * are unique to the call, registration is refused for any other deployment name, and the task,
+ * heartbeat and result endpoints refuse a caller that does not hold the session credential. A
+ * `LongPollWorker` left polling by another test, which retries against a dead port every second
+ * and can land on this server when the kernel reuses the port, therefore can neither take a task
+ * nor post a result. An idle poll is parked until the client disconnects (a real long poll) rather
+ * than answered with an instant 204, which would make the worker's poll loop spin.
+ */
+function startScriptedSessionServerForTesting(
+  options: ScriptedSessionServerOptions,
+): ScriptedSessionServer {
+  const deploymentName = `scripted-${crypto.randomUUID()}`;
+  const sessionId = `session-${crypto.randomUUID()}`;
+  const sessionToken = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '');
+  const pendingTasks = [...options.tasks];
+  const refusedRequests: string[] = [];
+  const firstRefusal = createDeferred<string>();
+  const idlePollParked = createDeferred();
+  let pollCount = 0;
+  let rejectFailed: (error: Error) => void = () => {};
+  const failed = new Promise<never>((_resolve, reject) => {
+    rejectFailed = reject;
+  });
+  // Observed only by `awaitOrFail`; a failure nobody awaits must not surface as an unhandled rejection.
+  failed.catch(() => {});
+
+  const refuse = (request: Request, url: URL): Response => {
+    refusedRequests.push(`${request.method} ${url.pathname}`);
+    firstRefusal.resolve(`${request.method} ${url.pathname}`);
+    return new Response('refused: not the intended worker session', { status: 403 });
+  };
+
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url);
+
+      if (url.pathname === '/api/v1/worker-sessions' && request.method === 'POST') {
+        const registration = (await request.json()) as {
+          manifest?: { deployment?: { name?: string } };
+        };
+        if (registration.manifest?.deployment?.name !== deploymentName) return refuse(request, url);
+        return Response.json({ ok: true, sessionId, sessionToken });
+      }
+
+      const sessionPrefix = `/api/v1/worker-sessions/${sessionId}`;
+      if (url.pathname === sessionPrefix && request.method === 'DELETE') {
+        return Response.json({ ok: true });
+      }
+      if (
+        !url.pathname.startsWith(`${sessionPrefix}/`) ||
+        request.headers.get(WORKER_SESSION_CREDENTIAL_HEADER) !== sessionToken
+      ) {
+        return refuse(request, url);
+      }
+
+      if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+        pollCount += 1;
+        const nextTask = pendingTasks.shift();
+        if (nextTask !== undefined) return Response.json(nextTask);
+        await new Promise<void>((resolve) => {
+          idlePollParked.resolve();
+          if (request.signal.aborted) resolve();
+          request.signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return new Response(null, { status: 204 });
+      }
+
+      if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+        const body = (await request.json()) as { operationId: string; attemptToken: string };
+        return Response.json({ ok: true, cancelled: options.isCancelled(body) });
+      }
+
+      if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+        const body = (await request.json()) as { status?: string; error?: string };
+        options.onResult(body);
+        if (body.status === 'failed') {
+          rejectFailed(new Error(`The worker reported a failed result: ${String(body.error)}`));
+        }
+        return Response.json({ ok: true, disposition: 'applied' });
+      }
+
+      return new Response('not found', { status: 404 });
+    },
+  });
+
+  return {
+    server,
+    serverUrl: `http://localhost:${server.port}`,
+    deploymentName,
+    refusedRequests,
+    firstRefusal: firstRefusal.promise,
+    idlePollParked: idlePollParked.promise,
+    pollCount: () => pollCount,
+    awaitOrFail: (promise) => Promise.race([promise, failed]),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1523,68 +1656,51 @@ describe('LongPollWorker', () => {
     const bResultReceived = createDeferred();
     let aStarted = false;
     let bStarted = false;
+    let bothAreStarted = false;
     let bAbortObserved = false;
     const completedTasks: any[] = [];
-    let pollCount = 0;
 
     function checkBothStarted(): void {
-      if (aStarted && bStarted) bothStarted.resolve();
+      if (aStarted && bStarted) {
+        bothAreStarted = true;
+        bothStarted.resolve();
+      }
     }
 
-    server = Bun.serve({
-      port: 0,
-      async fetch(request) {
-        const url = new URL(request.url);
-        const sessionLifecycleResponse = handleDefaultSessionLifecycleForTesting(request, url);
-        if (sessionLifecycleResponse !== undefined) return sessionLifecycleResponse;
-
-        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
-          pollCount++;
-          if (pollCount === 1) {
-            return Response.json({
-              operationId: 'op-fenced-a',
-              workerId: 'longpoll-worker-fenced',
-              activityName: 'test.fencedActivity',
-              input: 'a',
-              attemptToken: 'attempt-token-a',
-              visibilityTimeout: 30_000,
-            });
-          }
-          if (pollCount === 2) {
-            return Response.json({
-              operationId: 'op-fenced-b',
-              workerId: 'longpoll-worker-fenced',
-              activityName: 'test.fencedActivity',
-              input: 'b',
-              attemptToken: 'attempt-token-b',
-              visibilityTimeout: 30_000,
-            });
-          }
-          return new Response(null, { status: 204 });
-        }
-
-        if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
-          const body = (await request.json()) as { operationId: string };
-          // Only op-fenced-a is cancelled — op-fenced-b's heartbeat must
-          // never be told to cancel, and fencing is by operationId +
-          // attemptToken on the CLIENT, so this alone proves the target;
-          // the client-side assertions below prove the fencing held.
-          return Response.json({ ok: true, cancelled: body.operationId === 'op-fenced-a' });
-        }
-
-        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
-          const body = await request.json();
-          completedTasks.push(body);
-          if (body.operationId === 'op-fenced-b') bResultReceived.resolve();
-          return Response.json({ ok: true, disposition: 'applied' });
-        }
-
-        return new Response('not found', { status: 404 });
+    const scripted = startScriptedSessionServerForTesting({
+      tasks: [
+        {
+          operationId: 'op-fenced-a',
+          workerId: 'longpoll-worker-fenced',
+          activityName: 'test.fencedActivity',
+          input: 'a',
+          attemptToken: 'attempt-token-a',
+          visibilityTimeout: 30_000,
+        },
+        {
+          operationId: 'op-fenced-b',
+          workerId: 'longpoll-worker-fenced',
+          activityName: 'test.fencedActivity',
+          input: 'b',
+          attemptToken: 'attempt-token-b',
+          visibilityTimeout: 30_000,
+        },
+      ],
+      // Only op-fenced-a is cancelled, and only once both operations are in flight, so the
+      // cancellation always lands while b is running. op-fenced-b's heartbeat must never be told
+      // to cancel; fencing is by operationId + attemptToken on the CLIENT, so this alone proves
+      // the target, and the client-side assertions below prove the fencing held.
+      isCancelled: (heartbeat) => heartbeat.operationId === 'op-fenced-a' && bothAreStarted,
+      onResult: (result) => {
+        completedTasks.push(result);
+        if (result.operationId === 'op-fenced-b') bResultReceived.resolve();
       },
     });
+    server = scripted.server;
 
     const worker = createLongPollWorkerForTesting({
-      serverUrl: `http://localhost:${server.port}`,
+      serverUrl: scripted.serverUrl,
+      deploymentName: scripted.deploymentName,
       concurrency: 2,
       heartbeatIntervalMs: 20,
       activities: {
@@ -1612,9 +1728,9 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await bothStarted.promise;
-    await aAborted.promise;
-    await bResultReceived.promise;
+    await scripted.awaitOrFail(bothStarted.promise);
+    await scripted.awaitOrFail(aAborted.promise);
+    await scripted.awaitOrFail(bResultReceived.promise);
     // Checked BEFORE `stop()`: shutdown deliberately aborts every controller
     // still tracked (including one whose activity already returned but
     // whose bookkeeping hasn't been cleaned up yet) — that is normal
@@ -1638,77 +1754,52 @@ describe('LongPollWorker', () => {
     let attempt2Started = false;
     let attempt1ResultPosted = false;
     const completedTasks: any[] = [];
-    let pollCount = 0;
 
     function checkBothStarted(): void {
       if (attempt1Started && attempt2Started) bothStarted.resolve();
     }
 
-    server = Bun.serve({
-      port: 0,
-      async fetch(request) {
-        const url = new URL(request.url);
-        const sessionLifecycleResponse = handleDefaultSessionLifecycleForTesting(request, url);
-        if (sessionLifecycleResponse !== undefined) return sessionLifecycleResponse;
-
-        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
-          pollCount++;
-          if (pollCount === 1) {
-            // Same operationId, DIFFERENT attemptTokens — simulates a
-            // same-worker redispatch that lands back on this exact worker
-            // instance while an earlier attempt of the same operation is
-            // still executing.
-            return Response.json({
-              operationId: 'op-overlap-lp',
-              workerId: 'longpoll-worker-overlap',
-              activityName: 'test.overlapActivity',
-              input: 'attempt-1',
-              attemptToken: 'attempt-1',
-              visibilityTimeout: 30_000,
-            });
-          }
-          if (pollCount === 2) {
-            return Response.json({
-              operationId: 'op-overlap-lp',
-              workerId: 'longpoll-worker-overlap',
-              activityName: 'test.overlapActivity',
-              input: 'attempt-2',
-              attemptToken: 'attempt-2',
-              visibilityTimeout: 30_000,
-            });
-          }
-          return new Response(null, { status: 204 });
+    const scripted = startScriptedSessionServerForTesting({
+      // Same operationId, DIFFERENT attemptTokens — simulates a same-worker redispatch that lands
+      // back on this exact worker instance while an earlier attempt of the same operation is
+      // still executing.
+      tasks: [
+        {
+          operationId: 'op-overlap-lp',
+          workerId: 'longpoll-worker-overlap',
+          activityName: 'test.overlapActivity',
+          input: 'attempt-1',
+          attemptToken: 'attempt-1',
+          visibilityTimeout: 30_000,
+        },
+        {
+          operationId: 'op-overlap-lp',
+          workerId: 'longpoll-worker-overlap',
+          activityName: 'test.overlapActivity',
+          input: 'attempt-2',
+          attemptToken: 'attempt-2',
+          visibilityTimeout: 30_000,
+        },
+      ],
+      // attempt-1 is never told to cancel. attempt-2 is only told to cancel AFTER attempt-1's
+      // result has actually landed — the exact moment attempt-1's `finally` cleanup runs. If that
+      // cleanup wrongly deleted attempt-2's live table entry (the pre-COR-223 bug), this worker's
+      // own `#sendHeartbeat` lookup for attempt-2 finds nothing and silently never aborts it, so
+      // `attempt2Aborted` never resolves and the test times out below instead of falsely passing.
+      isCancelled: (heartbeat) => heartbeat.attemptToken === 'attempt-2' && attempt1ResultPosted,
+      onResult: (result) => {
+        completedTasks.push(result);
+        if (result.attemptToken === 'attempt-1') {
+          attempt1ResultPosted = true;
+          attempt1ResultReceived.resolve();
         }
-
-        if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
-          const body = (await request.json()) as { attemptToken: string };
-          // attempt-1 is never told to cancel. attempt-2 is only told to
-          // cancel AFTER attempt-1's result has actually landed — the exact
-          // moment attempt-1's `finally` cleanup runs. If that cleanup wrongly
-          // deleted attempt-2's live table entry (the pre-COR-223 bug), this
-          // worker's own `#sendHeartbeat` lookup for attempt-2 finds nothing
-          // and silently never aborts it, so `attempt2Aborted` never resolves
-          // and the test times out below instead of falsely passing.
-          const cancelled = body.attemptToken === 'attempt-2' && attempt1ResultPosted;
-          return Response.json({ ok: true, cancelled });
-        }
-
-        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
-          const body = await request.json();
-          completedTasks.push(body);
-          if (body.attemptToken === 'attempt-1') {
-            attempt1ResultPosted = true;
-            attempt1ResultReceived.resolve();
-          }
-          return Response.json({ ok: true, disposition: 'applied' });
-        }
-
-        return new Response('not found', { status: 404 });
       },
     });
+    server = scripted.server;
 
     const worker = createLongPollWorkerForTesting({
-      serverUrl: `http://localhost:${server.port}`,
+      serverUrl: scripted.serverUrl,
+      deploymentName: scripted.deploymentName,
       concurrency: 2,
       heartbeatIntervalMs: 20,
       activities: {
@@ -1734,16 +1825,113 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await bothStarted.promise;
-    await attempt1ResultReceived.promise;
+    await scripted.awaitOrFail(bothStarted.promise);
+    await scripted.awaitOrFail(attempt1ResultReceived.promise);
     // Only now does the server start telling attempt-2's heartbeat to
     // cancel — proving attempt-2's controller survived attempt-1's cleanup.
-    await attempt2Aborted.promise;
+    await scripted.awaitOrFail(attempt2Aborted.promise);
     await worker.stop();
 
     const attempt2Result = completedTasks.find((t) => t.attemptToken === 'attempt-2');
     expect(attempt2Result).toBeDefined();
     expect(attempt2Result.status).toBe('cancelled');
     expect(attempt2Result.cancelled).toBe(true);
+  });
+
+  describe('the scripted session server fixture', () => {
+    it('serves its tasks only to the worker it was built for, even when another worker polls it first', async () => {
+      const resultReceived = createDeferred<{ operationId: string; status: string }>();
+      const scripted = startScriptedSessionServerForTesting({
+        tasks: [
+          {
+            operationId: 'op-routed',
+            workerId: 'longpoll-worker-routed',
+            activityName: 'test.routedActivity',
+            input: 'x',
+            attemptToken: 'attempt-routed',
+            visibilityTimeout: 30_000,
+          },
+        ],
+        isCancelled: () => false,
+        onResult: (result) => resultReceived.resolve(result),
+      });
+      server = scripted.server;
+
+      // Registers under the default deployment name, like a worker another test left running.
+      const stray = createLongPollWorkerForTesting({
+        serverUrl: scripted.serverUrl,
+        activities: {
+          routedActivity: async () => {
+            throw new Error('the stray worker must never be handed a task');
+          },
+        },
+      });
+      stray.start();
+      expect(await scripted.firstRefusal).toBe('POST /api/v1/worker-sessions');
+
+      const intended = createLongPollWorkerForTesting({
+        serverUrl: scripted.serverUrl,
+        deploymentName: scripted.deploymentName,
+        activities: { routedActivity: async () => 'routed' },
+      });
+      intended.start();
+      const result = await scripted.awaitOrFail(resultReceived.promise);
+      await intended.stop();
+      await stray.stop();
+
+      expect(result).toMatchObject({ operationId: 'op-routed', status: 'completed' });
+      expect(scripted.refusedRequests).toContain('POST /api/v1/worker-sessions');
+    });
+
+    it('fails the awaited state at once when a worker reports a failed result', async () => {
+      const never = createDeferred();
+      const scripted = startScriptedSessionServerForTesting({
+        tasks: [
+          {
+            operationId: 'op-missing-activity',
+            workerId: 'longpoll-worker-missing',
+            activityName: 'test.absentActivity',
+            input: 'x',
+            attemptToken: 'attempt-missing',
+            visibilityTimeout: 30_000,
+          },
+        ],
+        isCancelled: () => false,
+        onResult: () => {},
+      });
+      server = scripted.server;
+      const worker = createLongPollWorkerForTesting({
+        serverUrl: scripted.serverUrl,
+        deploymentName: scripted.deploymentName,
+        activities: { presentActivity: async () => 'present' },
+      });
+
+      worker.start();
+      const failure = await rejectionOf(scripted.awaitOrFail(never.promise));
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toContain('Unknown activity: test.absentActivity');
+      await worker.stop();
+    });
+
+    it('parks an idle poll instead of answering it at once, so the poll loop does not spin', async () => {
+      const scripted = startScriptedSessionServerForTesting({
+        tasks: [],
+        isCancelled: () => false,
+        onResult: () => {},
+      });
+      server = scripted.server;
+      const worker = createLongPollWorkerForTesting({
+        serverUrl: scripted.serverUrl,
+        deploymentName: scripted.deploymentName,
+        activities: { idleActivity: async () => 'idle' },
+      });
+
+      worker.start();
+      await scripted.idlePollParked;
+      await worker.stop();
+
+      // An instant 204 would have been answered, and polled again, many times over.
+      expect(scripted.pollCount()).toBe(1);
+    });
   });
 });
