@@ -516,3 +516,48 @@ describe('saved tool sources', () => {
     });
   });
 });
+
+describe('probing a tool source before it is saved (COR-1991)', () => {
+  test('lists what a source offers over the route, saves and stores nothing, and answers a failure without the token', async () => {
+    const path = await home();
+    const mcp = await track(startMcpServer(BEARER));
+    const host = await startAt(path);
+
+    const listed = await jsonOf(
+      send(host, 'POST', '/host/tool-sources/files/probe', {
+        source: mcpSource(`${mcp.origin}/`),
+        credentials: { token: BEARER },
+      }),
+    );
+    const refused = await jsonOf(
+      send(host, 'POST', '/host/tool-sources/files/probe', {
+        source: mcpSource(`${mcp.origin}/`),
+        credentials: { token: API_KEY },
+      }),
+    );
+
+    expect(listed.outcome).toBe('listed');
+    expect(listed.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      'files__lookup',
+      'files__wipe',
+    ]);
+    expect(refused.outcome).toBe('failed');
+    expect(JSON.stringify(refused)).not.toContain(API_KEY);
+    expect(JSON.stringify(refused)).not.toContain('127.0.0.1');
+    // Nothing was saved: the list is empty, no configuration names the source, and no file holds the token.
+    expect(await sourcesOf(host)).toEqual([]);
+    expect(await filesHolding(path, BEARER)).toEqual([]);
+    expect(await filesHolding(path, API_KEY)).toEqual([]);
+  });
+
+  test('is refused for a request that cannot be used, naming the field', async () => {
+    const host = await startAt(await home());
+
+    const response = await send(host, 'POST', '/host/tool-sources/files/probe', {
+      source: mcpSource('http://127.0.0.1:9/'),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'invalid', field: 'credentials.token' });
+  });
+});

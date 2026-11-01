@@ -7,6 +7,14 @@
  * - `PUT /host/tool-sources/<id>` with `{ "source": { … }, "credentials": { "<name>": "<value>" } }`
  *   connects a source, or replaces it. `source` is Armorer's description and its `id` must be `<id>`.
  *   A credential the description names and the host already holds may be left out.
+ * - `POST /host/tool-sources/<id>/probe` with the same body as the `PUT` contacts a source that is not
+ *   saved, with the credentials in the body and none from the host's vault, and answers 200 with
+ *   `{ "outcome": "listed", "tools": [{ "name", "tool", "tier" }], "skipped": […] }`, or
+ *   `{ "outcome": "needs-authorization" }` for an OAuth server that asks for a sign-in, or
+ *   `{ "outcome": "failed", "message": "…" }` for a source that did not answer as it should, in
+ *   words that hold no address, command or value. It saves nothing and keeps no connection. A
+ *   request that cannot be used answers as the `PUT` does, and a local command is spawned only for
+ *   the owner.
  * - `PUT /host/tool-sources/<id>/tools` with `{ "tools": { "<tool>": { "acceptsSecrets": true } } }`
  *   sets the host's own settings for the named tools of a configured source (COR-1932). `<tool>` is
  *   the tool's own name as the server lists it, not the `<id>__<tool>` name. Each named tool's
@@ -57,6 +65,9 @@ export const HOST_TOOL_SOURCE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id`;
 
 /** The route that lists the agent files a removal of the source it names would leave invalid. */
 export const HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/affected-agents`;
+
+/** The route that contacts a source before it is saved. */
+export const HOST_TOOL_SOURCE_PROBE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/probe`;
 
 /** The route that sets the host's per-tool settings of the source it names. */
 export const HOST_TOOL_SOURCE_TOOLS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/tools`;
@@ -203,6 +214,19 @@ export function toolSourceRoutes(
         respond(() =>
           manager.remove({ id: request.params.id, principal: options.principal(request) }),
         ),
+    },
+    [HOST_TOOL_SOURCE_PROBE_ROUTE]: {
+      POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_PROBE_ROUTE>) =>
+        refuse(request) ??
+        respond(async () => {
+          const body = await readObject(request);
+          return manager.probe({
+            id: request.params.id,
+            source: body['source'],
+            credentials: body['credentials'],
+            principal: options.principal(request),
+          });
+        }),
     },
     [HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE]: {
       GET: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE>) =>
