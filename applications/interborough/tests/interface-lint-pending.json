@@ -2,12 +2,6 @@
   "entries": [
     {
       "rule": "app-header-class",
-      "file": "src/routes/schedules/schedule-form-drawer.svelte",
-      "subject": ".weft-schedule-drawer__header",
-      "issue": "COR-1979"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/agents.css",
       "subject": ".ib-agents__header",
       "issue": "COR-1843"

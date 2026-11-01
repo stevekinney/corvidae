@@ -75,6 +75,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/runs': '/runs',
     '/runs/:run': `/runs/${run}`,
     '/schedules': '/schedules',
+    '/schedules/new': '/schedules/new',
     '/schedules/:schedule': `/schedules/${encodeURIComponent(seed.schedule)}`,
     '/schedules/:schedule/edit': `/schedules/${encodeURIComponent(seed.schedule)}/edit`,
     '/reviews': '/reviews',
@@ -129,6 +130,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // builder's Repeats, At and Time zone), and the picker that leads to it from Runs.
     '/workflows/:workflow/run (code, on a schedule)': `/workflows/${encodeURIComponent(seed.workflow)}/run`,
     '/runs (start picker)': '/runs?view=start',
+    // The page that makes a schedule with the built-in chat chosen (its agent, message and the chat to continue, whose title is the seeded 300-character word), and with a workflow chosen (its input, and the engine's options).
+    '/schedules/new (chat)': '/schedules/new',
+    '/schedules/new (workflow)': '/schedules/new',
     // The steps list with the long-named step beside the open step, which holds the 300-character
     // logged value, and the whole log under Details, opened.
     '/runs/:run (steps and logs)': `/runs/${encodeURIComponent(seed.stepsRun)}?step=${String(seed.stepsRunStep)}`,

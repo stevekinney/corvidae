@@ -1,6 +1,6 @@
 /**
  * An empty view offers a way to create its first item. The link only changes the query string, so
- * the frame must stop calling the view empty at that location, or the picker and the drawer never
+ * the frame must stop calling the view empty at that location, or the picker and the page never
  * mount and an empty install cannot make its first run or schedule.
  */
 import { HttpClient } from '@lostgradient/weft';
@@ -76,9 +76,9 @@ const FLOWS = [
   {
     view: 'schedules',
     path: '/schedules',
-    creating: '/schedules?create=1',
+    creating: '/schedules/new',
     label: 'Create a schedule',
-    heading: { role: 'dialog', name: 'Create schedule' },
+    heading: { role: 'heading', name: 'New schedule' },
   },
 ] as const;
 
@@ -133,7 +133,7 @@ describe('an empty view’s call to action', () => {
 
   test('is the empty state’s own link, from the copy', () => {
     expect(VIEW_COPY.runs.empty?.action).toEqual({ label: 'Start a chat', href: '/chats/new' });
-    expect(VIEW_COPY.schedules.empty?.action?.href).toBe('/schedules?create=1');
+    expect(VIEW_COPY.schedules.empty?.action?.href).toBe('/schedules/new');
   });
 
   test('of the empty runs view is a chat, which a caller without the engine’s scope can start', async () => {

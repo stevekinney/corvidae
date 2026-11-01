@@ -284,11 +284,20 @@ export function browserTimeZone(): string {
   }
 }
 
-/** Rehydrates a persisted schedule's cadence into a `ScheduleValue` for the edit drawer's `ScheduleBuilder`, in the zone the schedule is stored with. */
+/** Rehydrates a persisted schedule's cadence into a `ScheduleValue` for the edit page's `ScheduleBuilder`, in the zone the schedule is stored with. */
 export function cadenceToScheduleValue(cadence: ScheduleCadence): ScheduleValue {
   const timeZone = cadence.timeZone ?? 'UTC';
   if (cadence.cronExpression !== undefined) return { cron: cadence.cronExpression, timeZone };
   if (cadence.intervalMs !== undefined)
     return intervalMsToScheduleValue(cadence.intervalMs, timeZone);
   return { every: { unit: 'minutes', count: 15 }, timeZone };
+}
+
+/**
+ * Whether the cadence builder inside `region` shows a field that is out of range. The builder keeps
+ * the last cadence it emitted while a custom field is invalid, so the value a page holds is not the
+ * one on screen: every page that saves a cadence refuses until what is shown is valid.
+ */
+export function shownCadenceIsInvalid(region: ParentNode | undefined): boolean {
+  return region?.querySelector('[aria-invalid="true"]') != null;
 }

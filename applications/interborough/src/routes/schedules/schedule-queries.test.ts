@@ -15,7 +15,6 @@ import { installFetchImplementation } from '../../lib/live-source/fetch.test-sup
 import {
   cancelSchedule,
   createSchedule,
-  fetchRegisteredWorkflowTypes,
   fetchScheduleDetail,
   fetchScheduleList,
   fetchScheduleRunHistory,
@@ -117,29 +116,6 @@ describe('fetchScheduleDetail', () => {
   });
 });
 
-describe('fetchRegisteredWorkflowTypes', () => {
-  test('returns sorted workflow type names from the registry snapshot', async () => {
-    const client = {
-      operations: {
-        'weft.system.registry': async () => ({
-          registryVersion: 2 as const,
-          activeRevisions: {
-            'report-gen': 'report-gen-rev',
-            'cache-warm': 'cache-warm-rev',
-            'invoice-batch': 'invoice-batch-rev',
-          },
-        }),
-      },
-    };
-
-    expect(await fetchRegisteredWorkflowTypes(client)).toEqual([
-      'cache-warm',
-      'invoice-batch',
-      'report-gen',
-    ]);
-  });
-});
-
 describe('createSchedule', () => {
   test('passes workflowType/input/spec through and omits undefined optional fields', async () => {
     let received: readonly unknown[] = [];
@@ -176,7 +152,6 @@ describe('createSchedule', () => {
       workflowType: 'report-gen',
       input: null,
       spec: { cron: '0 9 * * *' },
-      id: 'custom-id',
       description: 'Nightly report',
       overlap: 'queue',
       backfill: true,
@@ -185,7 +160,6 @@ describe('createSchedule', () => {
     });
 
     expect(receivedOptions).toEqual({
-      id: 'custom-id',
       description: 'Nightly report',
       overlap: 'queue',
       backfill: true,

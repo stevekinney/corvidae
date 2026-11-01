@@ -10,6 +10,7 @@
  */
 import type { APIRequestContext } from '@playwright/test';
 
+import { SCHEDULE_COPY } from '../../src/app/copy.ts';
 import { expect, test } from './fixtures.ts';
 
 /**
@@ -152,4 +153,64 @@ test('the On switch turns the schedule off and on, and Run now still works while
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByTestId('schedule-next-fires').locator('li')).toHaveCount(5);
+});
+
+test('a schedule made on the new schedule page fires in the zone that was chosen', async ({
+  page,
+  request,
+  checkA11y,
+}) => {
+  await page.goto('/schedules/new');
+  await expect(
+    page.getByRole('heading', { level: 1, name: SCHEDULE_COPY.create.title }),
+  ).toBeVisible();
+
+  // Chosen by typing, from the searchable picker.
+  await page.getByRole('combobox', { name: /^Workflow/ }).fill('inventory');
+  await page.getByRole('option', { name: /Inventory Sync Sweep/ }).click();
+  await expect(page.getByTestId('new-schedule-workflow-description')).toBeVisible();
+
+  await page.getByLabel('Repeats', { exact: true }).selectOption('daily');
+  await page.getByLabel('At', { exact: true }).fill('09:00');
+  await page.getByRole('combobox', { name: 'Time zone' }).fill('Asia/Tokyo');
+  await page.getByRole('option', { name: 'Asia/Tokyo', exact: true }).click();
+  await page.getByLabel(SCHEDULE_COPY.create.descriptionLabel).fill('Made on the page');
+  await expect(page.getByTestId('new-schedule-summary')).toContainText('Asia/Tokyo');
+  await checkA11y('new schedule — a workflow and a zone chosen');
+  await page.getByRole('button', { name: SCHEDULE_COPY.create.submit }).click();
+
+  await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
+  const id = decodeURIComponent(new URL(page.url()).pathname.split('/').pop() ?? '');
+  try {
+    // Every next run is 09:00 on the Tokyo clock, whatever zone the browser is in.
+    const runs = page.getByTestId('schedule-next-fires').locator('time');
+    await expect(runs).toHaveCount(5);
+    for (const text of await runs.allTextContents()) expect(text).toMatch(/9:00\s?AM GMT\+9/);
+    await expect(page.getByTestId('schedule-rail-zone')).toHaveText('Asia/Tokyo');
+    await expect(page.getByTestId('schedule-status-line')).toContainText('in Asia/Tokyo');
+  } finally {
+    await request.delete(`/v1/schedules/${encodeURIComponent(id)}`);
+  }
+});
+
+test('an invalid custom cron field refuses the save, and nothing is made', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/schedules/new');
+  await page.getByRole('combobox', { name: /^Workflow/ }).fill('inventory');
+  await page.getByRole('option', { name: /Inventory Sync Sweep/ }).click();
+  await page.getByLabel('Repeats', { exact: true }).selectOption('cron');
+  // A field of the expression is typed raw, under its own "Advanced raw expression".
+  await page.getByLabel('Hour pattern').selectOption('advanced');
+  await page.getByLabel('Hour', { exact: true }).fill('99');
+  await page.getByLabel(SCHEDULE_COPY.create.descriptionLabel).fill('Refused for its cron');
+
+  await page.getByRole('button', { name: SCHEDULE_COPY.create.submit }).click();
+
+  await expect(page.getByText(SCHEDULE_COPY.create.invalidCadence)).toBeVisible();
+  await expect(page).toHaveURL(/\/schedules\/new$/);
+  const listed = await request.get('/v1/schedules');
+  const body = (await listed.json()) as { items: Array<{ description?: string }> };
+  expect(body.items.some((item) => item.description === 'Refused for its cron')).toBe(false);
 });

@@ -3,34 +3,20 @@
    * The body of the run setup page: the input, when the run happens, and the pinned footer that
    * holds the one-line summary, Cancel, and the primary action.
    *
-   * The input is a Cinder `SchemaForm` when the workflow declares an object schema with fields, and
-   * a JSON editor otherwise. The primary action is in the footer, outside the form, so the form's
-   * own submit button is not drawn, and a submit counts only when the footer asked for it: Enter in
-   * a field validates the input and shows its errors but never starts anything. The schema is read
-   * once when the form mounts, because the form starts over when its schema changes, and a
-   * background reload must not discard what was typed.
+   * The input is `workflow-input.svelte`'s: a Cinder `SchemaForm` or a JSON editor, started only
+   * when the footer asked for it, so Enter in a field never starts anything. The When block is the
+   * one the new schedule page shares (`schedule-when.svelte`).
    *
    * A start and a schedule create real work, so a second ask while one is in flight is dropped
    * before the first `await`. A refusal keeps the input where it was: the Bureau's or the engine's
    * field problems go on the fields they name, and any other failure is a banner.
    */
-  import {
-    Alert,
-    Button,
-    RadioGroup,
-    ScheduleBuilder,
-    SchemaForm,
-    Textarea,
-    validateSchemaFormValue,
-    type ScheduleValue,
-  } from '@lostgradient/cinder';
+  import { Alert, Button, RadioGroup, type ScheduleValue } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { getClient } from '../../lib/client.ts';
-  import { computeNextFires } from '../../lib/format/cron-preview.ts';
   import { isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleDetailPath, workflowRunPath } from '../../lib/router.svelte.ts';
@@ -43,14 +29,9 @@
     scheduleValueToWireSpec,
   } from '../schedules/cadence.ts';
   import { createSchedule } from '../schedules/schedule-queries.ts';
-  import {
-    declaredSchemaOf,
-    describeIssue,
-    formSchemaOf,
-    inputIssuesOf,
-    summaryOf,
-    type InputIssue,
-  } from './run-setup-model.ts';
+  import ScheduleWhen from '../schedules/schedule-when.svelte';
+  import { inputIssuesOf, summaryOf } from './run-setup-model.ts';
+  import WorkflowInput from './workflow-input.svelte';
 
   interface Props {
     /** The workflow's identifier. */
@@ -68,21 +49,10 @@
   const queryClient = useQueryClient();
   const principal = getPrincipalStore();
 
-  /** The schema as the form mounted with it. */
-  const formSchema = untrack(() => formSchemaOf(schema));
-  /** The schema the JSON editor's input is held to: Bureau and engine may not check it themselves. */
-  const jsonSchema = untrack(() =>
-    formSchema === undefined ? declaredSchemaOf(schema) : undefined,
-  );
-  const FORM_ID = 'run-setup-input';
-
   /** `RadioGroup` holds its choice as a plain string. */
   let whenChoice = $state('now');
   const when = $derived<'now' | 'schedule'>(whenChoice === 'schedule' ? 'schedule' : 'now');
   let cadence = $state<ScheduleValue>({ cron: '0 9 * * *', timeZone: browserTimeZone() });
-  let jsonText = $state('');
-  let jsonError = $state('');
-  let issues = $state<readonly InputIssue[]>([]);
   let failure = $state<{
     readonly title: string;
     readonly message: string;
@@ -90,23 +60,18 @@
     readonly check?: { readonly label: string; readonly path: string };
   } | null>(null);
 
-  let inputRegion: HTMLElement | undefined;
-  /** The footer asked for a submit and its event has not been seen yet. */
-  let asked = false;
-  /**
-   * The submit events the footer asked for, which are the only ones that may start anything. A
-   * second ask while the form is still validating the first is ignored by the form, which later
-   * answers with the first event, so every ask is kept; an ask the form never answers (the input
-   * was invalid) leaves an entry that no later event can match.
-   */
-  const requested = new WeakSet<Event>();
-  /** The schedule builder's region, where a field it shows as invalid is a cadence it did not emit. */
-  let scheduleRegion = $state<HTMLElement>();
+  /** The input, which the footer asks for and the Bureau's or the engine's refusal goes back to. */
+  let inputField = $state<ReturnType<typeof WorkflowInput<Choice>>>();
+  /** The When block, which says whether the cadence it shows is one it emitted. */
+  let whenBlock = $state<ReturnType<typeof ScheduleWhen>>();
   /**
    * Whether a start is in flight. It is set before the first `await`, because the mutation's own
    * `isPending` turns true a tick after `mutate`, and two asks can arrive in that tick.
    */
   let sending = false;
+
+  /** The choices the footer's ask was made with, which the start sends whatever changes while the input is checked. */
+  type Choice = { readonly when: 'now' | 'schedule'; readonly cadence: ScheduleValue };
 
   type Outcome =
     | { readonly kind: 'run'; readonly runId: string }
@@ -140,8 +105,7 @@
     },
     onMutate: () => {
       failure = null;
-      issues = [];
-      jsonError = '';
+      inputField?.clear();
     },
     onSuccess: (outcome) => {
       void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
@@ -156,8 +120,7 @@
     onError: (error, variables) => {
       const refused = inputIssuesOf(error);
       if (refused !== null) {
-        if (formSchema !== undefined) issues = refused;
-        else jsonError = refused.map((issue) => issue.message).join(' ');
+        inputField?.refuse(refused);
         return;
       }
       if (isNetworkFailure(error)) {
@@ -207,73 +170,21 @@
   const summary = $derived(summaryOf(type, when, cadence));
   const action = $derived(when === 'schedule' ? copy.scheduleAction : copy.startAction);
 
-  function begin(input: unknown): void {
+  function begin(input: unknown, choice: Choice): void {
     if (sending) return;
     sending = true;
-    // The mutation reads the schedule after its first `await`, so it gets a copy the builder cannot change.
-    run.mutate({ input, when, cadence: $state.snapshot(cadence) });
-  }
-
-  /**
-   * Reads the JSON the editor holds: empty is no input, and anything else must parse. A declared
-   * schema that the form cannot draw still holds the input, because the engine does not check it
-   * unless the workflow asks it to.
-   */
-  async function beginFromJson(): Promise<void> {
-    if (sending) return;
-    sending = true;
-    const choice = { when, cadence: $state.snapshot(cadence) };
-    const text = jsonText.trim();
-    let input: unknown;
-    if (text !== '') {
-      try {
-        input = JSON.parse(text);
-      } catch {
-        sending = false;
-        jsonError = copy.invalidJson;
-        return;
-      }
-    }
-    if (jsonSchema !== undefined) {
-      const result = await validateSchemaFormValue(jsonSchema, input);
-      if (!result.valid) {
-        sending = false;
-        jsonError = result.issues.map(describeIssue).join(' ');
-        return;
-      }
-    }
     run.mutate({ input, ...choice });
   }
 
-  /** The footer's ask. The form validates, and starts only what this ask submitted. */
+  /** The footer's ask. The input checks itself, and starts only what this ask submitted. */
   function request(): void {
     if (sending || gate.disabled) return;
-    // The builder keeps the last cadence it emitted while a custom field is out of range, so the
-    // value held here is not the one on screen: refuse until what is shown is valid.
-    if (when === 'schedule' && scheduleRegion?.querySelector('[aria-invalid="true"]') != null) {
+    if (when === 'schedule' && whenBlock?.isInvalid() === true) {
       failure = { title: copy.scheduleFailed, message: copy.scheduleInvalid };
       return;
     }
-    if (formSchema === undefined) {
-      void beginFromJson();
-      return;
-    }
-    const form = inputRegion?.querySelector('form');
-    if (form === null || form === undefined) return;
-    asked = true;
-    form.requestSubmit();
-  }
-
-  /** Marks the submit the footer asked for, before the form handles it. */
-  function noteSubmit(event: Event): void {
-    // A submit that was not asked for leaves a pending ask alone: it only ever fails to match.
-    if (asked) requested.add(event);
-    asked = false;
-  }
-
-  function onSubmit(value: unknown, event: Event): void {
-    if (!requested.has(event)) return;
-    begin(value);
+    // The mutation reads the schedule after its first `await`, so it gets a copy the builder cannot change.
+    inputField?.request({ when, cadence: $state.snapshot(cadence) });
   }
 
   function openCheck(event: MouseEvent, path: string): void {
@@ -310,34 +221,7 @@
   <section class="ib-run-setup__section">
     <h2 class="ib-run-setup__heading">{copy.inputHeading}</h2>
     <p class="ib-run-setup__lead">{copy.inputDescription}</p>
-    <div
-      class="ib-run-setup__input"
-      bind:this={inputRegion}
-      onsubmitcapture={noteSubmit}
-      data-testid="run-setup-input"
-    >
-      {#if formSchema !== undefined}
-        <SchemaForm
-          data-changes
-          id={FORM_ID}
-          schema={formSchema}
-          name="run-setup-input"
-          {issues}
-          {onSubmit}
-        />
-      {:else}
-        <Textarea
-          id="run-setup-json"
-          label={copy.jsonLabel}
-          description={copy.jsonDescription}
-          variant="code"
-          rows={8}
-          bind:value={jsonText}
-          error={jsonError}
-          oninput={() => (jsonError = '')}
-        />
-      {/if}
-    </div>
+    <WorkflowInput bind:this={inputField} {schema} onInput={begin} />
   </section>
 
   <section class="ib-run-setup__section">
@@ -365,14 +249,12 @@
       {/if}
     </RadioGroup>
     {#if when === 'schedule'}
-      <div bind:this={scheduleRegion}>
-        <ScheduleBuilder
-          value={cadence}
-          onValueChange={(next) => (cadence = next)}
-          {computeNextFires}
-          label={copy.scheduleLabel}
-        />
-      </div>
+      <ScheduleWhen
+        bind:this={whenBlock}
+        value={cadence}
+        onValueChange={(next) => (cadence = next)}
+        label={copy.scheduleLabel}
+      />
     {/if}
   </section>
 
@@ -416,25 +298,6 @@
   .ib-run-setup__lead {
     margin: 0;
     color: var(--cinder-text-muted);
-  }
-
-  .ib-run-setup__input {
-    min-width: 0;
-  }
-
-  /*
-   * A field name or description with a word no line can break at wraps instead of widening the
-   * page. Cinder gives a field's description break-word, which unlike anywhere does not shrink the
-   * field's minimum width, so every element under the form is given anywhere.
-   */
-  .ib-run-setup__input,
-  .ib-run-setup__input :global(*) {
-    overflow-wrap: anywhere;
-  }
-
-  /* The footer holds the primary action, so the form's own submit button is not drawn. */
-  .ib-run-setup__input :global(button[type='submit']) {
-    display: none;
   }
 
   .ib-run-setup__alert-title {

@@ -109,9 +109,9 @@ export function scheduleEditPath(scheduleId: string): string {
   return `${path}/edit${query === undefined ? '' : `?${query}`}`;
 }
 
-/** The schedules list with the create drawer open. */
+/** The page that makes a schedule. */
 export function scheduleCreatePath(): string {
-  return '/schedules?create=1';
+  return '/schedules/new';
 }
 
 interface RouteDefinitionMatch {

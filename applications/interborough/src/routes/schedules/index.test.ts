@@ -1,9 +1,8 @@
 /**
  * Component tests for the Schedules domain router (`index.svelte`): the address says whether the
- * list, one schedule, or its edit page is shown, and the create drawer is query state over the
- * list.
+ * list, the page that makes a schedule, one schedule, or its edit page is shown.
  */
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
@@ -60,15 +59,18 @@ describe('Schedules index router', () => {
     }
   });
 
-  test('/schedules?create=1 renders the list with the create drawer open', async () => {
-    resetLocation('/schedules?create=1');
+  test('/schedules/new renders the page that makes a schedule, not the list or a schedule named new', async () => {
+    resetLocation('/schedules/new');
     const server = await startLiveSourceTestServer();
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole } = render(IndexHarness, { props: { client } });
-      await waitFor(() => expect(getByRole('heading', { name: 'Schedules' })).not.toBeNull());
-      expect(getByRole('dialog')).not.toBeNull();
+      const { getByRole, queryByRole } = render(IndexHarness, { props: { client } });
+      await waitFor(() =>
+        expect(getByRole('heading', { level: 1, name: 'New schedule' })).not.toBeNull(),
+      );
+      expect(queryByRole('heading', { name: 'Schedules' })).toBeNull();
+      expect(queryByRole('dialog')).toBeNull();
     } finally {
       await server.stop();
     }
@@ -93,23 +95,6 @@ describe('Schedules index router', () => {
       );
       expect(queryByRole('dialog')).toBeNull();
       expect(queryByRole('heading', { level: 1, name: 'Nightly rollup' })).toBeNull();
-    } finally {
-      await server.stop();
-    }
-  });
-
-  test('closing the create drawer navigates back to the plain list URL', async () => {
-    resetLocation('/schedules?create=1');
-    const server = await startLiveSourceTestServer();
-    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
-
-    try {
-      const { getByRole } = render(IndexHarness, { props: { client } });
-      await waitFor(() => expect(getByRole('dialog')).not.toBeNull());
-
-      await fireEvent.click(getByRole('button', { name: 'Cancel' }));
-
-      await waitFor(() => expect(window.location.search).toBe(''));
     } finally {
       await server.stop();
     }

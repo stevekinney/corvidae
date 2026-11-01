@@ -14,6 +14,11 @@ function isDotOnly(id: string): boolean {
   return id === '.' || id === '..';
 }
 
+/** A static `new` route shares the path of an identifier named `new`, so that identifier is carried in the query too. */
+function isDotOnlyOrNew(id: string): boolean {
+  return isDotOnly(id) || id === 'new';
+}
+
 /**
  * The identifiers a route's path cannot carry, by route pattern: the path parameter that holds the
  * placeholder, the query key that holds the identifier, and which identifiers are escaped.
@@ -34,32 +39,33 @@ const ESCAPED_IDENTIFIERS: Readonly<
     queryKey: '__weft_workflow_id',
     escapes: isDotOnly,
   },
+  // A schedule named `new` would be the new schedule page's.
   '/schedules/:schedule': {
     parameter: 'schedule',
     queryKey: '__weft_schedule_id',
-    escapes: isDotOnly,
+    escapes: isDotOnlyOrNew,
   },
   '/schedules/:schedule/edit': {
     parameter: 'schedule',
     queryKey: '__weft_schedule_id',
-    escapes: isDotOnly,
+    escapes: isDotOnlyOrNew,
   },
   // A goal named `new` would be the new goal page's.
   '/goals/:goal': {
     parameter: 'goal',
     queryKey: '__weft_goal_id',
-    escapes: (id) => isDotOnly(id) || id === 'new',
+    escapes: isDotOnlyOrNew,
   },
   // A hook named `new` would be the new hook page's.
   '/hooks/:hook': {
     parameter: 'hook',
     queryKey: '__weft_hook_id',
-    escapes: (id) => isDotOnly(id) || id === 'new',
+    escapes: isDotOnlyOrNew,
   },
   '/chats/:chat': {
     parameter: 'chat',
     queryKey: '__weft_session_id',
-    escapes: (id) => isDotOnly(id) || id === 'new',
+    escapes: isDotOnlyOrNew,
   },
 };
 

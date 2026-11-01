@@ -189,12 +189,20 @@ export const routes: readonly RouteDefinition[] = [
     view: 'runs',
     load: runArea,
   },
-  // The list, one schedule's page, and the page that edits its cadence: one component dispatches on
-  // what the path names. The page that makes one is still the drawer over the list.
+  // The list, the page that makes a schedule, one schedule's page, and the page that edits its
+  // cadence: one component dispatches on what the path names. `new` is a path segment, not a
+  // schedule: its route comes before `/schedules/:schedule`.
   {
     pattern: '/schedules',
     kind: 'reading',
     crumb: VIEW_COPY.schedules.label,
+    view: 'schedules',
+    load: schedulesArea,
+  },
+  {
+    pattern: '/schedules/new',
+    kind: 'form',
+    crumb: 'New',
     view: 'schedules',
     load: schedulesArea,
   },

@@ -300,6 +300,8 @@ export function probeFor(
       if (parameters['run'] !== undefined) return undefined;
       return probeRuns;
     case 'schedules':
+      // The page that makes a schedule asks for nothing: it is where the first one is made.
+      if (pattern === '/schedules/new') return undefined;
       // One schedule's page asks for that schedule, and says in its own words when it is not there.
       if (parameters['schedule'] !== undefined) return undefined;
       return async (client) => {

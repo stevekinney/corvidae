@@ -26,6 +26,7 @@
  * refuses, so no new workflow or catalog mutation survives it) and one new
  * schedule — safe anywhere in the run order relative to the other flows.
  */
+import { SCHEDULE_COPY } from '../../src/app/copy.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 test('operator inspects revision bindings, attempts a rejected explicit-revision fork, and pins a schedule', async ({
@@ -93,23 +94,16 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
 
   // Second half: a pinned schedule shows "Pinned (rev X)" on its own detail
   // page (WFT-117's schedule create/edit surface).
-  await page.goto('/schedules');
-  await page.getByRole('button', { name: 'New schedule' }).click();
-  const drawer = page.getByRole('dialog', { name: 'Create schedule' });
-  await expect(drawer).toBeVisible();
-  await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
+  await page.goto('/schedules/new');
+  await page.getByRole('combobox', { name: /^Workflow/ }).fill('order');
+  await page.getByRole('option', { name: /Order Processing/ }).click();
 
-  const workflowTypeField = drawer.getByRole('combobox', { name: 'Workflow type' });
-  await expect(workflowTypeField).toBeVisible();
-  await workflowTypeField.selectOption('order-processing');
-
-  await drawer
-    .getByRole('group', { name: 'Which revision future occurrences resolve against' })
+  await page
+    .getByRole('group', { name: SCHEDULE_COPY.create.revisionLabel })
     .getByRole('radio', { name: 'Pinned' })
     .click();
 
-  await drawer.getByRole('button', { name: 'Create schedule' }).click();
-  await expect(drawer).not.toBeVisible();
+  await page.getByRole('button', { name: 'Create schedule' }).click();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
   // The detail rail shows the revision policy the schedule was created with.

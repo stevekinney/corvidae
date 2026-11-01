@@ -1,13 +1,14 @@
 /**
  * Persona flow (d): create-and-backfill-schedule (plan §11.4).
  *
- * schedules → create slide-over → "Advanced: start a code-defined workflow" → ScheduleBuilder
- * every day at 03:00 UTC → overlap policy → backfill warning → save → detail shows next fires,
- * and keeps the engine's fields behind its Advanced disclosure.
+ * schedules → New schedule → pick a workflow from the searchable picker → When: every day at 03:00
+ * UTC → overlap policy → catch up → save → detail shows next fires and the engine's fields in its
+ * details.
  *
- * Purely additive (creates one new schedule); safe anywhere in the run
- * order relative to the other flows.
+ * Purely additive (creates one new schedule); safe anywhere in the run order relative to the other
+ * flows.
  */
+import { SCHEDULE_COPY } from '../../src/app/copy.ts';
 import { expect, test } from './fixtures.ts';
 
 test('operator creates a cron schedule with backfill and lands on its detail', async ({
@@ -22,50 +23,38 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await checkA11y('schedules list');
 
   await page.getByRole('button', { name: 'New schedule' }).click();
-  const drawer = page.getByRole('dialog', { name: 'Create schedule' });
-  await expect(drawer).toBeVisible();
-  // A new schedule runs an agent, so a code-defined workflow is under "Advanced".
-  await expect(drawer.getByRole('combobox', { name: 'Workflow type' })).toHaveCount(0);
-  await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
+  await expect(page).toHaveURL(/\/schedules\/new$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'New schedule' })).toBeVisible();
 
-  // The "Workflow type" field starts as a free-text `Input` and swaps to a
-  // registry-backed `Select` once `weft.system.registry` resolves
-  // (`schedule-form-fields.svelte`'s `workflowTypeOptions !== undefined`
-  // branch) — wait for the real combobox rather than racing that swap.
-  const workflowTypeField = drawer.getByRole('combobox', { name: 'Workflow type' });
-  await expect(workflowTypeField).toBeVisible();
-  await workflowTypeField.selectOption('order-processing');
+  // The picker lists the built-in chat first and the workflows code defines under All workflows;
+  // a search narrows it, and the workflow chosen is named in words with its description.
+  await page.getByRole('combobox', { name: /^Workflow/ }).fill('order');
+  await page.getByRole('option', { name: /Order Processing/ }).click();
+  await expect(page.getByTestId('new-schedule-workflow-description')).toBeVisible();
 
   // ScheduleBuilder reads a schedule as Repeats, At and Time zone. "Every day" at 03:00
   // lowers to `0 3 * * *`; the zone is set explicitly so the cron the detail page shows
   // does not depend on the browser's zone.
-  await drawer.getByLabel('Repeats', { exact: true }).selectOption('daily');
-  await drawer.getByLabel('At', { exact: true }).fill('03:00');
-  const timeZoneField = drawer.getByRole('combobox', { name: 'Time zone' });
+  await page.getByLabel('Repeats', { exact: true }).selectOption('daily');
+  await page.getByLabel('At', { exact: true }).fill('03:00');
+  const timeZoneField = page.getByRole('combobox', { name: 'Time zone' });
   await timeZoneField.fill('UTC');
   await page.getByRole('option', { name: 'UTC', exact: true }).click();
-  await expect(drawer.getByText('Every day at 3:00 AM UTC')).toBeVisible();
+  await expect(page.getByText('Every day at 3:00 AM UTC').first()).toBeVisible();
 
   // `RadioGroup` renders a native `<fieldset>` (implicit `role="group"`,
   // legend as the accessible name) — distinct from `SegmentedControl`'s
   // `role="radiogroup"` used for the overall/section review decisions in
   // `02-approve-review-partial.spec.ts`.
-  await drawer
-    .getByRole('group', { name: 'If a run is still going when the next fire is due' })
+  await page
+    .getByRole('group', { name: 'If a run is still going when the next one is due' })
     .getByRole('radio', { name: /Skip/i })
     .click();
 
-  const backfillToggle = drawer.getByRole('switch', { name: 'Backfill missed occurrences' });
-  await backfillToggle.click();
-  await expect(
-    drawer.getByText(
-      'If the schedule falls behind (for example, the server was down), missed occurrences fire immediately in a bounded catch-up window instead of being skipped.',
-    ),
-  ).toBeVisible();
-  await checkA11y('schedules — create slide-over (backfill warning shown)');
+  await page.getByRole('switch', { name: SCHEDULE_COPY.create.catchUpLabel }).click();
+  await checkA11y('schedules — new schedule page (workflow chosen)');
 
-  await drawer.getByRole('button', { name: 'Create schedule' }).click();
-  await expect(drawer).not.toBeVisible();
+  await page.getByRole('button', { name: 'Create schedule' }).click();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
   // The page is named by what it starts, not by the identifier the engine made.

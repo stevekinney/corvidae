@@ -10,6 +10,7 @@ import {
   intervalMsToScheduleValue,
   scheduleValueTimeZone,
   scheduleValueToWireSpec,
+  shownCadenceIsInvalid,
 } from './cadence.ts';
 
 describe('describeCronExpression', () => {
@@ -191,5 +192,22 @@ describe('cadenceOf', () => {
       cronExpression: '0 9 * * *',
       timeZone: 'Europe/Paris',
     });
+  });
+});
+
+describe('shownCadenceIsInvalid', () => {
+  function region(markup: string): HTMLElement {
+    const element = document.createElement('div');
+    element.innerHTML = markup;
+    return element;
+  }
+
+  test('is true while a field the builder shows is out of range', () => {
+    expect(shownCadenceIsInvalid(region('<input aria-invalid="true" />'))).toBe(true);
+  });
+
+  test('is false when every field is valid, and when there is no region yet', () => {
+    expect(shownCadenceIsInvalid(region('<input aria-invalid="false" /><input />'))).toBe(false);
+    expect(shownCadenceIsInvalid(undefined)).toBe(false);
   });
 });
