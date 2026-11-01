@@ -15,9 +15,10 @@
  *
  * Redaction (COR-1988): a line's attributes are redacted before they are measured and stored, with
  * the redactor the timeline summaries use (`sanitizeDebugValueForDisplay`): a value under a
- * sensitive-looking key (`apiKey`, `token`, `password`, ...) is replaced when it is a string, an
- * object or an array (a number or a boolean passes), and a bearer token, JSON Web Token or card
- * number is replaced wherever it appears. A secret is therefore never persisted. The message is
+ * key that names a secret outright (`card`, `cvv`, `ssn`, `pin`, `password`, `secret`, `apiKey`,
+ * ...) is replaced whatever its type, a string, object or array under a looser key (`token`,
+ * `session`, `auth`) is replaced (a number or a boolean there passes, so `inputTokens: 12` stays
+ * readable), and a bearer token, JSON Web Token or card number is replaced wherever it appears. A secret is therefore never persisted. The message is
  * not redacted, and the host's own `onLog` sinks that wrap this one still see the original record.
  * Attributes the redactor cannot turn into a record are dropped and the line is marked
  * `truncated`.

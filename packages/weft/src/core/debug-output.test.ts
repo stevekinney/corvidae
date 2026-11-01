@@ -143,45 +143,135 @@ describe('debug output sanitization', () => {
     }
   });
 
-  it('redacts a sensitive key only when its value could carry a secret', () => {
+  it('redacts a loose sensitive key only when its value could carry a secret', () => {
     expect(
       sanitizeDebugValueForDisplay({
         inputTokens: 12,
+        outputTokens: 3,
         passed: true,
-        apiKey: 'x',
+        cardinality: 3,
         sessionId: 's',
-        token: null,
+        token: 'x',
+        authCount: 2,
+        refreshToken: null,
         authorization: undefined,
-        cardNumber: 4111111111111111,
-        secretFlag: false,
       }),
     ).toEqual({
       inputTokens: 12,
+      outputTokens: 3,
       passed: true,
-      apiKey: '[REDACTED]',
+      cardinality: 3,
       sessionId: '[REDACTED]',
-      token: null,
+      token: '[REDACTED]',
+      authCount: 2,
+      refreshToken: null,
       authorization: undefined,
-      cardNumber: 4111111111111111,
-      secretFlag: false,
     });
   });
 
-  it('redacts an object, array, bigint, symbol, or function under a sensitive key', () => {
+  it('redacts a strong secret key whatever its value is', () => {
     expect(
       sanitizeDebugValueForDisplay({
-        credentials: { user: 'ada', count: 3 },
-        tokens: ['a', 'b'],
-        secretBigint: 1n,
-        secretSymbol: Symbol('s'),
-        secretCallback: () => undefined,
+        card: 4111111111111111,
+        cardNumber: 4111111111111111,
+        creditCard: 4111111111111111,
+        cvv: 123,
+        cvc: 123,
+        ssn: 123456789,
+        pin: 1234,
+        password: 12345678,
+        passwd: 12345678,
+        secret: true,
+        clientSecret: 12345,
+        apiKey: 987654,
+        api_key: 987654,
+        'api-key': 987654,
+        API_KEY: 987654,
+        APIKey: 987654,
+        privateKey: 1,
+        private_key: 1,
+        accessKey: 1,
+        accessKeyId: 1,
+        credentials: false,
+        userSSN: 123456789,
+        cards: 1,
+        pinCode: 1234,
+        secretKey: null,
+      }),
+    ).toEqual(
+      Object.fromEntries(
+        [
+          'card',
+          'cardNumber',
+          'creditCard',
+          'cvv',
+          'cvc',
+          'ssn',
+          'pin',
+          'password',
+          'passwd',
+          'secret',
+          'clientSecret',
+          'apiKey',
+          'api_key',
+          'api-key',
+          'API_KEY',
+          'APIKey',
+          'privateKey',
+          'private_key',
+          'accessKey',
+          'accessKeyId',
+          'credentials',
+          'userSSN',
+          'cards',
+          'pinCode',
+          'secretKey',
+        ].map((key) => [key, '[REDACTED]']),
+      ),
+    );
+  });
+
+  it('matches strong keys by word, so look-alike names stay readable', () => {
+    expect(
+      sanitizeDebugValueForDisplay({
+        cardinality: 3,
+        passed: true,
+        passCount: 2,
+        spinning: 1,
+        pinned: true,
+        secretary: 4,
+        accessCount: 9,
+        keyCount: 1,
+        discard: 5,
       }),
     ).toEqual({
-      credentials: '[REDACTED]',
+      cardinality: 3,
+      passed: true,
+      passCount: 2,
+      spinning: 1,
+      pinned: true,
+      secretary: 4,
+      accessCount: 9,
+      keyCount: 1,
+      discard: 5,
+    });
+  });
+
+  it('redacts an object, array, bigint, symbol, or function under a loose sensitive key', () => {
+    expect(
+      sanitizeDebugValueForDisplay({
+        authContext: { user: 'ada', count: 3 },
+        tokens: ['a', 'b'],
+        tokenBigint: 1n,
+        sessionSymbol: Symbol('s'),
+        authCallback: () => undefined,
+      }),
+    ).toEqual({
+      authContext: '[REDACTED]',
       tokens: '[REDACTED]',
-      secretBigint: '[REDACTED]',
-      secretSymbol: '[REDACTED]',
-      secretCallback: '[REDACTED]',
+      tokenBigint: '[REDACTED]',
+      sessionSymbol: '[REDACTED]',
+      authCallback: '[REDACTED]',
     });
   });
 

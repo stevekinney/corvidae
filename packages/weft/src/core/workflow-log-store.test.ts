@@ -199,7 +199,14 @@ describe('createWorkflowLogStore', () => {
     store.sink(
       record({
         message: 'redacted',
-        attributes: { apiKey: 'x', when: new Date('x'), inputTokens: 5 },
+        attributes: {
+          apiKey: 'x',
+          cvv: 123,
+          ssn: 123456789,
+          when: new Date('x'),
+          inputTokens: 5,
+          passed: true,
+        },
       }),
     );
     await store.flush();
@@ -209,7 +216,14 @@ describe('createWorkflowLogStore', () => {
     expect(lines[0]).toMatchObject({
       message: 'redacted',
       truncated: false,
-      attributes: { apiKey: '[REDACTED]', when: '[Invalid Date]', inputTokens: 5 },
+      attributes: {
+        apiKey: '[REDACTED]',
+        cvv: '[REDACTED]',
+        ssn: '[REDACTED]',
+        when: '[Invalid Date]',
+        inputTokens: 5,
+        passed: true,
+      },
     });
     const raw: string[] = [];
     for await (const [, bytes] of storage.scan(KEYS.workflowLogPrefix('run-1'))) {
