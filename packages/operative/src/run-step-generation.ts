@@ -13,6 +13,7 @@ import {
   GeneratedMediaNotAdmittedError,
   GuardrailTripwireError,
   MediaAdmissionError,
+  NonRecoverablePolicyError,
   ResponsePartsMismatchError,
 } from './errors';
 import {
@@ -520,6 +521,19 @@ export async function executeGeneration(
       // not something `onError` may recover from.
       if (error instanceof MediaAdmissionError) {
         backpressure?.onError(error);
+        emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+        return { kind: 'error', error, errorKind: 'policy' };
+      }
+
+      // COR-1996: a host's policy verdict on the step (a model the policy forbids) is the same on
+      // every attempt and is not a fault `onError` may recover: a `skip` or `retry` would turn it
+      // into `MAXIMUM_STEPS` or a string of refused steps. A cancellation that interrupted the
+      // step is the cancellation, not a verdict.
+      if (error instanceof NonRecoverablePolicyError) {
+        backpressure?.onError(error);
+        if (signal?.aborted) {
+          return { kind: 'abort', reason: explicitAbortReason(signal) };
+        }
         emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
         return { kind: 'error', error, errorKind: 'policy' };
       }

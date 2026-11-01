@@ -4,6 +4,7 @@
  */
 import {
   createAgent,
+  createModelCatalog,
   type DecisionModel,
   type GenerateContext,
   type GenerateFunction,
@@ -277,5 +278,35 @@ describe('createDecideToolbox', () => {
         schema: { type: 'string', pattern: 'a' },
       }),
     ).toMatchObject({ ok: false, refusal: 'invalid-schema' });
+  });
+});
+
+describe('the decide tool under a model policy (COR-1996)', () => {
+  it('answers a policy that leaves no model as a typed refusal the agent can read, not a thrown error', async () => {
+    const forbidden = createModelCatalog().descriptors.map((descriptor) => descriptor.model);
+    let providerCalls = 0;
+    const results: unknown[] = [];
+    const bureau = await open(
+      { worker: decidingAgent([], results, 1) },
+      {
+        models: {
+          generate: () => async () => {
+            providerCalls += 1;
+            return { content: '', toolCalls: [] };
+          },
+        },
+        modelPolicy: { deployment: { deniedModels: forbidden }, policyRevision: 4 },
+      },
+    );
+
+    const task = await bureau.tasks.start('worker', 'go');
+    await task.result();
+
+    expect(results).toHaveLength(1);
+    const serialized = JSON.stringify(results[0]);
+    expect(serialized).toContain('"ok":false');
+    expect(serialized).toContain('"refusal":"model-policy-denied"');
+    expect(serialized).toContain('model policy');
+    expect(providerCalls).toBe(0);
   });
 });

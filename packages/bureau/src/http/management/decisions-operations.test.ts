@@ -3,9 +3,14 @@
  * a `structured` request given as JSON Schema, a retry that asks the model again, the faults, and
  * what the audit record leaves out.
  */
-import { createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
+import {
+  createMockGenerate,
+  createModelCatalog,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { BureauModelPolicyOptions } from '../../model-policy.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import { decisionsDecideOperation } from './decisions-operations.ts';
 import {
@@ -31,13 +36,17 @@ const SCHEMA = {
 
 async function open(
   replies: readonly string[],
-  options: { readonly withoutGenerate?: boolean } = {},
+  options: {
+    readonly withoutGenerate?: boolean;
+    readonly modelPolicy?: BureauModelPolicyOptions;
+  } = {},
 ): Promise<{ opened: OpenedBureau; generate: ReturnType<typeof createMockGenerate> }> {
   const generate = createMockGenerate(replies.map((content) => ({ content, toolCalls: [] })));
   const opened = await openBureau({
     bureauOptions: {
       models:
         options.withoutGenerate === true ? {} : { generate: (): GenerateFunction => generate },
+      ...(options.modelPolicy === undefined ? {} : { modelPolicy: options.modelPolicy }),
     },
   });
   cleanups.push(() => opened.dispose());
@@ -177,5 +186,24 @@ describe('bureau.decisions.decide', () => {
     });
 
     expect(refused.error?.data).toMatchObject({ httpStatus: 422, reason: 'decision-schema' });
+  });
+
+  it('answers a policy that forbids every model able to answer as unprocessable, and calls no provider', async () => {
+    const forbidden = createModelCatalog().descriptors.map((descriptor) => descriptor.model);
+    const { opened, generate } = await open([], {
+      modelPolicy: { deployment: { deniedModels: forbidden }, policyRevision: 3 },
+    });
+
+    const refused = await decide(opened, 'decisions-writer-key', {
+      kind: 'boolean',
+      question: 'Is it?',
+    });
+
+    expect(refused.error?.data).toMatchObject({
+      httpStatus: 422,
+      reason: 'model-policy-denied',
+    });
+    expect(refused.error?.message).toContain('model policy');
+    expect(generate.callCount).toBe(0);
   });
 });

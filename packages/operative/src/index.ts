@@ -147,6 +147,7 @@ export {
   MaximumStepsExceededError,
   MediaAdmissionError,
   NonJsonOutputError,
+  NonRecoverablePolicyError,
   OutputSchemaConversionError,
   OutputValidationError,
   ResponsePartsMismatchError,

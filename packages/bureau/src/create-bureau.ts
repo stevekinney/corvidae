@@ -3098,6 +3098,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       createDecisions({
         options: options.decisions,
         settings: currentSettings,
+        modelPolicy: () => modelPolicyOf(currentSettings()),
         models,
         modelsOptions: options.models,
         notConfigured: (message, cause) => {

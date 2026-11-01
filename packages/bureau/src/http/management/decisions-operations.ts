@@ -18,6 +18,7 @@
  * | a malformed request or schema                   | `InvalidParams`          | `issues`                      |
  * | no model can answer                             | `UnsupportedCapability`  | `capability: 'generate'`      |
  * | the model's answer failed validation twice      | `Unprocessable`          | `reason: 'decision-schema'`   |
+ * | the model policy leaves no model to answer      | `Unprocessable`          | `reason: 'model-policy-denied'` |
  *
  * @module decisions-operations
  */
@@ -27,6 +28,7 @@ import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { BureauError } from '../../create-bureau.ts';
+import { ModelPolicyDeniedError } from '../../file-agent-generate.ts';
 import {
   DecisionSchemaRefusedError,
   standardSchemaFromJsonSchema,
@@ -130,7 +132,7 @@ export const decisionsDecideOperation = defineOperation<
   mcpExposable: false,
   summary: 'Put a typed question to a model',
   description:
-    'Asks a model one question and returns a typed `value`: a `boolean`, the `key` of the chosen option (`choice`, with `options`), the index of the chosen level (`scale`, with `levels`, lowest first), or an object that satisfies `schema` (`structured`, a JSON Schema 2020-12 of at most 16 KiB without `$id` or `pattern`). A model the deployment configured for the kind answers it; every other kind is answered by a language model from the deployment’s model catalog. The answer carries the `provider` and `model` that gave it, and `probability`, `rationale` and `usage` when it reports them. `commandId` is the caller’s own identifier; the call is not idempotent, so a retry asks the model again, and no decision value is stored. `context` is text bounded by the handler’s request body limit. A malformed request or schema is `InvalidParams`; a deployment that has no model able to answer is `UnsupportedCapability` with capability `generate`; an answer that still fails validation after one retry is `Unprocessable` with reason `decision-schema`. The call records a `decision.made` audit entry (kind, provider, model, and the schema’s SHA-256) and never the context or the value. Requires `bureau.decisions:write`.',
+    'Asks a model one question and returns a typed `value`: a `boolean`, the `key` of the chosen option (`choice`, with `options`), the index of the chosen level (`scale`, with `levels`, lowest first), or an object that satisfies `schema` (`structured`, a JSON Schema 2020-12 of at most 16 KiB without `$id` or `pattern`). A model the deployment configured for the kind answers it; every other kind is answered by a language model from the deployment’s model catalog. The answer carries the `provider` and `model` that gave it, and `probability`, `rationale` and `usage` when it reports them. `commandId` is the caller’s own identifier; the call is not idempotent, so a retry asks the model again, and no decision value is stored. `context` is text bounded by the handler’s request body limit. A malformed request or schema is `InvalidParams`; a deployment that has no model able to answer is `UnsupportedCapability` with capability `generate`; an answer that still fails validation after one retry is `Unprocessable` with reason `decision-schema`; a `modelPolicy` that forbids every model able to answer is `Unprocessable` with reason `model-policy-denied`, and no provider is called. The call records a `decision.made` audit entry (kind, provider, model, and the schema’s SHA-256) and never the context or the value. Requires `bureau.decisions:write`.',
   destructive: false,
   tags: ['Decisions'],
   inputSchema: decideInput,
@@ -162,6 +164,13 @@ export const decisionsDecideOperation = defineOperation<
           code: 'Unprocessable',
           message: 'The model did not give an answer that satisfies the request',
           data: { reason: 'decision-schema' },
+        } satisfies OperationFault;
+      }
+      if (error instanceof ModelPolicyDeniedError) {
+        throw {
+          code: 'Unprocessable',
+          message: error.message,
+          data: { reason: error.code },
         } satisfies OperationFault;
       }
       if (error instanceof BureauError) {

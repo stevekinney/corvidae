@@ -8,7 +8,8 @@
  * unset, or the model's row turned off) the compaction is skipped, once reported, and the run
  * goes on with the conversation as it is; the catalog lists the agent `invalid` from the next scan,
  * so no new run starts on it. A summarizer that is configured but fails ends the step as any
- * failed compaction does.
+ * failed compaction does, and so does one the model policy forbids (COR-1996): it fails with a
+ * `ModelPolicyDeniedError` before the provider is called, and is never skipped.
  *
  * @module file-agent-compaction
  */
@@ -57,7 +58,8 @@ export function transcriptOf(messages: ReadonlyArray<Message>): string {
 export interface FileAgentCompactorOptions {
   /**
    * The generate function of the summarizer model as it is configured now, or `undefined` when
-   * none is. Called for every compaction.
+   * none is. Called for every compaction. It throws when the summarizer is one the model policy
+   * forbids, which fails the step.
    */
   readonly summarizer: () => GenerateFunction | undefined;
   /** Where a skipped compaction is reported. */
