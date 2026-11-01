@@ -301,14 +301,38 @@ describe('a resume on a deleted chat', () => {
     },
   }) as unknown as Toolbox;
 
-  it('is refused with THREAD_DELETED, and nothing is resolved', async () => {
-    const charge = {
-      kind: 'respond' as const,
-      response: {
-        content: 'Charging.',
-        toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
-      },
+  const charge = {
+    kind: 'respond' as const,
+    response: {
+      content: 'Charging.',
+      toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+    },
+  };
+
+  /** Alice's start parks on the charge's approval; the interrupt it raised. */
+  async function parkedInterrupt(harness: Harness): Promise<string> {
+    const parked = await aliceStarts(harness, 'run-1', [firstMessage]);
+    const finished = parked.at(-1)!.event as unknown as {
+      outcome: { type: string; interrupts: Array<{ id: string }> };
     };
+    expect(bureauMetadata(parked[0]!.event)['runId']).toBeDefined();
+    return finished.outcome.interrupts[0]!.id;
+  }
+
+  const approve = (interruptId: string): ResumeEntry => ({
+    interruptId,
+    status: 'resolved',
+    payload: { decision: 'approve' },
+  });
+
+  const resumeAs = async (harness: Harness, key: string, entry: ResumeEntry) =>
+    readAgUiStream(
+      await harness.handler(
+        startRequest(runAgentInput({ runId: 'run-2', messages: [], resume: [entry] }), as(key)),
+      ),
+    );
+
+  it('is refused with THREAD_DELETED, and nothing is resolved', async () => {
     await withHarness(
       {
         script: [charge, say('Charged.')],
@@ -317,37 +341,41 @@ describe('a resume on a deleted chat', () => {
         authentication,
       },
       async (harness) => {
-        const parked = await aliceStarts(harness, 'run-1', [firstMessage]);
-        const finished = parked.at(-1)!.event as unknown as {
-          outcome: { type: string; interrupts: Array<{ id: string }> };
-        };
-        const interruptId = finished.outcome.interrupts[0]!.id;
-        expect(bureauMetadata(parked[0]!.event)['runId']).toBeDefined();
+        const interruptId = await parkedInterrupt(harness);
         await writeContextTombstone(harness.bureau.internals.kv!, {
           version: 1,
           contextId: THREAD,
           owner: 'api-key:alice',
           deletedAt: 5,
         });
-        const entry: ResumeEntry = {
-          interruptId,
-          status: 'resolved',
-          payload: { decision: 'approve' },
-        };
 
-        const frames = await readAgUiStream(
-          await harness.handler(
-            startRequest(
-              runAgentInput({ runId: 'run-2', messages: [], resume: [entry] }),
-              as('alice-key'),
-            ),
-          ),
-        );
+        const frames = await resumeAs(harness, 'alice-key', approve(interruptId));
 
         expectRefusal(frames, 'THREAD_DELETED');
         expect(harness.bureau.reviews.list().some((review) => review.id === interruptId)).toBe(
           true,
         );
+      },
+    );
+  });
+
+  it('is refused with THREAD_DELETED after a real delete has purged its reviews, and THREAD_NOT_FOUND for another owner', async () => {
+    await withHarness(
+      {
+        script: [charge, say('Charged.')],
+        toolbox: approvalToolbox,
+        stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        authentication,
+      },
+      async (harness) => {
+        const interruptId = await parkedInterrupt(harness);
+        expect(await deletes(harness, THREAD)).toBe(true);
+        // The delete took the review with it, which is what used to answer INTERRUPT_NOT_FOUND.
+        expect(await harness.bureau.reviews.get(interruptId)).toBeUndefined();
+
+        expectRefusal(await resumeAs(harness, 'alice-key', approve(interruptId)), 'THREAD_DELETED');
+        expectRefusal(await resumeAs(harness, 'bob-key', approve(interruptId)), 'THREAD_NOT_FOUND');
+        expect(await harness.bureau.contexts.get(THREAD)).toBeUndefined();
       },
     );
   });

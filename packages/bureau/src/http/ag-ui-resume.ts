@@ -362,6 +362,13 @@ export function createResume(context: ResumeContext) {
         );
       }
     }
+    // COR-1986: a deleted chat is not resumed, and that is told before any review is looked up. A
+    // delete purges the chat's review records, so past this point every interrupt of it reads as
+    // one that does not exist. The tombstone is permanent and written before anything is removed,
+    // so a read that finds it needs no lease; the read under the thread's lease in `settle` is the
+    // one a delete cannot interleave with, and decides whatever this one did not see.
+    const deletedEarly = await deletedThreadRefusal(threadId, owner);
+    if (deletedEarly !== undefined) return context.refuse(deletedEarly.code, deletedEarly.message);
     const reviews = new Map<string, PendingReview>();
     const sessionAgentNames = new Map<string, Promise<string | undefined>>();
     const sessionAgent = (reviewOwner: string | undefined): Promise<string | undefined> => {
@@ -411,6 +418,14 @@ export function createResume(context: ResumeContext) {
         notYetOffered ||
         otherAgents
       ) {
+        // A delete that began after the read above has purged the review: the tombstone it wrote
+        // first is told as such, not as an interrupt that does not exist.
+        if (review === undefined) {
+          const deletedMeanwhile = await deletedThreadRefusal(threadId, owner);
+          if (deletedMeanwhile !== undefined) {
+            return context.refuse(deletedMeanwhile.code, deletedMeanwhile.message);
+          }
+        }
         return context.refuse(
           'INTERRUPT_NOT_FOUND',
           `Interrupt "${entry.interruptId}" was not found`,

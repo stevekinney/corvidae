@@ -14957,7 +14957,8 @@ async function constructBureau<const D extends AgentDefinitions>(
    * was deleted BEFORE anything is removed, under the thread's lease. A tombstone that cannot be
    * written refuses the delete, so nothing is removed; one that was written is never taken back,
    * so a delete that fails after it leaves a chat that refuses starts and is finished by a retry.
-   * A tried agent's context is given none: its agent is removed with it, so no start can name it.
+   * Every chat is given one, a tried agent's included: its agent goes with it, but a start that
+   * names the same thread id through a catalog agent would otherwise recreate it with every row.
    */
   async function loadSessionAndTombstone(
     id: string,
@@ -14972,13 +14973,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (expectedIncarnation !== undefined && session?.incarnation !== expectedIncarnation) {
         return undefined;
       }
-      // A tried agent's context is the exception (COR-1911): its agent goes with it, so the id
-      // answers NOT_FOUND to any start, and a tried chat leaves no storage key behind.
-      if (
-        session !== undefined &&
-        runtime.kv !== undefined &&
-        sessionOriginOf(session.metadata) !== 'try'
-      ) {
+      if (session !== undefined && runtime.kv !== undefined) {
         await writeContextTombstone(runtime.kv, {
           version: 1,
           contextId: id,

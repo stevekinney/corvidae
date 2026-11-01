@@ -23,6 +23,7 @@ import {
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { BureauShuttingDownError } from '../../create-bureau.ts';
 import {
   aggregateCleanup,
   type ContextActivity,
@@ -149,9 +150,22 @@ export const contextsDeleteOperation = defineOperation<
         ...named([]),
       };
     }
-    const report = await host.contexts.delete(contextId, {
-      incarnation: session.incarnation,
-    });
+    let report;
+    try {
+      report = await host.contexts.delete(contextId, { incarnation: session.incarnation });
+    } catch (error) {
+      // Admission closed while the delete waited for the thread's lease (COR-1986): the lifecycle
+      // read above passed, and nothing was applied, as for a Bureau that was already closing.
+      if (error instanceof BureauShuttingDownError) {
+        return {
+          contextId,
+          receipt: 'rejected' as const,
+          reason: 'shutting-down' as const,
+          ...named([]),
+        };
+      }
+      throw error;
+    }
     // The id holds another incarnation now (or none): the context authorized is gone.
     if (!report.deleted) throw resourceNotFound('context', contextId);
     if (report.tasks.length === 0) return { contextId, receipt: 'applied' as const, ...named([]) };
