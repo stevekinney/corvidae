@@ -20,6 +20,7 @@ import {
   HUMAN_INPUT_SCHEMA_MAXIMUM_DEPTH,
   type HumanInputSchema,
 } from './human-input-schema';
+import { HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH } from './human-input-schema-extensions';
 import { humanWaitParks, modelFacingToolResult, parkedHumanWait } from './human-wait-parks';
 
 function makeContext(): RequestHumanInputContext {
@@ -44,6 +45,7 @@ const kinds: Record<string, HumanInputSchema> = {
     type: 'string',
     enum: ['staging', 'production'],
     'x-labels': { staging: 'Staging', production: 'Production' },
+    'x-descriptions': { staging: 'Safe to break.', production: 'Customers see it.' },
   },
   'pick one or something else': {
     anyOf: [{ enum: ['small', 'large'] }, { type: 'string', maxLength: 500 }],
@@ -105,7 +107,15 @@ describe('requestHumanInput answerSchema: each kind parks with its schema', () =
 
   it('lists the kinds in the tool description so the model can pick one', () => {
     const { description } = createRequestHumanInputTool({ context: makeContext() });
-    for (const word of ['x-allowOther', 'x-labels', 'x-kind', 'x-secret', 'x-asset', 'enum']) {
+    for (const word of [
+      'x-allowOther',
+      'x-labels',
+      'x-descriptions',
+      'x-kind',
+      'x-secret',
+      'x-asset',
+      'enum',
+    ]) {
       expect(description).toContain(word);
     }
   });
@@ -332,6 +342,46 @@ describe('requestHumanInput answerSchema: x- keywords', () => {
       /not a step/,
     ],
     [
+      'x-descriptions that is not an object',
+      { type: 'string', enum: ['a'], 'x-descriptions': 'About a' },
+      ['x-descriptions'],
+      /object from each choice/,
+    ],
+    [
+      'x-descriptions with a non-string description',
+      { type: 'string', enum: ['a'], 'x-descriptions': { a: 1 } },
+      ['x-descriptions', 'a'],
+      /description/,
+    ],
+    [
+      'x-descriptions with an empty description',
+      { type: 'string', enum: ['a'], 'x-descriptions': { a: '' } },
+      ['x-descriptions', 'a'],
+      /description/,
+    ],
+    [
+      'x-descriptions with a description past the maximum length',
+      {
+        type: 'string',
+        enum: ['a'],
+        'x-descriptions': { a: 'x'.repeat(HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH + 1) },
+      },
+      ['x-descriptions', 'a'],
+      /description/,
+    ],
+    [
+      'x-descriptions for a value that is not in the enum',
+      { type: 'string', enum: ['a'], 'x-descriptions': { b: 'About b' } },
+      ['x-descriptions', 'b'],
+      /not one of the enum/,
+    ],
+    [
+      'x-descriptions with nothing to describe',
+      { type: 'string', 'x-descriptions': { a: 'About a' } },
+      ['x-descriptions'],
+      /needs an "enum"/,
+    ],
+    [
       'x-allowOther without the two branches',
       { type: 'string', enum: ['a'], 'x-allowOther': true },
       ['x-allowOther'],
@@ -357,6 +407,29 @@ describe('requestHumanInput answerSchema: x- keywords', () => {
       expect(context.pendingHumanWait).toBeUndefined();
     });
   }
+
+  it('accepts x-descriptions on a pick-several and a pick-one-or-something-else, and a description exactly at the maximum length', () => {
+    const atLimit = 'x'.repeat(HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH);
+    const several: HumanInputSchema = {
+      type: 'array',
+      uniqueItems: true,
+      items: { enum: ['a', 'b'] },
+      'x-descriptions': { a: atLimit },
+    };
+    const orElse: HumanInputSchema = {
+      anyOf: [{ enum: ['a'] }, { type: 'string' }],
+      'x-allowOther': true,
+      'x-descriptions': { a: 'About a' },
+    };
+
+    for (const schema of [several, orElse]) {
+      // A step parks once, so each schema gets its own tool and context.
+      const tool = createRequestHumanInputTool({ context: makeContext() });
+      expect(parked(tool.execute({ signalName: 'ask', answerSchema: schema })).inputSchema).toEqual(
+        schema,
+      );
+    }
+  });
 
   it('finds a misuse inside a property, an array item, and a branch, with the path to it', () => {
     const tool = createRequestHumanInputTool({ context: makeContext() });
