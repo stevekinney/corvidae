@@ -2199,6 +2199,66 @@ export const CHAT_COPY = {
     /** The reply no longer exists in the chat, and any other fault. */
     fault: 'The chat could not be branched. You are still in this chat.',
   },
+  /** The chat header's More menu: rename, branch, export and delete the chat. */
+  more: {
+    /** The menu button's name; the button is an icon. */
+    label: 'More actions',
+    rename: 'Rename',
+    branch: 'Branch from the last reply',
+    /** Said as the hint on Branch when there is no finished reply to branch from. */
+    noBranchPoint: 'There is no finished reply to branch from yet.',
+    /** Said as the hint on Branch while a run is going. */
+    branchWhileRunning: 'Wait for the run to finish, then branch from its last reply.',
+    export: 'Export as Markdown',
+    /** Said as the hint on Export when the chat has no messages. */
+    nothingToExport: 'There is nothing in this chat to export yet.',
+    exportFault: 'The chat could not be exported.',
+    delete: 'Delete',
+    /** The rename dialog. */
+    renameDialog: {
+      title: 'Rename this chat',
+      label: 'Title',
+      description:
+        'Up to 200 characters. Leave it empty to use the title taken from the first message.',
+      save: 'Save',
+      cancel: 'Cancel',
+      /** Shown when the title changed on the Bureau while the person had typed a different one. */
+      changed: 'This chat was renamed somewhere else while you were typing.',
+      reload: 'Use the new title',
+      tooLong: 'The title is over 200 characters.',
+      renamed: 'Chat renamed.',
+      fault: 'The chat could not be renamed.',
+      notFound: 'This chat no longer exists.',
+    },
+    /** The delete confirmation: what is lost, and what happens to a run that is going. */
+    deleteDialog: {
+      title: (chat: string) => `Delete “${chat}”?`,
+      /** What is lost, and what happens to a run that is going; chats branched from it keep their own copy. */
+      description: (runGoing: boolean) =>
+        `The chat and its messages are removed for good, and this cannot be undone. ${
+          runGoing ? 'Its run is going now, and deleting the chat stops it. ' : ''
+        }Chats branched from it keep their own copy of the history.`,
+      confirm: 'Delete chat',
+      cancel: 'Cancel',
+      deleted: 'Chat deleted.',
+      /** The chat is gone, but stopping its run did not finish cleanly. */
+      deletedRunning: 'Chat deleted. Its run may take a moment to stop.',
+      refused: 'The server is shutting down, so the chat was not deleted.',
+      fault: 'The chat could not be deleted.',
+      alreadyGone: 'This chat was already deleted.',
+    },
+  },
+  /** Editing a message you sent: the chat is branched before it and the edited text is sent there. */
+  edit: {
+    /** Said when the message follows no finished reply, so there is nowhere to branch before it. */
+    unavailable:
+      'That message was sent while a run was going, so it cannot be edited. Edit one that follows a finished reply.',
+    /** Said when the message carries files, which an edited copy would leave behind. */
+    withFiles:
+      'That message has files attached, so it cannot be edited. Send a new message instead.',
+    /** Any other fault; the chat the person is in is untouched. */
+    fault: 'The message could not be edited. You are still in this chat.',
+  },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {
     listLabel: 'Files',

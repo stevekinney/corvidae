@@ -50,6 +50,12 @@ export type ChatSessionOptions = {
   readonly fetch?: Fetcher;
   /** Told when a run this page started has begun. */
   readonly onRunStarted?: () => void;
+  /**
+   * Takes over editing a message the person sent. Without it the controller edits in place, by
+   * rewinding the transcript to before the message and running it again on the same thread, which
+   * the Bureau's thread cannot follow; with it the page decides what an edit does.
+   */
+  readonly onEdit?: (event: { readonly messageId: string; readonly content: string }) => void;
 };
 
 /** The text a follow-up sends: the Bureau takes text, or a list of parts, as session input. */
@@ -201,9 +207,14 @@ export class ChatSessionState {
         },
       },
     });
-    const adapter = this.controller.adapter;
+    // The controller's own edit rewinds this thread in place, which the Bureau's thread cannot
+    // follow, so it is replaced by the page's (`onEdit`) or removed.
+    const { editMessage: _editInPlace, ...adapter } = this.controller.adapter;
     this.adapter = {
       ...adapter,
+      ...(options.onEdit === undefined
+        ? {}
+        : { editMessage: async (event) => options.onEdit?.(event) }),
       sendMessage: async (message, attachments) => {
         this.#turnHadAttachments = attachments.length > 0;
         await this.#attachment;
@@ -333,6 +344,15 @@ export class ChatSessionState {
     await this.attach({ rereading: true });
     // A read that failed has not said what the run waits on, so the caller reads again.
     return !this.#attachFailed;
+  }
+
+  /**
+   * Sends `content` as the person's next message, as if it had been typed in the composer. It waits
+   * for the attach in progress, so it goes to the run the attach joins, or starts one when there is
+   * none. A failure is shown on the row, which offers Retry, and in `failure`.
+   */
+  send(content: string): Promise<void> {
+    return this.adapter.sendMessage({ role: 'user', content }, []);
   }
 
   /** Stops telling the person of the last failure. */

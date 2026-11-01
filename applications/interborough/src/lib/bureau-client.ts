@@ -340,6 +340,54 @@ export async function sendContextInput(
   );
 }
 
+/**
+ * Gives a session a title of the caller's choosing (`bureau.contexts.rename`), or takes the one it
+ * was given away with `null`, which shows the title derived from its first message again. The
+ * Bureau trims the title and refuses a blank one or one over 200 characters as `InvalidParams`.
+ * Setting the title a session already has is not an error, so a retry is safe. The answer is a
+ * receipt: the title now stored (`null` once removed), not the session.
+ */
+export async function renameContext(
+  input: { readonly contextId: string; readonly title: string | null },
+  options?: { readonly signal?: AbortSignal },
+): Promise<string | null> {
+  return z
+    .object({ contextId: z.string(), title: z.string().nullable() })
+    .parse(await callBureau('bureau.contexts.rename', input, options)).title;
+}
+
+/**
+ * What `bureau.contexts.delete` settled for the runs the session had going: `applied` (none),
+ * `cleaned-up`, or a cleanup still going or unfinished, and `rejected` when the Bureau was shutting
+ * down and deleted nothing.
+ */
+export const contextDeleteReceiptSchema = z.enum([
+  'applied',
+  'rejected',
+  'cleanup-pending',
+  'cleaned-up',
+  'cleanup-failed',
+  'cleanup-unresolved',
+  'unknown-outcome',
+]);
+
+/** What {@link deleteContext} answers: the receipt for the session's live runs. */
+export type ContextDeleteReceipt = z.infer<typeof contextDeleteReceiptSchema>;
+
+/**
+ * Deletes a session and its content, cancelling the runs it has going (`bureau.contexts.delete`).
+ * A session that is already gone is a not-found fault. The receipt says whether the runs it
+ * cancelled were cleaned up; `rejected` means a Bureau that was shutting down applied nothing.
+ */
+export async function deleteContext(
+  contextId: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<ContextDeleteReceipt> {
+  return z
+    .object({ contextId: z.string(), receipt: contextDeleteReceiptSchema })
+    .parse(await callBureau('bureau.contexts.delete', { contextId }, options)).receipt;
+}
+
 const contextPageSchema = z.object({
   contexts: z.array(chatContextSchema),
   nextOffset: z.number().nullable(),
