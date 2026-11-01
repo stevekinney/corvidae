@@ -11,7 +11,7 @@ import {
 } from '@lostgradient/operative';
 import { describe, expect, test } from 'bun:test';
 
-import { typedAnswerOf, withTypedAnswers } from './answer-rows.ts';
+import { questionKeyOf, typedAnswerOf, withTypedAnswers } from './answer-rows.ts';
 
 const DELIVERED_AT = '2026-10-21T00:00:00.000Z';
 
@@ -40,12 +40,60 @@ describe('the text a delivered answer is shown as', () => {
     expect(typedAnswerOf(row.id, row.content)).toBe(typed);
   });
 
-  test('is the rendering itself for a payload that is not a string', () => {
-    for (const payload of [{ environment: 'staging' }, ['staging'], 42, null, true]) {
+  test('is plain text for a payload that is not a string, when the question is not known', () => {
+    const shown = [
+      [{ environment: 'staging', replicas: 3 }, 'environment: staging, replicas: 3'],
+      [['staging', 'production'], 'staging, production'],
+      [42, '42'],
+      [true, 'true'],
+      [null, 'null'],
+    ] as const;
+    for (const [payload, text] of shown) {
       const row = delivered(payload);
 
-      expect(typedAnswerOf(row.id, row.content)).toBeUndefined();
+      expect(typedAnswerOf(row.id, row.content)).toBe(text);
     }
+  });
+
+  test('is the question’s own words when its schema is known', () => {
+    const yes = delivered(true, 'ready');
+    const choice = delivered('eu', 'region');
+    const schemas: Record<string, Record<string, unknown>> = {
+      'run-1:ready:0': { type: 'boolean' },
+      'run-1:region:0': { enum: ['eu', 'us'], 'x-labels': { eu: 'Europe', us: 'US' } },
+    };
+    const schemaOf = (key: string) => schemas[key];
+
+    expect(typedAnswerOf(yes.id, yes.content, schemaOf)).toBe('Yes');
+    expect(typedAnswerOf(choice.id, choice.content, schemaOf)).toBe('Europe');
+  });
+
+  test('is never the value of a secret, whatever was sent', () => {
+    const secret = delivered('hunter2', 'token');
+    const form = delivered({ user: 'ada', password: 'hunter2' }, 'login');
+    const schemas: Record<string, Record<string, unknown>> = {
+      'run-1:token:0': { type: 'string', 'x-secret': true },
+      'run-1:login:0': {
+        type: 'object',
+        properties: { user: { type: 'string' }, password: { type: 'string', 'x-secret': true } },
+      },
+    };
+    const schemaOf = (key: string) => schemas[key];
+
+    expect(typedAnswerOf(secret.id, secret.content, schemaOf)).toBe('a secret (not shown)');
+    const login = typedAnswerOf(form.id, form.content, schemaOf);
+    expect(login).toContain('ada');
+    expect(login).not.toContain('hunter2');
+  });
+
+  test('pairs a question with its answer by run, signal, and ordinal', () => {
+    expect(questionKeyOf('human-wait:run-1:ask:region:0')).toBe('run-1:ask:region:0');
+    expect(questionKeyOf('approval:run-1')).toBeUndefined();
+    const row = delivered(true, 'ask:region');
+    const schemaOf = (key: string) =>
+      key === 'run-1:ask:region:0' ? { type: 'boolean' } : undefined;
+
+    expect(typedAnswerOf(row.id, row.content, schemaOf)).toBe('Yes');
   });
 
   test('is the rendering itself for a rejection, and for a denial with or without a reason', () => {

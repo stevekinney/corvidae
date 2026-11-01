@@ -33,6 +33,7 @@ import { CHAT_COPY } from '../../app/copy.ts';
 import { sendContextInput, wireCodeOf, type Fetcher } from '../../lib/bureau-client.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { AgUiHttpError } from './ag-ui-events.ts';
+import { questionKeyOf } from './answer-rows.ts';
 import {
   createChatRunWiring,
   withAssetParts,
@@ -142,15 +143,19 @@ export class ChatSessionState {
   readonly #abort = new AbortController();
   readonly sessionId: string;
   readonly #onNotFound: (() => void) | undefined;
+  readonly #closed: ChatSessionOptions['closed'];
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
   #retryGeneration = 0;
   #retryFailures = 0;
   #attachedRun = false;
+  /** The schema of each question the page has been shown, by the key its answer's row shares. */
+  readonly #questionSchemas = new Map<string, Readonly<Record<string, unknown>>>();
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
+    this.#closed = options.closed;
     this.#onNotFound = options.onNotFound;
     this.conversation = createConversationHistory({ id: options.sessionId });
     this.#wiring = createChatRunWiring({
@@ -173,6 +178,12 @@ export class ChatSessionState {
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       onHumanRequests: (requests) => {
         this.humanRequests = requests;
+        for (const request of requests) {
+          const key = questionKeyOf(request.interruptId);
+          if (key !== undefined && request.schema !== undefined) {
+            this.#questionSchemas.set(key, request.schema);
+          }
+        }
       },
     });
     this.controller = createChatSessionController({
@@ -307,6 +318,55 @@ export class ChatSessionState {
       (current, id) => (current.messages[id] === undefined ? current : removeMessage(current, id)),
       this.conversation,
     );
+  }
+
+  /** The schema of the question the answer row with `key` answered, when the page was shown it. */
+  schemaOfAnswer = (key: string): Readonly<Record<string, unknown>> | undefined =>
+    this.#questionSchemas.get(key);
+
+  /**
+   * Answers the question of `interruptId` with `value`, an answer given in the control its schema
+   * drew (a choice, a number, a file's asset). It is held with the rest of what the run waits on,
+   * like a typed answer, and when it is the last thing the run waits on the resume goes: it is a
+   * turn of its own over a hidden row, as the attach is, since no row of the person's carries it.
+   * Resolves `false` when the question is not waiting for an answer, the answers owed from a
+   * refused resume could not be sent first, or the resume that carried the value was not applied:
+   * the question is then asked again, with the reason in `failure`.
+   */
+  async answerQuestion(interruptId: string, value: unknown): Promise<boolean> {
+    if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
+    // The caller owns `value`, and this reads it after the awaits below.
+    const answer = structuredClone(value);
+    await this.#attachment;
+    try {
+      await this.#repeatOwedResume();
+    } catch (error) {
+      // The answer is not held on top of a resume that is still refused.
+      this.failure = error instanceof Error ? error.message : String(error);
+      return false;
+    }
+    // A turn that began while those finished would take the answer as a follow-up.
+    if (this.streaming || this.#abort.signal.aborted) return false;
+    // A deleted chat is not written to: the resume would start it again under the same identifier.
+    if (this.#closed?.() === true) {
+      this.failure = CHAT_COPY.gone.title;
+      return false;
+    }
+    if (!this.#wiring.holdValue(interruptId, answer)) return false;
+    if (this.humanRequests.length === 0 && this.approvals.length === 0) {
+      this.#activeTurn = this.#sendHiddenTurn().catch(() => undefined);
+      await this.#activeTurn;
+      // A refusal is answered by reading the thread again, which decides what the run still waits on.
+      await this.#attachment;
+      // A value still held after the turn was not applied (a failed request, a refused or busy
+      // thread). Nothing of the person's holds it, so it is let go and the control comes back with
+      // the reason, rather than leaving a run parked with no question to answer.
+      if (this.#wiring.releaseValue(interruptId)) {
+        this.failure ??= CHAT_COPY.answerNotSent;
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

@@ -37,7 +37,8 @@ async function send(page: Page, text: string): Promise<void> {
   await composer(page).press('Enter');
 }
 
-const question = (page: Page, text: string) => page.getByRole('alert').filter({ hasText: text });
+const question = (page: Page, text: string) =>
+  page.locator('.weft-chat-question').filter({ hasText: text });
 
 /** The AG-UI start requests the page makes, each as the JSON it sent. */
 function recordStarts(
