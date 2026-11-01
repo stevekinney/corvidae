@@ -11,6 +11,7 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
+import { EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from '../create-bureau.ts';
 import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
 import {
   attachRunRequest,
@@ -460,6 +461,19 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         ],
       }),
     );
+  /**
+   * Moves the one clock far past any approval binding's lifetime without stepping through every
+   * timer in between: the wall clock jumps (no timer fires), then one expiry-sweep interval
+   * advances, so the Bureau's sweep, where it runs, reads the expired binding. Advancing the whole
+   * span instead fires every lease renewal and poll once per period (millions of callbacks for
+   * 400 days) and took two minutes, at the hang guard.
+   */
+  const passEveryBindingLifetime = async (
+    clock: ReturnType<typeof createManualRuntimeServices>,
+  ): Promise<void> => {
+    clock.setTime(clock.clock.now() + 400 * 24 * 60 * 60 * 1000);
+    await clock.advance(EXPIRY_SWEEP_INTERVAL_MILLISECONDS);
+  };
   const settled = (harness: Harness) =>
     waitForCondition(
       () =>
@@ -576,7 +590,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           await settled(harness);
           const before = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
           // Far past any binding's lifetime.
-          await later.advance(400 * 24 * 60 * 60 * 1000);
+          await passEveryBindingLifetime(later);
 
           const after = await readAgUiStream(await peer.handler(startWithMessage('run-c')));
 
@@ -609,7 +623,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           await settled(harness);
           const approvalId = harness.bureau.reviews.list()[0]!.id;
           const before = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
-          await later.advance(400 * 24 * 60 * 60 * 1000);
+          await passEveryBindingLifetime(later);
           const stale = await peer.bureau.contexts.get('thread-1');
           const overrides = stale?.metadata['pendingApprovalOverrides'] as Record<string, unknown>;
           // The expired approval is still in the session: nothing removed it.
@@ -672,7 +686,7 @@ describe('whether a thread is busy, decided from what the store holds', () => {
         expect(overrides[approvalId]?.approvalBinding).toBeUndefined();
 
         // Far past any binding's lifetime.
-        await later.advance(400 * 24 * 60 * 60 * 1000);
+        await passEveryBindingLifetime(later);
         const held = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
         const cancelled = await readAgUiStream(
           await harness.handler(
