@@ -262,6 +262,48 @@ describe('TaskQueue', () => {
     });
   });
 
+  describe('release', () => {
+    it('stops tracking a claimed task without invoking its completion callback', async () => {
+      using queue = new TaskQueue();
+      const results: TaskResult[] = [];
+      queue.enqueue('default', makeTask({ operationId: 'op-released' }), (result) =>
+        results.push(result),
+      );
+      expect(await queue.poll('default', ['charge'], 0)).not.toBeNull();
+      expect(queue.isTracked('op-released')).toBe(true);
+
+      queue.release('op-released');
+
+      expect(queue.isTracked('op-released')).toBe(false);
+      expect(results).toHaveLength(0);
+      // The dropped callback belonged to the released attempt; a later attempt of the same id is a fresh enqueue.
+      expect(queue.enqueue('default', makeTask({ operationId: 'op-released' }))).toBe(true);
+      expect(queue.complete({ operationId: 'op-released', status: 'completed' })).toBe(false);
+    });
+
+    it('removes a task still waiting unclaimed, so it is never handed out twice', async () => {
+      using queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'op-unclaimed' }));
+      expect(queue.pendingCount('default')).toBe(1);
+
+      queue.release('op-unclaimed');
+      expect(queue.pendingCount('default')).toBe(0);
+      expect(queue.isTracked('op-unclaimed')).toBe(false);
+
+      expect(queue.enqueue('default', makeTask({ operationId: 'op-unclaimed' }))).toBe(true);
+      const first = await queue.poll('default', ['charge'], 0);
+      const second = await queue.poll('default', ['charge'], 0);
+      expect(first?.operationId).toBe('op-unclaimed');
+      expect(second).toBeNull();
+    });
+
+    it('does nothing for an id the queue does not track', () => {
+      using queue = new TaskQueue();
+      expect(() => queue.release('op-unknown')).not.toThrow();
+      expect(queue.isTracked('op-unknown')).toBe(false);
+    });
+  });
+
   describe('complete', () => {
     it('invokes the completion callback registered during enqueue', () => {
       using queue = new TaskQueue();

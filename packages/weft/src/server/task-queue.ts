@@ -118,7 +118,7 @@ export class TaskQueue implements Disposable {
     insertByPolicy(tasks, task, this.#schedulingPolicy);
     this.#pending.set(queue, tasks);
 
-    this.#scheduleExpiration(queue, task.operationId);
+    this.#scheduleExpiration(task.operationId);
     this.#depthAnnouncer?.changed(queue);
 
     return true;
@@ -165,7 +165,7 @@ export class TaskQueue implements Disposable {
     this.#pending.set(queue, tasks);
 
     const remaining = this.#pendingTaskTimeToLive - (Date.now() - (task.enqueuedAt ?? Date.now()));
-    this.#scheduleExpiration(queue, task.operationId, Math.max(0, remaining));
+    this.#scheduleExpiration(task.operationId, Math.max(0, remaining));
     this.#depthAnnouncer?.changed(queue);
     return true;
   }
@@ -278,6 +278,20 @@ export class TaskQueue implements Disposable {
   }
 
   /**
+   * Stop tracking a task without reporting an outcome: remove it from its queue
+   * if still unclaimed, cancel its expiration timer, and drop its dispatch
+   * tracking and completion callback, so the same id can be enqueued again.
+   * For an attempt {@link complete} must not announce, such as a dead letter.
+   * Idempotent: releasing an untracked id does nothing.
+   */
+  release(operationId: string): void {
+    this.#removePending(operationId);
+    this.#cancelExpiration(operationId);
+    this.#dispatched.delete(operationId);
+    this.#completionCallbacks.delete(operationId);
+  }
+
+  /**
    * Release all queue state on shutdown. Resolves every parked long-poll
    * waiter with `null` (so no poll promise is left unsettled), clears every
    * pending-task expiration timer, and drops all pending tasks, completion
@@ -352,15 +366,11 @@ export class TaskQueue implements Disposable {
    * removed from `#pending`, `#dispatched`, and `#completionCallbacks`, and the
    * completion callback (if any) is invoked with a timeout failure.
    */
-  #scheduleExpiration(
-    queue: string,
-    operationId: string,
-    delay = this.#pendingTaskTimeToLive,
-  ): void {
+  #scheduleExpiration(operationId: string, delay = this.#pendingTaskTimeToLive): void {
     const ttl = this.#pendingTaskTimeToLive;
     if (ttl <= 0 || !Number.isFinite(ttl)) return;
 
-    const timer = setTimeout(() => this.#expireTask(queue, operationId), delay);
+    const timer = setTimeout(() => this.#expireTask(operationId), delay);
     this.#expirationTimers.set(operationId, timer);
   }
 
@@ -373,20 +383,23 @@ export class TaskQueue implements Disposable {
     }
   }
 
+  /** Remove a task from whichever queue's pending list holds it. */
+  #removePending(operationId: string): void {
+    for (const [queue, tasks] of this.#pending) {
+      const index = tasks.findIndex((task) => task.operationId === operationId);
+      if (index === -1) continue;
+      tasks.splice(index, 1);
+      if (tasks.length === 0) this.#pending.delete(queue);
+      this.#depthAnnouncer?.changed(queue);
+      return;
+    }
+  }
+
   /** Remove an expired task and notify via the completion callback. */
-  #expireTask(queue: string, operationId: string): void {
+  #expireTask(operationId: string): void {
     this.#expirationTimers.delete(operationId);
 
-    // Remove from the pending list
-    const tasks = this.#pending.get(queue);
-    if (tasks) {
-      const index = tasks.findIndex((t) => t.operationId === operationId);
-      if (index !== -1) {
-        tasks.splice(index, 1);
-        if (tasks.length === 0) this.#pending.delete(queue);
-        this.#depthAnnouncer?.changed(queue);
-      }
-    }
+    this.#removePending(operationId);
 
     // Clean up dispatched tracking
     this.#dispatched.delete(operationId);

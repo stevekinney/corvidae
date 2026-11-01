@@ -38,16 +38,12 @@ export function createServerOperationRegistry(sources: {
     workerSessionTiming: sources.workerSessionTiming,
     storage: options.engine.storage,
     // Dispatch a task `weft.tasks.deadletters.retry` queued now, not at the next
-    // ledger sweep. A long-poll dead letter never reaches `taskQueue.complete()`
-    // or `registry.completeTask()` (`applyTaskResult` skips both), so the server
-    // still tracks the id and holds its worker slot, and the dispatch would be
-    // refused as a duplicate, stranding the task. The dead attempt is over, so
-    // release both. No completion callback is registered for a dispatched task,
-    // so `complete` only releases the tracking.
+    // ledger sweep. A dead letter already released the task queue's tracking
+    // and the worker's slot when it was dead-lettered (`task-result-submission.ts`
+    // for long-poll, `websocket-worker.ts` for WebSocket), so nothing is left
+    // to release before dispatching the next attempt.
     redispatchQueuedTask: (record) => {
       const context = sources.context();
-      context.taskQueue.complete({ operationId: record.operationId, status: 'failed' });
-      context.registry.completeTask(record.operationId);
       scheduleDelayedDispatch(context, options, taskDispatchFromLedgerRecord(record), 0);
     },
     ...(options.workerStartOverrideSigningSecret === undefined
