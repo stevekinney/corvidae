@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * `/hooks/new` and `/hooks/:hook`: the editor that makes a hook or changes one, as three labelled
-   * steps down the page. 1 When: the events the hook listens to, from a searchable picker. 2 Then:
+   * steps down the page. 1 When: the events the hook listens to, from a searchable picker, and Only
+   * for, which offers what those events can be limited to (`hook-only-for.svelte`). 2 Then:
    * what it does (send a signed message to a web address, start a workflow, or notify the owner) and
    * the fields of that action. 3 Check: the hook as a sentence, its name, Save, and Send a test
    * event. The hook's recent deliveries are beside the steps as plain lines.
@@ -13,6 +14,10 @@
    *
    * A hook that changed since the page read it is refused when saved, and the page says so and reads
    * it again. A home that keeps hooks off says so in place of the editor (`hooks-unavailable.svelte`).
+   * A remote home cannot hold a signing secret, so it does not offer a signed message.
+   *
+   * `?agent=` on `/hooks/new` starts the hook limited to that agent: it is where an agent's Hooks tab
+   * sends New hook.
    */
   import {
     Alert,
@@ -29,6 +34,7 @@
   import { PLUGIN_KINDS_COPY, STALE_COPY } from '../../app/copy.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
+  import { getHostPaths } from '../../lib/host-paths.ts';
   import {
     createHook,
     deleteHook,
@@ -52,7 +58,14 @@
   import { HookFormState } from './hook-form-state.svelte.ts';
   import HookDeliveries from './hook-deliveries.svelte';
   import HookEventPicker from './hook-event-picker.svelte';
-  import { eventRefusal, eventWords, hookSentence } from './hook-presentation.ts';
+  import HookOnlyFor from './hook-only-for.svelte';
+  import {
+    eventRefusal,
+    eventWords,
+    hookSentence,
+    isScopeKind,
+    scopeKindsFor,
+  } from './hook-presentation.ts';
   import HooksUnavailable from './hooks-unavailable.svelte';
 
   const copy = HOOKS_COPY.editor;
@@ -64,6 +77,14 @@
   // The outlet keys a route by its path, so this editor belongs to one address for its life.
   // svelte-ignore state_referenced_locally
   const form = new HookFormState(isNew);
+  // svelte-ignore state_referenced_locally
+  if (isNew) {
+    const agent = router.search.get('agent');
+    if (agent !== null && agent !== '') {
+      form.scopeKind = 'agent';
+      form.scopeId = agent;
+    }
+  }
 
   const existing = createQuery(
     () => ({
@@ -78,7 +99,7 @@
   const availability = createQuery(
     () => ({
       queryKey: queryKeys.hooks.list(),
-      queryFn: ({ signal }: { signal: AbortSignal }) => listHooks({ signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listHooks(undefined, { signal }),
       enabled: isNew,
       retry: false,
     }),
@@ -115,6 +136,21 @@
     }),
     undefined,
   );
+
+  const hostPaths = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPaths(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => getHostPaths({ signal }),
+      enabled: isNew,
+      retry: false,
+    }),
+    undefined,
+  );
+  /** A remote home cannot hold a signing secret, so a new hook there cannot send a signed message. */
+  const remote = $derived(hostPaths.data?.mode === 'remote');
+  $effect(() => {
+    if (remote && form.actionType === 'webhook') form.actionType = 'notify';
+  });
 
   const unavailable = $derived(
     classifyFault(isNew ? availability.error : existing.error)?.kind === 'not-supported',
@@ -168,12 +204,16 @@
   const isPlugin = $derived(hook?.action.type === 'plugin');
   const sentence = $derived(
     isPlugin && hook !== undefined
-      ? hookSentence(hook)
-      : hookSentence({ events: form.events, action: form.draftAction }),
+      ? hookSentence({ ...hook, scope: form.draftScope })
+      : hookSentence({ events: form.events, action: form.draftAction, scope: form.draftScope }),
   );
   const contributedKinds = $derived(contributed.data?.hookActionKinds ?? []);
   const actionOptions = $derived([
-    ...HOOK_ACTION_TYPES.map((type) => ({ value: type, label: actionLabel(type) })),
+    ...HOOK_ACTION_TYPES.map((type) => ({
+      value: type,
+      label: actionLabel(type),
+      disabled: remote && type === 'webhook',
+    })),
     ...contributedKinds.map((kind) => ({
       value: hookActionKindId(kind),
       label: PLUGIN_KINDS_COPY.hookAction(kind.plugin, kind.kind),
@@ -222,6 +262,14 @@
       const entry = kinds.data?.find((candidate) => candidate.kind === kind);
       return entry !== undefined && eventRefusal(form.effectiveType, entry) !== undefined;
     }),
+  );
+
+  /** Whether the kind on the form is one every chosen event can be told by; the Bureau refuses otherwise. */
+  const scopeRefused = $derived(
+    kinds.isSuccess &&
+      isScopeKind(form.scopeKind) &&
+      form.events.length > 0 &&
+      !scopeKindsFor(form.events, kinds.data).includes(form.scopeKind),
   );
 
   function actionLabel(type: HookActionType): string {
@@ -287,7 +335,9 @@
     },
   }));
 
-  const canSave = $derived(form.isValid && refused.length === 0 && !saving.isPending);
+  const canSave = $derived(
+    form.isValid && refused.length === 0 && !scopeRefused && !saving.isPending,
+  );
   const webhookAddress = $derived(hook?.action.type === 'webhook' ? hook.action.url : undefined);
 
   function submit(event: SubmitEvent): void {
@@ -349,6 +399,12 @@
             {#if kinds.isError}
               <Alert variant="danger">{copy.event.loadFailed}</Alert>
             {/if}
+            <HookOnlyFor {form} kinds={kinds.data ?? []} />
+            {#if scopeRefused}
+              <Alert variant="warning" data-testid="hook-scope-refused"
+                >{copy.onlyFor.refused}</Alert
+              >
+            {/if}
             {#if refused.length > 0}
               <Alert variant="warning" data-testid="hook-refused-events">
                 {refused.map(eventWords).join(', ')}: {form.actionType === 'notify'
@@ -369,7 +425,11 @@
               <Select
                 id="ib-hook-action"
                 label={copy.action.label}
-                description={isNew ? copy.action.choose : copy.action.fixed}
+                description={isNew
+                  ? remote
+                    ? copy.action.chooseRemote
+                    : copy.action.choose
+                  : copy.action.fixed}
                 disabled={!isNew}
                 options={actionOptions}
                 value={actionValue}

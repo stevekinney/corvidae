@@ -665,6 +665,7 @@ import {
   type WebhookNotifierOptions,
 } from './webhook-notifier';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
+import type { HookSubjectSources } from './hooks/hook-scope';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
@@ -2418,6 +2419,8 @@ function composeHooks(input: {
   readonly notifications: () => BureauNotifications | undefined;
   /** Which hook started a run, directly or through the runs above it. */
   readonly startedByHook: (runId: string) => Promise<string | undefined>;
+  /** The records a hook's scope is matched against (COR-1978). */
+  readonly subjects: HookSubjectSources;
 }): CreatedHooks | undefined {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
@@ -2432,6 +2435,7 @@ function composeHooks(input: {
     workflows: input.workflows,
     notifications: input.notifications,
     startedByHook: input.startedByHook,
+    subjects: input.subjects,
     bureauId: input.bureauId,
     newId: (kind) => input.runtimeServices.identifiers.next(kind),
     audit: async (entry) => {
@@ -2966,15 +2970,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1952: a schedule a hook-started run creates records the hook, and the chain guard reads the
   // record for each run the schedule fires. These closures read `tasks`, declared far below, only
   // when a run is looked up, which is after construction.
-  const { scheduleHookOrigins, startedByHook, hookOriginOfRun } = createRunHookOrigins({
-    kv: runtime.kv,
-    workflowOf: async (runId) => runtime.durable?.engine.get(runId),
-    taskOriginOf: async (runId) => {
-      const record = await tasks.record(runId);
-      return record?.origin;
-    },
-    diagnose,
-  });
+  const { scheduleHookOrigins, startedByHook, hookOriginOfRun, subjectsOfRun } =
+    createRunHookOrigins({
+      kv: runtime.kv,
+      workflowOf: async (runId) => runtime.durable?.engine.get(runId),
+      taskOriginOf: async (runId) => {
+        const record = await tasks.record(runId);
+        return record?.origin;
+      },
+      agentOf: async (runId) => {
+        const record = await tasks.record(runId);
+        return record?.agentName;
+      },
+      diagnose,
+    });
   const abandonConstruction = async (error: unknown): Promise<never> => {
     const failures: unknown[] = [];
     const attempt = async (stop: () => unknown): Promise<void> => {
@@ -21788,6 +21797,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     // hook acts on. The instance carries the hook's tag; a step, child or attempt reaches it
     // through the parent its task records.
     startedByHook,
+    subjects: {
+      run: subjectsOfRun,
+      agentOfSchedule: (scheduleId) => schedules.agentName(scheduleId),
+      agentOfGoal: async (goalRunId) => {
+        const goal = await goalsComposition.goals.get(goalRunId);
+        return goal?.objective.agentName;
+      },
+    },
   });
 
   // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for

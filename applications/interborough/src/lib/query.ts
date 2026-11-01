@@ -134,14 +134,16 @@ export const queryKeys = {
   /** The caller's hooks (`bureau.hooks.*`) and the event kinds a hook can listen to. */
   hooks: {
     list: () => ['hooks', 'list'] as const,
+    /** The hooks scoped to one agent, which that agent's Hooks tab lists. */
+    ofAgent: (agent: string) => ['hooks', 'of-agent', agent] as const,
     /** One hook, read by its page. */
     detail: (hookId: string) => ['hooks', 'detail', hookId] as const,
-    /** The newest delivery of one hook, read for the list's Last delivery column. */
-    last: (hookId: string) => ['hooks', 'last', hookId] as const,
     /** The newest deliveries of one hook. */
     deliveries: (hookId: string) => ['hooks', 'deliveries', hookId] as const,
-    /** The workflows a hook can start. */
+    /** The workflows a hook can start, or be limited to. */
     workflows: () => ['hooks', 'workflows'] as const,
+    /** The schedules a hook can be limited to. */
+    schedules: () => ['hooks', 'schedules'] as const,
     /** The event kinds a hook can listen to (`bureau.events.catalog`). */
     events: () => ['hooks', 'events'] as const,
   },

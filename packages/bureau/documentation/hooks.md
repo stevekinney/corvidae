@@ -38,6 +38,41 @@ A hook has one `action`, tagged by `type`, fixed when the hook is created. `url`
 
 A record stored before actions existed has a top-level `url` and no `action`. It reads as a webhook with no migration, and is rewritten in the tagged shape the next time it is changed. Likewise a delivery with no `actionType` is a webhook delivery. A `start-workflow` or `notify` delivery has `work` (what it will do, mapped from the event when the delivery was created) in place of a `request`, and its `completed` attempt a `receipt` naming the run or the notification. Two attempt outcomes (`rejected`, `error`) and one delivery status (`failed`) are for these actions.
 
+## Scope
+
+A hook fires for its event kinds across the whole Bureau unless it names one subject as `scope`: `{ kind: 'agent' | 'workflow' | 'schedule', id }` (the agent's name, the workflow file's identifier, or the schedule's id). A scoped hook fires only for events about that subject (COR-1978), and an event outside the scope makes no delivery.
+
+```ts
+import { createBureau } from '@lostgradient/bureau';
+import { MemoryStorage } from '@lostgradient/storage';
+
+const bureau = await createBureau({
+  agents: {},
+  storage: new MemoryStorage(),
+  durable: true,
+  hooks: {},
+});
+
+const hook = await bureau.hooks?.create({
+  action: { type: 'notify' },
+  events: ['run.settled', 'review.requested'],
+  scope: { kind: 'agent', id: 'researcher' },
+});
+console.log(hook?.scope);
+```
+
+What an event is about comes from the event and the Bureau's own records as it is dispatched, never from a client. An agent is the payload's `agentName`, else the agent of the run, schedule or goal the event names. A run's agent is its own: a child run of another agent is that agent's, not its parent's. A workflow is the file of the instance the event's run belongs to, through every run above it, so a review inside a step is that workflow's, or the file whose schedule the event names. A schedule is the one the event names, or the one that fired its run, through every run above it. The event kinds that can be told by each subject are `scopes` in `bureau.events.catalog`. Every kind a scoped hook lists must allow its scope's `kind`, or `create` and `update` refuse with `InvalidParams` on `scope`, so a scope never silently misses a kind the hook asked for. Kinds that are about no one subject (`diagnostic`, `notification.created`, `definitions.changed`, the `asset.*` kinds and so on) allow none, and neither do `session.deleted` and `steering.accepted`, which name a chat and no agent, or `run.removed`, because deleting a run deletes the task record a scope would read.
+
+An event the Bureau cannot place is out of scope. A lookup that fails is reported as a `hooks` diagnostic and no scoped hook fires for that event; a hook with no scope is not affected. A subject need not exist when the hook is written, and a scope on an agent, workflow or schedule that is later deleted simply stops matching.
+
+The lookups run once per event and only when a scoped hook lists its kind, so a Bureau with no scoped hooks does not pay for them. `update` takes `scope` (`null` removes it), and on the wire any `scope` in an update needs `bureau.events:observe-all`, because moving or clearing one decides whose events the hook sees.
+
+`scope` is an optional field on the stored record (`version: 1`), so a record written before it existed reads as a hook with no scope, with no migration. A record whose scope this release cannot read (a kind it does not know, or a malformed value) stays readable, its pending deliveries are kept, and it never fires. A kind it does not know is kept as stored through a rename or a disable; a malformed value is shown, and rewritten by the next change, as `{ kind: '', id: '' }`, which matches nothing. Such a hook cannot take new `events`, since no event allows its scope, until the `update` also gives it a `scope` or removes it with `null`. The reverse does not hold: a release that predates scopes ignores the field and fires the hook for its whole event kinds, so a rollback, or a host still on an older release that shares the store, widens a scoped hook.
+
+`bureau.hooks.list` takes the same `{ kind, id }` as `scope` to list the hooks scoped to exactly that subject, and each hook it answers carries `lastDelivery`: its newest delivery, a test included, with its status and last attempt and without its request, work or response body, or `null`. One read of the delivery records answers the whole list, so a failing-first view does not need one `bureau.hooks.deliveries` call per hook.
+
+Weft's own events stay out of it. The Bureau's feed publishes Weft's `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft's, and matching the rest needs a subscription to the engine's feed that the Bureau does not make. A hook scoped to a workflow therefore fires for what the Bureau publishes about that workflow's runs and schedule (its agent steps, their reviews, its schedule's fires), and has no event for an instance that starts or finishes by itself.
+
 ### Plugin actions
 
 `{ type: 'plugin', plugin, kind, configuration? }` runs an action kind that a plugin contributes (`hookActionKinds` in the plugin's contributions; a Bureau takes them as `hooks.actionKinds`). `create` and `update` refuse a kind no plugin contributes, and a `configuration` the kind's schema refuses, with `InvalidParams` on `action.kind` or `action.configuration`; an `update` cannot change the plugin or the kind. Each delivery resolves the kind and parses the configuration again, and calls the kind's `run` with the event, an abort signal, the `deliveryId`, and the `idempotencyKey` `hook:<hookId>:<deliveryId>` (the same key the built-in actions use). A rejection is a failed attempt, retried like any other. A kind that is no longer contributed, or a configuration its schema now refuses, ends the delivery `failed` without a retry. A delivery keeps the whole event for the action (`work.input` on the wire), so deleting a chat deletes it with the others that name the chat's runs. An action runs at least once per delivery: an attempt that succeeded and was interrupted before the delivery was marked delivered (a restart) is attempted again with the same `idempotencyKey`, and two deliveries never share one. An action with an external effect must use the key to make the repeat a no-op, by passing it as the idempotency key of the call it makes or by recording it with the effect and checking first. A plugin hook cannot be tested with `hooks.test`.
@@ -202,4 +237,4 @@ Rolling back to a release that predates actions is safe only for webhook hooks. 
 
 ## Who sees what
 
-A hook, and its deliveries, belong to the principal that created them and are visible to nobody else without `bureau.hooks:read` (`get`, `list`, `deliveries`) or `bureau.hooks:write` (`update`, `delete`, `test`); see the predicate table in `external-control-plane.md`. A hook observes the whole Bureau's events, so anything that decides where they go also needs `bureau.events:observe-all` of the **caller**, whoever created the hook: `create`, and an `update` that sets `url`, sets `action`, sets `events`, or sets `enabled: true`. Renaming, replacing the secret and disabling need no such scope, and neither does `test`, which sends a fixed message and never an event. Without this a key holding only `bureau.hooks:write` could re-point another owner's fleet-wide hook at its own URL. The audit entries (`hook.created`, `hook.updated`, `hook.deleted`, `hook.tested`) name the caller as the actor and the hook's owner in their detail; the actor is left out when the credential names none.
+A hook, and its deliveries, belong to the principal that created them and are visible to nobody else without `bureau.hooks:read` (`get`, `list`, `deliveries`) or `bureau.hooks:write` (`update`, `delete`, `test`); see the predicate table in `external-control-plane.md`. A hook observes the whole Bureau's events, so anything that decides where they go also needs `bureau.events:observe-all` of the **caller**, whoever created the hook: `create`, and an `update` that sets `url`, sets `action`, sets `events`, sets `scope`, or sets `enabled: true`. Renaming, replacing the secret and disabling need no such scope, and neither does `test`, which sends a fixed message and never an event. Without this a key holding only `bureau.hooks:write` could re-point another owner's fleet-wide hook at its own URL. The audit entries (`hook.created`, `hook.updated`, `hook.deleted`, `hook.tested`) name the caller as the actor and the hook's owner in their detail; the actor is left out when the credential names none.

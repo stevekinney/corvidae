@@ -15,7 +15,8 @@
  * A hook observes the whole Bureau's events, as `bureau.events` does, so anything that sets or
  * widens what it reaches also requires `bureau.events:observe-all`: creating one, and an update that
  * sets `url` (the events go wherever the URL points, so re-pointing a hook is reading them), sets
- * `events`, or enables the hook. `test` does not: it sends a fixed message, never an event.
+ * `events`, sets `scope` (clearing or moving one decides whose events it sees), or enables the hook.
+ * `test` does not: it sends a fixed message, never an event.
  * The scope is checked against the caller on every such call, not against the hook's creator, so a
  * key holding only `bureau.hooks:write` (or an owner whose scope was withdrawn) cannot turn an
  * existing fleet-wide hook into a reader of its own. A `start-workflow` action also needs the
@@ -42,7 +43,14 @@ import {
   HOOK_SECRET_MAXIMUM_LENGTH,
   HOOK_SECRET_MINIMUM_LENGTH,
 } from '../../hooks/create-hooks.ts';
-import { type Hook, type HookDelivery, HookError } from '../../hooks/hook-types.ts';
+import {
+  type Hook,
+  type HookDelivery,
+  type HookDeliverySummary,
+  HookError,
+  HOOK_SCOPE_KINDS,
+  type ListedHook,
+} from '../../hooks/hook-types.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -81,6 +89,19 @@ const signingSecret = z
   .max(HOOK_SECRET_MAXIMUM_LENGTH)
   .describe(
     'The secret deliveries are signed with, 16 to 256 characters. Write-only: it is sealed on arrival and no operation returns it.',
+  );
+
+const scopeInput = z
+  .strictObject({
+    kind: z.enum(HOOK_SCOPE_KINDS).describe('What `id` names: `agent`, `workflow` or `schedule`.'),
+    id: z
+      .string()
+      .min(1)
+      .max(256)
+      .describe('The agent’s name, the workflow’s identifier, or the schedule’s id.'),
+  })
+  .describe(
+    'The one subject the hook fires for. What an event is about is read from the event and the Bureau’s records, never from a client. Every listed kind must allow this scope’s `kind` (`scopes` in `bureau.events.catalog`).',
   );
 
 const webhookActionInput = z.strictObject({
@@ -158,26 +179,43 @@ const hookSchema = z.object({
     'What the hook does for each event. A hook stored before actions existed is a `webhook`.',
   ),
   events: z.array(z.string()),
+  scope: z
+    .object({ kind: z.string(), id: z.string() })
+    .nullable()
+    .describe(
+      'The one subject the hook fires for; `null` for a hook that fires for the whole Bureau. `kind` is `agent`, `workflow` or `schedule`. A stored kind this release does not know is shown as stored, and a stored value it cannot read is shown with an empty `kind`; neither fires.',
+    ),
   enabled: z.boolean(),
   createdAt: z.number().describe('Epoch milliseconds.'),
   updatedAt: z.number().describe('Epoch milliseconds.'),
   revision: z.number().int().describe('Pass it back as `expectedRevision`.'),
 });
 
+const attemptOutcome = z.enum([
+  'sending',
+  'response',
+  'network-error',
+  'interrupted',
+  'refused',
+  'completed',
+  'rejected',
+  'error',
+]);
+
+const deliveryStatus = z.enum([
+  'pending',
+  'delivered',
+  'exhausted',
+  'aborted',
+  'failed-secret',
+  'failed',
+]);
+
 const attemptSchema = z.object({
   number: z.number().int(),
   startedAt: z.number(),
   finishedAt: z.number().nullable(),
-  outcome: z.enum([
-    'sending',
-    'response',
-    'network-error',
-    'interrupted',
-    'refused',
-    'completed',
-    'rejected',
-    'error',
-  ]),
+  outcome: attemptOutcome,
   status: z.number().int().nullable(),
   responseExcerpt: z.string().nullable(),
   responseTruncated: z.boolean().nullable(),
@@ -195,7 +233,7 @@ const deliverySchema = z.object({
   actionType: z.enum(['webhook', 'start-workflow', 'notify', 'plugin']),
   kind: z.string(),
   test: z.boolean(),
-  status: z.enum(['pending', 'delivered', 'exhausted', 'aborted', 'failed-secret', 'failed']),
+  status: deliveryStatus,
   request: z
     .object({
       url: z.string(),
@@ -243,6 +281,34 @@ const deliverySchema = z.object({
   updatedAt: z.number(),
 });
 
+const deliverySummarySchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  test: z.boolean(),
+  status: deliveryStatus,
+  lastAttempt: z
+    .object({
+      number: z.number().int(),
+      startedAt: z.number(),
+      finishedAt: z.number().nullable(),
+      outcome: attemptOutcome,
+      status: z.number().int().nullable(),
+      error: z.string().nullable(),
+    })
+    .nullable()
+    .describe('How the attempt made last ended; `null` before the first.'),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+const listedHookSchema = hookSchema.extend({
+  lastDelivery: deliverySummarySchema
+    .nullable()
+    .describe(
+      'The hook’s newest delivery, a test included, without its request, work or response: `bureau.hooks.deliveries` has those. `null` for a hook with none.',
+    ),
+});
+
 function hookViewOf(hook: Hook): z.infer<typeof hookSchema> {
   return {
     id: hook.id,
@@ -260,10 +326,43 @@ function hookViewOf(hook: Hook): z.infer<typeof hookSchema> {
             }
           : { ...hook.action },
     events: [...hook.events],
+    scope: hook.scope === undefined ? null : { kind: hook.scope.kind, id: hook.scope.id },
     enabled: hook.enabled,
     createdAt: hook.createdAt,
     updatedAt: hook.updatedAt,
     revision: hook.revision,
+  };
+}
+
+function deliverySummaryViewOf(
+  delivery: HookDeliverySummary,
+): z.infer<typeof deliverySummarySchema> {
+  const last = delivery.lastAttempt;
+  return {
+    id: delivery.id,
+    kind: delivery.kind,
+    test: delivery.test,
+    status: delivery.status,
+    lastAttempt:
+      last === undefined
+        ? null
+        : {
+            number: last.number,
+            startedAt: last.startedAt,
+            finishedAt: last.finishedAt ?? null,
+            outcome: last.outcome,
+            status: last.status ?? null,
+            error: last.error ?? null,
+          },
+    createdAt: delivery.createdAt,
+    updatedAt: delivery.updatedAt,
+  };
+}
+
+function listedHookViewOf(hook: ListedHook): z.infer<typeof listedHookSchema> {
+  return {
+    ...hookViewOf(hook),
+    lastDelivery: hook.lastDelivery === null ? null : deliverySummaryViewOf(hook.lastDelivery),
   };
 }
 
@@ -494,6 +593,7 @@ const createInput = z.object({
       'What the hook does for each event: `webhook` (a signed POST), `start-workflow` (starts a workflow as the owner) or `notify` (writes the owner a notification). Give this or `url`, not both.',
     ),
   events: eventKinds,
+  scope: scopeInput.optional(),
   signingSecret: signingSecret
     .optional()
     .describe(
@@ -512,7 +612,7 @@ export const hooksCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create a hook',
   description:
-    'Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `action` is `{ type: "webhook", url }` (or `url` alone, its shorthand), `{ type: "start-workflow", workflowId, input? }`, `{ type: "notify", title? }` or `{ type: "plugin", plugin, kind, configuration? }` (an action kind a plugin contributes; its configuration is checked against the kind’s schema, and an unknown kind is `InvalidParams` on `action.kind`). A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload, source? }`, `source` being the plugin whose contribution emitted the event and absent for an event from Bureau core, and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is required for a webhook, refused for the other actions, write-only and never returned. `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: "event"`, `{ kind, bureauId, emittedAtMs, payload, source? }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: "workflow authority"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: "deployment"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.',
+    'Creates a hook owned by the caller: when a published Bureau event of one of `events` happens, its `action` runs. `action` is `{ type: "webhook", url }` (or `url` alone, its shorthand), `{ type: "start-workflow", workflowId, input? }`, `{ type: "notify", title? }` or `{ type: "plugin", plugin, kind, configuration? }` (an action kind a plugin contributes; its configuration is checked against the kind’s schema, and an unknown kind is `InvalidParams` on `action.kind`). A webhook sends `url` a POST whose body is `{ id, hookId, kind, bureauId, emittedAtMs, test, payload, source? }`, `source` being the plugin whose contribution emitted the event and absent for an event from Bureau core, and whose `X-Signature` header (`t=<unix seconds>,v1=<hex>`, an HMAC-SHA256 of `<t>.<body>` under `signingSecret`) lets the receiver verify it; a delivery that fails is retried with backoff and resumed after a restart, and its request, response excerpt and attempts are kept (`bureau.hooks.deliveries`). `signingSecret` is required for a webhook, refused for the other actions, write-only and never returned. `start-workflow` starts the workflow as the owner, with the event’s payload (or, with `input: "event"`, `{ kind, bureauId, emittedAtMs, payload, source? }`) as its input; input the workflow refuses fails that delivery without a retry, a delivery retried or resumed starts one run, and the events of a run a hook started start nothing (that delivery fails, `Skipped`), so hooks do not chain. A delivery is made for each publication of an event, and the `goal.*` events are at-least-once. It needs a caller allowed to start workflows, and an owner who may (in v1 the deployment’s owner of record), else `Forbidden` (`data.reason: "workflow authority"`); an unknown or paused workflow is `InvalidParams`. `notify` writes the owner a notification per event, once per delivery, and cannot list `notification.created` (`InvalidParams` on `events`). The caller needs no scope to own a hook, but needs `bureau.events:observe-all`, because a hook observes the whole Bureau’s events. `scope` makes the hook fire only for one agent, workflow or schedule, read from each event and the Bureau’s records; an event it cannot place is out of scope. A scope some listed kind cannot be told by (`scopes` in `bureau.events.catalog`) is `InvalidParams` on `scope`. An unacceptable URL, event list or secret is `InvalidParams`. A deployment that keeps secrets elsewhere refuses with `Forbidden` (`data.reason: "deployment"`). A Bureau without hooks, or without an encryption key, answers `UnsupportedCapability`.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: createInput,
@@ -532,6 +632,7 @@ export const hooksCreateOperation = defineOperation<
         await host.hooks.create({
           events: input.events,
           principal: owner,
+          ...(input.scope === undefined ? {} : { scope: input.scope }),
           ...(input.url === undefined ? {} : { url: input.url }),
           ...(input.action === undefined ? {} : { action: input.action }),
           ...(input.signingSecret === undefined ? {} : { signingSecret: input.signingSecret }),
@@ -554,6 +655,12 @@ const updateInput = z.object({
       'The hook’s action again, with new fields (a field left out takes its default). Its `type` must be the hook’s own: it is fixed at creation.',
     ),
   events: eventKinds.optional(),
+  scope: scopeInput
+    .nullable()
+    .optional()
+    .describe(
+      'A new subject for the hook to fire for, or `null` so it fires for the whole Bureau again.',
+    ),
   signingSecret: signingSecret.optional(),
   name: z
     .string()
@@ -580,7 +687,7 @@ export const hooksUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Change a hook',
   description:
-    'Changes the fields given and leaves the rest: `url` (a webhook’s) or `action` (the same `type`, new fields; the type is fixed at creation), `events` (replacing the list), `signingSecret` (replacing the secret; write-only, never returned), `name` (`null` removes it) and `enabled`. A caller changes its own hooks without a scope; `bureau.hooks:write` changes any owner’s, and anyone else is answered `NotFound`. Setting `url`, `action`, or `events`, or setting `enabled: true`, also requires `bureau.events:observe-all` of the caller, because each decides where the whole Bureau’s events go (renaming, replacing the secret and disabling do not). `expectedRevision`, when given, is compared inside the write: a hook that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current. Faults for the URL, events and secret are those of `bureau.hooks.create`.',
+    'Changes the fields given and leaves the rest: `url` (a webhook’s) or `action` (the same `type`, new fields; the type is fixed at creation), `events` (replacing the list), `scope` (`null` removes it, and every listed kind must allow it), `signingSecret` (replacing the secret; write-only, never returned), `name` (`null` removes it) and `enabled`. A caller changes its own hooks without a scope; `bureau.hooks:write` changes any owner’s, and anyone else is answered `NotFound`. Setting `url`, `action`, `events` or `scope`, or setting `enabled: true`, also requires `bureau.events:observe-all` of the caller, because each decides where the whole Bureau’s events go (renaming, replacing the secret and disabling do not). `expectedRevision`, when given, is compared inside the write: a hook that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current. Faults for the URL, events and secret are those of `bureau.hooks.create`.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: updateInput,
@@ -604,6 +711,7 @@ export const hooksUpdateOperation = defineOperation<
       input.url !== undefined ||
       input.action !== undefined ||
       input.events !== undefined ||
+      input.scope !== undefined ||
       input.enabled === true
     ) {
       requireObserveAll(principal);
@@ -616,6 +724,7 @@ export const hooksUpdateOperation = defineOperation<
         ...(input.url === undefined ? {} : { url: input.url }),
         ...(input.action === undefined ? {} : { action: input.action }),
         ...(input.events === undefined ? {} : { events: input.events }),
+        ...(input.scope === undefined ? {} : { scope: input.scope }),
         ...(input.signingSecret === undefined ? {} : { signingSecret: input.signingSecret }),
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
@@ -689,33 +798,40 @@ export const hooksGetOperation = defineOperation<
   },
 });
 
-const listInput = z.object({});
+const listInput = z.object({
+  scope: scopeInput
+    .optional()
+    .describe('Only the hooks scoped to exactly this subject. Omitted, every hook.'),
+});
 
 export const hooksListOperation = defineOperation<
   typeof listInput,
-  z.ZodObject<{ hooks: z.ZodArray<typeof hookSchema> }>,
+  z.ZodObject<{ hooks: z.ZodArray<typeof listedHookSchema> }>,
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.list',
   mcpExposable: false,
   summary: 'List hooks',
   description:
-    'Lists the caller’s own hooks, oldest first; a caller holding `bureau.hooks:read` lists every owner’s. The signing secret is never part of the answer.',
+    'Lists the caller’s own hooks, oldest first; a caller holding `bureau.hooks:read` lists every owner’s. `scope` narrows the list to the hooks scoped to exactly that subject. Each hook carries `lastDelivery`, a summary of its newest delivery, so a list needs no `bureau.hooks.deliveries` call per hook. The signing secret is never part of the answer.',
   destructive: false,
   tags: ['Hooks'],
   inputSchema: listInput,
-  outputSchema: z.object({ hooks: z.array(hookSchema) }),
+  outputSchema: z.object({ hooks: z.array(listedHookSchema) }),
   producibleFaults: ['Forbidden', 'UnsupportedCapability'],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host, principal }) => {
+  invoke: async ({ input, host, principal }) => {
     if (host.hooks === undefined) throw unsupported();
     const everyOwner = holds(principal, 'bureau.hooks:read');
     const owner = everyOwner ? undefined : ownerFor(principal);
-    const listed = await host.hooks.list(owner === undefined ? {} : { owner });
-    return { hooks: listed.map(hookViewOf) };
+    const listed = await host.hooks.list({
+      ...(owner === undefined ? {} : { owner }),
+      ...(input.scope === undefined ? {} : { scope: input.scope }),
+    });
+    return { hooks: listed.map(listedHookViewOf) };
   },
 });
 

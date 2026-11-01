@@ -48,6 +48,7 @@ describe('bureau.events.catalog', () => {
         description: entry.description,
         origin: entry.origin,
         payload: entry.payload.map((field) => ({ ...field })),
+        scopes: [...entry.scopes],
       })),
     );
     expect(events.find((event) => event.kind === 'notification.created')?.origin).toBe(

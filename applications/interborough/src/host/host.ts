@@ -141,6 +141,7 @@ import {
   resolvePort,
 } from './environment-configuration.ts';
 import { HOST_DEPENDENCIES, loadFolderPlugins, PLUGIN_FOLDER_NAME } from './folder-plugins.ts';
+import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
 import { hostStorageReport } from './host-storage.ts';
 import {
@@ -756,10 +757,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       pluginWorkflowSource: createPluginWorkflowSource,
       ...(settings === undefined ? {} : { settings }),
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
-      // Bureau's events. A remote home leaves them off: its signing secrets would have to live in
-      // the environment and its private-network addresses are not the person's own, so the Hooks
-      // page says they are off there instead of offering a form that could only be refused.
-      ...(bungalow.mode === 'remote' ? {} : { hooks: {} }),
+      // Bureau's events, with what a remote home needs of them (COR-1978).
+      hooks: hookOptionsFor(bungalow.mode),
     });
     held.bureau = bureau;
     // One line per plugin with its status and problem codes, once Bureau has composed them.

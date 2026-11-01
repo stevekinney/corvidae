@@ -2276,7 +2276,13 @@ export const AGENTS_COPY = {
 /** The words of an agent's page: its tabs, the controls over its chats, its instructions and its settings. */
 export const AGENT_PAGE_COPY = {
   tabsLabel: 'Sections of this agent',
-  tabs: { chats: 'Chats', instructions: 'Instructions', access: 'Access', settings: 'Settings' },
+  tabs: {
+    chats: 'Chats',
+    instructions: 'Instructions',
+    access: 'Access',
+    hooks: 'Hooks',
+    settings: 'Settings',
+  },
   chats: {
     stateLabel: 'Show chats that are',
     states: { all: 'All', 'needs-you': 'Needs you', running: 'Running' },

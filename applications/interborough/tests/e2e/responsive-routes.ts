@@ -129,6 +129,7 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // The Access tab of the agent with the largest budgets the Bureau accepts, a tool set to ask
     // every time, and the host's skills among them, one with a long name.
     '/agents/:agent (access tab)': `${agent}?tab=access`,
+    '/agents/:agent (hooks tab)': `${agent}?tab=hooks`,
     '/agents/:agent (settings tab)': `${agent}?tab=settings`,
     '/workflows/:workflow (file)': file,
     '/workflows/:workflow (file, code tab)': `${file}?tab=code`,

@@ -2,10 +2,10 @@
   /**
    * `/agents/:agent`: one agent, with its name once, its description, what it is made of (its model
    * when the Bureau can tell, its tools and skills), a Memory action that carries how many memories it has, a New
-   * chat action, and four tabs: Chats (the chats had with it, filtered), Instructions (the body of
+   * chat action, and five tabs: Chats (the chats had with it, filtered), Instructions (the body of
    * its file and the reference documents it reads), Access (its tools and when each asks first, its
-   * skills, guardrails and budgets) and Settings (its model and step limit, Delete, and its saved
-   * versions with Restore). The tab is in the address (`?tab=`), and Chats is
+   * skills, guardrails and budgets), Hooks (the hooks limited to it) and Settings (its model and step
+   * limit, Delete, and its saved versions with Restore). The tab is in the address (`?tab=`), and Chats is
    * the address with none.
    *
    * An agent file shows the version of the file it runs, with a link to the history that lives in
@@ -40,6 +40,7 @@
   import AgentAccess from './agent-access.svelte';
   import AgentChats from './agent-chats.svelte';
   import AgentFacts from './agent-facts.svelte';
+  import AgentHooks from './agent-hooks.svelte';
   import AgentInstructions from './agent-instructions.svelte';
   import AgentSettings from './agent-settings.svelte';
   import { memoryActionText, newChatPath, shortVersion } from './agent-presentation.ts';
@@ -136,8 +137,8 @@
     goTo(event, newChatPath(id));
   }
 
-  type TabValue = 'chats' | 'instructions' | 'access' | 'settings';
-  const TABS: readonly TabValue[] = ['chats', 'instructions', 'access', 'settings'];
+  type TabValue = 'chats' | 'instructions' | 'access' | 'hooks' | 'settings';
+  const TABS: readonly TabValue[] = ['chats', 'instructions', 'access', 'hooks', 'settings'];
 
   // The URL owns the tab, so a tab can be linked and the back button returns to it: `activeTab`
   // follows `?tab=`, and a tab the person picks writes the address from Tabs' `onValueChange`, so
@@ -248,6 +249,7 @@
         <Tabs.Trigger value="chats">{AGENT_PAGE_COPY.tabs.chats}</Tabs.Trigger>
         <Tabs.Trigger value="instructions">{AGENT_PAGE_COPY.tabs.instructions}</Tabs.Trigger>
         <Tabs.Trigger value="access">{AGENT_PAGE_COPY.tabs.access}</Tabs.Trigger>
+        <Tabs.Trigger value="hooks">{AGENT_PAGE_COPY.tabs.hooks}</Tabs.Trigger>
         <Tabs.Trigger value="settings">{AGENT_PAGE_COPY.tabs.settings}</Tabs.Trigger>
       </Tabs.List>
       <Tabs.Panel value="chats">
@@ -269,6 +271,9 @@
           failed={definition.isError}
           onRetry={() => void definition.refetch()}
         />
+      </Tabs.Panel>
+      <Tabs.Panel value="hooks">
+        <AgentHooks {id} />
       </Tabs.Panel>
       <Tabs.Panel value="settings">
         <AgentSettings

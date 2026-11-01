@@ -16,6 +16,7 @@ function hook(action: Hook['action'], overrides: Partial<Hook> = {}): Hook {
     name: 'Kept',
     action,
     events: ['review.requested'],
+    scope: null,
     enabled: true,
     createdAt: 1,
     updatedAt: 1,
@@ -195,5 +196,41 @@ describe('the other actions', () => {
     expect(form.toInput()).toMatchObject({ action: { type: 'notify', title: 'Look' } });
     form.title = 'x'.repeat(201);
     expect(form.isValid).toBe(false);
+  });
+});
+
+describe('Only for', () => {
+  test('goes out with a new hook once a subject is chosen, and not before', () => {
+    const form = webhook();
+    expect(form.toInput()).not.toHaveProperty('scope');
+    form.scopeKind = 'agent';
+    expect(form.isValid).toBe(false);
+    form.scopeId = 'scout';
+    expect(form.isValid).toBe(true);
+    expect(form.toInput().scope).toEqual({ kind: 'agent', id: 'scout' });
+    expect(form.draftScope).toEqual({ kind: 'agent', id: 'scout' });
+  });
+
+  test('loads from a hook, marks a change dirty, and sends the scope only when it changed', () => {
+    const scoped = hook({ type: 'notify', title: null }, { scope: { kind: 'agent', id: 'scout' } });
+    const form = new HookFormState(false);
+    form.load(scoped);
+    expect(form.dirty).toBe(false);
+    expect(form.toChange(scoped)).not.toHaveProperty('scope');
+
+    form.scopeId = 'writer';
+    expect(form.dirty).toBe(true);
+    expect(form.toChange(scoped).scope).toEqual({ kind: 'agent', id: 'writer' });
+
+    form.scopeKind = '';
+    form.scopeId = '';
+    expect(form.toChange(scoped).scope).toBeNull();
+  });
+
+  test('leaves a kind this page does not know as it is', () => {
+    const scoped = hook({ type: 'notify', title: null }, { scope: { kind: 'team', id: 'blue' } });
+    const form = new HookFormState(false);
+    form.load(scoped);
+    expect(form.toChange(scoped)).not.toHaveProperty('scope');
   });
 });
