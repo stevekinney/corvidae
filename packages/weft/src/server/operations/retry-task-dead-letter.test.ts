@@ -81,13 +81,19 @@ function deadAttemptRecord(operationId: string, attemptToken: string, attempt: n
   return record;
 }
 
-async function putRunningWorkflow(storage: MemoryStorage, workflowId: string, status: string) {
+async function putRunningWorkflow(
+  storage: MemoryStorage,
+  workflowId: string,
+  status: string,
+  workflowExecutionToken?: string,
+) {
   await storage.put(
     KEYS.workflow(workflowId),
     encode({
       id: workflowId,
       type: 'test',
       status,
+      ...(workflowExecutionToken === undefined ? {} : { workflowExecutionToken }),
       input: null,
       versionTuple: { workflowVersion: '0.0.0' },
       createdAt: 1,
@@ -422,6 +428,53 @@ describe('weft.tasks.deadletters.retry', () => {
 
     const live = await runRetry(engine, { operationId: 'op-live' });
     expect(live.ok).toBe(true);
+  });
+
+  it('refuses a task that belongs to an earlier run of a workflow id a newer run now holds', async () => {
+    const storage = new MemoryStorage();
+    await using engine = createEngine(storage);
+    await putLedgerRecord(
+      storage,
+      deadLetteredFixture({
+        operationId: 'op-old-run',
+        workflowId: 'wf-restarted',
+        workflowExecutionToken: 'run-a',
+      }),
+    );
+    await putLedgerRecord(
+      storage,
+      deadLetteredFixture({
+        operationId: 'op-same-run',
+        workflowId: 'wf-same',
+        workflowExecutionToken: 'run-a',
+      }),
+    );
+    // Run B started under the same workflow id after run A was cancelled.
+    await putRunningWorkflow(storage, 'wf-restarted', 'running', 'run-b');
+    await putRunningWorkflow(storage, 'wf-same', 'running', 'run-a');
+    const before = await storage.get(taskLedgerKey('op-old-run'));
+    const redispatched: RemoteTaskQueued[] = [];
+    const metricsCollector = new MetricsCollector();
+
+    const refused = await runRetry(
+      engine,
+      { operationId: 'op-old-run' },
+      { metricsCollector, redispatchQueuedTask: (record) => redispatched.push(record) },
+    );
+
+    expect(refused.ok).toBe(false);
+    if (refused.ok) throw new Error('expected a refusal');
+    expect(refused.fault.code).toBe('Conflict');
+    expect(refused.fault.code === 'Conflict' && refused.fault.data.reason).toBe(
+      'workflow-finished',
+    );
+    expect(await storage.get(taskLedgerKey('op-old-run'))).toEqual(before);
+    expect(redispatched).toHaveLength(0);
+    const requeues = metricsCollector.snapshot()['weft.task.requeues'];
+    expect(requeues?.type === 'counter' ? requeues.value : 0).toBe(0);
+
+    const sameRun = await runRetry(engine, { operationId: 'op-same-run' });
+    expect(sameRun.ok).toBe(true);
   });
 
   it('refuses with Conflict concurrent-change when every pass loses the compare-and-swap', async () => {

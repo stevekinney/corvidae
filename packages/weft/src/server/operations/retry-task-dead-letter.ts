@@ -68,6 +68,31 @@ export type RetryTaskDeadLetterOutput = z.infer<typeof retryTaskDeadLetterOutput
  */
 const MAXIMUM_RETRY_PASSES = 3;
 
+/**
+ * Read the workflow run that owns a task and return the condition that fences
+ * the retry on exactly the bytes read, or `null` when that run is gone or has
+ * finished. A workflow id names every run started under it, and a task id is
+ * the workflow id plus step and attempt, so a restarted run reuses the id. When
+ * both execution tokens are known and differ, a newer run holds the id: the
+ * activity's result would be dropped as stale and its side effects would repeat
+ * for a run that already ended.
+ */
+async function readLiveOwningRun(
+  storage: { get(key: string): Promise<Uint8Array | null> },
+  workflowId: string,
+  task: { workflowExecutionToken?: string | undefined },
+): Promise<{ key: string; expectedValue: Uint8Array } | null> {
+  const key = KEYS.workflow(workflowId);
+  const bytes = await storage.get(key);
+  if (bytes === null) return null;
+  const state = decodeWorkflowState(bytes);
+  if (isTerminalWorkflowStatus(state.status)) return null;
+  const taskToken = task.workflowExecutionToken;
+  const runToken = state.workflowExecutionToken;
+  if (taskToken !== undefined && runToken !== undefined && taskToken !== runToken) return null;
+  return { key, expectedValue: bytes };
+}
+
 export type RetryTaskDeadLetterOptions = {
   metricsCollector?: MetricsCollector | undefined;
   /**
@@ -141,19 +166,15 @@ export function createRetryTaskDeadLetterOperation(options?: RetryTaskDeadLetter
         // this read and the commit.
         const conditions = [];
         if (current.workflowId !== undefined) {
-          const workflowKey = KEYS.workflow(current.workflowId);
-          const workflowBytes = await storage.get(workflowKey);
-          if (
-            workflowBytes === null ||
-            isTerminalWorkflowStatus(decodeWorkflowState(workflowBytes).status)
-          ) {
+          const fence = await readLiveOwningRun(storage, current.workflowId, current);
+          if (fence === null) {
             raiseFault(operation, {
               code: 'Conflict',
-              message: `Workflow "${current.workflowId}" that owns task "${operationId}" has finished`,
+              message: `Workflow "${current.workflowId}" run that owns task "${operationId}" has finished`,
               data: { reason: 'workflow-finished' },
             });
           }
-          conditions.push({ key: workflowKey, expectedValue: workflowBytes });
+          conditions.push(fence);
         }
 
         const committed = await commitTaskLedgerTransition(
