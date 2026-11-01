@@ -31,6 +31,8 @@ export const AG_UI_ERROR_CODES = [
   'RUN_FAILED',
   'CONTINUATION_UNAVAILABLE',
   'REVIEW_ROUND_CHANGED',
+  /** COR-1986: the thread was deleted, so a start or resume on its id is refused and stores nothing. */
+  'THREAD_DELETED',
 ] as const;
 
 export type AgUiErrorCode = (typeof AG_UI_ERROR_CODES)[number];

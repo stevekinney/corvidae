@@ -17,6 +17,7 @@ import {
 } from '@lostgradient/memory';
 import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { EventType } from '@ag-ui/core';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileError } from './agent-file';
@@ -26,6 +27,14 @@ import { BureauError, createBureau, UnknownScheduleAgentError } from './create-b
 import { SESSION_AGENT_DEFINITION_HASH_METADATA_KEY } from './runtime-composition';
 import { runTask, taskContent, waitForCondition, waitForTaskState } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
+import { createBureauHandler } from './http/create-bureau-handler';
+import {
+  as,
+  authentication,
+  runAgentInput,
+  startRequest,
+} from './http/ag-ui-fixtures.test-support';
+import { readAgUiStream } from './http/ag-ui-stream.test-support';
 import { KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import {
   type FileBureauHarness,
@@ -383,6 +392,8 @@ describe('deleting a tried chat (COR-1911)', () => {
    *   pass takes a run admitted after the delete began.
    * - `chat-content-purge-tombstone:v1:`: each run's fence, which a late write of its process is
    *   refused by (the run id and when it was purged), kept as long as the audit retention.
+   * - `context-tombstone:v1:`: the deleted chat's id, owner and deletion time, and nothing else
+   *   (COR-1986), so a start that names the id is refused rather than recreating the chat.
    * - `appmbx:`: the chat's purged input mailbox keeps its header, sealed, so an admission that
    *   raced the purge is refused rather than recreating the mailbox.
    */
@@ -398,6 +409,7 @@ describe('deleting a tried chat (COR-1911)', () => {
     'wf-owner-epoch:',
     'chat-content-purge-pending:v1:',
     'chat-content-purge-tombstone:v1:',
+    'context-tombstone:v1:',
     'appmbx:',
   ];
 
@@ -557,6 +569,44 @@ describe('deleting a tried chat (COR-1911)', () => {
     expect(attempts).toHaveLength(1);
     const error = await attempts[0];
     expect((error as BureauError).code).toBe('NOT_FOUND');
+    expect(await bureau.contexts.get(tried.contextId)).toBeUndefined();
+    expect(await bureau.contexts.list({ origin: 'chat' })).toEqual([]);
+  });
+
+  it('cannot be recreated with its rows by a start through a catalog agent on the same thread id (COR-1986)', async () => {
+    const harness = await start({ overrides: { id: 'agent-try-recreate' } });
+    const { bureau } = harness;
+    const handler = createBureauHandler(bureau, {
+      authentication,
+      a2aAgents: ['alpha'],
+      agUi: {},
+    });
+    // The owner `alice-key` resolves to on the AG-UI route.
+    const tried = await bureau.agents.try(DEFINITION, 'hello', { principal: 'api-key:alice' });
+    await waitForTaskState(bureau, tried.taskId);
+    await deleted(bureau, tried.contextId);
+
+    const response = await handler(
+      startRequest(
+        runAgentInput({
+          threadId: tried.contextId,
+          runId: 'client-run-again',
+          messages: [
+            { id: 'user-1', role: 'user', content: 'hello' },
+            { id: 'user-2', role: 'user', content: 'one more thing' },
+          ],
+        }),
+        as('alice-key'),
+        'alpha',
+      ),
+    );
+    const frames = await readAgUiStream(response);
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.event).toMatchObject({
+      type: EventType.RUN_ERROR,
+      code: 'THREAD_DELETED',
+    });
     expect(await bureau.contexts.get(tried.contextId)).toBeUndefined();
     expect(await bureau.contexts.list({ origin: 'chat' })).toEqual([]);
   });

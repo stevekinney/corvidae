@@ -23,6 +23,7 @@ import {
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { BureauShuttingDownError } from '../../create-bureau.ts';
 import {
   aggregateCleanup,
   type ContextActivity,
@@ -107,7 +108,7 @@ export const contextsDeleteOperation = defineOperation<
   mcpExposable: false,
   summary: 'Delete a context',
   description:
-    'Deletes one of the caller’s own contexts; a caller holding `bureau.contexts:write` deletes any owner’s. The deletion fences the context first, so a new task or session input for it reads as a context that does not exist, then cancels and awaits every live task in it, then removes the context and empties its tasks’ message histories. Once the context is gone and its runs have ended, its content is purged: the event history of the context and of each run, the runs’ workflows and checkpoints, their interactive surfaces, the context’s session input and A2A history, the records of their reviews, and the runs they delegated to go, and their audit entries are redacted (the entries stay, as proof the runs happened). A purge that fails is finished by the next maintenance pass or boot, and a second pass ten minutes after it removes what a late writer added. The `receipt` is `applied` (no task was live), or the aggregate of the cancelled tasks’ cleanup, the least settled winning: `cleanup-pending`, `cleanup-unresolved`, `unknown-outcome`, `cleanup-failed`, `cleaned-up`; `tasks` lists each. `rejected` (reason `shutting-down`) means admission is closed and nothing was applied. `waitMilliseconds` (default 0) waits that long for outstanding cleanup acknowledgements.',
+    'Deletes one of the caller’s own contexts; a caller holding `bureau.contexts:write` deletes any owner’s. The deletion fences the context first, so a new task or session input for it reads as a context that does not exist, then cancels and awaits every live task in it, then removes the context and empties its tasks’ message histories. Once the context is gone and its runs have ended, its content is purged: the event history of the context and of each run, the runs’ workflows and checkpoints, their interactive surfaces, the context’s session input and A2A history, the records of their reviews, and the runs they delegated to go, and their audit entries are redacted (the entries stay, as proof the runs happened). A purge that fails is finished by the next maintenance pass or boot, and a second pass ten minutes after it removes what a late writer added. The deletion also records the context’s id, its owner and when it was deleted, and nothing else, under the thread’s lease before anything is removed, so an AG-UI start or resume on that id is refused as `THREAD_DELETED` rather than creating the chat again. The `receipt` is `applied` (no task was live), or the aggregate of the cancelled tasks’ cleanup, the least settled winning: `cleanup-pending`, `cleanup-unresolved`, `unknown-outcome`, `cleanup-failed`, `cleaned-up`; `tasks` lists each. `rejected` (reason `shutting-down`) means admission is closed and nothing was applied. `waitMilliseconds` (default 0) waits that long for outstanding cleanup acknowledgements.',
   destructive: true,
   tags: ['Contexts'],
   inputSchema: contextsDeleteInput,
@@ -149,9 +150,22 @@ export const contextsDeleteOperation = defineOperation<
         ...named([]),
       };
     }
-    const report = await host.contexts.delete(contextId, {
-      incarnation: session.incarnation,
-    });
+    let report;
+    try {
+      report = await host.contexts.delete(contextId, { incarnation: session.incarnation });
+    } catch (error) {
+      // Admission closed while the delete waited for the thread's lease (COR-1986): the lifecycle
+      // read above passed, and nothing was applied, as for a Bureau that was already closing.
+      if (error instanceof BureauShuttingDownError) {
+        return {
+          contextId,
+          receipt: 'rejected' as const,
+          reason: 'shutting-down' as const,
+          ...named([]),
+        };
+      }
+      throw error;
+    }
     // The id holds another incarnation now (or none): the context authorized is gone.
     if (!report.deleted) throw resourceNotFound('context', contextId);
     if (report.tasks.length === 0) return { contextId, receipt: 'applied' as const, ...named([]) };

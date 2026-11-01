@@ -167,6 +167,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'chat-content-purge-tombstone:v1:',
     'the fence a purged run’s late writers are refused by: the run id and when it was purged',
   ),
+  contentFree(
+    'context-tombstone:v1:',
+    'the fence a deleted context’s id is refused starts by: the id, its owner and when it was deleted',
+  ),
   contentFree('ag-ui-lease:v1', 'an AG-UI stream’s lease: ids and an expiry'),
   purged('command-ledger:a2a-send:v1'),
   contentFree(

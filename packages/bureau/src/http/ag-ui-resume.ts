@@ -47,6 +47,7 @@ import {
   digestCommandPayload,
 } from '../command-ledger.ts';
 import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts';
+import { readContextTombstone } from '../context-tombstone.ts';
 import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../create-bureau.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type {
@@ -361,6 +362,13 @@ export function createResume(context: ResumeContext) {
         );
       }
     }
+    // COR-1986: a deleted chat is not resumed, and that is told before any review is looked up. A
+    // delete purges the chat's review records, so past this point every interrupt of it reads as
+    // one that does not exist. The tombstone is permanent and written before anything is removed,
+    // so a read that finds it needs no lease; the read under the thread's lease in `settle` is the
+    // one a delete cannot interleave with, and decides whatever this one did not see.
+    const deletedEarly = await deletedThreadRefusal(threadId, owner);
+    if (deletedEarly !== undefined) return context.refuse(deletedEarly.code, deletedEarly.message);
     const reviews = new Map<string, PendingReview>();
     const sessionAgentNames = new Map<string, Promise<string | undefined>>();
     const sessionAgent = (reviewOwner: string | undefined): Promise<string | undefined> => {
@@ -410,6 +418,14 @@ export function createResume(context: ResumeContext) {
         notYetOffered ||
         otherAgents
       ) {
+        // A delete that began after the read above has purged the review: the tombstone it wrote
+        // first is told as such, not as an interrupt that does not exist.
+        if (review === undefined) {
+          const deletedMeanwhile = await deletedThreadRefusal(threadId, owner);
+          if (deletedMeanwhile !== undefined) {
+            return context.refuse(deletedMeanwhile.code, deletedMeanwhile.message);
+          }
+        }
         return context.refuse(
           'INTERRUPT_NOT_FOUND',
           `Interrupt "${entry.interruptId}" was not found`,
@@ -643,6 +659,27 @@ export function createResume(context: ResumeContext) {
   }
 
   /**
+   * The refusal for a thread that was deleted (COR-1986): `THREAD_DELETED` for its owner of
+   * record, `THREAD_NOT_FOUND` for anyone else or a record that cannot be read, and `THREAD_BUSY`
+   * when the store fails, like a session that cannot be read.
+   */
+  async function deletedThreadRefusal(
+    threadId: string,
+    owner: string,
+  ): Promise<Refusal | undefined> {
+    let tombstone: Awaited<ReturnType<typeof readContextTombstone>>;
+    try {
+      tombstone = await readContextTombstone(bureau.internals.kv!, threadId);
+    } catch {
+      return { code: 'THREAD_BUSY', message: `Thread "${threadId}" has a run in progress` };
+    }
+    if (tombstone === undefined) return undefined;
+    return tombstone !== 'unreadable' && tombstone.owner === owner
+      ? { code: 'THREAD_DELETED', message: `Thread "${threadId}" was deleted` }
+      : { code: 'THREAD_NOT_FOUND', message: `Thread "${threadId}" was not found` };
+  }
+
+  /**
    * Takes the command's lease, claims it in the ledger, and applies it under the
    * thread's lease: the one place a resume does anything. A command whose lease
    * another attempt holds is in progress, and one the ledger already completed is
@@ -693,6 +730,13 @@ export function createResume(context: ResumeContext) {
         return { code: 'THREAD_BUSY', message: `Thread "${threadId}" has a run in progress` };
       }
       try {
+        // COR-1986: a deleted chat is not resumed. Read under the thread's lease, before the
+        // command is applied, and the claim this attempt made is given back, as for a busy thread.
+        const refused = await deletedThreadRefusal(threadId, request.owner);
+        if (refused !== undefined) {
+          if (claim.outcome === 'claimed') await ledger.release(held).catch(() => false);
+          return refused;
+        }
         const holds = async (): Promise<boolean> =>
           (await commandLease.renew()) && (await threadLease.renew());
         const outcome =

@@ -1,3 +1,4 @@
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   type CleanupAcknowledgement,
   createAgent,
@@ -8,8 +9,10 @@ import { describe, expect, it } from 'bun:test';
 import { BureauError } from '../../create-bureau.ts';
 import { createMemoryStorageFixture } from '../../test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { listHeldTasks, waitForCondition, closedTask } from '../../test';
 import type { ContextDeletionReport } from '../../types.ts';
+import { createAgUiLeases } from '../ag-ui-lease.ts';
 import { type BureauHandlerSource, createBureauHandler } from '../create-bureau-handler.ts';
 import {
   answering,
@@ -191,6 +194,38 @@ describe('bureau.contexts.delete receipts', () => {
         await opened.bureau.tasks.cancel(run.id);
         await shutdown;
       }
+    });
+  });
+
+  it('rejects, applying nothing, when admission closes while the delete waits for the thread’s lease (COR-1986)', async () => {
+    const runtime = createManualRuntimeServices({ origin: new Date().toISOString() });
+    await withBureau({ generate: answering(), bureauOptions: { runtime } }, async (opened) => {
+      const task = await opened.bureau.tasks.start('default', 'work', { principal: OWNER.alice });
+      await waitForCondition(
+        () => opened.bureau.tasks.detail(task.id)?.status === 'completed',
+        'the run never completed',
+      );
+      const kv = opened.bureau.internals.kv!;
+      const held = await createAgUiLeases({ kv, runtime }).acquire('thread', task.contextId);
+      expect(held).toBeDefined();
+      const timersBefore = runtime.pendingTimers().length;
+
+      const deletion = deleteContext(opened, task.contextId, 'alice-key');
+      await waitUntil(() => runtime.pendingTimers().length > timersBefore, {
+        message: 'the delete waits for the lease on the injected timers',
+      });
+      const shutdown = opened.bureau.shutdown({ policy: 'drain' });
+      await runtime.advance(100);
+      const body = await deletion;
+      await shutdown;
+
+      expect(body.error).toBeUndefined();
+      expect(body.result).toEqual({
+        contextId: task.contextId,
+        receipt: 'rejected',
+        reason: 'shutting-down',
+        tasks: [],
+      });
     });
   });
 
