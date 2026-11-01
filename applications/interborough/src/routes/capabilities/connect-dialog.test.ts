@@ -5,10 +5,12 @@
  * routes are exercised against a real host in `src/host/host-tool-sources.test.ts` and the
  * Playwright suite (`connect-tools.spec.ts`).
  */
+import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
+import { createQueryClient } from '../../lib/query.ts';
 import QueryPage from '../chat/chat-toasts.test-harness.svelte';
 import { bureau, landAt } from '../chat/pages.test-support.ts';
 import { restartProbing } from '../settings/plugins/restart-flow.svelte.ts';
@@ -39,7 +41,10 @@ afterEach(() => {
   Object.assign(restartProbing, probing);
 });
 
-const mount = () => render(QueryPage, { props: { page: CapabilitiesPage } } as never);
+const mount = (client?: QueryClient) =>
+  render(QueryPage, {
+    props: { page: CapabilitiesPage, ...(client === undefined ? {} : { client }) },
+  } as never);
 
 function serve(initial: Parameters<typeof fakeToolSources>[0]): FakeToolSources {
   const { host, other } = fakeToolSources(initial);
@@ -74,10 +79,13 @@ const requestsTo = (host: FakeToolSources, method: string, suffix = '') =>
   host.requests.filter((request) => request.method === method && request.path.endsWith(suffix));
 
 /** Opens the dialog on a page that lists `sources`. */
-async function openDialog(initial: Parameters<typeof fakeToolSources>[0] = { sources: [] }) {
+async function openDialog(
+  initial: Parameters<typeof fakeToolSources>[0] = { sources: [] },
+  client?: QueryClient,
+) {
   const host = serve(initial);
   landAt('/capabilities?tab=sources');
-  const view = mount();
+  const view = mount(client);
   await waitFor(() =>
     expect(view.container.querySelector('[data-testid="sources-panel"]')).not.toBeNull(),
   );
@@ -189,6 +197,21 @@ describe('Connect a source', () => {
       credentials: {},
     });
     expect(document.body.querySelector('#connect-secret')).toBeNull();
+  });
+
+  test('lets go of the request, and the token in it, once the dialog is closed', async () => {
+    const client = createQueryClient();
+    const { host, findByTestId } = await openDialog({ sources: [] }, client);
+    host.probe = { outcome: 'failed', message: 'The source did not answer in time.' };
+    await fillBearerMcp();
+    await fireEvent.click(buttonLabelled(copy.connect.probe.action));
+    await findByTestId('connect-probe-failed');
+    expect(requestsTo(host, 'POST', '/probe')).toHaveLength(1);
+
+    await fireEvent.click(buttonLabelled(copy.connect.actions.cancel));
+
+    // A mutation keeps its variables, which hold the token, until it is collected.
+    await waitFor(() => expect(client.getMutationCache().getAll().length).toBe(0));
   });
 
   test('forgets a test once the form changes', async () => {

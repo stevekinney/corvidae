@@ -541,6 +541,24 @@ describe('a connection that must not replace (COR-1991)', () => {
     );
   });
 
+  test('reads whether to create when it is called, not when the request is served', async () => {
+    const { manager } = await managerOver(memoryHome());
+    await connect(manager, 'first-key');
+    const request = {
+      id: 'pets',
+      source: changedPets,
+      credentials: { key: 'second-key' },
+      principal: owner,
+      createOnly: true,
+    };
+
+    const pending = manager.connect(request);
+    // The caller owns the request and changes it while the call waits its turn.
+    request.createOnly = false;
+
+    expect(await failureOf(pending)).toBeInstanceOf(ToolSourceExistsError);
+  });
+
   test('still replaces a source when it is not asked to create', async () => {
     const { manager } = await managerOver(memoryHome());
     await connect(manager, 'first-key');

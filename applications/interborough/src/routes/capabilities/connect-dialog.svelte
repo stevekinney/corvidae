@@ -13,8 +13,10 @@
    * tab saved under the same name in the meantime is reported with the form intact instead of being
    * replaced.
    *
-   * A token or key lives in its field until the request is built and is cleared when the dialog
-   * closes. It is never put in a message: the host words a refusal in terms of the field, and a probe
+   * A token or key lives in its field and in the request being sent. TanStack keeps the variables
+   * of a mutation until the mutation is collected, so both mutations here are collected as soon as
+   * the dialog stops observing them (`gcTime: 0`) and the secret does not outlive the dialog. It is
+   * never put in a message: the host words a refusal in terms of the field, and a probe
    * answers in words that hold no address, command or value.
    */
   import { Alert, Badge, Button, Input, Modal, RadioGroup, Textarea } from '@lostgradient/cinder';
@@ -125,6 +127,7 @@
   const currentProbe = $derived(tested?.signature === signature ? tested.probe : undefined);
 
   const test = createMutation(() => ({
+    gcTime: 0,
     mutationFn: ({ name, request }: Ready) => probeToolSource(name, request),
     onSuccess: (probe, ready) => {
       tested = { signature: JSON.stringify(ready.request), probe };
@@ -133,6 +136,7 @@
   }));
 
   const connect = createMutation(() => ({
+    gcTime: 0,
     // `create`: the host refuses a name another tab saved since this page listed the sources.
     mutationFn: ({ name, request }: Ready) => connectToolSource(name, { ...request, create: true }),
     onSuccess: async (_change, ready) => {

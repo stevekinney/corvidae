@@ -500,6 +500,89 @@ describe('createToolboxFromOpenAPI', () => {
     expect(headers.get('version')).toBe('v2');
   });
 
+  it('cuts a cycle between schemas that reference each other at the pointer back, and keeps the rest', () => {
+    const bidirectional: OpenAPISpec = {
+      servers: [{ url: 'https://example.test' }],
+      paths: {
+        '/authors': {
+          post: {
+            operationId: 'createAuthor',
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/Author' } },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Author: {
+            type: 'object',
+            required: ['name'],
+            properties: {
+              name: { type: 'string' },
+              books: { type: 'array', items: { $ref: '#/components/schemas/Book' } },
+            },
+          },
+          Book: {
+            type: 'object',
+            required: ['title'],
+            properties: {
+              title: { type: 'string' },
+              author: { $ref: '#/components/schemas/Author' },
+            },
+          },
+        },
+      },
+    };
+
+    const [tool] = createToolboxFromOpenAPI(bidirectional);
+
+    // The pointer back to an Author being resolved is `{}`: it accepts anything, and nothing
+    // before that point is loosened.
+    const parse = (body: unknown) => tool?.input.safeParse({ body }).success;
+    expect(parse({ name: 'a', books: [{ title: 'b', author: { anything: [1] } }] })).toBe(true);
+    expect(parse({ name: 'a', books: [{ title: 'b' }] })).toBe(true);
+    expect(parse({ name: 'a', books: [{}] })).toBe(false);
+    expect(parse({ books: [] })).toBe(false);
+  });
+
+  it('resolves schemas that reference each other without visiting every path through them', () => {
+    // Twelve schemas, each referencing several of the others: about 2.5 KB, and it once expanded
+    // along every pointer path (millions of nodes) before it produced a tool.
+    const edges: Record<string, string[]> = {
+      Customer: ['Order', 'Address', 'Account'],
+      Account: ['Customer', 'Invoice', 'Subscription'],
+      Order: ['Customer', 'Item', 'Invoice', 'Shipment'],
+      Item: ['Order', 'Product'],
+      Product: ['Item', 'Category', 'Supplier'],
+      Category: ['Product', 'Category'],
+      Supplier: ['Product', 'Address'],
+      Address: ['Customer', 'Supplier'],
+      Invoice: ['Order', 'Account', 'Payment'],
+      Payment: ['Invoice'],
+      Subscription: ['Account', 'Product'],
+      Shipment: ['Order', 'Address'],
+    };
+
+    const tools = createToolboxFromOpenAPI(mutuallyReferencing(edges, 'Customer'));
+
+    expect(tools.map((tool) => tool.name)).toEqual(['create']);
+    expect(tools[0]?.input.safeParse({ body: { id: 'c', order: { id: 'o' } } }).success).toBe(true);
+    expect(tools[0]?.input.safeParse({ body: { id: 1 } }).success).toBe(false);
+  });
+
+  it('refuses a document whose schemas expand to more nodes than it can hold, instead of hanging', () => {
+    const names = Array.from({ length: 12 }, (_, index) => `Model${index}`);
+    const everyone = Object.fromEntries(names.map((name) => [name, names]));
+
+    expect(() => createToolboxFromOpenAPI(mutuallyReferencing(everyone, 'Model0'))).toThrow(
+      'expands to more than',
+    );
+  });
+
   it('composes into a regular armorer toolbox', async () => {
     const { fetch: fakeFetch } = createFakeFetch({ status: 200, body: [] });
     const tools = createToolboxFromOpenAPI(spec, { fetch: fakeFetch });
@@ -510,3 +593,29 @@ describe('createToolboxFromOpenAPI', () => {
     expect(result.toolName).toBe('find-pets');
   });
 });
+
+/** A document whose `create` operation takes `root`, where each schema references the ones `edges` names. */
+function mutuallyReferencing(edges: Record<string, string[]>, root: string): OpenAPISpec {
+  const schemas: Record<string, unknown> = {};
+  for (const [name, targets] of Object.entries(edges)) {
+    const properties: Record<string, unknown> = { id: { type: 'string' } };
+    for (const target of targets) {
+      properties[target.toLowerCase()] = { $ref: `#/components/schemas/${target}` };
+    }
+    schemas[name] = { type: 'object', properties };
+  }
+  return {
+    servers: [{ url: 'https://example.test' }],
+    paths: {
+      '/models': {
+        post: {
+          operationId: 'create',
+          requestBody: {
+            content: { 'application/json': { schema: { $ref: `#/components/schemas/${root}` } } },
+          },
+        },
+      },
+    },
+    components: { schemas },
+  };
+}

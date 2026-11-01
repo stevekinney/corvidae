@@ -1322,11 +1322,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const { id, source } = checkedDescription(request, owner);
       const referenced = referencedCredentials(source);
       const supplied = checkedCredentials(request.credentials, referenced);
+      const createOnly = request.createOnly === true;
       return serialized(() =>
         vault.exclusive(id, async () => {
           const { text: currentText, document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
-          if (request.createOnly === true && existing !== undefined) {
+          if (createOnly && existing !== undefined) {
             throw new ToolSourceExistsError(id);
           }
           // What is held is carried over only for the same source going to the same place. A new

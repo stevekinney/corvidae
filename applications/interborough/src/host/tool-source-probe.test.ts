@@ -209,6 +209,82 @@ describe('probing an OpenAPI service', () => {
   });
 });
 
+/** A document whose one operation takes `root`, where each schema references the ones `edges` names. */
+function referencingDocument(edges: Record<string, readonly string[]>, root: string) {
+  const schemas = Object.fromEntries(
+    Object.entries(edges).map(([name, targets]) => [
+      name,
+      {
+        type: 'object',
+        properties: Object.fromEntries(
+          targets.map((target) => [target, { $ref: `#/components/schemas/${target}` }]),
+        ),
+      },
+    ]),
+  );
+  return {
+    openapi: '3.0.0',
+    info: { title: 'models', version: '1' },
+    servers: [{ url: 'http://127.0.0.1:9' }],
+    paths: {
+      '/models': {
+        post: {
+          operationId: 'create',
+          requestBody: {
+            content: { 'application/json': { schema: { $ref: `#/components/schemas/${root}` } } },
+          },
+        },
+      },
+    },
+    components: { schemas },
+  };
+}
+
+describe('probing an OpenAPI document whose schemas reference each other', () => {
+  const probeOf = async (document: unknown) => {
+    const { manager } = await managerOver();
+    return manager.probe({
+      id: 'models',
+      source: { id: 'models', kind: 'openapi', specification: { type: 'document', document } },
+      principal: owner,
+    });
+  };
+
+  test('lists the operation of twelve models that reference one another', async () => {
+    const probe = await probeOf(
+      referencingDocument(
+        {
+          Customer: ['Order', 'Address', 'Account'],
+          Account: ['Customer', 'Invoice', 'Subscription'],
+          Order: ['Customer', 'Item', 'Invoice', 'Shipment'],
+          Item: ['Order', 'Product'],
+          Product: ['Item', 'Category', 'Supplier'],
+          Category: ['Product', 'Category'],
+          Supplier: ['Product', 'Address'],
+          Address: ['Customer', 'Supplier'],
+          Invoice: ['Order', 'Account', 'Payment'],
+          Payment: ['Invoice'],
+          Subscription: ['Account', 'Product'],
+          Shipment: ['Order', 'Address'],
+        },
+        'Customer',
+      ),
+    );
+
+    expect(probe.outcome).toBe('listed');
+  });
+
+  test('answers that a document whose models all reference every other failed', async () => {
+    const names = Array.from({ length: 12 }, (_, index) => `Model${index}`);
+
+    const probe = await probeOf(
+      referencingDocument(Object.fromEntries(names.map((name) => [name, names])), 'Model0'),
+    );
+
+    expect(probe.outcome).toBe('failed');
+  });
+});
+
 describe('a probe that is not allowed', () => {
   test('is refused for a request that names no value for a credential the description names', async () => {
     const server = await track(startMcpServer(TOKEN));
