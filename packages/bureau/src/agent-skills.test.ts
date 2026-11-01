@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { createAgentSkills } from './agent-skills';
+import { agentSkillNames, createAgentSkills } from './agent-skills';
 
 /** Trips only on its own sentinel. */
 const sentinelDetector: InputDetector = {
@@ -95,6 +95,18 @@ describe('createAgentSkills', () => {
     expect(
       seen[1]?.system.some((message) => message.includes('Always cite the line number.')),
     ).toBe(true);
+  });
+
+  it('names the skills its allow-list leaves usable, so a copy is granted no more', async () => {
+    const catalog = await catalogOf([
+      { name: 'reviewer', description: 'Reviews', body: 'Body.' },
+      { name: 'writer', description: 'Writes', body: 'Body.' },
+    ]);
+    expect(agentSkillNames(createAgentSkills({ catalog }))).toEqual(['reviewer', 'writer']);
+    expect(agentSkillNames(createAgentSkills({ catalog, allowedSkills: ['writer'] }))).toEqual([
+      'writer',
+    ]);
+    expect(agentSkillNames(createAgentSkills({ catalog, allowedSkills: [] }))).toEqual([]);
   });
 
   it('exposes no skill tools for `includeTools: false`', async () => {

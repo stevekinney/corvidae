@@ -431,6 +431,30 @@ describe('a write that grants a skill', () => {
     expect(definition?.allowedSkills).toEqual(['reviewer']);
   });
 
+  it('offers a granted name to a run though its shadowed twin sorts first', async () => {
+    const winner = await sourceOf(['reviewer']);
+    const loser = await sourceOf(['reviewer']);
+    // The records are ordered by source id, so `alpha`, the shadowed one, comes first.
+    const catalog = await discoverSkills({
+      sources: [
+        { id: 'zeta', kind: 'user', location: winner, precedence: 10 },
+        { id: 'alpha', kind: 'user', location: loser, precedence: 20 },
+      ],
+    });
+    expect(catalog.records.map((record) => [record.sourceId, record.available])).toEqual([
+      ['alpha', false],
+      ['zeta', true],
+    ]);
+    const { bureau, seen } = await start(() => catalog, ['reviewer']);
+    await bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['reviewer'] });
+    await runOnce(bureau);
+
+    expect(seen[0]?.tools).toContain('activate_skill');
+    expect(seen[0]?.system).toContain('reviewer');
+    expect(seen[0]?.activations[0]).toContain('reviewer');
+    expect(seen[0]?.activations[0]).not.toContain('refusal');
+  });
+
   it('does not refuse an edit for a skill the file already names', async () => {
     const catalog = await catalogOf();
     const harness = await start(() => catalog);

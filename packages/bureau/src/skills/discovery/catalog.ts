@@ -155,12 +155,25 @@ export function availableRecords(revision: SkillCatalogRevision): readonly Skill
   return revision.records.filter((record) => record.available);
 }
 
-/** Looks up one record by name, available or not. */
+/**
+ * Looks up one record by name, available or not.
+ *
+ * A name can hold several records: the one a host would offer, and the others shadowed by it. They
+ * are ordered by source id, not by precedence, so the first is not necessarily the winner. The
+ * available record answers when there is one, and otherwise the first, which says why the name is
+ * not usable.
+ */
 export function findRecord(
   revision: SkillCatalogRevision,
   name: string,
 ): SkillCatalogRecord | undefined {
-  return revision.records.find((record) => record.name === name);
+  let first: SkillCatalogRecord | undefined;
+  for (const record of revision.records) {
+    if (record.name !== name) continue;
+    if (record.available) return record;
+    first ??= record;
+  }
+  return first;
 }
 
 /**

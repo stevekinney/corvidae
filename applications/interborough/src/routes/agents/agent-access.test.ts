@@ -625,6 +625,9 @@ describe('the skills', () => {
     expect(skillGrantLocked(twin, [twin], true)).toBe(false);
     expect(skillGrantLocked(twin, [twin], false)).toBe(true);
     expect(skillGrantLocked(available, [available, twin], false)).toBe(false);
+    // Whichever the catalog lists first, the available record keeps the box and its twin is the report.
+    expect(skillGrantLocked(twin, [twin, available], true)).toBe(true);
+    expect(skillGrantLocked(available, [twin, available], false)).toBe(false);
   });
 
   test('says there are none, with the way to the skills, and that they could not be loaded', async () => {
