@@ -3,7 +3,14 @@ import { describe, expect, test } from 'bun:test';
 
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import { SCHEDULER_ACTOR } from '../../../lib/bureau-tasks.ts';
-import { buildRunRows, filterRunRows, parseRunFilter, serializeRunFilter } from './run-rows.ts';
+import {
+  buildRunRows,
+  FILTER_LABEL_LIMIT,
+  filterLabelOf,
+  filterRunRows,
+  parseRunFilter,
+  serializeRunFilter,
+} from './run-rows.ts';
 import { STARTED_BY_LABELS } from './started-by.ts';
 
 const chat = {
@@ -458,5 +465,32 @@ describe('Started by, read from the origin the Bureau recorded', () => {
         `run-${kind}`,
       ]);
     }
+  });
+});
+
+describe('an agent’s name in the Agent filter (COR-1862)', () => {
+  test('keeps a name that fits, whole', () => {
+    expect(filterLabelOf('support-triage')).toBe('support-triage');
+    expect(filterLabelOf('a'.repeat(FILTER_LABEL_LIMIT))).toBe('a'.repeat(FILTER_LABEL_LIMIT));
+  });
+
+  test('cuts a 64-character name to the limit, keeping its start and its end', () => {
+    const name = `responsive-agent-${'a'.repeat(46)}z`;
+    expect(name).toHaveLength(64);
+    const label = filterLabelOf(name);
+    expect(Array.from(label)).toHaveLength(FILTER_LABEL_LIMIT);
+    expect(label.startsWith('responsive-age')).toBe(true);
+    expect(label.endsWith('aaaaz')).toBe(true);
+    expect(label).toContain('…');
+  });
+
+  test('keeps two names that differ only at the end apart', () => {
+    const base = 'quarterly-revenue-reconciliation-agent-for-the-emea-region';
+    expect(filterLabelOf(`${base}-a`)).not.toBe(filterLabelOf(`${base}-b`));
+  });
+
+  test('counts characters, not UTF-16 units', () => {
+    const label = filterLabelOf('🙂'.repeat(40));
+    expect(Array.from(label)).toHaveLength(FILTER_LABEL_LIMIT);
   });
 });

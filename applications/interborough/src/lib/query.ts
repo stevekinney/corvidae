@@ -202,6 +202,8 @@ export const queryKeys = {
     detail: (taskId: string) => ['bureau-tasks', 'detail', taskId] as const,
     /** The tasks of one chat session, paged, under the session's own entry. */
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
+    /** One step's reply details (`bureau.tasks.inspect` with `step`). */
+    step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {

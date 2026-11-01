@@ -129,6 +129,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // Before the page is opened on a schedule, which `reveal` does, the page prints its choices.
   '/workflows/:workflow/run (code, on a schedule)': /Starts a run as soon as you confirm/,
   '/runs (start picker)': /Choose the workflow to run/,
+  // The applied filter prints the agent's name, which the address names.
+  '/runs (long agent filter)': /aaaaaaaaaa/,
   '/runs/:run': /Input and output/,
   // The step list is there; the 300-character value is in the whole log, which `reveal` opens.
   '/runs/:run (steps and logs)': /Input and output/,

@@ -336,3 +336,20 @@ export function serializeRunFilter(filter: RunFilter): string {
   if (filter.since !== undefined) params.set('since', filter.since);
   return params.toString();
 }
+
+/** The most characters an agent's name takes in the Agent filter, in its list and in its chip. */
+export const FILTER_LABEL_LIMIT = 28;
+
+/**
+ * An agent's name as the Agent filter shows it. The filter is a native select, as wide as its longest
+ * option, and its applied chip does not wrap, so a 64-character name widened the page past a phone's
+ * screen (COR-1862). A name past {@link FILTER_LABEL_LIMIT} keeps its start and its end around an
+ * ellipsis, because agents of one family differ at the end. The address still holds the whole name.
+ */
+export function filterLabelOf(name: string): string {
+  const letters = Array.from(name);
+  if (letters.length <= FILTER_LABEL_LIMIT) return name;
+  const head = Math.ceil((FILTER_LABEL_LIMIT - 1) / 2);
+  const tail = FILTER_LABEL_LIMIT - 1 - head;
+  return `${letters.slice(0, head).join('')}…${letters.slice(letters.length - tail).join('')}`;
+}

@@ -41,6 +41,7 @@ import {
   type ChatRunWiring,
   type HumanRequest,
   type Refusal,
+  type RunUsage,
 } from './run-wiring.ts';
 
 export type ChatSessionOptions = {
@@ -118,6 +119,11 @@ export class ChatSessionState {
    * and a `reconnect()` that fails leaves it set without starting the retries over.
    */
   disconnected = $state(false);
+  /**
+   * What each run this page watched end reported it used, by the run's Bureau identifier. A run the
+   * page did not watch end has no entry, and its reply details say nothing of usage.
+   */
+  usage = $state.raw<ReadonlyMap<string, RunUsage>>(new Map());
 
   readonly controller: ChatSessionController;
   /**
@@ -171,6 +177,9 @@ export class ChatSessionState {
       },
       onTerminal: () => {
         this.#attachedRun = false;
+      },
+      onUsage: (runId, usage) => {
+        this.usage = new Map(this.usage).set(runId, usage);
       },
       onSnapshot: (history) => {
         if (!this.#abort.signal.aborted) this.restore(history);

@@ -2498,6 +2498,53 @@ export const CHAT_COPY = {
       fault: 'The permission mode may not have been changed. Showing the mode the chat uses now.',
     },
   },
+  /**
+   * The popover on an agent's reply (COR-1983): why the reply ran on its model and what the model
+   * saw, read from `bureau.tasks.inspect`, and the tokens its run used, from the run's terminal
+   * event. It says what those two sources carry and nothing else.
+   */
+  replyDetails: {
+    action: 'Reply details',
+    loading: 'Reading the reply details',
+    failed: {
+      title: 'Reply details are unavailable',
+      description: 'The host did not answer. Try again.',
+    },
+    retry: 'Try again',
+    empty: {
+      title: 'No details were recorded',
+      description: 'The host kept no model plan and no context for this reply.',
+    },
+    why: 'Why this model',
+    planReasons: {
+      cost: 'Lowest cost',
+      latency: 'Fastest',
+      capability: 'Only model with the abilities needed',
+      policy: 'Model policy',
+      pinned: 'Named, not ranked',
+      fallback: 'Fallback',
+    },
+    passedOver: 'Passed over',
+    passedOverReasons: {
+      capability: 'lacks an ability the request needs',
+      policy: 'not allowed by the model policy',
+      fallback: 'unavailable',
+    },
+    rejection: (provider: string, model: string, reason: string) =>
+      `${provider}/${model}: ${reason}`,
+    saw: 'What the model saw',
+    messages: (count: number) => `${String(count)} ${count === 1 ? 'message' : 'messages'}`,
+    truncated: 'Older messages were left out to keep the record small.',
+    sources: 'Sources',
+    dispositions: { included: 'included', excluded: 'left out' },
+    source: (sourceId: string, disposition: string, reason: string | undefined) =>
+      reason === undefined || reason === ''
+        ? `${sourceId}: ${disposition}`
+        : `${sourceId}: ${disposition} (${reason})`,
+    usage: 'Tokens this run used',
+    usageNote: 'Counted across every step of the run, not this reply alone.',
+    usageKinds: { input: 'Input', output: 'Output', total: 'Total' },
+  },
   /** The ring in the header that says how full the chat's context window is. */
   contextWindow: {
     label: 'Context window',

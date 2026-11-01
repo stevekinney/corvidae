@@ -8,6 +8,9 @@
 import { E2E_CROSS_BUILD_QUEUE, E2E_FLEET_WORKER_ID } from './e2e-constants.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
 
+/** A 64-character agent name for the Runs agent filter; the filter lists the name the address names. */
+export const LONG_AGENT_FILTER = `responsive-agent-${'a'.repeat(47)}`;
+
 /** The identifiers the specification seeds, and so the addresses it can name. */
 export interface ResponsiveSeed {
   /** A chat session that exists. */
@@ -132,6 +135,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // builder's Repeats, At and Time zone), and the picker that leads to it from Runs.
     '/workflows/:workflow/run (code, on a schedule)': `/workflows/${encodeURIComponent(seed.workflow)}/run`,
     '/runs (start picker)': '/runs?view=start',
+    // The agent filter holding a 64-character agent name, as the address names one (COR-1862): the
+    // filter's select, its applied chip and the page header are measured with it.
+    '/runs (long agent filter)': `/runs?agent=${LONG_AGENT_FILTER}`,
     // The page that makes a schedule with the built-in chat chosen (its agent, message and the chat to continue, whose title is the seeded 300-character word), and with a workflow chosen (its input, and the engine's options).
     '/schedules/new (chat)': '/schedules/new',
     '/schedules/new (workflow)': '/schedules/new',

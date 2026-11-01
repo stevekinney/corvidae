@@ -25,6 +25,7 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
+import { FILTER_LABEL_LIMIT, filterLabelOf } from './run-rows.ts';
 import { STARTED_BY_LABELS } from './started-by.ts';
 
 let stub: BureauWorldStub | undefined;
@@ -104,6 +105,38 @@ describe('narrowing the runs', () => {
 
     const none = open('/runs?status=canceled');
     await none.findByRole('heading', { level: 2, name: TASK_COPY.noMatch.title });
+  });
+});
+
+describe('the Agent filter with a long agent name (COR-1862)', () => {
+  const LONG = `responsive-agent-${'a'.repeat(47)}`;
+
+  test('shows the name once on its chip, cut to the filter’s limit, and keeps the whole name in the address', async () => {
+    const view = open(`/runs?agent=${LONG}`);
+    await waitFor(() => expect(view.container.querySelector('.cinder-chip')).not.toBeNull());
+
+    const chips = [...view.container.querySelectorAll('.cinder-chip')].map(
+      (chip) => chip.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    );
+    expect(chips).toHaveLength(1);
+    expect(chips[0]).toContain(`${TASK_COPY.agentLabel}: ${filterLabelOf(LONG)}`);
+    // The label is not said twice, and the name is not whole on the chip.
+    expect(chips[0]?.split(TASK_COPY.agentLabel)).toHaveLength(2);
+    expect(chips[0]).not.toContain(LONG);
+    expect(router.search.get('agent')).toBe(LONG);
+  });
+
+  test('lists the name in the select cut to the limit, with the whole name as its value', async () => {
+    const view = open(`/runs?agent=${LONG}`);
+    const select = await view.findByLabelText(TASK_COPY.agentLabel);
+    await waitFor(() =>
+      expect([...select.querySelectorAll('option')].some((option) => option.value === LONG)).toBe(
+        true,
+      ),
+    );
+    const option = [...select.querySelectorAll('option')].find((entry) => entry.value === LONG);
+    expect(option?.textContent).toBe(filterLabelOf(LONG));
+    expect(Array.from(option?.textContent ?? '')).toHaveLength(FILTER_LABEL_LIMIT);
   });
 });
 
