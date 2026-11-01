@@ -180,6 +180,57 @@ describe('CommandListState', () => {
     expect(state.activeItemId).toBe(second.id);
   });
 
+  test('navigateDisabled lets the cursor stand on a disabled item; activation stays refused', () => {
+    const selected: string[] = [];
+    const register = (state: ReturnType<typeof createCommandListState>) => {
+      const items = [
+        { name: 'first', disabled: false },
+        { name: 'second', disabled: true },
+        { name: 'third', disabled: false },
+      ];
+      return items.map((item) =>
+        state.register(
+          {
+            getValue: () => item.name,
+            getDisabled: () => item.disabled,
+            getOnselect: () => () => selected.push(item.name),
+          },
+          createButton(item.name),
+        ),
+      );
+    };
+
+    // The default skips the disabled item.
+    const skipping = createCommandListState('skipping');
+    const [skipFirst, , skipThird] = register(skipping);
+    expect(skipping.navigableIds).toEqual([skipFirst!.id, skipThird!.id]);
+    expect(skipping.activeItemId).toBe(skipFirst!.id);
+    skipping.handleKeydown({ event: keydown('ArrowDown') });
+    expect(skipping.activeItemId).toBe(skipThird!.id);
+
+    // `navigateDisabled` walks every item, in document order.
+    const walking = createCommandListState('walking', {
+      autoActivateFirst: false,
+      navigateDisabled: true,
+    });
+    const [first, second, third] = register(walking);
+    expect(walking.enabledIds).toEqual([first!.id, third!.id]);
+    expect(walking.navigableIds).toEqual([first!.id, second!.id, third!.id]);
+    walking.handleKeydown({ event: keydown('ArrowDown') });
+    expect(walking.activeItemId).toBe(first!.id);
+    walking.handleKeydown({ event: keydown('ArrowDown') });
+    expect(walking.activeItemId).toBe(second!.id);
+    walking.handleKeydown({ event: keydown('ArrowDown') });
+    expect(walking.activeItemId).toBe(third!.id);
+    walking.handleKeydown({ event: keydown('Home') });
+    walking.handleKeydown({ event: keydown('ArrowDown') });
+    expect(walking.activeItemId).toBe(second!.id);
+
+    // The cursor can stand on the disabled item, but it cannot be chosen.
+    expect(walking.activateItemById(second!.id)).toBeNull();
+    expect(selected).toEqual([]);
+  });
+
   test('bindDismissal is safe without a document', () => {
     const state = createCommandListState('command-list');
     const originalDocument = globalThis.document;

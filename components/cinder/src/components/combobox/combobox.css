@@ -89,19 +89,49 @@
     cursor: not-allowed;
   }
 
-  .cinder-combobox__panel {
+  /* COR-1981: the panel is the `role="listbox"` the input's `aria-controls`
+     names, and it is the scroller. axe's `scrollable-region-focusable` exempts
+     a scroller that is itself a combobox's popup and fails a presentational
+     wrapper that scrolls with nothing in the tab order; a tab stop on the
+     scroller would instead compete with the input, which keeps focus.
+
+     The list stays 16rem tall, as it was when the list inside the panel was the
+     scroller, so the cap is 16rem plus the panel's own padding and border. The
+     padding is stated here (it is the Popover surface's `space-3`) so the cap
+     cannot drift from it. The surface's own viewport limit stays in force, so on a
+     short screen the panel is no taller than the viewport and still scrolls. */
+  .cinder-combobox__panel.cinder-popover {
     margin: var(--cinder-space-1) 0 0 0;
-    padding: var(--cinder-space-1);
+    padding: var(--cinder-space-3);
     min-inline-size: 0;
     max-inline-size: min(32rem, calc(100vw - var(--cinder-space-4)));
+    max-block-size: min(
+      calc(16rem + 2 * var(--cinder-space-3) + 2px),
+      calc(100vh - var(--cinder-space-4))
+    );
+    overflow-y: auto;
+  }
+
+  /* Docked sheet: the sheet's own 90dvh cap would let a long list fill the
+     sheet. The list was 16rem there too, so this keeps it, and 90dvh stays the
+     upper bound: the sheet is anchored to the bottom edge, so a taller one would
+     push its first rows above a short viewport. The sheet's border is the top
+     edge alone and its bottom padding clears the safe area. */
+  .cinder-combobox__panel.cinder-popover[data-cinder-sheet='docked'] {
+    padding-block-end: max(var(--cinder-space-1), env(safe-area-inset-bottom));
+    max-block-size: min(
+      calc(
+        16rem + 1px + var(--cinder-space-3) +
+          max(var(--cinder-space-1), env(safe-area-inset-bottom))
+      ),
+      90dvh
+    );
   }
 
   .cinder-combobox__listbox {
     margin: 0;
     padding: 0;
     list-style: none;
-    max-height: 16rem;
-    overflow-y: auto;
   }
 
   /* Geometry, padding, active fill, keyboard cursor ring, and disabled state

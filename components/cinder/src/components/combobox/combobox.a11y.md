@@ -23,6 +23,10 @@
 | Escape    | Close the listbox without selecting                                 |
 | Type      | Filter the option list and reset active to first match              |
 
+Disabled options are part of the arrow-key order: ArrowUp, ArrowDown, Home and End stop on them, so a keyboard user can scroll the whole list and read why a row is disabled, as the WAI-ARIA listbox pattern expects. Enter on a disabled option selects nothing and leaves the list open. Hovering a disabled option does not move the active option. Typing starts the active option on the first _enabled_ match.
+
+The listbox is the scrolling surface: the element with `role="listbox"` that the input's `aria-controls` names caps its height and scrolls, so axe's `scrollable-region-focusable` rule treats it as a combobox popup. The scroller is not a tab stop, because focus stays on the input.
+
 The active option is **visually highlighted but not focused** — focus stays on the input throughout. Mouse hover updates the active index for keyboard parity.
 
 ## Mouse / pointer
