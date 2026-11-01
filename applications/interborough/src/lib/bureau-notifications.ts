@@ -65,9 +65,11 @@ export async function markBureauNotificationsRead(
   ids: readonly string[],
   options?: Options,
 ): Promise<number> {
+  // A snapshot: the caller's list is not read again after the first call is awaited.
+  const wanted = [...ids];
   let updated = 0;
-  for (let start = 0; start < ids.length; start += MARK_READ_BATCH) {
-    const batch = ids.slice(start, start + MARK_READ_BATCH);
+  for (let start = 0; start < wanted.length; start += MARK_READ_BATCH) {
+    const batch = wanted.slice(start, start + MARK_READ_BATCH);
     updated += changeSchema.parse(
       await callBureau('bureau.notifications.markread', { ids: batch }, options),
     ).updated;

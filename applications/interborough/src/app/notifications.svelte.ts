@@ -74,7 +74,10 @@ export class NotificationStore {
   #activity: NotificationEntry[] = $state([]);
   #engineProblem: NotificationEntry | undefined = $state();
   #loadFailed = $state(false);
-  #readFailed = $state(false);
+  /** Items read here whose Bureau has not yet said it holds them as read. Memory only: a closed tab must not leave them read for good. */
+  #awaiting: string[] = $state([]);
+  /** Items the Bureau refused to hold as read, which are unread until they are read again. */
+  #refused: string[] = $state([]);
 
   constructor(options: NotificationStoreOptions = {}) {
     this.#storage = options.storage;
@@ -82,7 +85,7 @@ export class NotificationStore {
   }
 
   readonly #items: NotificationItem[] = $derived.by(() => {
-    const read = new Set(this.#readIds);
+    const read = new Set([...this.#readIds, ...this.#awaiting]);
     const entries = this.#engineProblem === undefined ? [] : [this.#engineProblem];
     return [...entries, ...this.#activity].map((entry) => ({
       ...entry,
@@ -113,9 +116,9 @@ export class NotificationStore {
     return this.#loadFailed;
   }
 
-  /** Whether the Bureau refused the last mark-as-read, so those items are unread again. */
+  /** Whether the Bureau refused to hold an item as read that is still unread, so it is unread everywhere. */
   get readFailed(): boolean {
-    return this.#readFailed;
+    return this.#refused.some((id) => this.items.some((item) => item.id === id && !item.read));
   }
 
   /** Says whether what the Bureau lists could not be read. */
@@ -192,13 +195,21 @@ export class NotificationStore {
   }
 
   #markRead(ids: readonly string[]): void {
-    const unread = ids.filter((id) => !this.#readIds.includes(id));
-    const told = this.#toTell(unread);
-    if (unread.length > 0) {
-      this.#readIds = [...this.#readIds, ...unread].slice(-READ_ID_LIMIT);
-      saveReadIds(this.#readIds, this.#storage);
-    }
+    const unread = ids.filter((id) => !this.#readIds.includes(id) && !this.#awaiting.includes(id));
+    // Another browser reads the Bureau's copy, so a notification is read here only for as long as
+    // the Bureau has not refused it, and is kept in this browser once the Bureau has taken it.
+    const told = this.#remote === undefined ? [] : this.#toTell(unread);
+    const waitingOn = new Set(told.map((item) => item.id));
+    const kept = unread.filter((id) => !waitingOn.has(id));
+    if (kept.length > 0) this.#keep(kept);
+    if (waitingOn.size > 0) this.#awaiting = [...this.#awaiting, ...waitingOn];
     this.#tellRemote(told);
+  }
+
+  /** Keeps these items read in this browser, across a reload. */
+  #keep(ids: readonly string[]): void {
+    this.#readIds = [...this.#readIds, ...ids].slice(-READ_ID_LIMIT);
+    saveReadIds(this.#readIds, this.#storage);
   }
 
   /** The unread items among `ids` that are the Bureau's notifications, so another browser reads them too. */
@@ -210,23 +221,32 @@ export class NotificationStore {
   }
 
   /**
-   * Tells the Bureau that these items were read. The Bureau is what another browser reads, so an
-   * item it does not accept is unread here too, instead of reading as delivered in this browser and
-   * new in the other. Called once the items are read here, so a refusal can undo it.
+   * Tells the Bureau that these items were read. They are read here at once, in memory, and kept
+   * once the Bureau holds them as read. An item the Bureau does not accept is unread again, so it
+   * never reads as delivered in this browser and new in the other.
    */
   #tellRemote(told: readonly NotificationItem[]): void {
     if (this.#remote === undefined || told.length === 0) return;
+    const ids = new Set(told.map((item) => item.id));
     const notificationIds = told.flatMap((item) =>
       item.notificationId === undefined ? [] : [item.notificationId],
     );
+    const settled = (): void => {
+      this.#awaiting = this.#awaiting.filter((id) => !ids.has(id));
+    };
+    const accepted = (): void => {
+      settled();
+      this.#refused = this.#refused.filter((id) => !ids.has(id));
+      this.#keep([...ids]);
+    };
     const refused = (): void => {
-      this.#unread(told.map((item) => item.id));
-      this.#readFailed = true;
+      settled();
+      this.#refused = [...this.#refused.filter((id) => !ids.has(id)), ...ids];
     };
     try {
       Promise.resolve(this.#remote.markRead(notificationIds)).then(
         () => {
-          this.#readFailed = false;
+          accepted();
           return undefined;
         },
         () => {
@@ -237,13 +257,6 @@ export class NotificationStore {
     } catch {
       refused();
     }
-  }
-
-  /** Holds these items as unread again. */
-  #unread(ids: readonly string[]): void {
-    const refused = new Set(ids);
-    this.#readIds = this.#readIds.filter((id) => !refused.has(id));
-    saveReadIds(this.#readIds, this.#storage);
   }
 
   #forget(id: string): void {

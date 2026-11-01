@@ -113,25 +113,55 @@ describe('NotificationStore and the Bureau’s notifications', () => {
     expect(store.unreadCount).toBe(1);
   });
 
-  test('a mark-as-read the Bureau accepts clears the refusal', async () => {
+  test('a refusal stands until the item is read again, whatever else the Bureau accepts', async () => {
     const store = storeWith(stored('a'), stored('b'));
-    let accept = false;
+    let refuse = 'a';
     store.setRemote({
-      markRead: async () => {
-        if (!accept) throw new Error('did not answer');
+      markRead: async (ids) => {
+        if (ids.includes(refuse)) throw new Error('did not answer');
       },
     });
     store.markRead('notification:a');
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(store.readFailed).toBe(true);
-
-    accept = true;
     store.markRead('notification:b');
+    await Promise.resolve();
+    await Promise.resolve();
+    // One was accepted and one was refused: the refused one is unread, and the notice stays.
+    expect(store.readFailed).toBe(true);
+    expect(store.items.map((item) => [item.id, item.read])).toEqual([
+      ['notification:a', false],
+      ['notification:b', true],
+    ]);
+
+    refuse = '';
+    store.markRead('notification:a');
     await Promise.resolve();
     await Promise.resolve();
 
     expect(store.readFailed).toBe(false);
+    expect(store.unreadCount).toBe(0);
+  });
+
+  test('an item read while the Bureau has not answered is read here, but kept only once it answers', async () => {
+    const storage = memoryStorage();
+    const store = new NotificationStore({ storage });
+    store.setActivity([stored('a')]);
+    let answer: () => void = () => {};
+    store.setRemote({ markRead: () => new Promise<void>((resolve) => (answer = resolve)) });
+
+    store.markRead('notification:a');
+
+    expect(store.unreadCount).toBe(0);
+    // A tab closed now would leave the Bureau holding it unread, so nothing is kept in storage yet.
+    const closedNow = new NotificationStore({ storage });
+    closedNow.setActivity([stored('a')]);
+    expect(closedNow.unreadCount).toBe(1);
+
+    answer();
+    await Promise.resolve();
+    await Promise.resolve();
+    const reopened = new NotificationStore({ storage });
+    reopened.setActivity([stored('a')]);
+    expect(reopened.unreadCount).toBe(0);
   });
 
   test('a list that could not be read is said, and reloading asks the Bureau for it again', () => {
