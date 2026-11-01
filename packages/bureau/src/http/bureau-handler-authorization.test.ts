@@ -222,6 +222,8 @@ function definitionParameters(operation: CatalogOperation) {
   if (operation.name === 'bureau.settings.update') {
     return { patch: { 'tools.wakeup': false }, expectedRevision: 0 };
   }
+  // COR-1893: events to format, so the call reaches its own check instead of failing validation.
+  if (operation.name === 'bureau.events.format') return { events: [{ kind: 'run.settled' }] };
   if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;

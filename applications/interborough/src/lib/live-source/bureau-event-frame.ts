@@ -10,6 +10,8 @@ export interface BureauEventFrame {
   readonly cursor: string;
   readonly emittedAtMs: number;
   readonly payload: unknown;
+  /** The plugin whose contribution caused the event; absent for an event from Bureau core. */
+  readonly source?: string;
 }
 
 /** The kind the feed gives the envelope that reports a cursor it can no longer resume from. */
@@ -56,7 +58,16 @@ export function parseBureauEventFrame(data: string): BureauEventFrame | null {
   const emittedAtMs = finiteNumber(parsed['emittedAtMs']);
   if (typeof kind !== 'string' || typeof cursor !== 'string') return null;
   if (sequence === null || emittedAtMs === null) return null;
-  return { kind, sequence, cursor, emittedAtMs, payload: parsed['payload'] };
+  // `source` is the envelope's own field, apart from the payload; a core event has none.
+  const source = parsed['source'];
+  return {
+    kind,
+    sequence,
+    cursor,
+    emittedAtMs,
+    payload: parsed['payload'],
+    ...(typeof source === 'string' && source !== '' ? { source } : {}),
+  };
 }
 
 /** Whether a kind is a recovery signal: the cursor named a gap, or frames were dropped. */

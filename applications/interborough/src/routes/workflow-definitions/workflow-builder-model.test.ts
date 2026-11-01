@@ -12,6 +12,7 @@ import {
   moveStep,
   readBuilder,
   removeStep,
+  setContributedTrigger,
   setDescription,
   setName,
   setStepField,
@@ -258,5 +259,46 @@ describe('the summary', () => {
       readBuilder(text({ steps: [agent, { kind: 'await-signal', signal: 's' }, agent] }))?.summary,
     ).not.toContain(note);
     expect(readBuilder(text({ steps: [agent, agent] }))?.summary).not.toContain(note);
+  });
+});
+
+describe('a trigger a plugin contributes', () => {
+  const text = (trigger: unknown) => JSON.stringify({ ...FILE, trigger });
+
+  test('is read as its kind and the rest of the trigger as its configuration', () => {
+    expect(
+      readBuilder(text({ kind: 'inbox:message', mailbox: 'support', unreadOnly: true }))?.trigger,
+    ).toEqual({
+      kind: 'contributed',
+      id: 'inbox:message',
+      configuration: { mailbox: 'support', unreadOnly: true },
+    });
+  });
+
+  test('is told from a kind that is not plugin:name, which only the JSON tab edits', () => {
+    expect(readBuilder(text({ kind: 'webhook' }))?.trigger?.kind).toBe('other');
+    expect(readBuilder(text({ kind: 'Inbox:Message' }))?.trigger?.kind).toBe('other');
+  });
+
+  test('is written as the kind and its fields, replacing the trigger before it', () => {
+    const written = JSON.parse(
+      setContributedTrigger(text({ kind: 'schedule', spec: '1h' }), 'inbox:message', {
+        mailbox: 'support',
+      }),
+    ) as Record<string, unknown>;
+    expect(written['trigger']).toEqual({ kind: 'inbox:message', mailbox: 'support' });
+    expect(written['name']).toBe('digest');
+  });
+
+  test('cannot be given a kind by its configuration', () => {
+    const written = JSON.parse(
+      setContributedTrigger(text(undefined), 'inbox:message', { kind: 'schedule', mailbox: 'a' }),
+    ) as Record<string, unknown>;
+    expect(written['trigger']).toEqual({ kind: 'inbox:message', mailbox: 'a' });
+  });
+
+  test('leaves a trigger that is not an object alone, as setTrigger does', () => {
+    const before = text('nope');
+    expect(setContributedTrigger(before, 'inbox:message', {})).toBe(before);
   });
 });

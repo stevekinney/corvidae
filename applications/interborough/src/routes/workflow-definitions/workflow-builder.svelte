@@ -22,10 +22,13 @@
     Textarea,
   } from '@lostgradient/cinder';
 
-  import { useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { listContributedKinds } from '../../lib/bureau-plugin-kinds.ts';
+  import ContributedConfigurationForm from '../../lib/contributed-configuration-form.svelte';
   import { defaultAgentQuery } from '../../lib/default-agent.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import {
     addStep,
     moveStep,
@@ -33,6 +36,7 @@
     removeStep,
     setDescription,
     setName,
+    setContributedTrigger,
     setStepField,
     setTrigger,
     type BuilderStepKind,
@@ -77,10 +81,45 @@
 
   const view = $derived(readBuilder(text));
 
-  const TRIGGER_OPTIONS = [
+  /**
+   * The trigger kinds running plugins contribute. A host that cannot say (an older Bureau, a failed
+   * read) offers the built-in triggers alone: the answer only ever adds choices.
+   */
+  const contributed = createQuery(
+    () => ({
+      queryKey: queryKeys.pluginKinds(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listContributedKinds({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const triggerKinds = $derived(contributed.data?.triggerKinds ?? []);
+
+  const triggerOptions = $derived([
     { value: 'schedule', label: copy.triggerKinds.schedule },
     { value: 'signal', label: copy.triggerKinds.signal },
-  ] as const;
+    ...triggerKinds.map((kind) => ({
+      value: kind.id,
+      label: copy.contributedTrigger(kind.id),
+    })),
+  ]);
+
+  /** The contributed kind the file's trigger names, when a running plugin contributes it. */
+  const contributedTrigger = $derived.by(() => {
+    const trigger = view?.trigger;
+    return trigger?.kind === 'contributed'
+      ? triggerKinds.find((kind) => kind.id === trigger.id)
+      : undefined;
+  });
+
+  /** The trigger the select shows: a built-in kind, or a contributed kind that is running. */
+  const triggerValue = $derived(
+    view?.trigger?.kind === 'signal'
+      ? 'signal'
+      : contributedTrigger !== undefined
+        ? contributedTrigger.id
+        : 'schedule',
+  );
 
   const ADD_ACTIONS: readonly { kind: BuilderStepKind; label: string }[] = [
     { kind: 'agent', label: copy.addAgent },
@@ -91,6 +130,8 @@
   function changeTriggerKind(kind: string): void {
     if (kind === 'schedule' || kind === 'signal') {
       onTextChange(setTrigger(text, kind as BuilderTriggerKind, ''));
+    } else if (triggerKinds.some((candidate) => candidate.id === kind)) {
+      onTextChange(setContributedTrigger(text, kind, {}));
     }
   }
 </script>
@@ -141,10 +182,11 @@
             <Select
               id="workflow-builder-trigger-kind"
               label={copy.triggerKindLabel}
-              options={TRIGGER_OPTIONS}
-              value={view.trigger?.kind === 'signal' ? 'signal' : 'schedule'}
+              options={triggerOptions}
+              value={triggerValue}
               onchange={(event) => changeTriggerKind(event.currentTarget.value)}
-              disabled={view.trigger?.kind === 'other'}
+              disabled={view.trigger?.kind === 'other' ||
+                (view.trigger?.kind === 'contributed' && contributedTrigger === undefined)}
             />
             {#if view.trigger?.kind === 'signal'}
               <Input
@@ -154,6 +196,21 @@
                 value={view.trigger.name}
                 onValueChange={(next) => onTextChange(setTrigger(text, 'signal', next))}
               />
+            {:else if view.trigger?.kind === 'contributed' && contributedTrigger !== undefined}
+              <div class="weft-workflow-builder__contributed" data-testid="contributed-trigger">
+                <p class="weft-workflow-builder__note">{contributedTrigger.description}</p>
+                <ContributedConfigurationForm
+                  kindId={contributedTrigger.id}
+                  schema={contributedTrigger.configuration}
+                  value={view.trigger.configuration}
+                  onChange={(next) =>
+                    onTextChange(setContributedTrigger(text, contributedTrigger.id, next))}
+                />
+              </div>
+            {:else if view.trigger?.kind === 'contributed'}
+              <p class="weft-workflow-builder__note">
+                {copy.unavailableTrigger(view.trigger.id)}
+              </p>
             {:else if view.trigger?.kind === 'other'}
               <p class="weft-workflow-builder__note">{view.trigger.label}. {copy.otherTrigger}</p>
             {:else}
@@ -390,6 +447,13 @@
   .weft-workflow-builder__summary {
     padding-top: var(--cinder-space-3);
     border-top: 1px solid var(--cinder-border);
+  }
+
+  .weft-workflow-builder__contributed {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-width: 0;
   }
 
   .weft-workflow-builder__summary-label,

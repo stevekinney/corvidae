@@ -9,6 +9,7 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { listHookDeliveries } from '../../lib/bureau-hooks.ts';
+  import EventSentence from '../../lib/event-sentence.svelte';
   import { queryKeys } from '../../lib/query.ts';
   import StatusLabel from '../../lib/status-label.svelte';
   import { HOOKS_COPY } from './hook-copy.ts';
@@ -55,9 +56,13 @@
           data-status={delivery.status}
         >
           <StatusLabel word={deliveryWord(delivery.status)} />
-          <span class="ib-hook-deliveries__what"
-            >{delivery.test ? copy.testEvent : eventWords(delivery.kind)}</span
-          >
+          <span class="ib-hook-deliveries__what">
+            {#if delivery.test}
+              {copy.testEvent}
+            {:else}
+              <EventSentence kind={delivery.kind} words={eventWords(delivery.kind)} />
+            {/if}
+          </span>
           <span class="ib-hook-deliveries__line">{deliveryLine(delivery)}</span>
           {#if delivery.attempts.length > 1}
             <span class="ib-hook-deliveries__muted"
