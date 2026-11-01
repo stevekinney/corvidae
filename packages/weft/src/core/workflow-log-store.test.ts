@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
 
 import { KEYS } from '../storage/keys.ts';
 import { encode } from './codec.ts';
+import * as debugOutput from './debug-output.ts';
 import type { WorkflowLogRecord } from './types/workflow-log.ts';
 import {
   DEFAULT_MAXIMUM_LOG_LINES_PER_RUN,
@@ -175,18 +176,107 @@ describe('createWorkflowLogStore', () => {
   it('drops attributes that are too large or cannot be stored, and marks the line', async () => {
     await using storage = new MemoryStorage();
     const store = createWorkflowLogStore(storage);
-    const cyclic: Record<string, unknown> = {};
-    cyclic['self'] = cyclic;
+    class NotARecord {
+      [key: string]: unknown;
+      kind = 'instance';
+    }
     store.sink(record({ message: 'big', attributes: { blob: 'z'.repeat(4000) } }));
-    store.sink(record({ message: 'cyclic', attributes: cyclic }));
+    // A class instance is not a record once redacted, so there is nothing to store.
+    store.sink(record({ message: 'instance', attributes: new NotARecord() }));
     store.sink(record({ message: 'fine', attributes: { count: 1 } }));
     const { lines } = await store.read('run-1');
 
     expect(lines.map((line) => [line.message, line.truncated, line.attributes])).toEqual([
       ['big', true, undefined],
-      ['cyclic', true, undefined],
+      ['instance', true, undefined],
       ['fine', false, { count: 1 }],
     ]);
+  });
+
+  it('redacts attributes before they are stored, and keeps the line when a value is hostile', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage);
+    store.sink(
+      record({
+        message: 'redacted',
+        attributes: { apiKey: 'x', when: new Date('x'), inputTokens: 5 },
+      }),
+    );
+    await store.flush();
+
+    const { lines } = await store.read('run-1');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      message: 'redacted',
+      truncated: false,
+      attributes: { apiKey: '[REDACTED]', when: '[Invalid Date]', inputTokens: 5 },
+    });
+    const raw: string[] = [];
+    for await (const [, bytes] of storage.scan(KEYS.workflowLogPrefix('run-1'))) {
+      raw.push(new TextDecoder().decode(bytes));
+    }
+    expect(raw.join('')).not.toContain('"x"');
+  });
+
+  it('redacts nested and value-shaped secrets, and a cyclic attribute is stored as a marker', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage);
+    const cyclic: Record<string, unknown> = {};
+    cyclic['self'] = cyclic;
+    store.sink(
+      record({
+        message: 'nested',
+        attributes: {
+          request: { headers: { authorization: 'Bearer abc.def' }, attempts: 2 },
+          note: 'Bearer abc123',
+          cyclic,
+        },
+      }),
+    );
+    const { lines } = await store.read('run-1');
+
+    expect(lines[0]?.attributes).toEqual({
+      request: { headers: { authorization: '[REDACTED]' }, attempts: 2 },
+      note: '[REDACTED]',
+      cyclic: { self: '[Circular]' },
+    });
+    expect(lines[0]?.truncated).toBe(false);
+  });
+
+  it('leaves the message and the host record untouched, and redacts attributes before the byte cap', async () => {
+    await using storage = new MemoryStorage();
+    const store = createWorkflowLogStore(storage, { maximumLineBytes: 100 });
+    const attributes = { apiKey: 'k'.repeat(500), count: 3 };
+    store.sink(record({ message: 'token=visible', attributes }));
+    const { lines } = await store.read('run-1');
+
+    // The secret's length does not count against the cap: what is stored is the redacted value.
+    expect(lines[0]).toMatchObject({
+      message: 'token=visible',
+      truncated: false,
+      attributes: { apiKey: '[REDACTED]', count: 3 },
+    });
+    expect(attributes.apiKey).toBe('k'.repeat(500));
+  });
+
+  it('drops the attributes and marks the line when redaction itself fails', async () => {
+    await using storage = new MemoryStorage();
+    const failures: unknown[] = [];
+    const store = createWorkflowLogStore(storage, { onError: (error) => failures.push(error) });
+    const spy = spyOn(debugOutput, 'sanitizeDebugValueForDisplay').mockImplementation(() => {
+      throw new Error('redactor exploded');
+    });
+    try {
+      store.sink(record({ message: 'guarded', attributes: { apiKey: 'x' } }));
+    } finally {
+      spy.mockRestore();
+    }
+    const { lines } = await store.read('run-1');
+
+    expect(lines.map((line) => [line.message, line.truncated, line.attributes])).toEqual([
+      ['guarded', true, undefined],
+    ]);
+    expect(failures).toEqual([]);
   });
 
   it('reads a line stored without a step as step null, and skips a line it cannot decode', async () => {

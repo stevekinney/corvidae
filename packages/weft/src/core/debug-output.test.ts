@@ -142,4 +142,115 @@ describe('debug output sanitization', () => {
       JSON.stringify = originalStringify;
     }
   });
+
+  it('redacts a sensitive key only when its value could carry a secret', () => {
+    expect(
+      sanitizeDebugValueForDisplay({
+        inputTokens: 12,
+        passed: true,
+        apiKey: 'x',
+        sessionId: 's',
+        token: null,
+        authorization: undefined,
+        cardNumber: 4111111111111111,
+        secretFlag: false,
+      }),
+    ).toEqual({
+      inputTokens: 12,
+      passed: true,
+      apiKey: '[REDACTED]',
+      sessionId: '[REDACTED]',
+      token: null,
+      authorization: undefined,
+      cardNumber: 4111111111111111,
+      secretFlag: false,
+    });
+  });
+
+  it('redacts an object, array, bigint, symbol, or function under a sensitive key', () => {
+    expect(
+      sanitizeDebugValueForDisplay({
+        credentials: { user: 'ada', count: 3 },
+        tokens: ['a', 'b'],
+        secretBigint: 1n,
+        secretSymbol: Symbol('s'),
+        secretCallback: () => undefined,
+      }),
+    ).toEqual({
+      credentials: '[REDACTED]',
+      tokens: '[REDACTED]',
+      secretBigint: '[REDACTED]',
+      secretSymbol: '[REDACTED]',
+      secretCallback: '[REDACTED]',
+    });
+  });
+
+  it('applies the same rule to Map entries', () => {
+    expect(
+      sanitizeDebugValueForDisplay(
+        new Map<string, unknown>([
+          ['apiKey', 'x'],
+          ['tokenCount', 7],
+        ]),
+      ),
+    ).toEqual({ apiKey: '[REDACTED]', tokenCount: 7 });
+  });
+
+  it('labels an invalid Date instead of throwing', () => {
+    expect(sanitizeDebugValueForDisplay({ when: new Date('not a date'), id: 'wf-1' })).toEqual({
+      when: '[Invalid Date]',
+      id: 'wf-1',
+    });
+    expect(sanitizeDebugValueForDisplay(new Date('not a date'))).toBe('[Invalid Date]');
+  });
+
+  it('keeps the rest of an object when one property getter throws', () => {
+    const hostile: Record<string, unknown> = { id: 'wf-1', apiKey: 'x' };
+    Object.defineProperty(hostile, 'broken', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded');
+      },
+    });
+    Object.defineProperty(hostile, 'secretBroken', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded');
+      },
+    });
+
+    expect(sanitizeDebugValueForDisplay(hostile)).toEqual({
+      id: 'wf-1',
+      apiKey: '[REDACTED]',
+      broken: '[unserializable]',
+      secretBroken: '[REDACTED]',
+    });
+  });
+
+  it('labels an object whose keys cannot be read instead of throwing', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error('ownKeys exploded');
+        },
+      },
+    );
+
+    expect(sanitizeDebugValueForDisplay({ id: 'wf-1', hostile })).toEqual({
+      id: 'wf-1',
+      hostile: '[unserializable]',
+    });
+  });
+
+  it('labels an Error whose message getter throws instead of throwing', () => {
+    const failure = new Error('x');
+    Object.defineProperty(failure, 'message', {
+      get() {
+        throw new Error('message exploded');
+      },
+    });
+
+    expect(sanitizeDebugValueForDisplay({ failure })).toEqual({ failure: '[unserializable]' });
+  });
 });

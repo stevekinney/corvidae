@@ -13,6 +13,15 @@
  * `maximumLineBytes` (2 KiB by default): a long message is cut with a visible marker, and
  * attributes that do not fit beside it are dropped.
  *
+ * Redaction (COR-1988): a line's attributes are redacted before they are measured and stored, with
+ * the redactor the timeline summaries use (`sanitizeDebugValueForDisplay`): a value under a
+ * sensitive-looking key (`apiKey`, `token`, `password`, ...) is replaced when it is a string, an
+ * object or an array (a number or a boolean passes), and a bearer token, JSON Web Token or card
+ * number is replaced wherever it appears. A secret is therefore never persisted. The message is
+ * not redacted, and the host's own `onLog` sinks that wrap this one still see the original record.
+ * Attributes the redactor cannot turn into a record are dropped and the line is marked
+ * `truncated`.
+ *
  * Durability: the sink is asynchronous. A line is buffered in memory and written in a batch on the
  * next turn, on {@link WorkflowLogStore.flush}, and on engine shutdown (`shutdown()` or `await using`;
  * a synchronous `using` disposal cannot await storage, so it flushes nothing). A crash can lose the lines
@@ -34,6 +43,7 @@ import {
 
 import { KEYS } from '../storage/keys.ts';
 import { decode } from './codec.ts';
+import { isRecord, sanitizeDebugValueForDisplay } from './debug-output.ts';
 import type { WorkflowLogRecord } from './types/workflow-log.ts';
 import {
   DEFAULT_MAXIMUM_LOG_LINES_PER_RUN,
@@ -138,6 +148,26 @@ export interface WorkflowLogStore {
    * `dropped`, so a sequence is never reused; a run whose record is gone loses both.
    */
   prune(options: { readonly olderThan: number }): Promise<{ readonly runs: number }>;
+}
+
+/**
+ * The attributes with every secret replaced, ready to be measured and stored. The redactor labels
+ * the values it cannot read rather than throwing, so a failure here means the attributes are not a
+ * record once redacted (or the redactor itself threw): they are dropped and `failed` marks the
+ * line `truncated`, so a secret is never stored for want of being understood.
+ */
+function redactAttributes(attributes: Record<string, unknown> | undefined): {
+  readonly attributes: Record<string, unknown> | undefined;
+  readonly failed: boolean;
+} {
+  if (attributes === undefined) return { attributes: undefined, failed: false };
+  try {
+    const redacted = sanitizeDebugValueForDisplay(attributes);
+    if (isRecord(redacted)) return { attributes: redacted, failed: false };
+  } catch {
+    // Falls through to the drop below.
+  }
+  return { attributes: undefined, failed: true };
 }
 
 /** One run's buffer: the lines waiting for a write, and those the in-memory bound already shed. */
@@ -308,8 +338,9 @@ export function createWorkflowLogStore(
     try {
       const message = cutMessage(record.message, maximumLineBytes);
       // The whole line is held to the cap: the attributes get what the (cut) message leaves.
+      const redacted = redactAttributes(record.attributes);
       const attributes = serializeAttributes(
-        record.attributes,
+        redacted.attributes,
         Math.max(0, maximumLineBytes - ENCODER.encode(message.text).byteLength),
       );
       const line: PendingLine = {
@@ -319,7 +350,7 @@ export function createWorkflowLogStore(
         timestamp: record.timestamp,
         workflowType: record.workflowType,
         ...(attributes.json !== undefined && { attributes: attributes.json }),
-        truncated: message.cut || attributes.dropped,
+        truncated: message.cut || attributes.dropped || redacted.failed,
       };
       const buffer = buffers.get(record.workflowId) ?? { lines: [], shed: 0 };
       buffers.set(record.workflowId, buffer);

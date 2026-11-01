@@ -1,12 +1,44 @@
 const REDACTED_VALUE = '[REDACTED]';
 const CIRCULAR_REFERENCE_VALUE = '[Circular]';
 const UNSERIALIZABLE_VALUE = '[unserializable]';
+const INVALID_DATE_VALUE = '[Invalid Date]';
 
 const SENSITIVE_KEY_PATTERN =
   /(?:access[-_]?token|api[-_]?key|auth(?:orization)?|card(?:number)?|cookie|credential|cvc|cvv|pass(?:word|phrase)?|private[-_]?key|refresh[-_]?token|secret|session|ssn|token)/i;
 
 function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERN.test(key);
+}
+
+/**
+ * Whether a value under a sensitive-looking key is redacted. A number, a boolean, `null` and
+ * `undefined` pass through, because a secret is never one (`inputTokens: 12` is a count, not a
+ * credential); a string, an object, an array and anything else is replaced.
+ */
+function carriesSecret(value: unknown): boolean {
+  return !(
+    value === null ||
+    value === undefined ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
+}
+
+/**
+ * The sanitized value of one entry. `read` is the entry's accessor, so a getter that throws costs
+ * only its own entry: the entry becomes `[unserializable]`, or `[REDACTED]` under a sensitive key,
+ * where the value cannot be inspected and so is assumed to be a secret.
+ */
+function sanitizeEntry(key: string, read: () => unknown, seen: WeakSet<object>): unknown {
+  const sensitive = isSensitiveKey(key);
+  let value: unknown;
+  try {
+    value = read();
+  } catch {
+    return sensitive ? REDACTED_VALUE : UNSERIALIZABLE_VALUE;
+  }
+
+  return sensitive && carriesSecret(value) ? REDACTED_VALUE : sanitizeDebugValue(value, seen);
 }
 
 function looksLikeJsonWebToken(value: string): boolean {
@@ -81,9 +113,7 @@ function sanitizeMap(value: Map<unknown, unknown>, seen: WeakSet<object>): Recor
   const result: Record<string, unknown> = {};
   for (const [key, entryValue] of value) {
     const normalizedKey = String(key);
-    result[normalizedKey] = isSensitiveKey(normalizedKey)
-      ? REDACTED_VALUE
-      : sanitizeDebugValue(entryValue, seen);
+    result[normalizedKey] = sanitizeEntry(normalizedKey, () => entryValue, seen);
   }
   return result;
 }
@@ -93,14 +123,22 @@ function sanitizePlainObject(
   seen: WeakSet<object>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  for (const [key, entryValue] of Object.entries(value)) {
-    result[key] = isSensitiveKey(key) ? REDACTED_VALUE : sanitizeDebugValue(entryValue, seen);
+  for (const key of Object.keys(value)) {
+    result[key] = sanitizeEntry(key, () => value[key], seen);
   }
   return result;
 }
 
 const objectSanitizers: ObjectSanitizer[] = [
-  (value) => (value instanceof Date ? supportedObject(value.toISOString()) : unsupportedObject()),
+  (value) => {
+    if (!(value instanceof Date)) {
+      return unsupportedObject();
+    }
+
+    return supportedObject(
+      Number.isNaN(value.getTime()) ? INVALID_DATE_VALUE : value.toISOString(),
+    );
+  },
   (value) =>
     value instanceof Error
       ? supportedObject({ name: value.name, message: sanitizeDebugString(value.message) })
@@ -139,6 +177,10 @@ function sanitizeObject(value: object, seen: WeakSet<object>): unknown {
     }
 
     return Object.prototype.toString.call(value);
+  } catch {
+    // A hostile value (a Proxy whose traps throw, an Error whose `message` getter throws) costs
+    // only its own slot; the surrounding object keeps every other entry.
+    return UNSERIALIZABLE_VALUE;
   } finally {
     seen.delete(value);
   }
