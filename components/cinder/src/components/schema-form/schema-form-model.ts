@@ -402,6 +402,17 @@ export function initialValueForField(field: SchemaFormField, value: unknown): un
   return mergeInitialValueWithFieldDefaults(field, clonedValue);
 }
 
+/**
+ * The draft a `SchemaForm` shows the moment it mounts: `value` merged with the defaults its
+ * fields display (the first option of a choice, `false` for a switch, an empty list). A form
+ * reports a draft only after an edit, so a host that saves an untouched form reads this to hold
+ * what the person sees.
+ */
+export function initialDraftOf(schema: JsonSchemaObject, value?: unknown): unknown {
+  const model = createSchemaFormModel(schema);
+  return pruneUndefined(initialValueForField(model.field, value));
+}
+
 function mergeInitialValueWithFieldDefaults(field: SchemaFormField, value: unknown): unknown {
   if (field.kind === 'object' && isRecord(value)) {
     const defaultValue = defaultValueForField(field);

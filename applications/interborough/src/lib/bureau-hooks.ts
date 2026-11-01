@@ -24,13 +24,21 @@ const actionSchema = z.discriminatedUnion('type', [
     input: z.enum(['payload', 'event']),
   }),
   z.object({ type: z.literal('notify'), title: z.string().nullable() }),
-  z.object({ type: z.literal('plugin'), plugin: z.string(), kind: z.string() }),
+  z.object({
+    type: z.literal('plugin'),
+    plugin: z.string(),
+    kind: z.string(),
+    configuration: z.unknown().optional(),
+  }),
 ]);
 
 /** What a hook does for each event, tagged by `type`. */
 export type HookAction = z.infer<typeof actionSchema>;
 
-/** The kinds of action a person can choose when writing a hook. A plugin's own kinds are not offered. */
+/**
+ * The built-in kinds of action a person can choose when writing a hook. The kinds running plugins
+ * contribute are offered beside them (`bureau.plugins.kinds`) and written as a `plugin` action.
+ */
 export const HOOK_ACTION_TYPES = ['webhook', 'start-workflow', 'notify'] as const;
 
 /** An action a person can write. */
@@ -128,7 +136,13 @@ export type HookInput = {
         readonly workflowId: string;
         readonly input: 'payload' | 'event';
       }
-    | { readonly type: 'notify'; readonly title?: string };
+    | { readonly type: 'notify'; readonly title?: string }
+    | {
+        readonly type: 'plugin';
+        readonly plugin: string;
+        readonly kind: string;
+        readonly configuration: Readonly<Record<string, unknown>>;
+      };
   /** The secret a webhook is signed with, 16 to 256 characters. Sealed on arrival and never returned. */
   readonly signingSecret?: string;
   /** Whether the hook fires; on unless said. */

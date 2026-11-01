@@ -11,6 +11,7 @@ import {
   encodeEnumValue,
   fieldAtPathExists,
   getValueAtPath,
+  initialDraftOf,
   initialValueForField,
   isJsonSchemaObject,
   pathId,
@@ -307,5 +308,14 @@ describe('schema-form model', () => {
     expect(decodeEnumValue(encodeEnumValue(2))).toBe(2);
     expect(decodeEnumValue(encodeEnumValue(null))).toBeNull();
     expect(() => decodeEnumValue('{"not":"primitive"}')).toThrow();
+  });
+
+  test('the initial draft holds the values the fields show before any edit', () => {
+    const choices: JsonSchemaObject = {
+      type: 'object',
+      properties: { urgency: { enum: ['low', 'high'] }, loud: { type: 'boolean' } },
+    };
+    expect(initialDraftOf(choices)).toEqual({ urgency: 'low', loud: false });
+    expect(initialDraftOf(choices, { urgency: 'high' })).toEqual({ urgency: 'high', loud: false });
   });
 });

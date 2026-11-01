@@ -24,6 +24,26 @@ describe('parseBureauEventFrame', () => {
     });
   });
 
+  test('keeps the envelope’s source, which is not a payload field', () => {
+    const envelope = { kind: 'k', cursor: 'a:1', sequence: 2, emittedAtMs: 3 };
+    expect(
+      parseBureauEventFrame(
+        JSON.stringify({ ...envelope, payload: { source: 'payload-key' }, source: 'inbox' }),
+      ),
+    ).toEqual({ ...envelope, payload: { source: 'payload-key' }, source: 'inbox' });
+  });
+
+  test('leaves source off an event from core, and ignores one that is not a plugin name', () => {
+    const envelope = { kind: 'k', cursor: 'a:1', sequence: 2, emittedAtMs: 3, payload: {} };
+    expect(parseBureauEventFrame(JSON.stringify(envelope))).not.toHaveProperty('source');
+    expect(parseBureauEventFrame(JSON.stringify({ ...envelope, source: 7 }))).not.toHaveProperty(
+      'source',
+    );
+    expect(parseBureauEventFrame(JSON.stringify({ ...envelope, source: '' }))).not.toHaveProperty(
+      'source',
+    );
+  });
+
   test('rejects data that is not JSON, not an object, or missing a field', () => {
     expect(parseBureauEventFrame('{not json')).toBeNull();
     expect(parseBureauEventFrame('[1]')).toBeNull();

@@ -45,6 +45,10 @@ export class HookFormState {
   workflowId = $state('');
   workflowInput = $state<'payload' | 'event'>('payload');
   title = $state('');
+  /** The action kind a plugin contributes that the hook runs, chosen instead of a built-in action. */
+  contributedKind = $state<{ readonly plugin: string; readonly kind: string } | null>(null);
+  /** The fields of the contributed kind's configuration. */
+  contributedConfiguration = $state<Record<string, unknown>>({});
   /** Whether the hook's action is one a plugin contributed, which the editor keeps and does not edit. */
   pluginAction = $state(false);
 
@@ -69,6 +73,8 @@ export class HookFormState {
       this.workflowId,
       this.workflowInput,
       this.title,
+      this.contributedKind,
+      this.contributedConfiguration,
     ]);
   }
 
@@ -103,8 +109,20 @@ export class HookFormState {
     this.baseline = this.fingerprint();
   }
 
+  /** The kind of action the form writes: a built-in one, or `plugin` for a contributed kind. */
+  get effectiveType(): HookActionType | 'plugin' {
+    return this.contributedKind === null ? this.actionType : 'plugin';
+  }
+
   /** The action as the hook's sentence reads it. */
   get draftAction(): DraftAction {
+    if (this.contributedKind !== null) {
+      return {
+        type: 'plugin',
+        plugin: this.contributedKind.plugin,
+        kind: this.contributedKind.kind,
+      };
+    }
     switch (this.actionType) {
       case 'webhook':
         return { type: 'webhook', url: this.url.trim() };
@@ -136,7 +154,7 @@ export class HookFormState {
   get isValid(): boolean {
     if (this.events.length === 0 || this.events.length > EVENTS_MAXIMUM) return false;
     if (this.name.trim().length > NAME_MAXIMUM_LENGTH) return false;
-    if (this.pluginAction) return true;
+    if (this.pluginAction || this.contributedKind !== null) return true;
     switch (this.actionType) {
       case 'webhook':
         return (
@@ -154,6 +172,14 @@ export class HookFormState {
 
   /** The action as the Bureau takes it. */
   private action(): HookInput['action'] {
+    if (this.contributedKind !== null) {
+      return {
+        type: 'plugin',
+        plugin: this.contributedKind.plugin,
+        kind: this.contributedKind.kind,
+        configuration: { ...this.contributedConfiguration },
+      };
+    }
     switch (this.actionType) {
       case 'webhook':
         return { type: 'webhook', url: this.url.trim() };
@@ -186,6 +212,8 @@ export class HookFormState {
         );
       case 'notify':
         return current.type !== 'notify' || (draft.title ?? null) !== current.title;
+      case 'plugin':
+        return true;
     }
   }
 
@@ -195,7 +223,7 @@ export class HookFormState {
       events: [...this.events],
       action: this.action(),
       ...(this.name.trim() === '' ? {} : { name: this.name.trim() }),
-      ...(this.actionType === 'webhook' ? { signingSecret: this.signingSecret } : {}),
+      ...(this.effectiveType === 'webhook' ? { signingSecret: this.signingSecret } : {}),
     };
   }
 
@@ -212,7 +240,7 @@ export class HookFormState {
       ...(hook.action.type === 'plugin' || !this.actionChanged(hook)
         ? {}
         : { action: this.action() }),
-      ...(this.actionType === 'webhook' && this.signingSecret !== ''
+      ...(this.effectiveType === 'webhook' && this.signingSecret !== ''
         ? { signingSecret: this.signingSecret }
         : {}),
     };

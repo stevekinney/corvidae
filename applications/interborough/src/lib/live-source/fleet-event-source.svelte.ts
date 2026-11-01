@@ -34,6 +34,8 @@ export interface FleetEventFrame {
   readonly cursor: string;
   readonly emittedAtMs: number;
   readonly payload: unknown;
+  /** The plugin whose contribution caused the event; absent for an event from core. */
+  readonly source?: string;
 }
 
 /** How many of the latest frames a source keeps for {@link FleetEventSource.recent}. */
@@ -118,6 +120,7 @@ function parseFleetEventFrame(data: string): FleetEventFrame | null {
   if (emittedAtMs === null) return null;
   if (!Object.hasOwn(parsed, 'payload')) return null;
   const workflowId = parsed['workflowId'];
+  const source = parsed['source'];
   return {
     kind: parsed['kind'],
     ...(typeof workflowId === 'string' ? { workflowId } : {}),
@@ -125,6 +128,7 @@ function parseFleetEventFrame(data: string): FleetEventFrame | null {
     cursor: parsed['cursor'],
     emittedAtMs,
     payload: parsed['payload'],
+    ...(typeof source === 'string' && source !== '' ? { source } : {}),
   };
 }
 

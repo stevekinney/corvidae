@@ -662,6 +662,17 @@ export const WORKFLOW_COPY = {
     triggerHeading: 'Trigger',
     triggerKindLabel: 'Starts',
     triggerKinds: { schedule: 'On a schedule', signal: 'When a signal arrives' },
+    /** A trigger kind a plugin contributes, named by its `plugin:name`. */
+    contributedTrigger: (id: string): string => `When ${id} fires`,
+    /** A trigger kind no running plugin contributes (the plugin is off, or the file is wrong). */
+    unavailableTrigger: (id: string): string =>
+      `No running plugin contributes the trigger ${id}. Change it in the JSON tab.`,
+    /** Shown while the plugin trigger kinds load and the file's trigger names one. */
+    checkingTrigger: (id: string): string => `Checking the trigger ${id}…`,
+    /** The plugin trigger kinds could not be read, so the file's own trigger cannot be checked. */
+    triggerKindsFailed: (id: string): string =>
+      `The trigger ${id} is kept as the file has it, but the list of plugin triggers did not load, so its settings cannot be shown.`,
+    retryTriggerKinds: 'Try again',
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
     signalNameLabel: 'Signal name',
@@ -3626,4 +3637,16 @@ export const STORAGE_COPY = {
     popoverLabel: 'What the storage can do',
     popoverHint: 'Storage details',
   },
+} as const;
+
+/** What plugins add to hooks and workflows (COR-1893). */
+export const PLUGIN_KINDS_COPY = {
+  /** The fields of a contributed kind, shown by a form drawn from its schema. */
+  fieldsHeading: 'Settings',
+  /** A contributed kind whose configuration takes no fields. */
+  noFields: 'This takes no settings.',
+  /** A contributed kind whose schema the form cannot draw. */
+  fieldsUnavailable: 'The settings of this kind cannot be shown here.',
+  /** The hook editor's choice for a contributed action: what it does, then the plugin. */
+  hookAction: (plugin: string, kind: string): string => `Run ${kind} from ${plugin}`,
 } as const;
