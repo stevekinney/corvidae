@@ -6,11 +6,13 @@ import {
   agentScheduleInput,
   draftErrors,
   emptyDraft,
+  emptyInputOf,
   engineScheduleArgs,
   isDraftValid,
   optionMatches,
   recentTypes,
   summaryOf,
+  takesNoInput,
   workflowLabel,
   workflowOptions,
   type NewScheduleDraft,
@@ -270,5 +272,24 @@ describe('summaryOf', () => {
       workflowDraft({ cadence: { every: { unit: 'hours', count: 6 }, timeZone: 'Asia/Tokyo' } }),
     );
     expect(summary).not.toContain('Asia/Tokyo');
+  });
+});
+
+describe('takesNoInput and emptyInputOf', () => {
+  const NO_FIELDS = { type: 'object', properties: {}, additionalProperties: false };
+
+  test('only a schema that says it takes no input does, and not a missing or open one', () => {
+    expect(takesNoInput(undefined)).toBe(false);
+    expect(takesNoInput({})).toBe(false);
+    expect(takesNoInput({ type: 'object', properties: {} })).toBe(false);
+    expect(takesNoInput({ type: 'object', properties: { a: { type: 'string' } } })).toBe(false);
+    expect(takesNoInput({ type: 'null' })).toBe(true);
+    expect(takesNoInput(NO_FIELDS)).toBe(true);
+    expect(takesNoInput({ type: 'object', additionalProperties: false })).toBe(true);
+  });
+
+  test('sends the empty value the schema accepts: null for null, an empty object otherwise', () => {
+    expect(emptyInputOf({ type: 'null' })).toBeNull();
+    expect(emptyInputOf(NO_FIELDS)).toEqual({});
   });
 });

@@ -531,28 +531,35 @@ describe('a workflow', () => {
     });
   });
 
-  test('says it takes no input only when its schema says so, and makes the schedule without one', async () => {
-    open({
-      definitions: [
-        ...world().definitions,
-        codeDefinition('heartbeat', {
-          contract: {
-            name: 'heartbeat',
-            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-          },
-        }),
-      ],
-    });
-    await choose('Workflow', 'heartbeat', 'Heartbeat');
-    const none = await view().findByTestId('new-schedule-no-input');
-    expect(none.textContent).toBe(COPY.noInput);
-    expect(view().queryByTestId('new-schedule-input')).toBeNull();
-    await waitFor(() => expect(create()).not.toBeDisabled());
-    await fireEvent.click(create());
+  test.each([
+    [
+      'an object that allows no field',
+      { type: 'object', properties: {}, additionalProperties: false },
+      {},
+    ],
+    ['null', { type: 'null' }, null],
+  ])(
+    'says it takes no input only when its schema says so (%s), and sends the empty value that schema accepts',
+    async (_name, inputSchema, expected) => {
+      open({
+        definitions: [
+          ...world().definitions,
+          codeDefinition('heartbeat', { contract: { name: 'heartbeat', inputSchema } }),
+        ],
+      });
+      await choose('Workflow', 'heartbeat', 'Heartbeat');
+      const none = await view().findByTestId('new-schedule-no-input');
+      expect(none.textContent).toBe(COPY.noInput);
+      expect(view().queryByTestId('new-schedule-input')).toBeNull();
+      await waitFor(() => expect(create()).not.toBeDisabled());
+      await fireEvent.click(create());
 
-    await waitFor(() => expect(stub?.callsTo('POST /schedules').length).toBe(1));
-    expect(stub?.callsTo('POST /schedules')[0]?.params).not.toHaveProperty('input');
-  });
+      await waitFor(() => expect(stub?.callsTo('POST /schedules').length).toBe(1));
+      const params = stub?.callsTo('POST /schedules')[0]?.params;
+      expect(params).toHaveProperty('input');
+      expect(params?.['input']).toEqual(expected);
+    },
+  );
 
   test('keeps the form, and what was typed, when a later read of the workflow fails', async () => {
     let queryClient: QueryClient | undefined;

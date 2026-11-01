@@ -56,6 +56,7 @@
     agentScheduleInput,
     draftErrors,
     emptyDraft,
+    emptyInputOf,
     engineScheduleArgs,
     isChatDraft,
     isDraftValid,
@@ -275,8 +276,12 @@
     if (invalidCadence) return;
     // The mutation reads the draft after its first `await`, so it gets a copy nothing can change.
     const choice = $state.snapshot(draft);
-    if (chat || noInput) {
+    if (chat) {
       begin(undefined, choice);
+      return;
+    }
+    if (noInput) {
+      begin(emptyInputOf(inputSchema), choice);
       return;
     }
     inputField?.request(choice);

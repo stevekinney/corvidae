@@ -84,6 +84,15 @@ export function takesNoInput(schema: unknown): boolean {
   return properties === undefined || (isRecord(properties) && Object.keys(properties).length === 0);
 }
 
+/**
+ * The input a workflow whose schema says it takes none is started with: the value that schema
+ * accepts, `null` or `{}`, because a fire may be rejected under inbound payload validation when the
+ * input is missing.
+ */
+export function emptyInputOf(schema: unknown): null | Record<string, never> {
+  return isRecord(schema) && schema['type'] === 'null' ? null : {};
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
