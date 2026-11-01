@@ -6,16 +6,23 @@
 import {
   type BackendDescriptor,
   BudgetExceededError,
+  createActiveRun,
   createModelCatalog,
   type GenerateContext,
   type GenerateFunction,
+  noToolCalls,
+  NonRecoverablePolicyError,
   readBackendDescriptors,
   withBackendDescriptors,
 } from '@lostgradient/operative';
+import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import {
   createFileAgentGenerate,
+  EffortNotSupportedError,
+  type FileAgentGenerateOptions,
   ModelOverrideUnusableError,
   ModelPolicyDeniedError,
 } from './file-agent-generate';
@@ -270,5 +277,288 @@ describe('a file agent’s generate under the model policy (COR-1980)', () => {
     const failure = await failureOf(generate(step({ model: DEFAULT.model })));
 
     expect(failure).toBeInstanceOf(ModelPolicyDeniedError);
+  });
+});
+
+describe('a file agent’s default effort (COR-1961)', () => {
+  const THREE_TIERS = row('anthropic', 'claude-opus-4-5');
+  const failureOf = (work: Promise<unknown>) =>
+    work.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+  /** What one call was handed: the model it ran on and the context it received. */
+  interface Call {
+    readonly model: string;
+    readonly effort: string | undefined;
+    readonly context: GenerateContext;
+  }
+
+  function effortHarness(
+    allowed: BackendDescriptor[],
+    options: Pick<FileAgentGenerateOptions, 'defaultEffort' | 'effortFallbackMode'>,
+  ) {
+    const calls: Call[] = [];
+    const generateFor =
+      (descriptor: BackendDescriptor): GenerateFunction =>
+      async (context) => {
+        calls.push({ model: descriptor.model, effort: context.steering?.effort, context });
+        return { content: descriptor.model, toolCalls: [] };
+      };
+    const generate = createFileAgentGenerate({
+      defaultDescriptor: DEFAULT,
+      defaultGenerate: withBackendDescriptors(generateFor(DEFAULT), [DEFAULT]),
+      allowed: () => allowed,
+      resolveGenerate: generateFor,
+      ...options,
+    });
+    return { generate, calls };
+  }
+
+  /** A step's context for a run, steered as named. */
+  function stepOf(
+    steering?: { model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' },
+    runId = 'run-1',
+  ) {
+    return {
+      runId,
+      ...(steering === undefined
+        ? {}
+        : { steering: { paused: false, configVersion: 3, ...steering } }),
+    } as unknown as GenerateContext;
+  }
+
+  it('sends the default to a model that takes it unchanged', async () => {
+    const { generate, calls } = effortHarness([DEFAULT], { defaultEffort: 'high' });
+
+    await generate(stepOf());
+
+    expect(calls.map((call) => call.effort)).toEqual(['high']);
+  });
+
+  it('sends it in a copy, so the session’s steering is not written and the original is untouched', async () => {
+    const { generate, calls } = effortHarness([DEFAULT], { defaultEffort: 'high' });
+    const context = stepOf({ model: DEFAULT.model });
+    const before = structuredClone(context.steering);
+
+    await generate(context);
+
+    expect(context.steering).toEqual(before);
+    expect(calls[0]?.context).not.toBe(context);
+    expect(calls[0]?.context.steering).toMatchObject({ paused: false, configVersion: 3 });
+  });
+
+  it('gives a step with no steering at all a steering that holds only the default', async () => {
+    const { generate, calls } = effortHarness([DEFAULT], { defaultEffort: 'low' });
+
+    await generate(stepOf());
+
+    expect(calls[0]?.context.steering).toEqual({ paused: false, configVersion: 0, effort: 'low' });
+  });
+
+  it('lets the effort a person steered to win over the default', async () => {
+    const { generate, calls } = effortHarness([DEFAULT], { defaultEffort: 'high' });
+
+    await generate(stepOf({ effort: 'low' }));
+
+    expect(calls.map((call) => call.effort)).toEqual(['low']);
+  });
+
+  it('passes the very same context through when the file has no default', async () => {
+    const { generate, calls } = effortHarness([DEFAULT, THREE_TIERS], {});
+    const plain = stepOf();
+    const steered = stepOf({ effort: 'max' });
+    const switched = stepOf({ model: THREE_TIERS.model });
+
+    await generate(plain);
+    await generate(steered);
+    await generate(switched);
+
+    expect(calls.map((call) => call.context)).toEqual([plain, steered, switched]);
+    expect(calls[0]?.context).toBe(plain);
+    expect(calls[1]?.context).toBe(steered);
+    expect(calls[2]?.context).toBe(switched);
+  });
+
+  it('re-checks the default against a model the session was switched to, and sends it when that model takes it', async () => {
+    const { generate, calls } = effortHarness([DEFAULT, THREE_TIERS], { defaultEffort: 'medium' });
+
+    await generate(stepOf({ model: THREE_TIERS.model }));
+
+    expect(calls.map((call) => [call.model, call.effort])).toEqual([[THREE_TIERS.model, 'medium']]);
+  });
+
+  describe('on a model that cannot do the default', () => {
+    const modeOf = (mode: 'reject' | 'degrade') => {
+      const asked: Array<string | undefined> = [];
+      return {
+        asked,
+        effortFallbackMode: async (runId: string | undefined) => {
+          asked.push(runId);
+          return mode;
+        },
+      };
+    };
+
+    it('fails the step under reject with a typed error naming the model and the effort, and calls nothing', async () => {
+      const mode = modeOf('reject');
+      const { generate, calls } = effortHarness([DEFAULT, THREE_TIERS], {
+        defaultEffort: 'max',
+        effortFallbackMode: mode.effortFallbackMode,
+      });
+
+      const failure = await failureOf(generate(stepOf({ model: THREE_TIERS.model })));
+
+      expect(failure).toBeInstanceOf(EffortNotSupportedError);
+      const error = failure as EffortNotSupportedError;
+      expect(error.code).toBe('effort-not-supported');
+      expect(error.provider).toBe('anthropic');
+      expect(error.model).toBe(THREE_TIERS.model);
+      expect(error.effort).toBe('max');
+      expect(error.message).toContain('anthropic/claude-opus-4-5');
+      expect(calls).toEqual([]);
+      expect(mode.asked).toEqual(['run-1']);
+    });
+
+    it('is a policy verdict a retry never repeats', async () => {
+      const { generate } = effortHarness([DEFAULT, THREE_TIERS], { defaultEffort: 'max' });
+
+      const failure = await failureOf(generate(stepOf({ model: THREE_TIERS.model })));
+
+      expect(failure).toBeInstanceOf(NonRecoverablePolicyError);
+    });
+
+    it('ends a run with the error and asks once, though the run retries every failure', async () => {
+      const asked: Array<string | undefined> = [];
+      const generate = createFileAgentGenerate({
+        defaultDescriptor: THREE_TIERS,
+        defaultGenerate: async () => ({ content: 'unreachable', toolCalls: [] }),
+        allowed: () => [THREE_TIERS],
+        resolveGenerate: () => async () => ({ content: 'unreachable', toolCalls: [] }),
+        defaultEffort: 'max',
+        effortFallbackMode: async (runId) => {
+          asked.push(runId);
+          return 'reject';
+        },
+      });
+
+      const result = await createActiveRun({
+        generate,
+        toolbox: createTestToolbox([]),
+        conversation: new Conversation(),
+        stopWhen: noToolCalls(),
+        runId: 'run-9',
+        retry: { attempts: 3, delay: 0, shouldRetry: () => true },
+      }).result;
+
+      expect(result.finishReason).toBe('error');
+      expect((result.error as { cause?: unknown }).cause).toBeInstanceOf(EffortNotSupportedError);
+      expect(asked).toEqual(['run-9']);
+    });
+
+    it('rejects when no fallback mode is supplied or the step has no run', async () => {
+      const bare = effortHarness([DEFAULT, THREE_TIERS], { defaultEffort: 'max' });
+      expect(await failureOf(bare.generate(stepOf({ model: THREE_TIERS.model })))).toBeInstanceOf(
+        EffortNotSupportedError,
+      );
+
+      const asked: Array<string | undefined> = [];
+      const runless = effortHarness([DEFAULT, THREE_TIERS], {
+        defaultEffort: 'max',
+        effortFallbackMode: async (runId) => {
+          asked.push(runId);
+          return runId === undefined ? 'reject' : 'degrade';
+        },
+      });
+      const context = { steering: { paused: false, configVersion: 1, model: THREE_TIERS.model } };
+      expect(
+        await failureOf(runless.generate(context as unknown as GenerateContext)),
+      ).toBeInstanceOf(EffortNotSupportedError);
+      expect(asked).toEqual([undefined]);
+    });
+
+    it('sends the tier the model degrades it to under degrade', async () => {
+      const mode = modeOf('degrade');
+      const { generate, calls } = effortHarness([DEFAULT, THREE_TIERS], {
+        defaultEffort: 'max',
+        effortFallbackMode: mode.effortFallbackMode,
+      });
+
+      await generate(stepOf({ model: THREE_TIERS.model }));
+
+      expect(calls.map((call) => [call.model, call.effort])).toEqual([[THREE_TIERS.model, 'high']]);
+    });
+
+    it('sends no effort under degrade when the model supports none, and the context is the caller’s own', async () => {
+      const mode = modeOf('degrade');
+      const { generate, calls } = effortHarness([DEFAULT, GPT], {
+        defaultEffort: 'high',
+        effortFallbackMode: mode.effortFallbackMode,
+      });
+      const context = stepOf({ model: GPT.model });
+
+      await generate(context);
+
+      expect(calls.map((call) => [call.model, call.effort])).toEqual([[GPT.model, undefined]]);
+      expect(calls[0]?.context).toBe(context);
+    });
+
+    it('rejects a model with no effort support under reject', async () => {
+      const mode = modeOf('reject');
+      const { generate, calls } = effortHarness([DEFAULT, GPT], {
+        defaultEffort: 'low',
+        effortFallbackMode: mode.effortFallbackMode,
+      });
+
+      expect(await failureOf(generate(stepOf({ model: GPT.model })))).toBeInstanceOf(
+        EffortNotSupportedError,
+      );
+      expect(calls).toEqual([]);
+    });
+
+    it('does not ask the mode, or refuse, when the person steered an effort', async () => {
+      const mode = modeOf('reject');
+      const { generate, calls } = effortHarness([DEFAULT, GPT], {
+        defaultEffort: 'low',
+        effortFallbackMode: mode.effortFallbackMode,
+      });
+
+      await generate(stepOf({ model: GPT.model, effort: 'high' }));
+
+      expect(calls.map((call) => call.effort)).toEqual(['high']);
+      expect(mode.asked).toEqual([]);
+    });
+
+    it('does not ask the mode when the model takes the default', async () => {
+      const mode = modeOf('reject');
+      const { generate } = effortHarness([DEFAULT], {
+        defaultEffort: 'low',
+        effortFallbackMode: mode.effortFallbackMode,
+      });
+
+      await generate(stepOf());
+
+      expect(mode.asked).toEqual([]);
+    });
+  });
+
+  it('judges the model policy before the effort', async () => {
+    const policy = { deployment: { deniedModels: [GPT.model] }, policyRevision: 2 };
+    const { generate } = effortHarness([DEFAULT, GPT], {
+      defaultEffort: 'low',
+    });
+    const guarded = createFileAgentGenerate({
+      defaultDescriptor: DEFAULT,
+      defaultGenerate: generate,
+      allowed: () => [DEFAULT, GPT],
+      resolveGenerate: () => generate,
+      defaultEffort: 'low',
+      policyDenial: (candidate) => modelPolicyDenialOf(candidate, policy),
+    });
+
+    expect(await failureOf(guarded(stepOf({ model: GPT.model })))).toBeInstanceOf(
+      ModelPolicyDeniedError,
+    );
   });
 });

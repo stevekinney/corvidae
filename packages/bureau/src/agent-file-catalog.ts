@@ -458,6 +458,13 @@ export interface AgentFileCatalogOptions {
    * editable, and the run that would use the model is what fails. Omitted, nothing is forbidden.
    */
   readonly modelPolicy?: (() => BureauModelPolicyOptions | undefined) | undefined;
+  /**
+   * What a step does when the model it runs on cannot do its file's `defaultEffort` (COR-1961),
+   * for the run `runId` names, or for a step with no run id: `reject` fails the step and `degrade`
+   * sends the lowered tier or none. Asked only on that path. Omitted, `reject`.
+   */
+  readonly effortFallbackMode?:
+    ((runId: string | undefined) => Promise<'reject' | 'degrade'>) | undefined;
 }
 
 /** What the saved versions of file agents offer (COR-1815). */
@@ -778,6 +785,29 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     };
   }
 
+  /**
+   * Whether the default model of `definition` can do its `defaultEffort` (COR-1961): the tier must
+   * be one of the row's `effort.portable`, the tiers it takes unchanged. Asked by a write and never
+   * by a scan, for the reason {@link checkModelPolicy} is: the catalog can change without the file,
+   * and a file left over a tier its model has since lost still runs, answered by the run's own
+   * check. A model the catalog does not hold is left to the checks that already refuse it.
+   */
+  function checkDefaultEffort(definition: AgentFileDefinition): AgentFileProblem | undefined {
+    const effort = definition.defaultEffort;
+    if (effort === undefined) return undefined;
+    const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
+    if (isProblem(resolved) || resolved.effort.portable.includes(effort)) return undefined;
+    const tiers = resolved.effort.portable;
+    const message = `The default effort "${effort}" is not one the model "${definition.model}" supports; it ${
+      tiers.length === 0 ? 'supports no effort' : `supports ${tiers.join(', ')}`
+    }.`;
+    return {
+      code: 'effort-not-supported',
+      message,
+      issues: [{ path: 'defaultEffort', message, reference: definition.model }],
+    };
+  }
+
   /** The skills of `definition` as a run's `createAgent` option: none for a file that grants none. */
   function fileAgentSkills(definition: AgentFileDefinition): { readonly skills?: AgentSkills } {
     const hostSkills = options.skills;
@@ -980,6 +1010,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         costBudgeted: definition.costBudget !== undefined,
         // COR-1980: read at each step, so the policy as it is then binds a file saved before it.
         policyDenial: (row) => modelPolicyDenialOf(row, options.modelPolicy?.()),
+        // COR-1961: the file's default effort, seeded per step against the row the step uses.
+        defaultEffort: definition.defaultEffort,
+        effortFallbackMode: options.effortFallbackMode,
       }),
       allowedCandidates: allowedDescriptorsOfFileAgent(
         definition.models,
@@ -1448,6 +1481,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       if (refused !== undefined) return refused;
       const forbidden = checkModelPolicy(definition);
       if (forbidden !== undefined) return forbidden;
+      const unsupported = checkDefaultEffort(definition);
+      if (unsupported !== undefined) return unsupported;
       // The host's resolver is asked here too, so a write is refused for a model it cannot set
       // up rather than committed and then listed invalid.
       try {
@@ -1604,6 +1639,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       if (refused !== undefined) return refuse(refused);
       const forbidden = checkModelPolicy(parsedDefinition);
       if (forbidden !== undefined) return refuse(forbidden);
+      const unsupported = checkDefaultEffort(parsedDefinition);
+      if (unsupported !== undefined) return refuse(unsupported);
       try {
         return buildAgent(
           id,

@@ -258,6 +258,15 @@ export interface GenerateContext {
    */
   assistantMessageId?: string | undefined;
   /**
+   * The id of the run this step belongs to, or `undefined` for a run with no run id. A generate
+   * function that needs to know whose step it is answering, as a host's policy lookup does,
+   * reads it here instead of parsing {@link GenerateContext.assistantMessageId}.
+   *
+   * NOT hook-overridable, like `assistantMessageId`: `runStep` re-applies it after
+   * `beforeGenerate` and after a retry mutator.
+   */
+  runId?: string | undefined;
+  /**
    * Media sources a {@link ContentSourceResolver} projected to a kind the
    * provider accepts, keyed `${messageId}:${partIndex}`. A provider adapter
    * substitutes them at export time; the conversation itself keeps each part's

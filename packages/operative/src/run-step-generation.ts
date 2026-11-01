@@ -178,6 +178,7 @@ export async function executeGeneration(
           maximumTokens: deps.maximumTokens,
           steering: steeringDesiredState,
           assistantMessageId,
+          runId: deps.runId,
           resolvedSources,
           generatedMediaAdmitter: admitter,
         };
@@ -204,6 +205,7 @@ export async function executeGeneration(
             signal: stepSignal,
             steering: steeringDesiredState,
             assistantMessageId,
+            runId: deps.runId,
             resolvedSources,
             generatedMediaAdmitter: admitter,
           };
@@ -240,6 +242,7 @@ export async function executeGeneration(
                 ...handlerResult,
                 steering: steeringDesiredState,
                 assistantMessageId,
+                runId: deps.runId,
                 resolvedSources,
                 // COR-713: the media-admission port is the loop's, like `steering`.
                 generatedMediaAdmitter: admitter,

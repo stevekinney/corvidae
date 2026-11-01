@@ -3225,6 +3225,17 @@ async function constructBureau<const D extends AgentDefinitions>(
               resolveGenerate: (row) => models.generate(row),
               // COR-1980: the settings are live, so a write is judged by the policy as it is now.
               modelPolicy: () => modelPolicyOf(currentSettings()),
+              // COR-1961: the run's owner decides whether a default effort its model cannot do
+              // fails the step or is lowered; a run with no owner on record, or an owner whose
+              // profile says nothing, rejects.
+              effortFallbackMode: async (runId) => {
+                if (runId === undefined) return 'reject';
+                const owner = ownerOrLocal(await ownerOf({ kind: 'run', id: runId }));
+                const users = modelPolicyOf(currentSettings())?.users;
+                const profile =
+                  users !== undefined && Object.hasOwn(users, owner) ? users[owner] : undefined;
+                return profile?.effortFallbackMode ?? 'reject';
+              },
               ...(options.agentApprovalSecret === undefined
                 ? {}
                 : { approvalSecret: options.agentApprovalSecret }),
