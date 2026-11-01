@@ -306,7 +306,7 @@ test.describe('a decision made in the inbox', () => {
     context,
   }) => {
     const starts = recordStarts(page);
-    const asked = page.getByRole('alert').filter({ hasText: HUMAN_INPUT_PROMPT });
+    const asked = page.locator('.weft-chat-question').filter({ hasText: HUMAN_INPUT_PROMPT });
     await page.goto('/chats/new?agent=demo:request-human-input');
     await send(page, 'Release it');
     await expect(asked).toBeVisible();

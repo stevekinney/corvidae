@@ -26,6 +26,7 @@ const DESTINATIONS = [
   'Runs',
   'Schedules',
   'Goals',
+  'Hooks',
   'Health',
   'Settings',
 ];
@@ -240,7 +241,7 @@ test('the palette lists the chat and the agent a few letters name above any run'
   await runToEnd(request, 'demo:echo', newThreadId('palette'), 'Hello echo, say this back');
   await page.goto('/');
   await page.getByRole('button', { name: /^Search everything/ }).click();
-  const search = page.getByRole('combobox');
+  const search = page.getByRole('dialog', { name: 'Command palette' }).getByRole('combobox');
   await expect(search).toHaveAttribute('placeholder', 'Search everything');
   await search.fill('ech');
 
@@ -267,7 +268,7 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
   // The shortcut is registered once the shell has mounted, which the top bar's search shows.
   await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
   await page.keyboard.press('Control+k');
-  await page.getByRole('combobox').fill('ech');
+  await page.getByRole('dialog', { name: 'Command palette' }).getByRole('combobox').fill('ech');
   await page.getByRole('option', { name: 'New chat with demo:echo', exact: true }).click();
   await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Aecho$/);
 });
@@ -325,10 +326,11 @@ test('the sidebar holds one ordered list, with Settings pinned to the bottom', a
   }
   // Settings sits below the rest, with the space between them.
   const goals = await links.nth(7).boundingBox();
-  const health = await links.nth(8).boundingBox();
-  const settings = await links.nth(9).boundingBox();
+  const hooks = await links.nth(8).boundingBox();
+  const health = await links.nth(9).boundingBox();
+  const settings = await links.nth(10).boundingBox();
   expect((settings?.y ?? 0) - (health?.y ?? 0)).toBeGreaterThan(
-    ((health?.y ?? 0) - (goals?.y ?? 0)) * 2,
+    ((hooks?.y ?? 0) - (goals?.y ?? 0)) * 2,
   );
 });
 
