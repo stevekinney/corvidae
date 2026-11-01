@@ -32,6 +32,7 @@ for (const width of WIDTHS) {
     test('groups models by provider and disables a provider that is not connected', async ({
       page,
       request,
+      checkA11y,
     }) => {
       const response = await request.get('/host/providers');
       expect(response.ok()).toBe(true);
@@ -54,13 +55,43 @@ for (const width of WIDTHS) {
         });
         await expect(option).toHaveAttribute('aria-disabled', 'true');
       }
+      // The listbox the field controls is the scroller, and its list is 16rem tall at either width
+      // (the docked sheet does not let it grow to the sheet's height).
+      const listbox = page.getByRole('listbox');
+      const listHeight = await listbox.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return (
+          element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+        );
+      });
+      expect(listHeight).toBe(256);
+      // The list is open with disabled rows in it; a scrolling list must be reachable by keyboard.
+      await checkA11y('the model list open with providers that are not connected');
 
-      // Pressing a provider that is not connected chooses nothing.
+      // The arrow keys stop on a provider that is not connected, so the list scrolls to it by
+      // keyboard and its reason can be read; they do not skip it.
       const first = unconnected[0];
       if (first === undefined) throw new Error('Expected a provider that is not connected.');
-      await page
-        .getByRole('option', { name: copy.notConnected(providerDisplayName(first.name)) })
-        .click({ force: true });
+      const disabledOption = page.getByRole('option', {
+        name: copy.notConnected(providerDisplayName(first.name)),
+      });
+      const disabledId = await disabledOption.getAttribute('id');
+      const optionIds = await page
+        .getByRole('option')
+        .evaluateAll((rows) => rows.map((row) => row.id));
+      const steps = optionIds.indexOf(disabledId ?? '');
+      expect(steps).toBeGreaterThan(0);
+      await model.press('Home');
+      for (let step = 0; step < steps; step += 1) await model.press('ArrowDown');
+      await expect(model).toHaveAttribute('aria-activedescendant', disabledId ?? '');
+      await expect(disabledOption).toBeInViewport();
+      // Enter on it chooses nothing and leaves the list open.
+      await model.press('Enter');
+      await expect(model).toHaveAttribute('aria-expanded', 'true');
+      await expect(model).toHaveValue('anthropic/claude-sonnet-5');
+
+      // Pressing a provider that is not connected chooses nothing.
+      await disabledOption.click({ force: true });
       await page.keyboard.press('Escape');
       await expect(model).toHaveValue('anthropic/claude-sonnet-5');
 
@@ -71,6 +102,18 @@ for (const width of WIDTHS) {
       );
       await hint.getByRole('link', { name: copy.settingsLink }).click();
       await expect(page).toHaveURL(/\/settings\/models$/);
+    });
+
+    test('keeps the model list inside a short screen', async ({ page }) => {
+      await page.setViewportSize({ width, height: 240 });
+      await page.goto('/agents/new');
+      await page.getByRole('combobox', { name: 'Model' }).click();
+      const box = await page.getByRole('listbox').boundingBox();
+      expect(box).not.toBeNull();
+      // The docked sheet hangs from the bottom edge, so a panel taller than the screen would push
+      // its first rows above it, out of reach. (The anchored panel places itself by the field.)
+      if (width < 768) expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
+      expect(box?.height ?? Infinity).toBeLessThanOrEqual(240);
     });
 
     test('shows the abilities of the chosen model', async ({ page }) => {

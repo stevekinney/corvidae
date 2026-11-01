@@ -823,7 +823,7 @@ describe('Combobox keyboard', () => {
     expect(container.querySelector('[role="listbox"]')).toBeNull();
   });
 
-  test('ArrowDown skips a disabled option instead of stopping on it', async () => {
+  test('ArrowDown stops on a disabled option so the list can be read past it', async () => {
     const optionsWithDisabled = [
       { value: 'apple', label: 'Apple' },
       { value: 'apricot', label: 'Apricot', disabled: true },
@@ -837,8 +837,16 @@ describe('Combobox keyboard', () => {
       const active = container.querySelector('[role="option"][data-cinder-active]');
       expect(active?.textContent?.trim()).toBe('Apple');
     });
-    // A second ArrowDown must land on Banana, skipping the disabled Apricot
-    // row entirely rather than dead-ending back at the first option.
+    // The second ArrowDown lands on the disabled Apricot: a keyboard user can
+    // reach a disabled row (and read why it is disabled) the way a pointer user can.
+    await fireEvent.keyDown(input, { key: 'ArrowDown' });
+    await waitFor(() => {
+      const active = container.querySelector('[role="option"][data-cinder-active]');
+      expect(active?.textContent?.trim()).toBe('Apricot');
+      expect(active?.getAttribute('aria-disabled')).toBe('true');
+      expect(input.getAttribute('aria-activedescendant')).toBe(active?.id ?? null);
+    });
+    // And the third continues to Banana, so the list scrolls the whole way down.
     await fireEvent.keyDown(input, { key: 'ArrowDown' });
     await waitFor(() => {
       const active = container.querySelector('[role="option"][data-cinder-active]');
@@ -846,7 +854,7 @@ describe('Combobox keyboard', () => {
     });
   });
 
-  test('ArrowUp from the top wraps to the last enabled option, skipping a trailing disabled option', async () => {
+  test('ArrowUp from the top wraps to a trailing disabled option', async () => {
     const optionsWithDisabled = [
       { value: 'apple', label: 'Apple' },
       { value: 'apricot', label: 'Apricot' },
@@ -858,8 +866,91 @@ describe('Combobox keyboard', () => {
     await fireEvent.keyDown(input, { key: 'ArrowUp' });
     await waitFor(() => {
       const active = container.querySelector('[role="option"][data-cinder-active]');
+      expect(active?.textContent?.trim()).toBe('Banana');
+    });
+  });
+
+  test('Home and End reach a disabled first and last option', async () => {
+    const optionsWithDisabled = [
+      { value: 'apple', label: 'Apple', disabled: true },
+      { value: 'apricot', label: 'Apricot' },
+      { value: 'banana', label: 'Banana', disabled: true },
+    ];
+    const { container } = render(Combobox, { id: 'fruit', options: optionsWithDisabled });
+    const input = requiredInstance(container.querySelector(`#fruit`), HTMLInputElement);
+    input.focus();
+    await fireEvent.focus(input);
+    await findOption('Apple');
+    await fireEvent.keyDown(input, { key: 'End' });
+    await waitFor(() => {
+      const active = container.querySelector('[role="option"][data-cinder-active]');
+      expect(active?.textContent?.trim()).toBe('Banana');
+    });
+    await fireEvent.keyDown(input, { key: 'Home' });
+    await waitFor(() => {
+      const active = container.querySelector('[role="option"][data-cinder-active]');
+      expect(active?.textContent?.trim()).toBe('Apple');
+    });
+  });
+
+  test('Enter on a disabled active option selects nothing and leaves the list open', async () => {
+    const changes: string[] = [];
+    const optionsWithDisabled = [
+      { value: 'apple', label: 'Apple' },
+      { value: 'apricot', label: 'Apricot', disabled: true },
+    ];
+    const { container } = render(Combobox, {
+      id: 'fruit',
+      options: optionsWithDisabled,
+      onValueChange: (next: string) => changes.push(next),
+    });
+    const input = requiredInstance(container.querySelector(`#fruit`), HTMLInputElement);
+    input.focus();
+    await fireEvent.keyDown(input, { key: 'ArrowUp' });
+    await waitFor(() => {
+      const active = container.querySelector('[role="option"][data-cinder-active]');
       expect(active?.textContent?.trim()).toBe('Apricot');
     });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    expect(changes).toEqual([]);
+    expect(input.value).toBe('');
+    expect(container.querySelector('[role="listbox"]')).not.toBeNull();
+  });
+
+  test('typing still starts on the first enabled option, not a leading disabled one', async () => {
+    const optionsWithDisabled = [
+      { value: 'apple', label: 'Apple', disabled: true },
+      { value: 'apricot', label: 'Apricot' },
+    ];
+    const { container } = render(Combobox, { id: 'fruit', options: optionsWithDisabled });
+    const input = requiredInstance(container.querySelector(`#fruit`), HTMLInputElement);
+    input.focus();
+    await fireEvent.input(input, { target: { value: 'ap' } });
+    await waitFor(() => {
+      const active = container.querySelector('[role="option"][data-cinder-active]');
+      expect(active?.textContent?.trim()).toBe('Apricot');
+    });
+  });
+
+  test('the listbox the input controls is the scrolling surface (axe scrollable-region-focusable)', () => {
+    // axe's `scrollable-region-focusable` exempts a scroller that is itself the
+    // combobox's popup (`role="listbox"` named by the input's `aria-controls`),
+    // and fails a presentational wrapper inside it that scrolls with nothing
+    // focusable. The scroll therefore lives on the panel, never on the list
+    // inside it; a tab stop on the scroller would compete with the input.
+    const styles = readComboboxStyles();
+    const rule = (selector: string): string =>
+      styles.match(new RegExp(`(?:^|\\n)\\s*${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    const panel = rule('\\.cinder-combobox__panel\\.cinder-popover');
+    expect(panel).toMatch(/overflow(-y)?:\s*auto/);
+    // The list is 16rem tall in the docked sheet too, not the sheet's 90dvh.
+    expect(panel).toMatch(/max-block-size:\s*min\(\s*calc\(16rem/);
+    // The surface's viewport limit is kept, so a short screen still scrolls the panel.
+    expect(panel).toMatch(/100vh/);
+    expect(
+      rule("\\.cinder-combobox__panel\\.cinder-popover\\[data-cinder-sheet='docked'\\]"),
+    ).toMatch(/max-block-size:\s*min\(\s*calc\(\s*16rem[\s\S]*90dvh/);
+    expect(rule('\\.cinder-combobox__listbox')).not.toMatch(/overflow/);
   });
 
   test('hovering a disabled option does not clear the keyboard-active option', async () => {

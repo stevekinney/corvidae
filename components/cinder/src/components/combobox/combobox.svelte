@@ -75,7 +75,13 @@
   // `autoActivateFirst: false` — an editable combobox shows no highlighted
   // option until the user types or explicitly navigates, unlike a
   // button-triggered listbox (MultiSelect, CommandMenu).
-  const commandList = createCommandListState(() => listboxId, { autoActivateFirst: false });
+  // `navigateDisabled: true` — the arrow keys, Home and End stop on a disabled
+  // row, so a keyboard user can scroll the whole list and read each disabled
+  // row (COR-1981). Activation stays refused for it (`selectOption`).
+  const commandList = createCommandListState(() => listboxId, {
+    autoActivateFirst: false,
+    navigateDisabled: true,
+  });
   const descriptionId = $derived(field.ownDescriptionId);
   // Stable id for the always-in-DOM error live region when no error is active.
   // Mirrors Select: avoids colliding with a wrapping FormField's error id.
@@ -243,18 +249,13 @@
         ),
   );
 
-  /** First non-disabled index in `filteredOptions`, or -1 if none. */
+  /**
+   * First non-disabled index in `filteredOptions`, or -1 if none. Typing starts
+   * the cursor here: a disabled row is reachable with the arrow keys but is
+   * never where a fresh filter lands.
+   */
   function firstEnabledFilteredIndex(): number {
     return filteredOptions.findIndex((option) => !option.disabled);
-  }
-
-  /** Indexes of every non-disabled option in `filteredOptions`, in order. */
-  function enabledFilteredIndexes(): number[] {
-    const indexes: number[] = [];
-    filteredOptions.forEach((option, index) => {
-      if (!option.disabled) indexes.push(index);
-    });
-    return indexes;
   }
 
   /**
@@ -263,16 +264,13 @@
    * registers option ids asynchronously (see the `syncItems` effect below) —
    * this can run before that registration completes, since the roving index
    * itself is computed directly from `filteredOptions` rather than from
-   * `commandList.enabledIds`. `activeItemId` is `$derived`, so once
+   * `commandList.navigableIds`. `activeItemId` is `$derived`, so once
    * registration catches up it re-resolves to the id set here; no explicit
    * ordering between the two is required.
    *
-   * `commandList.activeItemId` only ever resolves to an *enabled* id (see
-   * `enabledIds` in create-command-list-state.svelte.ts) — passing a disabled
-   * option's index here would silently collapse `activeItemId` back to
-   * `null` instead of "sticking" on it. Callers must only pass indexes from
-   * `enabledFilteredIndexes()`/`firstEnabledFilteredIndex()`, never a raw
-   * disabled index.
+   * A disabled option can be active (`navigateDisabled`), so the cursor can
+   * stand on it and `aria-activedescendant` can name it; `selectOption` is what
+   * refuses to choose it.
    */
   function setActiveIndex(index: number): void {
     if (index < 0) commandList.resetActiveItem();
@@ -280,28 +278,24 @@
   }
 
   /**
-   * Moves the active option to the next/previous *enabled* option, wrapping
-   * around. Disabled options are skipped entirely rather than becoming
-   * active and dead-ending navigation (see `setActiveIndex`).
+   * Moves the active option to the next/previous option, disabled ones
+   * included, wrapping around. Skipping them would leave a keyboard user unable
+   * to scroll to, or read, a disabled row.
    */
   function moveActive(direction: 1 | -1): void {
-    const indexes = enabledFilteredIndexes();
-    if (indexes.length === 0) return;
+    const count = filteredOptions.length;
+    if (count === 0) return;
     if (activeIndex < 0) {
-      setActiveIndex(direction === 1 ? indexes[0]! : indexes.at(-1)!);
+      setActiveIndex(direction === 1 ? 0 : count - 1);
       return;
     }
-    const currentPosition = indexes.indexOf(activeIndex);
-    const nextPosition =
-      currentPosition < 0 ? 0 : (currentPosition + direction + indexes.length) % indexes.length;
-    setActiveIndex(indexes[nextPosition]!);
+    setActiveIndex((activeIndex + direction + count) % count);
   }
 
-  /** Moves the active option to the first/last *enabled* option. */
+  /** Moves the active option to the first/last option, disabled or not. */
   function moveToBoundary(direction: 'start' | 'end'): void {
-    const indexes = enabledFilteredIndexes();
     setActiveIndex(
-      indexes.length === 0 ? -1 : direction === 'start' ? indexes[0]! : indexes.at(-1)!,
+      filteredOptions.length === 0 ? -1 : direction === 'start' ? 0 : filteredOptions.length - 1,
     );
   }
 
@@ -526,9 +520,9 @@
       selectOption(option);
     }}
     onmouseenter={() => {
-      // Disabled options are never active (see `setActiveIndex`) —
-      // guard here so hovering one doesn't clear whatever option is
-      // currently active via keyboard.
+      // Hovering a disabled option leaves the active option alone: the
+      // pointer can rest on a disabled row without moving the keyboard cursor
+      // off the option the user navigated to.
       if (option.disabled) return;
       setActiveIndex(index);
     }}

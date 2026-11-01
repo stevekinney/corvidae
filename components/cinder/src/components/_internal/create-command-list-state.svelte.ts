@@ -38,6 +38,18 @@ export type CommandListStateOptions = {
    * highlighted option until the user types or explicitly navigates.
    */
   autoActivateFirst?: boolean;
+  /**
+   * Whether disabled items can become the active item and the arrow keys, Home
+   * and End stop on them. Defaults to `false`: CommandMenu, MultiSelect and
+   * CommandPalette skip disabled items. Combobox passes `true`, following the
+   * WAI-ARIA listbox pattern: a list that scrolls must be reachable by keyboard,
+   * and a disabled row (with the reason it is disabled) is content a keyboard
+   * user can read only by moving onto it. Activation stays refused for a
+   * disabled item (`activateItemById` and the `Enter` path both check
+   * `getDisabled`), so this changes where the cursor can stand, never what it
+   * can choose.
+   */
+  navigateDisabled?: boolean;
 };
 
 export class CommandListState {
@@ -48,6 +60,7 @@ export class CommandListState {
   // constructor always overwrites it before `activeItemId` is ever accessed
   // (Svelte's `$derived` only evaluates lazily, on read).
   readonly #autoActivateFirst: boolean = true;
+  readonly #navigateDisabled: boolean = false;
   #registeredListboxId = $state('');
   registrations = $state<RegistrationRecord[]>([]);
   registrationsReady = $state(false);
@@ -61,11 +74,20 @@ export class CommandListState {
       .map((registration) => registration.id);
   });
 
+  /**
+   * Ids the active item can stand on, in document order: the enabled items, or
+   * every item when `navigateDisabled` is set.
+   */
+  navigableIds = $derived.by(() => {
+    if (!this.#navigateDisabled) return this.enabledIds;
+    return inDocumentOrder(this.registrations).map((registration) => registration.id);
+  });
+
   activeItemId = $derived(
-    this.#intendedActiveId !== null && this.enabledIds.includes(this.#intendedActiveId)
+    this.#intendedActiveId !== null && this.navigableIds.includes(this.#intendedActiveId)
       ? this.#intendedActiveId
       : this.#autoActivateFirst
-        ? (this.enabledIds[0] ?? null)
+        ? (this.navigableIds[0] ?? null)
         : null,
   );
 
@@ -73,6 +95,7 @@ export class CommandListState {
     this.#getListboxId = typeof listboxId === 'function' ? listboxId : () => listboxId;
     this.#registeredListboxId = this.#getListboxId();
     this.#autoActivateFirst = options.autoActivateFirst ?? true;
+    this.#navigateDisabled = options.navigateDisabled ?? false;
   }
 
   get listboxId(): string {
@@ -202,7 +225,7 @@ export class CommandListState {
   }: CommandListKeyboardOptions): boolean {
     if (event.isComposing || event.keyCode === 229) return false;
     const isModified = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
-    const ids = this.enabledIds;
+    const ids = this.navigableIds;
 
     if (event.key === 'ArrowDown') {
       if (ignoreModifiedNavigation && isModified) return false;
