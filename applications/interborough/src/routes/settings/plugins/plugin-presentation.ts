@@ -9,6 +9,7 @@ import type { StatusDotStatus } from '@lostgradient/cinder';
 import { PLUGINS_COPY } from '../../../app/copy.ts';
 import type {
   PluginContribution,
+  PluginProblem,
   PluginStanding,
   PluginsSnapshot,
 } from '../../../lib/host-plugins.ts';
@@ -42,6 +43,28 @@ export function isShadowed(snapshot: PluginsSnapshot, plugin: PluginStanding): b
 /** The key of a plugin in the list: its name, and for a later plugin with the same name, where it came from too. */
 export function listKey(snapshot: PluginsSnapshot, plugin: PluginStanding): string {
   return isShadowed(snapshot, plugin) ? `${nameOf(plugin)}@${plugin.location}` : nameOf(plugin);
+}
+
+/**
+ * The other plugin a `name-clash` is with: the one at the location of the side that is not this
+ * plugin. A side the listing does not hold (the host's own options hold names too) has none.
+ */
+export function clashCounterpart(
+  snapshot: PluginsSnapshot,
+  plugin: PluginStanding,
+  problem: PluginProblem,
+): PluginStanding | undefined {
+  if (problem.code !== 'name-clash') return undefined;
+  const locations = ['first', 'second']
+    .map((field): unknown => Reflect.get(problem, field))
+    .map((party): unknown =>
+      typeof party === 'object' && party !== null ? Reflect.get(party, 'location') : undefined,
+    )
+    .filter((location): location is string => typeof location === 'string');
+  return snapshot.plugins.find(
+    (entry) =>
+      entry !== plugin && entry.location !== plugin.location && locations.includes(entry.location),
+  );
 }
 
 /** Whether the running host loaded the plugin enabled. A plugin that failed its startup check was enabled. */

@@ -805,7 +805,7 @@ describe('folders that did not load', () => {
     const entry = container.querySelector<HTMLElement>(
       '[data-unloaded="/home/.interborough/plugins/broken"]',
     )!;
-    expect(entry.textContent).toContain(PLUGINS_COPY.problems.failed.title);
+    expect(entry.textContent).toContain('The plugin’s code didn’t load');
     expect(entry.textContent).toContain('Cannot find package "left-pad".');
     expect(entry.textContent).toContain(PLUGINS_COPY.source.folder);
   });
@@ -854,16 +854,14 @@ describe('secrets', () => {
     const { container, getByRole } = open('typesafe');
     await loaded(container, 'typesafe');
     expect(container.querySelector('[data-plugin-problem]')?.textContent).toContain(
-      PLUGINS_COPY.problems.secretMissing.title,
+      'A secret isn’t saved yet',
     );
     host!.refuseNext = Response.json(
       { error: 'invalid', field: 'value', message: `${SECRET} is not accepted` },
       { status: 400 },
     );
 
-    await fireEvent.click(
-      getByRole('button', { name: PLUGINS_COPY.problems.secretMissing.action }),
-    );
+    await fireEvent.click(getByRole('button', { name: 'Add the key' }));
     const dialog = await bodyOf(container).findByRole('dialog');
     const field = dialog.querySelector<HTMLInputElement>('input[type="password"]')!;
     await fireEvent.input(field, { target: { value: SECRET } });
@@ -929,6 +927,84 @@ describe('problems', () => {
     );
     expect(problems).toHaveLength(2);
     expect(problems[0]).toContain('teamKey: Team key must be 2 to 5 capital letters.');
-    expect(problems[1]).toContain(PLUGINS_COPY.problems.unknown('brand-new-code'));
+    expect(problems[1]).toContain('Reported as brand-new-code.');
+  });
+});
+
+describe('a problem’s button', () => {
+  test('Fix the setting moves to the configuration editor', async () => {
+    const { container, getByRole } = open('linear', {}, [
+      {
+        name: 'linear',
+        status: 'skipped',
+        problems: [
+          { code: 'configuration-invalid', field: 'teamKey', message: 'Must be capital letters.' },
+        ],
+      },
+    ]);
+    await loaded(container, 'linear');
+
+    await fireEvent.click(getByRole('button', { name: 'Fix the setting' }));
+
+    expect(container.ownerDocument.activeElement?.id).toBe('plugin-configuration-linear');
+  });
+
+  test('Show both opens the plugin that kept the name', async () => {
+    const { container, getByRole } = open('linear', {}, [
+      { name: 'linear', location: '@lostgradient/plugin-linear' },
+      {
+        name: 'linear',
+        source: 'folder',
+        location: '/home/plugins/linear',
+        status: 'skipped',
+        problems: [
+          {
+            code: 'name-clash',
+            name: 'linear',
+            first: { source: 'package', location: '@lostgradient/plugin-linear' },
+            second: { source: 'folder', location: '/home/plugins/linear' },
+          },
+        ],
+      },
+    ]);
+    await loaded(container, 'linear');
+    await fireEvent.click(container.querySelectorAll('[data-plugin-row="linear"]')[1]!);
+    await waitFor(() =>
+      expect(container.querySelector('[data-plugin-detail] [data-plugin-problem]')).not.toBeNull(),
+    );
+
+    await fireEvent.click(getByRole('button', { name: 'Show both' }));
+
+    await waitFor(() =>
+      expect(container.querySelectorAll('[data-plugin-detail] [data-plugin-problem]')).toHaveLength(
+        0,
+      ),
+    );
+    expect(container.querySelector('[data-plugin-detail] dd')?.textContent).toContain(
+      '@lostgradient/plugin-linear',
+    );
+  });
+
+  test('Show both is not drawn when the other side is not a listed plugin', async () => {
+    const { container, queryByRole } = open('linear', {}, [
+      {
+        name: 'linear',
+        status: 'skipped',
+        problems: [
+          {
+            code: 'name-clash',
+            name: 'linear:create-issue',
+            first: { source: 'built-in', location: 'host' },
+            second: { source: 'package', location: '@lostgradient/plugin-package' },
+          },
+        ],
+      },
+    ]);
+    await loaded(container, 'linear');
+    await waitFor(() =>
+      expect(container.querySelector('[data-plugin-problem="name-clash"]')).not.toBeNull(),
+    );
+
+    expect(queryByRole('button', { name: 'Show both' })).toBeNull();
   });
 });

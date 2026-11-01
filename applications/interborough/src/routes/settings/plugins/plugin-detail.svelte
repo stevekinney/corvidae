@@ -17,7 +17,7 @@
   } from '@lostgradient/cinder';
 
   import { PLUGINS_COPY } from '../../../app/copy.ts';
-  import type { PluginStanding } from '../../../lib/host-plugins.ts';
+  import type { PluginProblem, PluginStanding } from '../../../lib/host-plugins.ts';
   import {
     contributionGroups,
     inUseSentence,
@@ -25,7 +25,7 @@
     statusOf,
   } from './plugin-presentation.ts';
   import type { PluginDrafts } from './plugin-drafts.svelte.ts';
-  import { problemView } from './plugin-problems.ts';
+  import PluginProblemCard from './plugin-problem-card.svelte';
 
   interface Props {
     plugin: PluginStanding;
@@ -38,9 +38,14 @@
     onDisable: (plugin: PluginStanding) => void;
     /** Asked when a person adds or replaces one of the plugin's secrets. */
     onSecret: (plugin: PluginStanding, key: string) => void;
+    /**
+     * What opens the other plugin a name clash is with, or nothing when that plugin is not listed
+     * (the host's own options can hold a name too).
+     */
+    showBoth: (plugin: PluginStanding, problem: PluginProblem) => (() => void) | undefined;
   }
 
-  let { plugin, drafts, rejection, locked, onDisable, onSecret }: Props = $props();
+  let { plugin, drafts, rejection, locked, onDisable, onSecret, showBoth }: Props = $props();
 
   const copy = PLUGINS_COPY;
   const name = $derived(plugin.descriptor.name);
@@ -48,6 +53,13 @@
   const status = $derived(statusOf(plugin, enabled));
   const groups = $derived(contributionGroups(plugin));
   const invalid = $derived(drafts.invalid(plugin));
+
+  /** Moves to the configuration, which is where a setting the host refused is fixed. */
+  function focusConfiguration(): void {
+    // The editor takes the id once it has loaded; until then the textarea beneath it has it.
+    const editor = document.getElementById(`plugin-configuration-${name}`);
+    editor?.focus();
+  }
 
   /**
    * Turning a plugin on, or back to what is stored, only changes the draft. Turning off a plugin
@@ -90,20 +102,13 @@
   </div>
 
   {#each plugin.problems as problem, index (index)}
-    {@const view = problemView(problem)}
-    <Alert variant="warning" data-plugin-problem={problem.code}>
-      <p class="ib-plugin__problem-title">{view.title}</p>
-      <p class="ib-plugin__problem-body">{view.body}</p>
-      {#if view.secretKey !== undefined && view.secretKey !== ''}
-        {@const key = view.secretKey}
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={locked}
-          onclick={() => onSecret(plugin, key)}>{copy.problems.secretMissing.action}</Button
-        >
-      {/if}
-    </Alert>
+    <PluginProblemCard
+      {problem}
+      {locked}
+      onSecret={(key) => onSecret(plugin, key)}
+      onFixSetting={focusConfiguration}
+      onShowBoth={showBoth(plugin, problem)}
+    />
   {/each}
 
   <DescriptionList
@@ -237,22 +242,12 @@
 
   .ib-plugin__description,
   .ib-plugin__prose,
-  .ib-plugin__problem-title,
   .ib-plugin__problem-body {
     margin: 0;
   }
 
   .ib-plugin__description {
     margin-top: var(--cinder-space-1);
-  }
-
-  .ib-plugin__problem-title {
-    font-weight: 600;
-  }
-
-  .ib-plugin__problem-body {
-    margin: var(--cinder-space-1) 0 var(--cinder-space-2);
-    overflow-wrap: anywhere;
   }
 
   .ib-plugin__section {
