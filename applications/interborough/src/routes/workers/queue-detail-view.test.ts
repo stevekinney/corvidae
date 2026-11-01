@@ -72,6 +72,7 @@ describe('QueueDetailView — strategy panel', () => {
         workersOnQueue: [],
         deadLetteredItems: [],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: () => {},
       },
     });
@@ -90,6 +91,7 @@ describe('QueueDetailView — dead letter panel', () => {
         workersOnQueue: [],
         deadLetteredItems: [],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: () => {},
       },
     });
@@ -111,6 +113,7 @@ describe('QueueDetailView — dead letter panel', () => {
           deadLetterItem({ operationId: 'op_b', activityName: 'SendEmail' }),
         ],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: () => {},
       },
     });
@@ -161,6 +164,7 @@ describe('QueueDetailView — dead letter panel', () => {
           },
         ],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: () => {},
       },
     });
@@ -179,6 +183,7 @@ describe('QueueDetailView — dead letter panel', () => {
         workersOnQueue: [],
         deadLetteredItems: [deadLetterItem({ operationId: 'op_target' })],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: (operationId) => {
           cleared = operationId;
         },
@@ -189,6 +194,77 @@ describe('QueueDetailView — dead letter panel', () => {
     expect(cleared).toBe('op_target');
   });
 
+  test('clicking Retry invokes onRetryDeadLetter with the item operationId, and not onClearDeadLetter', async () => {
+    const retried: string[] = [];
+    const { getByRole } = render(QueueDetailView, {
+      props: {
+        queue: queue(),
+        routingPolicy: 'least-loaded',
+        workersOnQueue: [],
+        deadLetteredItems: [deadLetterItem({ operationId: 'op_target' })],
+        adminGate: OPEN_GATE,
+        onRetryDeadLetter: (operationId) => retried.push(operationId),
+        onClearDeadLetter: () => {
+          throw new Error('Retry must not clear');
+        },
+      },
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    expect(retried).toEqual(['op_target']);
+  });
+
+  test("while a retry of one task is in flight only that task's Retry is disabled", () => {
+    const { getAllByRole } = render(QueueDetailView, {
+      props: {
+        queue: queue(),
+        routingPolicy: 'least-loaded',
+        workersOnQueue: [],
+        deadLetteredItems: [
+          deadLetterItem({ operationId: 'op_a' }),
+          deadLetterItem({ operationId: 'op_b' }),
+        ],
+        adminGate: OPEN_GATE,
+        retryingOperationId: 'op_a',
+        onRetryDeadLetter: () => {
+          throw new Error('a retry in flight must not be sent twice');
+        },
+        onClearDeadLetter: () => {},
+      },
+    });
+
+    const [first, second] = getAllByRole('button', { name: 'Retry' });
+    expect(first?.hasAttribute('disabled')).toBe(true);
+    expect(second?.hasAttribute('disabled')).toBe(false);
+  });
+
+  test('Retry and Clear are native buttons a keyboard reaches, in that order, after Inspect ledger', () => {
+    const { getByRole } = render(QueueDetailView, {
+      props: {
+        queue: queue(),
+        routingPolicy: 'least-loaded',
+        workersOnQueue: [],
+        deadLetteredItems: [deadLetterItem()],
+        adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
+        onClearDeadLetter: () => {},
+      },
+    });
+
+    const buttons = within(getByRole('table', { name: 'Dead letters' })).getAllByRole('button');
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Inspect ledger',
+      'Retry',
+      'Clear',
+    ]);
+    for (const button of buttons) {
+      expect(button.tagName).toBe('BUTTON');
+      expect(button.getAttribute('tabindex')).not.toBe('-1');
+      button.focus();
+      expect(document.activeElement).toBe(button);
+    }
+  });
+
   test('the Clear button is disabled with a tooltip title when the admin gate is closed', () => {
     const { getByText } = render(QueueDetailView, {
       props: {
@@ -197,6 +273,9 @@ describe('QueueDetailView — dead letter panel', () => {
         workersOnQueue: [],
         deadLetteredItems: [deadLetterItem()],
         adminGate: DISABLED_GATE,
+        onRetryDeadLetter: () => {
+          throw new Error('must not be called while the gate is disabled');
+        },
         onClearDeadLetter: () => {
           throw new Error('must not be called while the gate is disabled');
         },
@@ -205,6 +284,7 @@ describe('QueueDetailView — dead letter panel', () => {
 
     const button = getByText('Clear').closest('button');
     expect(button?.hasAttribute('disabled')).toBe(true);
+    expect(getByText('Retry').closest('button')?.hasAttribute('disabled')).toBe(true);
   });
 });
 
@@ -217,6 +297,7 @@ describe('QueueDetailView — workers on this queue', () => {
         workersOnQueue: [],
         deadLetteredItems: [],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: () => {},
       },
     });
@@ -235,6 +316,7 @@ describe('QueueDetailView — workers on this queue', () => {
         ],
         deadLetteredItems: [],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: () => {},
       },
     });
@@ -258,6 +340,7 @@ describe('QueueDetailView — workers on the queue (COR-160)', () => {
         ],
         deadLetteredItems: [],
         adminGate: OPEN_GATE,
+        onRetryDeadLetter: () => {},
         onClearDeadLetter: () => {},
       },
     });

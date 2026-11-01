@@ -125,7 +125,9 @@ export function taskDeliveriesQuery(client: WorkersOperations, operationId: () =
 /**
  * A dead-lettered attempt's retained result (`weft.tasks.deadletters.get`,
  * `system:admin`). Disabled until `enabled()` is true so the value is read only
- * on an operator's explicit request; it is never polled, because it cannot change.
+ * on an operator's explicit request. It is never polled: the retained result
+ * holds until the dead letter is retried or cleared, and both of those ask for
+ * it again (`retryDeadLetterMutation`, `invalidateDeadLetterQueries`).
  */
 export function deadLetterQuery(
   client: WorkersOperations,
@@ -352,5 +354,54 @@ export function clearDeadLetterMutation(
     mutationFn: ({ operationId }: { operationId: string }) =>
       client.operations['weft.tasks.diagnostics.deadletters.clear']({ operationId }),
     onSettled,
+  }));
+}
+
+/** Ask again for what a retry or a clear of `operationId` changes: its retained result and its ledger record. */
+export function invalidateDeadLetterQueries(
+  queryClient: Pick<QueryClient, 'invalidateQueries'>,
+  operationId: string,
+): Promise<unknown> {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.tasks.deadLetter(operationId) }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(operationId) }),
+  ]);
+}
+
+export interface RetryDeadLetterVariables {
+  readonly operationId: string;
+  /** The attempt the person read as dead-lettered; the server refuses the retry if it is no longer that one. */
+  readonly attemptTokenDigest?: string;
+}
+
+/**
+ * Generated `POST /v1/tasks/detail/:operationId/dead-letter/retry` (`system:admin`): puts one dead
+ * letter back in its queue under the same id. A retry changes the task, its queue's backlog and its
+ * retained result, so a settled retry (accepted or refused) asks for all of them again.
+ */
+export function retryDeadLetterMutation(
+  client: WorkersOperations,
+  queryClient: Pick<QueryClient, 'invalidateQueries'>,
+  handlers: {
+    readonly onSettled: () => void;
+    readonly onRefused: (error: unknown) => void;
+  },
+): CreateMutationResult<unknown, Error, RetryDeadLetterVariables> {
+  return createMutation(() => ({
+    mutationFn: ({ operationId, attemptTokenDigest }: RetryDeadLetterVariables) =>
+      client.operations['weft.tasks.deadletters.retry']({
+        operationId,
+        ...(attemptTokenDigest !== undefined ? { attemptTokenDigest } : {}),
+      }),
+    onError: (error: Error) => handlers.onRefused(error),
+    // Returned, so the mutation stays pending until the task has been read again.
+    onSettled: async (
+      _result: unknown,
+      _error: Error | null,
+      variables: RetryDeadLetterVariables,
+    ) => {
+      handlers.onSettled();
+      await invalidateDeadLetterQueries(queryClient, variables.operationId);
+    },
   }));
 }

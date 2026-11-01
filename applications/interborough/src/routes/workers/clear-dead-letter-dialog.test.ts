@@ -9,6 +9,7 @@ const TARGET: DeadLetterTarget = {
   queue: 'payments',
   activityName: 'ChargeCard',
   deadLetteredAt: 1_700_000_000_000,
+  attemptTokenDigest: undefined,
 };
 
 describe('ClearDeadLetterDialog', () => {
@@ -39,6 +40,7 @@ describe('ClearDeadLetterDialog', () => {
           queue: 'payments',
           activityName: undefined,
           deadLetteredAt: undefined,
+          attemptTokenDigest: undefined,
         },
         submitting: false,
         onConfirm: () => {},

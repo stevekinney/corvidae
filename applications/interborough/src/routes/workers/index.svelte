@@ -51,7 +51,14 @@
   import DrainDialog from './drain-dialog.svelte';
   import { drainFingerprint, type DrainFingerprint } from './drain-guard.ts';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
-  import { deadLetterTarget, sameDeadLetter, type DeadLetterTarget } from './dead-letter-guard.ts';
+  import RetryDeadLetterDialog from './retry-dead-letter-dialog.svelte';
+  import {
+    deadLetterTarget,
+    deadLetterTargetFromDetail,
+    retryRefusalMessage,
+    sameDeadLetter,
+    type DeadLetterTarget,
+  } from './dead-letter-guard.ts';
   import ConformancePanel from './conformance-panel.svelte';
   import DeploymentsPanel from './deployments-panel.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
@@ -78,6 +85,7 @@
     drainWorkerMutation,
     resumeDeploymentMutation,
     resumeWorkerMutation,
+    retryDeadLetterMutation,
     taskDiagnosticsQuery,
     taskLedgerDetailQuery,
     taskQueuesListQuery,
@@ -85,6 +93,7 @@
     loadFleetManifestDiagnostics,
     loadRegistrySnapshot,
     loadWorkerRegistrationRejections,
+    invalidateDeadLetterQueries,
     invalidateWorkerSurfaceQueries,
   } from './workers-data.ts';
 
@@ -227,6 +236,7 @@
     invalidateWorkerSurfaceQueries(queryClient);
     if (selectedTaskId) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(selectedTaskId) });
+      void invalidateDeadLetterQueries(queryClient, selectedTaskId);
     }
   }
 
@@ -280,32 +290,94 @@
 
   const CLEAR_REFUSAL =
     'That dead letter was cleared or changed, so nothing was cleared. Check how the queue is now, then clear it again if you still mean to.';
-  let clearDialogOpen = $state(false);
-  let clearTarget = $state<DeadLetterTarget | null>(null);
-  let clearRefusal = $state<string | null>(null);
+  const RETRY_REFUSAL =
+    'That dead letter was cleared, retried or changed, so nothing was retried. Check how it is now, then retry it again if you still mean to.';
 
-  // The dead letter as the diagnostics list it now; the clear is confirmed against the one listed
-  // when the dialog opened, so a dead letter that was cleared or re-recorded meanwhile is refused.
-  function listedDeadLetter(operationId: string): DeadLetterTarget | null {
+  /**
+   * Where a dead letter was read from, which is also where it is read again at confirmation: the
+   * queue view reads the diagnostics list; a task's ledger reads the task, so it reaches a dead
+   * letter the diagnostics do not list (one on a queue the queue list omits, or beyond the page).
+   */
+  type DeadLetterSource = 'diagnostics' | 'ledger';
+  interface DeadLetterDialog {
+    readonly source: DeadLetterSource;
+    readonly target: DeadLetterTarget;
+  }
+
+  let clearDialogOpen = $state(false);
+  let clearDialog = $state<DeadLetterDialog | null>(null);
+  let clearRefusal = $state<string | null>(null);
+  let retryDialogOpen = $state(false);
+  let retryDialog = $state<DeadLetterDialog | null>(null);
+  let retryRefusal = $state<string | null>(null);
+  const retryDeadLetterAction = retryDeadLetterMutation(client, queryClient, {
+    onSettled: refetchAll,
+    onRefused: (error) => {
+      retryRefusal = retryRefusalMessage(error);
+      if (isForbidden(error)) principalStore.denyScope('system:admin');
+    },
+  });
+
+  // The dead letter as it reads now; a clear or retry is confirmed against the one read when its
+  // dialog opened, so a dead letter that was cleared, retried or re-recorded meanwhile is refused.
+  function currentDeadLetter(
+    source: DeadLetterSource,
+    operationId: string,
+  ): DeadLetterTarget | null {
+    if (source === 'ledger') {
+      const task = taskDetailQuery.data;
+      return task?.operationId === operationId ? deadLetterTargetFromDetail(task) : null;
+    }
     return deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId);
   }
 
-  function openClearDialog(operationId: string): void {
+  function openClearDialog(source: DeadLetterSource, observed: DeadLetterTarget | null): void {
     clearRefusal = null;
-    clearTarget = listedDeadLetter(operationId);
-    clearDialogOpen = clearTarget !== null;
-    if (clearTarget === null) clearRefusal = CLEAR_REFUSAL;
+    clearDialog = observed === null ? null : { source, target: observed };
+    clearDialogOpen = clearDialog !== null;
+    if (clearDialog === null) clearRefusal = CLEAR_REFUSAL;
   }
 
   function handleClearConfirm(): void {
-    const target = clearTarget;
-    if (!target) return;
+    const dialog = clearDialog;
+    if (!dialog) return;
     clearDialogOpen = false;
-    if (!sameDeadLetter(target, listedDeadLetter(target.operationId))) {
+    const { source, target } = dialog;
+    if (!sameDeadLetter(target, currentDeadLetter(source, target.operationId))) {
       clearRefusal = CLEAR_REFUSAL;
       return;
     }
     clearDeadLetterAction.mutate({ operationId: target.operationId });
+  }
+
+  // The task a retry is in flight for: its Retry stays disabled until the retry, and the refetch it
+  // asks for, have settled, so a second click cannot send a second request.
+  const retryingOperationId = $derived(
+    retryDeadLetterAction.isPending ? retryDeadLetterAction.variables?.operationId : undefined,
+  );
+
+  function openRetryDialog(source: DeadLetterSource, observed: DeadLetterTarget | null): void {
+    retryRefusal = null;
+    retryDialog = observed === null ? null : { source, target: observed };
+    retryDialogOpen = retryDialog !== null;
+    if (retryDialog === null) retryRefusal = RETRY_REFUSAL;
+  }
+
+  function handleRetryConfirm(): void {
+    const dialog = retryDialog;
+    if (!dialog) return;
+    retryDialogOpen = false;
+    const { source, target } = dialog;
+    if (!sameDeadLetter(target, currentDeadLetter(source, target.operationId))) {
+      retryRefusal = RETRY_REFUSAL;
+      return;
+    }
+    retryDeadLetterAction.mutate({
+      operationId: target.operationId,
+      ...(target.attemptTokenDigest !== undefined
+        ? { attemptTokenDigest: target.attemptTokenDigest }
+        : {}),
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -377,6 +449,12 @@
   {#if clearRefusal !== null}
     <Alert variant="warning" dismissible onDismiss={() => (clearRefusal = null)}
       >{clearRefusal}</Alert
+    >
+  {/if}
+
+  {#if retryRefusal !== null}
+    <Alert variant="warning" dismissible onDismiss={() => (retryRefusal = null)}
+      >{retryRefusal}</Alert
     >
   {/if}
 
@@ -452,7 +530,17 @@
               deadLetteredItems={deadLetteredOnSelectedQueue}
               diagnosticItems={diagnosticsOnSelectedQueue}
               {adminGate}
-              onClearDeadLetter={openClearDialog}
+              {retryingOperationId}
+              onRetryDeadLetter={(operationId) =>
+                openRetryDialog(
+                  'diagnostics',
+                  deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId),
+                )}
+              onClearDeadLetter={(operationId) =>
+                openClearDialog(
+                  'diagnostics',
+                  deadLetterTarget(diagnosticsQuery.data?.items ?? [], operationId),
+                )}
               onInspectTask={selectTask}
             />
           {/await}
@@ -506,7 +594,12 @@
           {#if taskDetailQuery.data}
             <TaskDeliveryHistory operationId={selectedTaskId} />
             {#if taskDetailQuery.data.state === 'deadLettered'}
-              <TaskDeadLetterPanel task={taskDetailQuery.data} />
+              <TaskDeadLetterPanel
+                task={taskDetailQuery.data}
+                retrying={retryingOperationId === taskDetailQuery.data.operationId}
+                onRetryDeadLetter={(target) => openRetryDialog('ledger', target)}
+                onClearDeadLetter={(target) => openClearDialog('ledger', target)}
+              />
             {/if}
           {/if}
         {:else}
@@ -556,12 +649,22 @@
   />
 {/if}
 
-{#if clearTarget}
+{#if clearDialog}
   <ClearDeadLetterDialog
     bind:open={clearDialogOpen}
-    target={clearTarget}
+    target={clearDialog.target}
     submitting={clearDeadLetterAction.isPending}
     onConfirm={handleClearConfirm}
     onCancel={() => (clearDialogOpen = false)}
+  />
+{/if}
+
+{#if retryDialog}
+  <RetryDeadLetterDialog
+    bind:open={retryDialogOpen}
+    target={retryDialog.target}
+    submitting={retryDeadLetterAction.isPending}
+    onConfirm={handleRetryConfirm}
+    onCancel={() => (retryDialogOpen = false)}
   />
 {/if}

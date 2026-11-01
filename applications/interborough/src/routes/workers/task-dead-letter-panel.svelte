@@ -7,6 +7,12 @@
    * when an operator asks for it: it is the worker's raw result, shown exactly
    * as submitted, up to the server's size limit. Task input and headers are
    * never part of it.
+   *
+   * It also holds Retry and Clear for this one dead letter, which are the way to a dead letter the
+   * queue view cannot reach: one on a queue the queue list omits, or beyond the diagnostics' page
+   * size. Both need `system:admin` and are confirmed by the route root, which owns the dialogs, the
+   * mutations and the refusal messages; this panel only names the dead letter, including the
+   * attempt that was dead-lettered, so a retry is refused if the task has failed for good again.
    */
   import {
     Alert,
@@ -27,6 +33,7 @@
     scopeGate,
     scopeReason,
   } from '../../lib/scopes.svelte.ts';
+  import { deadLetterTargetFromDetail, type DeadLetterTarget } from './dead-letter-guard.ts';
   import { exactTimestamp } from './task-attempt-evidence.ts';
   import PanelFault from './panel-fault.svelte';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
@@ -34,9 +41,18 @@
 
   interface TaskDeadLetterPanelProps {
     readonly task: TaskLedgerDetail;
+    /** Whether a retry of this task is in flight; Retry stays disabled until it settles. */
+    readonly retrying?: boolean;
+    readonly onRetryDeadLetter: (target: DeadLetterTarget) => void;
+    readonly onClearDeadLetter: (target: DeadLetterTarget) => void;
   }
 
-  let { task }: TaskDeadLetterPanelProps = $props();
+  let {
+    task,
+    retrying = false,
+    onRetryDeadLetter,
+    onClearDeadLetter,
+  }: TaskDeadLetterPanelProps = $props();
 
   const client = getClient();
   const principalStore = getPrincipalStore();
@@ -67,6 +83,7 @@
     { term: 'Why persisting failed', definition: task.persistenceFailureReason ?? 'Not recorded' },
   ]);
 
+  const target = $derived(deadLetterTargetFromDetail(task));
   const error = $derived(retained.error);
   const payload = $derived(retained.data?.payload);
 </script>
@@ -80,6 +97,35 @@
   </h3>
   <div class="weft-dead-letter-retention__body">
     <DescriptionList items={recordItems} />
+
+    {#if target !== null}
+      <div class="weft-dead-letter-panel__actions">
+        {#if adminGate.disabled}
+          <Tooltip text={adminGate.title ?? ''}>
+            <Button variant="secondary" size="sm" disabled label="Retry this dead letter" />
+          </Tooltip>
+          <Tooltip text={adminGate.title ?? ''}>
+            <Button variant="secondary" size="sm" disabled label="Clear this dead letter" />
+          </Tooltip>
+        {:else}
+          <Button
+            data-changes
+            variant="secondary"
+            size="sm"
+            label="Retry this dead letter"
+            disabled={retrying}
+            onclick={() => onRetryDeadLetter(target)}
+          />
+          <Button
+            data-changes
+            variant="secondary"
+            size="sm"
+            label="Clear this dead letter"
+            onclick={() => onClearDeadLetter(target)}
+          />
+        {/if}
+      </div>
+    {/if}
 
     {#if !requested}
       {#if adminGate.disabled}
