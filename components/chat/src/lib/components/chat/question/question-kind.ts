@@ -29,6 +29,8 @@ export interface QuestionChoice {
   readonly value: unknown;
   /** What the person reads: the schema's `x-labels` entry, else the value itself. */
   readonly label: string;
+  /** A sentence under the label saying what choosing it means: the schema's `x-descriptions` entry. Absent when the schema gives none. */
+  readonly description?: string;
 }
 
 type SchemaNode = Readonly<Record<string, unknown>>;
@@ -102,6 +104,15 @@ function labelFor(schema: SchemaNode, value: unknown): string {
   return key;
 }
 
+/** The `x-descriptions` entry for `value`, when the schema gives a non-empty string for it. */
+function descriptionFor(schema: SchemaNode, value: unknown): string | undefined {
+  const descriptions = schemaKeyword(schema, 'x-descriptions');
+  const key = String(value);
+  if (!isNode(descriptions) || !Object.hasOwn(descriptions, key)) return undefined;
+  const description = descriptions[key];
+  return typeof description === 'string' && description !== '' ? description : undefined;
+}
+
 /**
  * The options a choice question offers, in the schema's order: its own `enum`, the `enum` branch
  * of a pick-one-or-something-else question, or the `items.enum` of a pick-several question.
@@ -113,7 +124,11 @@ export function choicesOf(schema: SchemaNode): QuestionChoice[] {
     ...branchesOf(schema).map((branch) => enumOf(branch)),
   ];
   const values = sources.find((candidate) => candidate !== undefined) ?? [];
-  return values.map((value) => ({ value, label: labelFor(schema, value) }));
+  return values.map((value) => {
+    const description = descriptionFor(schema, value);
+    const label = labelFor(schema, value);
+    return description === undefined ? { value, label } : { value, label, description };
+  });
 }
 
 /** The most steps a rating draws as a row of buttons; a wider range is a number field. */

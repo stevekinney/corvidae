@@ -212,15 +212,27 @@
   {:else}
     {#if kind === 'choice' || kind === 'choice-other'}
       <div class="chat-question-choices" role="group" aria-label={title}>
-        {#each choices as choice (String(choice.value))}
+        {#each choices as choice, index (String(choice.value))}
           <Button
             type="button"
             variant="secondary"
             class="chat-question-choice"
             disabled={busy}
+            aria-label={choice.description === undefined ? undefined : choice.label}
+            aria-describedby={choice.description === undefined
+              ? undefined
+              : `${id}-choice-${index}-description`}
             onclick={() => onSubmit(choice.value)}
           >
-            {choice.label}
+            <span class="chat-question-choice-text">
+              <span class="chat-question-choice-label">{choice.label}</span>
+              {#if choice.description !== undefined}
+                <span
+                  class="chat-question-choice-description"
+                  id={`${id}-choice-${index}-description`}>{choice.description}</span
+                >
+              {/if}
+            </span>
           </Button>
         {/each}
         {#if kind === 'choice-other' && !otherOpen}
@@ -269,6 +281,7 @@
             <Checkbox
               id={`${id}-choice-${index}`}
               label={choice.label}
+              {...choice.description === undefined ? {} : { description: choice.description }}
               checked={picked.some((candidate) => Object.is(candidate, choice.value))}
               onValueChange={(next) => togglePicked(choice.value, next)}
               disabled={busy}
@@ -482,6 +495,23 @@
     justify-content: flex-start;
     white-space: normal;
     text-align: start;
+  }
+
+  .chat-question-choice-text {
+    display: grid;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  .chat-question-choice-label,
+  .chat-question-choice-description {
+    overflow-wrap: anywhere;
+  }
+
+  .chat-question-choice-description {
+    color: var(--cinder-text-secondary, inherit);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-weight: var(--cinder-font-normal, normal);
   }
 
   .chat-question-row {
