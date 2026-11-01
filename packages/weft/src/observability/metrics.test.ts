@@ -459,7 +459,7 @@ weft_task_execution_latency_sum 0
 # HELP weft_task_retries Total task retry attempts after the first dispatch attempt
 # TYPE weft_task_retries counter
 weft_task_retries_total 0
-# HELP weft_task_requeues Total visibility-timeout or disconnect task requeues
+# HELP weft_task_requeues Total task requeues: visibility-timeout, disconnect, and operator retries of a dead-lettered task
 # TYPE weft_task_requeues counter
 weft_task_requeues_total 0
 # HELP weft_task_stale_heartbeats Number of in-flight tasks whose heartbeat age exceeds the diagnostic threshold

@@ -75,7 +75,7 @@ function createdEntryBinding(
 
 /** The result for a create that lost to the removal of the build it requires, or `undefined` when it did not. */
 async function removedBuildAfterLoss(
-  storage: Storage,
+  storage: Pick<Storage, 'get'>,
   build: WorkerBuildIdentity | undefined,
 ): Promise<{ ok: false; reason: string; removedBuild: WorkerBuildIdentity } | undefined> {
   if (build === undefined) return undefined;
@@ -116,7 +116,9 @@ function assertTaskLedgerStorageCapabilities(
  * the outcome.
  */
 export async function commitTaskLedgerTransition<T extends RemoteTaskRecord>(
-  storage: Storage,
+  storage: Pick<Storage, 'get' | 'capabilities'> & {
+    conditionalBatch?: Storage['conditionalBatch'];
+  },
   operationId: string,
   transitionFn: (current: RemoteTaskRecord | null, now: number) => TaskLedgerTransitionResult<T>,
   maxAttempts = 1,

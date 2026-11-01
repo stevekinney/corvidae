@@ -949,6 +949,28 @@ A dead-lettered attempt's retained result value, not only its digest (COR-1366).
 
 The JSON-RPC operation name is `weft.tasks.deadletters.get`.
 
+### `POST /api/v1/tasks/detail/:operationId/dead-letter/retry`
+
+Queues a dead-lettered task again (COR-1973). The task keeps its `operationId`, becomes `queued` with a new attempt number, and `requeueCount` goes up by one; the next worker to claim it runs it as that attempt. Nothing is deleted. The dead attempt's attempt record (disposition `deadLettered`, with its reason and time) and the task's delivery history stay readable through `GET /api/v1/tasks/detail/:operationId`. What the retry replaces is the retained result on the ledger record, so `GET /api/v1/tasks/detail/:operationId/dead-letter` answers `NotFound` afterwards, and so does clearing it. A result or heartbeat that still carries the dead attempt's token is refused. The operation counts toward the `weft.task.requeues` and `weft.task.retries` metrics. Requires `system:admin`, the scope that reads and clears a dead letter.
+
+The body is optional. `attemptTokenDigest` is the digest of the dead-lettered attempt the caller read (`attemptTokenDigest` from the dead-letter read); the retry is refused when the dead letter is no longer that attempt. Any other body key is rejected.
+
+```bash
+curl -sS -X POST 'http://127.0.0.1:7233/api/v1/tasks/detail/invoice-42/dead-letter/retry' \
+  -H "Authorization: Bearer $API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{ "attemptTokenDigest": "<digest from the dead-letter read>" }'
+```
+
+The response is `{ operationId, state: 'queued', attempt, requeueCount }`. Faults:
+
+- `NotFound`: no task has that `operationId`, or it was cleared.
+- `Conflict`: the task is not dead-lettered (queued, leased, completing, cancelling, or terminal); the supplied `attemptTokenDigest` is not the dead-lettered attempt; the workflow that owns the task has finished or been deleted; or the task kept changing while the retry ran. A refused retry changes nothing. REST does not disclose which of these it was beyond the message; the JSON-RPC fault carries the reason (`not-dead-lettered`, `dead-letter-changed`, `workflow-finished`, `concurrent-change`).
+
+Two retries sent together queue the task once: one succeeds and the other is refused. The retry does not check `retryPolicy.maxAttempts`, so a task that dead-lettered on its last allowed attempt can still be retried, and the next automatic requeue may then end it as `retryExhausted`. The activity runs again, so any side effects the dead attempt already performed repeat unless the activity is idempotent. The operation is not exposed to MCP.
+
+The JSON-RPC operation name is `weft.tasks.deadletters.retry`.
+
 ### `GET /api/v1/task-queues`
 
 Returns per-queue health. The queue set is the union of three sources:

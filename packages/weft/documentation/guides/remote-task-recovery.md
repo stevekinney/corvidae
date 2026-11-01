@@ -183,6 +183,19 @@ Every delivery except a first-time `applied` also fires `task:result-delivery` (
 
 The `payload` field is `{ kind: 'value', value, serializedBytes }`, or `{ kind: 'absent' }` when the dead letter retained no value. That happens in two cases. A `failed` result has no value, and its `error` text is returned alongside. A `completed` result whose value is `undefined`, such as an activity that returns nothing, also has no value; its `pendingStatus` is `completed` and it has no `error`. Read `pendingStatus` to tell the two apart. A task that is not dead-lettered answers `NotFound`.
 
+### Retrying a dead letter
+
+A dead letter is a result the ledger could not store, so the activity's work may be done while its record of that work is not. `weft.tasks.deadletters.retry` (`POST /api/v1/tasks/detail/:operationId/dead-letter/retry`) is the alternative to recovering the value by hand: it puts the task back in the queue so a worker runs it again.
+
+- **Same id, new attempt.** The task becomes `queued` under its own `operationId` with `attempt` one higher and `requeueCount` one higher. `weft.task.requeues` counts it.
+- **History stays.** The dead attempt's attempt record and the delivery history are not touched, so `weft.tasks.get` shows the dead attempt (disposition `deadLettered`) beside the new one once a worker claims it. Only the retained result on the ledger record goes: after a retry, `weft.tasks.deadletters.get` answers `NotFound`. Read the value first if you want to keep it.
+- **The dead attempt is fenced off.** A result or heartbeat carrying the old attempt token is refused, as for any attempt that no longer holds the task.
+- **Scope `system:admin`**, the same as reading or clearing the dead letter.
+- **Refused, not repeated.** Only a dead-lettered task can be retried. A task in any other state, a task that was cleared, a dead letter that is no longer the `attemptTokenDigest` the caller passed, and a task whose workflow has finished are all refused, and a refusal changes nothing. Two simultaneous retries queue the task once.
+- **The activity runs again.** Side effects of the dead attempt, such as a charge it already made, happen a second time unless the activity is idempotent. `retryPolicy.maxAttempts` is not consulted, so an exhausted task stays retryable.
+
+A running server dispatches the queued task immediately. If that immediate dispatch is refused, for example because the workflow's revision moved, the task stays `queued` and the ledger sweep tries to dispatch it again.
+
 ## Reading a result
 
 `server.getTaskResult(operationId)` returns a public projection of the ledger. It deliberately excludes worker session and attempt credentials.

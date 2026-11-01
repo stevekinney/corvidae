@@ -129,6 +129,7 @@ const EXPECTED_DESTRUCTIVE: Readonly<Record<string, boolean>> = {
   'weft.tasks.get': false,
   'weft.tasks.deliveries': false,
   'weft.tasks.deadletters.get': false,
+  'weft.tasks.deadletters.retry': true,
   'weft.workers.diagnostics': false,
   'weft.workers.rejections': false,
   'weft.conformance.targets': false,

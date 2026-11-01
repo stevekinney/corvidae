@@ -64,6 +64,7 @@ import { removeWorkflowTagsOperation } from './remove-workflow-tags.ts';
 import { replayWorkflowOperation } from './replay-workflow.ts';
 import { resumeScheduleOperation } from './resume-schedule.ts';
 import { resumeWorkflowOperation } from './resume-workflow.ts';
+import { retryTaskDeadLetterOperation } from './retry-task-dead-letter.ts';
 import { setWorkflowAttributesOperation } from './set-workflow-attributes.ts';
 import { signalWorkflowOperation } from './signal-workflow.ts';
 import { skipNextScheduleOperation } from './skip-next-schedule.ts';
@@ -167,6 +168,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   workflowEventsSubscriptionOperation,
   fleetEventsSubscriptionOperation,
   clearTaskDeadLetterOperation,
+  retryTaskDeadLetterOperation,
   getTaskDetailOperation,
   getTaskResultDeliveriesOperation,
   getTaskDeadLetterOperation,
