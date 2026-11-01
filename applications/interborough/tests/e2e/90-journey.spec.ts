@@ -25,7 +25,7 @@ import {
   WORKFLOW_COPY,
 } from '../../src/app/copy.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
-import { bureau, readAgent, removeAgent } from './agent-support.ts';
+import { addTools, bureau, readAgent, removeAgent } from './agent-support.ts';
 import { conversation } from './chat-support.ts';
 import { E2E_BARRIER_URL, E2E_JOURNEY_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
@@ -259,7 +259,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await page
     .getByRole('textbox', { name: /^Instructions/ })
     .fill('Write the workflows a person asks for, with the workflow tools.');
-  await page.getByRole('checkbox', { name: new RegExp(JOURNEY_TOOL_NAME) }).check();
+  await addTools(page, [JOURNEY_TOOL_NAME]);
   await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AUTHOR_ID}$`));
 

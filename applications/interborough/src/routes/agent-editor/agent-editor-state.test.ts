@@ -421,3 +421,66 @@ describe('the tool approvals the Access tab sets', () => {
     expect(form.toDefinition().toolApproval).toBeNull();
   });
 });
+
+describe('the tools the form shows', () => {
+  const catalog = catalogFixture({
+    tools: [
+      { name: 'a-read', description: 'Reads.', shortDescription: null },
+      {
+        name: 'b-change',
+        description: 'Changes.',
+        shortDescription: null,
+        tier: 'mutating',
+        defaultApproval: 'ask',
+      },
+      { name: 'c-read', description: 'Reads too.', shortDescription: null },
+    ],
+  });
+  const withTools = (
+    tools: string[],
+    toolApproval: Record<string, 'always' | 'never' | 'blocked'> | null,
+  ) => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    return AgentEditorState.edit(
+      { ...detail, definition: { ...detail.definition, tools, toolApproval } },
+      catalog,
+    );
+  };
+
+  test('lists the chosen tools in the catalog’s order, leaving out a tool the catalog dropped', () => {
+    const form = withTools(['c-read', 'gone', 'a-read'], null);
+    expect(form.chosenTools.map((tool) => tool.name)).toEqual(['a-read', 'c-read']);
+    form.setTool('b-change', true);
+    expect(form.chosenTools.map((tool) => tool.name)).toEqual(['a-read', 'b-change', 'c-read']);
+  });
+
+  test('says what the file states about a tool, and nothing for a name it does not state', () => {
+    const form = withTools(['a-read'], { 'a-read': 'always' });
+    expect(form.approvalOf('a-read')).toBe('always');
+    expect(form.approvalOf('b-change')).toBeUndefined();
+    expect(form.approvalOf('constructor')).toBeUndefined();
+    expect(AgentEditorState.create(catalog).approvalOf('a-read')).toBeUndefined();
+  });
+
+  test('marks a tool that asks first by the file’s word or the tier’s default', () => {
+    const form = withTools(['a-read', 'b-change', 'c-read'], {
+      'a-read': 'always',
+      'c-read': 'blocked',
+    });
+    const standing = (name: string) =>
+      form.standingOf(form.toolChoices.find((tool) => tool.name === name)!);
+    expect(standing('a-read')).toBe('asks-first');
+    expect(standing('b-change')).toBe('asks-first');
+    expect(standing('c-read')).toBe('blocked');
+  });
+
+  test('keeps the approval of a tool that is cleared and ticked again before the save', () => {
+    const form = withTools(['b-change'], { 'b-change': 'never' });
+    form.setTool('b-change', false);
+    expect(form.toDefinition().toolApproval).toBeNull();
+    form.setTool('b-change', true);
+    expect(form.toDefinition().toolApproval).toEqual({ 'b-change': 'never' });
+    expect(form.standingOf(form.chosenTools[0]!)).toBe('runs');
+  });
+});

@@ -11,11 +11,14 @@ import { join } from 'node:path';
 
 import { AGENT_EDITOR_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import {
+  addTools,
   agentDirectory,
   agentFilePath,
   BASE_DEFINITION,
+  closeToolPicker,
   createAgentFile,
   faultCodeOf,
+  openToolPicker,
   readAgent,
   readCatalog,
   readProviderPaths,
@@ -85,15 +88,25 @@ test.describe('a new agent', () => {
         catalog.models.map((model) => `${model.provider}/${model.model}`),
       );
       await expect(options).toHaveText(['anthropic/claude-sonnet-5', 'anthropic/claude-haiku-4-5']);
+      // A new agent has no tool; the picker offers each tool the catalog lists, once.
+      await expect(page.getByTestId('agent-tool-count')).toHaveText(
+        copy.toolCount(0, catalog.tools.length),
+      );
+      await expect(page.getByRole('checkbox')).toHaveCount(0);
+      await openToolPicker(page);
       await expect(page.getByRole('checkbox')).toHaveCount(catalog.tools.length);
-      await expect(page.getByRole('checkbox', { name: /lookup-order/ })).toBeVisible();
+      await expect(page.getByRole('checkbox', { name: 'lookup-order', exact: true })).toBeVisible();
+      await closeToolPicker(page);
 
       await page.getByRole('textbox', { name: /^Name/ }).fill('E2E New Agent');
       await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveValue('e2e-new-agent');
       await page
         .getByRole('textbox', { name: /^Instructions/ })
         .fill('Answer in one short sentence.');
-      await page.getByRole('checkbox', { name: /lookup-order/ }).check();
+      await addTools(page, ['lookup-order']);
+      await expect(page.getByTestId('agent-tool-count')).toHaveText(
+        copy.toolCount(1, catalog.tools.length),
+      );
       await checkA11y(`new agent at ${width}px`);
 
       await page.getByRole('button', { name: copy.createAction }).click();
@@ -161,6 +174,7 @@ test.describe('a new agent', () => {
       await page.goto('/agents/new');
       await expect(editor(page)).toHaveAttribute('data-state', 'ready');
       const catalog = await readCatalog(request);
+      await openToolPicker(page);
 
       // No row shows more than 120 characters until it is expanded, whatever the tool says.
       const lines = await page.getByTestId('agent-tool-line').allTextContents();
@@ -188,6 +202,72 @@ test.describe('a new agent', () => {
       await checkA11y(`new agent with a tool opened at ${width}px`);
     });
   }
+
+  test('chooses tools from a searchable picker grouped by source, marks the ones that ask first, and saves the choice', async ({
+    page,
+    request,
+  }) => {
+    created.add('e2e-tool-picker');
+    await page.goto('/agents/new');
+    await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+    const catalog = await readCatalog(request);
+    const asking = catalog.tools.filter((tool) => tool.defaultApproval === 'ask');
+    const reading = catalog.tools.find((tool) => tool.defaultApproval === 'allow');
+    const bureauTools = catalog.tools.filter((tool) => tool.source === 'bureau');
+    expect(asking.length, 'a tool that asks first').toBeGreaterThan(0);
+    expect(reading, 'a tool that runs without asking').toBeDefined();
+    expect(bureauTools.length, 'a tool Bureau adds').toBeGreaterThan(0);
+
+    await openToolPicker(page);
+    const picker = page.getByRole('dialog', { name: copy.toolPicker.title });
+    // Grouped by source: Bureau's tools sit together under their own heading.
+    await expect(picker.locator('fieldset[data-group="bureau"] [data-tool]')).toHaveCount(
+      bureauTools.length,
+    );
+    // Every tool that asks first carries the marker, and no other tool does.
+    await expect(picker.getByTestId('agent-tool-standing')).toHaveCount(asking.length);
+
+    // Searching narrows the list to what matches, and says when nothing does.
+    const search = picker.getByRole('searchbox', { name: copy.toolPicker.searchLabel });
+    await search.fill(reading?.name ?? '');
+    await expect(picker.locator('fieldset [data-tool]')).toHaveCount(1);
+    await expect(picker.getByTestId('agent-tool-matches')).toHaveText(
+      copy.toolPicker.resultCount(1),
+    );
+    await search.fill('no tool is called this');
+    await expect(
+      picker.getByRole('heading', { level: 3, name: copy.toolPicker.noMatchesTitle }),
+    ).toBeVisible();
+    await search.fill('');
+    await expect(picker.locator('fieldset [data-tool]')).toHaveCount(catalog.tools.length);
+
+    // Choosing from the picker puts the tools in the form's list, the asks-first marker with them.
+    await closeToolPicker(page);
+    const asks = asking[0]?.name ?? '';
+    await addTools(page, [reading?.name ?? '', asks]);
+    await expect(page.getByTestId('agent-tool-count')).toHaveText(
+      copy.toolCount(2, catalog.tools.length),
+    );
+    const chosen = page.getByRole('list', { name: copy.chosenToolsLabel });
+    await expect(chosen.locator('[data-tool]')).toHaveCount(2);
+    await expect(
+      chosen.locator(`[data-tool="${asks}"]`).getByTestId('agent-tool-standing'),
+    ).toHaveText(copy.toolStanding['asks-first']);
+
+    // Removing one leaves the other, and the save writes only that one.
+    await chosen.getByRole('button', { name: copy.removeToolLabel(reading?.name ?? '') }).click();
+    await expect(page.getByTestId('agent-tool-count')).toHaveText(
+      copy.toolCount(1, catalog.tools.length),
+    );
+    await page.getByRole('textbox', { name: /^Name/ }).fill('E2E Tool Picker');
+    await page.getByRole('textbox', { name: /^Instructions/ }).fill('Use the one tool.');
+    await page.getByRole('button', { name: copy.createAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-tool-picker$/);
+    const saved = await readAgent(request, 'e2e-tool-picker');
+    expect(saved.definition).toMatchObject({
+      tools: [asks],
+    });
+  });
 
   test('refuses a name that makes the identifier new, which is the address of this page', async ({
     page,

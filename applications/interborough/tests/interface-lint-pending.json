@@ -1,12 +1,6 @@
 {
   "entries": [
     {
-      "rule": "cinder-selector",
-      "file": "src/routes/agent-editor/agent-editor-tool-row.svelte",
-      "subject": ".cinder-form-field__label",
-      "issue": "COR-1963"
-    },
-    {
       "rule": "app-header-class",
       "file": "src/routes/schedules/schedule-form-drawer.svelte",
       "subject": ".weft-schedule-drawer__header",

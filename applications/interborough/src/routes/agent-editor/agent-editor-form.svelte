@@ -7,6 +7,8 @@
    * `skillDescriptors` has no field here; the state carries it through a save unchanged
    * (`agent-editor-state.svelte.ts`).
    *
+   * Tools are chosen from a drawer (`agent-editor-tool-picker.svelte`) and listed with a count (`agent-editor-tools.svelte`).
+   *
    * The form owns no requests. The page that renders it sends a save and a delete, and says whether one is in flight. The page does not render the form for a catalog
    * with no model (`agent-editor-no-provider.svelte`), so every choice here has something to pick.
    */
@@ -23,7 +25,8 @@
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
-  import AgentEditorToolRow from './agent-editor-tool-row.svelte';
+  import AgentEditorToolPicker from './agent-editor-tool-picker.svelte';
+  import AgentEditorTools from './agent-editor-tools.svelte';
 
   interface Props {
     editor: AgentEditorState;
@@ -39,6 +42,7 @@
   let { editor, busy, onSave, onCancel, onDelete }: Props = $props();
 
   const copy = AGENT_EDITOR_COPY;
+  let pickerOpen = $state(false);
 
   const modelOptionList = $derived([
     ...(editor.model === '' ? [{ value: '', label: copy.modelPlaceholder, disabled: true }] : []),
@@ -126,15 +130,7 @@
         title={copy.noTools}
       />
     {:else}
-      <ul class="weft-agent-form__tools">
-        {#each editor.toolChoices as tool (tool.name)}
-          <AgentEditorToolRow
-            {tool}
-            checked={editor.hasTool(tool.name)}
-            onChange={(next) => editor.setTool(tool.name, next)}
-          />
-        {/each}
-      </ul>
+      <AgentEditorTools {editor} onAdd={() => (pickerOpen = true)} />
     {/if}
   </FormSection>
 
@@ -208,6 +204,11 @@
   </div>
 </form>
 
+<!-- A dialog inside the form would put its buttons in the form, so the picker sits beside it. -->
+{#if editor.toolChoices.length > 0}
+  <AgentEditorToolPicker {editor} bind:open={pickerOpen} />
+{/if}
+
 <style>
   .weft-agent-form {
     display: flex;
@@ -217,15 +218,6 @@
 
   .weft-agent-form__wide {
     grid-column: 1 / -1;
-  }
-
-  .weft-agent-form__tools {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
   }
 
   .weft-agent-form__note {
