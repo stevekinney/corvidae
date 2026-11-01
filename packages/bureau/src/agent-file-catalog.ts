@@ -132,6 +132,7 @@ import {
 } from './agent-version-store';
 import type { AgentSnapshot } from './agent-snapshot-store';
 import type { SkillArtifactLoader, SkillCatalogRevision, SkillEventMap } from './skills';
+import { type BureauModelPolicyOptions, modelPolicyDenialOf } from './model-policy';
 import type { Models } from './models/create-models';
 import { ownerOrLocal } from './owner-of-record';
 import { createDefinitionScanner, type DefinitionScannerHealth } from './definition-scanner';
@@ -450,6 +451,13 @@ export interface AgentFileCatalogOptions {
    * pruning of saved versions must keep. Omitted, no revision is protected.
    */
   readonly retainedRevisions?: ((id: string) => Promise<ReadonlySet<number>>) | undefined;
+  /**
+   * The model policy now in force (COR-1980), read for every write. A write that names a model
+   * the deployment or the Bureau layer forbids is refused `model-policy-denied` and writes
+   * nothing. A scan never reads it: a file saved before the policy tightened stays listed and
+   * editable, and the run that would use the model is what fails. Omitted, nothing is forbidden.
+   */
+  readonly modelPolicy?: (() => BureauModelPolicyOptions | undefined) | undefined;
 }
 
 /** What the saved versions of file agents offer (COR-1815). */
@@ -717,6 +725,43 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     };
   }
 
+  /**
+   * The models of `definition` the model policy forbids, as a problem (COR-1980): `model` and each
+   * entry of `models`, resolved as a run resolves them, so an alias is judged by the row it names.
+   * Asked by a write and never by a scan, for the reason {@link checkSkillGrants} is. An entry the
+   * catalog does not hold is left to the checks that already refuse it. There is no grandfathering:
+   * an edit that keeps a forbidden model is refused, since the file would otherwise be re-saved
+   * with a model no run of it could use.
+   */
+  function checkModelPolicy(definition: AgentFileDefinition): AgentFileProblem | undefined {
+    const policy = options.modelPolicy?.();
+    if (policy === undefined) return undefined;
+    const descriptors = options.models.catalog().descriptors;
+    const entries = [
+      { path: 'model', model: definition.model },
+      ...(definition.models ?? []).map((model, index) => ({ path: `models.${index}`, model })),
+    ];
+    const issues = entries.flatMap(({ path, model }) => {
+      const resolved = resolveModelDescriptor(model, descriptors);
+      if (isProblem(resolved)) return [];
+      const denial = modelPolicyDenialOf(resolved, policy);
+      if (denial === undefined) return [];
+      return [
+        {
+          path,
+          message: `"${model}" is forbidden by the ${denial.layer} model policy (${denial.reason})`,
+          reference: model,
+        },
+      ];
+    });
+    if (issues.length === 0) return undefined;
+    return {
+      code: 'model-policy-denied',
+      message: `The definition cannot be used: ${issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')}`,
+      issues,
+    };
+  }
+
   /** The skills of `definition` as a run's `createAgent` option: none for a file that grants none. */
   function fileAgentSkills(definition: AgentFileDefinition): { readonly skills?: AgentSkills } {
     const hostSkills = options.skills;
@@ -911,6 +956,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
         resolveGenerate: options.resolveGenerate,
         costBudgeted: definition.costBudget !== undefined,
+        // COR-1980: read at each step, so the policy as it is then binds a file saved before it.
+        policyDenial: (row) => modelPolicyDenialOf(row, options.modelPolicy?.()),
       }),
       allowedCandidates: allowedDescriptorsOfFileAgent(
         definition.models,
@@ -1377,6 +1424,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       if ('problem' in checked) return checked.problem;
       const refused = checkSkillGrants(definition, before);
       if (refused !== undefined) return refused;
+      const forbidden = checkModelPolicy(definition);
+      if (forbidden !== undefined) return forbidden;
       // The host's resolver is asked here too, so a write is refused for a model it cannot set
       // up rather than committed and then listed invalid.
       try {
@@ -1531,6 +1580,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       if ('problem' in checked) return refuse(fieldNamed(checked.problem, parsedDefinition));
       const refused = checkSkillGrants(parsedDefinition, undefined);
       if (refused !== undefined) return refuse(refused);
+      const forbidden = checkModelPolicy(parsedDefinition);
+      if (forbidden !== undefined) return refuse(forbidden);
       try {
         return buildAgent(
           id,

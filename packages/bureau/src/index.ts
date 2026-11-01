@@ -485,10 +485,12 @@ export {
 export type {
   BureauModelPolicyOptions,
   CreateModelPolicyPlannerOptions,
+  ModelPolicyDenial,
   ModelPolicyPlanner,
   PlanSelectionRequest,
 } from './model-policy';
-export { createModelPolicyPlanner } from './model-policy';
+export { createModelPolicyPlanner, modelPolicyDenialOf } from './model-policy';
+export { ModelPolicyDeniedError } from './file-agent-generate';
 export type {
   CatalogFactory,
   Models,

@@ -21,7 +21,11 @@ import {
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { createModelPolicyPlanner, type PlanSelectionRequest } from './model-policy';
+import {
+  createModelPolicyPlanner,
+  modelPolicyDenialOf,
+  type PlanSelectionRequest,
+} from './model-policy';
 import { createModels, type Models } from './models/create-models';
 
 const FIXED_NOW = '2026-09-03T12:00:00.000Z';
@@ -322,5 +326,66 @@ describe('createModelPolicyPlanner: the request’s input media (COR-716)', () =
 
     expect(plan.outcome).toBe('selected');
     expect(plan.request.inputMedia).toBeUndefined();
+  });
+});
+
+describe('modelPolicyDenialOf (COR-1980)', () => {
+  it('allows every row when there is no policy, or the policy has no binding layer', () => {
+    expect(modelPolicyDenialOf(anthropicDescriptor, undefined)).toBeUndefined();
+    expect(modelPolicyDenialOf(anthropicDescriptor, { policyRevision: 1 })).toBeUndefined();
+  });
+
+  it('reports the deployment layer, its reason, and the policy revision', () => {
+    const denial = modelPolicyDenialOf(anthropicDescriptor, {
+      deployment: { deniedModels: [anthropicDescriptor.model] },
+      policyRevision: 4,
+    });
+
+    expect(denial).toEqual({
+      layer: 'deployment',
+      reason: `model denied: ${anthropicDescriptor.model}`,
+      policyRevision: 4,
+    });
+  });
+
+  it('reports the Bureau layer for a denied provider', () => {
+    const denial = modelPolicyDenialOf(anthropicDescriptor, {
+      bureau: { deniedProviders: ['anthropic'] },
+      policyRevision: 2,
+    });
+
+    expect(denial).toMatchObject({ layer: 'bureau', reason: 'provider denied: anthropic' });
+  });
+
+  it('reports the deployment layer first when both layers deny the row', () => {
+    const denial = modelPolicyDenialOf(anthropicDescriptor, {
+      deployment: { deniedProviders: ['anthropic'] },
+      bureau: { deniedProviders: ['anthropic'] },
+      policyRevision: 1,
+    });
+
+    expect(denial?.layer).toBe('deployment');
+  });
+
+  it('still judges a row that is unavailable or unhealthy, because authority is not availability', () => {
+    const off = {
+      ...anthropicDescriptor,
+      availability: 'unavailable',
+      health: 'unhealthy',
+    } as const;
+
+    expect(
+      modelPolicyDenialOf(off, { deployment: { deniedModels: [off.model] }, policyRevision: 1 }),
+    ).toMatchObject({ layer: 'deployment' });
+    expect(modelPolicyDenialOf(off, { policyRevision: 1 })).toBeUndefined();
+  });
+
+  it('binds nothing at the users layer', () => {
+    expect(
+      modelPolicyDenialOf(anthropicDescriptor, {
+        users: { alice: { exactOverride: { provider: 'gemini', model: 'x' } } },
+        policyRevision: 1,
+      }),
+    ).toBeUndefined();
   });
 });
