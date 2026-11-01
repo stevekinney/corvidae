@@ -55,6 +55,11 @@ async function resultOf(opened: OpenedBureau, method: string, params: unknown, k
   return body.result;
 }
 
+/** {@link resultOf}, for a test that reads the answer's fields. */
+async function wire(opened: OpenedBureau, method: string, params: unknown, key: string) {
+  return (await resultOf(opened, method, params, key)) as any;
+}
+
 async function errorOf(opened: OpenedBureau, method: string, params: unknown, key: string) {
   const body = await call(opened, method, params, key);
   return body.error;
@@ -209,6 +214,94 @@ describe('bureau.hooks.*', () => {
       'alice-key',
     );
     expect(events.error?.data).toMatchObject({ reason: 'missing scope bureau.events:observe-all' });
+  });
+
+  // COR-1978: moving or clearing a scope decides whose events the hook sees.
+  it('needs observe-all to change a hook’s scope, and takes one on create', async () => {
+    const { opened } = await open();
+    const scope = { kind: 'agent', id: 'researcher' };
+    const hook = await wire(
+      opened,
+      'bureau.hooks.create',
+      { ...NEW_HOOK, scope },
+      'alice-observer-key',
+    );
+    expect(hook.scope).toEqual(scope);
+    expect(await wire(opened, 'bureau.hooks.get', { hookId: hook.id }, 'alice-key')).toMatchObject({
+      scope,
+    });
+
+    const missing = { reason: 'missing scope bureau.events:observe-all' };
+    for (const next of [null, { kind: 'agent', id: 'other' }]) {
+      const refused = await errorOf(
+        opened,
+        'bureau.hooks.update',
+        { hookId: hook.id, scope: next },
+        'alice-key',
+      );
+      expect(refused?.data).toMatchObject(missing);
+    }
+
+    const cleared = await wire(
+      opened,
+      'bureau.hooks.update',
+      { hookId: hook.id, scope: null },
+      'alice-observer-key',
+    );
+    expect(cleared.scope).toBeNull();
+  });
+
+  it('refuses a scope that a listed event cannot be told by, on the scope', async () => {
+    const { opened } = await open();
+    const refused = await errorOf(
+      opened,
+      'bureau.hooks.create',
+      { ...NEW_HOOK, events: ['diagnostic'], scope: { kind: 'agent', id: 'researcher' } },
+      'alice-observer-key',
+    );
+    expect(refused?.code).toBeDefined();
+    expect(JSON.stringify(refused?.data)).toContain('"path":["scope"]');
+  });
+
+  it('filters hooks.list by scope and carries each hook’s last delivery, without its body', async () => {
+    const { opened } = await open();
+    const scoped = await wire(
+      opened,
+      'bureau.hooks.create',
+      { ...NEW_HOOK, scope: { kind: 'agent', id: 'researcher' } },
+      'alice-observer-key',
+    );
+    const unscoped = await wire(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+    await wire(opened, 'bureau.hooks.test', { hookId: scoped.id }, 'alice-key');
+
+    const every = await wire(opened, 'bureau.hooks.list', {}, 'alice-key');
+    const seen = every.hooks.find((hook: { id: string }) => hook.id === scoped.id);
+    expect(seen.lastDelivery).toMatchObject({
+      kind: 'hook.test',
+      test: true,
+      status: 'delivered',
+      lastAttempt: { number: 1, outcome: 'response', status: 200, error: null },
+    });
+    expect(Object.keys(seen.lastDelivery)).not.toContain('request');
+    expect(Object.keys(seen.lastDelivery.lastAttempt)).not.toContain('responseExcerpt');
+    expect(
+      every.hooks.find((hook: { id: string }) => hook.id === unscoped.id).lastDelivery,
+    ).toBeNull();
+
+    const narrowed = await wire(
+      opened,
+      'bureau.hooks.list',
+      { scope: { kind: 'agent', id: 'researcher' } },
+      'alice-key',
+    );
+    expect(narrowed.hooks.map((hook: { id: string }) => hook.id)).toEqual([scoped.id]);
+    const invalid = await errorOf(
+      opened,
+      'bureau.hooks.list',
+      { scope: { kind: 'team', id: 'x' } },
+      'alice-key',
+    );
+    expect(invalid?.code).toBeDefined();
   });
 
   it('needs observe-all of the caller to re-point, widen or re-enable a hook, whoever owns it', async () => {

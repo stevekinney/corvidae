@@ -14,6 +14,10 @@
  * a kind cannot be added without choosing, and `bureau-event-catalog.test.ts` checks that every
  * `run` kind names a run the guard can follow.
  *
+ * Each entry says which kinds of subject the event can be told apart by, as `scopes` (COR-1978):
+ * the scopes a hook that lists the kind may have, and what the editor's Only for offers. A kind
+ * with none is about the whole Bureau, or names nothing a scope can match.
+ *
  * Weft's own event kinds (`weft.*` run, workflow and schedule events) are not in it. The Bureau's
  * feed publishes Weft's `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft's, and
  * matching a hook on the rest needs a subscription to the engine's own feed, which the Bureau does
@@ -26,6 +30,7 @@ import {
   PUBLISHED_BUREAU_EVENT_KINDS,
   type PublishedBureauEventKind,
 } from './bureau-event-feed.ts';
+import type { HookScopeKind } from './hooks/hook-types.ts';
 
 /** The type of one field of an event's payload. */
 export type BureauEventFieldType =
@@ -65,6 +70,11 @@ export interface BureauEventCatalogEntry {
   readonly origin: BureauEventOrigin;
   /** The fields of the event's `payload`, in the order the projection sets them. */
   readonly payload: readonly BureauEventField[];
+  /**
+   * The kinds of subject a hook that lists this kind may be scoped to: what `hooks/hook-scope.ts`
+   * can read from an event of the kind. Empty for a kind that is about no one subject.
+   */
+  readonly scopes: readonly HookScopeKind[];
 }
 
 /** A field. A trailing `?` on the name marks it optional. */
@@ -128,13 +138,25 @@ const ASSET: FieldList = [
   ['digest?', 'string'],
 ];
 
+/** A kind that names a run or a schedule: the walk up from either reaches all three subjects. */
+const EVERY_SCOPE: readonly HookScopeKind[] = ['agent', 'workflow', 'schedule'];
+/** A kind that names only the agent, in its payload or through its goal. */
+const AGENT_SCOPE: readonly HookScopeKind[] = ['agent'];
+
 function entry(
   kind: PublishedBureauEventKind,
   origin: BureauEventOrigin,
   description: string,
   payload: FieldList,
+  scopes: readonly HookScopeKind[] = [],
 ): BureauEventCatalogEntry {
-  return { kind, description, origin, payload: payload.map(([name, type]) => field(name, type)) };
+  return {
+    kind,
+    description,
+    origin,
+    payload: payload.map(([name, type]) => field(name, type)),
+    scopes,
+  };
 }
 
 /**
@@ -155,20 +177,30 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['actionType', 'string'],
       ['timestamp', 'number'],
     ],
+    EVERY_SCOPE,
   ),
-  'run.registered': entry('run.registered', 'run', 'A run was registered with the Bureau.', RUN),
+  'run.registered': entry(
+    'run.registered',
+    'run',
+    'A run was registered with the Bureau.',
+    RUN,
+    EVERY_SCOPE,
+  ),
   'run.settled': entry(
     'run.settled',
     'run',
     'A run reached a terminal state: it completed, failed, or was aborted.',
     RUN,
+    EVERY_SCOPE,
   ),
+  // No scope: deleting a run deletes the task record a scope would read, before dispatch reads it.
   'run.removed': entry('run.removed', 'run', 'A settled run was removed from the Bureau.', RUN),
   'run.abort-settled': entry(
     'run.abort-settled',
     'run',
     'A run that was asked to abort has finished stopping.',
     RUN,
+    EVERY_SCOPE,
   ),
   // external: only the host disposes a Bureau; no tool or action of a run reaches it.
   'bureau.disposed': entry(
@@ -185,6 +217,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['runId', 'string'],
       ['verdict', 'string'],
     ],
+    EVERY_SCOPE,
   ),
   'recovery.rejected': entry(
     'recovery.rejected',
@@ -194,12 +227,14 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['runId', 'string'],
       ['reason', 'string'],
     ],
+    EVERY_SCOPE,
   ),
   'recovery.lease-released': entry(
     'recovery.lease-released',
     'run',
     'The Bureau released the recovery lease it held on a run.',
     RUN,
+    EVERY_SCOPE,
   ),
   'schedule.created': entry(
     'schedule.created',
@@ -210,35 +245,51 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['scheduleId', 'string'],
       ['sessionId?', 'string'],
     ],
+    EVERY_SCOPE,
   ),
   'schedule.paused': entry(
     'schedule.paused',
     'unattributed',
     'A schedule was paused.',
     SCHEDULE_CHANGE,
+    EVERY_SCOPE,
   ),
   'schedule.resumed': entry(
     'schedule.resumed',
     'unattributed',
     'A paused schedule was resumed.',
     SCHEDULE_CHANGE,
+    EVERY_SCOPE,
   ),
   'schedule.cancelled': entry(
     'schedule.cancelled',
     'unattributed',
     'A schedule was cancelled.',
     SCHEDULE_CHANGE,
+    EVERY_SCOPE,
   ),
-  'schedule.failed': entry('schedule.failed', 'run', 'A run a schedule started failed.', [
-    ['scheduleId', 'string'],
-    ['runId', 'string'],
-    ['status', 'string'],
-  ]),
-  'schedule.completed': entry('schedule.completed', 'run', 'A run a schedule started completed.', [
-    ['scheduleId', 'string'],
-    ['runId', 'string'],
-    ['status', 'string'],
-  ]),
+  'schedule.failed': entry(
+    'schedule.failed',
+    'run',
+    'A run a schedule started failed.',
+    [
+      ['scheduleId', 'string'],
+      ['runId', 'string'],
+      ['status', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
+  'schedule.completed': entry(
+    'schedule.completed',
+    'run',
+    'A run a schedule started completed.',
+    [
+      ['scheduleId', 'string'],
+      ['runId', 'string'],
+      ['status', 'string'],
+    ],
+    EVERY_SCOPE,
+  ),
   'schedule.attempted': entry(
     'schedule.attempted',
     'unattributed',
@@ -247,6 +298,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['scheduleId', 'string'],
       ['occurrence?', 'number'],
     ],
+    EVERY_SCOPE,
   ),
   'schedule.skipped': entry(
     'schedule.skipped',
@@ -258,39 +310,57 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['blockingRunId?', 'string'],
       ['policy', 'string'],
     ],
+    EVERY_SCOPE,
   ),
-  'skill.loaded': entry('skill.loaded', 'unattributed', 'A skill was loaded for a run.', SKILL),
+  'skill.loaded': entry(
+    'skill.loaded',
+    'unattributed',
+    'A skill was loaded for a run.',
+    SKILL,
+    EVERY_SCOPE,
+  ),
   'skill.activated': entry(
     'skill.activated',
     'unattributed',
     'A loaded skill was activated for a run.',
     SKILL,
+    EVERY_SCOPE,
   ),
   'skill.deactivated': entry(
     'skill.deactivated',
     'unattributed',
     'An active skill was deactivated.',
     SKILL,
+    EVERY_SCOPE,
   ),
   'skill.rejected': entry(
     'skill.rejected',
     'unattributed',
     'A skill was refused by a rule; `reason` and `rule` say which.',
     [...SKILL, ['reason', 'string'], ['rule?', 'string']],
+    EVERY_SCOPE,
   ),
   'skill.failed': entry(
     'skill.failed',
     'unattributed',
     'A skill failed while it was loading or running.',
     SKILL,
+    EVERY_SCOPE,
   ),
   'session.created': entry(
     'session.created',
     'unattributed',
     'A session was created.',
     SESSION.slice(0, 5),
+    AGENT_SCOPE,
   ),
-  'session.saved': entry('session.saved', 'unattributed', 'A session was saved.', SESSION),
+  'session.saved': entry(
+    'session.saved',
+    'unattributed',
+    'A session was saved.',
+    SESSION,
+    AGENT_SCOPE,
+  ),
   'session.deleted': entry('session.deleted', 'unattributed', 'A session was deleted.', [
     ['sessionId', 'string'],
     ['incarnation', 'string'],
@@ -302,33 +372,56 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     'run',
     'A tool approval or a human wait is now waiting for someone to answer it. `reviewKind` says which.',
     REVIEW,
+    EVERY_SCOPE,
   ),
-  'review.approved': entry('review.approved', 'run', 'A waiting review was approved.', REVIEW),
-  'review.denied': entry('review.denied', 'run', 'A waiting review was denied.', REVIEW),
+  'review.approved': entry(
+    'review.approved',
+    'run',
+    'A waiting review was approved.',
+    REVIEW,
+    EVERY_SCOPE,
+  ),
+  'review.denied': entry(
+    'review.denied',
+    'run',
+    'A waiting review was denied.',
+    REVIEW,
+    EVERY_SCOPE,
+  ),
   'review.rejected': entry(
     'review.rejected',
     'run',
     'An answer to a review was rejected as invalid.',
     REVIEW,
+    EVERY_SCOPE,
   ),
-  'review.expired': entry('review.expired', 'run', 'A waiting review expired unanswered.', REVIEW),
+  'review.expired': entry(
+    'review.expired',
+    'run',
+    'A waiting review expired unanswered.',
+    REVIEW,
+    EVERY_SCOPE,
+  ),
   'review.revoked': entry(
     'review.revoked',
     'run',
     'A review’s earlier approval was revoked.',
     REVIEW,
+    EVERY_SCOPE,
   ),
   'review.canceled': entry(
     'review.canceled',
     'run',
     'A waiting review was canceled with its run.',
     REVIEW,
+    EVERY_SCOPE,
   ),
   'review.superseded': entry(
     'review.superseded',
     'run',
     'A waiting review was replaced by a newer one.',
     REVIEW,
+    EVERY_SCOPE,
   ),
   'steering.accepted': entry(
     'steering.accepted',
@@ -341,21 +434,29 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['status', 'string'],
     ],
   ),
-  'goal.started': entry('goal.started', 'run', 'A goal was started.', [
-    ['goalRunId', 'string'],
-    ['goalIdentity?', 'object'],
-  ]),
+  'goal.started': entry(
+    'goal.started',
+    'run',
+    'A goal was started.',
+    [
+      ['goalRunId', 'string'],
+      ['goalIdentity?', 'object'],
+    ],
+    AGENT_SCOPE,
+  ),
   'goal.attempt.started': entry(
     'goal.attempt.started',
     'run',
     'A goal started an attempt.',
     GOAL_ATTEMPT,
+    AGENT_SCOPE,
   ),
   'goal.attempt.evaluating': entry(
     'goal.attempt.evaluating',
     'run',
     'A goal’s attempt finished its run and its validator started. Published live only, never in a goal’s recorded history.',
     GOAL_ATTEMPT,
+    AGENT_SCOPE,
   ),
   'goal.attempt.validated': entry(
     'goal.attempt.validated',
@@ -368,15 +469,23 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['outcomeKind?', 'string'],
       ['feedbackDigest?', 'string'],
     ],
+    AGENT_SCOPE,
   ),
-  'goal.succeeded': entry('goal.succeeded', 'run', 'A goal succeeded.', GOAL_TERMINAL),
+  'goal.succeeded': entry('goal.succeeded', 'run', 'A goal succeeded.', GOAL_TERMINAL, AGENT_SCOPE),
   'goal.exhausted': entry(
     'goal.exhausted',
     'run',
     'A goal used up its attempts without succeeding.',
     GOAL_TERMINAL,
+    AGENT_SCOPE,
   ),
-  'goal.canceled': entry('goal.canceled', 'run', 'A goal was canceled.', GOAL_TERMINAL),
+  'goal.canceled': entry(
+    'goal.canceled',
+    'run',
+    'A goal was canceled.',
+    GOAL_TERMINAL,
+    AGENT_SCOPE,
+  ),
   'goal.failed': entry(
     'goal.failed',
     'run',
@@ -386,6 +495,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['terminalReason?', 'string'],
       ['validatorError?', 'object'],
     ],
+    AGENT_SCOPE,
   ),
   'goal.recovered': entry(
     'goal.recovered',
@@ -397,6 +507,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['status?', 'string'],
       ['transitionSeq?', 'number'],
     ],
+    AGENT_SCOPE,
   ),
   'asset.upload.started': entry(
     'asset.upload.started',
@@ -446,6 +557,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['windowEnd', 'number'],
       ['reason', 'string'],
     ],
+    EVERY_SCOPE,
   ),
   'task.cleanup-acknowledged': entry(
     'task.cleanup-acknowledged',
@@ -455,6 +567,7 @@ export const BUREAU_EVENT_CATALOG: Readonly<
       ['taskId', 'string'],
       ['cleanup', 'string'],
     ],
+    EVERY_SCOPE,
   ),
   'notification.created': entry(
     'notification.created',

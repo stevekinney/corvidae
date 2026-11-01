@@ -1,14 +1,22 @@
 /**
- * Draft state for the hook editor: a name, the events the hook listens to, and what it does (a
- * signed message to a web address, a started workflow, or a notification). A plain rune-backed
- * class, so validation and the request it makes are testable without a DOM.
+ * Draft state for the hook editor: a name, the events the hook listens to, the one subject it is
+ * limited to, and what it does (a signed message to a web address, a started workflow, or a
+ * notification). A plain rune-backed class, so validation and the request it makes are testable
+ * without a DOM.
  *
  * The signing secret is write-only. It is never loaded into the form: an existing hook opens with
  * an empty secret field, and a field left empty keeps the secret the hook has.
  */
-import type { Hook, HookActionType, HookChange, HookInput } from '../../lib/bureau-hooks.ts';
+import type {
+  Hook,
+  HookActionType,
+  HookChange,
+  HookInput,
+  HookScope,
+  HookScopeInput,
+} from '../../lib/bureau-hooks.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
-import type { DraftAction } from './hook-presentation.ts';
+import { isScopeKind, type DraftAction } from './hook-presentation.ts';
 
 /** The shortest and longest signing secret the Bureau accepts. */
 export const SECRET_MINIMUM_LENGTH = 16;
@@ -39,6 +47,9 @@ function isWebAddress(text: string): boolean {
 export class HookFormState {
   name = $state('');
   events = $state<string[]>([]);
+  /** What Only for limits the hook to: the kind of subject (empty for everything) and which one. */
+  scopeKind = $state('');
+  scopeId = $state('');
   actionType = $state<HookActionType>('webhook');
   url = $state('');
   signingSecret = $state('');
@@ -67,6 +78,8 @@ export class HookFormState {
     return JSON.stringify([
       this.name,
       this.events,
+      this.scopeKind,
+      this.scopeId,
       this.actionType,
       this.url,
       this.signingSecret,
@@ -87,6 +100,8 @@ export class HookFormState {
   load(hook: Hook): void {
     this.name = hook.name ?? '';
     this.events = [...hook.events];
+    this.scopeKind = hook.scope?.kind ?? '';
+    this.scopeId = hook.scope?.id ?? '';
     this.signingSecret = '';
     switch (hook.action.type) {
       case 'webhook':
@@ -107,6 +122,13 @@ export class HookFormState {
         break;
     }
     this.baseline = this.fingerprint();
+  }
+
+  /** The scope as the hook's sentence reads it: `null` until both of its fields are chosen. */
+  get draftScope(): HookScope | null {
+    return this.scopeKind === '' || this.scopeId === ''
+      ? null
+      : { kind: this.scopeKind, id: this.scopeId };
   }
 
   /** The kind of action the form writes: a built-in one, or `plugin` for a contributed kind. */
@@ -154,6 +176,7 @@ export class HookFormState {
   get isValid(): boolean {
     if (this.events.length === 0 || this.events.length > EVENTS_MAXIMUM) return false;
     if (this.name.trim().length > NAME_MAXIMUM_LENGTH) return false;
+    if (this.scopeKind !== '' && this.scopeId === '') return false;
     if (this.pluginAction || this.contributedKind !== null) return true;
     switch (this.actionType) {
       case 'webhook':
@@ -196,6 +219,13 @@ export class HookFormState {
     }
   }
 
+  /** The scope as the Bureau takes it, or `undefined` for a hook that runs for everything. */
+  private scope(): HookScopeInput | undefined {
+    return isScopeKind(this.scopeKind) && this.scopeId !== ''
+      ? { kind: this.scopeKind, id: this.scopeId }
+      : undefined;
+  }
+
   /** Whether the action the form holds differs from the one `hook` has. */
   private actionChanged(hook: Hook): boolean {
     const draft = this.action();
@@ -219,9 +249,11 @@ export class HookFormState {
 
   /** What `bureau.hooks.create` takes. */
   toInput(): HookInput {
+    const scope = this.scope();
     return {
       events: [...this.events],
       action: this.action(),
+      ...(scope === undefined ? {} : { scope }),
       ...(this.name.trim() === '' ? {} : { name: this.name.trim() }),
       ...(this.effectiveType === 'webhook' ? { signingSecret: this.signingSecret } : {}),
     };
@@ -232,11 +264,20 @@ export class HookFormState {
    * editor changes its name and events only. The secret goes only when one was typed. The action goes
    * only when it differs from the hook's, because the Bureau asks again whether a workflow is
    * allowed whenever an action is sent, and a rename is never held up by a workflow since paused.
+   * The scope goes only when it changed, so a kind this page does not know is left as it is, and the
+   * events go only when they changed, because the Bureau asks whether the scope fits them whenever
+   * they are sent, which would refuse a rename of a hook whose scope kind this page does not know.
    */
   toChange(hook: Hook): HookChange {
+    const scopeChanged =
+      this.scopeKind !== (hook.scope?.kind ?? '') || this.scopeId !== (hook.scope?.id ?? '');
+    const eventsChanged =
+      this.events.length !== hook.events.length ||
+      this.events.some((event, index) => event !== hook.events[index]);
     return {
       name: this.name.trim() === '' ? null : this.name.trim(),
-      events: [...this.events],
+      ...(eventsChanged ? { events: [...this.events] } : {}),
+      ...(scopeChanged ? { scope: this.scope() ?? null } : {}),
       ...(hook.action.type === 'plugin' || !this.actionChanged(hook)
         ? {}
         : { action: this.action() }),

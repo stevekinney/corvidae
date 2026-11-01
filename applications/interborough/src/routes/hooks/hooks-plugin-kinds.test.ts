@@ -39,6 +39,7 @@ const PAGE_KIND = {
 const CATALOG = ['review.requested', 'schedule.missed'].map((kind) => ({
   kind,
   origin: 'run',
+  scopes: [],
   description: `Describes ${kind}`,
   payload: [],
 }));
@@ -79,6 +80,7 @@ const ALPHA = {
   name: null,
   action: { type: 'webhook', url: 'https://example.com/alpha' },
   events: ['review.requested'],
+  scope: null,
   enabled: true,
   createdAt: 1_000,
   updatedAt: 1_000,

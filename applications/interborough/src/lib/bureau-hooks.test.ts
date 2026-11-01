@@ -30,6 +30,8 @@ const HOOK = {
   name: null,
   action: { type: 'webhook', url: 'https://example.com/a' },
   events: ['review.requested'],
+  scope: null,
+  lastDelivery: null,
   enabled: true,
   createdAt: 1,
   updatedAt: 2,
@@ -65,6 +67,46 @@ const DELIVERY = {
 };
 
 describe('the Bureau’s hooks', () => {
+  test('asks the Bureau for one subject’s hooks, and reads each hook’s last delivery', async () => {
+    const lastDelivery = {
+      id: 'delivery-1',
+      kind: 'review.requested',
+      test: false,
+      status: 'exhausted',
+      lastAttempt: {
+        number: 2,
+        startedAt: 1,
+        finishedAt: 2,
+        outcome: 'network-error',
+        status: null,
+        error: 'connect refused',
+      },
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    stub = installBureauStub({
+      'bureau.hooks.list': () => ({
+        hooks: [{ ...HOOK, scope: { kind: 'agent', id: 'scout' }, lastDelivery }],
+      }),
+    });
+    const listed = await listHooks({ scope: { kind: 'agent', id: 'scout' } });
+    expect(stub.callsTo('bureau.hooks.list')[0]?.params).toEqual({
+      scope: { kind: 'agent', id: 'scout' },
+    });
+    expect(listed[0]?.lastDelivery).toEqual(lastDelivery as never);
+
+    await listHooks();
+    expect(stub.callsTo('bureau.hooks.list')[1]?.params).toEqual({});
+  });
+
+  test('keeps a stored scope of a kind this page does not know, rather than failing the list', async () => {
+    stub = installBureauStub({
+      'bureau.hooks.list': () => ({ hooks: [{ ...HOOK, scope: { kind: 'team', id: 'blue' } }] }),
+    });
+    const listed = await listHooks();
+    expect(listed[0]?.scope).toEqual({ kind: 'team', id: 'blue' });
+  });
+
   test('are listed and read by their identifier', async () => {
     stub = installBureauStub({
       'bureau.hooks.list': () => ({ hooks: [HOOK] }),
@@ -164,12 +206,18 @@ describe('the Bureau’s hooks', () => {
             description: 'A fire did not happen.',
             origin: 'external',
             payload: [],
+            scopes: ['schedule'],
           },
         ],
       }),
     });
     expect(await listHookEventKinds()).toEqual([
-      { kind: 'schedule.missed', description: 'A fire did not happen.', origin: 'external' },
+      {
+        kind: 'schedule.missed',
+        description: 'A fire did not happen.',
+        origin: 'external',
+        scopes: ['schedule'],
+      },
     ]);
   });
 });

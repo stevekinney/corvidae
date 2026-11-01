@@ -18,9 +18,8 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
-import { landAt } from '../chat/pages.test-support.ts';
+import { AGENT, landAt } from '../chat/pages.test-support.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
-import { LAST_DELIVERY_READ_CAP } from './hook-presentation.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -41,6 +40,7 @@ function hook(id: string, overrides: Record<string, unknown> = {}) {
     name: null as string | null,
     action: { type: 'webhook', url: `https://example.com/${id}` } as Record<string, unknown>,
     events: ['review.requested'],
+    scope: null as { kind: string; id: string } | null,
     enabled: true,
     createdAt: 1_000,
     updatedAt: 1_000,
@@ -81,23 +81,56 @@ function delivery(hookId: string, status: string, overrides: Record<string, unkn
   };
 }
 
-const CATALOG = [
-  ['review.requested', 'run'],
-  ['goal.attempt.evaluating', 'run'],
-  ['notification.created', 'unattributed'],
-  ['schedule.missed', 'external'],
-  ['definitions.changed', 'unattributed'],
-].map(([kind, origin]) => ({
+const EVERY_SCOPE = ['agent', 'workflow', 'schedule'];
+const CATALOG = (
+  [
+    ['review.requested', 'run', EVERY_SCOPE],
+    ['goal.attempt.evaluating', 'run', ['agent']],
+    ['notification.created', 'unattributed', []],
+    ['schedule.missed', 'external', EVERY_SCOPE],
+    ['definitions.changed', 'unattributed', []],
+  ] as const
+).map(([kind, origin, scopes]) => ({
   kind,
   origin,
   description: `Describes ${kind}`,
   payload: [],
+  scopes,
 }));
+
+/** The newest delivery of a hook, as `bureau.hooks.list` carries it. */
+function lastDeliveryOf(rows: readonly DeliveryRow[] | undefined) {
+  const newest = rows?.[0];
+  if (newest === undefined) return null;
+  const {
+    hookId: _hookId,
+    owner: _owner,
+    actionType: _action,
+    request: _request,
+    ...rest
+  } = newest;
+  const { work: _work, attempts, maxAttempts: _maxAttempts, ...summary } = rest;
+  const last = attempts.at(-1);
+  return {
+    ...summary,
+    lastAttempt:
+      last === undefined
+        ? null
+        : {
+            number: last.number,
+            startedAt: last.startedAt,
+            finishedAt: last.finishedAt,
+            outcome: last.outcome,
+            status: last.status,
+            error: last.error,
+          },
+  };
+}
 
 type Served = {
   hooks: HookRow[];
   deliveries: Map<string, DeliveryRow[]>;
-  /** Every listing of one hook's deliveries, by hook, so a test can see what was asked. */
+  /** Every read of one hook's deliveries, by hook: the list needs none. */
   deliveryReads: string[];
 };
 
@@ -109,6 +142,9 @@ function open(
     /** A home that keeps hooks off answers every hooks call with this fault. */
     off?: boolean;
     workflows?: { id: string; state: string; paused: boolean }[];
+    schedules?: unknown[];
+    /** A remote home says so at `/host/paths`. */
+    hostMode?: 'local' | 'remote';
     /** Operations the Bureau refuses, by name, with the fault it answers. */
     refuse?: Record<string, StubFault>;
   } = {},
@@ -130,7 +166,22 @@ function open(
     return entry;
   };
   const handlers: Parameters<typeof installBureauStub>[0] = {
-    'bureau.hooks.list': () => (options.off ? unsupported() : { hooks: served.hooks }),
+    'bureau.hooks.list': (params) => {
+      if (options.off) return unsupported();
+      const scope = params['scope'] as { kind: string; id: string } | undefined;
+      return {
+        hooks: served.hooks
+          .filter(
+            (entry) =>
+              scope === undefined ||
+              (entry.scope?.kind === scope.kind && entry.scope.id === scope.id),
+          )
+          .map((entry) => ({
+            ...entry,
+            lastDelivery: lastDeliveryOf(served.deliveries.get(entry.id)),
+          })),
+      };
+    },
     'bureau.hooks.get': (params) => (options.off ? unsupported() : found(params)),
     'bureau.hooks.deliveries': (params) => {
       const id = String(params['hookId']);
@@ -144,6 +195,7 @@ function open(
         name: params['name'] ?? null,
         events: params['events'],
         action: params['action'],
+        scope: params['scope'] ?? null,
       });
       served.hooks.push(made);
       return made;
@@ -157,6 +209,7 @@ function open(
       }
       if (typeof params['enabled'] === 'boolean') entry.enabled = params['enabled'];
       if (params['events'] !== undefined) entry.events = params['events'] as string[];
+      if ('scope' in params) entry.scope = params['scope'] as HookRow['scope'];
       if (params['action'] !== undefined) entry.action = params['action'] as never;
       if ('name' in params) entry.name = (params['name'] as string | null) ?? null;
       entry.revision += 1;
@@ -174,6 +227,8 @@ function open(
       return sent;
     },
     'bureau.events.catalog': () => ({ events: CATALOG }),
+    'bureau.agents.list': () => ({ agents: [AGENT] }),
+    'bureau.schedules.list': () => ({ schedules: options.schedules ?? [], nextOffset: null }),
     'bureau.workflows.list': () => ({
       workflows: (options.workflows ?? []).map((file) => ({
         ...file,
@@ -203,6 +258,7 @@ function open(
         },
       ]),
     ),
+    options.hostMode === undefined ? {} : { hostMode: options.hostMode },
   );
   landAt(options.path ?? '/hooks');
   const view = render(RouteOutletHarness, {
@@ -261,19 +317,57 @@ describe('the hooks list', () => {
     );
   });
 
-  test('reads the last delivery of the first hooks only, and says so for the rest', async () => {
-    const many = Array.from({ length: LAST_DELIVERY_READ_CAP + 2 }, (_, index) =>
+  // COR-1978: the list carries each hook's newest delivery, so a page of hooks is one read and every
+  // hook sorts by it, past the fifty the page used to read one at a time.
+  test('makes no read per hook, and puts a failing hook first however long the list is', async () => {
+    const many = Array.from({ length: 60 }, (_, index) =>
       hook(`hook-${String(index).padStart(3, '0')}`),
     );
-    const { view, served } = open(many);
+    const last = many.at(-1)!;
+    const { view, served } = open(many, {
+      deliveries: { [last.id]: [delivery(last.id, 'exhausted')] },
+    });
 
     await waitFor(() => expect(rowIds(view.container).length).toBe(many.length));
-    await waitFor(() => expect(served.deliveryReads.length).toBe(LAST_DELIVERY_READ_CAP));
-    const last = many.at(-1)!;
-    expect(served.deliveryReads).not.toContain(last.id);
+    expect(rowIds(view.container)[0]).toBe(last.id);
+    expect(served.deliveryReads).toEqual([]);
+  });
+
+  test('says what each hook is limited to, and links to it', async () => {
+    const { view } = open([
+      hook('everyone'),
+      hook('scoped', { scope: { kind: 'agent', id: 'researcher' } }),
+      hook('nightly', { scope: { kind: 'workflow', id: 'nightly' } }),
+      hook('future', { scope: { kind: 'team', id: 'blue' } }),
+    ]);
+
+    await waitFor(() => expect(rowIds(view.container).length).toBe(4));
+    expect(view.getByRole('columnheader', { name: HOOKS_COPY.onlyForColumn })).not.toBeNull();
+    const cell = (id: string) => row(view.container, id)!.querySelector('[data-only-for]')!;
+    expect(cell('everyone').textContent?.trim()).toBe(HOOKS_COPY.onlyFor.everything);
+    expect(cell('nightly').querySelector('a')?.getAttribute('href')).toContain('nightly');
+    expect(cell('scoped').querySelector('a')?.textContent).toBe('Agent researcher');
+    expect(cell('future').textContent?.trim()).toBe('team blue');
     expect(
-      within(row(view.container, last.id)!).getByText(HOOKS_COPY.deliveryNotRead),
+      within(row(view.container, 'scoped')!).getByRole('link', {
+        name: 'When Review requested for the agent researcher, send a signed message to https://example.com/scoped',
+      }),
     ).not.toBeNull();
+  });
+
+  test('filters by agent from the address, and clears it', async () => {
+    const { view } = open(
+      [
+        hook('mine', { scope: { kind: 'agent', id: 'researcher' } }),
+        hook('other', { scope: { kind: 'agent', id: 'writer' } }),
+        hook('everyone'),
+      ],
+      { path: '/hooks?agent=researcher' },
+    );
+
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['mine']));
+    await fireEvent.click(view.getByRole('button', { name: /Agent: researcher/ }));
+    await waitFor(() => expect(rowIds(view.container)).toEqual(['mine', 'other', 'everyone']));
   });
 
   test('searches the sentences, filters by event, and clears both', async () => {
@@ -439,6 +533,185 @@ describe('the hook editor', () => {
     await view.findByRole('button', { name: HOOKS_COPY.editor.check.test });
   });
 
+  test('offers what the chosen events can be limited to, and writes the subject chosen', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    expect(view.queryByLabelText(HOOKS_COPY.editor.onlyFor.label)).toBeNull();
+    await chooseEvent(view, 'review', 'Review requested');
+
+    const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
+    expect(Array.from(only.options).map((option) => option.textContent?.trim())).toEqual([
+      HOOKS_COPY.editor.onlyFor.everything,
+      'One agent',
+      'One workflow',
+      'One schedule',
+    ]);
+
+    await chooseEvent(view, 'goal', 'Goal attempt evaluating');
+    await waitFor(() =>
+      expect(Array.from(only.options).map((option) => option.value)).toEqual(['', 'agent']),
+    );
+
+    await fireEvent.change(only, { target: { value: 'agent' } });
+    const subject = (await view.findByLabelText(
+      HOOKS_COPY.editor.onlyFor.subject.agent,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(subject.options.length).toBe(2));
+    await fireEvent.change(subject, { target: { value: AGENT.name } });
+
+    expect(view.getByTestId('hook-sentence').textContent).toContain(`for the agent ${AGENT.name}`);
+  });
+
+  test('lists the workflows and the schedules Only for can name, by what a person calls them', async () => {
+    const { view } = open([], {
+      path: '/hooks/new',
+      workflows: [{ id: 'nightly', state: 'ready', paused: false }],
+      schedules: [
+        {
+          id: 'every-hour',
+          owner: 'anonymous:local',
+          agentName: null,
+          inputPreview: null,
+          workflowType: 'agent',
+          description: 'Every hour',
+          cronExpression: null,
+          intervalMs: 3_600_000,
+          status: 'active',
+          overlap: 'skip',
+          revision: 1,
+          timeZone: 'UTC',
+          nextFireAt: null,
+          skipUntil: null,
+          lastFireAt: null,
+          missedFireCount: 0,
+          skippedCount: 0,
+          createdAt: '2026-11-01T00:00:00.000Z',
+          updatedAt: '2026-11-01T00:00:00.000Z',
+        },
+      ],
+    });
+    await chooseEvent(view, 'review', 'Review requested');
+    const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
+
+    await fireEvent.change(only, { target: { value: 'workflow' } });
+    const workflow = (await view.findByLabelText(
+      HOOKS_COPY.editor.onlyFor.subject.workflow,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(workflow.options.length).toBe(2));
+
+    await fireEvent.change(only, { target: { value: 'schedule' } });
+    const schedule = (await view.findByLabelText(
+      HOOKS_COPY.editor.onlyFor.subject.schedule,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(schedule.options.length).toBe(2));
+    expect(schedule.options[1]?.textContent?.trim()).toBe('Every hour');
+  });
+
+  test('says when the choices could not be read, and keeps the form', async () => {
+    const { view } = open([], {
+      path: '/hooks/new',
+      refuse: { 'bureau.agents.list': new StubFault('EngineFailure', 500, 'It broke.') },
+    });
+    await chooseEvent(view, 'review', 'Review requested');
+    const only = await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label);
+    await fireEvent.change(only, { target: { value: 'agent' } });
+
+    await view.findByText(HOOKS_COPY.editor.onlyFor.loadFailed);
+  });
+
+  test('says nothing can be limited for events about the whole system', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await chooseEvent(view, 'notification', 'Notification created');
+
+    expect(await view.findByTestId('hook-only-for-none')).not.toBeNull();
+    expect(view.queryByLabelText(HOOKS_COPY.editor.onlyFor.label)).toBeNull();
+  });
+
+  test('refuses to save a limit an added event cannot tell, and clears when it is removed', async () => {
+    const { view } = open([hook('alpha', { scope: { kind: 'schedule', id: 'every-hour' } })], {
+      path: '/hooks/alpha',
+    });
+    const save = (await view.findByRole('button', {
+      name: HOOKS_COPY.editor.check.save,
+    })) as HTMLButtonElement;
+    await view.findByLabelText(HOOKS_COPY.editor.onlyFor.subject.schedule);
+    await chooseEvent(view, 'goal', 'Goal attempt evaluating');
+
+    await view.findByTestId('hook-scope-refused');
+    expect(save.disabled).toBe(true);
+
+    await fireEvent.change(view.getByLabelText(HOOKS_COPY.editor.onlyFor.label), {
+      target: { value: '' },
+    });
+    await waitFor(() =>
+      expect(view.queryByTestId('hook-scope-refused')?.outerHTML ?? null).toBeNull(),
+    );
+    await fireEvent.click(save);
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.update')[0]?.params).toMatchObject({ scope: null });
+  });
+
+  test('sends no scope for a save that leaves it, and keeps a subject the lists no longer hold', async () => {
+    const { view } = open([hook('alpha', { scope: { kind: 'agent', id: 'retired-agent' } })], {
+      path: '/hooks/alpha',
+    });
+    const subject = (await view.findByLabelText(
+      HOOKS_COPY.editor.onlyFor.subject.agent,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(subject.value).toBe('retired-agent'));
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.update')[0]?.params).not.toHaveProperty('scope');
+  });
+
+  test('shows a scope kind it does not know as a disabled choice, and renames the hook without its events', async () => {
+    const { view } = open([hook('alpha', { scope: { kind: 'team', id: 'blue' } })], {
+      path: '/hooks/alpha',
+    });
+    const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
+    await waitFor(() => expect(only.value).toBe('team'));
+    const unknown = Array.from(only.options).find((option) => option.value === 'team');
+    expect(unknown?.disabled).toBe(true);
+    expect(unknown?.textContent?.trim()).toBe(HOOKS_COPY.editor.onlyFor.unknownKind('team'));
+
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.check.nameLabel), {
+      target: { value: 'Renamed' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.update')[0]?.params).toEqual({
+      hookId: 'alpha',
+      expectedRevision: 1,
+      name: 'Renamed',
+    });
+  });
+
+  // COR-1978: a remote home cannot hold a signing secret, so it writes every other action.
+  test('does not offer a signed message on a remote home, and starts on notify', async () => {
+    const { view } = open([], { path: '/hooks/new', hostMode: 'remote' });
+    const action = (await view.findByLabelText(
+      HOOKS_COPY.editor.action.label,
+    )) as HTMLSelectElement;
+
+    await waitFor(() => expect(action.value).toBe('notify'));
+    const webhook = Array.from(action.options).find((option) => option.value === 'webhook');
+    expect(webhook?.disabled).toBe(true);
+    await view.findByText(HOOKS_COPY.editor.action.chooseRemote);
+    expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.secretLabel)).toBeNull();
+  });
+
+  test('starts limited to the agent the address names', async () => {
+    const { view } = open([], { path: `/hooks/new?agent=${AGENT.name}` });
+    await chooseEvent(view, 'review', 'Review requested');
+    const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
+    await waitFor(() => expect(only.value).toBe('agent'));
+    const subject = (await view.findByLabelText(
+      HOOKS_COPY.editor.onlyFor.subject.agent,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(subject.value).toBe(AGENT.name));
+  });
+
   test('never shows a signing secret: an existing hook opens with the field empty, and empty keeps the secret', async () => {
     const { view } = open([hook('alpha', { name: 'Keep' })], { path: '/hooks/alpha' });
     const secret = (await view.findByLabelText(
@@ -458,7 +731,6 @@ describe('the hook editor', () => {
       hookId: 'alpha',
       expectedRevision: 1,
       name: 'Kept',
-      events: ['review.requested'],
     });
     expect(Object.keys(sent)).not.toContain('signingSecret');
   });
@@ -784,7 +1056,7 @@ describe('when the Bureau refuses', () => {
 });
 
 describe('the editor for a hook it cannot change the action of', () => {
-  test('a hook from a plugin keeps its action, and saves its name and events only', async () => {
+  test('a hook from a plugin keeps its action, and saves only what changed', async () => {
     const { view } = open(
       [hook('alpha', { action: { type: 'plugin', plugin: 'acme', kind: 'page' }, name: 'Paged' })],
       { path: '/hooks/alpha' },
@@ -805,7 +1077,6 @@ describe('the editor for a hook it cannot change the action of', () => {
       hookId: 'alpha',
       expectedRevision: 1,
       name: 'Paged',
-      events: ['review.requested'],
     });
   });
 

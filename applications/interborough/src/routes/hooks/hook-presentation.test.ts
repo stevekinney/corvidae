@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { Hook, HookDelivery, HookEventKind } from '../../lib/bureau-hooks.ts';
+import { HOOKS_COPY } from './hook-copy.ts';
 import {
   deliveryFailed,
   deliveryLine,
@@ -18,13 +19,36 @@ import {
   failingFirst,
   hookMatches,
   hookSentence,
+  onlyForWords,
+  scopeKindsFor,
+  scopePath,
 } from './hook-presentation.ts';
 
 const KINDS: HookEventKind[] = [
-  { kind: 'review.requested', origin: 'run', description: 'A person is asked to decide.' },
-  { kind: 'notification.created', origin: 'unattributed', description: 'A notification exists.' },
-  { kind: 'schedule.missed', origin: 'external', description: 'A fire did not happen.' },
-  { kind: 'session.created', origin: 'unattributed', description: 'A chat started.' },
+  {
+    kind: 'review.requested',
+    origin: 'run',
+    description: 'A person is asked to decide.',
+    scopes: ['agent', 'workflow', 'schedule'],
+  },
+  {
+    kind: 'notification.created',
+    origin: 'unattributed',
+    description: 'A notification exists.',
+    scopes: [],
+  },
+  {
+    kind: 'schedule.missed',
+    origin: 'external',
+    description: 'A fire did not happen.',
+    scopes: ['agent', 'workflow', 'schedule'],
+  },
+  {
+    kind: 'session.created',
+    origin: 'unattributed',
+    description: 'A chat started.',
+    scopes: ['agent'],
+  },
 ];
 
 function hook(overrides: Partial<Hook> = {}): Hook {
@@ -34,6 +58,7 @@ function hook(overrides: Partial<Hook> = {}): Hook {
     name: null,
     action: { type: 'webhook', url: 'https://example.com/a' },
     events: ['review.requested'],
+    scope: null,
     enabled: true,
     createdAt: 1,
     updatedAt: 1,
@@ -207,7 +232,7 @@ describe('what a delivery came to', () => {
   });
 
   test('calls a hook failing only when its last delivery ended in failure', () => {
-    expect(deliveryFailed(undefined)).toBe(false);
+    expect(deliveryFailed(null)).toBe(false);
     expect(deliveryFailed(delivery({ status: 'delivered' }))).toBe(false);
     expect(deliveryFailed(delivery({ status: 'pending' }))).toBe(false);
     expect(deliveryFailed(delivery({ status: 'exhausted' }))).toBe(true);
@@ -274,5 +299,58 @@ describe('the failing hooks first', () => {
   test('keeps the order within each group', () => {
     expect(failingFirst([1, 2, 3, 4, 5], (n) => n % 2 === 0)).toEqual([2, 4, 1, 3, 5]);
     expect(failingFirst([], () => true)).toEqual([]);
+  });
+});
+
+describe('what a hook is limited to', () => {
+  const kinds = [
+    { kind: 'review.requested', scopes: ['agent', 'workflow', 'schedule'] },
+    { kind: 'session.created', scopes: ['agent'] },
+    { kind: 'diagnostic', scopes: [] },
+  ] as const;
+  const offered = (events: readonly string[]) =>
+    scopeKindsFor(
+      events,
+      kinds.map((entry) => ({ kind: entry.kind, scopes: [...entry.scopes] })),
+    );
+
+  test('offers only what every chosen event can be told by', () => {
+    expect(offered([])).toEqual([]);
+    expect(offered(['review.requested'])).toEqual(['agent', 'workflow', 'schedule']);
+    expect(offered(['review.requested', 'session.created'])).toEqual(['agent']);
+    expect(offered(['review.requested', 'diagnostic'])).toEqual([]);
+    expect(offered(['an.event.the.catalog.does.not.describe'])).toEqual([]);
+  });
+
+  test('reads a hook’s Only for, and links a subject the page knows', () => {
+    expect(onlyForWords(null)).toBe(HOOKS_COPY.onlyFor.everything);
+    expect(onlyForWords({ kind: 'schedule', id: 'nightly' })).toBe('Schedule nightly');
+    expect(onlyForWords({ kind: 'team', id: 'blue' })).toBe('team blue');
+    expect(scopePath({ kind: 'agent', id: 'scout' })).toContain('/agents/scout');
+    expect(scopePath({ kind: 'workflow', id: 'nightly' })).toContain('nightly');
+    expect(scopePath({ kind: 'schedule', id: 'nightly' })).toContain('nightly');
+    expect(scopePath({ kind: 'team', id: 'blue' })).toBeUndefined();
+  });
+
+  test('says it in the sentence, after the events', () => {
+    const sentence = hookSentence({
+      events: ['review.requested'],
+      action: { type: 'notify' },
+      scope: { kind: 'team', id: 'blue' },
+    });
+    expect(sentence).toBe('When Review requested for the team blue, notify me');
+  });
+
+  test('reads a summary’s last attempt as it reads a delivery’s', () => {
+    const summary = {
+      id: 'delivery-1',
+      kind: 'review.requested',
+      test: false,
+      status: 'exhausted' as const,
+      lastAttempt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    expect(deliveryLine(summary)).toBe(HOOKS_COPY.attempt.notStarted);
   });
 });

@@ -8,9 +8,11 @@
 
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
+import { bureauNameOf } from '../namespaced-identifier.ts';
 import type { BureauDiagnostic } from '../types.ts';
 import { isTaskOrigin, type StoredTaskOrigin, taskOriginParentOf } from '../task-origin.ts';
 import { createHookOriginLookup } from './hook-origin.ts';
+import type { HookRunSubjects } from './hook-scope.ts';
 import {
   createScheduleHookOrigins,
   type ScheduleHookOrigins,
@@ -21,14 +23,20 @@ import {
 export interface RunHookOriginSources {
   /** The key-value store schedule origins are kept in, or `undefined` for a Bureau with none. */
   readonly kv: ConditionalTextValueStore | undefined;
-  /** The Weft tags and input of the workflow instance `runId` names, or nothing when there is none. */
-  readonly workflowOf: (
-    runId: string,
-  ) => Promise<
-    { readonly tags?: readonly string[] | undefined; readonly input?: unknown } | null | undefined
+  /** The Weft type, tags and input of the workflow instance `runId` names, or nothing when there is none. */
+  readonly workflowOf: (runId: string) => Promise<
+    | {
+        readonly type?: string | undefined;
+        readonly tags?: readonly string[] | undefined;
+        readonly input?: unknown;
+      }
+    | null
+    | undefined
   >;
   /** The origin the task `runId` names recorded, or `undefined` when it has none. */
   readonly taskOriginOf: (runId: string) => Promise<StoredTaskOrigin | undefined>;
+  /** The agent the task `runId` names ran, or `undefined` when it names none. */
+  readonly agentOf: (runId: string) => Promise<string | null | undefined>;
   /** Reports what could not be read. */
   readonly diagnose: (diagnostic: BureauDiagnostic) => void;
 }
@@ -48,7 +56,15 @@ export interface RunHookOrigins {
    * schedule that escapes the chain guard.
    */
   readonly hookOriginOfRun: (runId: string) => Promise<string | undefined>;
+  /**
+   * What a hook's scope reads about a run (COR-1978): its own agent, and the workflows and schedules
+   * of the run and every run above it. Throws when the walk cannot finish.
+   */
+  readonly subjectsOfRun: (runId: string) => Promise<HookRunSubjects>;
 }
+
+/** The longest chain of parents a run's subjects are read through, as the chain guard's walk. */
+const MAXIMUM_SUBJECT_DEPTH = 32;
 
 /** Composes the lookups of {@link RunHookOrigins} over `sources`. */
 export function createRunHookOrigins(sources: RunHookOriginSources): RunHookOrigins {
@@ -85,6 +101,27 @@ export function createRunHookOrigins(sources: RunHookOriginSources): RunHookOrig
         });
         return 'unknown';
       }
+    },
+    async subjectsOfRun(runId) {
+      const workflows = new Set<string>();
+      const schedules = new Set<string>();
+      let current: string | null = runId;
+      for (let depth = 0; depth < MAXIMUM_SUBJECT_DEPTH && current !== null; depth++) {
+        const workflow = await sources.workflowOf(current);
+        if (workflow?.type !== undefined) workflows.add(bureauNameOf(workflow.type));
+        const origin = await sources.taskOriginOf(current);
+        const fired =
+          origin !== undefined && isTaskOrigin(origin) && origin.kind === 'schedule'
+            ? origin.scheduleId
+            : scheduleOfInstanceInput(workflow?.input);
+        if (fired !== undefined) schedules.add(fired);
+        current = taskOriginParentOf(origin);
+      }
+      if (current !== null) {
+        throw new Error(`Run "${runId}" is nested deeper than ${MAXIMUM_SUBJECT_DEPTH}`);
+      }
+      const agent = await sources.agentOf(runId);
+      return { agent: agent ?? undefined, workflows: [...workflows], schedules: [...schedules] };
     },
   };
 }

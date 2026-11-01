@@ -18,6 +18,7 @@ import {
   type HookAction,
   type HookDeliveryRecord,
   type HookRecord,
+  type HookScope,
   type HookSecretStore,
 } from './hook-types.ts';
 
@@ -104,14 +105,33 @@ function parseAction(value: Record<string, unknown>): HookAction | undefined {
 }
 
 /**
+ * The scope a stored record names, or `undefined` when it names none. A scope this release does not
+ * know stays on the record as it was written, fields it does not read included, so that a rename does
+ * not lose it. A value it cannot read at all becomes a scope that matches nothing (`kind: ''`). It
+ * never reads as no scope, which would fire the hook across the whole Bureau, and never makes the
+ * record unreadable, which would delete its pending deliveries.
+ */
+function parseScope(value: unknown): HookScope | undefined {
+  if (value === undefined) return undefined;
+  if (isRecord(value) && typeof value['kind'] === 'string' && typeof value['id'] === 'string') {
+    return value as unknown as HookScope;
+  }
+  return { kind: '', id: '' };
+}
+
+/**
  * The text a hook is stored as. A webhook hook also keeps its `url` at the top level, where a
  * release that predates actions reads it: without it that release could not parse the record, and
  * would delete the hook's pending deliveries as it does for any hook it cannot read. A hook of
  * another action has no `url`, so it is not readable there (see `documentation/hooks.md`).
  */
 function serializedHook(record: HookRecord): string {
+  // A scoped record is written as version 2, so a release that predates scopes refuses to read it
+  // (it reads only version 1) instead of firing it for the whole Bureau. Clearing the scope writes
+  // version 1 again.
+  const versioned = { ...record, version: record.scope === undefined ? 1 : 2 };
   return JSON.stringify(
-    record.action.type === 'webhook' ? { ...record, url: record.action.url } : record,
+    record.action.type === 'webhook' ? { ...versioned, url: record.action.url } : versioned,
   );
 }
 
@@ -124,7 +144,7 @@ function parseHook(raw: string): HookRecord | undefined {
   }
   if (
     !isRecord(value) ||
-    value['version'] !== 1 ||
+    (value['version'] !== 1 && value['version'] !== 2) ||
     typeof value['id'] !== 'string' ||
     typeof value['owner'] !== 'string' ||
     !Array.isArray(value['events']) ||
@@ -135,8 +155,9 @@ function parseHook(raw: string): HookRecord | undefined {
   }
   const action = parseAction(value);
   if (action === undefined) return undefined;
-  const { url: _legacyUrl, ...rest } = value;
-  return { ...rest, action } as unknown as HookRecord;
+  const { url: _legacyUrl, scope: storedScope, ...rest } = value;
+  const scope = parseScope(storedScope);
+  return { ...rest, ...(scope === undefined ? {} : { scope }), action } as unknown as HookRecord;
 }
 
 function parseDelivery(raw: string): HookDeliveryRecord | undefined {

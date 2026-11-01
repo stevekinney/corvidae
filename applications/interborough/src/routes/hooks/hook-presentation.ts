@@ -3,14 +3,22 @@
  * grouped under, which events an action may listen to, a hook as a sentence, and what a delivery
  * came to. Pure, so the pages and their tests share one reading.
  */
-import type { Hook, HookActionType, HookDelivery, HookEventKind } from '../../lib/bureau-hooks.ts';
+import { agentPath } from '../../lib/agent-paths.ts';
+import {
+  HOOK_SCOPE_KINDS,
+  type Hook,
+  type HookActionType,
+  type HookDelivery,
+  type HookDeliverySummary,
+  type HookEventKind,
+  type HookScope,
+  type HookScopeKind,
+} from '../../lib/bureau-hooks.ts';
+import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import type { StatusWord } from '../../lib/status.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 
 const COPY = HOOKS_COPY.editor;
-
-/** How many hooks have their last delivery read: one request each, so the list asks for no more. */
-export const LAST_DELIVERY_READ_CAP = 50;
 
 /** The area each family of events is grouped under in the picker, by the first word of the kind. */
 const AREAS: Readonly<Record<string, string>> = {
@@ -155,12 +163,67 @@ export type DraftAction =
   | { readonly type: 'notify' }
   | { readonly type: 'plugin'; readonly plugin: string; readonly kind: string };
 
-/** A hook as a sentence: `When Review requested, send a signed message to https://example.com`. */
+/** Whether `kind` is one this page knows. A home on a newer release can hold another. */
+export function isScopeKind(kind: string): kind is HookScopeKind {
+  return (HOOK_SCOPE_KINDS as readonly string[]).includes(kind);
+}
+
+/** What a hook's scope adds to its sentence, after the events. */
+function scopePhrase(scope: HookScope): string {
+  const words = HOOKS_COPY.sentence;
+  return isScopeKind(scope.kind) ? words[scope.kind](scope.id) : words.other(scope.kind, scope.id);
+}
+
+/**
+ * A hook as a sentence: `When Review requested, send a signed message to https://example.com`, with
+ * what it is limited to after the events: `When Review requested for the agent scout, notify me`.
+ */
 export function hookSentence(hook: {
   readonly events: readonly string[];
   readonly action: Hook['action'] | DraftAction;
+  readonly scope?: HookScope | null | undefined;
 }): string {
-  return `${HOOKS_COPY.sentence.when} ${eventPhrase(hook.events)}, ${actionPhrase(hook.action)}`;
+  const scope =
+    hook.scope === null || hook.scope === undefined ? '' : ` ${scopePhrase(hook.scope)}`;
+  return `${HOOKS_COPY.sentence.when} ${eventPhrase(hook.events)}${scope}, ${actionPhrase(hook.action)}`;
+}
+
+/** A hook's Only for cell: what it is limited to, or that it runs for everything. */
+export function onlyForWords(scope: HookScope | null): string {
+  const words = HOOKS_COPY.onlyFor;
+  if (scope === null) return words.everything;
+  return isScopeKind(scope.kind) ? words[scope.kind](scope.id) : words.other(scope.kind, scope.id);
+}
+
+/** The page of the subject a scope names, or `undefined` for a kind this page does not know. */
+export function scopePath(scope: HookScope): string | undefined {
+  switch (scope.kind) {
+    case 'agent':
+      return agentPath(scope.id);
+    case 'workflow':
+      return workflowDetailPath(scope.id);
+    case 'schedule':
+      return scheduleDetailPath(scope.id);
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * What Only for can offer for `events`: the kinds of subject every one of them can be told by, which
+ * is what the Bureau accepts. Nothing for no events, and nothing for an event the catalog does not
+ * describe.
+ */
+export function scopeKindsFor(
+  events: readonly string[],
+  kinds: readonly Pick<HookEventKind, 'kind' | 'scopes'>[],
+): HookScopeKind[] {
+  if (events.length === 0) return [];
+  return HOOK_SCOPE_KINDS.filter((scope) =>
+    events.every((event) =>
+      kinds.find((candidate) => candidate.kind === event)?.scopes.includes(scope),
+    ),
+  );
 }
 
 /** The word a delivery's status reads as, in the one vocabulary of the records pages. */
@@ -180,17 +243,17 @@ export function deliveryWord(status: HookDelivery['status']): StatusWord {
 }
 
 /** Whether a delivery ended without reaching its end, so the hook it belongs to is failing. */
-export function deliveryFailed(delivery: Pick<HookDelivery, 'status'> | undefined): boolean {
-  return delivery !== undefined && deliveryWord(delivery.status) === 'Failed';
+export function deliveryFailed(delivery: Pick<HookDelivery, 'status'> | null): boolean {
+  return delivery !== null && deliveryWord(delivery.status) === 'Failed';
 }
 
 /** What a delivery came to, in a line: the answer, or why there was none. */
-export function deliveryLine(delivery: HookDelivery): string {
+export function deliveryLine(delivery: HookDelivery | HookDeliverySummary): string {
   const copy = HOOKS_COPY.attempt;
   if (delivery.status === 'failed-secret') return copy.secretMissing;
-  const last = delivery.attempts.at(-1);
+  const last = 'attempts' in delivery ? delivery.attempts.at(-1) : delivery.lastAttempt;
   if (delivery.status === 'aborted') return copy.aborted;
-  if (last === undefined) return copy.notStarted;
+  if (last === undefined || last === null) return copy.notStarted;
   const detail = last.error === null ? '' : `: ${last.error}`;
   switch (last.outcome) {
     case 'sending':

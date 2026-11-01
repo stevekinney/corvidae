@@ -64,19 +64,42 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     expect(after.values['durableOwnership.ownership']).not.toBe('none');
   });
 
-  // COR-1858: a remote home keeps its secrets in the environment, so hooks, which hold a signing
-  // secret each, are off there and the Hooks pages say so.
-  test('leaves hooks off, and answers the hooks operations as a Bureau without them', async () => {
+  // COR-1978: a remote home keeps its secrets in the environment, so it refuses a hook that would
+  // hold a signing secret here, and refuses an address on the deployment's own network. A hook that
+  // holds no secret works.
+  test('turns hooks on, without signing secrets or private-network addresses', async () => {
     const host = await start();
+    const call = async (method: string, params: Record<string, unknown>) => {
+      const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: method, method, params }),
+      });
+      return (await response.json()) as {
+        result?: { id?: string };
+        error?: { data?: { weftCode?: string; reason?: string } };
+      };
+    };
+    expect(host.bureau.hooks).toBeDefined();
 
-    expect(host.bureau.hooks).toBeUndefined();
-    const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.hooks.list', params: {} }),
+    const notify = await call('bureau.hooks.create', {
+      events: ['review.requested'],
+      action: { type: 'notify' },
     });
-    const body = (await response.json()) as { error?: { data?: { weftCode?: string } } };
-    expect(body.error?.data?.['weftCode']).toBe('UnsupportedCapability');
+    expect(notify.error).toBeUndefined();
+
+    const webhook = { events: ['review.requested'], signingSecret: 'a-secret-of-twenty-chars' };
+    const locked = await call('bureau.hooks.create', {
+      ...webhook,
+      action: { type: 'webhook', url: 'https://receiver.example/hook' },
+    });
+    expect(locked.error?.data?.reason).toBe('deployment');
+
+    const privateAddress = await call('bureau.hooks.create', {
+      ...webhook,
+      action: { type: 'webhook', url: 'http://10.0.0.8/hook' },
+    });
+    expect(privateAddress.error?.data?.weftCode).toBe('InvalidParams');
   });
 
   // COR-1797: the other restart-applied settings the overlap depends on.

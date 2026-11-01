@@ -6,6 +6,9 @@
  * a `webhook` sends the event, signed, to a URL; `start-workflow` starts a workflow; `notify` writes
  * the owner a notification. A hook of an action kind a plugin contributes reads as `plugin`. The
  * signing secret is write-only: it goes out with `create` or `update` and no answer carries it back.
+ * A hook may name one agent, workflow or schedule as its `scope`, and then fires only for events
+ * about that subject; the Bureau decides what an event is about, and a list carries each hook's
+ * newest delivery so a page needs no read per hook.
  *
  * `update` names the revision of the hook the caller read, so a hook that changed since is refused
  * (`StaleRevision`) instead of being overwritten.
@@ -44,19 +47,42 @@ export const HOOK_ACTION_TYPES = ['webhook', 'start-workflow', 'notify'] as cons
 /** An action a person can write. */
 export type HookActionType = (typeof HOOK_ACTION_TYPES)[number];
 
+/** Every kind of subject a hook can be scoped to. */
+export const HOOK_SCOPE_KINDS = ['agent', 'workflow', 'schedule'] as const;
+
+/** A kind of subject a hook can be scoped to. */
+export type HookScopeKind = (typeof HOOK_SCOPE_KINDS)[number];
+
+/** The one subject a hook is asked to fire for. */
+export type HookScopeInput = {
+  /** What `id` names. */
+  readonly kind: HookScopeKind;
+  /** The agent's name, the workflow's identifier, or the schedule's id. */
+  readonly id: string;
+};
+
+const scopeSchema = z.object({ kind: z.string(), id: z.string() });
+
+/**
+ * The one subject a hook fires for, as the Bureau holds it. `kind` is a string, not the enum: a home
+ * on a newer release may hold a kind this page does not know, and one hook must not fail the list.
+ */
+export type HookScope = z.infer<typeof scopeSchema>;
+
 const hookSchema = z.object({
   id: z.string(),
   owner: z.string(),
   name: z.string().nullable(),
   action: actionSchema,
   events: z.array(z.string()),
+  scope: scopeSchema.nullable(),
   enabled: z.boolean(),
   createdAt: z.number(),
   updatedAt: z.number(),
   revision: z.number().int(),
 });
 
-/** One hook as `bureau.hooks.list`, `get`, `create` and `update` show it. */
+/** One hook as `bureau.hooks.get`, `create` and `update` show it. */
 export type Hook = z.infer<typeof hookSchema>;
 
 const attemptSchema = z.object({
@@ -109,11 +135,42 @@ const deliverySchema = z.object({
 /** One delivery of one event to a hook: where it stands and every attempt made. */
 export type HookDelivery = z.infer<typeof deliverySchema>;
 
-/** The caller's hooks, oldest first. */
-export async function listHooks(options?: Options): Promise<Hook[]> {
+const deliverySummarySchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  test: z.boolean(),
+  status: z.enum(HOOK_DELIVERY_STATUSES),
+  lastAttempt: attemptSchema
+    .pick({
+      number: true,
+      startedAt: true,
+      finishedAt: true,
+      outcome: true,
+      status: true,
+      error: true,
+    })
+    .nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+/** A hook's newest delivery as a list shows it: where it stands and how its last attempt ended. */
+export type HookDeliverySummary = z.infer<typeof deliverySummarySchema>;
+
+const listedHookSchema = hookSchema.extend({ lastDelivery: deliverySummarySchema.nullable() });
+
+/** One hook as `bureau.hooks.list` shows it, with its newest delivery. */
+export type ListedHook = z.infer<typeof listedHookSchema>;
+
+/** The caller's hooks, oldest first; `scope` narrows them to the hooks of exactly that subject. */
+export async function listHooks(
+  filter?: { readonly scope?: HookScopeInput },
+  options?: Options,
+): Promise<ListedHook[]> {
+  const params = filter?.scope === undefined ? {} : { scope: filter.scope };
   const answer = z
-    .object({ hooks: z.array(hookSchema) })
-    .parse(await callBureau('bureau.hooks.list', {}, options));
+    .object({ hooks: z.array(listedHookSchema) })
+    .parse(await callBureau('bureau.hooks.list', params, options));
   return answer.hooks;
 }
 
@@ -128,6 +185,8 @@ export type HookInput = {
   readonly name?: string;
   /** The event kinds the hook listens to; at least one, at most 64. */
   readonly events: readonly string[];
+  /** The one subject the hook fires for; left out, it fires for its events everywhere. */
+  readonly scope?: HookScopeInput;
   /** What the hook does for each event. */
   readonly action:
     | { readonly type: 'webhook'; readonly url: string }
@@ -160,6 +219,8 @@ export type HookChange = {
   readonly name?: string | null;
   /** The new event kinds, replacing the list. */
   readonly events?: readonly string[];
+  /** A new subject, or `null` so the hook fires for its events everywhere. */
+  readonly scope?: HookScopeInput | null;
   /** The action again, with new fields; its type is the hook's own. */
   readonly action?: HookInput['action'];
   /** A new signing secret, which replaces the old one. Never returned. */
@@ -212,6 +273,7 @@ const catalogSchema = z.object({
       kind: z.string(),
       description: z.string(),
       origin: z.enum(['run', 'external', 'unattributed']),
+      scopes: z.array(z.enum(HOOK_SCOPE_KINDS)),
     }),
   ),
 });

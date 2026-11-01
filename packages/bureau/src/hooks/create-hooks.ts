@@ -59,6 +59,16 @@
  * to create or change a hook. Events that happen while the Bureau is down are not replayed;
  * deliveries already created are resumed.
  *
+ * ## Scope
+ *
+ * A hook may name one subject, an agent, a workflow or a schedule, as `scope` (COR-1978), and then
+ * fires only for events about that subject. What an event is about is read from the event and the
+ * Bureau's own records as it is dispatched (`hook-scope.ts`). An event outside the scope makes no
+ * delivery, and an event the Bureau cannot place is outside it. A hook with no scope fires as it
+ * always has. Every kind a scoped hook lists must be one the scope can be told by
+ * (`BureauEventCatalogEntry.scopes`); `create` and `update` refuse any other, so a scope never
+ * silently misses a kind the hook asked for.
+ *
  * @module create-hooks
  */
 
@@ -85,6 +95,7 @@ import {
   type Stored,
 } from './hook-store.ts';
 import {
+  HOOK_SCOPE_KINDS,
   HookActionError,
   type HookActionKindRegistration,
   HookError,
@@ -93,11 +104,21 @@ import {
   type HookAction,
   type HookDelivery,
   type HookDeliveryRecord,
+  type HookDeliverySummary,
   type HookRecord,
+  type HookScope,
+  type HookScopeKind,
   type HookSecretStore,
   type HookWorkflowInput,
+  type ListedHook,
 } from './hook-types.ts';
 import { hookOriginTag, runOfPayload } from './hook-origin.ts';
+import {
+  type HookEventSubjects,
+  type HookSubjectSources,
+  scopeMatches,
+  subjectsOfPayload,
+} from './hook-scope.ts';
 import { type HookUrlPolicy, hookUrlDefect } from './hook-url-policy.ts';
 import type { EncryptedValue } from '@lostgradient/cryptography';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
@@ -113,6 +134,9 @@ export const HOOK_SECRET_MINIMUM_LENGTH = 16;
 export const HOOK_SECRET_MAXIMUM_LENGTH = 256;
 
 const NAME_MAXIMUM_LENGTH = 100;
+
+/** The longest subject a scope may name, the longest workflow identifier a hook may name. */
+const SCOPE_ID_MAXIMUM_LENGTH = 256;
 
 /** How long dispatch keeps the hooks it read. */
 const HOOK_CACHE_MILLISECONDS = 5_000;
@@ -151,6 +175,14 @@ export type HookActionInput =
       readonly configuration?: unknown;
     };
 
+/** The one subject a hook fires for, as `hooks.create` and `hooks.update` take it. */
+export interface HookScopeInput {
+  /** What `id` names. */
+  readonly kind: HookScopeKind;
+  /** The agent's name, the workflow's identifier, or the schedule's id; 1 to 256 characters. */
+  readonly id: string;
+}
+
 /** What `hooks.create` takes. Name the action with `action`, or with `url` for a webhook. */
 export interface HookCreateInput {
   /** A webhook's URL: shorthand for `action: { type: 'webhook', url }`. Give this or `action`, not both. */
@@ -159,6 +191,8 @@ export interface HookCreateInput {
   readonly action?: HookActionInput;
   /** The published Bureau event kinds the hook fires on. */
   readonly events: readonly string[];
+  /** The one subject the hook fires for; every kind in `events` must be one it can be told by. Omitted, it fires for the whole Bureau. */
+  readonly scope?: HookScopeInput;
   /** The secret webhook deliveries are signed with, 16 to 256 characters. Required for a webhook and refused otherwise. Sealed on arrival; never returned. */
   readonly signingSecret?: string;
   /** A label, at most 100 characters. */
@@ -177,6 +211,8 @@ export interface HookUpdateInput {
   readonly action?: HookActionInput;
   /** The new event kinds, replacing the list. */
   readonly events?: readonly string[];
+  /** A new subject, or `null` so the hook fires for the whole Bureau again. */
+  readonly scope?: HookScopeInput | null;
   /** A new signing secret, sealed on arrival; never returned. A webhook hook only. */
   readonly signingSecret?: string;
   /** A new label, or `null` to remove it. */
@@ -205,8 +241,14 @@ export interface BureauHooks {
   delete(hookId: string, options?: HookCallOptions): Promise<boolean>;
   /** One hook, or `undefined`. */
   get(hookId: string): Promise<Hook | undefined>;
-  /** Every hook, oldest first; `owner` narrows to one owner's. */
-  list(filter?: { readonly owner?: string }): Promise<readonly Hook[]>;
+  /**
+   * Every hook, oldest first, each with its newest delivery: `owner` narrows to one owner's, and
+   * `scope` to the hooks scoped to exactly that subject.
+   */
+  list(filter?: {
+    readonly owner?: string;
+    readonly scope?: HookScope;
+  }): Promise<readonly ListedHook[]>;
   /**
    * Sends one signed `hook.test` delivery to the hook and resolves with its record once the one
    * attempt has ended. A test is not retried. It works on a disabled hook. Resolves `undefined`
@@ -249,6 +291,11 @@ export interface HooksDependencies {
    * so hooks cannot chain. It may throw; the event is then treated as a hook's own.
    */
   readonly startedByHook?: ((runId: string) => Promise<string | undefined>) | undefined;
+  /**
+   * The Bureau's records a hook's scope is matched against, read only when a scoped hook lists the
+   * event's kind. Omitted, a scope matches what the event's own payload says and nothing further.
+   */
+  readonly subjects?: HookSubjectSources | undefined;
   /** How long one request may take. */
   readonly requestTimeoutMilliseconds?: number | undefined;
   /**
@@ -279,7 +326,8 @@ export interface CreatedHooks {
   /** `Bureau.hooks`. */
   readonly hooks: BureauHooks;
   /**
-   * Delivers a published event to every enabled hook that lists its kind. Never throws. Until
+   * Delivers a published event to every enabled hook that lists its kind and whose scope, if it has
+   * one, is the event's subject. Never throws. Until
    * {@link CreatedHooks.resume} is first called the event is held, not delivered (see `resume`).
    */
   dispatch(envelope: BureauEventEnvelope): void;
@@ -308,6 +356,36 @@ function viewOf(record: HookRecord): Hook {
 function deliveryViewOf(record: HookDeliveryRecord): HookDelivery {
   const { version: _version, leaseUntil: _lease, revision: _revision, ...delivery } = record;
   return delivery;
+}
+
+/** A delivery as `hooks.list` shows it: where it stands, and how its last attempt ended. */
+function deliverySummaryOf(record: HookDeliveryRecord): HookDeliverySummary {
+  const last = record.attempts.at(-1);
+  return {
+    id: record.id,
+    kind: record.kind,
+    test: record.test,
+    status: record.status,
+    ...(last === undefined
+      ? {}
+      : {
+          lastAttempt: {
+            number: last.number,
+            startedAt: last.startedAt,
+            outcome: last.outcome,
+            ...(last.finishedAt === undefined ? {} : { finishedAt: last.finishedAt }),
+            ...(last.status === undefined ? {} : { status: last.status }),
+            ...(last.error === undefined ? {} : { error: last.error }),
+          },
+        }),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+/** Whether `a` is a later delivery than `b`, in the order `hooks.deliveries` lists them. */
+function isNewerDelivery(a: HookDeliveryRecord, b: HookDeliveryRecord): boolean {
+  return a.createdAt > b.createdAt || (a.createdAt === b.createdAt && a.id > b.id);
 }
 
 function invalid(path: string | readonly string[], message: string): never {
@@ -438,6 +516,37 @@ function checkedAction(
         ['action', 'type'],
         'The action type must be "webhook", "start-workflow", "notify" or "plugin"',
       );
+  }
+}
+
+/** Checks and copies a scope; every other field of `input` is dropped. */
+function checkedScope(input: HookScopeInput): HookScope {
+  const { kind, id } = (input ?? {}) as Partial<HookScopeInput>;
+  if (typeof kind !== 'string' || !(HOOK_SCOPE_KINDS as readonly string[]).includes(kind)) {
+    invalid(['scope', 'kind'], `The scope must be one of: ${HOOK_SCOPE_KINDS.join(', ')}`);
+  }
+  if (typeof id !== 'string' || id.length === 0 || id.length > SCOPE_ID_MAXIMUM_LENGTH) {
+    invalid(['scope', 'id'], `The scope must name 1 to ${SCOPE_ID_MAXIMUM_LENGTH} characters`);
+  }
+  return { kind, id };
+}
+
+/** The kinds of subject an event of `kind` can be told by. A kind the catalog does not describe has none. */
+function scopesOfKind(kind: string): readonly string[] {
+  return Object.hasOwn(BUREAU_EVENT_CATALOG, kind)
+    ? BUREAU_EVENT_CATALOG[kind as keyof typeof BUREAU_EVENT_CATALOG].scopes
+    : [];
+}
+
+/** A scope that a listed kind cannot be told by would silently never fire for it, so it is refused. */
+function assertScopeFits(scope: HookScope | undefined, events: readonly string[]): void {
+  if (scope === undefined) return;
+  const unfit = events.filter((kind) => !scopesOfKind(kind).includes(scope.kind));
+  if (unfit.length > 0) {
+    invalid(
+      'scope',
+      `A hook scoped to a ${scope.kind} cannot fire on ${unfit.join(', ')}: ${unfit.length === 1 ? 'that event names' : 'those events name'} no ${scope.kind}`,
+    );
   }
 }
 
@@ -789,6 +898,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       // The caller owns `input`: every field is read and checked before the first await.
       const action = actionOfCreate(input);
       const events = checkedEvents(input.events);
+      const scope = input.scope === undefined ? undefined : checkedScope(input.scope);
       const secret = action.type === 'webhook' ? checkedSecret(input.signingSecret) : undefined;
       if (action.type !== 'webhook' && input.signingSecret !== undefined) {
         invalid('signingSecret', 'Only a webhook hook has a signing secret');
@@ -798,6 +908,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       const enabled = input.enabled ?? true;
       assertNoNotificationLoop(action, events);
       assertNoUnplacedStart(action, events);
+      assertScopeFits(scope, events);
       await assertActionAllowed(action, owner);
       const now = engine.now();
       const record: HookRecord = {
@@ -807,6 +918,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         ...(name === undefined ? {} : { name }),
         action,
         events,
+        ...(scope === undefined ? {} : { scope }),
         enabled,
         createdAt: now,
         updatedAt: now,
@@ -840,6 +952,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           ? undefined
           : checkedAction(input.action, urlPolicy, actionKinds);
       const events = input.events === undefined ? undefined : checkedEvents(input.events);
+      const scope =
+        input.scope === null || input.scope === undefined ? input.scope : checkedScope(input.scope);
       const secret =
         input.signingSecret === undefined ? undefined : checkedSecret(input.signingSecret);
       const name =
@@ -858,7 +972,8 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
           });
         }
         const nextName = name === undefined ? before.name : (name ?? undefined);
-        const { name: _previousName, ...withoutName } = before;
+        const nextScope = scope === undefined ? before.scope : (scope ?? undefined);
+        const { name: _previousName, scope: _previousScope, ...rest } = before;
         if (url !== undefined && before.action.type !== 'webhook') {
           invalid('url', 'Only a webhook hook has a URL');
         }
@@ -883,14 +998,18 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const nextEvents = events ?? before.events;
         assertNoNotificationLoop(action, nextEvents);
         assertNoUnplacedStart(action, nextEvents);
+        // Asked when either side changes, so a rename or a disable is never held up by a record
+        // whose scope this release cannot read.
+        if (scope !== undefined || events !== undefined) assertScopeFits(nextScope, nextEvents);
         // Authority is asked again only when the action is rewritten, so a rename or a disable is
         // never held up by a workflow that has since been paused.
         if (replacement !== undefined) await assertActionAllowed(action, before.owner);
         const after: HookRecord = {
-          ...withoutName,
+          ...rest,
           ...(nextName === undefined ? {} : { name: nextName }),
           action,
           events: nextEvents,
+          ...(nextScope === undefined ? {} : { scope: nextScope }),
           enabled: enabled ?? before.enabled,
           updatedAt: engine.now(),
           revision: before.revision + 1,
@@ -932,12 +1051,38 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       return stored === undefined ? undefined : viewOf(stored.record);
     },
     async list(filter) {
+      // The caller owns `filter`: every field is read before the first await.
       const owner = filter?.owner;
+      const scopeKind = filter?.scope?.kind;
+      const scopeId = filter?.scope?.id;
       const all = await store.listHooks();
-      return all
-        .filter((hook) => owner === undefined || hook.owner === owner)
-        .toSorted((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
-        .map(viewOf);
+      const listed = all
+        .filter(
+          (hook) =>
+            (owner === undefined || hook.owner === owner) &&
+            (scopeKind === undefined ||
+              (hook.scope?.kind === scopeKind && hook.scope.id === scopeId)),
+        )
+        .toSorted((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+      // One read of the delivery records for the whole answer, not one per hook.
+      const wanted = new Set(listed.map((hook) => hook.id));
+      const newest = new Map<string, HookDeliveryRecord>();
+      if (wanted.size > 0) {
+        for (const delivery of await store.listDeliveries()) {
+          if (!wanted.has(delivery.hookId)) continue;
+          const current = newest.get(delivery.hookId);
+          if (current === undefined || isNewerDelivery(delivery, current)) {
+            newest.set(delivery.hookId, delivery);
+          }
+        }
+      }
+      return listed.map((hook) => {
+        const last = newest.get(hook.id);
+        return {
+          ...viewOf(hook),
+          lastDelivery: last === undefined ? null : deliverySummaryOf(last),
+        };
+      });
     },
     async test(hookId, options) {
       const stored = await store.getHook(hookId);
@@ -989,6 +1134,24 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
     } catch (cause) {
       dependencies.diagnose('Could not tell whether a hook started a run', cause);
       return CHAIN_UNKNOWN;
+    }
+  }
+
+  /**
+   * The subjects of an event, or `undefined` when they cannot be read: every scoped hook then treats
+   * the event as outside its scope, so a failed lookup never fires a hook for someone else's subject.
+   */
+  async function subjectsOf(event: HookEventToDeliver): Promise<HookEventSubjects | undefined> {
+    const sources: HookSubjectSources = dependencies.subjects ?? {
+      run: async () => ({ agent: undefined, workflows: [], schedules: [] }),
+      agentOfSchedule: async () => undefined,
+      agentOfGoal: async () => undefined,
+    };
+    try {
+      return await subjectsOfPayload(event.payload, sources);
+    } catch (cause) {
+      dependencies.diagnose(`Could not tell what a ${event.kind} event is about`, cause);
+      return undefined;
     }
   }
 
@@ -1062,7 +1225,14 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         const runId = runOfPayload(event.payload);
         const origin = originOfKind(event.kind);
         let starter: Promise<string | undefined> | undefined;
+        let subjects: Promise<HookEventSubjects | undefined> | undefined;
         for (const hook of await matching(event.kind)) {
+          if (hook.scope !== undefined) {
+            // Asked once per event, and only when a scoped hook lists its kind.
+            subjects ??= subjectsOf(event);
+            const about = await subjects;
+            if (about === undefined || !scopeMatches(hook.scope, about)) continue;
+          }
           let skip: string | undefined;
           if (hook.action.type === 'start-workflow') {
             skip = placementSkipReason(origin, runId, hook, event);

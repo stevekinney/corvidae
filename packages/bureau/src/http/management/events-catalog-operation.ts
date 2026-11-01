@@ -14,6 +14,7 @@ import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { bureauEventCatalog } from '../../bureau-event-catalog.ts';
+import { HOOK_SCOPE_KINDS } from '../../hooks/hook-types.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 
 const catalogInput = z.object({});
@@ -40,6 +41,11 @@ const catalogOutput = z.object({
             }),
           )
           .describe('The fields of the event’s `payload`.'),
+        scopes: z
+          .array(z.enum(HOOK_SCOPE_KINDS))
+          .describe(
+            'The kinds of subject a hook that lists this kind may be scoped to; empty for a kind that is about no one subject.',
+          ),
       }),
     )
     .describe('Every published kind, in the order `bureau.events` documents them.'),
@@ -54,7 +60,7 @@ export const eventsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the published event kinds',
   description:
-    'Lists every Bureau event kind that `bureau.events` serves and a hook may match, each with a description, its origin (`run`, `external` or `unattributed`, which decides whether a `start-workflow` hook may list it) and the fields of its `payload`. It lists exactly the published kinds: a kind the Bureau publishes is described here. Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only and static; any authenticated caller may read it.',
+    'Lists every Bureau event kind that `bureau.events` serves and a hook may match, each with a description, its origin (`run`, `external` or `unattributed`, which decides whether a `start-workflow` hook may list it) the fields of its `payload`, and its `scopes`, the kinds of subject (`agent`, `workflow`, `schedule`) a hook that lists it may be scoped to. It lists exactly the published kinds: a kind the Bureau publishes is described here. Weft’s own events are not part of it: the feed carries Weft’s `ScheduleMissedFire` as `schedule.missed` and nothing else of Weft’s. Read-only and static; any authenticated caller may read it.',
   destructive: false,
   tags: ['Events'],
   inputSchema: catalogInput,
@@ -71,6 +77,7 @@ export const eventsCatalogOperation = defineOperation<
         description: entry.description,
         origin: entry.origin,
         payload: entry.payload.map((field) => ({ ...field })),
+        scopes: [...entry.scopes],
       })),
     }),
 });

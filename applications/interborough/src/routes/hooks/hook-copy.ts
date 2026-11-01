@@ -12,19 +12,29 @@ export const HOOKS_COPY = {
   searchLabel: 'Search hooks',
   anyEvent: 'Any event',
   eventFilter: 'Event',
+  anyAgent: 'Any agent',
+  agentFilter: 'Agent',
   clearAction: 'Clear filters',
   /** How many hooks the page lists, as a sentence. */
   count: (count: number): string => `${String(count)} ${count === 1 ? 'hook' : 'hooks'}`,
   caption: 'Hooks',
   hookColumn: 'Hook',
+  onlyForColumn: 'Only for',
+  /** The Only for cell of a hook. */
+  onlyFor: {
+    everything: 'Everything',
+    agent: (id: string): string => `Agent ${id}`,
+    workflow: (id: string): string => `Workflow ${id}`,
+    schedule: (id: string): string => `Schedule ${id}`,
+    /** A subject of a kind this page does not know: a home on a newer release can hold one. */
+    other: (kind: string, id: string): string => `${kind} ${id}`.trim(),
+  },
   lastDeliveryColumn: 'Last delivery',
   onColumn: 'On',
   onState: 'On',
   offState: 'Off',
   /** The cell of a hook that has had no delivery. */
   noDelivery: 'Nothing sent yet',
-  /** The cell of a hook whose delivery was not read, because the page reads only so many. */
-  deliveryNotRead: 'Not read',
   /** The accessible name of a hook's On switch. */
   toggleLabel: (sentence: string): string => `On: ${sentence}`,
   toggleFailed: 'The hook was not changed',
@@ -36,8 +46,13 @@ export const HOOKS_COPY = {
   /** What a home that keeps hooks off says in place of the page. */
   unavailable: {
     title: 'Hooks are off on this home',
-    description:
-      'This home keeps its secrets in its environment, so a hook with a signing secret cannot be written here. Hooks work on a home that runs on your own machine.',
+    description: 'This home was started without hooks, so there is nothing to set up here.',
+  },
+  /** The Hooks tab of an agent's page: the hooks scoped to that agent. */
+  agentTab: {
+    loadFailed: 'These hooks could not be loaded.',
+    emptyTitle: 'No hooks for this agent yet',
+    emptyDescription: 'A hook here runs only for what this agent does.',
   },
   /** The pieces a hook is read from, as a sentence: "When X, send a signed message to Y". */
   sentence: {
@@ -51,6 +66,11 @@ export const HOOKS_COPY = {
     startWorkflowUnset: 'start a workflow',
     notify: 'notify me',
     plugin: (plugin: string, kind: string): string => `run ${kind} from ${plugin}`,
+    /** What a hook's scope adds after its events. */
+    agent: (id: string): string => `for the agent ${id}`,
+    workflow: (id: string): string => `for the workflow ${id}`,
+    schedule: (id: string): string => `for the schedule ${id}`,
+    other: (kind: string, id: string): string => `for the ${kind} ${id}`,
   },
   /** The editor's page. */
   editor: {
@@ -89,9 +109,32 @@ export const HOOKS_COPY = {
       workflowLoop:
         'A workflow hook cannot listen to this: the workflow it starts could cause the event again.',
     },
+    onlyFor: {
+      label: 'Only for',
+      description: 'Run this hook for one of these, or for everything.',
+      everything: 'Everything',
+      /** Why nothing is offered: the events chosen are about the whole system. */
+      none: 'These events are about the whole system, so this hook runs for all of them.',
+      /** Why a kind already on the hook cannot stay, once the events changed. */
+      refused:
+        'One of these events cannot tell what this is limited to. Remove the event, or choose Everything.',
+      loadFailed: 'The choices could not be read.',
+      /** The kind a hook holds that this page does not know: shown, never offered. */
+      unknownKind: (kind: string): string => `${kind} (not editable here)`,
+      kinds: { agent: 'One agent', workflow: 'One workflow', schedule: 'One schedule' },
+      subject: {
+        agent: 'Agent',
+        workflow: 'Workflow',
+        schedule: 'Schedule',
+      },
+      placeholder: 'Choose one',
+    },
     action: {
       label: 'Do this',
       choose: 'What the hook does for each event.',
+      /** Why a remote home does not offer a signed message: it cannot hold a signing secret. */
+      chooseRemote:
+        'What the hook does for each event. This home keeps its secrets in its environment, so it cannot send a signed message.',
       fixed: 'The kind of action is fixed once a hook is made.',
       webhook: 'Send a signed message to a web address',
       startWorkflow: 'Start a workflow',

@@ -89,6 +89,25 @@ export interface HookActionKindRegistration {
 export type HookAction =
   WebhookHookAction | StartWorkflowHookAction | NotifyHookAction | PluginHookAction;
 
+/** Every kind of subject a hook can be scoped to, in the order the catalog and the wire list them. */
+export const HOOK_SCOPE_KINDS = ['agent', 'workflow', 'schedule'] as const;
+
+/** A kind of subject a hook can be scoped to. See {@link HOOK_SCOPE_KINDS}. */
+export type HookScopeKind = (typeof HOOK_SCOPE_KINDS)[number];
+
+/**
+ * The one subject a hook fires for (COR-1978): an agent by name, a workflow file by identifier, or
+ * a schedule by id. `create` and `update` take a {@link HookScopeKind} only; `kind` is a string here
+ * because a record is read as stored, and a kind this release does not know stays on the record and
+ * never fires (see `hook-scope.ts`).
+ */
+export interface HookScope {
+  /** What `id` names: one of {@link HOOK_SCOPE_KINDS} on any record this release wrote. */
+  readonly kind: string;
+  /** The agent's name, the workflow's identifier, or the schedule's id. */
+  readonly id: string;
+}
+
 /** A hook: when a published Bureau event of one of `events` happens, its `action` runs. */
 export interface Hook {
   /** The hook's identifier, minted by the Bureau. */
@@ -101,6 +120,11 @@ export interface Hook {
   readonly action: HookAction;
   /** The published Bureau event kinds the hook fires on; never empty. */
   readonly events: readonly string[];
+  /**
+   * The one subject the hook fires for. Absent, it fires for its events across the whole Bureau, as
+   * every hook stored before scopes existed does.
+   */
+  readonly scope?: HookScope;
   /** Whether the hook fires. A disabled hook keeps its secret and its delivery records. */
   readonly enabled: boolean;
   /** Epoch milliseconds the hook was created. */
@@ -117,8 +141,12 @@ export interface Hook {
  * rewritten.
  */
 export interface HookRecord extends Hook {
-  /** The stored shape's version. */
-  readonly version: 1;
+  /**
+   * The stored shape's version: 2 when the record has a `scope`, so a release that predates scopes
+   * refuses it instead of firing it for the whole Bureau, and 1 otherwise. The store sets it on
+   * every write.
+   */
+  readonly version: 1 | 2;
 }
 
 /** What one attempt to deliver came to. */
@@ -261,6 +289,36 @@ export interface HookDelivery {
   readonly createdAt: number;
   /** Epoch milliseconds the delivery was last changed. */
   readonly updatedAt: number;
+}
+
+/** The last attempt of a delivery as `hooks.list` shows it: how it ended, without the response body. */
+export type HookDeliverySummaryAttempt = Pick<
+  HookDeliveryAttempt,
+  'number' | 'startedAt' | 'finishedAt' | 'outcome' | 'status' | 'error'
+>;
+
+/** A hook's newest delivery as `hooks.list` shows it: where it stands, without its request or work. */
+export interface HookDeliverySummary {
+  /** The delivery's identifier. */
+  readonly id: string;
+  /** The event kind delivered, or `hook.test` for a test delivery. */
+  readonly kind: string;
+  /** Whether this is a `hooks.test` delivery. */
+  readonly test: boolean;
+  /** Where the delivery stands. */
+  readonly status: HookDeliveryStatus;
+  /** The attempt made last; absent before the first. */
+  readonly lastAttempt?: HookDeliverySummaryAttempt;
+  /** Epoch milliseconds the delivery was created. */
+  readonly createdAt: number;
+  /** Epoch milliseconds the delivery was last changed. */
+  readonly updatedAt: number;
+}
+
+/** A hook as `hooks.list` answers it, with its newest delivery. */
+export interface ListedHook extends Hook {
+  /** The hook's newest delivery, a test included; `null` when it has none. */
+  readonly lastDelivery: HookDeliverySummary | null;
 }
 
 /** The record under which a delivery is stored. */

@@ -81,6 +81,8 @@ const HOOK = {
   name: null,
   action: { type: 'notify', title: null },
   events: ['review.requested'],
+  scope: null,
+  lastDelivery: null,
   enabled: true,
   createdAt: 1,
   updatedAt: 1,

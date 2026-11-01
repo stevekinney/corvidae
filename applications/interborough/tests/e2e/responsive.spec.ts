@@ -111,6 +111,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/agents/:agent (instructions tab)': /iiiiiiiiii/,
   // The skills load last, and the seeded long-named one is among them.
   '/agents/:agent (access tab)': /responsive-skill-kkkkkkkk/,
+  '/agents/:agent (hooks tab)': /for the agent/,
   '/agents/:agent (settings tab)': /Version 1/,
   // Only the form prints this heading; the long word is in the textarea, which the text does not include.
   '/agents/:agent/edit': /Guardrails and limits/,
@@ -524,6 +525,13 @@ test.beforeAll(async ({ playwright }) => {
     })) as { id: string };
     // Nothing listens on the address, so the test delivery fails: a failing hook, with a long error.
     await bureauCall(request, 'bureau.hooks.test', { hookId: hook.id });
+    // The agent page's Hooks tab lists what is limited to that agent.
+    await bureauCall(request, 'bureau.hooks.create', {
+      name: LONG_HOOK_NAME,
+      events: ['review.requested'],
+      scope: { kind: 'agent', id: INSTRUCTIONS_AGENT_ID },
+      action: { type: 'notify' },
+    });
     const seed: ResponsiveSeed = {
       chat: CHAT_THREAD,
       agent: AGENT_ID,

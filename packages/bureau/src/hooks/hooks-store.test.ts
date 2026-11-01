@@ -72,7 +72,7 @@ describe('hook records', () => {
     });
     expect(Object.keys(created)).not.toContain('signingSecret');
     expect(await hooks.get(created.id)).toEqual(created);
-    expect(await hooks.list()).toEqual([created]);
+    expect(await hooks.list()).toEqual([{ ...created, lastDelivery: null }]);
     expect(await hooks.list({ owner: 'api-key:bob' })).toEqual([]);
 
     const updated = await hooks.update(created.id, {

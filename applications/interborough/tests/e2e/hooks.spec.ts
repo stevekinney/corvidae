@@ -4,7 +4,8 @@
  * signed, and a real event (a chat starting) reaches it too, and both deliveries show beside the
  * editor. The list reads each hook as a sentence, puts a failing hook first, and turns a hook off
  * with its switch. Hooks is in the sidebar, and `g` then `h` opens it. The pages pass axe at the
- * two widths.
+ * two widths. A hook limited to an agent in Only for fires for that agent and not another
+ * (COR-1978), and is listed on that agent's Hooks tab.
  */
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -149,6 +150,48 @@ test('fires for a real event, and shows that delivery beside the test', async ({
     const deliveries = page.getByTestId('hook-deliveries');
     await expect(deliveries.getByText('Chat created')).toBeVisible();
     await expect(deliveries.getByText('Answered 200').first()).toBeVisible();
+  } finally {
+    await deleteChats([thread]);
+  }
+});
+
+test('limits a hook to one agent with Only for: it fires for that agent, and its tab lists it', async ({
+  page,
+  request,
+}) => {
+  const name = `${PREFIX} only for`;
+  const other = await bureauCall(request, 'bureau.hooks.create', {
+    name: `${PREFIX} only for another`,
+    events: ['session.created'],
+    scope: { kind: 'agent', id: 'an-agent-that-never-runs' },
+    action: { type: 'notify' },
+  });
+  await page.goto('/hooks/new');
+  await chooseEvent(page, 'chat created', 'Chat created');
+  await page.getByLabel(copy.onlyFor.label).selectOption('agent');
+  const subject = page.getByLabel(copy.onlyFor.subject.agent, { exact: true });
+  await expect(subject.locator(`option[value="${TEXT_ECHO_AGENT_NAME}"]`)).toBeAttached();
+  await subject.selectOption(TEXT_ECHO_AGENT_NAME);
+  await page.getByLabel(copy.webhook.urlLabel).fill(receiverUrl);
+  await page.getByLabel(copy.webhook.secretLabel).fill(SECRET);
+  await page.getByLabel(copy.check.nameLabel).fill(name);
+  await expect(page.getByTestId('hook-sentence')).toContainText(
+    `for the agent ${TEXT_ECHO_AGENT_NAME}`,
+  );
+  await page.getByRole('button', { name: copy.check.create }).click();
+  await expect(page.getByRole('heading', { level: 1, name: copy.editTitle })).toBeVisible();
+
+  const thread = newThreadId('hooks-only-for');
+  try {
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, thread, 'Say something');
+    await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}?tab=hooks`);
+    const row = page.getByTestId('agent-hooks').getByRole('row', { name: new RegExp(name) });
+    await expect(row.getByText('Answered 200')).toBeVisible();
+
+    const { deliveries } = (await bureauCall(request, 'bureau.hooks.deliveries', {
+      hookId: (other as { id: string }).id,
+    })) as { deliveries: unknown[] };
+    expect(deliveries).toEqual([]);
   } finally {
     await deleteChats([thread]);
   }

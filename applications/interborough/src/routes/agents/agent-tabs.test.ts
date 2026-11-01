@@ -1,10 +1,12 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { RETRY_LABEL } from '../../app/copy.ts';
 import { readyAgent, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, CONTEXT, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
+import { HOOKS_COPY } from '../hooks/hook-copy.ts';
 import { chatListRequest, DEFAULT_CHAT_FILTERS } from './agent-chat-filters.ts';
 import AgentDetail from './agent-detail.svelte';
 
@@ -254,6 +256,84 @@ describe('the Instructions tab', () => {
     const body = await findByTestId('agent-instructions-body');
     expect(body.textContent).toContain('Answer every message.');
     expect(queryByRole('link', { name: 'Edit' })).toBeNull();
+  });
+});
+
+describe('the Hooks tab', () => {
+  const HOOK = {
+    id: 'hook-1',
+    owner: 'anonymous:local',
+    name: null,
+    action: { type: 'notify', title: null },
+    events: ['review.requested'],
+    scope: { kind: 'agent', id: 'researcher' },
+    enabled: true,
+    createdAt: 1,
+    updatedAt: 1,
+    revision: 1,
+    lastDelivery: null,
+  };
+
+  test('lists the hooks the Bureau holds for this agent, and New hook starts one limited to it', async () => {
+    const served = serve({ 'bureau.hooks.list': () => ({ hooks: [HOOK] }) });
+    landAt('/agents/researcher?tab=hooks');
+    const view = mount();
+
+    await view.findByRole('link', {
+      name: 'When Review requested for the agent researcher, notify me',
+    });
+    expect(served.calls.find((call) => call.method === 'bureau.hooks.list')?.params).toEqual({
+      scope: { kind: 'agent', id: 'researcher' },
+    });
+    const newHook = view.getByRole('link', { name: HOOKS_COPY.newAction });
+    expect(newHook.getAttribute('href')).toContain('/hooks/new?agent=researcher');
+
+    // A click meant for a new tab is the browser's to follow.
+    await fireEvent.click(newHook, { metaKey: true });
+    expect(router.pathname).toBe('/agents/researcher');
+    await fireEvent.click(newHook);
+    await waitFor(() => expect(router.pathname).toBe('/hooks/new'));
+    expect(router.search.get('agent')).toBe('researcher');
+  });
+
+  test('says an agent with no hooks has none, with New hook as the action', async () => {
+    serve({ 'bureau.hooks.list': () => ({ hooks: [] }) });
+    landAt('/agents/researcher?tab=hooks');
+    const view = mount();
+
+    await view.findByRole('heading', { name: HOOKS_COPY.agentTab.emptyTitle });
+    expect(view.getByRole('link', { name: HOOKS_COPY.newAction })).not.toBeNull();
+  });
+
+  test('says a home with hooks off has none, and offers to read again when a read fails', async () => {
+    serve({
+      'bureau.hooks.list': () => {
+        throw new StubFault('UnsupportedCapability', 501, 'This Bureau has no hooks', {
+          capability: 'hooks',
+        });
+      },
+    });
+    landAt('/agents/researcher?tab=hooks');
+    const off = mount();
+    await off.findByRole('heading', { level: 2, name: HOOKS_COPY.unavailable.title });
+    cleanup();
+    restore?.();
+
+    let failing = true;
+    serve({
+      'bureau.hooks.list': () => {
+        if (failing) throw new StubFault('EngineFailure', 500, 'It broke.');
+        return { hooks: [HOOK] };
+      },
+    });
+    landAt('/agents/researcher?tab=hooks');
+    const view = mount();
+    await view.findByText(HOOKS_COPY.agentTab.loadFailed);
+    failing = false;
+    await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
+    await view.findByRole('link', {
+      name: 'When Review requested for the agent researcher, notify me',
+    });
   });
 });
 
