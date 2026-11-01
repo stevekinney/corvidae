@@ -6,8 +6,9 @@
  */
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 import { HttpClient } from '@lostgradient/weft';
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import type { ScheduleKind } from '../../lib/schedule-kinds.ts';
 import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
 import {
@@ -41,9 +42,12 @@ const FILE: WorkflowFileListing = {
 const target = (
   kind: ScheduleKind,
   status: 'active' | 'paused' | 'cancelled' = 'active',
-): ScheduleTarget => ({ schedule: { id: 's-1', revision: 3, status, nextFireAt: 1000 }, kind });
+): ScheduleTarget => ({ schedule: { id: 's-1', revision: 3, status }, kind });
 
 const client = new HttpClient({ baseUrl: 'http://localhost/api' });
+
+/** The run the person saw, in milliseconds since the epoch. */
+const OCCURRENCE = Date.parse('2030-01-01T09:00:00.000Z');
 
 describe('what a schedule can be asked to do', () => {
   test('an agent run and a code-defined schedule can be paused or resumed by status, edited, and cancelled', () => {
@@ -132,7 +136,7 @@ describe('a write that no service owns', () => {
 describe('the controls that skip and run', () => {
   test('are refused for a workflow file’s schedule and for one of no known kind', async () => {
     for (const kind of [{ kind: 'workflow-file', file: FILE }, { kind: 'unknown' }] as const) {
-      expect(await throwingRejectionOf(skipNextTarget(client, target(kind)))).toThrow(
+      expect(await throwingRejectionOf(skipNextTarget(client, target(kind), OCCURRENCE))).toThrow(
         'cannot be skipped',
       );
       expect(await throwingRejectionOf(runNowTarget(client, target(kind)))).toThrow(
@@ -163,11 +167,14 @@ describe('a write to an engine schedule that moved on after it was read', () => 
 
   test('is refused as stale for each write, and nothing is written', async () => {
     const moved = engineAt({ revision: 4, status: 'active' });
-    for (const write of [pauseTarget, resumeTarget, cancelTarget, skipNextTarget]) {
+    for (const write of [pauseTarget, resumeTarget, cancelTarget]) {
       expect(await rejectionOf(write(moved.client, target({ kind: 'code' })))).toBeInstanceOf(
         StaleScheduleError,
       );
     }
+    expect(
+      await rejectionOf(skipNextTarget(moved.client, target({ kind: 'code' }), OCCURRENCE)),
+    ).toBeInstanceOf(StaleScheduleError);
     expect(moved.calls).toEqual([]);
   });
 
@@ -181,16 +188,21 @@ describe('a write to an engine schedule that moved on after it was read', () => 
     }
   });
 
-  test('refuses a skip once a fire moved nextFireAt, though the revision did not move', async () => {
-    // A fire moves `nextFireAt` and leaves the revision, so the run the person chose is gone.
+  test('does not compare nextFireAt for a skip, which names its run and is fenced by the server', async () => {
+    // A fire moves `nextFireAt` and leaves the revision. The skip names the run the person saw, so
+    // the engine's own write refuses it when that run has passed; the page asks no second read.
     const fired = engineAt({ revision: 3, status: 'active', nextFireAt: 2000 });
-    expect(
-      await rejectionOf(skipNextTarget(fired.client, target({ kind: 'code' }))),
-    ).toBeInstanceOf(StaleScheduleError);
-    expect(fired.calls).toEqual([]);
-    // The same fire does not stop a pause, which names no run.
-    await pauseTarget(fired.client, target({ kind: 'code' }));
-    expect(fired.calls).toEqual(['pause s-1']);
+    const seen: unknown[] = [];
+    const restore = installFetchImplementation((_input, init) => {
+      seen.push(init?.body);
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    try {
+      await skipNextTarget(fired.client, target({ kind: 'code' }), OCCURRENCE);
+    } finally {
+      restore();
+    }
+    expect(seen).toEqual([JSON.stringify({ occurrence: OCCURRENCE })]);
   });
 
   test('is written when the schedule is the one that was read', async () => {
@@ -208,5 +220,58 @@ describe('the missed fires of a schedule', () => {
 
   test('are read from the engine for a schedule that runs a workflow', async () => {
     expect(await missedOf(engine, { id: 's-1', workflowType: 'order-processing' })).toEqual(rows);
+  });
+});
+
+describe('a skip the server refuses because the run it named is no longer the next one', () => {
+  let restore: (() => void) | undefined;
+  afterEach(() => {
+    restore?.();
+    restore = undefined;
+  });
+
+  test('is raised as stale for an engine schedule, from the REST body’s weftCode', async () => {
+    restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json(
+          {
+            error: 'Schedule "s-1" has its next run later.',
+            weftCode: 'ScheduleOccurrenceNotNextError',
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+
+    expect(
+      await rejectionOf(
+        skipNextTarget(
+          { ...engine, baseUrl: 'http://localhost/api', headers: {} } as unknown as HttpClient,
+          target({ kind: 'code' }),
+          OCCURRENCE,
+        ),
+      ),
+    ).toBeInstanceOf(StaleScheduleError);
+  });
+
+  test('stays the refusal it was for a skip the engine refuses for another reason', async () => {
+    restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json({ error: 'Schedule is paused', weftCode: 'Conflict' }, { status: 409 }),
+      ),
+    );
+    const engine = { getSchedule: () => Promise.resolve({ revision: 3, status: 'active' }) };
+
+    const refused = await rejectionOf(
+      skipNextTarget(
+        { ...engine, baseUrl: 'http://localhost/api', headers: {} } as unknown as HttpClient,
+        target({ kind: 'code' }),
+        OCCURRENCE,
+      ),
+    );
+
+    expect(refused).not.toBeInstanceOf(StaleScheduleError);
+    expect(refused).toMatchObject({ status: 409, message: 'Schedule is paused' });
   });
 });

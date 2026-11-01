@@ -73,7 +73,17 @@ export function createScheduleActions() {
   const pause = writer(pauseTarget, SCHEDULE_COPY.pauseFailed);
   const resume = writer(resumeTarget, SCHEDULE_COPY.resumeFailed);
   const cancel = writer(cancelTarget, SCHEDULE_COPY.cancelFailed);
-  const skipNext = writer(skipNextTarget, SCHEDULE_COPY.skipFailed);
+  /** A skip names the run the person saw, which the server compares inside its own write. */
+  const skipNext = createMutation(() => ({
+    mutationFn: ({ target, occurrence }: { target: ScheduleTarget; occurrence: number }) =>
+      skipNextTarget(client, target, occurrence),
+    onMutate: () => {
+      notice = null;
+    },
+    onSuccess: reload,
+    onError: (error: unknown, { target }: { target: ScheduleTarget; occurrence: number }) =>
+      answer(error, target, SCHEDULE_COPY.skipFailed),
+  }));
   const runNow = createMutation(() => ({
     mutationFn: (target: ScheduleTarget) => runNowTarget(client, target),
     onMutate: () => {

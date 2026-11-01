@@ -266,6 +266,11 @@ export const workflowFaults = {
       expectedRevision,
       currentRevision,
     }),
+  /** A skip that named a run that is no longer the schedule's next one, as the Bureau answers it. */
+  occurrenceNotNext: () =>
+    new StubFault('Conflict', 409, 'The occurrence changed after it was read; read it again.', {
+      reason: 'occurrence-not-next',
+    }),
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
   unavailable: () => new StubFault('Unavailable', 503, 'The engine did not answer.'),
@@ -524,6 +529,15 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
     'bureau.schedules.skipnext': (params) => {
       const schedule = bureauGuarded(params);
       if (schedule.status !== 'active') throw workflowFaults.notFound('an active schedule');
+      // A skip that names a run is refused when it is neither the next run nor the one already
+      // skipped, as the Bureau does inside its write.
+      const occurrence = params['occurrence'];
+      if (
+        typeof occurrence === 'string' &&
+        Date.parse(occurrence) !== (schedule.skipUntil ?? schedule.nextFireAt)
+      ) {
+        throw workflowFaults.occurrenceNotNext();
+      }
       if (schedule.nextFireAt !== null) schedule.skipUntil = schedule.nextFireAt;
       return receipt(schedule);
     },

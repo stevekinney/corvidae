@@ -93,14 +93,24 @@ test('Skip the next one marks exactly that run, and the mark survives a reload',
   const items = page.getByTestId('schedule-next-fires').locator('li');
   await expect(items).toHaveCount(5);
 
+  // The skip names the run the page showed, so a fire between the read and the write cannot make it
+  // take a different one.
+  const shown = Date.parse(
+    (await items.first().locator('time').getAttribute('datetime')) ?? 'not a time',
+  );
+  const skipRequest = page.waitForRequest(
+    (candidate) => candidate.method() === 'POST' && candidate.url().endsWith('/skip-next'),
+  );
   await page.getByRole('button', { name: 'Skip the next one' }).click();
+  const sent = await skipRequest;
+  expect(sent.postDataJSON()).toEqual({ occurrence: shown });
 
   await expect(items.first()).toHaveAttribute('data-skipped', 'true');
   await expect(items.nth(1)).toHaveAttribute('data-skipped', 'false');
   await expect(page.getByRole('button', { name: 'Skip the next one' })).toHaveCount(0);
   const read = await request.get(`/v1/schedules/${SCHEDULE_ID}`);
   const schedule = (await read.json()) as { skipUntil?: number };
-  expect(schedule.skipUntil).toBeGreaterThan(Date.now());
+  expect(schedule.skipUntil).toBe(shown);
 
   await page.reload();
   await expect(items.first()).toHaveAttribute('data-skipped', 'true');

@@ -10,7 +10,7 @@
  * most 500 characters), and names the agent (`agentName`). Both are `null` for the schedule of a
  * workflow file, because that runs no agent and sends no prompt.
  */
-import type { ScheduleSpec } from '@lostgradient/weft';
+import { HttpClientError, type ScheduleSpec } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { callBureau, type Fetcher } from './bureau-client.ts';
@@ -210,13 +210,34 @@ export async function updateAgentSchedule(
   return receiptSchema.parse(await callBureau('bureau.schedules.update', params, options));
 }
 
-/** Skips the next fire of an active schedule (`bureau.schedules.skipnext`), guarded by the revision the caller read. */
-export function skipNextAgentSchedule(
+/**
+ * Skips the fire the caller read (`bureau.schedules.skipnext`), guarded by the revision the caller
+ * read. A fire moves neither the revision nor the status, so the call also names the fire
+ * (`occurrence`, in milliseconds since the epoch, sent as the ISO 8601 instant the Bureau takes):
+ * when that is no longer the schedule's next fire the Bureau answers a `Conflict` whose
+ * `data.reason` is `occurrence-not-next` ({@link isOccurrenceNotNext}) and writes nothing.
+ */
+export async function skipNextAgentSchedule(
   scheduleId: string,
   expectedRevision: number | undefined,
+  occurrence: number,
   options?: Options,
 ): Promise<BureauScheduleReceipt> {
-  return guardedWrite('bureau.schedules.skipnext', scheduleId, expectedRevision, options);
+  const params = {
+    scheduleId,
+    occurrence: new Date(occurrence).toISOString(),
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
+  };
+  return receiptSchema.parse(await callBureau('bureau.schedules.skipnext', params, options));
+}
+
+/** Whether `error` is the Bureau's answer to a skip that named a fire that is no longer the next one. */
+export function isOccurrenceNotNext(error: unknown): boolean {
+  return (
+    error instanceof HttpClientError &&
+    error.data?.['weftCode'] === 'Conflict' &&
+    error.data['reason'] === 'occurrence-not-next'
+  );
 }
 
 const runNowSchema = z.discriminatedUnion('outcome', [

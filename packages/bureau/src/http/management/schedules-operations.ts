@@ -34,6 +34,7 @@ import {
   isValidTimeZone,
   type OperationFault,
   type Principal,
+  ScheduleOccurrenceNotNextError,
   type ScheduleSummary,
   ScheduleStaleRevisionError,
 } from '@lostgradient/weft';
@@ -225,6 +226,15 @@ function faultOf(error: unknown, scheduleId: string): never {
         expectedRevision: error.expectedRevision,
         currentRevision: error.currentRevision,
       },
+    } satisfies OperationFault;
+  }
+  // A fire moves neither the revision nor the status, so the run a skip named can have started
+  // since it was read (COR-1985). The reason tells this refusal from a paused or cancelled schedule.
+  if (error instanceof ScheduleOccurrenceNotNextError) {
+    throw {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: 'occurrence-not-next' },
     } satisfies OperationFault;
   }
   if (error instanceof UnknownScheduleAgentError) throw resourceNotFound('agent', error.agentName);
@@ -562,12 +572,61 @@ export const schedulesCancelOperation = defineGuardedWrite(
   (schedules, id, guard) => schedules.cancel(id, guard),
 );
 
-export const schedulesSkipNextOperation = defineGuardedWrite(
-  'bureau.schedules.skipnext',
-  'Skip the next fire of a schedule',
-  `Skips the next fire of an active schedule: the next fire that would start a task starts none, and the one after it runs as usual. That fire is the view’s \`skipUntil\` until the schedule moves past it; it is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. The skip leaves the schedule’s \`revision\` as it is, skipping again before that fire has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip. A paused or cancelled schedule has no next fire and is a \`Conflict\`. ${STALE_NOTE}`,
-  (schedules, id, guard) => schedules.skipNext(id, guard),
-);
+const skipNextInput = guardedInput.extend({
+  occurrence: z.iso
+    .datetime({ offset: true })
+    .optional()
+    .describe(
+      'The fire the caller means to skip, as an ISO 8601 instant: the view’s `skipUntil` or `nextFireAt` the caller read. When it is neither the schedule’s next fire that starts a task nor the fire already skipped, the call is a `Conflict` with `data.reason` `occurrence-not-next` and nothing is written. Left out, whichever fire is next is skipped.',
+    ),
+});
+
+export const schedulesSkipNextOperation = defineOperation<
+  typeof skipNextInput,
+  typeof receiptSchema,
+  BureauSchedulesOperationHost
+>({
+  name: 'bureau.schedules.skipnext',
+  mcpExposable: false,
+  summary: 'Skip the next fire of a schedule',
+  description: `Skips the next fire of an active schedule: the next fire that would start a task starts none, and the one after it runs as usual. That fire is the view’s \`skipUntil\` until the schedule moves past it; it is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. The skip leaves the schedule’s \`revision\` as it is, skipping again before that fire has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip. A fire moves neither the \`revision\` nor the \`status\`, so the fire a caller read can start before the skip is written: pass \`occurrence\`, the fire to skip as an ISO 8601 instant, and the skip is a \`Conflict\` (\`data.reason\` \`occurrence-not-next\`) when that is not the schedule’s next fire, or the one already skipped, as the write lands. An \`occurrence\` that is not an ISO 8601 instant, or is before 1970, is \`InvalidParams\`. A paused or cancelled schedule has no next fire and is a \`Conflict\` (\`data.reason\` \`schedule-not-active\`). ${STALE_NOTE}`,
+  destructive: true,
+  tags: ['Schedules'],
+  inputSchema: skipNextInput,
+  outputSchema: receiptSchema,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'Conflict',
+    'StaleRevision',
+    'UnsupportedCapability',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
+    const occurrence = input.occurrence === undefined ? undefined : Date.parse(input.occurrence);
+    if (occurrence !== undefined && (!Number.isSafeInteger(occurrence) || occurrence < 0)) {
+      throw invalidParams(
+        'occurrence',
+        '`occurrence` must be an ISO 8601 instant on or after 1970-01-01T00:00:00Z',
+      );
+    }
+    try {
+      const done = await host.schedules.skipNext(
+        input.scheduleId,
+        { expectedRevision: input.expectedRevision },
+        occurrence,
+      );
+      if (done === undefined) throw unsupported();
+    } catch (error) {
+      return faultOf(error, input.scheduleId);
+    }
+    return receiptOf(host, input.scheduleId);
+  },
+});
 
 const runNowInput = z.object({ scheduleId: scheduleIdentifier });
 const runNowOutput = z.discriminatedUnion('outcome', [

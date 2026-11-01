@@ -15,6 +15,7 @@
  */
 import {
   HttpClientError,
+  isWeftErrorCode,
   type Duration,
   type HttpClient,
   type PaginatedResult,
@@ -25,6 +26,7 @@ import {
   type ScheduleSpec,
   type ScheduleSummary,
   type ScheduleUpdateOptions,
+  type WeftErrorCode,
   type WorkflowSummary,
 } from '@lostgradient/weft';
 
@@ -186,32 +188,46 @@ export interface ScheduleControlClient {
 }
 
 /**
- * `POST /api/v1/schedules/:id/skip-next` ('weft.schedules.skipnext'): the next fire that would
- * start a run starts none. It answers `204` with no body, which the JSON-RPC operation client
- * reads as an invalid response, so this is the REST call, made with the client's own address and
- * headers. A refusal is an `HttpClientError`, as every other write of the client raises.
+ * `POST /api/v1/schedules/:id/skip-next` ('weft.schedules.skipnext'): skips the run the caller
+ * read. A fire moves neither the revision nor the status, so the body names that run
+ * (`occurrence`, in milliseconds since the epoch, the `nextFireAt` the page showed), and the engine
+ * refuses the skip when it is no longer the schedule's next run, as `ScheduleOccurrenceNotNextError`
+ * (`isWeftFault(error, 'ScheduleOccurrenceNotNextError')`). It answers `204` with no body, which the
+ * JSON-RPC operation client reads as an invalid response, so this is the REST call, made with the
+ * client's own address and headers. A refusal is an `HttpClientError`, as every other write of the
+ * client raises, carrying the `weftCode` the body names.
  */
 export async function skipNextSchedule(
   client: Pick<HttpClient, 'baseUrl' | 'headers'>,
   id: string,
+  occurrence: number,
 ): Promise<void> {
   const response = await fetch(
     `${client.baseUrl}/v1/schedules/${encodeURIComponent(id)}/skip-next`,
-    { method: 'POST', headers: client.headers },
+    {
+      method: 'POST',
+      headers: { ...client.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ occurrence }),
+    },
   );
   if (response.ok) return;
   let message = response.statusText;
   let data: Record<string, unknown> | undefined;
+  let weftCode: WeftErrorCode | undefined;
   try {
     const body: unknown = await response.json();
     if (isPlainObject(body)) {
       if (typeof body['error'] === 'string') message = body['error'];
+      if (isWeftErrorCode(body['weftCode'])) weftCode = body['weftCode'];
       data = body;
     }
   } catch {
     // A body that is not JSON leaves the status text as the message.
   }
-  throw new HttpClientError(response.status, message, data === undefined ? {} : { data });
+  throw new HttpClientError(response.status, message, {
+    ...(weftCode === undefined ? {} : { weftCode }),
+    ...(data === undefined ? {} : { data }),
+  });
 }
 
 /** `POST /api/v1/schedules/:id/run-now` (`weft.schedules.runnow`): one run now, under the schedule's overlap policy. */

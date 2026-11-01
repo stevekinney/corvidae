@@ -1,8 +1,10 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
   bureauSpecOf,
   createAgentSchedule,
+  isOccurrenceNotNext,
   listAgentScheduleMissed,
   listBureauSchedules,
   pauseAgentSchedule,
@@ -11,6 +13,7 @@ import {
   updateAgentSchedule,
 } from './bureau-schedules.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
+import { workflowFaults } from './workflow-world.test-support.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -116,18 +119,36 @@ describe('the Bureau’s schedules', () => {
 });
 
 describe('the controls of a Bureau schedule', () => {
-  test('skip the next fire naming the revision the caller read, and send none when there is none', async () => {
+  test('skip the fire the caller read, naming it as an ISO instant and the revision, and send no revision when there is none', async () => {
     stub = installBureauStub({
       'bureau.schedules.skipnext': () => ({ id: 's-1', status: 'active', revision: 3 }),
     });
+    const occurrence = Date.parse('2030-01-01T09:00:00.000Z');
 
-    await skipNextAgentSchedule('s-1', 3);
-    await skipNextAgentSchedule('s-1', undefined);
+    await skipNextAgentSchedule('s-1', 3, occurrence);
+    await skipNextAgentSchedule('s-1', undefined, occurrence);
 
     expect(stub.callsTo('bureau.schedules.skipnext').map((call) => call.params)).toEqual([
-      { scheduleId: 's-1', expectedRevision: 3 },
-      { scheduleId: 's-1' },
+      { scheduleId: 's-1', occurrence: '2030-01-01T09:00:00.000Z', expectedRevision: 3 },
+      { scheduleId: 's-1', occurrence: '2030-01-01T09:00:00.000Z' },
     ]);
+  });
+
+  test('a skip the Bureau refuses for naming a fire that is not the next one is told apart from any other Conflict', async () => {
+    stub = installBureauStub({
+      'bureau.schedules.skipnext': (params) => {
+        throw params['scheduleId'] === 's-1'
+          ? workflowFaults.occurrenceNotNext()
+          : workflowFaults.conflict('schedule-not-active');
+      },
+    });
+
+    const moved = await rejectionOf(skipNextAgentSchedule('s-1', 3, 1));
+    const paused = await rejectionOf(skipNextAgentSchedule('s-2', 3, 1));
+
+    expect(isOccurrenceNotNext(moved)).toBe(true);
+    expect(isOccurrenceNotNext(paused)).toBe(false);
+    expect(isOccurrenceNotNext(new Error('nope'))).toBe(false);
   });
 
   test('run now answers what the overlap policy did, with the run it started or the one in the way', async () => {

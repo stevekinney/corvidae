@@ -601,6 +601,15 @@ const schedule = await bureau.schedules.create({
   spec: '0 9 * * *',
 });
 if (schedule !== undefined) {
+  // A fire moves neither the revision nor the status, so a skip names the run the caller read:
+  // it is refused, and writes nothing, when that run is no longer the next one.
+  if (schedule.nextFireAt != null) {
+    await bureau.schedules.skipNext(
+      schedule.id,
+      { expectedRevision: schedule.revision },
+      schedule.nextFireAt,
+    );
+  }
   await bureau.schedules.pause(schedule.id, { expectedRevision: schedule.revision });
   console.log(await bureau.schedules.agentName(schedule.id));
 

@@ -122,6 +122,84 @@ describe('bureau.schedules.skipnext', () => {
     expect(unchanged['skipUntil']).toBeNull();
   });
 
+  it('skips the occurrence it names, and a repeat naming the same one changes nothing', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+    const seen = await viewOf(opened, id);
+    const occurrence = seen['nextFireAt'] as string;
+
+    const skipped = await rpc(
+      opened.handler,
+      'bureau.schedules.skipnext',
+      { scheduleId: id, occurrence },
+      'alice-key',
+    );
+    expect(skipped.result).toEqual({ id, status: 'active', revision: 1 });
+    const after = await viewOf(opened, id);
+    expect(after['skipUntil']).toBe(occurrence);
+
+    const again = await rpc(
+      opened.handler,
+      'bureau.schedules.skipnext',
+      { scheduleId: id, occurrence },
+      'alice-key',
+    );
+    expect(again.result).toEqual({ id, status: 'active', revision: 1 });
+  });
+
+  it('refuses an occurrence that is not the next run as Conflict occurrence-not-next, and writes nothing', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+    const seen = await viewOf(opened, id);
+    const next = Date.parse(seen['nextFireAt'] as string);
+
+    for (const moved of [next - 1, next + 3_600_000]) {
+      const refused = await rpc(
+        opened.handler,
+        'bureau.schedules.skipnext',
+        { scheduleId: id, occurrence: new Date(moved).toISOString() },
+        'alice-key',
+      );
+      expect([moved, status(refused)]).toEqual([moved, 409]);
+      expect(refused.error?.data?.['reason']).toBe('occurrence-not-next');
+    }
+    const unchanged = await viewOf(opened, id);
+    expect(unchanged['skipUntil']).toBeNull();
+  });
+
+  it('checks the revision before the occurrence', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+    const seen = await viewOf(opened, id);
+
+    const stale = await rpc(
+      opened.handler,
+      'bureau.schedules.skipnext',
+      { scheduleId: id, expectedRevision: 9, occurrence: seen['nextFireAt'] },
+      'alice-key',
+    );
+
+    expect(status(stale)).toBe(409);
+    expect(stale.error?.data).toMatchObject({ currentRevision: 1, expectedRevision: 9 });
+  });
+
+  it('answers an occurrence that is not an ISO 8601 instant, or is before 1970, as InvalidParams', async () => {
+    const opened = await serve();
+    const id = await createdBy(opened, 'alice-key');
+
+    for (const occurrence of ['soon', '1700000000000', '1969-12-31T23:59:59.000Z', 7]) {
+      const refused = await rpc(
+        opened.handler,
+        'bureau.schedules.skipnext',
+        { scheduleId: id, occurrence },
+        'alice-key',
+      );
+      expect([occurrence, status(refused)]).toEqual([occurrence, 400]);
+    }
+    const unchanged = await viewOf(opened, id);
+    expect(unchanged['skipUntil']).toBeNull();
+  });
+
   it('answers a paused or cancelled schedule as a Conflict, and ends a skip when the schedule is paused', async () => {
     const opened = await serve();
     const id = await createdBy(opened, 'alice-key');

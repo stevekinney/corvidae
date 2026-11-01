@@ -75,7 +75,7 @@ function open(
 }
 
 describe('Skip the next one, for an agent run', () => {
-  test('goes through the Bureau naming the revision the page read, and marks the skipped run', async () => {
+  test('goes through the Bureau naming the revision and the run the page read, and marks the skipped run', async () => {
     const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
 
     await fireEvent.click(await findByRole('button', { name: 'Skip the next one' }));
@@ -83,6 +83,7 @@ describe('Skip the next one, for an agent run', () => {
     await waitFor(() => expect(stub?.callsTo('bureau.schedules.skipnext')).toHaveLength(1));
     expect(stub?.callsTo('bureau.schedules.skipnext')[0]?.params).toEqual({
       scheduleId: AGENT_SCHEDULE,
+      occurrence: '2030-01-01T09:00:00.000Z',
       expectedRevision: 3,
     });
     const list = await findByTestId('schedule-next-fires');
@@ -101,6 +102,29 @@ describe('Skip the next one, for an agent run', () => {
     const notice = await findByTestId('schedule-notice');
     expect(notice.getAttribute('data-notice')).toBe('stale');
     expect(schedule.skipUntil).toBeUndefined();
+  });
+
+  test('is refused as stale when a fire moved the next run after the page read it, and the page reads the schedule again', async () => {
+    // A fire moves `nextFireAt` and leaves the revision and the status, so only the run the skip
+    // names can tell that the run the person chose has gone.
+    const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
+    const skip = await findByRole('button', { name: 'Skip the next one' });
+    const schedule = stub?.world.schedules.find((candidate) => candidate.id === AGENT_SCHEDULE);
+    if (schedule === undefined) throw new Error('expected the seeded schedule');
+    const fired = Date.parse('2030-01-02T09:00:00.000Z');
+    schedule.nextFireAt = fired;
+
+    await fireEvent.click(skip);
+
+    const notice = await findByTestId('schedule-notice');
+    expect(notice.getAttribute('data-notice')).toBe('stale');
+    expect(schedule.skipUntil).toBeUndefined();
+    const list = await findByTestId('schedule-next-fires');
+    await waitFor(() =>
+      expect(list.querySelector('li time')?.getAttribute('datetime')).toBe(
+        '2030-01-02T09:00:00.000Z',
+      ),
+    );
   });
 
   test('says what was not done, and not that the schedule changed, for any other refusal', async () => {
