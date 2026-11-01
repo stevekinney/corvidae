@@ -92,6 +92,20 @@ function mount(answers: Array<Response | ((init?: RequestInit) => Response)>) {
   return { sent, fetch: fetchStub };
 }
 
+/**
+ * The answers to the two task reads an attach that restores a thread makes after it (the run it
+ * attached to, and the thread's child runs), for a test that has nothing to say of them: a Bureau
+ * that cannot be read leaves the thread as it is.
+ */
+const unreadTasks = (): Response[] => [
+  new Response('', { status: 404 }),
+  new Response('', { status: 404 }),
+];
+
+/** The requests that went to the AG-UI mount, without the Bureau reads beside them. */
+const mountRequests = (sent: readonly Sent[]) =>
+  sent.filter((entry) => entry.url.startsWith(AG_UI_PATH));
+
 function request(conversation: ConversationHistory, signal?: AbortSignal): ChatSessionRequest {
   return {
     conversation,
@@ -433,7 +447,7 @@ describe('an attach', () => {
 
     const result = await frames(wiring, empty());
 
-    expect(sent).toHaveLength(1);
+    expect(mountRequests(sent)).toHaveLength(1);
     const terminal = result.at(-1);
     if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
     expect(terminal.conversation.ids).toHaveLength(2);
@@ -452,7 +466,11 @@ describe('an attach', () => {
   test('can be dropped unread, and the next turn starts a run of its own', async () => {
     const conversation = appendUserMessage(empty(), 'Hello');
     const { wiring, sent } = wiringOver(
-      [stream([started(), snapshot, finished()]), stream([started(), finished()])],
+      [
+        stream([started(), snapshot, finished()]),
+        ...unreadTasks(),
+        stream([started(), finished()]),
+      ],
       () => conversation,
     );
     await wiring.attach(THREAD);
@@ -460,7 +478,7 @@ describe('an attach', () => {
     await wiring.discardAttach();
     await frames(wiring, conversation);
 
-    expect(sent[1]?.method).toBe('POST');
+    expect(mountRequests(sent)[1]?.method).toBe('POST');
   });
 });
 
@@ -1462,6 +1480,7 @@ describe('a resume the mount refused', () => {
     const { wiring, sent, conversation } = await approved([
       refusal('THREAD_BUSY', 'Thread has a run in progress'),
       parkedOn(INTERRUPT),
+      ...unreadTasks(),
       stream([started('run-2'), finished(undefined, 'run-2')]),
     ]);
 
@@ -1477,14 +1496,15 @@ describe('a resume the mount refused', () => {
     await frames(wiring, conversation);
     await frames(wiring, conversation);
 
-    expect(sent.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+    const requests = mountRequests(sent);
+    expect(requests.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
       `POST ${AG_UI_PATH}/agents/tool-runner/run`,
       `POST ${AG_UI_PATH}/agents/tool-runner/run`,
       `GET ${AG_UI_PATH}/threads/${THREAD}/run`,
       `POST ${AG_UI_PATH}/agents/tool-runner/run`,
     ]);
-    expect(inputOf(sent[3]).resume).toEqual(inputOf(sent[1]).resume);
-    expect(inputOf(sent[3]).resume).toEqual([
+    expect(inputOf(requests[3]).resume).toEqual(inputOf(requests[1]).resume);
+    expect(inputOf(requests[3]).resume).toEqual([
       { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
     ]);
   });
@@ -1507,6 +1527,7 @@ describe('a resume the mount refused', () => {
         stream([started(), finished({ type: 'interrupt', interrupts: [atRound(0)] })]),
         refusal('REVIEW_ROUND_CHANGED', RESUME_ROUND_CHANGED_MESSAGE),
         parkedOn(atRound(1)),
+        ...unreadTasks(),
         stream([started('run-2'), finished(undefined, 'run-2')]),
       ]);
       const wiring = createChatRunWiring({
@@ -1533,8 +1554,9 @@ describe('a resume the mount refused', () => {
       await wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: false });
       await frames(wiring, conversation);
 
-      expect(inputOf(stubbed.sent[1]).resume).toEqual([onRound(0)]);
-      expect(inputOf(stubbed.sent[3]).resume).toEqual([onRound(1)]);
+      const requests = mountRequests(stubbed.sent);
+      expect(inputOf(requests[1]).resume).toEqual([onRound(0)]);
+      expect(inputOf(requests[3]).resume).toEqual([onRound(1)]);
     });
 
     test('sends no round for an approval whose interrupt shows none', async () => {
@@ -1738,6 +1760,7 @@ describe('a resume the mount refused', () => {
       parkedOn(WAIT),
       refusal('INTERRUPTS_UNADDRESSED', `The resume leaves interrupts unanswered: ${NEW_WAIT.id}`),
       parkedOn(WAIT, NEW_WAIT),
+      ...unreadTasks(),
       stream([started('run-2'), finished(undefined, 'run-2')]),
     ]);
     const wiring = createChatRunWiring({
@@ -2312,5 +2335,187 @@ describe('what a reloaded thread says of its last run', () => {
     expect(history?.messages['a1']?.metadata?.['cinder:notes']).toMatchObject([
       { kind: 'memory', recordId: 'rec-1', collection: 'prefs', memoryClass: 'semantic' },
     ]);
+  });
+
+  describe('of its wakeup and its child runs (COR-1987)', () => {
+    const WAKE_AT = '2099-01-01T00:00:00.000Z';
+    const thread = [
+      { id: 'u1', role: 'user', content: 'Dig in' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Delegating.',
+        toolCalls: [
+          { id: 'call-1', type: 'function', function: { name: 'delegate', arguments: '{}' } },
+        ],
+      },
+      { id: 'tool-1', role: 'tool', toolCallId: 'call-1', content: 'ok' },
+      { id: 'a2', role: 'assistant', content: 'Back.' },
+      { id: 'u2', role: 'user', content: 'Now wait' },
+      { id: 'a3', role: 'assistant', content: 'Sleeping.' },
+    ];
+    const sleeping = task({
+      status: 'working',
+      finishReason: null,
+      statusMessage: null,
+      wakeAt: WAKE_AT,
+    });
+    const child = task({
+      id: 'child-1',
+      agentName: 'researcher',
+      origin: { kind: 'agent', parentRunId: 'run-0', toolCallId: 'call-1' },
+      status: 'completed',
+      finishReason: null,
+      statusMessage: null,
+    });
+    const notesOn = (history: ConversationHistory | undefined, id: string) =>
+      history?.messages[id]?.metadata?.['cinder:notes'];
+
+    test('shows the wakeup it is parked on, and each child run under the reply that started it', async () => {
+      const { wiring, sent } = wiringOver(
+        [
+          Response.json({ threadId: THREAD, messages: thread }),
+          taskList([sleeping]),
+          taskList([child]),
+        ],
+        empty,
+      );
+
+      const history = await wiring.history(THREAD);
+
+      expect(sent[2]?.body).toMatchObject({
+        method: 'bureau.tasks.list',
+        params: { parentContextId: THREAD, limit: 100 },
+      });
+      expect(notesOn(history, 'a3')).toEqual([
+        { kind: 'wakeup', id: `wakeup:task-1:${Date.parse(WAKE_AT)}`, wakeAt: Date.parse(WAKE_AT) },
+      ]);
+      expect(notesOn(history, 'a1')).toEqual([
+        {
+          kind: 'child-run',
+          id: 'child:child-1',
+          childRunId: 'child-1',
+          agentName: 'researcher',
+          status: 'completed',
+          href: '/runs/child-1',
+        },
+      ]);
+      expect(notesOn(history, 'a2')).toBeUndefined();
+    });
+
+    test('shows no wakeup for a run that has none pending', async () => {
+      const { wiring } = wiringOver(
+        [
+          Response.json({ threadId: THREAD, messages: thread }),
+          taskList([{ ...sleeping, wakeAt: null }]),
+          taskList([]),
+        ],
+        empty,
+      );
+
+      const history = await wiring.history(THREAD);
+
+      expect(notesOn(history, 'a3')).toBeUndefined();
+    });
+
+    test('reads every page of the child runs', async () => {
+      const second = task({ ...child, id: 'child-2' });
+      const { wiring, sent } = wiringOver(
+        [
+          Response.json({ threadId: THREAD, messages: thread }),
+          taskList([sleeping]),
+          Response.json({
+            jsonrpc: '2.0',
+            id: 'bureau.tasks.list',
+            result: { tasks: [child], nextPageToken: 'page-2' },
+          }),
+          taskList([second]),
+        ],
+        empty,
+      );
+
+      const history = await wiring.history(THREAD);
+
+      expect(sent[3]?.body).toMatchObject({ params: { pageToken: 'page-2' } });
+      expect(notesOn(history, 'a1')).toMatchObject([
+        { id: 'child:child-1' },
+        { id: 'child:child-2' },
+      ]);
+    });
+
+    test('is still the thread, with the wakeup, when the child runs cannot be read', async () => {
+      const { wiring } = wiringOver(
+        [
+          Response.json({ threadId: THREAD, messages: thread }),
+          taskList([sleeping]),
+          new Response('nope', { status: 500 }),
+        ],
+        empty,
+      );
+
+      const history = await wiring.history(THREAD);
+
+      expect(history?.messages['a3']).toBeDefined();
+      expect(notesOn(history, 'a3')).toMatchObject([{ kind: 'wakeup' }]);
+      expect(notesOn(history, 'a1')).toBeUndefined();
+    });
+
+    test('is stamped on an attach that restores the thread, from the run it attached to', async () => {
+      const { wiring, sent } = wiringOver(
+        [
+          stream([
+            started(),
+            { type: 'MESSAGES_SNAPSHOT', messages: thread },
+            ...text('reply-4', 'Still here.'),
+          ]),
+          Response.json({ jsonrpc: '2.0', id: 'bureau.tasks.get', result: sleeping }),
+          taskList([child]),
+        ],
+        empty,
+      );
+
+      const restored = await wiring.attach(THREAD);
+
+      expect(sent[1]?.body).toMatchObject({
+        method: 'bureau.tasks.get',
+        params: { taskId: 'native-1' },
+      });
+      expect(sent[2]?.body).toMatchObject({ params: { parentContextId: THREAD } });
+      expect(notesOn(restored, 'a3')).toMatchObject([{ kind: 'wakeup' }]);
+      expect(notesOn(restored, 'a1')).toMatchObject([{ kind: 'child-run', status: 'completed' }]);
+    });
+
+    test('restores nothing when the page stopped watching while its tasks were read', async () => {
+      const controller = new AbortController();
+      const { wiring } = wiringOver(
+        [
+          stream([started(), { type: 'MESSAGES_SNAPSHOT', messages: thread }]),
+          () => {
+            controller.abort();
+            return new Response('', { status: 404 });
+          },
+          new Response('', { status: 404 }),
+        ],
+        empty,
+      );
+
+      expect(await wiring.attach(THREAD, controller.signal)).toBeUndefined();
+    });
+
+    test('is not stamped on an attach whose tasks cannot be read', async () => {
+      const { wiring } = wiringOver(
+        [
+          stream([started(), { type: 'MESSAGES_SNAPSHOT', messages: thread }]),
+          new Response('nope', { status: 500 }),
+          new Response('nope', { status: 500 }),
+        ],
+        empty,
+      );
+
+      const restored = await wiring.attach(THREAD);
+
+      expect(restored?.messages['a3']).toBeDefined();
+      expect(notesOn(restored, 'a3')).toBeUndefined();
+    });
   });
 });

@@ -126,7 +126,10 @@ test('a received frame resets consecutive failures and the resumed request uses 
 test('a stale opening cannot restore the transcript after a manual reconnect', async () => {
   let first: ((response: Response) => void) | undefined;
   let calls = 0;
-  const session = open(async () => {
+  const session = open(async (input) => {
+    // A task read after an attach (COR-1987) is not an opening of the stream.
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith('/jsonrpc')) return new Response('', { status: 404 });
     calls += 1;
     if (calls === 1)
       return new Promise<Response>((resolve) => {

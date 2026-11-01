@@ -87,6 +87,12 @@ export const taskViewSchema = z.object({
   updatedAt: z.string(),
   cleanup: taskCleanupSchema.nullable(),
   openWaits: z.array(openWaitSchema),
+  /**
+   * The time (ISO 8601) a working task's run said it would wake at (COR-1987), or `null` for one
+   * with no wakeup pending: none was scheduled, it has passed, the run waits on a person, or the
+   * task ended. Absent from a Bureau that does not report it, which reads as `null`.
+   */
+  wakeAt: z.string().nullable().optional(),
 });
 
 /** One task as the task list and `bureau.tasks.get` show it. Message text is never part of it. */
@@ -130,6 +136,13 @@ export type TaskFilter = {
   readonly status?: TaskState;
   /** Only the tasks recorded with an origin of this kind; a task with none matches no kind. */
   readonly origin?: TaskOriginKind;
+  /** Only the subordinate tasks of this run: the children it started. */
+  readonly parentRunId?: string;
+  /**
+   * Only the child runs started from any run in this context (COR-1987), so a reloaded chat lists
+   * the children of every run in its thread in one read.
+   */
+  readonly parentContextId?: string;
 };
 
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
@@ -143,6 +156,25 @@ export async function listTasks(
   options?: Options,
 ): Promise<TaskPage> {
   return taskPageSchema.parse(await callBureau('bureau.tasks.list', input, options));
+}
+
+/**
+ * Every child run started from any run in `contextId` (`bureau.tasks.list` with `parentContextId`,
+ * COR-1987), read page by page. A reloaded chat shows the children of every run in its thread, not
+ * only the run it reattached to. A child a tool or a peer started has no task and is not listed.
+ */
+export async function listChildRuns(contextId: string, options?: Options): Promise<TaskView[]> {
+  const children: TaskView[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await listTasks(
+      { parentContextId: contextId, limit: 100, ...(pageToken === undefined ? {} : { pageToken }) },
+      options,
+    );
+    children.push(...page.tasks);
+    pageToken = page.nextPageToken ?? undefined;
+  } while (pageToken !== undefined);
+  return children;
 }
 
 /** The origins of a task that a person's chat did not start: a run's own child, a goal's attempt, a workflow's step. */
