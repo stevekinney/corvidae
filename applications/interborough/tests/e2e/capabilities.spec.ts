@@ -52,9 +52,7 @@ test.describe('the Tools tab', () => {
       await expect(detail.getByTestId('tool-approval')).toHaveText(
         /Runs without asking|Asks you first/,
       );
-      await expect(detail.getByTestId('tool-source')).toHaveText(
-        /Provided by this host|Built into Interborough/,
-      );
+      await expect(detail.getByTestId('tool-source')).toHaveText(copy.tool.sources[tool.source]);
       await expect(detail.getByTestId('tool-input-schema')).toBeVisible();
       await expect(detail.getByTestId('capability-users')).toBeVisible();
       // The open tool is in the address, so the page can be linked.

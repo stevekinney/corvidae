@@ -300,7 +300,7 @@ test.describe('a run that asks the person a question', () => {
   }) => {
     await page.goto('/chats/new?agent=demo:request-human-input');
     await send(page, 'Ship it');
-    const question = page.getByRole('alert').filter({ hasText: QUESTION });
+    const question = page.locator('.weft-chat-question').filter({ hasText: QUESTION });
     await expect(question).toBeVisible();
     await checkA11y('a chat waiting on the person’s answer');
 
@@ -330,7 +330,7 @@ test.describe('a run that asks the person a question', () => {
     });
 
     await page.goto(`/chats/${threadId}`);
-    await expect(page.getByRole('alert').filter({ hasText: QUESTION })).toBeVisible();
+    await expect(page.locator('.weft-chat-question').filter({ hasText: QUESTION })).toBeVisible();
     await send(page, 'staging');
 
     await expect(conversation(page).getByText(THANKS)).toBeVisible();

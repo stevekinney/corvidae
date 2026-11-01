@@ -215,7 +215,7 @@ test('reloads while an agent waits on a question, and answers it from the review
   await send(page, 'Ship it');
   await expect(page).toHaveURL(sessionAddress);
   const threadId = sessionOf(page);
-  const question = page.getByRole('alert').filter({ hasText: QUESTION });
+  const question = page.locator('.weft-chat-question').filter({ hasText: QUESTION });
   await expect(question).toBeVisible();
 
   await page.reload();

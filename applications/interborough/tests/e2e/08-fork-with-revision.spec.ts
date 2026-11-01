@@ -106,7 +106,7 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await page.getByRole('button', { name: 'Create schedule' }).click();
 
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
-  // The revision the schedule resolves against is in its details, beside its other settings.
+  // The detail rail shows the revision policy the schedule was created with.
   await expect(page.getByTestId('schedule-rail').getByText(/^Pinned \(/)).toBeVisible();
   await checkA11y('schedule detail — pinned revision policy shown');
 });
