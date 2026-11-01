@@ -364,6 +364,16 @@ async function applyOversizedTaskResult(
     },
     result.workerId,
   );
+  // Release before the history write: a retry committed once the dead letter
+  // is durable is dispatched at once, and is refused while the id is held.
+  if (rejected.ok) {
+    context.deadlineTracker.remove(result.operationId);
+    releaseLongPollAttempt(context, rejected.disposition, {
+      operationId: result.operationId,
+      status: 'failed',
+      error: payloadError.message,
+    });
+  }
   await recordLongPollDelivery(
     options,
     result,
@@ -375,15 +385,7 @@ async function applyOversizedTaskResult(
           reason: `${payloadError.message} — ${rejected.reason}`,
         },
   );
-  if (rejected.ok) {
-    context.deadlineTracker.remove(result.operationId);
-    releaseLongPollAttempt(context, rejected.disposition, {
-      operationId: result.operationId,
-      status: 'failed',
-      error: payloadError.message,
-    });
-    return;
-  }
+  if (rejected.ok) return;
   console.error(
     `[weft] Failed to persist oversized task result rejection for task "${result.operationId}":`,
     rejected.reason,

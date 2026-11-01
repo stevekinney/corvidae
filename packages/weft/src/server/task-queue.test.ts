@@ -281,6 +281,22 @@ describe('TaskQueue', () => {
       expect(queue.complete({ operationId: 'op-released', status: 'completed' })).toBe(false);
     });
 
+    it('removes a task still waiting unclaimed, so it is never handed out twice', async () => {
+      using queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'op-unclaimed' }));
+      expect(queue.pendingCount('default')).toBe(1);
+
+      queue.release('op-unclaimed');
+      expect(queue.pendingCount('default')).toBe(0);
+      expect(queue.isTracked('op-unclaimed')).toBe(false);
+
+      expect(queue.enqueue('default', makeTask({ operationId: 'op-unclaimed' }))).toBe(true);
+      const first = await queue.poll('default', ['charge'], 0);
+      const second = await queue.poll('default', ['charge'], 0);
+      expect(first?.operationId).toBe('op-unclaimed');
+      expect(second).toBeNull();
+    });
+
     it('does nothing for an id the queue does not track', () => {
       using queue = new TaskQueue();
       expect(() => queue.release('op-unknown')).not.toThrow();

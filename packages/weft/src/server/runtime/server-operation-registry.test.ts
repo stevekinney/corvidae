@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { Engine } from '../../core/engine.ts';
 import {
@@ -9,6 +9,7 @@ import {
   taskLedgerKey,
   type RemoteTaskDeadLettered,
 } from '../../core/task-ledger/task-ledger.ts';
+import { taskResultDeliveryKey } from '../../core/task-ledger/task-result-delivery.ts';
 import {
   manifestForActivities,
   TEST_ACCEPTED_MANIFEST_DIGEST,
@@ -43,6 +44,31 @@ function deadLetteredRecord(operationId: string): RemoteTaskDeadLettered {
     deadLetteredAt: 1,
     persistenceFailureReason: 'lost the compare-and-swap race',
   };
+}
+
+/** Holds the first read of one operation's delivery history until `open()` is called. */
+class DeliveryHistoryGatedStorage extends FailingTerminalCommitStorage {
+  readonly #historyKey: string;
+  readonly #gate = Promise.withResolvers<void>();
+  readonly #reached = Promise.withResolvers<void>();
+  readonly reached: Promise<void> = this.#reached.promise;
+
+  constructor(operationId: string) {
+    super(operationId);
+    this.#historyKey = taskResultDeliveryKey(operationId);
+  }
+
+  open(): void {
+    this.#gate.resolve();
+  }
+
+  override async get(key: string) {
+    if (key === this.#historyKey) {
+      this.#reached.resolve();
+      await this.#gate.promise;
+    }
+    return super.get(key);
+  }
 }
 
 describe('the operation registry serve() builds', () => {
@@ -103,8 +129,11 @@ describe('the operation registry serve() builds', () => {
    * dead-letters, and a `claim()` that drives the real long-poll flow:
    * dispatch, poll, claim.
    */
-  function longPollFixture(failingOperationId: string) {
-    const engine = new Engine({ storage: new FailingTerminalCommitStorage(failingOperationId) });
+  function longPollFixture(
+    failingOperationId: string,
+    storage: Storage = new FailingTerminalCommitStorage(failingOperationId),
+  ) {
+    const engine = new Engine({ storage });
     const configuration = resolveNetworkConfig({
       engine,
       port: 0,
@@ -243,5 +272,54 @@ describe('the operation registry serve() builds', () => {
     expect(
       decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey('op-oversize-dead')))?.state,
     ).toBe('deadLettered');
+  });
+
+  it('dispatches a retry committed right after an oversized dead letter, without waiting for the delivery history write', async () => {
+    const storage = new DeliveryHistoryGatedStorage('op-oversize-gap');
+    const { engine, context, poll, submit, claim } = longPollFixture('op-oversize-gap', storage);
+    using _engine = engine;
+    using _taskQueue = context.taskQueue;
+    await context.taskLedgerRecovery.ready;
+    (context as { payloadSizeMaxBytes: number | null }).payloadSizeMaxBytes = 64;
+
+    const { attemptToken, workerId } = await claim('op-oversize-gap');
+    const submitted = submit({
+      operationId: 'op-oversize-gap',
+      workerId,
+      attemptToken,
+      status: 'completed',
+      value: { blob: 'x'.repeat(200) },
+    });
+    // The dead letter is committed and the response is parked on the history write.
+    await storage.reached;
+    expect(
+      decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey('op-oversize-gap')))?.state,
+    ).toBe('deadLettered');
+
+    const result = await executeOperation(
+      'weft.tasks.deadletters.retry',
+      { operationId: 'op-oversize-gap' },
+      {
+        principal: principalFromApiKey({ subject: 'operator', scopes: ['system:admin'] }),
+        host: engine,
+        transport: 'http-rest',
+        registry: context.liveOperationRegistry,
+      },
+    );
+    expect(result.ok).toBe(true);
+    let retried: Response | undefined;
+    await waitUntil(
+      async () => {
+        retried = await poll();
+        return retried.status === 200;
+      },
+      { message: 'the retried task to be dispatched while the history write is still parked' },
+    );
+    const retriedBody = (await retried?.json()) as { attempt: number };
+    expect(retriedBody.attempt).toBe(2);
+
+    storage.open();
+    const submittedResponse = await submitted;
+    expect(submittedResponse.status).toBe(413);
   });
 });
