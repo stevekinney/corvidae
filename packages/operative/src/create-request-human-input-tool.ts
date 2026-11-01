@@ -10,6 +10,7 @@ import {
   type HumanInputSchema,
   type HumanInputSchemaIssue,
 } from './human-input-schema';
+import { HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH } from './human-input-schema-extensions';
 import { refuseIfStepIsParked, type RefusedParkRequest } from './park-refusal';
 
 /** The most issues one `invalid-answer-schema` result lists; a schema near the size limit could hold thousands. */
@@ -234,7 +235,8 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
       'Use when the agent needs explicit human approval or a human decision before continuing. ' +
       'Only the first human-input or wakeup request in a step is honored. ' +
       'Give answerSchema (a JSON Schema) to choose the shape of the answer; the person is shown the matching control. ' +
-      'Kinds: pick one {type:"string",enum:[...],"x-labels":{value:label}}; ' +
+      'Kinds: pick one {type:"string",enum:[...],"x-labels":{value:label},"x-descriptions":{value:sentence}}, ' +
+      `where the optional x-descriptions puts a sentence of at most ${HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH} characters under that choice's label to say what choosing it means, keyed by enum value, and works the same on pick several and on pick one or something else; ` +
       'pick one or something else {anyOf:[{enum:[...]},{type:"string",maxLength:500}],"x-allowOther":true}; ' +
       'pick several {type:"array",uniqueItems:true,items:{enum:[...]},minItems,maxItems}; ' +
       'free text {type:"string",maxLength}; yes or no {type:"boolean"}; ' +

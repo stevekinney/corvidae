@@ -2,7 +2,8 @@
  * The `x-` keywords a human-input answer schema may use to say which control to show (COR-1804).
  *
  * JSON Schema 2020-12 ignores keywords it does not know, so these ride beside the standard ones:
- * `x-labels` (what to show for each enum value or rating step), `x-allowOther` (a choice that also
+ * `x-labels` (what to show for each enum value or rating step), `x-descriptions` (a sentence under
+ * each enum value's label saying what choosing it means), `x-allowOther` (a choice that also
  * takes free text), `x-kind: "rating"` (an integer range shown as a rating, not a number),
  * `x-secret` (a string that is never echoed and never reaches the model), and `x-asset` (a string
  * that is a managed asset id). A keyword is useless if a client cannot rely on its shape, so each
@@ -15,6 +16,9 @@ import type { HumanInputSchemaIssue } from './human-input-schema';
 
 /** The longest label `x-labels` may give one choice or rating step. */
 export const HUMAN_INPUT_LABEL_MAXIMUM_LENGTH = 500;
+
+/** The longest description `x-descriptions` may give one choice. */
+export const HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH = 1000;
 
 type Path = ReadonlyArray<string | number>;
 type SchemaNode = Readonly<Record<string, unknown>>;
@@ -227,6 +231,38 @@ function checkLabels(node: SchemaNode, path: Path, add: Adder): void {
   }
 }
 
+function checkDescriptions(node: SchemaNode, path: Path, add: Adder): void {
+  const descriptions = node['x-descriptions'];
+  if (!isNode(descriptions)) {
+    return add(
+      [...path, 'x-descriptions'],
+      'x-descriptions must be an object from each choice to its description.',
+    );
+  }
+  // A description sits under a choice's label, and only choices draw one: a rating step has none.
+  const offered = new Set(enumValuesOf(node));
+  if (offered.size === 0) {
+    add([...path, 'x-descriptions'], 'x-descriptions needs an "enum" to describe.');
+  }
+  for (const key of Object.keys(descriptions)) {
+    const description: unknown = Object.hasOwn(descriptions, key) ? descriptions[key] : undefined;
+    const where: Path = [...path, 'x-descriptions', key];
+    if (
+      typeof description !== 'string' ||
+      description.length === 0 ||
+      description.length > HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH
+    ) {
+      add(
+        where,
+        `The description for "${key}" must be a string of 1 to ${HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH} characters.`,
+      );
+    }
+    if (offered.size > 0 && !offered.has(key)) {
+      add(where, `"${key}" is not one of the enum values.`);
+    }
+  }
+}
+
 type Adder = (path: Path, message: string) => void;
 
 /** The keywords that make one schema stand for another. */
@@ -262,6 +298,7 @@ export function humanInputSchemaExtensionIssues(
     if (Object.hasOwn(node, 'x-allowOther')) checkAllowOther(node, path, add);
     if (Object.hasOwn(node, 'x-kind')) checkKind(node, path, add);
     if (Object.hasOwn(node, 'x-labels')) checkLabels(node, path, add);
+    if (Object.hasOwn(node, 'x-descriptions')) checkDescriptions(node, path, add);
   }
   return issues;
 }

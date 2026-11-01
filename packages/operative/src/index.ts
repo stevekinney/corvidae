@@ -541,6 +541,7 @@ export {
   type HumanInputSchemaIssue,
 } from './human-input-schema';
 export {
+  HUMAN_INPUT_DESCRIPTION_MAXIMUM_LENGTH,
   HUMAN_INPUT_LABEL_MAXIMUM_LENGTH,
   humanInputSchemaExtensionIssues,
   humanInputSecretFields,
