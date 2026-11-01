@@ -200,7 +200,7 @@ describe('Connect a source', () => {
 
     await type('connect-url', `${ADDRESS}/v2`);
 
-    await waitFor(() => expect(queryByTestId('connect-probe-failed')).toBeNull());
+    await waitFor(() => expect(queryByTestId('connect-probe-failed') === null).toBe(true));
   });
 
   test('names what is missing, and sends nothing, until the form can make a request', async () => {
