@@ -20,21 +20,28 @@ function key(value: string): ShortcutKey {
   return { key: value, metaKey: false, ctrlKey: false, altKey: false, editable: false };
 }
 
-function registered(): { registry: ShortcutRegistry; opened: string[]; maps: number[] } {
+function registered(): {
+  registry: ShortcutRegistry;
+  opened: string[];
+  maps: number[];
+  palettes: number[];
+} {
   const registry = new ShortcutRegistry();
   const opened: string[] = [];
   const maps: number[] = [];
+  const palettes: number[] = [];
   registerShellShortcuts(registry, {
     navigate: (path) => opened.push(path),
     openShortcutMap: () => maps.push(1),
+    openPalette: () => palettes.push(1),
   });
-  return { registry, opened, maps };
+  return { registry, opened, maps, palettes };
 }
 
 describe('the shell’s shortcuts', () => {
   test('register without an overlap, and register again once removed', () => {
     const registry = new ShortcutRegistry();
-    const actions = { navigate: () => {}, openShortcutMap: () => {} };
+    const actions = { navigate: () => {}, openShortcutMap: () => {}, openPalette: () => {} };
     const remove = registerShellShortcuts(registry, actions);
     expect(() => registerShellShortcuts(registry, actions)).toThrow(/overlaps/);
     remove();
@@ -114,6 +121,43 @@ describe('the shell’s shortcuts', () => {
     const typing = { ...key('c'), editable: true };
     expect(registry.handleKey(typing, { routePattern: '/chats/new', regions: [] }, 0)).toBe(false);
     expect(opened).toEqual([]);
+  });
+
+  test('⌘K and Ctrl+K open the palette, from a field too, and K alone does not', () => {
+    const { registry, palettes } = registered();
+    const where = { routePattern: '/chats', regions: [] };
+    const held = { ...key('k'), metaKey: true, editable: true };
+    expect(registry.handleKey(held, where, 0)).toBe(true);
+    expect(registry.handleKey({ ...held, metaKey: false, ctrlKey: true }, where, 1)).toBe(true);
+    // Caps Lock or Shift reports the capital, which is the same key.
+    expect(registry.handleKey({ ...held, key: 'K' }, where, 2)).toBe(true);
+    expect(palettes).toEqual([1, 1, 1]);
+    expect(registry.handleKey(key('k'), where, 3)).toBe(false);
+    expect(registry.handleKey({ ...held, altKey: true }, where, 4)).toBe(false);
+    expect(palettes).toHaveLength(3);
+  });
+
+  test('⌘K is listed first in the map, under General', () => {
+    const { registry } = registered();
+    const general = registry.groups().find((group) => group.label === SHORTCUT_COPY.generalGroup);
+    expect(general?.shortcuts[0]).toEqual({ action: SHORTCUT_COPY.openSearch, keys: ['⌘', 'K'] });
+  });
+
+  test('an action is a shortcut that acts everywhere, so the palette can run it by name', () => {
+    const { registry, opened, maps } = registered();
+    const actions = registry.actions();
+    expect(actions.map((action) => action.label)).not.toContain(SHORTCUT_COPY.openSearch);
+    expect(actions.map((action) => [action.label, action.keys.join(' ')])).toContainEqual([
+      'Go to Reviews',
+      'G V',
+    ]);
+    expect(actions.map((action) => action.label)).toContain(SHORTCUT_COPY.newChat);
+    // The keys ListDetail handles itself are not actions: the registry never runs them.
+    expect(actions.map((action) => action.keys.join(' '))).not.toContain('J');
+    actions.find((action) => action.label === 'Go to Reviews')?.run();
+    actions.find((action) => action.label === SHORTCUT_COPY.openMap)?.run();
+    expect(opened).toEqual(['/reviews']);
+    expect(maps).toEqual([1]);
   });
 
   test('? opens the shortcut map', () => {

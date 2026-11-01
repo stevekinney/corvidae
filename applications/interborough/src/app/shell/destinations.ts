@@ -1,6 +1,7 @@
 /**
  * The sidebar's destinations, in the order it lists them, and the shortcuts the shell registers:
- * `g` then a letter for each destination, and `?` for the map of every shortcut. The sidebar's
+ * ⌘K for search, `c` for a new chat, `g` then a letter for each destination, and `?` for the map of
+ * every shortcut. The sidebar's
  * tooltips name the same keys, so a destination's tooltip is what its keys do.
  */
 import { LIST_DETAIL_SHORTCUTS } from '@lostgradient/cinder';
@@ -56,6 +57,9 @@ export function destinationKeys(destination: { readonly letter: string }): reado
   return ['g', destination.letter];
 }
 
+/** The key that opens the search palette when held with ⌘. */
+export const SEARCH_KEY = 'k';
+
 /** The key that starts a new chat. */
 export const NEW_CHAT_KEY = 'c';
 
@@ -83,6 +87,8 @@ export interface ShellShortcutActions {
   readonly navigate: (path: string) => void;
   /** Opens the map of every shortcut. */
   readonly openShortcutMap: () => void;
+  /** Opens the search palette. */
+  readonly openPalette: () => void;
 }
 
 /**
@@ -94,6 +100,15 @@ export function registerShellShortcuts(
   actions: ShellShortcutActions,
 ): () => void {
   const removals = [
+    // ⌘K is held with ⌘ (Control elsewhere), so it acts from inside a field too.
+    registry.register({
+      keys: [SEARCH_KEY],
+      modifier: 'mod',
+      label: SHORTCUT_COPY.openSearch,
+      group: SHORTCUT_COPY.generalGroup,
+      scope: 'global',
+      handler: actions.openPalette,
+    }),
     registry.register({
       keys: ['?'],
       label: SHORTCUT_COPY.openMap,

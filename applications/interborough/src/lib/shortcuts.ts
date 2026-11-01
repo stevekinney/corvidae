@@ -89,6 +89,16 @@ export interface ShortcutGroupListing {
   readonly shortcuts: { action: string; keys: string[] }[];
 }
 
+/** One shortcut a person can also run by name, as the command palette lists it. */
+export interface ShortcutAction {
+  /** What the shortcut does, as the `?` map says it. */
+  readonly label: string;
+  /** Its keys as a keycap prints them: `['G', 'C']`. */
+  readonly keys: readonly string[];
+  /** Runs what the keys run. */
+  readonly run: () => void;
+}
+
 /** What the registry holds for one registration: the descriptor, and its handler when it has one. */
 interface Registration {
   readonly descriptor: ShortcutDescriptor;
@@ -137,6 +147,18 @@ function scopeActive(scope: ShortcutScope, context: ShortcutContext): boolean {
   if (scope === 'global') return true;
   if ('route' in scope) return scope.route === context.routePattern;
   return context.regions.includes(scope.region);
+}
+
+/**
+ * Whether a key held with ⌘ is the registered one. A letter matches its capital, because Caps Lock
+ * and Shift change what `KeyboardEvent.key` reports for the same physical key; a named key (such as
+ * Enter) matches exactly.
+ */
+function sameHeldKey(registered: string | undefined, pressed: string): boolean {
+  if (registered === undefined) return false;
+  return registered.length === 1
+    ? registered.toLowerCase() === pressed.toLowerCase()
+    : registered === pressed;
 }
 
 /** How a key sequence reads in the `?` map: a single letter in capitals, as a keycap prints it. */
@@ -194,6 +216,19 @@ export class ShortcutRegistry {
     return this.#registrations.map((registration) => registration.descriptor);
   }
 
+  /**
+   * The shortcuts that act everywhere and are handled here, in the order they were registered, for
+   * the command palette to list beside their keys. A shortcut that needs a route, a focus region
+   * or a held ⌘ is not an action: it acts on what is on screen, which the palette covers.
+   */
+  actions(): ShortcutAction[] {
+    return this.#registrations.flatMap(({ descriptor, handler }) =>
+      handler !== undefined && descriptor.scope === 'global' && descriptor.modifier === undefined
+        ? [{ label: descriptor.label, keys: descriptor.keys.map(displayKey), run: handler }]
+        : [],
+    );
+  }
+
   /** The `?` map's groups, in the order each group was first registered. */
   groups(): ShortcutGroupListing[] {
     const groups = new Map<string, ShortcutGroupListing>();
@@ -229,7 +264,7 @@ export class ShortcutRegistry {
         (registration) =>
           registration.handler !== undefined &&
           registration.descriptor.modifier === 'mod' &&
-          registration.descriptor.keys[0] === event.key &&
+          sameHeldKey(registration.descriptor.keys[0], event.key) &&
           scopeActive(registration.descriptor.scope, context),
       );
       if (held?.handler === undefined) return false;

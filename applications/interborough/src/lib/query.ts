@@ -159,6 +159,8 @@ export const queryKeys = {
     list: (filter: ScheduleFilter) => ['schedules', 'list', filter] as const,
     /** What the Bureau knows of the engine's schedules: the agent each runs, and the workflow files (`lib/schedule-kinds.ts`). */
     overlay: () => ['schedules', 'overlay'] as const,
+    /** The newest fire each schedule that missed one recorded, for the bell. Under `list`, so a fleet event that changes the schedules reads it again. */
+    missedFires: () => ['schedules', 'list', 'missed-fires'] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,

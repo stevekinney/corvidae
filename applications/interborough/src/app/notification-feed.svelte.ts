@@ -22,7 +22,7 @@ import { router } from '../lib/router.svelte.ts';
 import { REVIEW_POLL_MILLISECONDS, bureauReviewsQuery } from '../routes/reviews/reviews-data.ts';
 import { useBureauEventsLive } from './live-polling.svelte.ts';
 import { buildNotificationEntries } from './notification-items.ts';
-import { loadChats, loadScheduleNames } from './notification-sources.ts';
+import { loadChats, loadMissedFires, loadScheduleNames } from './notification-sources.ts';
 import type { NotificationStore } from './notifications.svelte.ts';
 
 /** The chat the person has open, or `undefined` on any other page (and on a chat not yet started). */
@@ -31,7 +31,15 @@ function openChatSessionId(): string | undefined {
   return route?.pattern === '/chats/:chat' ? params['chat'] : undefined;
 }
 
-export function connectNotificationFeed(store: NotificationStore): void {
+export interface NotificationFeedOptions {
+  /** Whether the principal may read schedules; without it the fires they missed are not looked up. Allowed when omitted. */
+  readonly canReadSchedules?: () => boolean;
+}
+
+export function connectNotificationFeed(
+  store: NotificationStore,
+  options: NotificationFeedOptions = {},
+): void {
   const reviews = bureauReviewsQuery();
   const bureauLive = useBureauEventsLive();
   // Read in the option getters, so a query goes back to its timer when the feed is lost.
@@ -92,15 +100,49 @@ export function connectNotificationFeed(store: NotificationStore): void {
     };
   });
 
+  // The fires a schedule missed are not notifications the Bureau writes: the schedules hold them.
+  const missedFires = createQuery(() => {
+    const polling = !bureauLive();
+    return {
+      queryKey: queryKeys.schedules.missedFires(),
+      queryFn: ({ signal }: { signal: AbortSignal }) => loadMissedFires({ signal }),
+      enabled: options.canReadSchedules?.() ?? true,
+      // poll-reason: fallback
+      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
+      retry: false,
+    };
+  });
+
   const queryClient = useQueryClient();
-  // Reading an item in the bell reads it in the Bureau, so another browser agrees. The local read
-  // state already holds the item as read, so a call that fails changes nothing here.
+  // Reading an item in the bell reads it in the Bureau, so another browser agrees. The store holds
+  // the item as read at once and as unread again when the Bureau does not accept it, and the list
+  // is read again either way so it shows what the Bureau holds.
   store.setRemote({
-    markRead: (notificationIds) => {
-      markBureauNotificationsRead(notificationIds)
-        .then(() => queryClient.invalidateQueries({ queryKey: ['bureau-notifications'] }))
-        .catch(() => undefined);
+    markRead: async (notificationIds) => {
+      try {
+        await markBureauNotificationsRead(notificationIds);
+      } finally {
+        void queryClient.invalidateQueries({ queryKey: ['bureau-notifications'] });
+      }
     },
+    reload: () => {
+      void reviews.refetch();
+      void tasks.refetch();
+      void chats.refetch();
+      void notifications.refetch();
+      void missedFires.refetch();
+    },
+  });
+
+  // A list that could not be read is not an empty one: the bell says so, with what it last read.
+  $effect(() => {
+    store.setLoadFailed(
+      reviews.isError ||
+        tasks.isError ||
+        chats.isError ||
+        notifications.isError ||
+        missedFires.isError,
+    );
   });
 
   $effect(() => {
@@ -111,6 +153,7 @@ export function connectNotificationFeed(store: NotificationStore): void {
         notifications: notifications.data ?? [],
         chats: chats.data ?? new Map(),
         scheduleNames: scheduleNames.data ?? new Map(),
+        missedFires: missedFires.data ?? [],
         nowMs: Date.now(),
       }),
     );

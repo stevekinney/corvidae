@@ -10,6 +10,8 @@
  *   and `budget`: one ended because it exceeded its budget. The Bureau writes both when the run
  *   ends, for the top-level run only, so a run that fans out into children is one item and the
  *   items do not depend on how many tasks a run creates.
+ * - `missed`: a schedule did not fire at its time (the host was down or too slow, or the clock
+ *   skipped it), the newest miss of each schedule, for a day (`bureau.schedules.missed`).
  * - `notice`: any other notification the Bureau holds for the person, such as one a host wrote.
  * - `answered`: the latest run of a chat finished (`bureau.tasks.list`). It is listed, but nothing is waiting on the
  *   person, so it never counts. Opening the chat reads it, including one that finishes while the
@@ -31,13 +33,15 @@ import type { BureauReview } from '../lib/bureau-reviews.ts';
 import type { TaskView } from '../lib/bureau-tasks.ts';
 import { chatSessionPath } from '../lib/identifier-paths.ts';
 import { latestRunByChat } from '../lib/recent-tasks.ts';
+import { scheduleDetailPath } from '../lib/router.svelte.ts';
 import { CHAT_COPY, NOTIFICATION_COPY } from './copy.ts';
+import type { MissedFireSource } from './notification-sources.ts';
 
 /** How the bell grades an item: `info` never counts toward the badge. */
 export type NotificationTier = 'critical' | 'warning' | 'info';
 
 export type NotificationKind =
-  'approval' | 'question' | 'failed' | 'budget' | 'notice' | 'answered' | 'engine';
+  'approval' | 'question' | 'failed' | 'budget' | 'missed' | 'notice' | 'answered' | 'engine';
 
 /** An item before the store decides whether it was read. */
 export interface NotificationEntry {
@@ -94,6 +98,8 @@ export interface NotificationSources {
   readonly chats: ReadonlyMap<string, string | null>;
   /** A schedule's name by its id, for the notifications that name one. */
   readonly scheduleNames: ReadonlyMap<string, ScheduleName>;
+  /** The newest fire each schedule that missed one recorded. */
+  readonly missedFires?: readonly MissedFireSource[];
   readonly nowMs: number;
 }
 
@@ -226,6 +232,25 @@ function notificationEntry(
   };
 }
 
+/** The item for the newest fire a schedule missed. */
+function missedEntry(source: MissedFireSource): NotificationEntry {
+  const { scheduleId, name, missed } = source;
+  return {
+    // The instant the miss is recorded at is part of what was read: the next miss is news again.
+    id: `schedule-missed:${scheduleId}:${String(missed.occurrence)}`,
+    kind: 'missed',
+    tier: 'warning',
+    icon: 'calendar-x',
+    title: NOTIFICATION_COPY.missedFire(name.name),
+    identifiers: name.identifier ? [name.name] : [],
+    detail:
+      missed.reason === 'dst-gap' ? NOTIFICATION_COPY.missedClockGap : NOTIFICATION_COPY.missedLate,
+    joiner: NOTIFICATION_COPY.errorJoiner,
+    href: scheduleDetailPath(scheduleId),
+    emittedAtMs: missed.recordedAt,
+  };
+}
+
 /**
  * Whether a task is an answer the person wants to hear about: a completed run that is not one a
  * parent run, a goal or an agent tool call started, because a child's answer is its parent's to
@@ -274,6 +299,7 @@ function onePerChat(pending: readonly BureauReview[]): BureauReview[] {
  */
 export function buildNotificationEntries(sources: NotificationSources): NotificationEntry[] {
   const { reviews, tasks, notifications, chats, scheduleNames, nowMs } = sources;
+  const missedFires = sources.missedFires ?? [];
   const pending = reviews.filter((review) => review.status === 'pending');
   const entries: NotificationEntry[] = onePerChat(pending).map((review) =>
     reviewEntry(review, chats),
@@ -294,6 +320,11 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
     }
     const entry = notificationEntry(notification, chats, scheduleNames);
     if (entry !== undefined) entries.push(entry);
+  }
+
+  // A schedule that did not fire is news for a day, like a finished run.
+  for (const source of missedFires) {
+    if (nowMs - source.missed.recordedAt <= RECENT_RUN_WINDOW_MS) entries.push(missedEntry(source));
   }
 
   // The latest run of each chat stands for it; a chat that is waiting on the person says so once.

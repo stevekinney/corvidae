@@ -53,14 +53,24 @@ export async function listBureauNotifications(options?: Options): Promise<Bureau
   return page.notifications;
 }
 
-/** Marks the given notifications read. Resolves how many it changed. */
+/** How many identifiers `bureau.notifications.markread` takes in one call. */
+const MARK_READ_BATCH = 100;
+
+/**
+ * Marks the given notifications read, a call for each {@link MARK_READ_BATCH}, so none is left
+ * unread by a list longer than one call takes. Resolves how many it changed; rejects when any call
+ * does.
+ */
 export async function markBureauNotificationsRead(
   ids: readonly string[],
   options?: Options,
 ): Promise<number> {
-  if (ids.length === 0) return 0;
-  const sent = [...ids].slice(0, 100);
-  return changeSchema.parse(
-    await callBureau('bureau.notifications.markread', { ids: sent }, options),
-  ).updated;
+  let updated = 0;
+  for (let start = 0; start < ids.length; start += MARK_READ_BATCH) {
+    const batch = ids.slice(start, start + MARK_READ_BATCH);
+    updated += changeSchema.parse(
+      await callBureau('bureau.notifications.markread', { ids: batch }, options),
+    ).updated;
+  }
+  return updated;
 }

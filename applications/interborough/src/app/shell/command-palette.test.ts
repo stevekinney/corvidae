@@ -6,8 +6,13 @@ import { Window } from 'happy-dom';
 
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
-import { schedulePath, workerPath } from './command-palette-search.ts';
+import { ShortcutRegistry } from '../../lib/shortcuts.ts';
+import { PALETTE_COPY } from '../copy.ts';
+import type { NotificationEntry } from '../notification-items.ts';
+import { memoryStore } from '../notification-store.test-support.ts';
+import { schedulePath, toolPath, workerPath } from './command-palette-search.ts';
 import CommandPaletteLauncher from './command-palette.svelte';
+import { registerShellShortcuts } from './destinations.ts';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
@@ -51,6 +56,51 @@ function stubEngine(): void {
           },
         });
       }
+      if (call.method === 'bureau.agents.catalog') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            models: [],
+            tools: [
+              {
+                name: 'issue-refund',
+                description: 'Refunds an order to the card it was paid with.',
+                shortDescription: 'Refunds an order',
+                inputSchema: null,
+                tier: 'mutating',
+                defaultApproval: 'ask',
+                source: 'host',
+                plugin: null,
+                users: [],
+              },
+            ],
+          },
+        });
+      }
+      if (call.method === 'weft.workflows.definitions.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            definitions: [
+              {
+                name: 'refund-flow',
+                description: 'Refunds a batch',
+                origin: 'code',
+                state: 'active',
+              },
+            ],
+          },
+        });
+      }
+      if (call.method === 'bureau.workflows.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: { workflows: [], nextOffset: null },
+        });
+      }
       if (call.method === 'bureau.agents.list') {
         return Response.json({
           jsonrpc: '2.0',
@@ -90,11 +140,42 @@ function stubEngine(): void {
   });
 }
 
-async function choose(query: string, resultName: RegExp) {
+/** The shell's shortcuts in a registry of their own, with the keys that open things recorded. */
+function shellRegistry(): { registry: ShortcutRegistry; opened: string[]; maps: number[] } {
+  const registry = new ShortcutRegistry();
+  const opened: string[] = [];
+  const maps: number[] = [];
+  registerShellShortcuts(registry, {
+    navigate: (path) => opened.push(path),
+    openShortcutMap: () => maps.push(1),
+    openPalette: () => {},
+  });
+  return { registry, opened, maps };
+}
+
+const WAITING: NotificationEntry = {
+  id: 'review:one',
+  kind: 'approval',
+  tier: 'warning',
+  icon: 'shield-question-mark',
+  title: 'tool-runner needs your approval',
+  identifiers: ['tool-runner'],
+  detail: 'Refund order 1234',
+  joiner: ' in ',
+  sessionId: 'session-refund',
+  href: '/chats/session-refund',
+  emittedAtMs: Date.now() - 120_000,
+};
+
+async function choose(query: string, resultName: RegExp, registry?: ShortcutRegistry) {
   stubEngine();
   landAt('/chats');
   const view = render(CommandPaletteLauncher, {
-    props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    props: {
+      open: true,
+      client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+      ...(registry === undefined ? {} : { registry }),
+    },
   });
   await fireEvent.input(await view.findByRole('combobox'), { target: { value: query } });
   const result = await view.findByRole('option', { name: resultName });
@@ -132,7 +213,7 @@ describe('the chats, agents, and commands', () => {
     const view = render(CommandPaletteLauncher, {
       props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
     });
-    expect(view.getByPlaceholderText('Search everything')).not.toBeNull();
+    expect(view.getByPlaceholderText(PALETTE_COPY.placeholder)).not.toBeNull();
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'ech' } });
 
     await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));
@@ -144,7 +225,7 @@ describe('the chats, agents, and commands', () => {
     expect(view.getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual([
       'Chats',
       'Agents',
-      'Commands',
+      'Actions',
     ]);
   });
 
@@ -165,9 +246,10 @@ describe('the chats, agents, and commands', () => {
     );
   });
 
-  test('Go to Reviews opens the reviews page', async () => {
-    await choose('go to rev', /^Go to Reviews$/);
-    await waitFor(() => expect(router.pathname).toBe('/reviews'));
+  test('Go to Reviews, an action of the registry, opens the reviews page', async () => {
+    const { registry, opened } = shellRegistry();
+    await choose('go to rev', /^Go to Reviews/, registry);
+    await waitFor(() => expect(opened).toEqual(['/reviews']));
   });
 });
 
@@ -186,13 +268,8 @@ describe('choosing with the keyboard', () => {
   });
 });
 
-describe('the engine pages and the empty states', () => {
-  test('an engine page opens by name', async () => {
-    await choose('go to storage', /^Storage$/);
-    await waitFor(() => expect(router.pathname).toBe('/health/storage'));
-  });
-
-  test('says what to type before anything is typed, and when nothing matches', async () => {
+describe('the empty states', () => {
+  test('says what to type when there is nothing to list before anything is typed, and when nothing matches', async () => {
     stubEngine();
     landAt('/chats');
     const view = render(CommandPaletteLauncher, {
@@ -204,25 +281,120 @@ describe('the engine pages and the empty states', () => {
   });
 });
 
-describe('the palette shortcut', () => {
-  test('Cmd+K and Ctrl+K open the palette, and other keys leave it closed', async () => {
-    stubEngine();
-    landAt('/chats');
-    const view = render(CommandPaletteLauncher, {
-      props: { open: false, client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
-    });
-
-    await fireEvent.keyDown(window, { key: 'k' });
-    expect(view.queryByRole('combobox')).toBeNull();
-
-    await fireEvent.keyDown(window, { key: 'K', ctrlKey: true });
-    expect(await view.findByRole('combobox')).not.toBeNull();
-  });
-});
-
 describe('the paths of a record', () => {
   test('encode the identifier', () => {
     expect(schedulePath('a b/c')).toBe('/schedules/a%20b%2Fc');
     expect(workerPath('a&b')).toBe('/health/workers?worker=a%26b');
+  });
+});
+
+describe('every kind of result, in order', () => {
+  function open(props: Record<string, unknown> = {}) {
+    stubEngine();
+    landAt('/chats');
+    return render(CommandPaletteLauncher, {
+      props: { open: true, client: new HttpClient({ baseUrl: 'http://localhost/api' }), ...props },
+    });
+  }
+
+  const groups = (view: ReturnType<typeof open>) =>
+    view.getAllByRole('group').map((group) => group.getAttribute('aria-label'));
+
+  test('lists what is waiting on the person and the actions with their keys before anything is typed', async () => {
+    const store = memoryStore();
+    store.setActivity([WAITING]);
+    const { registry } = shellRegistry();
+    const view = open({ store, registry });
+
+    await waitFor(() => expect(groups(view)).toEqual(['Waiting on you', 'Actions']));
+    expect(
+      view.getByRole('option', { name: 'tool-runner needs your approval in Refund order 1234' }),
+    ).not.toBeNull();
+    const search = view.getByRole('option', { name: 'Go to Reviews' });
+    expect(search.getAttribute('aria-keyshortcuts')).toBe('G V');
+  });
+
+  test('a waiting item opens where it is waiting', async () => {
+    const store = memoryStore();
+    store.setActivity([WAITING]);
+    const view = open({ store });
+
+    await fireEvent.click(await view.findByRole('option', { name: /needs your approval/ }));
+
+    await waitFor(() => expect(router.pathname).toBe('/chats/session-refund'));
+  });
+
+  test('reaches chats, workflows, runs, schedules, workers, reviews, agents, tools and actions, waiting first', async () => {
+    const store = memoryStore();
+    store.setActivity([WAITING]);
+    const { registry } = shellRegistry();
+    const view = open({ store, registry });
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
+
+    await waitFor(() => expect(groups(view)).toContain('Tools'));
+    // The refund workflow, the refund tool and the waiting refund each show once; a waiting item is first.
+    expect(groups(view)).toEqual(['Waiting on you', 'Workflows', 'Tools']);
+    await fireEvent.click(view.getByRole('option', { name: /^issue-refund/ }));
+    await waitFor(() =>
+      expect(router.pathname + '?' + router.search.toString()).toBe(toolPath('issue-refund')),
+    );
+  });
+
+  test('a workflow type opens its page', async () => {
+    const view = open();
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund-f' } });
+
+    await fireEvent.click(await view.findByRole('option', { name: /^refund-flow/ }));
+
+    await waitFor(() => expect(router.pathname).toBe('/workflows/refund-flow'));
+  });
+
+  test('> lists only the actions, and runs the one chosen', async () => {
+    const { registry, opened, maps } = shellRegistry();
+    const view = open({ registry });
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: '>keyboard' } });
+
+    await waitFor(() => expect(groups(view)).toEqual(['Actions']));
+    expect(view.getAllByRole('option')).toHaveLength(1);
+    await fireEvent.click(view.getByRole('option', { name: 'Show keyboard shortcuts' }));
+    expect(maps).toEqual([1]);
+    expect(opened).toEqual([]);
+  });
+
+  test('> with nothing after it lists every action, and the chats each agent can be opened with', async () => {
+    const { registry } = shellRegistry();
+    const view = open({ registry });
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: '>' } });
+
+    await waitFor(() =>
+      expect(view.queryByRole('option', { name: 'New chat with echo' })).not.toBeNull(),
+    );
+    expect(groups(view)).toEqual(['Actions']);
+    expect(view.getAllByRole('option').length).toBeGreaterThan(8);
+  });
+
+  test('@ lists only agents, all of them for a bare @', async () => {
+    const view = open({ registry: shellRegistry().registry });
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: '@' } });
+
+    await waitFor(() => expect(groups(view)).toEqual(['Agents']));
+    expect(view.getAllByRole('option').map((option) => option.getAttribute('aria-label'))).toEqual([
+      'echo, Repeats the last message it was sent.',
+    ]);
+    await fireEvent.click(view.getByRole('option', { name: /^echo/ }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/echo'));
+  });
+
+  test('a scope the principal lacks leaves its kinds out of the results', async () => {
+    const locked = { disabled: true, title: 'Requires a scope' };
+    const view = open({
+      workflowReadGate: locked,
+      reviewReadGate: locked,
+      systemReadGate: locked,
+      scheduleReadGate: locked,
+    });
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
+
+    await waitFor(() => expect(groups(view)).toEqual(['Tools']));
   });
 });

@@ -73,6 +73,31 @@ function context(id: string, title: string) {
   };
 }
 
+function schedule(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 's-1',
+    owner: 'anonymous:local',
+    agentName: 'assistant',
+    inputPreview: null,
+    workflowType: 'agentRun',
+    description: null,
+    cronExpression: '0 9 * * *',
+    intervalMs: null,
+    status: 'active',
+    overlap: 'skip',
+    revision: 1,
+    timeZone: 'UTC',
+    nextFireAt: null,
+    skipUntil: null,
+    lastFireAt: null,
+    missedFireCount: 0,
+    skippedCount: 0,
+    createdAt: '2026-10-19T08:00:00.000Z',
+    updatedAt: '2026-10-19T08:00:00.000Z',
+    ...overrides,
+  };
+}
+
 const CONTEXTS = {
   contexts: [
     context('session-refund', 'Refund order 1234'),
@@ -89,6 +114,7 @@ function served(overrides: Record<string, (params: Record<string, unknown>) => u
     'bureau.tasks.list': () => ({ tasks: [ECHO_TASK], nextPageToken: null }),
     'bureau.contexts.list': () => CONTEXTS,
     'bureau.notifications.list': () => ({ notifications: [], nextPageToken: null }),
+    'bureau.schedules.list': () => ({ schedules: [], nextOffset: null }),
     'bureau.notifications.markread': (params) => ({
       updated: (params['ids'] as string[]).length,
     }),
@@ -381,10 +407,158 @@ describe('connectNotificationFeed', () => {
           'bureau.tasks.list',
           'bureau.contexts.list',
           'bureau.notifications.list',
+          'bureau.schedules.list',
         ]),
       );
     });
     expect(store.items).toEqual([]);
     expect(store.unreadCount).toBe(0);
+    expect(store.loadFailed).toBe(false);
+  });
+
+  test('a Bureau that cannot be read is not an empty one: the store says the list failed', async () => {
+    served({
+      'bureau.reviews.list': () => {
+        throw new Error('the Bureau did not answer');
+      },
+    });
+    landAt('/agents');
+
+    const { store } = mount();
+
+    await waitFor(() => expect(store.loadFailed).toBe(true));
+    expect(store.items.map((item) => item.kind)).not.toContain('approval');
+  });
+
+  test('reloading reads the Bureau again, and a list that then loads is no longer failed', async () => {
+    let answering = false;
+    const bureauStub = served({
+      'bureau.reviews.list': () => {
+        if (!answering) throw new Error('the Bureau did not answer');
+        return { reviews: [APPROVAL] };
+      },
+    });
+    landAt('/agents');
+    const { store } = mount();
+    await waitFor(() => expect(store.loadFailed).toBe(true));
+    const before = callsTo(bureauStub, 'bureau.reviews.list').length;
+
+    answering = true;
+    store.reload();
+
+    await waitFor(() => expect(store.loadFailed).toBe(false));
+    expect(callsTo(bureauStub, 'bureau.reviews.list').length).toBeGreaterThan(before);
+    expect(store.items.map((item) => item.kind)).toContain('approval');
+  });
+
+  test('a schedule that missed a fire is an item that opens the schedule', async () => {
+    const bureauStub = served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.schedules.list': () => ({
+        schedules: [
+          schedule({ id: 's-quiet', missedFireCount: 0 }),
+          schedule({ id: 's-late', description: 'Nightly digest', missedFireCount: 2 }),
+        ],
+        nextOffset: null,
+      }),
+      'bureau.schedules.missed': () => ({
+        missed: [
+          {
+            occurrence: new Date(NOW - 3_600_000).toISOString(),
+            reason: 'late',
+            count: 1,
+            recordedAt: new Date(NOW - 3_000_000).toISOString(),
+          },
+        ],
+      }),
+    });
+    landAt('/agents');
+
+    const { store } = mount();
+
+    await waitFor(() => expect(store.items.map((item) => item.kind)).toContain('missed'));
+    const missed = store.items.find((item) => item.kind === 'missed');
+    expect(missed?.title).toBe('Nightly digest missed a run');
+    expect(missed?.href).toBe('/schedules/s-late');
+    expect(store.unreadCount).toBe(1);
+    // Only the schedule that missed a fire is asked about.
+    expect(callsTo(bureauStub, 'bureau.schedules.missed').map((call) => call.params)).toEqual([
+      { scheduleId: 's-late' },
+    ]);
+  });
+
+  test('a miss older than a day is history, not news', async () => {
+    served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.schedules.list': () => ({
+        schedules: [schedule({ id: 's-old', missedFireCount: 1 })],
+        nextOffset: null,
+      }),
+      'bureau.schedules.missed': () => ({
+        missed: [
+          {
+            occurrence: new Date(NOW - 3 * 86_400_000).toISOString(),
+            reason: 'dst-gap',
+            count: 1,
+            recordedAt: new Date(NOW - 3 * 86_400_000).toISOString(),
+          },
+        ],
+      }),
+    });
+    landAt('/agents');
+
+    const { store } = mount();
+
+    await waitFor(() => expect(store.loadFailed).toBe(false));
+    await waitFor(() => expect(store.items).toEqual([]));
+  });
+
+  test('marking a notification read tells the Bureau, in as many calls as it takes', async () => {
+    const many = Array.from({ length: 230 }, (_, index) =>
+      failure({ id: `notification-${String(index)}` }),
+    );
+    const bureauStub = served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({ notifications: many, nextPageToken: null }),
+    });
+    landAt('/agents');
+    const { store } = mount();
+    await waitFor(() => expect(store.items).toHaveLength(230));
+
+    store.markAllRead();
+
+    await waitFor(() =>
+      expect(callsTo(bureauStub, 'bureau.notifications.markread')).toHaveLength(3),
+    );
+    expect(
+      callsTo(bureauStub, 'bureau.notifications.markread').map(
+        (call) => (call.params as { ids: string[] }).ids.length,
+      ),
+    ).toEqual([100, 100, 30]);
+  });
+
+  test('a mark-as-read the Bureau refuses leaves the items unread, and says so', async () => {
+    served({
+      'bureau.reviews.list': () => ({ reviews: [] }),
+      'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
+      'bureau.contexts.list': () => FIRE_CONTEXTS,
+      'bureau.notifications.list': () => ({ notifications: [failure()], nextPageToken: null }),
+      'bureau.notifications.markread': () => {
+        throw new Error('the Bureau did not answer');
+      },
+    });
+    landAt('/agents');
+    const { store } = mount();
+    await waitFor(() => expect(store.unreadCount).toBe(1));
+
+    store.markAllRead();
+
+    await waitFor(() => expect(store.readFailed).toBe(true));
+    expect(store.unreadCount).toBe(1);
+    expect(store.items[0]?.read).toBe(false);
   });
 });

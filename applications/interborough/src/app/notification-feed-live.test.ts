@@ -39,6 +39,7 @@ function open(): void {
     'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
     'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
     'bureau.notifications.list': () => ({ notifications: [], nextPageToken: null }),
+    'bureau.schedules.list': () => ({ schedules: [], nextOffset: null }),
     'bureau.deployment.get': () => ({ id: 'bureau-1' }),
   });
   restore = stub.restore;
