@@ -21,6 +21,7 @@ import { createBureauHandler } from './http/create-bureau-handler';
 import { RESOLVED_REVIEW_KEY_PREFIX } from './resolved-review-record';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
+import { waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import type { Bureau } from './types';
 
@@ -392,5 +393,56 @@ describe('Allow for the rest of this chat, answered on an AG-UI resume (COR-1990
     expect(grants).toHaveLength(1);
     expect(grants[0]).toMatchObject({ value: { remembered: true, loosened: false } });
     expect(pendingOf(bureau, await askAgain('A2'))).toHaveLength(1);
+  });
+});
+
+describe('Allow for the rest of this chat, in a tried agent’s chat (COR-1990)', () => {
+  /** Tries a definition whose one tool asks, and returns the tried chat and the first approval. */
+  async function tryAsking(toolApproval?: Record<string, 'always' | 'on-changes'>) {
+    const { bureau } = await start();
+    plan.tool = 'issue-refund';
+    plan.orderId = 'A1';
+    const tried = await bureau.agents.try(
+      {
+        name: 'Sketch',
+        model: KNOWN_MODEL,
+        tools: ['issue-refund'],
+        ...(toolApproval === undefined ? {} : { toolApproval }),
+        instructions: 'You are a sketch of an agent.\n',
+      },
+      'Go.',
+      { principal: ALICE },
+    );
+    await waitForTaskState(bureau, tried.taskId);
+    return { bureau, tried };
+  }
+
+  /** The next refund in the tried chat, asked as its owner. */
+  async function askAgain(bureau: Bureau, tried: { agentName: string; contextId: string }) {
+    plan.orderId = 'A2';
+    const task = await bureau.tasks.start(tried.agentName, 'Go.', {
+      principal: ALICE,
+      contextId: tried.contextId,
+    });
+    await task.result();
+    return task.id;
+  }
+
+  it('reports loosened: true for a tool that asks on changes, and the next call is not asked', async () => {
+    const { bureau, tried } = await tryAsking();
+    const resolved = await approveRemembering(bureau, tried.taskId);
+
+    expect(resolved).toMatchObject({ remembered: true, loosened: true });
+    expect(pendingOf(bureau, await askAgain(bureau, tried))).toHaveLength(0);
+    expect(executed).toEqual(['issue-refund:A1', 'issue-refund:A2']);
+  });
+
+  it('reports loosened: false for a tool its tried definition sets to always, which asks again', async () => {
+    const { bureau, tried } = await tryAsking({ 'issue-refund': 'always' });
+    const resolved = await approveRemembering(bureau, tried.taskId);
+
+    expect(resolved).toMatchObject({ remembered: true, loosened: false });
+    expect(pendingOf(bureau, await askAgain(bureau, tried))).toHaveLength(1);
+    expect(executed).toEqual(['issue-refund:A1']);
   });
 });

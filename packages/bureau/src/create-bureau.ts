@@ -8207,7 +8207,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // Built before it is held: a definition that would not load as a file is refused here with the
     // file's own field-named problem, and nothing exists.
     const agent = fileAgents.files.ephemeral(agentName, definition);
-    tryAgents.hold({ name: agentName, agent, owner, contextId });
+    tryAgents.hold({ name: agentName, agent, definition, owner, contextId });
     try {
       const handle = await startTask(agentName, input, {
         contextId,
@@ -18460,27 +18460,24 @@ async function constructBureau<const D extends AgentDefinitions>(
    * COR-1990 — whether the grant a tool approval stored makes the tool's next ask in its chat be
    * skipped, read as the next call is decided: the agent's `toolApproval` for the tool and the
    * chat's permission mode now. Only an agent the file catalog builds reads a grant (that catalog is
-   * the one place `approvalGrantsOfRun` is wired in): a code agent's toolbox and a plugin agent's
-   * belong to the host, which asks again whatever the chat holds. An agent with no file definition
-   * therefore answers `false`, an ephemeral try-it agent included, whose definition the Bureau
-   * cannot read back to weigh the tool's setting: the Bureau cannot show the grant will be read, and
-   * a notice that promised otherwise would fail open. The decision has committed, so a read that
-   * fails answers `false` and never throws: the person is told the grant did not loosen the tool,
-   * and the grant is still held.
+   * the one place `approvalGrantsOfRun` is wired in), and that is a file agent and a tried agent,
+   * which `files.ephemeral` builds the same way: a file agent is weighed by its file's definition,
+   * and a tried agent by the definition it was built from, held in the `tryAgents` registry. A code
+   * agent's toolbox and a plugin agent's belong to the host, which asks again whatever the chat
+   * holds, so they answer `false`, as does a tried agent whose registry entry is gone (its context
+   * was deleted): the Bureau cannot show the grant will be read, and a notice that promised
+   * otherwise would fail open. The decision has committed, so a read that fails answers `false` and
+   * never throws: the person is told the grant did not loosen the tool, and the grant is still held.
    */
   async function grantLoosensReview(review: PendingReview): Promise<boolean> {
     if (review.kind !== 'tool-approval') return false;
     try {
-      const detail =
-        review.agentName === undefined
-          ? undefined
-          : await fileAgents?.files.detail(review.agentName);
-      const definition = detail?.definition ?? undefined;
-      // No file definition: the grant is not read for this agent, so it loosens nothing.
+      const definition = await weighableDefinitionOf(review.agentName);
+      // No definition to weigh: the grant is not read for this agent, so it loosens nothing.
       if (definition === undefined) return false;
       const catalog = new Map(Object.entries(agentToolCatalog));
       const tools = Object.fromEntries(
-        definition.tools.flatMap((name) => {
+        (definition.tools ?? []).flatMap((name) => {
           const tool = catalog.get(name);
           return tool === undefined ? [] : [[name, tool]];
         }),
@@ -18490,7 +18487,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         runSessionIncarnations.get(review.runId),
       );
       return grantLoosensTool({
-        toolApproval: definition.toolApproval,
+        toolApproval: definition.toolApproval ?? undefined,
         tools,
         reportedName: review.approval.toolName,
         mode,
@@ -18498,6 +18495,19 @@ async function constructBureau<const D extends AgentDefinitions>(
     } catch {
       return false;
     }
+  }
+
+  /**
+   * The tools and `toolApproval` of the agent `agentName` as its toolbox is built from them: a tried
+   * agent's from the registry, a file agent's from its file, and nothing for any other agent.
+   */
+  async function weighableDefinitionOf(
+    agentName: string | undefined,
+  ): Promise<Pick<AgentFileDefinitionInput, 'tools' | 'toolApproval'> | undefined> {
+    if (agentName === undefined) return undefined;
+    if (isTryAgentName(agentName)) return tryAgents.definitionOf(agentName);
+    const detail = await fileAgents?.files.detail(agentName);
+    return detail?.definition ?? undefined;
   }
 
   /**

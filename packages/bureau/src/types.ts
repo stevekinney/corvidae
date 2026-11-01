@@ -1246,8 +1246,9 @@ export interface ResolveReviewResult {
    * tool and the chat's permission mode). `false` when `remembered` is, and `false` for a tool its
    * agent sets to `always` or `blocked`, a chat in `always` mode, and a tool a `read-only` chat
    * denies: the grant is stored for those, but they answer `ask` or `deny` whatever it says. Also
-   * `false` for an agent with no agent file (a code agent, a plugin agent): its toolbox belongs to the
-   * host, which the Bureau does not wire the chat's grants into, so its next call asks again.
+   * `false` for a code agent or a plugin agent: its toolbox belongs to the host, which the Bureau
+   * does not wire the chat's grants into, so its next call asks again. A file agent is weighed by its
+   * file's definition and a tried agent by the definition it was tried with.
    */
   loosened?: boolean;
 }

@@ -84,6 +84,11 @@ export interface TryAgentEntry {
   /** The agent's name, which starts with {@link TRY_AGENT_NAME_START}. */
   readonly name: string;
   readonly agent: AnyRunnableAgent;
+  /**
+   * The definition `agent` was built from. A tried agent has no file to read back, so this is where
+   * a check that weighs its tools (whether a remembered grant loosens one, COR-1990) reads them.
+   */
+  readonly definition: AgentFileDefinitionInput;
   /** The owner of record of the context, who alone may run the agent. */
   readonly owner: string;
   /** The one context the agent belongs to. */
@@ -98,6 +103,11 @@ export interface TryAgents {
   find(name: string, owner: string): AnyRunnableAgent | undefined;
   /** The agent named `name`, for whoever asks: what a check of its models reads, not a run. */
   peek(name: string): AnyRunnableAgent | undefined;
+  /**
+   * The definition the agent named `name` was built from, for whoever asks, or `undefined` when no
+   * such agent is held.
+   */
+  definitionOf(name: string): AgentFileDefinitionInput | undefined;
   /** The context the agent named `name` belongs to, or `undefined` when no such agent is held. */
   contextOf(name: string): string | undefined;
   /** Drops the agent named `name`, if `contextId` is the context it belongs to. */
@@ -124,6 +134,7 @@ export function createTryAgents(): TryAgents {
       return entry !== undefined && entry.owner === owner ? entry.agent : undefined;
     },
     peek: (name) => held.get(name)?.agent,
+    definitionOf: (name) => held.get(name)?.definition,
     contextOf: (name) => held.get(name)?.contextId,
     release: (name, contextId) => {
       if (held.get(name)?.contextId === contextId) held.delete(name);
