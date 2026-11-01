@@ -1,12 +1,14 @@
 /**
  * The lines a run leaves under a chat's messages: a memory record it wrote, a time it parked itself
  * until, a run it handed work to, and why its last run stopped. The Bureau announces the first three
- * with `CUSTOM` events while a run streams (`packages/bureau/src/http/ag-ui-vocabulary.ts`), and
- * never reads them back out of a run's history, so each is held as an announcement and stamped on a
- * row's `cinder:notes` metadata, where Chat renders it. A reloaded thread has no announcements, so
- * what its history and its tasks still say becomes the same notes: a stored memory record from the
- * `memory_store` result in the rows, and why the last run stopped from its task. A note has one
- * identity, so a live note and the one read back from history are the same line, never two.
+ * with `CUSTOM` events while a run streams (`packages/bureau/src/http/ag-ui-vocabulary.ts`), and a
+ * stream that attaches after the event does not hold them, so each is held as an announcement and
+ * stamped on a row's `cinder:notes` metadata, where Chat renders it. A reloaded thread has no
+ * announcements, so what its history and its tasks still say becomes the same notes: a stored
+ * memory record from the `memory_store` result in the rows, why the last run stopped from its task,
+ * the wakeup a run is still parked on from its task's `wakeAt`, and each child run from the tasks
+ * the thread's runs started (COR-1987). A note has one identity, so a live note and the one read
+ * back from history or a task are the same line, never two.
  *
  * Reasoning is not here: it is live and private (COR-1806), and Chat's mapper already folds it into
  * the assistant row as a thinking block.
@@ -215,6 +217,11 @@ export type Placement = {
    * the person's message when the turn has no other.
    */
   readonly ownedOnly?: boolean | undefined;
+  /**
+   * Lets an announcement's anchor name any shown reply, not only one of the last turn's. A thread
+   * read back puts a child run under the reply that started it, in whichever turn that was.
+   */
+  readonly anchorAnywhere?: boolean | undefined;
 };
 
 function shownIds(conversation: ConversationHistory): string[] {
@@ -257,10 +264,12 @@ function placementRowId(
   const turn = lastTurnIds(conversation);
   const preferred = anchor === undefined ? undefined : conversation.messages[anchor];
   if (
-    preferred?.role === 'assistant' &&
+    (preferred?.role === 'assistant' || preferred?.role === 'tool-call') &&
     !preferred.hidden &&
     owned(preferred.id) &&
-    (placement.owns !== undefined || turn.includes(preferred.id))
+    (placement.owns !== undefined ||
+      placement.anchorAnywhere === true ||
+      turn.includes(preferred.id))
   ) {
     return preferred.id;
   }
@@ -384,12 +393,9 @@ export function withStoredMemoryNotes(
   const resultOf = new Map(
     pairToolCallsWithResults(rows).map((pair) => [pair.call.id, pair.result] as const),
   );
+  const carriers = callCarriers(rows);
   let current = conversation;
-  let reply: string | undefined;
   for (const row of rows) {
-    // A reply of an earlier turn is not where this turn's record was written.
-    if (opensTurn(row)) reply = undefined;
-    if (row.role === 'assistant' && !row.hidden) reply = row.id;
     const call = row.toolCall;
     if (call?.name !== MEMORY_STORE_TOOL_NAME) continue;
     const result = resultOf.get(call.id);
@@ -406,14 +412,33 @@ export function withStoredMemoryNotes(
     ) {
       continue;
     }
-    // The reply before the call in its own turn, else the call's own row, which a group of tool
-    // rows shows with the note.
-    const carrier = reply ?? (row.hidden ? undefined : row.id);
     current =
-      stampNote(current, memoryNote(recordId, collection, memoryClass, agentName), carrier) ??
-      current;
+      stampNote(
+        current,
+        memoryNote(recordId, collection, memoryClass, agentName),
+        carriers.get(call.id),
+      ) ?? current;
   }
   return current;
+}
+
+/**
+ * The row each tool call is shown under: the reply before the call in its own turn, else the
+ * call's own row, which a group of tool rows shows with a note. A reply of an earlier turn is not
+ * where this turn's call was made, and a hidden call row carries nothing.
+ */
+function callCarriers(rows: readonly Row[]): Map<string, string> {
+  const carriers = new Map<string, string>();
+  let reply: string | undefined;
+  for (const row of rows) {
+    if (opensTurn(row)) reply = undefined;
+    if (row.role === 'assistant' && !row.hidden) reply = row.id;
+    const call = row.toolCall;
+    if (call === undefined) continue;
+    const carrier = reply ?? (row.hidden ? undefined : row.id);
+    if (carrier !== undefined) carriers.set(call.id, carrier);
+  }
+  return carriers;
 }
 
 /**
@@ -456,13 +481,18 @@ export function withStopReason(
   );
 }
 
-/** The kinds of note only the stream announced, which a thread read from the Bureau cannot give back. */
+/**
+ * The kinds of note a thread read again cannot be trusted to give back whole. The tasks say a
+ * wakeup that is still pending and each child run (`taskNoteAnnouncements`), but a wakeup that has
+ * since fired, or a child run a task record does not hold (one a tool or a peer started), is
+ * something only the stream said.
+ */
 const LIVE_ONLY: ReadonlySet<MessageNoteInfo['kind']> = new Set(['wakeup', 'child-run']);
 
 /**
- * `next` with the live-only notes `previous` holds, on the rows of `next` that have the same id. A
- * thread read again after a run keeps what the page was told while it watched, since the Bureau
- * does not say it again.
+ * `next` with the stream-told notes `previous` holds, on the rows of `next` that have the same id.
+ * A thread read again after a run keeps what the page was told while it watched, since the
+ * thread's rows do not say it; a note the tasks say again is the same line and is stamped over it.
  */
 export function carryLiveNotes(
   previous: ConversationHistory,
@@ -477,4 +507,68 @@ export function carryLiveNotes(
     for (const note of carried) current = stampNote(current, note, id) ?? current;
   }
   return current;
+}
+
+/** What a child run's task state is called on its card: a task not yet ended is still running. */
+function childStatusOf(status: TaskView['status']): ChildRunStatus {
+  switch (status) {
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'canceled':
+      return 'aborted';
+    case 'submitted':
+    case 'working':
+    case 'input-required':
+      return 'running';
+  }
+}
+
+/**
+ * The announcements a reloaded thread's tasks still make (COR-1987), as the same notes the stream
+ * announced, with the same identities, so a live note and the one a task gives back are one line.
+ *
+ * - `runs`: the runs whose pending wakeup is shown. A task holds `wakeAt` only while the run is
+ *   parked on it, so a wakeup that fired, or one the run left for a person's answer, is not
+ *   shown; one whose time has passed by `now` is not either.
+ * - `children`: the child runs the thread's runs started, each as a card with its link and where it
+ *   stands. The card goes under the reply before the tool call that started it when the task
+ *   names the call and the thread holds it, else on the last reply. A child with no agent to name
+ *   is left out, since the card is named for it, and so is a task that is not a child run. A child a tool or a peer started has no task
+ *   (it is never listed here), so it is not shown after a reload.
+ */
+export function taskNoteAnnouncements(
+  runs: readonly Pick<TaskView, 'id' | 'wakeAt'>[],
+  children: readonly TaskView[],
+  conversation: ConversationHistory,
+  now: number = Date.now(),
+): NoteAnnouncement[] {
+  const announcements: NoteAnnouncement[] = [];
+  for (const run of runs) {
+    const wakeAt = run.wakeAt === undefined || run.wakeAt === null ? NaN : Date.parse(run.wakeAt);
+    if (!isRepresentableTime(wakeAt) || wakeAt <= now) continue;
+    announcements.push({
+      kind: 'note',
+      note: { kind: 'wakeup', id: `wakeup:${run.id}:${String(wakeAt)}`, wakeAt },
+    });
+  }
+  const carriers = callCarriers(conversation.ids.flatMap((id) => conversation.messages[id] ?? []));
+  for (const child of children) {
+    if (child.agentName === null || child.origin?.kind !== 'agent') continue;
+    const callId = child.origin?.['toolCallId'];
+    announcements.push({
+      kind: 'note',
+      anchor: typeof callId === 'string' ? carriers.get(callId) : undefined,
+      note: {
+        kind: 'child-run',
+        id: `child:${child.id}`,
+        childRunId: child.id,
+        agentName: child.agentName,
+        status: childStatusOf(child.status),
+        href: runHref(child.id),
+      },
+    });
+  }
+  return announcements;
 }

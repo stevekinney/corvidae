@@ -72,14 +72,16 @@ import {
   type AssetPartReference,
 } from '../../lib/bureau-assets.ts';
 import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-client.ts';
-import { getLastRun } from '../../lib/bureau-tasks.ts';
+import { getLastRun, getTask, listChildRuns, type TaskView } from '../../lib/bureau-tasks.ts';
 import { readEvents } from './ag-ui-events.ts';
 import {
   FOLLOW_UP_METADATA_KEY,
   noteAnnouncementKey,
   noteAnnouncementOf,
   placeEventNotes,
+  taskNoteAnnouncements,
   TOOL_GRANT_SETTLED_EVENT_NAME,
+  withEventNotes,
   withStopReason,
   withStoredMemoryNotes,
   type NoteAnnouncement,
@@ -770,6 +772,25 @@ export function withAssetParts(
 }
 
 /**
+ * `thread` with what the thread's tasks still say of the stream's announcements (COR-1987): the
+ * wakeup `run` is parked on, and a card for each child run any run in the thread started. The
+ * stream says neither again to a page that attaches late or reloads, so the tasks are read. It is a
+ * courtesy: a task that cannot be read leaves the thread as it is rather than failing the read.
+ */
+async function withTaskNotes(
+  thread: ConversationHistory,
+  run: Pick<TaskView, 'id' | 'wakeAt'> | undefined,
+  read: { readonly fetch: Fetcher; readonly signal?: AbortSignal },
+): Promise<ConversationHistory> {
+  const children = await listChildRuns(thread.id, read).catch(() => []);
+  return withEventNotes(
+    thread,
+    taskNoteAnnouncements(run === undefined ? [] : [run], children, thread),
+    { anchorAnywhere: true },
+  );
+}
+
+/**
  * The conversation with everything the run announced on the rows it belongs to: the assets a row
  * carries, and the lines under a message (memory written, a wakeup, a child run). `unplaced` holds
  * the lines that found no row (see {@link placeEventNotes}).
@@ -1441,13 +1462,31 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       // A valid live-cursor resume has no snapshot: preserve the transcript already
       // on screen. A snapshot is authoritative and therefore starts from an empty
       // history so no stale row can survive the replacement.
-      const restored =
-        snapshot.done !== true && isMessagesSnapshot(snapshot.value)
-          ? withStoredMemoryNotes(
-              mergeAGUIMessages(createConversationHistory({ id: threadId }), messages),
-              options.agentName(),
-            )
-          : options.conversation();
+      let restored: ConversationHistory;
+      if (snapshot.done !== true && isMessagesSnapshot(snapshot.value)) {
+        const read = { fetch: send, ...(signal === undefined ? {} : { signal }) };
+        // The run the page attached to is the one whose wakeup it is parked on.
+        // The event schema requires a `runId`, so the Bureau's own name for the run is only
+        // preferred to it.
+        const attachedRun = await getTask(
+          nativeRunIdOf(started.value) ?? String(started.value['runId']),
+          read,
+        ).catch(() => undefined);
+        restored = await withTaskNotes(
+          withStoredMemoryNotes(
+            mergeAGUIMessages(createConversationHistory({ id: threadId }), messages),
+            options.agentName(),
+          ),
+          attachedRun,
+          read,
+        );
+        if (signal?.aborted || current !== attachGeneration) {
+          await events.return(undefined);
+          return undefined;
+        }
+      } else {
+        restored = options.conversation();
+      }
       attached = (async function* () {
         try {
           for (const event of opened) {
@@ -1494,7 +1533,11 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         fetch: send,
         ...(signal === undefined ? {} : { signal }),
       }).catch(() => undefined);
-      return withStopReason(thread, lastRun);
+      const noted = await withTaskNotes(thread, lastRun, {
+        fetch: send,
+        ...(signal === undefined ? {} : { signal }),
+      });
+      return withStopReason(noted, lastRun);
     },
     detach() {
       detached = true;

@@ -10,6 +10,7 @@ import {
   inspectTaskStep,
   isRefusedPageToken,
   isTerminalState,
+  listChildRuns,
   listTasks,
   respondToTask,
   taskAnswerText,
@@ -102,6 +103,45 @@ describe('the task operations', () => {
     });
     expect(task.openWaits).toEqual([
       { kind: 'human-wait', reviewId: 'review-1', signalName: 'environment' },
+    ]);
+  });
+
+  test('a task from a Bureau that does not report wakeAt still parses, and one that does keeps it', async () => {
+    const without = await withFetch(answering(TASK).fetch, () => getTask('run-1'));
+    expect(without.wakeAt).toBeUndefined();
+
+    const sleeping = { ...TASK, wakeAt: '2026-11-02T00:00:00.000Z' };
+    const kept = await withFetch(answering(sleeping).fetch, () => getTask('run-1'));
+    expect(kept.wakeAt).toBe('2026-11-02T00:00:00.000Z');
+
+    const none = await withFetch(answering({ ...TASK, wakeAt: null }).fetch, () =>
+      getTask('run-1'),
+    );
+    expect(none.wakeAt).toBeNull();
+  });
+
+  test('listChildRuns reads every page of the children started from a context', async () => {
+    const calls: Call[] = [];
+    const pages = [
+      { tasks: [{ ...TASK, id: 'child-1' }], nextPageToken: 'token-2' },
+      { tasks: [{ ...TASK, id: 'child-2' }], nextPageToken: null },
+    ];
+    const stub: Fetcher = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+        method: string;
+        params: unknown;
+      };
+      calls.push({ url, method: body.method, params: body.params });
+      return Response.json({ jsonrpc: '2.0', id: 1, result: pages.shift() });
+    };
+
+    const children = await withFetch(stub, () => listChildRuns('session-1'));
+
+    expect(children.map((child) => child.id)).toEqual(['child-1', 'child-2']);
+    expect(calls.map((call) => call.params)).toEqual([
+      { parentContextId: 'session-1', limit: 100 },
+      { parentContextId: 'session-1', limit: 100, pageToken: 'token-2' },
     ]);
   });
 

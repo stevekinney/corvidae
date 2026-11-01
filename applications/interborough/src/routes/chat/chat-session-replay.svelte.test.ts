@@ -194,6 +194,8 @@ function mount(starts: Answer[], attaches: Array<(messages: Row[]) => Response> 
   const requests: string[] = [];
   const fetchStub: Fetcher = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    // A task read after an attach (COR-1987) is not the mount; it has nothing to say here.
+    if (url.endsWith('/jsonrpc')) return new Response('', { status: 404 });
     requests.push(`${init?.method ?? 'GET'} ${url}`);
     if (url.endsWith('/messages'))
       return Response.json({ threadId: THREAD, messages: thread.rows });
@@ -242,6 +244,8 @@ describe('a message typed while a refused resume is owed', () => {
     const requests: string[] = [];
     const fetchStub: Fetcher = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      // A task read after an attach (COR-1987) is not the mount; it has nothing to say here.
+      if (url.endsWith('/jsonrpc')) return new Response('', { status: 404 });
       requests.push(`${init?.method ?? 'GET'} ${url}`);
       if (url.endsWith('/messages'))
         return Response.json({ threadId: THREAD, messages: thread.rows });
@@ -307,6 +311,8 @@ describe('a message typed while a refused resume is owed', () => {
     const requests: string[] = [];
     const fetchStub: Fetcher = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      // A task read after an attach (COR-1987) is not the mount; it has nothing to say here.
+      if (url.endsWith('/jsonrpc')) return new Response('', { status: 404 });
       requests.push(`${init?.method ?? 'GET'} ${url}`);
       if (url.endsWith('/messages'))
         return Response.json({ threadId: THREAD, messages: thread.rows });

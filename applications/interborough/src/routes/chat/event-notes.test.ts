@@ -16,6 +16,8 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { TaskView } from '../../lib/bureau-tasks.ts';
+
 import {
   CHILD_RUN_SETTLED_EVENT_NAME,
   CHILD_RUN_STARTED_EVENT_NAME,
@@ -26,6 +28,7 @@ import {
   carryLiveNotes,
   noteAnnouncementOf,
   stopReasonOf,
+  taskNoteAnnouncements,
   withEventNotes,
   withStopReason,
   withStoredMemoryNotes,
@@ -440,5 +443,146 @@ describe('carryLiveNotes', () => {
     const reread = carryLiveNotes(live, shorter);
 
     expect(reread.ids.flatMap((id) => notesOn(reread, id))).toEqual([]);
+  });
+});
+
+describe('taskNoteAnnouncements', () => {
+  const NOW = Date.parse('2026-11-01T12:00:00.000Z');
+  const AHEAD = '2026-11-01T18:00:00.000Z';
+  const child = (overrides: Partial<TaskView> = {}): TaskView => ({
+    id: 'child-1',
+    contextId: 'child-context',
+    agentName: 'researcher',
+    owner: 'owner',
+    actor: null,
+    kind: 'catalog',
+    origin: { kind: 'agent', parentRunId: 'run-1', parentContextId: THREAD, agentName: 'helper' },
+    status: 'working',
+    finishReason: null,
+    statusMessage: null,
+    createdAt: '2026-11-01T11:00:00.000Z',
+    updatedAt: '2026-11-01T11:00:00.000Z',
+    cleanup: null,
+    openWaits: [],
+    wakeAt: null,
+    ...overrides,
+  });
+  const announce = (
+    runs: Parameters<typeof taskNoteAnnouncements>[0],
+    children: readonly TaskView[],
+    history: ConversationHistory = conversation(),
+  ) => taskNoteAnnouncements(runs, children, history, NOW);
+
+  test('makes the note the live announcement made, so the two are one line', () => {
+    const live = announced(
+      custom(WAKEUP_SCHEDULED_EVENT_NAME, {
+        runId: 'run-1',
+        duration: '6h',
+        wakeAt: Date.parse(AHEAD),
+      }),
+    );
+    const liveChild = announced(
+      custom(CHILD_RUN_STARTED_EVENT_NAME, {
+        parentRunId: 'run-1',
+        childRunId: 'child-1',
+        childAgentName: 'researcher',
+      }),
+    );
+
+    const [wakeup, started] = announce([{ id: 'run-1', wakeAt: AHEAD }], [child()]);
+
+    // A note is the same line when it has the same id, and what it says of the run is what the
+    // announcement said.
+    expect(wakeup).toMatchObject({ kind: 'note', note: live.kind === 'note' ? live.note : null });
+    expect(started).toMatchObject({
+      kind: 'note',
+      note: liveChild.kind === 'note' ? liveChild.note : null,
+    });
+    const once = withEventNotes(conversation(), [live, liveChild]);
+    const reloaded = withEventNotes(once, announce([{ id: 'run-1', wakeAt: AHEAD }], [child()]));
+    expect(reloaded.ids.flatMap((id) => notesOn(reloaded, id)).map((note) => note.kind)).toEqual([
+      'wakeup',
+      'child-run',
+    ]);
+  });
+
+  test('says nothing of a wakeup that is not pending: none, past, or unreadable', () => {
+    expect(
+      announce(
+        [
+          { id: 'a', wakeAt: null },
+          { id: 'b' },
+          { id: 'c', wakeAt: '2026-11-01T11:59:59.000Z' },
+          { id: 'd', wakeAt: 'tomorrow' },
+        ],
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  test('shows a child run with its agent and a link to its page, whatever state it is in', () => {
+    const states = [
+      ['submitted', 'running'],
+      ['working', 'running'],
+      ['input-required', 'running'],
+      ['completed', 'completed'],
+      ['failed', 'failed'],
+      ['canceled', 'aborted'],
+    ] as const;
+
+    for (const [status, shown] of states) {
+      expect(announce([], [child({ status })])).toEqual([
+        {
+          kind: 'note',
+          note: {
+            kind: 'child-run',
+            id: 'child:child-1',
+            childRunId: 'child-1',
+            agentName: 'researcher',
+            status: shown,
+            href: '/runs/child-1',
+          },
+        },
+      ]);
+    }
+  });
+
+  test('leaves out a child run with no agent to name', () => {
+    expect(announce([], [child({ agentName: null })])).toEqual([]);
+  });
+
+  test('puts a child run under the reply before the tool call that started it', () => {
+    let history = appendUserMessage(createConversationHistory({ id: THREAD }), 'Dig in');
+    history = appendMessages(history, { id: 'a1', role: 'assistant', content: 'Delegating.' });
+    history = appendToolCall(history, { id: 'call-1', name: 'delegate', arguments: {} });
+    history = appendToolResult(history, { callId: 'call-1', outcome: 'success', content: 'ok' });
+    history = appendMessages(
+      history,
+      { id: 'u2', role: 'user', content: 'Again' },
+      { id: 'a2', role: 'assistant', content: 'Again, then.' },
+    );
+    const started = child({
+      origin: { kind: 'agent', parentRunId: 'run-1', agentName: 'helper', toolCallId: 'call-1' },
+    });
+
+    const stamped = withEventNotes(history, announce([], [started], history), {
+      owns: () => true,
+    });
+
+    expect(notesOn(stamped, 'a1').map((note) => note.kind)).toEqual(['child-run']);
+    expect(notesOn(stamped, 'a2')).toEqual([]);
+  });
+
+  test('puts a child run with no call to find on the last reply', () => {
+    const stamped = withEventNotes(
+      conversation(),
+      announce(
+        [],
+        [child({ origin: { kind: 'agent', parentRunId: 'run-1', toolCallId: 'gone' } })],
+      ),
+      { owns: () => true },
+    );
+
+    expect(notesOn(stamped, 'a2').map((note) => note.kind)).toEqual(['child-run']);
   });
 });
