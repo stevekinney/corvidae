@@ -288,6 +288,39 @@ export const AGENT_EDITOR_COPY = {
   },
   toolsDescription: 'The tools this agent may call.',
   noTools: 'This installation offers no tools.',
+  /** The count above the chosen tools, such as `2 of 48 chosen`. */
+  toolCount: (chosen: number, offered: number): string =>
+    `${String(chosen)} of ${String(offered)} chosen`,
+  /** The name of the list of the tools the agent has. */
+  chosenToolsLabel: 'Chosen tools',
+  /** What the list says when the agent has no tool yet. */
+  noToolsChosen: 'No tools chosen. The agent can reply, but it cannot call anything.',
+  /** The action that opens the picker. */
+  addToolsAction: 'Add tools',
+  /** The button that takes one tool away from the agent, and the name a screen reader hears for it. */
+  removeAction: 'Remove',
+  removeToolLabel: (tool: string): string => `Remove ${tool}`,
+  /** The marker on a tool that asks before it runs, and on one that never runs. */
+  toolStanding: {
+    'asks-first': 'Asks first',
+    blocked: 'Blocked',
+  },
+  /** The tool picker (`Add tools`): a search over every tool the installation offers, grouped by source. */
+  toolPicker: {
+    title: 'Add tools',
+    done: 'Done',
+    searchLabel: 'Search tools',
+    searchPlaceholder: 'Search by name, description or source',
+    /** Announced as the search narrows. */
+    resultCount: (count: number): string => (count === 1 ? '1 tool' : `${String(count)} tools`),
+    noMatchesTitle: 'No tools match',
+    noMatchesDescription: (search: string): string =>
+      `Nothing is named or described like “${search}”.`,
+    /** The count in a group's heading, such as `2 of 5`. */
+    groupCount: (chosen: number, total: number): string => `${String(chosen)} of ${String(total)}`,
+    /** The heading of a saved tool source's group; the source is the identifier its tool names start with. */
+    savedSource: (source: string): string => source,
+  },
   /** The disclosure on a tool row that shows the full text the model is told about the tool. */
   toolDisclosure: 'What the agent is told',
   instructionsLabel: 'Instructions',
@@ -1822,6 +1855,9 @@ export const AGENT_PAGE_COPY = {
       always: 'Asks before every call.',
       blocked: 'Never runs. The model is told it was refused.',
     },
+    /** Under `never`, for a tool that declares no tier: Armorer still asks about a call it cannot classify. */
+    neverUnclassifiedHint:
+      'This tool declares no tier, so it still asks before every call, even here.',
     notInCatalog: 'Not offered by this host any more',
     noToolsTitle: 'This host offers no tools',
     noToolsDescription: 'Tools come from the host’s plugins and saved tool sources.',

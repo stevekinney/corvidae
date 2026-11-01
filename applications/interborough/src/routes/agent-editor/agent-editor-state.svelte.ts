@@ -18,6 +18,7 @@ import {
   type IdentifierConflictReason,
   type ToolApproval,
 } from '../../lib/agent-definitions.ts';
+import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
 
 /**
  * An identifier the Bureau accepts and the editor refuses: `/agents/new` creates an agent, so an
@@ -348,6 +349,25 @@ export class AgentEditorState {
         ? this.tools
         : [...this.tools, name]
       : this.tools.filter((tool) => tool !== name);
+  }
+
+  /**
+   * The tools the agent has, in the catalog's order, which is the order a save writes them. A tool
+   * the file lists and the catalog no longer offers is not here, because a save drops it.
+   */
+  get chosenTools(): AgentCatalog['tools'] {
+    return this.toolChoices.filter((tool) => this.tools.includes(tool.name));
+  }
+
+  /** What the file says about when the tool asks first, or `undefined` when it says nothing. */
+  approvalOf(name: string): ToolApproval | undefined {
+    const written = this.#toolApproval;
+    return written !== null && Object.hasOwn(written, name) ? written[name] : undefined;
+  }
+
+  /** Whether the tool asks first, runs, or is refused for this agent. */
+  standingOf(tool: AgentCatalog['tools'][number]): ToolStanding {
+    return standingOf(tool, this.approvalOf(tool.name));
   }
 
   /** The limits as the Bureau takes them: a field left empty is `null`, which removes the limit. */

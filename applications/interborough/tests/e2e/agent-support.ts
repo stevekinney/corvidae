@@ -4,9 +4,11 @@
  * host's temporary home, so a spec that creates one removes it, and a later spec's list or count
  * never sees it.
  */
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { join } from 'node:path';
+
+import { AGENT_EDITOR_COPY } from '../../src/app/copy.ts';
 
 /** What a spec writes through the management plane to create an agent, unless it says otherwise. */
 export const BASE_DEFINITION = {
@@ -85,7 +87,32 @@ export type CatalogTool = {
   name: string;
   description: string;
   shortDescription: string | null;
+  source: 'host' | 'bureau';
+  defaultApproval: 'allow' | 'ask';
 };
+
+/** Opens the editor's Add tools picker, which every tool the catalog lists is chosen from. */
+export async function openToolPicker(page: Page): Promise<void> {
+  await page.getByRole('button', { name: AGENT_EDITOR_COPY.addToolsAction }).click();
+  await expect(
+    page.getByRole('dialog', { name: AGENT_EDITOR_COPY.toolPicker.title }),
+  ).toBeVisible();
+}
+
+/** Closes the picker with Done. */
+export async function closeToolPicker(page: Page): Promise<void> {
+  await page.getByRole('button', { name: AGENT_EDITOR_COPY.toolPicker.done }).click();
+  await expect(page.getByRole('dialog', { name: AGENT_EDITOR_COPY.toolPicker.title })).toBeHidden();
+}
+
+/** Gives the agent in the editor the named tools, through the picker, and closes it. */
+export async function addTools(page: Page, names: readonly string[]): Promise<void> {
+  await openToolPicker(page);
+  for (const name of names) {
+    await page.getByRole('checkbox', { name, exact: true }).check();
+  }
+  await closeToolPicker(page);
+}
 
 /** The models and tools `bureau.agents.catalog` offers, which is all the editor may offer. */
 export async function readCatalog(

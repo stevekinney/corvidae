@@ -39,7 +39,13 @@ const mount = () => render(QueryPage, { props: { page: AgentDetail } } as never)
 const FILE_AGENT = { ...AGENT, name: 'researcher', displayName: 'Researcher', kind: 'file' };
 
 const TOOLS = [
-  { name: 'lookup-order', description: 'Look an order up.', shortDescription: 'Looks up an order' },
+  {
+    name: 'lookup-order',
+    description: 'Look an order up.',
+    shortDescription: 'Looks up an order',
+    tier: null,
+    defaultApproval: 'ask' as const,
+  },
   {
     name: 'issue-refund',
     description: 'Refund an order.',
@@ -130,6 +136,30 @@ describe('the tab', () => {
     expect(lookup?.querySelector('select')).toHaveProperty('value', 'on-changes');
     const options = [...(lookup?.querySelectorAll('option') ?? [])].map((o) => o.textContent);
     expect(options).toEqual(['Never', 'On changes', 'Always', 'Blocked']);
+  });
+
+  test('says an unclassified tool still asks under Never, and a classified one does not', async () => {
+    landAt('/agents/researcher?tab=access');
+    serve(
+      {},
+      detailWith({
+        tools: ['lookup-order', 'issue-refund'],
+        toolApproval: { 'lookup-order': 'never', 'issue-refund': 'never' },
+      }),
+    );
+    const { container, findByTestId } = mount();
+
+    await findByTestId('agent-access');
+    const lookup = await waitFor(() => {
+      const found = container.querySelector('[data-tool="lookup-order"]');
+      if (found === null) throw new Error('waiting for the tool');
+      return found;
+    });
+    const refund = container.querySelector('[data-tool="issue-refund"]');
+    expect(lookup.textContent).toContain(copy.neverUnclassifiedHint);
+    expect(lookup.textContent).not.toContain(copy.approvalHints.never);
+    expect(refund?.textContent).toContain(copy.approvalHints.never);
+    expect(refund?.textContent).not.toContain(copy.neverUnclassifiedHint);
   });
 
   test('saves a per-tool Always as the whole definition, over the hash of the file as read', async () => {

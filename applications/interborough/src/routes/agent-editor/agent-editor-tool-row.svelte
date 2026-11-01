@@ -1,33 +1,52 @@
 <script lang="ts">
   /**
-   * One tool the agent may call: a checkbox named by the tool, the line a person is shown for it,
-   * and, when the model is told more than the line says, a disclosure with the full text. The line
-   * is at most 120 characters (`lib/tool-line.ts`), so a tool whose description is a long prompt
-   * does not turn the list into a wall of text.
+   * One tool in the editor: what names it (the caller's `lead`: plain text in the chosen list, a
+   * checkbox in the picker), a marker when it asks first or is refused, the line a person is shown
+   * for it, and, when the model is told more than the line says, a disclosure with the full text.
+   * The line is at most 120 characters (`lib/tool-line.ts`), so a tool whose description is a long
+   * prompt does not turn the list into a wall of text. A caller's `trailing` control (Remove) sits
+   * at the end of the row.
    *
    * The disclosure is Cinder's flat `Collapsible`, shrunk below to a quiet text control that sits
    * on the line's row: a list of one-line rows cannot afford a full-width trigger.
    */
-  import { Checkbox, Collapsible } from '@lostgradient/cinder';
+  import { Badge, Collapsible } from '@lostgradient/cinder';
+  import type { Snippet } from 'svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import type { AgentCatalog } from '../../lib/agent-definitions.ts';
   import { toolLine } from '../../lib/tool-line.ts';
+  import type { ToolStanding } from '../../lib/tool-standing.ts';
 
   interface Props {
     tool: AgentCatalog['tools'][number];
-    checked: boolean;
-    onChange: (next: boolean) => void;
+    standing: ToolStanding;
+    lead: Snippet;
+    trailing?: Snippet;
   }
 
-  let { tool, checked, onChange }: Props = $props();
+  let { tool, standing, lead, trailing }: Props = $props();
 
   const copy = AGENT_EDITOR_COPY;
   const summary = $derived(toolLine(tool));
 </script>
 
-<li class="weft-tool-row" data-tool={tool.name}>
-  <Checkbox id={`agent-tool-${tool.name}`} label={tool.name} {checked} onValueChange={onChange} />
+<li
+  class="weft-tool-row"
+  class:weft-tool-row--with-action={trailing !== undefined}
+  data-tool={tool.name}
+>
+  <div class="weft-tool-row__name">
+    {@render lead()}
+    {#if standing !== 'runs'}
+      <Badge
+        size="sm"
+        variant={standing === 'blocked' ? 'danger' : 'warning'}
+        data-testid="agent-tool-standing"
+        data-standing={standing}>{copy.toolStanding[standing]}</Badge
+      >
+    {/if}
+  </div>
   <div class="weft-tool-row__text">
     <span class="weft-tool-row__line" data-testid="agent-tool-line">{summary.line}</span>
     {#if summary.expandable}
@@ -42,6 +61,9 @@
       </Collapsible>
     {/if}
   </div>
+  {#if trailing}
+    <div class="weft-tool-row__action">{@render trailing()}</div>
+  {/if}
 </li>
 
 <style>
@@ -50,20 +72,31 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     column-gap: var(--cinder-space-4);
+    row-gap: var(--cinder-space-1);
     align-items: baseline;
     min-width: 0;
   }
 
   @media (min-width: 40rem) {
     .weft-tool-row {
-      grid-template-columns: 13rem minmax(0, 1fr);
+      grid-template-columns: 15rem minmax(0, 1fr);
+    }
+
+    .weft-tool-row--with-action {
+      grid-template-columns: 15rem minmax(0, 1fr) auto;
     }
   }
 
-  /* A tool's name is an identifier, so it is set in monospace. */
-  .weft-tool-row :global(.cinder-form-field__label) {
+  /* A tool's name, the marker beside it, and whatever names it for the caller. */
+  .weft-tool-row__name {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1) var(--cinder-space-2);
+    align-items: center;
+    min-width: 0;
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
+    overflow-wrap: anywhere;
   }
 
   /* The line, and the disclosure that follows it on the same row while there is room. */
@@ -79,6 +112,10 @@
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
     overflow-wrap: anywhere;
+  }
+
+  .weft-tool-row__action {
+    justify-self: start;
   }
 
   /* A quiet text control and the text it opens; it takes the full row once it is open. */
