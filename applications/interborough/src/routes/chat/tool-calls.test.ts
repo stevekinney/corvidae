@@ -57,6 +57,16 @@ describe('a turn’s tool calls', () => {
     });
   });
 
+  test('a call the person refused reads Denied, in muted text, and not Failed', async () => {
+    const view = render(Harness, {
+      props: { entries: [entry({ callId: 'c1', state: 'denied', summary: 'Too much' })] },
+    } as never);
+
+    expect(view.getByRole('img', { name: 'Denied' })).not.toBeNull();
+    expect(view.queryByRole('img', { name: 'Failed' })).toBeNull();
+    expect(view.getByText('Too much')).not.toBeNull();
+  });
+
   test('the Details disclosure lists what the call was given and what it answered', async () => {
     const view = render(Harness, { props: { entries: [entry({ callId: 'c1' })] } } as never);
     const details = view.getByRole('button', { name: 'Details' });

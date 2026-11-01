@@ -1,7 +1,13 @@
 import type { ConversationHistory } from '@lostgradient/chat';
 import { describe, expect, test } from 'bun:test';
 
-import { groupSummary, toolGroups, type ToolCallEntry } from './tool-activity.ts';
+import {
+  DEFAULT_DENIAL,
+  DENIED_CODE,
+  groupSummary,
+  toolGroups,
+  type ToolCallEntry,
+} from './tool-activity.ts';
 
 type Row = ConversationHistory['messages'][string];
 
@@ -88,6 +94,53 @@ describe('toolGroups', () => {
   });
 });
 
+describe('a call the person refused', () => {
+  const refused = (outcome: string, content: unknown, error?: Record<string, unknown>) =>
+    toolGroups(
+      conversation(
+        call('s0', 'c1', 'issue-refund'),
+        row({
+          id: 's0:r',
+          role: 'tool-result',
+          toolResult: { callId: 'c1', outcome, content, ...(error === undefined ? {} : { error }) },
+        }),
+      ),
+    ).groups.get('s0')?.entries[0];
+
+  test('is Denied, not failed, when this page wrote the denial, with the reason beside it', () => {
+    expect(
+      refused('error', { decision: 'denied' }, { code: DENIED_CODE, message: 'Not today' }),
+    ).toMatchObject({ state: 'denied', summary: 'Not today' });
+    // A denial with no reason carries the page's own wording, which is not a reason.
+    expect(
+      refused('error', { decision: 'denied' }, { code: DENIED_CODE, message: DEFAULT_DENIAL }),
+    ).toMatchObject({ state: 'denied', summary: '' });
+  });
+
+  test('is Denied when the Bureau wrote the denial or the rejection into the conversation', () => {
+    expect(refused('error', 'Tool call denied')).toMatchObject({ state: 'denied', summary: '' });
+    expect(refused('error', 'Tool call denied: too much')).toMatchObject({
+      state: 'denied',
+      summary: 'too much',
+    });
+    expect(refused('error', 'Tool call rejected: wrong order')).toMatchObject({
+      state: 'denied',
+      summary: 'wrong order',
+    });
+  });
+
+  test('is still failed when the tool failed, even if its message talks of a denial', () => {
+    expect(refused('error', 'Order service down')).toMatchObject({ state: 'failed' });
+    expect(refused('error', 'The Tool call denied by the firewall')).toMatchObject({
+      state: 'failed',
+    });
+    expect(refused('error', null, { code: 'timeout', message: 'Timed out' })).toMatchObject({
+      state: 'failed',
+      summary: 'Timed out',
+    });
+  });
+});
+
 describe('groupSummary', () => {
   const entry = (state: ToolCallEntry['state']): ToolCallEntry => ({
     callId: state,
@@ -105,5 +158,12 @@ describe('groupSummary', () => {
       'Used 3 tools · 1 failed',
     );
     expect(groupSummary([entry('done')])).toBe('Used 1 tool');
+  });
+
+  test('says denied for a refused call, and failed only for one that failed', () => {
+    expect(groupSummary([entry('denied'), entry('done')])).toBe('Used 2 tools · 1 denied');
+    expect(groupSummary([entry('denied'), entry('failed'), entry('done')])).toBe(
+      'Used 3 tools · 1 failed · 1 denied',
+    );
   });
 });

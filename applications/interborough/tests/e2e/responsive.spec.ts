@@ -135,6 +135,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The list prints the question each waiting review asks, and the open review its source line,
   // which links to the chat whose title is the long word.
   '/reviews': /Refund order order-1001 for/,
+  // The waiting chat prints its approval's question, beside the title that is the long word.
+  '/chats/:chat (approval waiting)': /Refund order order-1001 for/,
   '/reviews (review open)': /wwwwwwwwww/,
   '/reviews (done tab, review open)': /wwwwwwwwww/,
   '/schedules': /inventory-sync/,
@@ -528,6 +530,7 @@ test.beforeAll(async ({ playwright }) => {
       goal: SEEDED_GOAL_RUN_IDENTIFIER,
       hook: hook.id,
       review: `bureau:${waitingReview}`,
+      reviewChat: REVIEW_THREAD,
       decidedReview: `bureau:${decidedReview}`,
     };
     await createWorkflowFile(request, RUN_SETUP_FILE, {

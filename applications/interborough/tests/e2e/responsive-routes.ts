@@ -40,6 +40,8 @@ export interface ResponsiveSeed {
   readonly hook: string;
   /** The key of a waiting review whose chat has a 300-character unbroken title. */
   readonly review: string;
+  /** That chat, whose transcript ends on the review's approval row. */
+  readonly reviewChat: string;
   /** The key of a decided review, shown under Done. */
   readonly decidedReview: string;
 }
@@ -147,6 +149,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     '/capabilities (skill open)': `/capabilities?tab=skills&skill=${encodeURIComponent(skillAddressKey(E2E_SKILLS.long))}`,
     // A waiting review open (one pane at a time below 900px, so at 375 and 768 the detail replaces
     // the list), and the Done tab with a decided review open.
+    // The chat that waits on an approval: its row holds the question, Show input, Allow for the
+    // rest of this chat, Deny and Approve, under a header with the 300-character title.
+    '/chats/:chat (approval waiting)': `/chats/${encodeURIComponent(seed.reviewChat)}`,
     '/reviews (review open)': `/reviews?review=${encodeURIComponent(seed.review)}`,
     '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(seed.decidedReview)}`,
     // Each group of the API reference beside the first, which is the route's own address, and each

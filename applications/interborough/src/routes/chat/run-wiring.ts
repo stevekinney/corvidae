@@ -85,6 +85,7 @@ import {
   type Placement,
 } from './event-notes.ts';
 import { ResumableMapper } from './resumable-mapper.ts';
+import { DEFAULT_DENIAL, DENIED_CODE } from './tool-activity.ts';
 
 /** The AG-UI mount's path, under the Bureau's. */
 export const AG_UI_PATH = `${BUREAU_PATH}/ag-ui`;
@@ -611,10 +612,10 @@ function resultFor(toolCallId: string, resolution: ApprovalResolution): ToolResu
     outcome: 'error',
     content: { decision: 'denied' },
     error: {
-      code: 'approval-denied',
+      code: DENIED_CODE,
       category: 'permission',
       retryable: false,
-      message: resolution.reason ?? 'The approval was denied.',
+      message: resolution.reason ?? DEFAULT_DENIAL,
     },
   };
 }
