@@ -5,7 +5,12 @@
  *   catalog edits. It never carries a key.
  * - `PUT /host/providers/<name>` with `{ "apiKey": "...", "models": ["..."] }` connects a
  *   provider, or replaces its key. `models` is optional, and `null` clears the allowlist.
- * - `PUT /host/catalog` with `{ "edits": [...] }` replaces the catalog edits.
+ * - `DELETE /host/providers/<name>` removes the provider's key, so its models leave the catalog.
+ *   Its allowlist and the catalog edits stay for a later connect.
+ * - `PUT /host/catalog` with `{ "edits": [...], "base": [...] }` replaces the catalog edits. `base`
+ *   is optional: the edits the caller read before it changed them. When it is given and the stored
+ *   edits are not equal to it, nothing is written and the answer is 409 with `error: "conflict"`
+ *   and the stored edits as `catalog`.
  * - `POST /host/providers/reload` reads the configuration and the keys again.
  *
  * Every answer is JSON. A change answers 200 with the providers now offered and the catalog's
@@ -19,6 +24,7 @@
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
+  ProviderConflictError,
   ProviderInputError,
   ProviderPartialChangeError,
   ProviderWriteLockedError,
@@ -34,7 +40,7 @@ export const HOST_CATALOG_ROUTE = '/host/catalog';
 /** The route that reads the configuration and the keys again. */
 export const HOST_PROVIDERS_RELOAD_ROUTE = '/host/providers/reload';
 
-/** The route that connects the provider it names. */
+/** The route that connects, or disconnects, the provider it names. */
 const HOST_PROVIDER_ROUTE = `${HOST_PROVIDERS_ROUTE}/:name`;
 
 /** The largest request body the host's configuration routes read. */
@@ -70,6 +76,12 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
       return Response.json(
         { error: 'locked', reason: error.reason, message: error.message },
         { status: 403 },
+      );
+    }
+    if (error instanceof ProviderConflictError) {
+      return Response.json(
+        { error: 'conflict', message: error.message, catalog: error.catalog },
+        { status: 409 },
       );
     }
     if (error instanceof ProviderInputError) {
@@ -126,6 +138,8 @@ export function providerRoutes(manager: ProviderManager, refuse: Refuse) {
             models: body['models'],
           });
         }),
+      DELETE: (request: Bun.BunRequest<typeof HOST_PROVIDER_ROUTE>) =>
+        refuse(request) ?? respond(() => manager.disconnect(request.params.name)),
     },
     [HOST_PROVIDERS_RELOAD_ROUTE]: {
       POST: (request: Request) => refuse(request) ?? respond(() => manager.reload()),
@@ -135,7 +149,7 @@ export function providerRoutes(manager: ProviderManager, refuse: Refuse) {
         refuse(request) ??
         respond(async () => {
           const body = await readObject(request);
-          return manager.editCatalog(body['edits']);
+          return manager.editCatalog(body['edits'], body['base']);
         }),
     },
   };

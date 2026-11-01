@@ -1,7 +1,7 @@
 /**
  * A stand-in for the host's provider routes, for the Models page tests: it answers
  * `GET /host/providers`, `PUT /host/providers/<name>`, `PUT /host/catalog` and
- * `POST /host/providers/reload` from state a test holds, records what it was sent, and sends every
+ * `POST /host/providers/reload`, and `DELETE /host/providers/<name>` from state a test holds, records what it was sent, and sends every
  * other request on to the fetch underneath. The real routes are exercised against a real host in
  * `src/host/host-provider-changes.test.ts` and the Playwright suite.
  */
@@ -123,7 +123,21 @@ export function installFakeHost(initial: {
     }
     const record = typeof body === 'object' && body !== null ? body : {};
     if (path === '/host/catalog') {
+      // The real host compares the base under its configuration queue and refuses a mismatch.
+      const base = Reflect.get(record, 'base') as CatalogEdit[] | undefined;
+      if (base !== undefined && JSON.stringify(base) !== JSON.stringify(host.catalog)) {
+        return Response.json(
+          {
+            error: 'conflict',
+            message: 'The model catalog changed after it was read, so nothing was saved.',
+            catalog: host.catalog,
+          },
+          { status: 409 },
+        );
+      }
       host.catalog = Reflect.get(record, 'edits') as CatalogEdit[];
+    } else if (method === 'DELETE') {
+      host.keys[decodeURIComponent(path.slice('/host/providers/'.length))] = false;
     } else if (path !== '/host/providers/reload') {
       host.keys[decodeURIComponent(path.slice('/host/providers/'.length))] = true;
     }

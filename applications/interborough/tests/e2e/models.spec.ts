@@ -3,9 +3,10 @@
  * models they offer, and the decisions. The host starts with `anthropic` connected and restricted
  * to two models (`e2e-server.ts`), so `openai` and `gemini` are there to connect.
  *
- * The host has no way to disconnect a provider, so the case that connects one is written to pass
- * whether or not an earlier run on this server already did: it uses Manage when it finds one.
- * Every case but the last puts back what it changed; the decision model has no way back to unset,
+ * The case that connects a provider starts by disconnecting it through the host, so it passes
+ * whether or not an earlier run on a reused server left it connected, and the cases that connect
+ * one for their own purposes disconnect it again. Every case but the last puts back what it
+ * changed; the decision model has no way back to unset,
  * and `catalog` is what unset means. A restart is not something this suite does; that a catalog
  * edit and a connected provider survive one is `src/host/host-provider-changes.test.ts`.
  */
@@ -41,6 +42,14 @@ async function editsOf(request: APIRequestContext): Promise<Edit[]> {
 async function putEdits(request: APIRequestContext, edits: readonly Edit[]): Promise<void> {
   const response = await request.put(`${E2E_BASE_URL}/host/catalog`, { data: { edits } });
   expect(response.status()).toBe(200);
+}
+
+/** Removes a provider's key through the host, which is a no-op for one that has none. */
+async function disconnectThroughHost(request: APIRequestContext, name: string): Promise<void> {
+  const response = await request.delete(`${E2E_BASE_URL}/host/providers/${name}`);
+  expect(response.status()).toBe(200);
+  const snapshot = await snapshotOf(request);
+  expect(snapshot.providers.find((entry) => entry.name === name)?.hasKey).toBe(false);
 }
 
 /** Replaces a number field's value the way a person does: select it, type, and leave the field. */
@@ -111,9 +120,12 @@ test('connects a provider, adds its models with no restart, and never prints the
     pattern: loggedFailedResponse(400, /\/host\/providers\/gemini/),
     reason: 'the test answers the connect request with a refusal, to see what the page shows',
   });
+  // A server that was reused may already hold the key; the case starts from not connected.
+  await disconnectThroughHost(request, 'gemini');
   await openModels(page);
   const row = provider(page, 'gemini');
-  await row.getByRole('button', { name: /Connect|Manage/ }).click();
+  await expect(row.getByRole('button', { name: /Manage/ })).toHaveCount(0);
+  await row.getByRole('button', { name: /Connect/ }).click();
   const dialog = page.getByRole('dialog');
   const field = dialog.locator('input[type="password"]');
   await expect(field).toBeVisible();
@@ -158,6 +170,31 @@ test('connects a provider, adds its models with no restart, and never prints the
   await row.getByRole('button', { name: /Manage/ }).click();
   await expect(dialog.locator('input[type="password"]')).toHaveValue('');
   await dialog.getByRole('button', { name: MODELS_COPY.connectDialog.cancel }).click();
+  await expect(dialog).toBeHidden();
+
+  // Disconnect asks first, and Cancel leaves the key alone.
+  await row.getByRole('button', { name: /Disconnect/ }).click();
+  await expect(dialog).toContainText(MODELS_COPY.disconnectDialog.title('Gemini'));
+  await expect(
+    dialog.getByRole('button', { name: MODELS_COPY.disconnectDialog.confirm }),
+  ).toBeEnabled();
+  await dialog.getByRole('button', { name: MODELS_COPY.disconnectDialog.cancel }).click();
+  await expect(dialog).toBeHidden();
+  const kept = await snapshotOf(request);
+  expect(kept.providers.find((entry) => entry.name === 'gemini')?.hasKey).toBe(true);
+
+  // Confirmed, the key is gone: the provider offers Connect again and its models leave the catalog.
+  await row.getByRole('button', { name: /Disconnect/ }).click();
+  await dialog.getByRole('button', { name: MODELS_COPY.disconnectDialog.confirm }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row.getByRole('button', { name: /Connect/ })).toBeVisible();
+  await expect(row).not.toContainText(MODELS_COPY.providers.connected);
+  await expect(page.locator('[data-model^="gemini/"]')).toHaveCount(0);
+  const after = await snapshotOf(request);
+  expect(after.providers.find((entry) => entry.name === 'gemini')?.hasKey).toBe(false);
+  expect(after.models.some((entry) => entry.provider === 'gemini')).toBe(false);
+  expect(JSON.stringify(after)).not.toContain(KEY);
+  expect(await page.content()).not.toContain(KEY);
 });
 
 test('turns a model off and edits a row, and both are still there after a reload', async ({
@@ -249,6 +286,45 @@ test('adds a model the built-in list lacks, then takes it out', async ({ page, r
         (entry) => entry.provider === 'gemini' && entry.model === 'gemini-e2e-next',
       ),
     ).toBe(true);
+  } finally {
+    await putEdits(request, before);
+    await disconnectThroughHost(request, 'gemini');
+  }
+});
+
+test('holds a save that would overwrite an edit made elsewhere, and keeps the person’s change', async ({
+  page,
+  pageErrors,
+  request,
+}) => {
+  pageErrors.expect({
+    pattern: loggedFailedResponse(409, /\/host\/catalog/),
+    reason: 'the host refuses the save because its edits changed after the page read them',
+  });
+  const before = await editsOf(request);
+  try {
+    await openModels(page);
+    await modelRow(page, 'anthropic/claude-haiku-4-5').getByRole('switch').click();
+    // Another tab turns the other model off and saves, while this page holds its own change.
+    await putEdits(request, [{ provider: 'anthropic', model: 'claude-sonnet-5', off: true }]);
+
+    await saveModels(page).click();
+
+    const prompt = page.getByTestId('models-changed-elsewhere');
+    await expect(prompt).toBeVisible();
+    await expect(prompt).toContainText(MODELS_COPY.models.changedElsewhere.title);
+    // Nothing was overwritten, and the person's change is still on the table.
+    expect(await editsOf(request)).toEqual([
+      { provider: 'anthropic', model: 'claude-sonnet-5', off: true },
+    ]);
+    await expect(modelRow(page, 'anthropic/claude-haiku-4-5')).toHaveAttribute('data-off', 'true');
+    await expect(saveModels(page)).toBeDisabled();
+
+    // Reload takes what the host holds and drops the change that was waiting.
+    await prompt.getByRole('button', { name: MODELS_COPY.models.changedElsewhere.action }).click();
+    await expect(prompt).toBeHidden();
+    await expect(modelRow(page, 'anthropic/claude-sonnet-5')).toHaveAttribute('data-off', 'true');
+    await expect(modelRow(page, 'anthropic/claude-haiku-4-5')).toHaveAttribute('data-off', 'false');
   } finally {
     await putEdits(request, before);
   }

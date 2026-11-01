@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   connectProvider,
+  disconnectProvider,
   getProviders,
   HOST_CATALOG_ROUTE,
   HOST_PROVIDERS_RELOAD_ROUTE,
@@ -165,6 +166,28 @@ describe('replaceCatalogEdits and reloadProviders', () => {
     ]);
   });
 
+  test('name the edits they started from when given them, and only then', async () => {
+    const { seen, fetch } = recording(() => Response.json({}));
+    const edits = [{ provider: 'anthropic', model: 'haiku', off: true }];
+    const base = [{ provider: 'anthropic', model: 'sonnet', off: true }];
+    await replaceCatalogEdits(edits, { fetch, base });
+    await replaceCatalogEdits(edits, { fetch, base: [] });
+    expect(seen.map((entry) => entry.body)).toEqual([
+      JSON.stringify({ edits, base }),
+      JSON.stringify({ edits, base: [] }),
+    ]);
+  });
+
+  test('fail as a conflict when the host says the catalog changed', async () => {
+    const { fetch } = recording(() =>
+      Response.json({ error: 'conflict', message: 'Changed.', catalog: [] }, { status: 409 }),
+    );
+    expect(await failureOf(replaceCatalogEdits([], { fetch, base: [] }))).toMatchObject({
+      kind: 'conflict',
+      message: 'Changed.',
+    });
+  });
+
   test('fail with the host’s refusal', async () => {
     const { fetch } = recording(() =>
       Response.json(
@@ -177,5 +200,24 @@ describe('replaceCatalogEdits and reloadProviders', () => {
       field: 'catalog[0].model',
     });
     expect(await failureOf(reloadProviders({ fetch }))).toMatchObject({ kind: 'invalid' });
+  });
+});
+
+describe('disconnectProvider', () => {
+  test('deletes the provider’s route, with the name escaped and no body', async () => {
+    const { seen, fetch } = recording(() => Response.json({}));
+    await disconnectProvider('a/b', { fetch });
+    expect(seen).toEqual([
+      { path: `${HOST_PROVIDERS_ROUTE}/a%2Fb`, method: 'DELETE', body: undefined },
+    ]);
+  });
+
+  test('fails with the host’s refusal', async () => {
+    const { fetch } = recording(() =>
+      Response.json({ error: 'locked', message: 'Remote.' }, { status: 403 }),
+    );
+    expect(await failureOf(disconnectProvider('anthropic', { fetch }))).toMatchObject({
+      kind: 'locked',
+    });
   });
 });

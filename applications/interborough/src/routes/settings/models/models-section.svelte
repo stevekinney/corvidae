@@ -8,6 +8,12 @@
    * the catalog edits, which the table shows laid over the rows the host serves, and Save sends the
    * whole list in one `PUT /host/catalog`. The host stores it in its configuration file and the
    * catalog takes it at once, so the change applies with no restart and survives one.
+   *
+   * The save names the edits the working copy started from (`base`), and the host compares them with
+   * the edits it stores under its configuration queue. If another tab saved, or the files were edited
+   * by hand and read again, since the working copy began, the page keeps the working copy, says the
+   * models changed, holds Save, and offers a reload, which discards the working copy. Saving would
+   * otherwise bring back a model someone else turned off.
    */
   import { Alert, Badge, Button, EmptyState, Table, Toggle } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
@@ -47,6 +53,10 @@
 
   /** The edits being worked on, or `null` while the table shows what the host holds. */
   let working = $state<readonly CatalogEdit[] | null>(null);
+  /** The edits the host held when the working copy began, which the host compares on Save. */
+  let base = $state<readonly CatalogEdit[] | null>(null);
+  /** The host refused the last Save because its edits differ from {@link base}. */
+  let conflicted = $state(false);
   let saving = false;
   let savePending = $state(false);
   let failure = $state('');
@@ -62,7 +72,19 @@
     working !== null && JSON.stringify(working) !== JSON.stringify(snapshot.catalog),
   );
 
+  /**
+   * The host's edits are no longer the ones the working copy began from: the page read them again
+   * and they differ, or a Save was refused for it. A Save in flight is not counted, because the
+   * edits it sends are about to become the host's own.
+   */
+  const changedElsewhere = $derived(
+    working !== null &&
+      !savePending &&
+      (conflicted || (base !== null && JSON.stringify(base) !== JSON.stringify(snapshot.catalog))),
+  );
+
   function change(next: readonly CatalogEdit[]): void {
+    if (working === null) base = snapshot.catalog;
     working = next;
     failure = '';
   }
@@ -77,16 +99,24 @@
 
   function discard(): void {
     working = null;
+    base = null;
+    conflicted = false;
     failure = '';
   }
 
+  /** Drops the working copy for what the host holds now, reading it again first. */
+  function reload(): void {
+    discard();
+    void queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
+  }
+
   async function save(): Promise<void> {
-    if (saving || working === null) return;
+    if (saving || working === null || base === null || changedElsewhere) return;
     saving = true;
     savePending = true;
     failure = '';
     try {
-      await replaceCatalogEdits(working);
+      await replaceCatalogEdits(working, { base });
       showToast(copy.saved, { variant: 'success' });
       // Read the host's rows again, and the agent editor's model choices with them. The edits stay
       // on the table until the rows that include them are here, so no row snaps back meanwhile.
@@ -95,12 +125,21 @@
         await queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
       } finally {
         working = null;
+        base = null;
+        conflicted = false;
       }
     } catch (error) {
-      failure =
-        error instanceof HostProviderError && error.message !== ''
-          ? error.message
-          : copy.saveFailed;
+      if (error instanceof HostProviderError && error.kind === 'conflict') {
+        // Nothing was written. Read the host's edits again; the working copy stays until the
+        // person reloads.
+        conflicted = true;
+        void queryClient.invalidateQueries({ queryKey: queryKeys.hostProviders() });
+      } else {
+        failure =
+          error instanceof HostProviderError && error.message !== ''
+            ? error.message
+            : copy.saveFailed;
+      }
     } finally {
       saving = false;
       savePending = false;
@@ -129,6 +168,15 @@
       {/snippet}
     </EmptyState>
   {:else}
+    {#if changedElsewhere}
+      <Alert variant="warning" data-testid="models-changed-elsewhere">
+        <p class="ib-models__alert-title">{copy.changedElsewhere.title}</p>
+        <p class="ib-models__alert-body">{copy.changedElsewhere.description}</p>
+        <Button variant="secondary" size="sm" onclick={reload}
+          >{copy.changedElsewhere.action}</Button
+        >
+      </Alert>
+    {/if}
     {#if failure !== ''}
       <Alert
         variant="danger"
@@ -213,7 +261,7 @@
       <Button
         data-changes
         variant="primary"
-        disabled={!dirty || savePending || locked}
+        disabled={!dirty || savePending || locked || changedElsewhere}
         loading={savePending}
         onclick={() => void save()}>{copy.save}</Button
       >

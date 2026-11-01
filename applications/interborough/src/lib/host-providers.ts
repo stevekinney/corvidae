@@ -92,6 +92,8 @@ export type ProviderStatus = ProvidersSnapshot['providers'][number];
 export type HostProviderFaultKind =
   /** The host refuses the write: it keeps its configuration and keys in its deployment. */
   | 'locked'
+  /** The catalog changed after the page read it, so the host kept what it holds and wrote nothing. */
+  | 'conflict'
   /** The host refused a value; `field` names it. */
   | 'invalid'
   /** The host stored a key and could not finish; `message` says what is in use. */
@@ -146,6 +148,7 @@ async function faultOf(response: Response, secret?: string): Promise<HostProvide
       ? rawMessage
       : '';
   if (error === 'locked') return new HostProviderError('locked', message);
+  if (error === 'conflict') return new HostProviderError('conflict', message);
   if (error === 'invalid') {
     return new HostProviderError('invalid', message, typeof field === 'string' ? field : undefined);
   }
@@ -180,16 +183,40 @@ export async function connectProvider(
 }
 
 /**
+ * Removes the provider's key, so its models leave the catalog and no later run can call it. The
+ * host keeps the provider's allowlist and the catalog edits for a later connect.
+ *
+ * @throws {HostProviderError} When the host refuses the change.
+ */
+export async function disconnectProvider(provider: string, options: Options = {}): Promise<void> {
+  const response = await send(
+    `${HOST_PROVIDERS_ROUTE}/${encodeURIComponent(provider)}`,
+    { method: 'DELETE' },
+    options,
+  );
+  if (!response.ok) throw await faultOf(response);
+}
+
+/**
  * Replaces the catalog edits in `configuration.json`, which the Bureau's model catalog takes at
  * once (`bureau.models.replace`) and a restart reads again.
  *
- * @throws {HostProviderError} When the host refuses the edits.
+ * `base` is the list of edits the person started from. The host compares it with the edits it
+ * stores, under its configuration queue, and refuses a save whose base differs.
+ *
+ * @throws {HostProviderError} When the host refuses the edits; `kind` is `conflict` when the
+ * catalog changed after the page read it.
  */
 export async function replaceCatalogEdits(
   edits: readonly CatalogEdit[],
-  options: Options = {},
+  options: Options & { readonly base?: readonly CatalogEdit[] } = {},
 ): Promise<void> {
-  const response = await send(HOST_CATALOG_ROUTE, jsonRequest('PUT', { edits }), options);
+  const { base, ...rest } = options;
+  const response = await send(
+    HOST_CATALOG_ROUTE,
+    jsonRequest('PUT', base === undefined ? { edits } : { edits, base }),
+    rest,
+  );
   if (!response.ok) throw await faultOf(response);
 }
 
