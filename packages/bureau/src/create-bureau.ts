@@ -18458,10 +18458,15 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   /**
    * COR-1990 — whether the grant a tool approval stored makes the tool's next ask in its chat be
-   * skipped, read as the next call is decided: the agent's `toolApproval` for the tool (a file
-   * agent's; a code agent's toolbox belongs to the host, so the default stands) and the chat's
-   * permission mode now. The decision has committed, so a read that fails answers `false` and
-   * never throws: the person is told the grant did not loosen the tool, and the grant is still held.
+   * skipped, read as the next call is decided: the agent's `toolApproval` for the tool and the
+   * chat's permission mode now. Only an agent the file catalog builds reads a grant (that catalog is
+   * the one place `approvalGrantsOfRun` is wired in): a code agent's toolbox and a plugin agent's
+   * belong to the host, which asks again whatever the chat holds. An agent with no file definition
+   * therefore answers `false`, an ephemeral try-it agent included, whose definition the Bureau
+   * cannot read back to weigh the tool's setting: the Bureau cannot show the grant will be read, and
+   * a notice that promised otherwise would fail open. The decision has committed, so a read that
+   * fails answers `false` and never throws: the person is told the grant did not loosen the tool,
+   * and the grant is still held.
    */
   async function grantLoosensReview(review: PendingReview): Promise<boolean> {
     if (review.kind !== 'tool-approval') return false;
@@ -18471,22 +18476,21 @@ async function constructBureau<const D extends AgentDefinitions>(
           ? undefined
           : await fileAgents?.files.detail(review.agentName);
       const definition = detail?.definition ?? undefined;
+      // No file definition: the grant is not read for this agent, so it loosens nothing.
+      if (definition === undefined) return false;
       const catalog = new Map(Object.entries(agentToolCatalog));
-      const tools =
-        definition === undefined
-          ? undefined
-          : Object.fromEntries(
-              definition.tools.flatMap((name) => {
-                const tool = catalog.get(name);
-                return tool === undefined ? [] : [[name, tool]];
-              }),
-            );
+      const tools = Object.fromEntries(
+        definition.tools.flatMap((name) => {
+          const tool = catalog.get(name);
+          return tool === undefined ? [] : [[name, tool]];
+        }),
+      );
       const mode = await permissionModeOfSession(
         review.sessionId,
         runSessionIncarnations.get(review.runId),
       );
       return grantLoosensTool({
-        toolApproval: definition?.toolApproval,
+        toolApproval: definition.toolApproval,
         tools,
         reportedName: review.approval.toolName,
         mode,

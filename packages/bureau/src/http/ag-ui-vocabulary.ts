@@ -159,8 +159,10 @@ export type ToolGrantSettledAnnouncement = {
   /**
    * Whether the next ask for the tool in this chat will be skipped. `false` when the tool always
    * asks (its agent's `toolApproval` says `always`, or the chat's permission mode is `always`) or is
-   * held to a read-only mode, because those answer `ask` or `deny` whatever the grant says. Always
-   * `false` when `remembered` is.
+   * held to a read-only mode, because those answer `ask` or `deny` whatever the grant says, and
+   * `false` for an agent with no agent file (a code agent, a plugin agent), whose next call asks
+   * again because the Bureau does not wire the chat's grants into its toolbox. Always `false` when
+   * `remembered` is.
    */
   readonly loosened: boolean;
 };

@@ -96,6 +96,14 @@ const chargeOnce = {
     toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
   },
 };
+/** The same charge asked for again later in the chat, under a call id of its own. */
+const chargeAgain = {
+  kind: 'respond' as const,
+  response: {
+    content: 'Charging again.',
+    toolCalls: [{ id: 'call-2', name: 'charge-card', arguments: { cents: 500 } }],
+  },
+};
 const chargeTwice = {
   kind: 'respond' as const,
   response: {
@@ -908,7 +916,7 @@ describe('the resume ledger’s retention', () => {
     const runtime = createManualRuntimeServices();
     await withHarness(
       {
-        script: [chargeOnce, say('Charged.'), chargeOnce, say('Again.')],
+        script: [chargeOnce, say('Charged.'), chargeAgain, say('Again.')],
         toolbox: approvalToolbox([]),
         storage: 'sqlite',
         agUi: { runtime },
@@ -2367,10 +2375,13 @@ async function grantsHeld(bureau: Harness['bureau']): Promise<unknown> {
 }
 
 describe('resuming a tool approval with remember (COR-1990)', () => {
-  it('starts the continuation as Approve does, holds the grant, and says the next ask is skipped', async () => {
+  it('starts the continuation as Approve does, holds the grant, and says a code agent’s next ask is not skipped', async () => {
     const charges: number[] = [];
     await withHarness(
-      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox(charges) },
+      {
+        script: [chargeOnce, say('Charged.'), chargeAgain, say('Again.')],
+        toolbox: approvalToolbox(charges),
+      },
       async ({ handler, bureau }) => {
         const first = await startUntilInterrupted(handler);
         const id = first.interruptIds[0]!;
@@ -2399,7 +2410,10 @@ describe('resuming a tool approval with remember (COR-1990)', () => {
             toolName: 'charge-card',
             runId: first.nativeRunId,
             remembered: true,
-            loosened: true,
+            // A code agent's toolbox is the host's: the Bureau reads no grant for it, so the next
+            // ask is still asked and the notice must not promise otherwise. A file agent's grant
+            // that is read is proved in agent-file-approval-grants.test.ts.
+            loosened: false,
           },
         });
         // After the opening events, before the call the resume replays, and not recorded as history.
@@ -2411,6 +2425,21 @@ describe('resuming a tool approval with remember (COR-1990)', () => {
           events.findIndex((event) => event.type === EventType.TOOL_CALL_START),
         );
         expect(bureauMetadata(grants[0]!)['durable']).toBe(false);
+
+        // The same chat, the same tool: the code agent's next call is asked again.
+        const next = await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                runId: 'client-run-3',
+                messages: [{ id: 'user-2', role: 'user', content: 'charge again' }],
+              }),
+            ),
+          ),
+        );
+        expect(next.at(-1)!.event).toMatchObject({ outcome: { type: 'interrupt' } });
+        expect(bureau.reviews.list()).toHaveLength(1);
+        expect(charges).toEqual([500]);
       },
     );
   });

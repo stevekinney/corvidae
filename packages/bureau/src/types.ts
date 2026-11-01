@@ -1245,9 +1245,9 @@ export interface ResolveReviewResult {
    * this chat will be skipped, as the next call is decided now (the agent's `toolApproval` for the
    * tool and the chat's permission mode). `false` when `remembered` is, and `false` for a tool its
    * agent sets to `always` or `blocked`, a chat in `always` mode, and a tool a `read-only` chat
-   * denies: the grant is stored for those, but they answer `ask` or `deny` whatever it says. A code
-   * agent's own `toolApproval` is the host's toolbox, which the Bureau cannot read, so only the chat's
-   * mode is weighed for one.
+   * denies: the grant is stored for those, but they answer `ask` or `deny` whatever it says. Also
+   * `false` for an agent with no agent file (a code agent, a plugin agent): its toolbox belongs to the
+   * host, which the Bureau does not wire the chat's grants into, so its next call asks again.
    */
   loosened?: boolean;
 }
