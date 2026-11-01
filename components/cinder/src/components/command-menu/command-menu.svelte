@@ -25,6 +25,7 @@
 <script lang="ts">
   import type { CommandMenuProps } from './command-menu.types.ts';
   import { getCaretRect } from './caret-rect.svelte.ts';
+  import { applyHostAttributes } from './command-menu-host-semantics.ts';
   import {
     computeGhostOverlayFontStyle,
     createInlineCompletionState,
@@ -322,6 +323,28 @@
 
   $effect(() => {
     commandList.scrollActiveItemIntoView();
+  });
+
+  // While the menu is open the host is the combobox that controls its listbox, so give it
+  // those semantics (COR-1999) and take them back on close or unmount. They also let axe
+  // treat the listbox as a combobox popup, which is exempt from `scrollable-region-focusable`;
+  // a bare textbox with a scrolling popup it never focuses is not. `aria-autocomplete="both"`,
+  // which a host passes when ghost-text completion is on, is kept.
+  $effect(() => {
+    const host = anchor;
+    if (!open || !host) return;
+    return applyHostAttributes(host, {
+      role: 'combobox',
+      'aria-expanded': 'true',
+      'aria-controls': commandList.listboxId,
+      'aria-autocomplete': host.getAttribute('aria-autocomplete') === 'both' ? 'both' : 'list',
+    });
+  });
+
+  $effect(() => {
+    const host = anchor;
+    if (!open || !host) return;
+    return applyHostAttributes(host, { 'aria-activedescendant': commandList.activeItemId });
   });
 
   function activateItemById(id: string) {

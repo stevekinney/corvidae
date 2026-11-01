@@ -126,7 +126,7 @@
 
 <!--
   {...rest} is spread BEFORE the component-controlled attributes so a consumer
-  cannot override the menu role, tabindex (the roving-focus model), aria-disabled,
+  cannot override the menu role, tabindex (the parent DropdownMenu owns the roving tabindex), aria-disabled,
   or the click handler — overriding any of those would break menu semantics.
 -->
 {#if isLink}

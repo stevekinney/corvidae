@@ -138,19 +138,73 @@
     void tick().then(() => focusMenuItem(context.initialFocus === 'last' ? -1 : 0));
   });
 
-  function getOwnedMenuItems(): HTMLElement[] {
+  const MENU_ITEM_SELECTOR = [
+    '[role="menuitem"]',
+    '[role="menuitemcheckbox"]',
+    '[role="menuitemradio"]',
+  ].join(', ');
+
+  function getAllOwnedMenuItems(): HTMLElement[] {
     if (!menuElement) return [];
 
-    return Array.from(
-      menuElement.querySelectorAll<HTMLElement>(
-        [
-          '[role="menuitem"]:not([data-disabled])',
-          '[role="menuitemcheckbox"]:not([data-disabled])',
-          '[role="menuitemradio"]:not([data-disabled])',
-        ].join(', '),
-      ),
-    ).filter((item) => item.closest('[role="menu"]') === menuElement);
+    return Array.from(menuElement.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR)).filter(
+      (item) => item.closest('[role="menu"]') === menuElement,
+    );
   }
+
+  function getOwnedMenuItems(): HTMLElement[] {
+    return getAllOwnedMenuItems().filter((item) => !item.hasAttribute('data-disabled'));
+  }
+
+  // Roving tabindex (COR-1999). Exactly one enabled item is in the tab order:
+  // the one focus is on, or the one it will land on first. Every item renders
+  // `tabindex="-1"`, and axe's `scrollable-region-focusable` rule fails a
+  // menu that scrolls while none of its items is tabbable, because it cannot
+  // see that the arrow keys reach every row. A tab stop on the scroller would
+  // compete with the focused item, so the focused item carries the stop. The
+  // menu sits in the top layer (or the portaled fallback) and Tab leaves it
+  // from the focused item exactly as before; only Shift+Tab from outside now
+  // enters it on the current item instead of skipping past it.
+  let rovingItem: HTMLElement | null = null;
+
+  function syncRovingTabindex(preferred?: HTMLElement | null): void {
+    const items = getOwnedMenuItems();
+    const current =
+      preferred && items.includes(preferred)
+        ? preferred
+        : rovingItem && items.includes(rovingItem)
+          ? rovingItem
+          : (items[0] ?? null);
+    rovingItem = current;
+    for (const item of getAllOwnedMenuItems()) {
+      const tabindex = item === current ? '0' : '-1';
+      if (item.getAttribute('tabindex') !== tabindex) item.setAttribute('tabindex', tabindex);
+    }
+  }
+
+  function handleFocusin(event: FocusEvent): void {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const item = target?.closest<HTMLElement>(MENU_ITEM_SELECTOR) ?? null;
+    if (item && item.closest('[role="menu"]') === menuElement) syncRovingTabindex(item);
+  }
+
+  $effect(() => {
+    const element = menuElement;
+    if (!element || !context.isOpen) {
+      rovingItem = null;
+      return;
+    }
+    syncRovingTabindex();
+    // Items arrive, leave, and become disabled while the menu is open.
+    const observer = new MutationObserver(() => syncRovingTabindex());
+    observer.observe(element, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-disabled'],
+    });
+    return () => observer.disconnect();
+  });
 
   function focusMenuItem(index: number): void {
     const items = getOwnedMenuItems();
@@ -298,6 +352,7 @@
       : undefined}
     tabindex={-1}
     onkeydown={handleKeydown}
+    onfocusin={handleFocusin}
     ontoggle={context.supportsPopover ? handleToggle : undefined}
     {@attach fallbackPortalAttachment}
     {...rest}

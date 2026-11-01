@@ -15,13 +15,33 @@
     max-inline-size: min(28rem, calc(100vw - var(--cinder-space-4)));
     max-block-size: min(20rem, calc(100vh - var(--cinder-space-4)));
     padding: var(--cinder-space-2) 0;
-    overflow-y: auto;
     list-style: none;
+
+    /* COR-1999: the panel only caps the height; the listbox inside it scrolls.
+     * The caret-anchored overlay still writes its viewport-fitted
+     * `max-block-size` onto the panel, and the column lets the listbox take
+     * whatever is left after the empty-state message, so the panel is exactly
+     * as tall as it was when it was the scroller. The listbox is the element
+     * the host's `aria-controls` names, so a host that is itself a
+     * `role="combobox"` input makes it axe's combobox popup and exempts it
+     * from `scrollable-region-focusable`, which a scrolling wrapper with no
+     * role never is. A native `<textarea>` host cannot take that role (see
+     * command-menu.a11y.md). */
+    display: flex;
+    flex-direction: column;
+
+    /* Only reached when the viewport is shorter than the empty-state message
+     * itself: the listbox is then 1px tall and the message cannot shrink. */
+    overflow-y: auto;
   }
 
   .cinder-command-menu__listbox {
+    flex: 1 1 auto;
+    min-block-size: 0;
     margin: 0;
     padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     list-style: none;
   }
 

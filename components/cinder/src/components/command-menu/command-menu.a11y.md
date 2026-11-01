@@ -1,14 +1,20 @@
 # CommandMenu Accessibility
 
-`CommandMenu` renders only the floating listbox. The host keeps ownership of the textarea or input and must wire the field ARIA from `onStateChange`.
+`CommandMenu` renders only the floating listbox. The host keeps ownership of the textarea or input and its text; while the menu is open, `CommandMenu` gives the host the combobox semantics the menu implies, so the host does not have to wire them from `onStateChange`.
 
-For a textarea host, keep the native textbox role and apply:
+## Host semantics
 
-- `aria-controls={listboxId}` while open
-- `aria-activedescendant={activeItemId}` when an option is active
-- `aria-autocomplete="list"` — or `"both"` when the host also passes `onComplete` to enable inline ghost-text completion (see below)
+While `open` and `anchor` are both set, `CommandMenu` writes these attributes onto the anchor element and takes them back when the menu closes, the anchor changes, or the component unmounts:
 
-Do not add `aria-expanded` to a native textarea; axe flags it as unsupported for that role. For a single-line text input, the host may additionally use `role="combobox"` and `aria-expanded={open}`. Selection belongs to `CommandMenu.onSelect`; do not put replacement logic on `CommandItem.onSelect` inside `CommandMenu`.
+- `role="combobox"`
+- `aria-expanded="true"`
+- `aria-controls` set to the listbox id
+- `aria-autocomplete="list"`, or `"both"` when the host already says `both` (the host does that when it passes `onComplete` for inline ghost-text completion; see below)
+- `aria-activedescendant` set to the active row, and removed while no row is active
+
+Closing puts every attribute it changed back to its exact prior value, including a role or `aria-controls` the host had before, and removes the ones it added. An attribute is restored only while it still holds the value `CommandMenu` wrote, so a value the host's own markup sets in the meantime (for example `aria-expanded` bound to `open`) is never overwritten by a stale one. A host that already sets the same attributes, as the playground example and `ChatComposerPopover` do, keeps working: the writes match and change nothing.
+
+This is the textarea-autocomplete pattern. ARIA gives a textbox that suggests values in a popup the `combobox` role, and it is also what axe's `scrollable-region-focusable` rule needs a scrolling region to be in the tab order, to hold something that is, or to be the popup of a `role="combobox"`. The listbox is that popup, because the host is a combobox while the menu is open (see "Host semantics"), so the list needs no tab stop of its own. A tab stop on the listbox or on an option would not help a keyboard user anyway: the arrow keys are bound to the host, so a focused listbox would be a dead stop.
 
 ## Empty state
 
