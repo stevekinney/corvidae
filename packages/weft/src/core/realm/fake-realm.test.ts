@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { buildInternalRealmManifest } from '../../worker/manifest/internal-realm.ts';
+import { WORKER_PROTOCOL_VERSION } from '../worker-protocol.ts';
 import { FakeRealm, type FakeRealmActivation } from './fake-realm.test-support.ts';
 import { RealmEnvelopeMismatchError, type RealmTurnEnvelope } from './realm-protocol.ts';
 
@@ -81,7 +82,7 @@ describe('FakeRealm', () => {
       const realm = fakeRealm({ expectedWorkflowTypes: ['order-workflow'] });
       await realm.sendReady({
         type: 'ready',
-        protocolVersion: 2,
+        protocolVersion: WORKER_PROTOCOL_VERSION,
         realmGeneration: 'g1',
         manifest: buildInternalRealmManifest(['wrong-workflow']),
       });
@@ -354,7 +355,7 @@ describe('FakeRealm', () => {
       const realm = fakeRealm({ isReferenced: () => true, maxRestarts: 2 });
       await realm.sendReady({
         type: 'ready',
-        protocolVersion: 2,
+        protocolVersion: WORKER_PROTOCOL_VERSION,
         realmGeneration: 'g1',
         manifest: buildInternalRealmManifest(['wrong-workflow']),
       });
@@ -373,7 +374,7 @@ describe('FakeRealm', () => {
       const realm = fakeRealm({ isReferenced: () => false });
       await realm.sendReady({
         type: 'ready',
-        protocolVersion: 2,
+        protocolVersion: WORKER_PROTOCOL_VERSION,
         realmGeneration: 'g1',
         manifest: buildInternalRealmManifest(['wrong-workflow']),
       });
