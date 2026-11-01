@@ -134,6 +134,41 @@ export function decideToolApproval(input: ToolApprovalInput): ApprovalStatus {
   return mode === 'allow-all' && tier !== undefined ? 'allow' : 'ask';
 }
 
+/** What {@link grantLoosensTool} reads about one tool and the chat it is called in. */
+export interface GrantLoosensToolInput {
+  /** The agent's `toolApproval`, or `undefined` for an agent with none (a code agent's is the host's own). */
+  readonly toolApproval: Readonly<Record<string, ToolApprovalMode>> | undefined;
+  /**
+   * The agent's own tools, by the key it declared each under (the same record
+   * {@link ToolApprovalHooksOptions.tools} takes), or `undefined` when the Bureau holds no such
+   * record, in which case the tool has no setting and no tier to read.
+   */
+  readonly tools: Readonly<Record<string, Tool>> | undefined;
+  /** The name the call reports the tool by, which an approval's `toolName` carries. */
+  readonly reportedName: string;
+  /** The chat's permission mode. */
+  readonly mode: PermissionMode;
+}
+
+/**
+ * COR-1990 — whether a grant for a tool would make the next ask for it be skipped: what
+ * {@link decideToolApproval} answers for the call with the grant held, `allow`. It is `false` for a
+ * tool its agent sets to `always` or `blocked`, for a chat in `always` mode, and for a tool a
+ * `read-only` chat denies, because those answer `ask` or `deny` whatever the grant says. Pure,
+ * and the same rule {@link createToolApprovalHooks} decides each call by, so the answer cannot drift
+ * from what the next call does.
+ */
+export function grantLoosensTool(input: GrantLoosensToolInput): boolean {
+  const { toolApproval, tools, reportedName, mode } = input;
+  const key = tools === undefined ? undefined : keysByReportedName(tools).get(reportedName);
+  const tool = key === undefined ? undefined : new Map(Object.entries(tools ?? {})).get(key);
+  const setting =
+    (key === undefined ? undefined : new Map(Object.entries(toolApproval ?? {})).get(key)) ??
+    TOOL_APPROVAL_DEFAULT_MODE;
+  const tier = tool === undefined ? undefined : resolveCapabilityTier(tool.metadata, tool.tags);
+  return decideToolApproval({ mode, setting, tier, remembered: true }) === 'allow';
+}
+
 /**
  * What a chat's mode alone makes of a call, whatever else decides it: the part of the mode that
  * holds for every tool of a run, the ones with no `toolApproval` setting included. `read-only`

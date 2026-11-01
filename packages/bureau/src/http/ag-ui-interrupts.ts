@@ -21,9 +21,11 @@ import { BUREAU_METADATA_KEY } from './ag-ui-vocabulary.ts';
  * The JSON Schema of the payload that answers an interrupt, the same for both
  * review kinds. `arguments` applies to a tool approval that is approved and
  * overrides the call's arguments; `answer` applies to a human wait that is
- * approved and is delivered as the signal's payload; `reason` is required, and
- * must hold a character other than whitespace, to `reject`, which is the rule the
- * resume boundary enforces.
+ * approved and is delivered as the signal's payload; `remember` applies to a tool
+ * approval that is approved and also allows the tool for the rest of the chat
+ * (`false` is the same as leaving it out, and is the only value a deny or a reject
+ * may carry); `reason` is required, and must hold a character other than
+ * whitespace, to `reject`, which is the rule the resume boundary enforces.
  */
 export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -32,13 +34,19 @@ export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
     reason: { type: 'string' },
     arguments: {},
     answer: {},
+    remember: { type: 'boolean' },
   },
   required: ['decision'],
   additionalProperties: false,
   anyOf: [
-    { properties: { decision: { enum: ['approve', 'deny'] } } },
+    { properties: { decision: { const: 'approve' } } },
+    { properties: { decision: { const: 'deny' }, remember: { const: false } } },
     {
-      properties: { decision: { const: 'reject' }, reason: { type: 'string', pattern: '\\S' } },
+      properties: {
+        decision: { const: 'reject' },
+        reason: { type: 'string', pattern: '\\S' },
+        remember: { const: false },
+      },
       required: ['reason'],
     },
   ],
@@ -133,14 +141,19 @@ export function responseSchemaFor(
       reason: { type: 'string' },
       arguments: {},
       answer: withReferencesRebasedUnder(answerSchema, '#/properties/answer'),
+      remember: { type: 'boolean' },
     },
     required: ['decision'],
     additionalProperties: false,
     anyOf: [
       { properties: { decision: { const: 'approve' } }, required: ['answer'] },
-      { properties: { decision: { const: 'deny' } } },
+      { properties: { decision: { const: 'deny' }, remember: { const: false } } },
       {
-        properties: { decision: { const: 'reject' }, reason: { type: 'string', pattern: '\\S' } },
+        properties: {
+          decision: { const: 'reject' },
+          reason: { type: 'string', pattern: '\\S' },
+          remember: { const: false },
+        },
         required: ['reason'],
       },
     ],
@@ -153,6 +166,11 @@ export type AgUiResumePayload = {
   reason?: string;
   arguments?: unknown;
   answer?: unknown;
+  /**
+   * `tool-approval` approve only: also allow the tool for the rest of this chat (COR-1990), as
+   * `bureau.reviews.resolve`'s `remember` does. `false` is the same as leaving it out.
+   */
+  remember?: boolean;
 };
 
 /**

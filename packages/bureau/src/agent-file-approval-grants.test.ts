@@ -8,12 +8,16 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { EventType } from '@ag-ui/core';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { BureauError } from './create-bureau';
+import { runAgentInput, startRequest } from './http/ag-ui-fixtures.test-support';
+import { readAgUiStream } from './http/ag-ui-stream.test-support';
+import { createBureauHandler } from './http/create-bureau-handler';
 import { RESOLVED_REVIEW_KEY_PREFIX } from './resolved-review-record';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
@@ -81,6 +85,7 @@ async function start(toolApproval?: string, storage?: MemoryStorage): Promise<Fi
       },
     },
     overrides: {
+      id: 'grants-bureau',
       agentApprovalSecret: 'grants-secret',
       ...(storage === undefined ? {} : { storage }),
       agentSource: agentFileDirectory(directory, { tools: TOOLS }),
@@ -137,7 +142,7 @@ describe('approving with remember (COR-1828)', () => {
     const { bureau } = await start();
     const first = await ask(bureau, 'issue-refund', 'A1');
     const resolved = await approveRemembering(bureau, first.id);
-    expect(resolved).toMatchObject({ decision: 'approve', remembered: true });
+    expect(resolved).toMatchObject({ decision: 'approve', remembered: true, loosened: true });
     expect(executed).toEqual(['issue-refund:A1']);
 
     // The same chat: the same tool runs without asking.
@@ -167,6 +172,7 @@ describe('approving with remember (COR-1828)', () => {
     const first = await ask(bureau, 'issue-refund', 'A1');
     const resolved = await approveRemembering(bureau, first.id, false);
     expect(resolved.remembered).toBeUndefined();
+    expect(resolved.loosened).toBeUndefined();
 
     const again = await ask(bureau, 'issue-refund', 'A2', first.contextId);
 
@@ -177,7 +183,7 @@ describe('approving with remember (COR-1828)', () => {
     const { bureau } = await start('{ issue-refund: always }');
     const first = await ask(bureau, 'issue-refund', 'A1');
     const resolved = await approveRemembering(bureau, first.id);
-    expect(resolved.remembered).toBe(true);
+    expect(resolved).toMatchObject({ remembered: true, loosened: false });
 
     const again = await ask(bureau, 'issue-refund', 'A2', first.contextId);
 
@@ -312,5 +318,79 @@ describe('the record of a decided tool approval (COR-1828)', () => {
       resolvedBy: BOB,
       resolvedAt: record?.decidedAt,
     });
+  });
+});
+
+describe('Allow for the rest of this chat, answered on an AG-UI resume (COR-1990)', () => {
+  const OWNER = 'anonymous:local';
+
+  /** Asks for a refund in `thread-1` through AG-UI, then answers its approval with Allow. */
+  async function allowThroughResume(toolApproval?: string) {
+    const { bureau } = await start(toolApproval);
+    const handler = createBureauHandler(bureau, {
+      unauthenticatedAccess: 'allow',
+      agUi: {},
+    });
+    plan.tool = 'issue-refund';
+    plan.orderId = 'A1';
+    const asked = await readAgUiStream(await handler(startRequest(runAgentInput(), {}, 'helper')));
+    const interrupt = (asked.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } })
+      .outcome.interrupts[0]!;
+    const resumed = await readAgUiStream(
+      await handler(
+        startRequest(
+          runAgentInput({
+            runId: 'client-run-2',
+            messages: [],
+            resume: [
+              {
+                interruptId: interrupt.id,
+                status: 'resolved',
+                payload: { decision: 'approve', remember: true },
+                metadata: { '@lostgradient/bureau': { round: 0 } },
+              },
+            ],
+          }),
+          {},
+          'helper',
+        ),
+      ),
+    );
+    const grants = resumed
+      .map((frame) => frame.event)
+      .filter(
+        (event) => event.type === EventType.CUSTOM && event.name === 'bureau.tool-grant-settled',
+      );
+    /** The next refund in the same chat, asked as the chat's owner. */
+    const askAgain = async (orderId: string) => {
+      plan.orderId = orderId;
+      const task = await bureau.tasks.start('helper', 'Go.', {
+        principal: OWNER,
+        contextId: 'thread-1',
+      });
+      await task.result();
+      return task.id;
+    };
+    return { bureau, grants, interruptId: interrupt.id, askAgain };
+  }
+
+  it('skips the tool’s next ask in the chat and says so', async () => {
+    const { bureau, grants, interruptId, askAgain } = await allowThroughResume();
+
+    expect(grants).toHaveLength(1);
+    expect(grants[0]).toMatchObject({
+      value: { interruptId, toolName: 'issue-refund', remembered: true, loosened: true },
+    });
+    expect(executed).toEqual(['issue-refund:A1']);
+    expect(pendingOf(bureau, await askAgain('A2'))).toHaveLength(0);
+    expect(executed).toEqual(['issue-refund:A1', 'issue-refund:A2']);
+  });
+
+  it('says the grant did not loosen a tool its agent sets to always, which still asks', async () => {
+    const { bureau, grants, askAgain } = await allowThroughResume('{ issue-refund: always }');
+
+    expect(grants).toHaveLength(1);
+    expect(grants[0]).toMatchObject({ value: { remembered: true, loosened: false } });
+    expect(pendingOf(bureau, await askAgain('A2'))).toHaveLength(1);
   });
 });

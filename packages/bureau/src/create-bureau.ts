@@ -243,7 +243,11 @@ import {
 } from './child-topology';
 import { childActionOf } from './child-announcement';
 import { type BureauChildChat, createChildTopologyStore } from './child-topology-store';
-import { type ChatPermissionReading, ChatPermissionUnavailableError } from './tool-approval';
+import {
+  type ChatPermissionReading,
+  ChatPermissionUnavailableError,
+  grantLoosensTool,
+} from './tool-approval';
 import {
   type CommandLedger,
   type CreatedRunSummary,
@@ -777,17 +781,6 @@ function approvalGrantsOf(metadata: Record<string, JSONValue> | undefined): stri
   return Array.isArray(held)
     ? held.filter((entry): entry is string => typeof entry === 'string')
     : [];
-}
-
-/**
- * COR-1828 — the `remembered` field of a resolution that was asked to remember a tool: whether the
- * grant was stored with the decision. Nothing when no tool was named.
- */
-function rememberedField(
-  rememberTool: string | undefined,
-  stored: boolean,
-): { remembered?: boolean } {
-  return rememberTool === undefined ? {} : { remembered: stored };
 }
 
 function omitKey(record: Record<string, JSONValue>, omittedKey: string): Record<string, JSONValue> {
@@ -17985,7 +17978,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             ...(cleanup.kind === 'tool-approval' && cleanup.decision === 'reject'
               ? { feedback: cleanup.reason }
               : {}),
-            ...rememberedField(cleanup.rememberTool, cleanupAuditAppended),
+            ...(await grantFieldsOf(cleanup.rememberTool, cleanupAuditAppended, cleanup.review)),
           };
         } finally {
           resolvingReviewIds.delete(input.id);
@@ -18444,8 +18437,63 @@ async function constructBureau<const D extends AgentDefinitions>(
         : {}),
       ...(keepPending ? { superseded: true as const } : {}),
       // COR-1828: stored with the decision's commit; a superseded call ran nothing, so none was.
-      ...rememberedField(rememberTool, !keepPending && auditAlreadyAppended),
+      ...(await grantFieldsOf(rememberTool, !keepPending && auditAlreadyAppended, review)),
     };
+  }
+
+  /**
+   * COR-1828, COR-1990 — the `remembered` and `loosened` fields of a resolution that was asked to
+   * remember a tool: whether the grant was stored with the decision, and whether it makes the tool's
+   * next ask in the chat be skipped, which a grant that was not stored never does. Nothing when no
+   * tool was named.
+   */
+  async function grantFieldsOf(
+    rememberTool: string | undefined,
+    stored: boolean,
+    review: PendingReview,
+  ): Promise<{ remembered?: boolean; loosened?: boolean }> {
+    if (rememberTool === undefined) return {};
+    return { remembered: stored, loosened: stored && (await grantLoosensReview(review)) };
+  }
+
+  /**
+   * COR-1990 — whether the grant a tool approval stored makes the tool's next ask in its chat be
+   * skipped, read as the next call is decided: the agent's `toolApproval` for the tool (a file
+   * agent's; a code agent's toolbox belongs to the host, so the default stands) and the chat's
+   * permission mode now. The decision has committed, so a read that fails answers `false` and
+   * never throws: the person is told the grant did not loosen the tool, and the grant is still held.
+   */
+  async function grantLoosensReview(review: PendingReview): Promise<boolean> {
+    if (review.kind !== 'tool-approval') return false;
+    try {
+      const detail =
+        review.agentName === undefined
+          ? undefined
+          : await fileAgents?.files.detail(review.agentName);
+      const definition = detail?.definition ?? undefined;
+      const catalog = new Map(Object.entries(agentToolCatalog));
+      const tools =
+        definition === undefined
+          ? undefined
+          : Object.fromEntries(
+              definition.tools.flatMap((name) => {
+                const tool = catalog.get(name);
+                return tool === undefined ? [] : [[name, tool]];
+              }),
+            );
+      const mode = await permissionModeOfSession(
+        review.sessionId,
+        runSessionIncarnations.get(review.runId),
+      );
+      return grantLoosensTool({
+        toolApproval: definition?.toolApproval,
+        tools,
+        reportedName: review.approval.toolName,
+        mode,
+      });
+    } catch {
+      return false;
+    }
   }
 
   /**

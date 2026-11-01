@@ -72,6 +72,13 @@ export const CHILD_RUN_STARTED_EVENT_NAME = 'bureau.child-run-started';
 export const CHILD_RUN_SETTLED_EVENT_NAME = 'bureau.child-run-settled';
 
 /**
+ * The `name` of the `CUSTOM` event that settles a tool approval answered with `remember` (Allow for
+ * the rest of this chat, COR-1990). Its `value` is a {@link ToolGrantSettledAnnouncement}. A client
+ * branches on the name, so it is a one-way door.
+ */
+export const TOOL_GRANT_SETTLED_EVENT_NAME = 'bureau.tool-grant-settled';
+
+/**
  * The `value` of a {@link MEMORY_WRITTEN_EVENT_NAME} event, sent once for each `memory_store` call
  * of the run whose result says the record was stored (`stored: true`). It is derived from that
  * call's result, which names the record, the collection it went to, and its memory class.
@@ -132,10 +139,37 @@ export type ChildRunSettledAnnouncement = {
 };
 
 /**
+ * The `value` of a {@link TOOL_GRANT_SETTLED_EVENT_NAME} event, sent once for each tool approval a
+ * resume answered with `remember` and applied, whether or not the grant took hold. It sits in the
+ * opening events of the resume's stream, after the snapshots and before the replayed call, and it is
+ * live only: a run's recorded history never holds it, so a reload does not show it. A resume that
+ * took over another attempt's work (a recovered command) sends none.
+ */
+export type ToolGrantSettledAnnouncement = {
+  /** The interrupt the person answered: the tool approval's review id. */
+  readonly interruptId: string;
+  /** The tool call the approval was for. */
+  readonly toolCallId: string;
+  /** The name the call reports the tool by. */
+  readonly toolName: string;
+  /** The native `AgentRun.id` that raised the approval (not the continuation the resume starts). */
+  readonly runId: string;
+  /** Whether the grant was stored with the decision. `false` when the decision did not store it. */
+  readonly remembered: boolean;
+  /**
+   * Whether the next ask for the tool in this chat will be skipped. `false` when the tool always
+   * asks (its agent's `toolApproval` says `always`, or the chat's permission mode is `always`) or is
+   * held to a read-only mode, because those answer `ask` or `deny` whatever the grant says. Always
+   * `false` when `remembered` is.
+   */
+  readonly loosened: boolean;
+};
+
+/**
  * Whether `event` is one of the live-only announcements: a memory record written, a wakeup
- * scheduled, a child run started or settled. A stream announces them when they happen and never
- * reads them back out of a run's recorded history. (`bureau.asset-part` is not one: it names a part
- * of a message a replay shows.)
+ * scheduled, a child run started or settled, a tool grant settled. A stream announces them when
+ * they happen and never reads them back out of a run's recorded history. (`bureau.asset-part` is
+ * not one: it names a part of a message a replay shows.)
  */
 export function isLiveAnnouncement(event: Event): boolean {
   return (
@@ -143,7 +177,8 @@ export function isLiveAnnouncement(event: Event): boolean {
     (event.name === MEMORY_WRITTEN_EVENT_NAME ||
       event.name === WAKEUP_SCHEDULED_EVENT_NAME ||
       event.name === CHILD_RUN_STARTED_EVENT_NAME ||
-      event.name === CHILD_RUN_SETTLED_EVENT_NAME)
+      event.name === CHILD_RUN_SETTLED_EVENT_NAME ||
+      event.name === TOOL_GRANT_SETTLED_EVENT_NAME)
   );
 }
 

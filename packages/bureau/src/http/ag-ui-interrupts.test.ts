@@ -52,9 +52,13 @@ describe('the advertised response schema', () => {
     [{ decision: 'approve' }],
     [{ decision: 'approve', arguments: { cents: 1 } }],
     [{ decision: 'approve', answer: 'yes' }],
+    [{ decision: 'approve', remember: true }],
+    [{ decision: 'approve', remember: false }],
     [{ decision: 'deny' }],
     [{ decision: 'deny', reason: 'no' }],
+    [{ decision: 'deny', remember: false }],
     [{ decision: 'reject', reason: 'Wrong customer' }],
+    [{ decision: 'reject', reason: 'Wrong customer', remember: false }],
   ])('accepts %j', (payload) => {
     expect(validate(payload)).toBe(true);
   });
@@ -65,6 +69,9 @@ describe('the advertised response schema', () => {
     ['an unknown decision', { decision: 'maybe' }],
     ['a payload with no decision', {}],
     ['a field it does not define', { decision: 'approve', extra: 1 }],
+    ['a remember that is not a boolean', { decision: 'approve', remember: 'yes' }],
+    ['a deny that asks to remember', { decision: 'deny', remember: true }],
+    ['a reject that asks to remember', { decision: 'reject', reason: 'No', remember: true }],
   ])('refuses %s', (_name, payload) => {
     expect(validate(payload)).toBe(false);
   });
@@ -92,6 +99,7 @@ describe('the response schema of a question that carries its own answer schema (
       'arguments',
       'decision',
       'reason',
+      'remember',
     ]);
     expect(schema.properties['answer']).toEqual(answerSchema);
     expect(schema.required).toEqual(['decision']);
@@ -103,6 +111,7 @@ describe('the response schema of a question that carries its own answer schema (
     [{ decision: 'approve', answer: 'staging' }],
     [{ decision: 'deny' }],
     [{ decision: 'deny', reason: 'no', answer: 'staging' }],
+    [{ decision: 'deny', remember: false }],
     [{ decision: 'reject', reason: 'Wrong customer' }],
   ])('accepts %j', (payload) => {
     expect(validate(payload)).toBe(true);
@@ -113,6 +122,7 @@ describe('the response schema of a question that carries its own answer schema (
     ['an approval with an answer outside the enum', { decision: 'approve', answer: 'qa' }],
     ['a reject with no reason', { decision: 'reject' }],
     ['a field it does not define', { decision: 'approve', answer: 'staging', extra: 1 }],
+    ['a deny that asks to remember', { decision: 'deny', remember: true }],
   ])('refuses %s', (_name, payload) => {
     expect(validate(payload)).toBe(false);
   });
