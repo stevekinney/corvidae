@@ -17,6 +17,10 @@
    * message action, and the quotes go out as Markdown block quotes ahead of the typed text, as part
    * of the message itself, so the controller sends them like any other text.
    *
+   * An agent's reply offers its details (`reply-details.svelte`): why it ran on its model and what the
+   * model saw, from `bureau.tasks.inspect`, and the tokens its run used when this page watched the
+   * run end. A reply the Bureau did not name as a step of a run has none.
+   *
    * A session has a model picker in the composer (`model-picker.svelte`), and the final agent
    * message of each completed turn offers Branch from here (`branch-points.ts`), which opens a new
    * session that continues from that reply. A branch's header says where it came from
@@ -101,6 +105,8 @@
   import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
+  import ReplyDetails from './reply-details.svelte';
+  import { replyStepOf } from './reply-details.ts';
   import { toolGroups } from './tool-activity.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
@@ -947,6 +953,14 @@
         {/if}
       {/snippet}
       {#snippet messageActions({ message })}
+        {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
+        {#if replyStep !== undefined && !session.streaming}
+          <ReplyDetails
+            runId={replyStep.runId}
+            step={replyStep.step}
+            usage={session.usage.get(replyStep.runId)}
+          />
+        {/if}
         {#if branchPoints.has(message.id)}
           <Button
             data-changes

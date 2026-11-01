@@ -7,6 +7,7 @@ import {
   cancelTask,
   followTaskEvents,
   getTask,
+  inspectTaskStep,
   isRefusedPageToken,
   isTerminalState,
   listTasks,
@@ -107,6 +108,75 @@ describe('the task operations', () => {
   test('a task the Bureau answers with an unknown state is a fault, not data to show', async () => {
     const stub = answering({ ...TASK, status: 'exploded' });
     expect(await rejectionOf(withFetch(stub.fetch, () => getTask('run-1')))).toBeInstanceOf(Error);
+  });
+
+  test('inspect names the task and the step, and reads that step’s reply details', async () => {
+    const stub = answering({
+      schemaVersion: 'bureau.task-inspection.v1',
+      steps: [
+        {
+          step: 0,
+          messageId: 'run-1:step:0',
+          contextEpochId: null,
+          planReason: null,
+          hasEffectiveContext: false,
+          effectiveContext: null,
+        },
+        {
+          step: 1,
+          messageId: 'run-1:step:1',
+          contextEpochId: 'epoch-1',
+          planReason: {
+            code: 'cost',
+            detail: 'The cheapest model that fits',
+            rejected: [{ provider: 'anthropic', model: 'opus', code: 'policy' }],
+          },
+          hasEffectiveContext: true,
+          effectiveContext: {
+            epochId: 'epoch-1',
+            baselineDigest: 'sha256:abc',
+            sources: [
+              { sourceId: 'memory', trust: 'trusted', disposition: 'included', digest: 'd' },
+            ],
+            messages: [{ id: 'm1', role: 'user', digest: 'x' }],
+            messageCount: 1,
+            truncated: false,
+          },
+        },
+      ],
+    });
+    const step = await withFetch(stub.fetch, () => inspectTaskStep('run-1', 1));
+    expect(stub.calls[0]).toMatchObject({
+      method: 'bureau.tasks.inspect',
+      params: { taskId: 'run-1', step: 1 },
+    });
+    expect(step?.planReason?.code).toBe('cost');
+    expect(step?.planReason?.rejected).toEqual([
+      { provider: 'anthropic', model: 'opus', code: 'policy' },
+    ]);
+    expect(step?.effectiveContext?.messageCount).toBe(1);
+  });
+
+  test('inspect answers nothing for a step the run did not record', async () => {
+    const stub = answering({ steps: [] });
+    expect(await withFetch(stub.fetch, () => inspectTaskStep('run-1', 4))).toBeNull();
+  });
+
+  test('inspect refuses a plan reason code it does not know', async () => {
+    const stub = answering({
+      steps: [
+        {
+          step: 0,
+          messageId: null,
+          planReason: { code: 'whim', detail: 'x', rejected: [] },
+          hasEffectiveContext: false,
+          effectiveContext: null,
+        },
+      ],
+    });
+    expect(
+      await rejectionOf(withFetch(stub.fetch, () => inspectTaskStep('run-1', 0))),
+    ).toBeInstanceOf(Error);
   });
 
   test('cancel names the task and answers the receipt, with the task when the caller may read it', async () => {

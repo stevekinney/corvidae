@@ -57,6 +57,8 @@ function open(
     at?: string;
     /** The file agents the Bureau lists, by identifier, with the model each names. */
     agents?: Record<string, string>;
+    /** Extra models an agent may be switched to, by identifier. */
+    listedModels?: Record<string, string[]>;
     /** Makes the Bureau refuse to describe an agent, as when it does not answer. */
     agentsUnreadable?: boolean;
   } = {},
@@ -91,6 +93,7 @@ function open(
           description: null,
           a2a: false,
           model: agents[id] ?? '',
+          models: options.listedModels?.[id] ?? null,
           tools: [],
           skillDescriptors: [],
           instructions: '',
@@ -381,7 +384,7 @@ describe('disconnecting a provider', () => {
     const named = await within(dialog).findByTestId('provider-disconnect-agents');
     expect(named.textContent).toContain('writer');
     expect(named.textContent).not.toContain('helper');
-    expect(named.textContent).toContain(MODELS_COPY.disconnectDialog.agentsHeading('Anthropic', 1));
+    expect(named.textContent).toContain(MODELS_COPY.disconnectDialog.invalidHeading('Anthropic', 1));
     expect(writes()).toEqual([]);
 
     await fireEvent.click(confirm(dialog));
@@ -416,6 +419,25 @@ describe('disconnecting a provider', () => {
     const none = await within(dialog).findByTestId('provider-disconnect-none');
     expect(none.textContent).toContain(MODELS_COPY.disconnectDialog.noAgents('Anthropic'));
     expect(within(dialog).queryByTestId('provider-disconnect-agents')).toBeNull();
+  });
+
+  test('separates agents that become invalid from agents that only lose listed models, and flags the embedder', async () => {
+    const { container } = open({
+      agents: { writer: 'anthropic/sonnet', switcher: 'openai/gpt-5' },
+      listedModels: { switcher: ['anthropic/haiku'] },
+    });
+    await loaded(container);
+
+    const dialog = await ask(container);
+
+    const invalid = await within(dialog).findByTestId('provider-disconnect-invalid');
+    expect(invalid.textContent).toContain('writer');
+    expect(invalid.textContent).not.toContain('switcher');
+    expect(invalid.textContent).toContain(MODELS_COPY.disconnectDialog.invalidConsequence);
+    const trimmed = within(dialog).getByTestId('provider-disconnect-trimmed');
+    expect(trimmed.textContent).toContain('switcher');
+    expect(trimmed.textContent).toContain(MODELS_COPY.disconnectDialog.trimmedConsequence);
+    expect(within(dialog).queryByTestId('provider-disconnect-embedder')).toBeNull();
   });
 
   test('says which agents are unknown when they cannot be read, and still lets the person disconnect', async () => {

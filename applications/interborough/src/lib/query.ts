@@ -90,6 +90,12 @@ export const queryKeys = {
     /** The models a session of one agent may be switched to (`bureau.agents.models`). */
     models: (agentName: string) => ['agents', 'models', agentName] as const,
   },
+  /** The tool sources the host saved (`GET /host/tool-sources`). */
+  toolSources: {
+    list: () => ['tool-sources', 'list'] as const,
+    /** The agent files a removal of one source would leave invalid. */
+    removal: (id: string) => ['tool-sources', 'removal', id] as const,
+  },
   /** The executable skills the host discovered (`bureau.skills.list`). */
   skills: {
     list: () => ['skills', 'list'] as const,
@@ -206,6 +212,8 @@ export const queryKeys = {
     detail: (taskId: string) => ['bureau-tasks', 'detail', taskId] as const,
     /** The tasks of one chat session, paged, under the session's own entry. */
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
+    /** One step's reply details (`bureau.tasks.inspect` with `step`). */
+    step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {

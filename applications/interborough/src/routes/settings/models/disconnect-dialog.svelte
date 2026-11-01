@@ -2,8 +2,8 @@
   /**
    * Disconnect a provider: remove its key (`DELETE /host/providers/<name>`), so its models leave the
    * catalog and no run that begins afterwards can call it. The dialog names the agents that name one
-   * of its models first, because their runs fail until the provider is connected again or the agent
-   * is given another model, and the confirm button waits until that list has been read (or has
+   * of its models first, because an agent whose default model is on it becomes invalid and one that
+   * only lists its models loses them. The confirm button waits until that list has been read (or has
    * failed, which it says). The host never answers with a key and this dialog never holds one.
    */
   import { Alert, Button, Modal } from '@lostgradient/cinder';
@@ -31,6 +31,8 @@
 
   const displayName = $derived(provider === null ? '' : providerDisplayName(provider));
   const open = $derived(provider !== null);
+  // Only these providers offer a memory embedder.
+  const hasEmbedder = $derived(provider === 'openai' || provider === 'gemini');
 
   const agents = createQuery(
     () => ({
@@ -95,22 +97,44 @@
           <p class="ib-disconnect__note">{copy.agentsUnknown(displayName)}</p>
         </Alert>
       {:else if agents.isSuccess}
-        {#if agents.data.length === 0}
+        {#if agents.data.invalid.length === 0 && agents.data.trimmed.length === 0}
           <p class="ib-disconnect__note" data-testid="provider-disconnect-none">
             {copy.noAgents(displayName)}
           </p>
         {:else}
           <Alert variant="warning" data-testid="provider-disconnect-agents">
-            <p class="ib-disconnect__note">
-              {copy.agentsHeading(displayName, agents.data.length)}
-            </p>
-            <ul class="ib-disconnect__agents">
-              {#each agents.data as agent (agent.id)}
-                <li><code class="ib-identifier">{agent.id}</code></li>
-              {/each}
-            </ul>
-            <p class="ib-disconnect__note">{copy.agentsConsequence}</p>
+            {#if agents.data.invalid.length > 0}
+              <div data-testid="provider-disconnect-invalid">
+                <p class="ib-disconnect__note">
+                  {copy.invalidHeading(displayName, agents.data.invalid.length)}
+                </p>
+                <ul class="ib-disconnect__agents">
+                  {#each agents.data.invalid as agent (agent.id)}
+                    <li><code class="ib-identifier">{agent.id}</code></li>
+                  {/each}
+                </ul>
+                <p class="ib-disconnect__note">{copy.invalidConsequence}</p>
+              </div>
+            {/if}
+            {#if agents.data.trimmed.length > 0}
+              <div data-testid="provider-disconnect-trimmed">
+                <p class="ib-disconnect__note">
+                  {copy.trimmedHeading(displayName, agents.data.trimmed.length)}
+                </p>
+                <ul class="ib-disconnect__agents">
+                  {#each agents.data.trimmed as agent (agent.id)}
+                    <li><code class="ib-identifier">{agent.id}</code></li>
+                  {/each}
+                </ul>
+                <p class="ib-disconnect__note">{copy.trimmedConsequence}</p>
+              </div>
+            {/if}
           </Alert>
+        {/if}
+        {#if hasEmbedder}
+          <p class="ib-disconnect__note" data-testid="provider-disconnect-embedder">
+            {copy.embedderNote}
+          </p>
         {/if}
       {:else}
         <p class="ib-disconnect__note" role="status" aria-busy="true">

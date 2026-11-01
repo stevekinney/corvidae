@@ -93,11 +93,13 @@ describe('the agents that name a model of a provider', () => {
 
     const users = await listProviderAgents('anthropic');
 
-    expect(users).toEqual([
-      { id: 'writer', displayName: 'The writer' },
-      { id: 'router', displayName: 'The router' },
-      { id: 'switcher', displayName: 'The switcher' },
-    ]);
+    expect(users).toEqual({
+      invalid: [{ id: 'writer', displayName: 'The writer' }],
+      trimmed: [
+        { id: 'router', displayName: 'The router' },
+        { id: 'switcher', displayName: 'The switcher' },
+      ],
+    });
   });
 
   test('does not take a provider whose name only starts the same for the provider', async () => {
@@ -107,7 +109,7 @@ describe('the agents that name a model of a provider', () => {
         fileDetail(String(params['id']), 'anthropic-proxy/sonnet'),
     });
 
-    expect(await listProviderAgents('anthropic')).toEqual([]);
+    expect(await listProviderAgents('anthropic')).toEqual({ invalid: [], trimmed: [] });
   });
 
   test('rejects when an agent cannot be read, so the list is never claimed to be empty', async () => {

@@ -1,12 +1,19 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { Skill } from '../../lib/bureau-skills.ts';
+import type { ToolSourceStanding, ToolSourceTool } from '../../lib/host-tool-sources.ts';
 import {
   approvalLabel,
   isUntrusted,
   matchesFilter,
   skillKey,
   skillSourceLabel,
+  sourceKindLabel,
+  sourceStateDescription,
+  sourceStateLabel,
+  sourceStateVariant,
+  sourceToolStanding,
+  sourceToolTier,
   tierDescription,
   tierLabel,
   tierOf,
@@ -120,5 +127,47 @@ describe('the filter', () => {
     expect(matchesFilter('Read-File', ' file ')).toBe(true);
     expect(matchesFilter('read-file', '')).toBe(true);
     expect(matchesFilter('read-file', 'write')).toBe(false);
+  });
+});
+
+describe('a tool source', () => {
+  const SOURCE_TOOL: ToolSourceTool = {
+    name: 'notes__lookup',
+    tool: 'lookup',
+    acceptsSecrets: false,
+    savedAcceptsSecrets: false,
+    tier: 'read-only',
+  };
+
+  test('asks first for every tool that is not read-only, and for one that declares nothing', () => {
+    expect(sourceToolStanding(SOURCE_TOOL)).toBe('runs');
+    expect(sourceToolStanding({ ...SOURCE_TOOL, tier: 'mutating' })).toBe('asks-first');
+    expect(sourceToolStanding({ ...SOURCE_TOOL, tier: 'dangerous' })).toBe('asks-first');
+    expect(sourceToolStanding({ ...SOURCE_TOOL, tier: null })).toBe('asks-first');
+    // A tier this build does not know is read as none, never as read-only.
+    expect(sourceToolStanding({ ...SOURCE_TOOL, tier: 'read-only-ish' })).toBe('asks-first');
+  });
+
+  test('reads a tier it does not know as unclassified', () => {
+    expect(sourceToolTier(SOURCE_TOOL)).toBe('read-only');
+    expect(sourceToolTier({ ...SOURCE_TOOL, tier: 'something-new' })).toBe('unclassified');
+    expect(sourceToolTier({ ...SOURCE_TOOL, tier: null })).toBe('unclassified');
+  });
+
+  test('has words and a badge for each state, and for each kind', () => {
+    const states: ToolSourceStanding['state'][] = [
+      'loaded',
+      'failed',
+      'needs-authorization',
+      'pending-restart',
+    ];
+    expect(states.map(sourceStateVariant)).toEqual(['success', 'danger', 'warning', 'info']);
+    for (const state of states) {
+      expect(sourceStateLabel(state)).not.toBe('');
+      expect(sourceStateDescription(state)).not.toBe('');
+    }
+    const source = { kind: 'openapi' } as ToolSourceStanding;
+    expect(sourceKindLabel(source)).toBe('OpenAPI service');
+    expect(sourceKindLabel({ ...source, kind: 'mcp' })).toBe('MCP server');
   });
 });

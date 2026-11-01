@@ -25,6 +25,14 @@ function providerOf(model: string): string | undefined {
   return slash > 0 ? model.slice(0, slash) : undefined;
 }
 
+/** The agents that name a model of a provider, split by what disconnecting does to them. */
+export type ProviderAgents = {
+  /** Agents whose default `model` is on the provider: they become invalid without it. */
+  readonly invalid: readonly ProviderAgent[];
+  /** Agents that only list the provider's models in `models`: they stay ready and lose those entries. */
+  readonly trimmed: readonly ProviderAgent[];
+};
+
 /**
  * The agents that name a model of `provider`, in the Bureau's order. Rejects when the agents cannot
  * be read, so the caller can say the list is unknown instead of showing an empty one.
@@ -32,7 +40,7 @@ function providerOf(model: string): string | undefined {
 export async function listProviderAgents(
   provider: string,
   options?: Options,
-): Promise<readonly ProviderAgent[]> {
+): Promise<ProviderAgents> {
   const agents = await listAgents(options);
   const details = await Promise.all(
     agents.map(async (agent) => ({
@@ -40,19 +48,16 @@ export async function listProviderAgents(
       detail: await getAgentDefinition(agent.name, options),
     })),
   );
-  const found: ProviderAgent[] = [];
+  const onProvider = (model: string | null | undefined): boolean =>
+    model !== null && model !== undefined && providerOf(model) === provider;
+  const invalid: ProviderAgent[] = [];
+  const trimmed: ProviderAgent[] = [];
   for (const { agent, detail } of details) {
-    const named = [
-      detail.definition?.model,
-      ...(detail.definition?.models ?? []),
-      detail.codeDefinition?.model,
-      ...(detail.codeDefinition?.models ?? []),
-    ];
-    if (
-      named.some((model) => model !== null && model !== undefined && providerOf(model) === provider)
-    ) {
-      found.push({ id: agent.name, displayName: agent.displayName });
-    }
+    const entry = { id: agent.name, displayName: agent.displayName };
+    const defaults = [detail.definition?.model, detail.codeDefinition?.model];
+    const listed = [...(detail.definition?.models ?? []), ...(detail.codeDefinition?.models ?? [])];
+    if (defaults.some(onProvider)) invalid.push(entry);
+    else if (listed.some(onProvider)) trimmed.push(entry);
   }
-  return found;
+  return { invalid, trimmed };
 }

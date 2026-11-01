@@ -37,6 +37,7 @@
   import { STARTED_BY_LABELS } from './started-by.ts';
   import {
     buildRunRows,
+    filterLabelOf,
     filterRunRows,
     parseRunFilter,
     serializeRunFilter,
@@ -161,7 +162,7 @@
       key: 'agent',
       label: TASK_COPY.agentLabel,
       placeholder: TASK_COPY.anyAgent,
-      options: agentNames.map((name) => ({ value: name, label: agentLabel(name) })),
+      options: agentNames.map((name) => ({ value: name, label: filterLabelOf(agentLabel(name)) })),
     },
     {
       type: 'select' as const,
@@ -185,8 +186,8 @@
     facets.flatMap((facet) => {
       const value = filter[facet.key as keyof typeof filter];
       if (value === undefined) return [];
-      const label = facet.options.find((option) => option.value === value)?.label ?? value;
-      return [{ key: facet.key, value, label: `${facet.label}: ${label}` }];
+      // The bar prints `<label>: <the option's label>` on the chip, so the label is the facet's alone.
+      return [{ key: facet.key, value, label: facet.label }];
     }),
   );
 

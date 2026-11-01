@@ -1,6 +1,6 @@
 /**
- * The Bureau's task operations as the browser calls them: `bureau.tasks.list`, `.get`, `.cancel`
- * and `.respond` over JSON-RPC, and `bureau.tasks.events`, the one that is a subscription and so
+ * The Bureau's task operations as the browser calls them: `bureau.tasks.list`, `.get`, `.cancel`,
+ * `.respond` and `.inspect` over JSON-RPC, and `bureau.tasks.events`, the one that is a subscription and so
  * reaches the browser over Server-Sent Events at `/bureau/v1/subscriptions/bureau.tasks.events`.
  *
  * The schemas restate the wire shapes (`packages/bureau/src/http/management/`) the way
@@ -198,6 +198,87 @@ export async function loadMoreTasks(tasks: PagedTasks): Promise<void> {
 /** One task. A task the caller may not see is answered as a missing one: a not-found fault. */
 export async function getTask(taskId: string, options?: Options): Promise<TaskView> {
   return taskViewSchema.parse(await callBureau('bureau.tasks.get', { taskId }, options));
+}
+
+/** Why a step ran on its model: the codes `bureau.tasks.inspect` names. */
+export const planReasonCodeSchema = z.enum([
+  'cost',
+  'latency',
+  'capability',
+  'policy',
+  'pinned',
+  'fallback',
+]);
+
+/** Why a step ran on its model. */
+export type PlanReasonCode = z.infer<typeof planReasonCodeSchema>;
+
+/** Why a step's generation ran on its model, and the models the plan passed over. */
+export const planReasonSchema = z.object({
+  code: planReasonCodeSchema,
+  detail: z.string(),
+  rejected: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      code: z.enum(['capability', 'policy', 'fallback']),
+    }),
+  ),
+});
+
+/** Why a step's generation ran on its model, and the models the plan passed over. */
+export type PlanReason = z.infer<typeof planReasonSchema>;
+
+/**
+ * What a step's model saw, as the Bureau records it: the sources the prompt was composed from and
+ * the ids and roles of its messages. Never the content of a message.
+ */
+export const effectiveContextSchema = z.object({
+  epochId: z.string().optional(),
+  sources: z.array(
+    z.object({
+      sourceId: z.string(),
+      disposition: z.enum(['included', 'excluded', 'absent-by-composition']),
+      reason: z.string().optional(),
+    }),
+  ),
+  messages: z.array(z.object({ id: z.string(), role: z.string() })),
+  messageCount: z.number().int(),
+  truncated: z.boolean(),
+});
+
+/** What a step's model saw: its sources, and the ids and roles of its messages. */
+export type EffectiveContext = z.infer<typeof effectiveContextSchema>;
+
+/** One step's reply details, as `bureau.tasks.inspect` names a single `step`. */
+export const taskStepSchema = z.object({
+  step: z.number().int(),
+  messageId: z.string().nullable(),
+  planReason: planReasonSchema.nullable(),
+  hasEffectiveContext: z.boolean(),
+  effectiveContext: effectiveContextSchema.nullable(),
+});
+
+/** One step's reply details: why it ran on its model and what that model saw, each `null` when unrecorded. */
+export type TaskStep = z.infer<typeof taskStepSchema>;
+
+const inspectStepAnswerSchema = z.object({ steps: z.array(taskStepSchema) });
+
+/**
+ * The reply details of one step of a task (`bureau.tasks.inspect` with `step`): why the step ran on
+ * its model and what that model saw. `null` when the run recorded no such step, which is an answer
+ * and not a fault: a step whose tool phase failed returns before it is recorded. A task the caller
+ * may not see is answered as a missing one: a not-found fault.
+ */
+export async function inspectTaskStep(
+  taskId: string,
+  step: number,
+  options?: Options,
+): Promise<TaskStep | null> {
+  const answer = inspectStepAnswerSchema.parse(
+    await callBureau('bureau.tasks.inspect', { taskId, step }, options),
+  );
+  return answer.steps.find((entry) => entry.step === step) ?? null;
 }
 
 const cancelAnswerSchema = z.object({

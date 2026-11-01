@@ -369,3 +369,62 @@
   min-inline-size: 10rem;
   max-inline-size: 16rem;
 }
+
+/* The popover on an agent's reply: why this model, what it saw, the run's tokens. */
+.weft-reply-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-inline-size: min(20rem, 100%);
+  max-inline-size: min(28rem, 100%);
+  overflow-wrap: anywhere;
+}
+
+.weft-reply-details__part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+}
+
+.weft-reply-details__heading,
+.weft-reply-details__subheading,
+.weft-reply-details__lead,
+.weft-reply-details__note {
+  margin: 0;
+}
+
+.weft-reply-details__heading {
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
+}
+
+.weft-reply-details__subheading {
+  margin-block-start: var(--cinder-space-1);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
+  font-weight: 600;
+}
+
+.weft-reply-details__note {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-reply-details__list {
+  margin: 0;
+  padding-inline-start: var(--cinder-space-4);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-reply-details__usage {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-reply-details__usage dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

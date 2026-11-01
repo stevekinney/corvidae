@@ -102,6 +102,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/agents': /An agent description that keeps going/,
   '/capabilities': /Reads only|Changes things|Dangerous|Not classified/,
   '/capabilities (skills tab)': /e2e-summarize/,
+  '/capabilities (sources tab)': /e2e-petstore/,
+  // The open source prints its tools' switches and the saved setting that is the long word.
+  '/capabilities (source open)': /uuuuuuuuuu/,
   // Only the open skill's detail prints this heading; the long word is in its row at 1280 too.
   '/capabilities (skill open)': /Where it comes from/,
   '/agents/:agent': /An agent description that keeps going/,
@@ -129,6 +132,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // Before the page is opened on a schedule, which `reveal` does, the page prints its choices.
   '/workflows/:workflow/run (code, on a schedule)': /Starts a run as soon as you confirm/,
   '/runs (start picker)': /Choose the workflow to run/,
+  // The applied filter prints the agent's name, which the address names.
+  '/runs (long agent filter)': /aaaaaaaaaa/,
   '/runs/:run': /Input and output/,
   // The step list is there; the 300-character value is in the whole log, which `reveal` opens.
   '/runs/:run (steps and logs)': /Input and output/,

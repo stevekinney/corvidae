@@ -107,6 +107,8 @@ export type OAuthMcpServer = TestServer & {
   readonly issuedAccessTokens: readonly string[];
   /** The PKCE verifiers it received at the token endpoint. */
   readonly receivedVerifiers: readonly string[];
+  /** Makes the server stop honouring every access and refresh token it issued, as a revoked grant does. */
+  revokeTokens(): void;
 };
 
 async function sha256Base64Url(input: string): Promise<string> {
@@ -207,6 +209,10 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
             refresh_token: refreshToken,
           });
         }
+        // A refresh token the server no longer holds is a revoked grant, which RFC 6749 answers with `invalid_grant`.
+        if (params.get('grant_type') === 'refresh_token') {
+          return Response.json({ error: 'invalid_grant' }, { status: 400 });
+        }
         return Response.json({ error: 'unsupported_grant_type' }, { status: 400 });
       }
       if (url.pathname === '/') {
@@ -231,6 +237,10 @@ export async function startOAuthMcpServer(): Promise<OAuthMcpServer> {
     authorizations,
     issuedAccessTokens,
     receivedVerifiers,
+    revokeTokens() {
+      accessTokens.clear();
+      refreshTokens.clear();
+    },
     stop: () => server.stop(true),
   };
 }

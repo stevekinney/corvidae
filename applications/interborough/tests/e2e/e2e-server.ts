@@ -57,6 +57,7 @@ import { createQuestionAgents } from './question-agents.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
 import { seedSkills } from './skills-seed.ts';
 import { createTextEchoAgents } from './text-echo-agent.ts';
+import { seedToolSources, startToolSourceServers } from './tool-sources-seed.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
@@ -72,6 +73,10 @@ await mkdir(home, { recursive: true });
 await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
 // Executable skills in two sources, one trusted and one not (`skills-support.ts`).
 await seedSkills(home);
+// Saved tool sources (`tool-sources-seed.ts`): an MCP server and an OpenAPI service that load, one
+// behind OAuth that waits for a sign-in, and one that fails. They load when the host starts.
+const toolSourceServers = await startToolSourceServers();
+await seedToolSources(home, toolSourceServers);
 // The scripted agents the specs talk to (`demo:assistant`, `demo:tool-runner`, and the rest) come
 // from the demo plugin, which is off by default, so the home turns it on. It goes last because it
 // merges into the `configuration.json` the lines above wrote.
@@ -346,6 +351,7 @@ async function shutDown(): Promise<void> {
   await journeyHost.close();
   await bureauHost.close();
   await host.close();
+  await toolSourceServers.stop();
   await rm(scratch, { recursive: true, force: true });
   process.exit(0);
 }

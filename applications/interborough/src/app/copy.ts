@@ -1473,10 +1473,16 @@ export const MODELS_COPY = {
     description: (name: string): string =>
       `Disconnecting removes the saved ${name} key from this machine and takes its models out of the catalog. Connect it again with a key to bring them back.`,
     checking: (name: string): string => `Looking for agents that use ${name} models`,
-    agentsHeading: (name: string, count: number): string =>
-      `${String(count)} ${count === 1 ? 'agent uses' : 'agents use'} ${name} models`,
-    agentsConsequence:
-      'Their runs fail until you connect the provider again or give them another model.',
+    invalidHeading: (name: string, count: number): string =>
+      `${String(count)} ${count === 1 ? 'agent has' : 'agents have'} a ${name} model as ${count === 1 ? 'its' : 'their'} default`,
+    invalidConsequence:
+      'Without the provider, they become invalid and move to the Invalid list on the Agents page until you connect it again or give them another default model.',
+    trimmedHeading: (name: string, count: number): string =>
+      `${String(count)} ${count === 1 ? 'agent lists' : 'agents list'} ${name} models to switch to`,
+    trimmedConsequence:
+      'They stay ready and lose those models from the ones they can be switched to.',
+    embedderNote:
+      'If a memory embedder from this provider is selected, memory needs setup again until you connect it or choose another.',
     noAgents: (name: string): string => `No agent names a ${name} model.`,
     agentsUnknown: (name: string): string =>
       `The agents could not be read, so which ones use ${name} models is not known.`,
@@ -2610,6 +2616,53 @@ export const CHAT_COPY = {
       fault: 'The permission mode may not have been changed. Showing the mode the chat uses now.',
     },
   },
+  /**
+   * The popover on an agent's reply (COR-1983): why the reply ran on its model and what the model
+   * saw, read from `bureau.tasks.inspect`, and the tokens its run used, from the run's terminal
+   * event. It says what those two sources carry and nothing else.
+   */
+  replyDetails: {
+    action: 'Reply details',
+    loading: 'Reading the reply details',
+    failed: {
+      title: 'Reply details are unavailable',
+      description: 'The host did not answer. Try again.',
+    },
+    retry: 'Try again',
+    empty: {
+      title: 'No details were recorded',
+      description: 'The host kept no model plan and no context for this reply.',
+    },
+    why: 'Why this model',
+    planReasons: {
+      cost: 'Lowest cost',
+      latency: 'Fastest',
+      capability: 'Only model with the abilities needed',
+      policy: 'Model policy',
+      pinned: 'Named, not ranked',
+      fallback: 'Fallback',
+    },
+    passedOver: 'Passed over',
+    passedOverReasons: {
+      capability: 'lacks an ability the request needs',
+      policy: 'not allowed by the model policy',
+      fallback: 'unavailable',
+    },
+    rejection: (provider: string, model: string, reason: string) =>
+      `${provider}/${model}: ${reason}`,
+    saw: 'What the model saw',
+    messages: (count: number) => `${String(count)} ${count === 1 ? 'message' : 'messages'}`,
+    truncated: 'Older messages were left out to keep the record small.',
+    sources: 'Sources',
+    dispositions: { included: 'included', excluded: 'left out' },
+    source: (sourceId: string, disposition: string, reason: string | undefined) =>
+      reason === undefined || reason === ''
+        ? `${sourceId}: ${disposition}`
+        : `${sourceId}: ${disposition} (${reason})`,
+    usage: 'Tokens this run used',
+    usageNote: 'Counted across every step of the run, not this reply alone.',
+    usageKinds: { input: 'Input', output: 'Output', total: 'Total' },
+  },
   /** The ring in the header that says how full the chat's context window is. */
   contextWindow: {
     label: 'Context window',
@@ -3593,13 +3646,13 @@ export const CAPABILITIES_COPY = {
   title: 'Capabilities',
   description: 'The tools and skills your agents can use, and who is allowed to use them.',
   tabsLabel: 'Capability kinds',
-  tabs: { tools: 'Tools', skills: 'Skills' },
-  filterLabel: { tools: 'Filter tools', skills: 'Filter skills' },
+  tabs: { tools: 'Tools', skills: 'Skills', sources: 'Sources' },
+  filterLabel: { tools: 'Filter tools', skills: 'Filter skills', sources: 'Filter sources' },
   filterPlaceholder: 'Filter by name',
-  listLabel: { tools: 'Tools', skills: 'Skills' },
+  listLabel: { tools: 'Tools', skills: 'Skills', sources: 'Sources' },
   count: (shown: number, total: number): string =>
     shown === total ? String(total) : `${String(shown)} of ${String(total)}`,
-  detailLabel: { tools: 'Tool details', skills: 'Skill details' },
+  detailLabel: { tools: 'Tool details', skills: 'Skill details', sources: 'Source details' },
   emptyDetailTitle: 'Choose a capability',
   emptyDetailDescription: 'Pick one from the list to see what it does and who uses it.',
   tool: {
@@ -3709,6 +3762,109 @@ export const CAPABILITIES_COPY = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     usersFailed: 'Which agents use each skill could not be read.',
+  },
+  source: {
+    loading: 'Loading tool sources',
+    empty: {
+      title: 'No tool sources yet',
+      description:
+        'A tool source is an MCP server or an OpenAPI service whose tools agents can call. The ones this host saved are listed here.',
+    },
+    filtered: {
+      title: 'No sources match',
+      description: 'No source name contains what you typed.',
+      clear: 'Clear filter',
+    },
+    loadFailed: {
+      title: 'The tool sources could not be read',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    kinds: { mcp: 'MCP server', openapi: 'OpenAPI service' },
+    states: {
+      loaded: 'Connected',
+      failed: 'Failed',
+      'needs-authorization': 'Needs sign-in',
+      'pending-restart': 'Starts next time',
+    },
+    stateDescriptions: {
+      loaded: 'Its tools are in Capabilities and agents can be given them on Access.',
+      failed: 'It did not load, so its tools are not available.',
+      'needs-authorization': 'Sign in to the server so it can list its tools.',
+      'pending-restart': 'It is saved. Its tools are listed when Interborough starts again.',
+    },
+    facts: {
+      kind: 'Kind',
+      credentials: 'Stored credentials',
+      noCredentials: 'None',
+      localCommand: 'Runs a command on this machine',
+      localCommandYes: 'Yes',
+    },
+    signIn: {
+      action: 'Sign in',
+      opened:
+        'Finish signing in in the tab that opened, then restart Interborough to list the tools.',
+      already: 'Already signed in. Restart Interborough to list the tools.',
+      signedIn: 'Signed in. Restart Interborough to list the tools.',
+      rejected:
+        'The sign-in this source had stored no longer works, so restarting will not list its tools. Sign in again.',
+      failed: 'Signing in could not be started',
+      blocked: 'The sign-in tab was blocked. Allow pop-ups for this page and try again.',
+    },
+    tools: {
+      heading: 'Tools',
+      empty: {
+        title: 'No tools listed yet',
+        description: 'A source lists its tools once it has connected.',
+      },
+      open: (name: string): string => `Open ${name} in Tools`,
+      standing: { 'asks-first': 'Asks you first', runs: 'Runs without asking', blocked: 'Blocked' },
+      standingLabel: 'By default',
+      acceptsSecrets: 'Accepts secrets',
+      acceptsSecretsLabel: (tool: string): string => `Accepts secrets: ${tool}`,
+      acceptsSecretsHelp:
+        'A tool that accepts secrets may receive the plaintext of an answer a person marks secret. Leave it off unless the tool needs the secret.',
+      takesEffect: 'Takes effect when Interborough starts again',
+      saveFailed: 'The setting could not be saved',
+      locked: 'This host keeps its configuration in its deployment, so it cannot be changed here.',
+    },
+    /** What a refusal says when the host sent no words of its own. */
+    refusal: {
+      locked: 'This host keeps its configuration in its deployment, so it cannot be changed here.',
+      'owner-only': 'Only the owner can do this.',
+      'not-found': 'The host has no such source.',
+      invalid: 'The host did not accept the value.',
+      partial: 'The host made only part of the change.',
+      failed: 'The host could not make the change.',
+    },
+    skipped: {
+      heading: 'Tools the host does not list',
+      reason: (tool: string, reason: string): string => `${tool}: ${reason}`,
+    },
+    unmatched: {
+      heading: 'Settings that reach no tool',
+      description:
+        'These saved settings name a tool the server does not list. Nothing is applied to a different tool.',
+    },
+    remove: {
+      action: 'Remove source',
+      title: (id: string): string => `Remove ${id}?`,
+      intro:
+        'Its credentials are cleared and it leaves the list at once. Its tools stop running now, and leave Capabilities when Interborough starts again.',
+      agentsHeading: 'Agents that name its tools',
+      agentsIntro:
+        'These agent files are not edited. Each reads invalid until the tool is taken out of it.',
+      noAgents: 'No agent names its tools.',
+      previewFailed: 'Which agents use its tools could not be read.',
+      confirm: 'Remove',
+      cancel: 'Keep it',
+      removed: (id: string, agents: readonly string[]): string =>
+        agents.length === 0
+          ? `Removed ${id}. It is gone from the list, and its tools stop running now.`
+          : `Removed ${id}. It is gone from the list, and its tools stop running now. Agents that still name them (${agents.join(', ')}) read invalid until you take them out.`,
+      partial: 'The source was removed, but its cleanup was not finished',
+      failed: 'The source could not be removed',
+      agentTools: (tools: readonly string[]): string => tools.join(', '),
+    },
   },
 } as const;
 
