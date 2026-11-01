@@ -267,6 +267,12 @@ export type ToolSourceToolStanding = {
   readonly tool: string;
   /** Whether the running host lets the tool receive the plaintext of a secret answer (COR-1932). */
   readonly acceptsSecrets: boolean;
+  /**
+   * Whether the saved settings allow it: what `acceptsSecrets` becomes at the next start. It differs
+   * from `acceptsSecrets` after a change to the tool's settings that the running host has not
+   * loaded (`settingsPending`), so a page reads back what it saved and not only what runs.
+   */
+  readonly savedAcceptsSecrets: boolean;
   /** Its capability tier (`read-only`, `mutating`, `dangerous`), or `null` when it has none. */
   readonly tier: string | null;
 };
@@ -912,6 +918,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           name,
           tool: tool.name,
           acceptsSecrets,
+          savedAcceptsSecrets: acceptsSecrets,
           tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
         });
       }
@@ -1097,6 +1104,11 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
               : [];
           return standingWithSecrets(entry, {
             ...standing,
+            // The saved settings as they are now, not as they were when the host loaded the source.
+            tools: standing.tools.map((tool) => ({
+              ...tool,
+              savedAcceptsSecrets: entry.tools.get(tool.tool)?.acceptsSecrets === true,
+            })),
             unmatchedSettings,
             ...(previous.settings === settingsRevision(entry)
               ? {}

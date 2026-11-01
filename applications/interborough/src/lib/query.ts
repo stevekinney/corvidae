@@ -90,6 +90,12 @@ export const queryKeys = {
     /** The models a session of one agent may be switched to (`bureau.agents.models`). */
     models: (agentName: string) => ['agents', 'models', agentName] as const,
   },
+  /** The tool sources the host saved (`GET /host/tool-sources`). */
+  toolSources: {
+    list: () => ['tool-sources', 'list'] as const,
+    /** The agent files a removal of one source would leave invalid. */
+    removal: (id: string) => ['tool-sources', 'removal', id] as const,
+  },
   /** The executable skills the host discovered (`bureau.skills.list`). */
   skills: {
     list: () => ['skills', 'list'] as const,

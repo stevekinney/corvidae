@@ -7,6 +7,7 @@
 
 import { E2E_CROSS_BUILD_QUEUE, E2E_FLEET_WORKER_ID } from './e2e-constants.ts';
 import { E2E_SKILLS, skillAddressKey } from './skills-support.ts';
+import { E2E_TOOL_SOURCES } from './tool-sources-support.ts';
 
 /** The identifiers the specification seeds, and so the addresses it can name. */
 export interface ResponsiveSeed {
@@ -108,6 +109,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
  * as are an agent's Instructions, Access and Settings tabs, with the tab named in the address (`?tab=`).
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
+ * as are its Sources tab and the seeded OpenAPI source open,
  * as is the Workers page with the seeded worker open and its Task queues tab with a seeded queue
  * open (its dead letters and recovery diagnostics), and as are a waiting review open and the
  * Reviews page's Done tab, the run setup page opened on a schedule, the picker on Runs, and a run's
@@ -147,6 +149,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // A queue open: its strategy, dead letters, recovery diagnostics (the seeded retry storm) and workers.
     '/health/workers (queue open)': `/health/workers?tab=queues&queue=${encodeURIComponent(E2E_CROSS_BUILD_QUEUE)}`,
     '/capabilities (skills tab)': '/capabilities?tab=skills',
+    // The Sources tab, and the OpenAPI source open: a tool with a long name, a flagged tool, and a saved setting that is one 300-character word.
+    '/capabilities (sources tab)': '/capabilities?tab=sources',
+    '/capabilities (source open)': `/capabilities?tab=sources&source=${encodeURIComponent(E2E_TOOL_SOURCES.petstore)}`,
     '/capabilities (skill open)': `/capabilities?tab=skills&skill=${encodeURIComponent(skillAddressKey(E2E_SKILLS.long))}`,
     // A waiting review open (one pane at a time below 900px, so at 375 and 768 the detail replaces
     // the list), and the Done tab with a decided review open.

@@ -474,4 +474,45 @@ describe('saved tool sources', () => {
       'no-such-tool',
     ]);
   });
+  test('reports the saved acceptsSecrets of each tool beside the applied one, so a change reads back before the restart', async () => {
+    const path = await home();
+    const first = await startAt(path);
+    await send(first, 'PUT', '/host/tool-sources/pets', {
+      source: petsSource,
+      credentials: { key: API_KEY },
+    });
+    await send(first, 'PUT', '/host/tool-sources/pets/tools', {
+      tools: { 'delete-pet': { acceptsSecrets: true } },
+    });
+    const second = await restart(first, path);
+    type Listed = {
+      sources: {
+        settingsPending?: true;
+        tools: { name: string; acceptsSecrets: boolean; savedAcceptsSecrets: boolean }[];
+      }[];
+    };
+    const flags = (listed: Listed) =>
+      Object.fromEntries(
+        listed.sources[0]?.tools.map((tool) => [
+          tool.name,
+          [tool.acceptsSecrets, tool.savedAcceptsSecrets],
+        ]) ?? [],
+      );
+
+    const loaded: Listed = await jsonOf(send(second, 'GET', '/host/tool-sources'));
+    expect(loaded.sources[0]?.settingsPending).toBeUndefined();
+    expect(flags(loaded)['pets__delete-pet']).toEqual([true, true]);
+
+    await send(second, 'PUT', '/host/tool-sources/pets/tools', {
+      tools: { 'list-pets': { acceptsSecrets: true }, 'delete-pet': { acceptsSecrets: false } },
+    });
+    const changed: Listed = await jsonOf(send(second, 'GET', '/host/tool-sources'));
+
+    expect(changed.sources[0]?.settingsPending).toBe(true);
+    expect(flags(changed)).toEqual({
+      'pets__list-pets': [false, true],
+      'pets__create-pet': [false, false],
+      'pets__delete-pet': [true, false],
+    });
+  });
 });
