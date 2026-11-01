@@ -127,7 +127,7 @@ export function sourceKindLabel(source: ToolSourceStanding): string {
 }
 
 /** The tier a source's tool declares, or `unclassified` when it declares none or one this build does not know. */
-export function sourceToolTier(tool: ToolSourceTool): ToolTier {
+export function sourceToolTier(tool: Pick<ToolSourceTool, 'tier'>): ToolTier {
   switch (tool.tier) {
     case 'read-only':
     case 'mutating':
@@ -150,5 +150,22 @@ export function sourceToolStanding(tool: ToolSourceTool): ToolStanding {
       defaultApproval: tier === 'read-only' ? 'allow' : 'ask',
     },
     undefined,
+  );
+}
+
+/**
+ * Whether the running host has not yet loaded what is saved for `source`, so a restart changes what
+ * Capabilities lists: a source added or changed since the host started, an Accepts secrets setting
+ * saved since, or an OAuth source that has been signed in to since it last tried. An OAuth source
+ * that is saved and not signed in to is not waiting for a restart but for a sign-in.
+ */
+export function sourceWaitsForRestart(source: ToolSourceStanding): boolean {
+  return (
+    // An OAuth source that nobody has signed in to lists nothing after a restart, so it waits for a sign-in instead.
+    (source.state === 'pending-restart' && source.authorized !== false) ||
+    source.settingsPending === true ||
+    (source.state === 'needs-authorization' &&
+      source.authorized === true &&
+      source.tokensRejected !== true)
   );
 }

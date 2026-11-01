@@ -13,6 +13,13 @@
   padding-block-start: var(--cinder-space-3);
 }
 
+/* Where Sources keeps the action that adds one, above the list it adds to. */
+.ib-capabilities__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding-block-end: var(--cinder-space-3);
+}
+
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-capabilities__frame {
   block-size: max(28rem, calc(100dvh - 18rem));

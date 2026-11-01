@@ -528,36 +528,99 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * The most nodes one {@link dereference} call may produce. Dereferencing yields a tree, so schemas
+ * that reference each other expand once per path through them, and a document a few kilobytes long
+ * can describe a tree with more nodes than a process can hold; the walk is synchronous, so a
+ * caller's deadline cannot interrupt it. Past this limit the document is refused instead.
+ */
+const MAXIMUM_DEREFERENCED_NODES = 100_000;
+
+/** What one {@link dereference} call shares across its recursion. */
+type Dereferencing = {
+  /** Nodes it may still produce; a cached expansion is charged what it would have cost. */
+  remaining: number;
+  /** Targets on the path being resolved: a pointer back to one is a cycle. */
+  readonly active: Set<unknown>;
+  /** How many pointers have been cut as cycles; an expansion that cut none is context-free. */
+  cuts: number;
+  /** Expansions of targets that cut no cycle, so a target reached again is resolved once. */
+  readonly complete: Map<unknown, { result: unknown; size: number }>;
+};
+
+/**
  * Recursively resolves local `$ref` pointers (e.g. `#/components/schemas/...`,
  * `#/components/parameters/...`, `#/components/requestBodies/...`) against `root`. Used both on
  * parameter/request-body *schemas* (returning a plain JSON Schema object suitable for
  * {@link importToolSchema}) and on whole Parameter/Request Body Objects that may themselves be
  * `$ref`s. Both directly drive generated tool input validation, so an unresolvable `$ref` throws
- * rather than silently degrading to an unvalidated `z.unknown()` field. A pointer that refers
- * back to a value already on the current resolution path (a recursive schema, e.g. a tree-shaped
- * `Node`) resolves to `{}` at the cycle point instead of recursing forever — recursive JSON
- * Schemas are legitimate and Zod has no direct equivalent.
+ * rather than silently degrading to an unvalidated `z.unknown()` field. A pointer to a value
+ * already being resolved on the current path (a recursive schema, e.g. a tree-shaped `Node`)
+ * resolves to `{}` at the cycle point instead of recursing forever — recursive JSON Schemas are
+ * legitimate and Zod has no direct equivalent. Cycles are cut by the value a pointer resolves to,
+ * not by the pointer, so schemas that reference each other expand along each simple path through
+ * them rather than once per pointer; an expansion that cut no cycle is remembered by its target,
+ * and a result of more than {@link MAXIMUM_DEREFERENCED_NODES} nodes throws.
  */
-function dereference(value: unknown, root: OpenAPISpec, seen: Set<unknown> = new Set()): unknown {
+function dereference(
+  value: unknown,
+  root: OpenAPISpec,
+  state: Dereferencing = {
+    remaining: MAXIMUM_DEREFERENCED_NODES,
+    active: new Set(),
+    cuts: 0,
+    complete: new Map(),
+  },
+): unknown {
+  spend(state, 1);
   if (Array.isArray(value)) {
-    return value.map((item) => dereference(item, root, seen));
+    return value.map((item) => dereference(item, root, state));
   }
   if (isRecord(value)) {
     const ref = value['$ref'];
-    if (typeof ref === 'string') {
-      if (seen.has(value)) return {};
-      const resolved = resolveRef(ref, root);
-      const nextSeen = new Set(seen);
-      nextSeen.add(value);
-      return dereference(resolved, root, nextSeen);
-    }
+    if (typeof ref === 'string') return dereferenceTarget(resolveRef(ref, root), root, state);
     const result: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value)) {
-      result[key] = dereference(nested, root, seen);
+      result[key] = dereference(nested, root, state);
     }
     return result;
   }
   return value;
+}
+
+/** Charges `nodes` against the limit, or refuses the document. */
+function spend(state: Dereferencing, nodes: number): void {
+  state.remaining -= nodes;
+  if (state.remaining < 0) {
+    throw new Error(
+      `createToolboxFromOpenAPI: a schema expands to more than ${MAXIMUM_DEREFERENCED_NODES} nodes once its $refs are resolved; schemas that reference one another expand once per path through them.`,
+    );
+  }
+}
+
+/** Expands the value a pointer resolved to, cutting a cycle and remembering a context-free result. */
+function dereferenceTarget(target: unknown, root: OpenAPISpec, state: Dereferencing): unknown {
+  if (typeof target !== 'object' || target === null) return dereference(target, root, state);
+  if (state.active.has(target)) {
+    state.cuts += 1;
+    return {};
+  }
+  const remembered = state.complete.get(target);
+  if (remembered !== undefined) {
+    spend(state, remembered.size);
+    return remembered.result;
+  }
+  const cutsBefore = state.cuts;
+  const remainingBefore = state.remaining;
+  state.active.add(target);
+  try {
+    const result = dereference(target, root, state);
+    if (state.cuts === cutsBefore) {
+      state.complete.set(target, { result, size: remainingBefore - state.remaining });
+    }
+    return result;
+  } finally {
+    state.active.delete(target);
+  }
 }
 
 /** A tool-call argument read only when the call supplied it, so `constructor` is never an argument. */

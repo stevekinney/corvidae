@@ -6,7 +6,18 @@
  *   uses, and the names of its stored credentials. It never carries a credential or a URL.
  * - `PUT /host/tool-sources/<id>` with `{ "source": { … }, "credentials": { "<name>": "<value>" } }`
  *   connects a source, or replaces it. `source` is Armorer's description and its `id` must be `<id>`.
- *   A credential the description names and the host already holds may be left out.
+ *   A credential the description names and the host already holds may be left out. With
+ *   `"create": true` it only connects: a source already saved under `<id>` answers 409
+ *   `{ "error": "exists", "field": "id" }` and nothing changes, which is how a page that lists the
+ *   sources adds one without replacing one another tab saved a moment before.
+ * - `POST /host/tool-sources/<id>/probe` with the same body as the `PUT` contacts a source that is not
+ *   saved, with the credentials in the body and none from the host's vault, and answers 200 with
+ *   `{ "outcome": "listed", "tools": [{ "name", "tool", "tier" }], "skipped": […] }`, or
+ *   `{ "outcome": "needs-authorization" }` for an OAuth server that asks for a sign-in, or
+ *   `{ "outcome": "failed", "message": "…" }` for a source that did not answer as it should, in
+ *   words that hold no address, command or value. It saves nothing and keeps no connection. A
+ *   request that cannot be used answers as the `PUT` does, and a local command is spawned only for
+ *   the owner.
  * - `PUT /host/tool-sources/<id>/tools` with `{ "tools": { "<tool>": { "acceptsSecrets": true } } }`
  *   sets the host's own settings for the named tools of a configured source (COR-1932). `<tool>` is
  *   the tool's own name as the server lists it, not the `<id>__<tool>` name. Each named tool's
@@ -30,7 +41,7 @@
  * restartRequired: true }` (a removal adds `affectedAgents`): the source's tools are listed when the host starts again. A refusal
  * because the home is remote answers 403 with `reason: "deployment"`; a local command asked for by
  * anyone but the owner answers 403 with `error: "owner-only"`; a source the configuration does not
- * list answers 404; a request or configuration that cannot be used answers 400 naming the field;
+ * list answers 404; a source that `create` would replace answers 409; a request or configuration that cannot be used answers 400 naming the field;
  * a change that was applied but not recorded in the audit trail, or left half done, answers 500
  * with `error: "partial"`; anything else answers 500 with a message that names no value.
  *
@@ -41,6 +52,7 @@ import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   HOST_OAUTH_CALLBACK_ROUTE,
   ToolSourceAuditError,
+  ToolSourceExistsError,
   ToolSourceInputError,
   ToolSourceOwnerOnlyError,
   ToolSourcePartialChangeError,
@@ -57,6 +69,9 @@ export const HOST_TOOL_SOURCE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id`;
 
 /** The route that lists the agent files a removal of the source it names would leave invalid. */
 export const HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/affected-agents`;
+
+/** The route that contacts a source before it is saved. */
+export const HOST_TOOL_SOURCE_PROBE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/probe`;
 
 /** The route that sets the host's per-tool settings of the source it names. */
 export const HOST_TOOL_SOURCE_TOOLS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/tools`;
@@ -102,6 +117,9 @@ function refusalOf(error: unknown): Response | undefined {
       { error: 'locked', reason: 'deployment', message: error.message },
       { status: 403 },
     );
+  }
+  if (error instanceof ToolSourceExistsError) {
+    return Response.json({ error: 'exists', field: 'id', message: error.message }, { status: 409 });
   }
   if (error instanceof ToolSourceOwnerOnlyError) {
     return Response.json({ error: 'owner-only', message: error.message }, { status: 403 });
@@ -196,6 +214,7 @@ export function toolSourceRoutes(
             source: body['source'],
             credentials: body['credentials'],
             principal: options.principal(request),
+            createOnly: body['create'] === true,
           });
         }),
       DELETE: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_ROUTE>) =>
@@ -203,6 +222,19 @@ export function toolSourceRoutes(
         respond(() =>
           manager.remove({ id: request.params.id, principal: options.principal(request) }),
         ),
+    },
+    [HOST_TOOL_SOURCE_PROBE_ROUTE]: {
+      POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_PROBE_ROUTE>) =>
+        refuse(request) ??
+        respond(async () => {
+          const body = await readObject(request);
+          return manager.probe({
+            id: request.params.id,
+            source: body['source'],
+            credentials: body['credentials'],
+            principal: options.principal(request),
+          });
+        }),
     },
     [HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE]: {
       GET: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE>) =>
