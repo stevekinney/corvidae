@@ -47,6 +47,7 @@ import {
   digestCommandPayload,
 } from '../command-ledger.ts';
 import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts';
+import { readContextTombstone } from '../context-tombstone.ts';
 import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../create-bureau.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type {
@@ -643,6 +644,27 @@ export function createResume(context: ResumeContext) {
   }
 
   /**
+   * The refusal for a thread that was deleted (COR-1986): `THREAD_DELETED` for its owner of
+   * record, `THREAD_NOT_FOUND` for anyone else or a record that cannot be read, and `THREAD_BUSY`
+   * when the store fails, like a session that cannot be read.
+   */
+  async function deletedThreadRefusal(
+    threadId: string,
+    owner: string,
+  ): Promise<Refusal | undefined> {
+    let tombstone: Awaited<ReturnType<typeof readContextTombstone>>;
+    try {
+      tombstone = await readContextTombstone(bureau.internals.kv!, threadId);
+    } catch {
+      return { code: 'THREAD_BUSY', message: `Thread "${threadId}" has a run in progress` };
+    }
+    if (tombstone === undefined) return undefined;
+    return tombstone !== 'unreadable' && tombstone.owner === owner
+      ? { code: 'THREAD_DELETED', message: `Thread "${threadId}" was deleted` }
+      : { code: 'THREAD_NOT_FOUND', message: `Thread "${threadId}" was not found` };
+  }
+
+  /**
    * Takes the command's lease, claims it in the ledger, and applies it under the
    * thread's lease: the one place a resume does anything. A command whose lease
    * another attempt holds is in progress, and one the ledger already completed is
@@ -693,6 +715,13 @@ export function createResume(context: ResumeContext) {
         return { code: 'THREAD_BUSY', message: `Thread "${threadId}" has a run in progress` };
       }
       try {
+        // COR-1986: a deleted chat is not resumed. Read under the thread's lease, before the
+        // command is applied, and the claim this attempt made is given back, as for a busy thread.
+        const refused = await deletedThreadRefusal(threadId, request.owner);
+        if (refused !== undefined) {
+          if (claim.outcome === 'claimed') await ledger.release(held).catch(() => false);
+          return refused;
+        }
         const holds = async (): Promise<boolean> =>
           (await commandLease.renew()) && (await threadLease.renew());
         const outcome =

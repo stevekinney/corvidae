@@ -71,6 +71,7 @@ import { createConversationHistory } from 'conversationalist';
 
 import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
+import { readContextTombstone } from '../context-tombstone.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau, BureauReviews, BureauInternals, BureauTasks } from '../types.ts';
 import type { TaskState } from '../task-registry.ts';
@@ -659,6 +660,27 @@ export function createAgUiMount(
         if (session !== undefined && !ownsSession(session, owner)) {
           return {
             response: refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`),
+          };
+        }
+        // COR-1986: a deleted chat stays deleted. Its tombstone is read under the lease, after the
+        // session and before anything is added: a start sends every row, and a thread that names
+        // no session would otherwise be created again with the deleted rows. The owner of record
+        // is told it was deleted; anyone else is told no more than a missing thread says. A
+        // record that cannot be read is a busy thread, like a session that cannot be read.
+        let tombstone: Awaited<ReturnType<typeof readContextTombstone>>;
+        try {
+          tombstone = await readContextTombstone(bureau.internals.kv!, input.threadId);
+        } catch {
+          return {
+            response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
+          };
+        }
+        if (tombstone !== undefined) {
+          return {
+            response:
+              tombstone !== 'unreadable' && tombstone.owner === owner
+                ? refuse('THREAD_DELETED', `Thread "${input.threadId}" was deleted`)
+                : refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`),
           };
         }
         let appendMessages;

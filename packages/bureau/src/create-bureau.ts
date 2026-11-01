@@ -641,6 +641,8 @@ import {
   type DeletedChat,
 } from './chat-content-purge';
 import { purgeReviewRecords } from './chat-review-purge';
+import { writeContextTombstone } from './context-tombstone';
+import { type AgUiLease, createAgUiLeases, releaseQuietly } from './http/ag-ui-lease';
 import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createNotifications } from './notifications/create-notifications';
 import type { BureauNotifications } from './notifications/notification-types';
@@ -676,6 +678,8 @@ const BUREAU_AGENT_NAME = 'bureau';
 /** COR-1937: how many of a context's newest tasks `contexts.window` looks through for its latest step. */
 const CONTEXT_WINDOW_TASK_SCAN_LIMIT = 50;
 
+/** COR-1986: how long a delete waits between attempts to take a thread's lease another holds. */
+const THREAD_LEASE_RETRY_MILLISECONDS = 100;
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
 /** COR-1621: the longest wait between attempts to reconcile a followed fire with its history. */
@@ -14923,16 +14927,80 @@ async function constructBureau<const D extends AgentDefinitions>(
     await assetClaimReconciler.reconcileSessionClaims();
   }
 
+  /**
+   * COR-1986 — the thread's lease, taken for a delete. An AG-UI start or resume decides under the
+   * same lease, so a delete and a start cannot interleave into a chat that is created again after
+   * it was deleted. A held lease is waited for on the injected timers, for as long as its holder
+   * renews it or until it expires; the wait ends with a `BureauShuttingDownError` once admission
+   * closes. A Bureau with no durable store has no session to delete and takes no lease.
+   */
+  async function acquireThreadLeaseForDeletion(id: string): Promise<AgUiLease | undefined> {
+    if (runtime.kv === undefined) return undefined;
+    const threadLeases = createAgUiLeases({ kv: runtime.kv, runtime: runtimeServices });
+    for (;;) {
+      const lease = await threadLeases.acquire('thread', id);
+      if (lease !== undefined) return lease;
+      if (runAdmissionClosed) {
+        throw new BureauShuttingDownError(
+          'Cannot delete: Bureau is shutting down.',
+          runtimeServices.clock.nowISO(),
+        );
+      }
+      await new Promise<void>((resolve) => {
+        runtimeServices.timers.setTimeout(resolve, THREAD_LEASE_RETRY_MILLISECONDS);
+      });
+    }
+  }
+
+  /**
+   * COR-1986 — reads the session to delete and, when there is one to delete, records that its id
+   * was deleted BEFORE anything is removed, under the thread's lease. A tombstone that cannot be
+   * written refuses the delete, so nothing is removed; one that was written is never taken back,
+   * so a delete that fails after it leaves a chat that refuses starts and is finished by a retry.
+   * A tried agent's context is given none: its agent is removed with it, so no start can name it.
+   */
+  async function loadSessionAndTombstone(
+    id: string,
+    expectedIncarnation: string | undefined,
+  ): Promise<AgentSession | undefined> {
+    const sessionStore = requireSessionStore();
+    const lease = await acquireThreadLeaseForDeletion(id);
+    try {
+      const session = await sessionStore.load(id);
+      // COR-1481 — the caller authorized one incarnation of this id. An id reused since is
+      // another context, and nothing of it is cancelled or deleted here.
+      if (expectedIncarnation !== undefined && session?.incarnation !== expectedIncarnation) {
+        return undefined;
+      }
+      // A tried agent's context is the exception (COR-1911): its agent goes with it, so the id
+      // answers NOT_FOUND to any start, and a tried chat leaves no storage key behind.
+      if (
+        session !== undefined &&
+        runtime.kv !== undefined &&
+        sessionOriginOf(session.metadata) !== 'try'
+      ) {
+        await writeContextTombstone(runtime.kv, {
+          version: 1,
+          contextId: id,
+          owner: resolveSessionOwner(session.metadata) ?? null,
+          deletedAt: runtimeServices.clock.now(),
+        });
+      }
+      return session;
+    } finally {
+      if (lease !== undefined) await releaseQuietly(lease);
+    }
+  }
+
   async function performDeleteSession(
     id: string,
     expectedIncarnation: string | undefined,
     onStoreDeletionCommitted: () => void,
   ): Promise<ContextDeletionReport> {
     const sessionStore = requireSessionStore();
-    const session = await sessionStore.load(id);
-    // COR-1481 — the caller authorized one incarnation of this id. An id reused since is
-    // another context, and nothing of it is cancelled or deleted here.
-    if (expectedIncarnation !== undefined && session?.incarnation !== expectedIncarnation) {
+    const session = await loadSessionAndTombstone(id, expectedIncarnation);
+    // A caller that named another incarnation than the stored one deletes nothing.
+    if (expectedIncarnation !== undefined && session === undefined) {
       return { deleted: false, tasks: [] };
     }
     if (session) {
