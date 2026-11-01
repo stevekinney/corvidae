@@ -186,6 +186,29 @@ describe('a new agent', () => {
     expect(queryByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeNull();
   });
 
+  test('offers Connect a provider, which opens Settings › Models with a way back to this form', async () => {
+    router.navigate('/agents/new', { replace: true });
+    bureau({ catalog: catalogFixture({ models: [] }) });
+    const { findByRole } = mountEditor();
+
+    const connect = await findByRole('link', { name: AGENT_EDITOR_COPY.noProvider.connectAction });
+
+    expect(connect.getAttribute('href')).toBe('/settings/models?return=%2Fagents%2Fnew');
+    await fireEvent.click(connect);
+    expect(router.pathname).toBe('/settings/models');
+    expect(router.search.get('return')).toBe('/agents/new');
+  });
+
+  test('offers no Connect a provider where the host keeps its keys in its deployment, and leaves the steps', async () => {
+    bureau({ catalog: catalogFixture({ models: [] }), hostMode: 'remote' });
+    const { findByRole, queryByRole, container } = mountEditor();
+
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+
+    expect(queryByRole('link', { name: AGENT_EDITOR_COPY.noProvider.connectAction })).toBeNull();
+    expect(container.textContent).toContain(AGENT_EDITOR_COPY.remote.noProvider.secretStep);
+  });
+
   test('builds the form when a provider has been added and the page is reloaded', async () => {
     let catalog = catalogFixture({ models: [] });
     bureau({ catalog: () => catalog });

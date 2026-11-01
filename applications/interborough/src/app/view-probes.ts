@@ -234,12 +234,13 @@ export function probeFor(
       // engine read must not replace the others. Its registry part words its own states.
       if (pattern === '/settings/api-reference') return undefined;
       // The sections that moved out of the System page read the engine, not the Bureau's settings;
-      // General, Models and Model policy read the settings.
+      // General, Models, Model policy and A2A read the settings.
       if (
         pattern !== undefined &&
         pattern !== '/settings' &&
         pattern !== '/settings/models' &&
-        pattern !== '/settings/model-policy'
+        pattern !== '/settings/model-policy' &&
+        pattern !== '/settings/a2a'
       ) {
         return probeEngineRegistry;
       }

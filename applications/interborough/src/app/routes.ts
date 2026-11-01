@@ -333,6 +333,13 @@ export const routes: readonly RouteDefinition[] = [
     load: () => import('../routes/settings/model-policy.svelte'),
   },
   {
+    pattern: '/settings/a2a',
+    kind: 'form',
+    crumb: SETTINGS_SECTION_COPY.a2a,
+    view: 'settings',
+    load: () => import('../routes/settings/a2a/index.svelte'),
+  },
+  {
     pattern: '/settings/plugins',
     kind: 'list-detail',
     crumb: SETTINGS_SECTION_COPY.plugins,

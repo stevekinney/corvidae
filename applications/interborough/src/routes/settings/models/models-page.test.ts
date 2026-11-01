@@ -11,6 +11,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { MODELS_COPY, SETTINGS_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import type { BureauStub } from '../../../lib/bureau-stub.test-support.ts';
+import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import {
@@ -52,6 +53,8 @@ function open(
     lockReason?: 'deployment';
     served?: SettingsServed;
     plugins?: PluginFixture[];
+    /** The address the page is opened at; `/settings/models` unless given. */
+    at?: string;
   } = {},
 ) {
   stub = installSettingsBureau(options.served ?? servedSettings(), {
@@ -64,7 +67,7 @@ function open(
     ...(options.lockReason === undefined ? {} : { lockReason: options.lockReason }),
   });
   if (options.plugins !== undefined) pluginHost = installFakePluginHost(options.plugins);
-  landAt('/settings/models');
+  landAt(options.at ?? '/settings/models');
   return render(RouteOutletHarness, {
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
@@ -549,5 +552,61 @@ describe('the decisions', () => {
       'decisions.model': 'typesafe:jev',
     });
     expect(served.values['decisions.model']).toBe('typesafe:jev');
+  });
+});
+
+describe('a way back from connecting a provider', () => {
+  test('is offered when a page that needs a provider sent the person here, and goes back to that page', async () => {
+    const { container, findByTestId, findByRole } = open({
+      keys: { anthropic: true, openai: false, gemini: false },
+      at: '/settings/models?return=%2Fagents%2Fnew',
+    });
+    await loaded(container);
+
+    const notice = await findByTestId('models-return');
+    expect(notice.textContent).toContain(MODELS_COPY.returnNotice.title);
+    // A provider already holds a key, so the notice says to go back.
+    expect(notice.textContent).toContain(MODELS_COPY.returnNotice.connectedDescription);
+    await fireEvent.click(await findByRole('link', { name: MODELS_COPY.returnNotice.action }));
+
+    expect(router.pathname).toBe('/agents/new');
+  });
+
+  test('asks for a key first while no provider holds one', async () => {
+    const { container, findByTestId } = open({
+      keys: { anthropic: false, openai: false, gemini: false },
+      at: '/settings/models?return=%2Fagents%2Fnew',
+    });
+    await loaded(container);
+
+    const notice = await findByTestId('models-return');
+    expect(notice.textContent).toContain(MODELS_COPY.returnNotice.description);
+  });
+
+  test('is not offered for an address that is not a page made to be returned to', async () => {
+    for (const target of [
+      'https://example.com/',
+      '//example.com/agents/new',
+      '/health',
+      '/agents/new?x=1',
+    ]) {
+      const { container, queryByTestId, unmount } = open({
+        at: `/settings/models?return=${encodeURIComponent(target)}`,
+      });
+      await loaded(container);
+
+      expect(queryByTestId('models-return'), target).toBeNull();
+      unmount();
+      cleanup();
+      host?.restore();
+      stub?.restore();
+    }
+  });
+
+  test('is not offered on a visit with no return address', async () => {
+    const { container, queryByTestId } = open();
+    await loaded(container);
+
+    expect(queryByTestId('models-return')).toBeNull();
   });
 });

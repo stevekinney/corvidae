@@ -145,7 +145,7 @@ export const SETTING_GROUPS = [
   { id: 'children', label: 'Children' },
   { id: 'engine', label: 'Workflows' },
   { id: 'durability', label: 'Durability' },
-  { id: 'a2a', label: 'A2A' },
+  { id: 'a2a', label: 'Push notifications' },
 ] as const;
 
 /** The keys whose first segment is not their group: the ones that fix how the deployment is built. */
@@ -160,21 +160,28 @@ const DURABILITY_KEYS: ReadonlySet<string> = new Set([
 export const MODEL_POLICY_KEY = 'modelPolicy';
 
 /**
- * The sections of Settings that edit settings: General holds every key but the two below, Model
- * policy holds the model policy, and the Decisions part of the Models page holds `decisions.*`.
+ * The sections of Settings that edit settings: General holds every key but the three below, Model
+ * policy holds the model policy, the Decisions part of the Models page holds `decisions.*`, and
+ * the A2A section holds `a2a.*`.
  */
-export type SettingsSectionId = 'general' | 'model-policy' | 'decisions';
+export type SettingsSectionId = 'general' | 'model-policy' | 'decisions' | 'a2a';
 
 /** The settings the Models page holds: the decision model, its fallback, and its limit per task. */
 function isDecisionKey(key: string): boolean {
   return key.startsWith('decisions.');
 }
 
+/** The settings the A2A section holds: the push notifications an A2A caller can ask an agent for. */
+function isA2aKey(key: string): boolean {
+  return key.startsWith('a2a.');
+}
+
 /** Whether the section `section` edits the key `key`. */
 export function inSection(key: string, section: SettingsSectionId): boolean {
   if (section === 'model-policy') return key === MODEL_POLICY_KEY;
   if (section === 'decisions') return isDecisionKey(key);
-  return key !== MODEL_POLICY_KEY && !isDecisionKey(key);
+  if (section === 'a2a') return isA2aKey(key);
+  return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key);
 }
 
 /**

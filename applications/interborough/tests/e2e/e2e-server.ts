@@ -38,6 +38,7 @@ import {
   E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
+  E2E_FIRST_RUN_PORT,
   E2E_FLEET_WORKER_ID,
   E2E_JOURNEY_PORT,
   E2E_LOCKED_SETTING,
@@ -283,6 +284,19 @@ const journeyHost = await startHost({
 });
 await journeyHost.bureau.plugins.ready();
 
+// The fifth host, which only the first-run specification opens (`first-run.spec.ts`): a fresh
+// installation, with an empty home, no provider key, no agent file and no plugin that ships an
+// agent. The provider path is the fake client, so a key the specification saves calls nothing.
+const firstRunHome = join(scratch, 'first-run-home');
+await mkdir(firstRunHome, { recursive: true });
+const firstRunHost = await startHost({
+  environment: { INTERBOROUGH_HOME: firstRunHome },
+  resolveProviderGenerate: fakeProvider('Hello from the first-run provider stub.').resolver,
+  port: E2E_FIRST_RUN_PORT,
+  buildDirectory,
+});
+await firstRunHost.bureau.plugins.ready();
+
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
 // host holds its runs on a barrier of its own, under `/journey`.
@@ -312,6 +326,7 @@ process.stdout.write(
     `Interborough E2E host listening on ${host.url}`,
     `Interborough E2E Bureau host listening on ${bureauHost.url}`,
     `Interborough E2E journey host listening on ${journeyHost.url}`,
+    `Interborough E2E first-run host listening on ${firstRunHost.url}`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
     'Seeded COR-281 cross-build retry storm',
@@ -327,6 +342,7 @@ async function shutDown(): Promise<void> {
   for (const versionedWorker of versionedWorkers) await versionedWorker.disconnect();
   await longPollWorker.stop();
   await fleetWorker.disconnect();
+  await firstRunHost.close();
   await journeyHost.close();
   await bureauHost.close();
   await host.close();

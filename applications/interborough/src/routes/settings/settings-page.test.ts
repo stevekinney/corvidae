@@ -72,9 +72,11 @@ describe('the page', () => {
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
 
     const rows = [...container.querySelectorAll<HTMLElement>('[data-setting]')];
-    // The model policy has a section of its own, and the decisions are on the Models page.
+    // The model policy has a section of its own, the decisions are on the Models page, and the A2A settings are on the A2A page.
     expect(rows.map((entry) => entry.dataset['setting'])).toEqual(
-      SETTING_KEYS.filter((key) => key !== 'modelPolicy' && !key.startsWith('decisions.')),
+      SETTING_KEYS.filter(
+        (key) => key !== 'modelPolicy' && !key.startsWith('decisions.') && !key.startsWith('a2a.'),
+      ),
     );
     for (const entry of rows) {
       expect(entry.querySelector(CONTROLS), entry.dataset['setting']).not.toBeNull();
@@ -99,7 +101,6 @@ describe('the page', () => {
       'Children',
       'Workflows',
       'Durability',
-      'A2A',
       SETTINGS_COPY.hostPaths.title,
     ]);
     const durability = container.querySelector(

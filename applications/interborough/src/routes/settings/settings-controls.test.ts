@@ -160,16 +160,29 @@ describe('the controls', () => {
 });
 
 describe('the sections', () => {
-  test('keep the model policy and the decisions out of General and nothing else out of it', () => {
+  test('keep the model policy, the decisions and A2A out of General and nothing else out of it', () => {
     expect(inSection(MODEL_POLICY_KEY, 'model-policy')).toBe(true);
     expect(inSection(MODEL_POLICY_KEY, 'general')).toBe(false);
     for (const key of SETTING_KEYS.filter(
-      (key) => key !== MODEL_POLICY_KEY && !key.startsWith('decisions.'),
+      (key) => key !== MODEL_POLICY_KEY && !key.startsWith('decisions.') && !key.startsWith('a2a.'),
     )) {
       expect(inSection(key, 'general'), key).toBe(true);
       expect(inSection(key, 'model-policy'), key).toBe(false);
       expect(inSection(key, 'decisions'), key).toBe(false);
+      expect(inSection(key, 'a2a'), key).toBe(false);
     }
+  });
+
+  test('give the A2A section exactly the a2a settings, and no other section any of them', () => {
+    const a2a = SETTING_KEYS.filter((key) => key.startsWith('a2a.'));
+    expect(a2a.toSorted()).toEqual(['a2a.push.enabled', 'a2a.push.sweepIntervalMs']);
+    for (const key of a2a) {
+      expect(inSection(key, 'a2a'), key).toBe(true);
+      expect(inSection(key, 'general'), key).toBe(false);
+      expect(inSection(key, 'model-policy'), key).toBe(false);
+      expect(inSection(key, 'decisions'), key).toBe(false);
+    }
+    expect(SETTING_KEYS.filter((key) => inSection(key, 'a2a'))).toEqual(a2a);
   });
 
   test('give the Models page exactly the decision settings, and no other section any of them', () => {
