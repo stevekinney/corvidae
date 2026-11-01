@@ -523,7 +523,7 @@ describe('a retained schedule timer delivered again after a tick stood aside fro
     expect(state.lastMissedFireAt).toBe(occurrence);
   });
 
-  it('counts from the occurrence for the other engine, which has not delivered the timer before', async () => {
+  it('documents that the other engine, which has not delivered the timer before, counts from the occurrence (the sighting is memory only)', async () => {
     const opened = await openEngines();
     const { clock, shared, engineA, engineB } = opened;
     const occurrence = await armedOccurrence(opened);

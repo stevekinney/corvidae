@@ -13,6 +13,10 @@ import type { EngineInternals } from './internals.ts';
  * the interval spent standing aside is not charged to the run as well: the run is as late as it
  * would have been had that first tick gone on. The record is memory only, so an engine that was
  * down, or never reached the timer, counts from the occurrence, which is what a missed fire is.
+ * Another engine that delivers the timer first has no sighting either, so it counts from the
+ * occurrence: it polls on its own cadence and reaches an occurrence a poll interval late at most.
+ * A sighting whose timer was cancelled or handled elsewhere stays until the next one is remembered,
+ * which drops those older than the late limit, so the map holds the few timers in flight.
  */
 const retainedTimerSightings = new WeakMap<EngineInternals, Map<string, number>>();
 
@@ -47,6 +51,7 @@ export function rememberRetainedTimer(
   sightings.set(retainedTimerKey(entry), at);
 }
 
+/** Drops the sighting of a timer that was handled or is no longer owed. */
 export function forgetRetainedTimer(internals: EngineInternals, entry: TimerEntry): void {
   retainedTimerSightings.get(internals)?.delete(retainedTimerKey(entry));
 }

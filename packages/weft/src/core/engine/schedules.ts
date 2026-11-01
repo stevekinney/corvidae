@@ -425,8 +425,8 @@ export async function updateSchedule(
       // original creation-time grid. An update that leaves the interval as it is has no new grid
       // to anchor: it keeps the anchor, and an active schedule keeps the run it was waiting for,
       // so what a person skipped, and a run that is due, are not moved by an edit to the
-      // description, nor made late by one (the timer's lateness is counted from the tick that
-      // stood aside from it, COR-1998).
+      // description. The engine whose tick stood aside from that run counts the lateness of the
+      // delivery that follows from that tick (COR-1998).
       const keepsIntervalGrid =
         normalizedSpec.kind === 'interval' && state.intervalMs === normalizedSpec.intervalMs;
       const anchor = keepsIntervalGrid ? state.createdAt : now;
