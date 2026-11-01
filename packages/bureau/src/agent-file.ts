@@ -26,7 +26,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
-import type { AgentSkillDescriptor } from '@lostgradient/operative';
+import type { AgentSkillDescriptor, Effort } from '@lostgradient/operative';
 import { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from '@lostgradient/operative';
 import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
@@ -70,6 +70,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'description',
   'model',
   'models',
+  'defaultEffort',
   'tools',
   'skillDescriptors',
   'allowedSkills',
@@ -97,6 +98,7 @@ export type AgentFileProblemCode =
   | 'reference-too-large'
   | 'skill-not-grantable'
   | 'model-policy-denied'
+  | 'effort-not-supported'
   | 'shadows-code-agent'
   | 'missing-frontmatter'
   | 'invalid-yaml'
@@ -111,8 +113,8 @@ export interface AgentFileIssue {
   /**
    * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
    * or run hook set for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
-   * (COR-1975), a model for `model-policy-denied` (COR-1980), as `<provider>/<model-or-alias>`
-   * exactly as the file wrote it. Absent on every other issue.
+   * (COR-1975), a model for `model-policy-denied` (COR-1980) or the model a `defaultEffort` is refused on (COR-1961), as
+   * `<provider>/<model-or-alias>` exactly as the file wrote it. Absent on every other issue.
    */
   readonly reference?: string;
 }
@@ -125,7 +127,8 @@ export interface AgentFileProblem {
    * Every schema failure, for `invalid-frontmatter`; the missing names, for `unknown-tool`; the
    * names `toolApproval` gives a value that `tools` does not list, for `unknown-approval-tool`;
    * the skills a write could not grant, for `skill-not-grantable`; the models the model policy
-   * forbids, for `model-policy-denied` (COR-1980).
+   * forbids, for `model-policy-denied` (COR-1980); `defaultEffort` and the model that cannot do
+   * it, for `effort-not-supported` (COR-1961).
    */
   readonly issues?: readonly AgentFileIssue[];
 }
@@ -159,6 +162,23 @@ export const agentContributionIdsSchema = z.array(z.string().min(1));
 export const agentAllowedSkillsSchema = z
   .array(z.string().min(1))
   .refine((names) => unique(names), { message: 'skill names must be unique' });
+
+/**
+ * A file's `defaultEffort` (COR-1961): the reasoning effort a chat of the agent starts at, one of
+ * Operative's tiers. It is the local enum of {@link Effort} rather than an import of a runtime
+ * value, and {@link AgentDefaultEffortMatchesEffort} holds the two equal. Whether the file's
+ * default model can do the tier depends on the model catalog, which a write asks
+ * (`effort-not-supported`) and a scan does not, because a catalog can change without the file.
+ */
+export const agentDefaultEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
+/** Holds {@link agentDefaultEffortSchema} to Operative's `Effort`, in both directions. */
+export type AgentDefaultEffortMatchesEffort = [
+  z.infer<typeof agentDefaultEffortSchema> extends Effort ? true : never,
+  Effort extends z.infer<typeof agentDefaultEffortSchema> ? true : never,
+];
+const agentDefaultEffortMatchesEffort: AgentDefaultEffortMatchesEffort = [true, true];
+void agentDefaultEffortMatchesEffort;
 
 /** The most steps an agent file may allow a run (`stepLimit`). */
 export const AGENT_STEP_LIMIT_MAXIMUM = 1000;
@@ -337,6 +357,11 @@ export const agentFileFrontmatterSchema = z
      * {@link checkModelsList} when the file is parsed, never against the catalog.
      */
     models: z.array(z.string()).nullish(),
+    /**
+     * The reasoning effort a chat of this agent starts at (COR-1961). Absent, no effort is sent and
+     * the provider's own default applies. A write checks it against the default `model`.
+     */
+    defaultEffort: agentDefaultEffortSchema.nullish(),
     /** Names from the deployment's tool catalog. */
     tools: z
       .array(z.string().min(1))
@@ -466,6 +491,8 @@ export const agentFileDefinitionSchema = z.object({
   model: z.string().min(1),
   /** The models a session may be switched to (COR-1559); absent for a snapshot that has none. */
   models: z.array(z.string().min(1)).optional(),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  defaultEffort: agentDefaultEffortSchema.optional(),
   tools: z.array(z.string().min(1)).default([]),
   /** Absent from a snapshot written before the field was renamed from `skills`; read as none. */
   skillDescriptors: z.array(agentSkillDescriptorSchema).default([]),
@@ -560,6 +587,12 @@ export interface AgentFileDefinition {
    * catalog then applies.
    */
   readonly models?: readonly string[];
+  /**
+   * The reasoning effort a chat of the agent starts at (COR-1961), unless the person steers it
+   * elsewhere. Absent when the file sets none: no effort is sent. It wins over the deployment
+   * policy's default effort, which does not apply to a file agent's run.
+   */
+  readonly defaultEffort?: Effort;
   readonly tools: readonly string[];
   /** Descriptive Agent Card skills (COR-1301), never executable skills. */
   readonly skillDescriptors: readonly AgentSkillDescriptor[];
@@ -624,6 +657,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   description: true,
   model: true,
   models: true,
+  defaultEffort: true,
   tools: true,
   skillDescriptors: true,
   allowedSkills: true,
@@ -668,6 +702,11 @@ export interface AgentFileDefinitionInput {
   readonly model: string;
   /** See {@link AgentFileDefinition.models}. Omitting it on an update removes it, as for `tools`. */
   readonly models?: readonly string[] | undefined;
+  /**
+   * See {@link AgentFileDefinition.defaultEffort}. An update that omits it keeps the file's value;
+   * `null` removes it.
+   */
+  readonly defaultEffort?: Effort | null | undefined;
   readonly tools?: readonly string[] | undefined;
   /** See {@link AgentFileDefinition.skillDescriptors}. */
   readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
@@ -876,6 +915,7 @@ function toDefinition(
     description: frontmatter.description ?? null,
     model: frontmatter.model,
     ...(frontmatter.models == null ? {} : { models: frontmatter.models }),
+    ...(frontmatter.defaultEffort == null ? {} : { defaultEffort: frontmatter.defaultEffort }),
     tools: frontmatter.tools ?? [],
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
     skillDescriptors: (frontmatter.skillDescriptors ?? []) as readonly AgentSkillDescriptor[],
@@ -984,6 +1024,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   }
   known['model'] = definition.model;
   if (definition.models !== undefined) known['models'] = [...definition.models];
+  if (definition.defaultEffort != null) known['defaultEffort'] = definition.defaultEffort;
   if (definition.tools !== undefined && definition.tools.length > 0) {
     known['tools'] = [...definition.tools];
   }
@@ -1033,6 +1074,7 @@ export function resolveAgentFileDefinition(
     description: input.description ?? null,
     model: input.model,
     ...(input.models === undefined ? {} : { models: input.models }),
+    ...(input.defaultEffort == null ? {} : { defaultEffort: input.defaultEffort }),
     tools: input.tools ?? [],
     skillDescriptors: input.skillDescriptors ?? [],
     ...(input.allowedSkills == null ? {} : { allowedSkills: [...input.allowedSkills] }),
@@ -1058,11 +1100,12 @@ export function resolveAgentFileDefinition(
 export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `allowedSkills`, `stepLimit`, `retry`, `compaction`, `references`,
+  // An update that omits `defaultEffort`, `allowedSkills`, `stepLimit`, `retry`, `compaction`, `references`,
   // `guardrails`, `hooks`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and
   // a version that has none must remove it: `null` says so.
   return {
     ...input,
+    defaultEffort: definition.defaultEffort ?? null,
     allowedSkills: definition.allowedSkills ?? null,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry ?? null,
@@ -1091,13 +1134,14 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`allowedSkills`, `a2a`, `stepLimit`, `retry`, `compaction`,
+  // A key the caller leaves out (`defaultEffort`, `allowedSkills`, `a2a`, `stepLimit`, `retry`, `compaction`,
   // `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget`, `toolApproval`) is not a change
   // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
     ...input,
     ...(keptA2a ? { a2a: before.a2a } : {}),
+    ...(input.defaultEffort === undefined ? { defaultEffort: before.defaultEffort } : {}),
     ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
     ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
     ...(input.retry === undefined ? { retry: before.retry } : {}),
@@ -1125,6 +1169,7 @@ export function serializeUpdatedAgentFile(
       knownFrontmatter({
         ...input,
         ...(keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { a2a: before.a2a } : {}),
+        ...(input.defaultEffort === undefined ? { defaultEffort: before.defaultEffort } : {}),
         ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
         ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
         ...(input.retry === undefined ? { retry: before.retry } : {}),

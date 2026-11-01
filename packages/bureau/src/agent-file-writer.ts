@@ -329,6 +329,9 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
             // A key the update leaves out keeps the file's value, and is checked as the file has it.
             ...(definition.compaction === undefined ? { compaction: before.compaction } : {}),
             ...(definition.references === undefined ? { references: before.references } : {}),
+            ...(definition.defaultEffort === undefined
+              ? { defaultEffort: before.defaultEffort }
+              : {}),
             ...(definition.allowedSkills === undefined
               ? { allowedSkills: before.allowedSkills }
               : {}),

@@ -18,14 +18,26 @@
  * step, so a change applies from the next one; a call already in flight finishes. It never falls
  * back to another model either.
  *
+ * A file's `defaultEffort` (COR-1961) is the effort a step is sent when the person has steered none.
+ * It is seeded into a copy of the step's context for the one call, never written to the session's
+ * steering, so steering stays what the person changed. The row each step uses decides it: a row that
+ * takes the tier unchanged is sent it; one that cannot is judged by the principal's
+ * `effortFallbackMode`, which under `reject` (also the answer when the run has no owner) fails the
+ * step with an {@link EffortNotSupportedError} before the provider is called, and under `degrade`
+ * sends the tier the row lowers it to, or no effort when the row has none. That last case differs from
+ * the model selection's own degradation, which refuses a model with no effort support; here the
+ * agent's default is a preference, and `degrade` says the person would rather run than stop.
+ *
  * @module file-agent-generate
  */
 
 import {
   type BackendDescriptor,
   BudgetExceededError,
+  type Effort,
   type GenerateContext,
   type GenerateFunction,
+  type GenerateResponse,
   NonRecoverablePolicyError,
   readBackendDescriptors,
   withBackendDescriptors,
@@ -99,6 +111,42 @@ export class ModelPolicyDeniedError extends NonRecoverablePolicyError {
   }
 }
 
+/**
+ * A step would have sent the agent's `defaultEffort` to a model that cannot do it, and the
+ * principal's effort fallback mode is `reject` (COR-1961). It names the model, the effort and the
+ * tier the model would have lowered it to, and no provider was called. It is a
+ * {@link NonRecoverablePolicyError}, so a retry never repeats it and the run ends with this error.
+ */
+export class EffortNotSupportedError extends NonRecoverablePolicyError {
+  /** The stable code for this failure, the same as the `AgentFileError` a write is refused with. */
+  readonly code = 'effort-not-supported';
+  /** The provider of the catalog row the step ran on. */
+  readonly provider: string;
+  /** The model of the catalog row the step ran on, as the catalog names it. */
+  readonly model: string;
+  /** The agent's default effort. */
+  readonly effort: Effort;
+  /** The tier the model lowers {@link EffortNotSupportedError.effort} to; absent when it has none. */
+  readonly degradesTo: Effort | undefined;
+
+  constructor(
+    row: Pick<BackendDescriptor, 'provider' | 'model'>,
+    effort: Effort,
+    degradesTo: Effort | undefined,
+  ) {
+    super(
+      `The agent's default effort "${effort}" is not one the model "${row.provider}/${row.model}" supports${
+        degradesTo === undefined ? '' : ` (it would lower it to "${degradesTo}")`
+      }, so the step was not run.`,
+    );
+    this.name = 'EffortNotSupportedError';
+    this.provider = row.provider;
+    this.model = row.model;
+    this.effort = effort;
+    this.degradesTo = degradesTo;
+  }
+}
+
 /** What {@link createFileAgentGenerate} is built from. */
 export interface FileAgentGenerateOptions {
   /** The generate for the agent's default model, used for every step that is not switched. */
@@ -124,6 +172,26 @@ export interface FileAgentGenerateOptions {
    * from the next step. Omitted, nothing is forbidden.
    */
   readonly policyDenial?: ((row: BackendDescriptor) => ModelPolicyDenial | undefined) | undefined;
+  /**
+   * The file's `defaultEffort` (COR-1961): the effort a step is sent when its steering names none.
+   * Omitted, the context passes through untouched.
+   */
+  readonly defaultEffort?: Effort | undefined;
+  /**
+   * What to do with a step whose row cannot do `defaultEffort`, for the run `runId` names, or for a
+   * step with no run id: `reject` fails it, `degrade` sends the lowered tier or none. It is asked
+   * only on that path, at the step. Omitted, `reject`.
+   */
+  readonly effortFallbackMode?:
+    ((runId: string | undefined) => Promise<'reject' | 'degrade'>) | undefined;
+}
+
+/** `context` with `effort` in its steering: a copy, so the session's own steering is never written. */
+function seededWith(context: GenerateContext, effort: Effort): GenerateContext {
+  return {
+    ...context,
+    steering: { paused: false, configVersion: 0, ...context.steering, effort },
+  };
 }
 
 function sameRow(left: BackendDescriptor, right: BackendDescriptor): boolean {
@@ -146,10 +214,35 @@ export function createFileAgentGenerate(options: FileAgentGenerateOptions): Gene
   // client, and the key is the pair, so two providers serving one model name stay apart.
   const resolved = new Map<string, GenerateFunction>();
 
+  const { defaultEffort, effortFallbackMode } = options;
+  // The call for the chosen row, with the agent's default effort seeded into a copy of the context
+  // when the person steered none. The copy lives only inside this call.
+  const callWith = (
+    chosenRow: BackendDescriptor,
+    call: GenerateFunction,
+    context: GenerateContext,
+  ): Promise<GenerateResponse> => {
+    if (defaultEffort === undefined || context.steering?.effort !== undefined) {
+      return call(context);
+    }
+    const lowered = chosenRow.effort.degradesTo[defaultEffort];
+    if (lowered === defaultEffort) return call(seededWith(context, defaultEffort));
+    // Everything the step reads from the caller's context is read before the lookup is awaited.
+    const { runId } = context;
+    const degraded = lowered === undefined ? context : seededWith(context, lowered);
+    return (async () => {
+      const mode = (await effortFallbackMode?.(runId)) ?? 'reject';
+      if (mode === 'reject') throw new EffortNotSupportedError(chosenRow, defaultEffort, lowered);
+      return call(degraded);
+    })();
+  };
+
   const generate: GenerateFunction = (context: GenerateContext) => {
     const model = context.steering?.model;
     if (model === undefined) {
-      return refusedByPolicy(defaultDescriptor) ?? defaultGenerate(context);
+      return (
+        refusedByPolicy(defaultDescriptor) ?? callWith(defaultDescriptor, defaultGenerate, context)
+      );
     }
     const provider = context.steering?.modelProvider;
     const row = allowed().find(
@@ -161,7 +254,7 @@ export function createFileAgentGenerate(options: FileAgentGenerateOptions): Gene
     }
     const forbidden = refusedByPolicy(row);
     if (forbidden !== undefined) return forbidden;
-    if (sameRow(row, defaultDescriptor)) return defaultGenerate(context);
+    if (sameRow(row, defaultDescriptor)) return callWith(row, defaultGenerate, context);
     if (costBudgeted === true && usdPricingOfRow(row) === undefined) {
       return Promise.reject(
         new BudgetExceededError(
@@ -181,7 +274,7 @@ export function createFileAgentGenerate(options: FileAgentGenerateOptions): Gene
       }
       resolved.set(key, chosen);
     }
-    return chosen(context);
+    return callWith(row, chosen, context);
   };
 
   const attached = readBackendDescriptors(defaultGenerate);

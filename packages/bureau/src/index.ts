@@ -96,6 +96,7 @@ export {
   AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
   agentFileFrontmatterSchema,
   agentAllowedSkillsSchema,
+  agentDefaultEffortSchema,
   agentToolApprovalSchema,
   agentToolBudgetSchema,
   AgentFileConflictError,
@@ -490,7 +491,7 @@ export type {
   PlanSelectionRequest,
 } from './model-policy';
 export { createModelPolicyPlanner, modelPolicyDenialOf } from './model-policy';
-export { ModelPolicyDeniedError } from './file-agent-generate';
+export { EffortNotSupportedError, ModelPolicyDeniedError } from './file-agent-generate';
 export type {
   CatalogFactory,
   Models,
