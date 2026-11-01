@@ -669,14 +669,16 @@ describe('one agent’s page', () => {
     expect(served.calls.some((call) => call.method === 'bureau.agents.models')).toBe(true);
   });
 
-  test('links the memory count to the memory page', async () => {
+  test('puts the memory count on a Memory tab, and choosing the tab opens the memory page', async () => {
     serve(AGENT);
     landAt('/agents/assistant');
-    const { findByRole } = mount(AgentDetail);
+    const { findByRole, getByRole } = mount(AgentDetail);
 
-    const link = await findByRole('link', { name: 'Memory (1)' });
-    expect(link.getAttribute('href')).toBe('/agents/assistant/memories');
-    link.click();
+    const tab = await findByRole('tab', { name: 'Memory 1' });
+    // Memory is a tab among the page's others, not an action in its header.
+    expect(getByRole('tablist').contains(tab)).toBe(true);
+    expect(getByRole('tab', { name: 'Chats' }).getAttribute('aria-selected')).toBe('true');
+    await fireEvent.click(tab);
     expect(router.pathname).toBe('/agents/assistant/memories');
   });
 
@@ -700,7 +702,7 @@ describe('one agent’s page', () => {
 
     const { findByRole } = render(QueryPage, { props: { page: AgentDetail, client } } as never);
 
-    await findByRole('link', { name: 'Memory (3)' });
+    await findByRole('tab', { name: 'Memory 3' });
   });
 
   test('marks a memory count that has more pages unread, and says just Memory for an agent that remembers nothing', async () => {
@@ -708,7 +710,7 @@ describe('one agent’s page', () => {
     serve(AGENT);
     landAt('/agents/assistant');
     const more = mount(AgentDetail);
-    await more.findByRole('link', { name: 'Memory (1+)' });
+    await more.findByRole('tab', { name: 'Memory 1+' });
     more.unmount();
     restore?.();
 
@@ -717,12 +719,10 @@ describe('one agent’s page', () => {
     landAt('/agents/assistant');
     const none = mount(AgentDetail);
     await none.findByRole('link', { name: 'New chat' });
-    expect(none.getByRole('link', { name: 'Memory' }).getAttribute('href')).toBe(
-      '/agents/assistant/memories',
-    );
+    expect(none.getByRole('tab', { name: 'Memory' })).toBeTruthy();
   });
 
-  test('keeps the Memory action and drops the count when the Bureau cannot read the memory', async () => {
+  test('keeps the Memory tab and drops the count when the Bureau cannot read the memory', async () => {
     memoryList = () => {
       throw new StubFault('Forbidden', 403, 'Memory is locked.');
     };
@@ -738,9 +738,28 @@ describe('one agent’s page', () => {
     await waitFor(() =>
       expect(client.getQueryState(queryKeys.memory.list('assistant'))?.status).toBe('error'),
     );
-    expect(getByRole('link', { name: 'Memory' }).getAttribute('href')).toBe(
-      '/agents/assistant/memories',
-    );
+    await fireEvent.click(getByRole('tab', { name: 'Memory' }));
+    expect(router.pathname).toBe('/agents/assistant/memories');
+  });
+
+  test('moving focus along the tabs does not open the memory page; choosing the Memory tab does', async () => {
+    serve(AGENT);
+    landAt('/agents/assistant');
+    const { findByRole, getByRole } = mount(AgentDetail);
+
+    const hooks = await findByRole('tab', { name: 'Hooks' });
+    hooks.focus();
+    await fireEvent.keyDown(hooks, { key: 'ArrowRight' });
+    // Focus reached Memory, and the page stayed: Settings is still one more arrow away.
+    expect(document.activeElement).toBe(getByRole('tab', { name: /^Memory/ }));
+    expect(router.pathname).toBe('/agents/assistant');
+    await fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(getByRole('tab', { name: 'Settings' }));
+    expect(router.pathname).toBe('/agents/assistant');
+
+    getByRole('tab', { name: /^Memory/ }).focus();
+    await fireEvent.keyDown(document.activeElement as Element, { key: 'Enter' });
+    expect(router.pathname).toBe('/agents/assistant/memories');
   });
 
   test('offers Edit for an agent that is a file, and not for one defined in code', async () => {

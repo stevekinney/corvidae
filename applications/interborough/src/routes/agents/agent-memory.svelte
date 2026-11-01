@@ -1,7 +1,9 @@
 <script lang="ts">
   /**
    * `/agents/:agent/memories`: what an agent remembers of the caller's chats, as a list with the
-   * open memory beside it (Cinder's `ListDetail`, the same layout as Chats and Reviews). The list's
+   * open memory beside it (Cinder's `ListDetail`, the same layout as Chats and Reviews). The open
+   * memory is in the path, `/agents/:agent/memories/:memory`, so it can be linked and reloaded;
+   * choosing one replaces the address in place (the page stays mounted, with what was typed). The list's
    * header holds the title, Add a memory (`memory-add.svelte`), Export, a search that runs as you
    * type, and a kind filter in plain names. A memory opens beside the list with Correct and Forget
    * on its context line and the governance actions below it (`memory-detail.svelte`).
@@ -29,7 +31,9 @@
   import { Download, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { agentMemoryItemPath, agentMemoryPath } from '../../lib/agent-paths.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import {
     listMemories,
@@ -40,12 +44,12 @@
   } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import MemoryAdd from './memory-add.svelte';
   import MemoryChanges, { type ForgetOutcome } from './memory-changes.svelte';
   import MemoryDetail from './memory-detail.svelte';
   import MemoryGovernance from './memory-governance.svelte';
   import {
+    excerpt,
     matchesKind,
     matchesQuery,
     refusalWords,
@@ -56,13 +60,13 @@
   /** The most memories a search ranks: the server's own ceiling, so a match is rarely left out. */
   const SEARCH_LIMIT = 100;
   const agentId = untrack(() => router.current.params['agent'] ?? '');
-  const selectionLocation = routerSelectionLocationFor(untrack(() => router.pathname));
 
   /** What is typed: a search runs as it changes, and a blank one lists. */
   let typed = $state('');
   const applied = $derived(typed.trim());
   let kindFilter = $state<KindFilter>('all');
-  let selectedId = $state<string | null>(null);
+  /** The open memory: the one the path names, so a link and a reload open it. */
+  const selectedId = $derived(router.current.params['memory'] ?? null);
   let notice = $state<'corrected' | 'added' | undefined>(undefined);
   /** A correction that was refused, with the text that was sent, until it is dismissed or retried. */
   let refused = $state<
@@ -153,6 +157,18 @@
     const known = base.find((row) => row.id === selectedId);
     return [{ kind: 'memory', id: selectedId, memory: known?.memory, score: null, pinned: true }];
   });
+  /** The open memory's first words, once the list or the search has it. */
+  function openMemoryWords(): string | undefined {
+    const row = items.find((candidate) => candidate.id === selectedId);
+    return row?.kind === 'memory' && row.memory !== undefined
+      ? excerpt(row.memory.content)
+      : undefined;
+  }
+  // The top bar names the open memory by its first words, in place of its identifier.
+  usePageLabel(() => ({
+    path: selectedId === null ? '' : agentMemoryItemPath(agentId, selectedId),
+    label: openMemoryWords(),
+  }));
   const items = $derived<ListRow[]>([
     ...pinned,
     ...shown,
@@ -195,7 +211,7 @@
   /** A memory is gone from the list: close its details, and drop the note about the last change. */
   function gone(id: string): void {
     notice = undefined;
-    if (selectedId === id) selectedId = null;
+    if (selectedId === id) select(null);
   }
 
   /** A correction landed: say so, and follow the person to it unless they moved on meanwhile. */
@@ -203,14 +219,14 @@
     notice = 'corrected';
     if (refused?.id === replaced) refused = undefined;
     resume = undefined;
-    if (selectedId === replaced) selectedId = correction.id;
+    if (selectedId === replaced) select(correction.id);
   }
 
   /** A memory was added: say so, and open it, which keeps it in view whatever the list is narrowed to. */
   function added(memory: Memory): void {
     notice = 'added';
     resume = undefined;
-    selectedId = memory.id;
+    select(memory.id);
   }
 
   /** A correction was refused: say so here, because the panel that asked is gone once the person moves on. */
@@ -223,14 +239,26 @@
   function editAgain(failure: { readonly id: string; readonly content: string }): void {
     notice = undefined;
     resume = { id: failure.id, content: failure.content };
-    selectedId = failure.id;
+    select(failure.id);
     refused = undefined;
   }
 
-  function open(id: string): void {
+  function open(id: string | null): void {
     notice = undefined;
     resume = undefined;
-    selectedId = id;
+    select(id);
+  }
+
+  /**
+   * Opens a memory, or the list alone for `null`, in the path. It replaces the entry and keeps the
+   * page mounted: the address names what the page already shows, so what was typed stays typed.
+   */
+  function select(id: string | null): void {
+    if (id === selectedId) return;
+    router.navigate(id === null ? agentMemoryPath(agentId) : agentMemoryItemPath(agentId, id), {
+      replace: true,
+      keep: true,
+    });
   }
 </script>
 
@@ -345,9 +373,9 @@
       backLabel={MEMORY_COPY.backToList}
       emptyTitle={MEMORY_COPY.nothingOpen.title}
       emptyDescription={MEMORY_COPY.nothingOpen.description}
-      bind:selectedKey={selectedId}
-      selectionParameter="memory"
-      {selectionLocation}
+      selectedKey={selectedId}
+      onSelectedKeyChange={open}
+      selectionParameter={null}
       storageKey="interborough-memory"
     >
       {#snippet header()}

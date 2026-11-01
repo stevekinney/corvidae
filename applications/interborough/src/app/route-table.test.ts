@@ -94,6 +94,7 @@ describe('the route table', () => {
         '/agents/:agent',
         '/agents/:agent/edit',
         '/agents/:agent/memories',
+        '/agents/:agent/memories/:memory',
         '/workflows/:workflow',
         '/workflows/:workflow/runs',
         '/workflows/:workflow/runs/:run',

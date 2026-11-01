@@ -24,6 +24,11 @@ export function agentMemoryPath(name: string): string {
   return `${agentPath(name)}/memories`;
 }
 
+/** One memory of an agent, open beside the list of the others: the identifier is one path segment. */
+export function agentMemoryItemPath(name: string, memory: string): string {
+  return `${agentMemoryPath(name)}/${encodeURIComponent(memory)}`;
+}
+
 /**
  * The plugin that ships the agent `name`, or `null` for an owner's agent or one defined in code.
  * A plugin's agent is `plugin:name` (COR-1873), and an owner's file name never has a colon, so the

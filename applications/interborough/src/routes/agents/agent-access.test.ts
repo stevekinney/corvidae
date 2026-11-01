@@ -113,7 +113,7 @@ describe('the tab', () => {
     const tabs = [...document.querySelectorAll('[role="tab"]')].map((tab) =>
       tab.textContent.trim(),
     );
-    expect(tabs).toEqual(['Chats', 'Instructions', 'Access', 'Hooks', 'Settings']);
+    expect(tabs).toEqual(['Chats', 'Instructions', 'Access', 'Hooks', 'Memory', 'Settings']);
   });
 
   test('lists each tool with its tier and, for an allowed tool, when it asks first', async () => {

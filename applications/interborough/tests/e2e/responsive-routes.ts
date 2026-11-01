@@ -69,6 +69,9 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     // The agent whose instructions hold a word no line can break at, so the editor's textarea is measured with it.
     '/agents/:agent/edit': `/agents/${instructionsAgent}/edit`,
     '/agents/:agent/memories': `/agents/${memoryAgent}/memories`,
+    // The memory with the long word open: below 900px the details replace the list, and the text,
+    // the three columns of facts and the governance actions are measured.
+    '/agents/:agent/memories/:memory': `/agents/${memoryAgent}/memories/${encodeURIComponent(seed.memory)}`,
     '/agents/:agent': `/agents/${agent}`,
     '/workflows': '/workflows',
     '/workflows/new': '/workflows/new',
@@ -122,9 +125,6 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
   const agent = `/agents/${encodeURIComponent(seed.instructionsAgent)}`;
   return {
-    // The memory with the long word open: below 900px the details replace the list, and the text,
-    // the three columns of facts and the governance actions are measured.
-    '/agents/:agent/memories (memory open)': `/agents/${encodeURIComponent(seed.memoryAgent)}/memories?memory=${encodeURIComponent(seed.memory)}`,
     '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
     // The Access tab of the agent with the largest budgets the Bureau accepts, a tool set to ask
     // every time, and the host's skills among them, one with a long name.

@@ -5,7 +5,7 @@ import {
   chatCountText,
   chatUsageByAgent,
   lastChatText,
-  memoryActionText,
+  memoryTabText,
   newChatPath,
   shortVersion,
   toolCountText,
@@ -266,12 +266,12 @@ describe('an agent’s facts', () => {
   });
 });
 
-describe('an agent’s memory action and file version', () => {
+describe('an agent’s Memory tab and file version', () => {
   test('carries the count once it is known, with a plus when pages are unread', () => {
-    expect(memoryActionText(undefined, false)).toBe('Memory');
-    expect(memoryActionText(0, false)).toBe('Memory');
-    expect(memoryActionText(12, false)).toBe('Memory (12)');
-    expect(memoryActionText(20, true)).toBe('Memory (20+)');
+    expect(memoryTabText(undefined, false)).toBe('Memory');
+    expect(memoryTabText(0, false)).toBe('Memory');
+    expect(memoryTabText(12, false)).toBe('Memory 12');
+    expect(memoryTabText(20, true)).toBe('Memory 20+');
   });
 
   test('names a file version by the short form of its hash', () => {

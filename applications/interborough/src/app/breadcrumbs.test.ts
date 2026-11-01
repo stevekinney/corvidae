@@ -20,6 +20,20 @@ describe('the breadcrumb trail', () => {
     expect(breadcrumbTrail('/health', NONE)).toEqual([{ label: 'Health' }]);
   });
 
+  test('an open memory is one more level under Memory, and its page names it', () => {
+    const open = '/agents/assistant-1/memories/memory-7';
+    expect(breadcrumbTrail(open, NONE)).toEqual([
+      { label: 'Agents', href: '/agents' },
+      { label: 'assistant-1', href: '/agents/assistant-1' },
+      { label: 'Memory', href: '/agents/assistant-1/memories' },
+      { label: 'memory-7' },
+    ]);
+    const labels = new Map([[open, 'The user prefers aisle seats.']]);
+    expect(breadcrumbTrail(open, labels).at(-1)).toEqual({
+      label: 'The user prefers aisle seats.',
+    });
+  });
+
   test('a nested page links each ancestor and shows a parameter until the page names it', () => {
     expect(breadcrumbTrail('/agents/assistant-1/memories', NONE)).toEqual([
       { label: 'Agents', href: '/agents' },

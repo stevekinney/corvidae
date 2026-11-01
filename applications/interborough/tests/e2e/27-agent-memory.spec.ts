@@ -210,7 +210,7 @@ test.describe('the memory page', () => {
     await expect(
       detailOf(page).getByText(MEMORY_COPY.kind.episodic.label, { exact: true }),
     ).toBeVisible();
-    await expect(page).toHaveURL(/[?&]memory=/);
+    await expect(page).toHaveURL(/\/memories\/[^/?]+$/);
   });
 
   test('narrows the list to a kind in plain words, over the memories loaded so far', async ({
@@ -344,10 +344,10 @@ test.describe('the memory page', () => {
     );
   });
 
-  test('is reached from the agent’s own page', async ({ page }) => {
+  test('is reached from the Memory tab of the agent’s own page', async ({ page }) => {
     await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}`);
 
-    await page.getByRole('link', { name: MEMORY_COPY.link }).click();
+    await page.getByRole('tab', { name: new RegExp(`^${MEMORY_COPY.link}`) }).click();
 
     await expect(page).toHaveURL(new RegExp(`${MEMORY_PATH}$`));
     await expect(frame(page)).toHaveAttribute('data-view', 'agents');

@@ -1,12 +1,17 @@
 <script lang="ts">
   /**
    * `/agents/:agent`: one agent, with its name once, its description, what it is made of (its model
-   * when the Bureau can tell, its tools and skills), a Memory action that carries how many memories it has, a New
-   * chat action, and five tabs: Chats (the chats had with it, filtered), Instructions (the body of
-   * its file and the reference documents it reads), Access (its tools and when each asks first, its
-   * skills, guardrails and budgets), Hooks (the hooks limited to it) and Settings (its model and step
-   * limit, Delete, and its saved versions with Restore). The tab is in the address (`?tab=`), and Chats is
-   * the address with none.
+   * when the Bureau can tell, its tools and skills), a New chat action, and six tabs: Chats (the
+   * chats had with it, filtered), Instructions (the body of its file and the reference documents it
+   * reads), Access (its tools and when each asks first, its skills, guardrails and budgets), Hooks
+   * (the hooks limited to it), Memory (with how many memories it has) and Settings (its model and
+   * step limit, Delete, and its saved versions with Restore). The tab is in the address (`?tab=`),
+   * and Chats is the address with none.
+   *
+   * Memory is a tab that opens the agent's memory page (`/agents/:agent/memories`), a wide list with
+   * the open memory beside it, rather than a panel here: choosing it leaves this page, so it is never
+   * the selected tab and has no `?tab=` value. Because choosing it leaves, the tabs do not activate
+   * on focus, or an arrow key past Hooks would open the memory page before Settings could be reached.
    *
    * An agent file shows the version of the file it runs, with a link to the history that lives in
    * the Settings tab. An agent defined in code has no file, so it shows no version and no Edit action.
@@ -43,7 +48,7 @@
   import AgentHooks from './agent-hooks.svelte';
   import AgentInstructions from './agent-instructions.svelte';
   import AgentSettings from './agent-settings.svelte';
-  import { memoryActionText, newChatPath, shortVersion } from './agent-presentation.ts';
+  import { memoryTabText, newChatPath, shortVersion } from './agent-presentation.ts';
 
   const id = untrack(() => router.current.params['agent'] ?? '');
 
@@ -70,7 +75,7 @@
   const fileVersion = $derived(definition.data?.hash ?? undefined);
 
   // The memory page's own query, so a visit to either warms the other. A failure drops the count
-  // and keeps the action: the memory page itself says why it cannot show memories.
+  // and keeps the tab: the memory page itself says why it cannot show memories.
   const memories = createInfiniteQuery(
     () => ({
       queryKey: queryKeys.memory.list(id),
@@ -91,7 +96,7 @@
           (memory) => memory.id,
         ).length,
   );
-  const memoryLabel = $derived(memoryActionText(memoryCount, memories.hasNextPage));
+  const memoryLabel = $derived(memoryTabText(memoryCount, memories.hasNextPage));
 
   const plugin = pluginOfAgent(id);
   const queryClient = useQueryClient();
@@ -140,12 +145,30 @@
   type TabValue = 'chats' | 'instructions' | 'access' | 'hooks' | 'settings';
   const TABS: readonly TabValue[] = ['chats', 'instructions', 'access', 'hooks', 'settings'];
 
+  /** The tab that opens the memory page. It is not a `TabValue`: it is never the selected tab. */
+  const MEMORY_TAB = 'memory';
+  /** Whether the tab just chosen was Memory, whose `onValueChange` must not write the address. */
+  let leavingForMemory = false;
+
+  // Choosing Memory leaves for the memory page, and answers with the tab already selected so the
+  // bar keeps showing it until the page goes.
+  function openMemoryTab(next: string): string | undefined {
+    if (next !== MEMORY_TAB) return undefined;
+    leavingForMemory = true;
+    router.navigate(memoryPath);
+    return activeTab;
+  }
+
   // The URL owns the tab, so a tab can be linked and the back button returns to it: `activeTab`
   // follows `?tab=`, and a tab the person picks writes the address from Tabs' `onValueChange`, so
   // a jump through history to an older `?tab=` entry is only read, never written back over. Chats
   // is the address with no `tab`.
 
   function writeTab(next: string): void {
+    if (leavingForMemory) {
+      leavingForMemory = false;
+      return;
+    }
     const search = new URLSearchParams(router.search);
     if ((search.get('tab') ?? 'chats') === next) return;
     if (next === 'chats') search.delete('tab');
@@ -203,12 +226,6 @@
       onclick={(event) => goTo(event, duplicatePath)}>{AGENT_PAGE_COPY.duplicate}</Button
     >
   {/if}
-  <Button
-    href={router.href(memoryPath)}
-    variant="secondary"
-    size="sm"
-    onclick={(event) => goTo(event, memoryPath)}>{memoryLabel}</Button
-  >
   <Button href={router.href(newChatPath(id))} variant="primary" size="sm" onclick={openNewChat}
     >{CHAT_COPY.newChat}</Button
   >
@@ -244,12 +261,18 @@
       </p>
     {/if}
 
-    <Tabs bind:value={activeTab} onValueChange={writeTab}>
+    <Tabs
+      bind:value={activeTab}
+      onValueChangeRequest={openMemoryTab}
+      onValueChange={writeTab}
+      activateOnFocus={false}
+    >
       <Tabs.List label={AGENT_PAGE_COPY.tabsLabel}>
         <Tabs.Trigger value="chats">{AGENT_PAGE_COPY.tabs.chats}</Tabs.Trigger>
         <Tabs.Trigger value="instructions">{AGENT_PAGE_COPY.tabs.instructions}</Tabs.Trigger>
         <Tabs.Trigger value="access">{AGENT_PAGE_COPY.tabs.access}</Tabs.Trigger>
         <Tabs.Trigger value="hooks">{AGENT_PAGE_COPY.tabs.hooks}</Tabs.Trigger>
+        <Tabs.Trigger value={MEMORY_TAB} data-opens-page>{memoryLabel}</Tabs.Trigger>
         <Tabs.Trigger value="settings">{AGENT_PAGE_COPY.tabs.settings}</Tabs.Trigger>
       </Tabs.List>
       <Tabs.Panel value="chats">

@@ -2287,8 +2287,8 @@ export const AGENTS_COPY = {
   /** The accessible name of the list of agent files the Bureau cannot use. */
   invalidListLabel: 'Agent files with a problem',
   lastChat: (when: string): string => `Last chat ${when}`,
-  /** The Memory action with the agent's memory count; `more` is true when pages of it are unread. */
-  memoryWithCount: (shown: number, more: boolean): string => `Memory (${shown}${more ? '+' : ''})`,
+  /** The Memory tab with the agent's memory count; `more` is true when pages of it are unread. */
+  memoryWithCount: (shown: number, more: boolean): string => `Memory ${shown}${more ? '+' : ''}`,
   fileVersion: 'File version',
   history: 'History',
 } as const;
