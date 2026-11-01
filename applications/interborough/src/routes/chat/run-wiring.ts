@@ -139,9 +139,24 @@ export type HumanRequest = {
   readonly schema?: Readonly<Record<string, unknown>>;
 };
 
+/**
+ * What a run's terminal event reports it used, as the Bureau sends it (`usage` on `RUN_FINISHED`).
+ * Each count is present only when the event carried it; none is worked out from another.
+ */
+export type RunUsage = {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens?: number;
+};
+
 export type ChatRunWiringOptions = {
   readonly onFrame?: () => void;
   readonly onTerminal?: () => void;
+  /**
+   * Told what a run's `RUN_FINISHED` reported it used, with the run's Bureau identifier (the one
+   * `bureau.tasks.inspect` takes). Not told for a run whose event carries no count.
+   */
+  readonly onUsage?: (runId: string, usage: RunUsage) => void;
   readonly onSnapshot?: (history: ConversationHistory) => void;
   /**
    * The conversation on screen. A run that follows an approval shows its tool call again, and a
@@ -283,6 +298,27 @@ function roundOf(value: { readonly metadata?: unknown }): number | undefined {
 function onRoundOf(interrupt: Interrupt, entry: ResumeEntry): ResumeEntry {
   const round = roundOf(interrupt);
   return round === undefined ? entry : { ...entry, metadata: { [BUREAU_METADATA_KEY]: { round } } };
+}
+
+/**
+ * The token counts a `RUN_FINISHED` event carries, or `undefined` for any other event and for one
+ * that carries none. Only a count that is a finite number is kept; the entries are merged in order.
+ * A run that reported nothing arrives as counts of zero (the Bureau fills them in), and a run that
+ * called a model used at least one token, so counts that are all zero are no usage, not "0" tokens.
+ */
+export function usageOfTerminal(event: unknown): RunUsage | undefined {
+  if (!isRecord(event) || event['type'] !== 'RUN_FINISHED' || !Array.isArray(event['usage'])) {
+    return undefined;
+  }
+  const counts: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+  for (const entry of event['usage'] as unknown[]) {
+    if (!isRecord(entry)) continue;
+    for (const key of ['inputTokens', 'outputTokens', 'totalTokens'] as const) {
+      const value = entry[key];
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) counts[key] = value;
+    }
+  }
+  return Object.values(counts).some((count) => count > 0) ? counts : undefined;
 }
 
 /** The Bureau's own identifier for the run an event belongs to, which the cancel route takes. */
@@ -1010,6 +1046,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         ) {
           throw new Error(String(event['message']));
         }
+        const usage = usageOfTerminal(event);
+        if (usage !== undefined && nativeRunId !== undefined) options.onUsage?.(nativeRunId, usage);
         if (isRecord(event) && (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR'))
           options.onTerminal?.();
         if (isRecord(event) && event['type'] === 'MESSAGES_SNAPSHOT') {
