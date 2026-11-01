@@ -20,6 +20,7 @@
   "timeline": [
     {
       "step": 1,
+      "stepIndex": 0,
       "operationType": "wait-signal",
       "operationLabel": "go",
       "inputSummary": "{\"signalName\":\"go\"}",
@@ -31,6 +32,7 @@
     },
     {
       "step": 2,
+      "stepIndex": 0,
       "operationType": "wait-signal",
       "operationLabel": "go",
       "inputSummary": "{\"signalName\":\"go\"}",
@@ -77,7 +79,7 @@
     "wf:wf-signal-and-wait:ckpt": "iap3b3JrZmxvd0lksndmLXNpZ25hbC1hbmQtd2FpdKRzdGVwAqZsb2NhbHOAtndvcmtmbG93RXhlY3V0aW9uVG9rZW7ZJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMbJhY2N1bXVsYXRlZFJlc3VsdHOQsHNlYXJjaEF0dHJpYnV0ZXOAp3ZlcnNpb26hMa1zY2hlbWFWZXJzaW9uAqljcmVhdGVkQXQA",
     "wf:wf-signal-and-wait:ckpt:0000000001": "iap3b3JrZmxvd0lksndmLXNpZ25hbC1hbmQtd2FpdKRzdGVwAaZsb2NhbHOAtndvcmtmbG93RXhlY3V0aW9uVG9rZW7ZJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMbJhY2N1bXVsYXRlZFJlc3VsdHOQsHNlYXJjaEF0dHJpYnV0ZXOAp3ZlcnNpb26hMa1zY2hlbWFWZXJzaW9uAqljcmVhdGVkQXQA",
     "wf:wf-signal-and-wait:ckpt:0000000002": "iap3b3JrZmxvd0lksndmLXNpZ25hbC1hbmQtd2FpdKRzdGVwAqZsb2NhbHOAtndvcmtmbG93RXhlY3V0aW9uVG9rZW7ZJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMbJhY2N1bXVsYXRlZFJlc3VsdHOQsHNlYXJjaEF0dHJpYnV0ZXOAp3ZlcnNpb26hMa1zY2hlbWFWZXJzaW9uAqljcmVhdGVkQXQA",
-    "wf:wf-signal-and-wait:timeline:0000000001": "h6RzdGVwAa1vcGVyYXRpb25UeXBlq3dhaXQtc2lnbmFsrm9wZXJhdGlvbkxhYmVsomdvrGlucHV0U3VtbWFyebN7InNpZ25hbE5hbWUiOiJnbyJ9qXRpbWVzdGFtcACmc3RhdHVzp3J1bm5pbmesdmVyc2lvblR1cGxlga93b3JrZmxvd1ZlcnNpb26hMQ==",
-    "wf:wf-signal-and-wait:timeline:0000000002": "iaRzdGVwAq1vcGVyYXRpb25UeXBlq3dhaXQtc2lnbmFsrm9wZXJhdGlvbkxhYmVsomdvrGlucHV0U3VtbWFyebN7InNpZ25hbE5hbWUiOiJnbyJ9qXRpbWVzdGFtcACmc3RhdHVzqWNvbXBsZXRlZKx2ZXJzaW9uVHVwbGWBr3dvcmtmbG93VmVyc2lvbqExrW91dHB1dFN1bW1hcnmpInByb2NlZWQiqGR1cmF0aW9uAA=="
+    "wf:wf-signal-and-wait:timeline:0000000001": "iKRzdGVwAalzdGVwSW5kZXgArW9wZXJhdGlvblR5cGWrd2FpdC1zaWduYWyub3BlcmF0aW9uTGFiZWyiZ2+saW5wdXRTdW1tYXJ5s3sic2lnbmFsTmFtZSI6ImdvIn2pdGltZXN0YW1wAKZzdGF0dXOncnVubmluZ6x2ZXJzaW9uVHVwbGWBr3dvcmtmbG93VmVyc2lvbqEx",
+    "wf:wf-signal-and-wait:timeline:0000000002": "iqRzdGVwAqlzdGVwSW5kZXgArW9wZXJhdGlvblR5cGWrd2FpdC1zaWduYWyub3BlcmF0aW9uTGFiZWyiZ2+saW5wdXRTdW1tYXJ5s3sic2lnbmFsTmFtZSI6ImdvIn2pdGltZXN0YW1wAKZzdGF0dXOpY29tcGxldGVkrHZlcnNpb25UdXBsZYGvd29ya2Zsb3dWZXJzaW9uoTGtb3V0cHV0U3VtbWFyeakicHJvY2VlZCKoZHVyYXRpb24A"
   }
 }

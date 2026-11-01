@@ -489,6 +489,7 @@ describe('WorkerExecutionStrategy', () => {
           new MessageEvent('message', {
             data: {
               type: 'checkpoint',
+              pendingStepIndex: 0,
               workflowId: 'wf-parked-broadcast',
               checkpoint: new ArrayBuffer(0),
               operationRequest: {
@@ -564,6 +565,7 @@ describe('WorkerExecutionStrategy', () => {
       // Simulate worker sending a checkpoint message
       const checkpointMessage: WorkerOutboundMessage = {
         type: 'checkpoint',
+        pendingStepIndex: 0,
         workflowId: 'wf-1',
         checkpoint: new ArrayBuffer(0),
         operationRequest: {
@@ -608,6 +610,7 @@ describe('WorkerExecutionStrategy', () => {
       const worker = firstWorker();
       const checkpointMessage: WorkerOutboundMessage = {
         type: 'checkpoint',
+        pendingStepIndex: 0,
         workflowId: 'wf-park',
         checkpoint: new ArrayBuffer(0),
         operationRequest: {
@@ -659,6 +662,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-handler-fails',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -714,6 +718,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-interleaved-checkpoint',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -739,6 +744,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-interleaved-checkpoint',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -789,6 +795,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-parked',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -881,6 +888,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-parked',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -926,6 +934,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-parked-crash',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -1141,6 +1150,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             protocolVersion: WORKER_PROTOCOL_VERSION,
             turnId: runMessage.turnId,
             workflowId: 'wf-parked-resume-timeout',
@@ -1235,6 +1245,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             protocolVersion: WORKER_PROTOCOL_VERSION,
             turnId: runMessage.turnId,
             workflowId: 'wf-malformed',
@@ -1446,6 +1457,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             protocolVersion: WORKER_PROTOCOL_VERSION,
             turnId: runMessage.turnId,
             workflowId: 'wf-large-parked-resume',
@@ -1507,6 +1519,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             protocolVersion: WORKER_PROTOCOL_VERSION,
             turnId: runMessage.turnId,
             workflowId: 'wf-revision-resume',
@@ -1683,6 +1696,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-parked-cancel',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -1794,6 +1808,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: parkedId,
             checkpoint: new ArrayBuffer(0),
             operationRequest: { type: 'wait-signal', operationId: 'op-wait', signalName: 'go' },
@@ -2056,6 +2071,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             workflowId: 'wf-parked-dispose',
             checkpoint: new ArrayBuffer(0),
             operationRequest: {
@@ -2472,6 +2488,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             protocolVersion: WORKER_PROTOCOL_VERSION,
             turnId: runTurnId,
             workflowId: 'wf-log',
@@ -2511,6 +2528,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             protocolVersion: WORKER_PROTOCOL_VERSION,
             turnId: runTurnId,
             workflowId: 'wf-log',
@@ -2564,6 +2582,7 @@ describe('WorkerExecutionStrategy', () => {
         new MessageEvent('message', {
           data: {
             type: 'checkpoint',
+            pendingStepIndex: 0,
             protocolVersion: WORKER_PROTOCOL_VERSION,
             turnId: runTurnId,
             workflowId: 'wf-log',

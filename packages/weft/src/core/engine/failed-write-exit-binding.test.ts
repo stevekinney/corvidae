@@ -322,6 +322,7 @@ const workerWaitSignalRow: Row = {
   trigger: async (run, change) => {
     const message: WorkerOutboundMessage = {
       type: 'checkpoint',
+      pendingStepIndex: 0,
       workflowId: run.id,
       checkpoint: new ArrayBuffer(0),
       operationRequest: {

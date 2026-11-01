@@ -185,6 +185,61 @@ describe('InlineExecutionStrategy', () => {
       expect(message.type).toBe('checkpoint');
     });
 
+    it('reports the step index the yielded operation occupies as pendingStepIndex', async () => {
+      setup();
+
+      registrations.set('stepped', {
+        handler: async function* (context, _input) {
+          // A session state write takes step 0 and yields nothing; the activity takes step 1.
+          context.state.session<number>('counter').set(1);
+          return yield* context.run('doWork', 'input');
+        },
+        version: '1',
+      });
+
+      strategy.startWorkflow({
+        workflowId: 'wf-1',
+        workflowType: 'stepped',
+        input: null,
+        checkpoint: new ArrayBuffer(0),
+      });
+
+      await settleStrategy();
+
+      const message = firstMessage();
+      expect(message.type).toBe('checkpoint');
+      if (message.type === 'checkpoint') {
+        expect(message.pendingStepIndex).toBe(1);
+      }
+    });
+
+    it('reports the step of a group, not the step after its primed branches', async () => {
+      setup();
+
+      registrations.set('grouped', {
+        handler: async function* (context, _input) {
+          // The group takes step 0 and its two primed branches take 1 and 2 before it yields.
+          return yield* context.all([context.run('doWork', 'a'), context.run('doWork', 'b')]);
+        },
+        version: '1',
+      });
+
+      strategy.startWorkflow({
+        workflowId: 'wf-1',
+        workflowType: 'grouped',
+        input: null,
+        checkpoint: new ArrayBuffer(0),
+      });
+
+      await settleStrategy();
+
+      const message = firstMessage();
+      expect(message.type).toBe('checkpoint');
+      if (message.type === 'checkpoint') {
+        expect(message.pendingStepIndex).toBe(0);
+      }
+    });
+
     it('emits failed for unknown workflow types', async () => {
       setup();
 

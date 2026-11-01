@@ -103,6 +103,7 @@ describe('WorkerProtocolGuard revision validation (WFT-20)', () => {
     watchdog.begin(worker, 'wf-1', 2, 'resume', undefined, 'revision-1');
     const checkpointResult = guard.acceptWorkerMessage(worker, {
       type: 'checkpoint',
+      pendingStepIndex: 0,
       protocolVersion: WORKER_PROTOCOL_VERSION,
       turnId: 2,
       workflowId: 'wf-1',

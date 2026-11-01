@@ -529,6 +529,7 @@ describe('#679 ctx.raceKeyed winner metadata', () => {
       assertValidRaceBranchNames({
         type: 'race',
         operationId: 'malformed-keyed-race',
+        step: 0,
         operations: [],
         branchNames: ['event'],
       }),

@@ -87,6 +87,24 @@ describe('engine validation helpers', () => {
     expect(isWorkflowTimelineEntry({ ...entry, taskOperationId: 7 })).toBe(false);
   });
 
+  it('accepts a timeline entry without a stepIndex and refuses one that is not a non-negative integer', () => {
+    const entry = {
+      step: 1,
+      operationType: 'activity',
+      operationLabel: 'demo',
+      inputSummary: 'input',
+      timestamp: 1,
+      status: 'completed',
+    };
+    // An entry persisted before COR-1988 has none.
+    expect(isWorkflowTimelineEntry(entry)).toBe(true);
+    expect(isWorkflowTimelineEntry({ ...entry, stepIndex: 0 })).toBe(true);
+    expect(isWorkflowTimelineEntry({ ...entry, stepIndex: 7 })).toBe(true);
+    for (const stepIndex of [-1, 1.5, '2', Number.NaN, Number.POSITIVE_INFINITY, null]) {
+      expect(isWorkflowTimelineEntry({ ...entry, stepIndex })).toBe(false);
+    }
+  });
+
   it('validates workflow timeline entries', () => {
     expect(isWorkflowTimelineEntry(null)).toBe(false);
     expect(

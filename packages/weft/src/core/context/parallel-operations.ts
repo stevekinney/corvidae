@@ -197,6 +197,7 @@ export function* race(
     type: 'race',
     operationId,
     operations: subOperations,
+    step,
     ...(branchNames !== undefined ? { branchNames } : {}),
     callerStack,
   });

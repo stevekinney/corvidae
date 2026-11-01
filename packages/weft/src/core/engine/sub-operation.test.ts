@@ -193,6 +193,7 @@ describe('engine sub-operations', () => {
         'workflow-sub-operation',
         {
           operationId: 'race:1',
+          step: 1,
           operations: [
             { fn: () => 'winner', key: 'winner', operationId: 'memo:3', type: 'memo' },
             { fn: () => 'other', key: 'other', operationId: 'memo:4', type: 'memo' },
@@ -238,6 +239,7 @@ describe('engine sub-operations', () => {
       'workflow-race-abort',
       {
         operationId: 'race:abort',
+        step: 0,
         operations: [
           {
             activityName: 'slow',

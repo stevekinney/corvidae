@@ -167,6 +167,13 @@ export interface ContextOptions {
   abortController: AbortController;
   deadline?: number;
   initialStep?: number;
+  /**
+   * The `step` every `ctx.log` record from this context carries, in place of the live step index.
+   * A speculative child sets it to the step of the `ctx.speculate` call that owns it, so a line
+   * logged inside the speculation lands beside that call's timeline entry whether the speculation
+   * commits or rolls back: the child's own steps are rolled back with it and have no entries.
+   */
+  logStep?: number;
   accumulatedResults?: Map<number, unknown>;
   /**
    * Set when the body is relaunched from its checkpoint to continue a run that already executed

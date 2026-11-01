@@ -260,6 +260,7 @@ describe('partial-failure preservation worker-mode boundary', () => {
     const operation: Extract<ContextOperationRequest, { type: 'race' }> = {
       type: 'race',
       operationId: 'race:0',
+      step: 0,
       operations: [
         { type: 'wait-signal', operationId: 'race:0:0', signalName: 'ready' },
         {

@@ -122,6 +122,7 @@ function createPersistCallbacks() {
       workflowId: string,
       _operation: ContextOperationRequest,
       step: number,
+      _stepIndex: number,
       timestamp: number,
       operations: BatchOperation[],
     ) => {
@@ -171,6 +172,7 @@ async function expectCheckpointCommitFailure(
       checkpointOperation,
       buffer,
       createPersistCallbacks(),
+      { pendingStepIndex: 0 },
     ),
   );
   expect((reason as Error).message).toContain('lost its CAS race');
@@ -198,6 +200,7 @@ async function commitNextCheckpoint(
     checkpointOperation,
     buffer,
     createPersistCallbacks(),
+    { pendingStepIndex: 0 },
   );
 }
 
@@ -324,6 +327,7 @@ describe('atomic workflow commit side effects', () => {
       checkpointOperation,
       checkpointBuffer,
       createPersistCallbacks(),
+      { pendingStepIndex: 0 },
     );
 
     expect(await storage.get(oldKey)).toEqual(encode('old'));
@@ -430,6 +434,7 @@ describe('atomic workflow commit side effects', () => {
       {
         type: 'race',
         operationId: 'race-release',
+        step: 0,
         operations: [{ type: 'wait-signal', operationId: 'race-release:0', signalName: 'release' }],
       },
       {

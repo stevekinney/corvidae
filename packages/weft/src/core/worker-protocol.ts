@@ -20,8 +20,13 @@ export {
  * always built from the same package version — there is no independent peer
  * to stay backward compatible with — so this is a clean-break bump, the same
  * reasoning the RemoteWorker protocol v2 -> v3 bump used.
+ *
+ * Bumped 2 -> 3 when the `checkpoint` message gained a required
+ * `pendingStepIndex` field (COR-1988): a v2 worker would pass the `ready`
+ * handshake and then fail every workflow at its first checkpoint, so the
+ * version moves and a stale worker is refused at the handshake instead.
  */
-export const WORKER_PROTOCOL_VERSION = 2;
+export const WORKER_PROTOCOL_VERSION = 3;
 export const DEFAULT_WORKER_TURN_TIMEOUT_MS = 1_000;
 export const DEFAULT_WORKER_PROTOCOL_MESSAGE_BYTES = 1_048_576;
 export const MIN_WORKER_PROTOCOL_MESSAGE_BYTES = 4_096;
@@ -216,6 +221,12 @@ function assertWorkerCheckpointOutbound(record: Record<string, unknown>): void {
   }
   if (typeof record['operationRequest'] !== 'object' || record['operationRequest'] === null) {
     throw new WorkerProtocolError('Worker checkpoint message must include operationRequest');
+  }
+  const pendingStepIndex = record['pendingStepIndex'];
+  if (!Number.isSafeInteger(pendingStepIndex) || (pendingStepIndex as number) < 0) {
+    throw new WorkerProtocolError(
+      'Worker checkpoint message pendingStepIndex must be a non-negative integer',
+    );
   }
 }
 

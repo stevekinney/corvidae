@@ -373,6 +373,13 @@ export type WorkerOutboundMessage =
       workflowId: WorkflowId;
       checkpoint: ArrayBuffer;
       operationRequest: OperationRequest | ContextOperationRequest;
+      /**
+       * The durable step index `operationRequest` occupies: the value this run's `ctx.log` lines
+       * carry as `step`, and the `stepIndex` its timeline entry records. The worker counts steps,
+       * and `checkpoint.step` counts checkpoints, so the host cannot derive it. Inline execution
+       * fills it from its context but the host reads it only for a worker's checkpoint bytes.
+       */
+      pendingStepIndex: number;
       /** Echo of the captured `run.workflowRevision` (WFT-20) — see that field's doc. */
       workflowRevision?: string;
     }

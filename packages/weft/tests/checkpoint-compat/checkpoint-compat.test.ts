@@ -22,6 +22,13 @@
  * fixture, not by inspection of the regeneration script's intent; any
  * change beyond what the exception describes is still a regression and must
  * be reverted or justified as a real semantic change instead.
+ *
+ * COR-1988 (`WorkflowTimelineEntry.stepIndex`) changed only the `:timeline:`
+ * records of these snapshots, in place. They were not regenerated, because the
+ * generator no longer writes some records the snapshots hold (the `wf-idx-`
+ * visibility index) and writes some they lack (`wf-gen:`), and that drift is no
+ * part of this exception. An entry persisted before the field existed reads
+ * without one: `engine/validation.test.ts` covers that shape.
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';

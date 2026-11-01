@@ -16,6 +16,7 @@ import type {
 } from '../types.ts';
 import { DEFAULT_WORKFLOW_VERSION } from '../versioning.ts';
 import { isDecodableWorkflowId } from '../workflow-identifiers.ts';
+import { isNonNegativeInteger } from '../workflow-log-codec.ts';
 import { isWorkflowTagArray } from '../workflow-tags.ts';
 import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import { sanitizeDecodedParentLineage, sanitizeDecodedRestartLineage } from './decode-lineage.ts';
@@ -157,6 +158,7 @@ function isOmittedTimelineDetailCount(value: unknown): boolean {
 
 const TIMELINE_ENTRY_FIELD_CHECKS: readonly TimelineEntryFieldCheck[] = [
   (entry) => isTimelineStep(entry['step']),
+  (entry) => entry['stepIndex'] === undefined || isNonNegativeInteger(entry['stepIndex']),
   (entry) => typeof entry['operationType'] === 'string',
   (entry) => typeof entry['operationLabel'] === 'string',
   (entry) => typeof entry['inputSummary'] === 'string',

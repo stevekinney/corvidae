@@ -136,6 +136,12 @@ export type ContextOperationRequest =
       type: 'race';
       operationId: string;
       operations: ContextOperationRequest[];
+      /**
+       * Workflow step index where this race lives — see note on `parallel.step`. The branches are
+       * primed before the race is yielded and take the steps after it, so the live step index is
+       * no longer the race's own by the time the engine records its timeline entry.
+       */
+      step: number;
       /** Ordered branch names for `ctx.raceKeyed`; absent for positional `ctx.race`. */
       branchNames?: string[];
       callerStack?: string;
