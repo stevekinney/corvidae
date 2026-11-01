@@ -10,6 +10,7 @@ import {
   createModelCatalog,
   type GenerateContext,
   type GenerateFunction,
+  type GenerationMode,
   NonRecoverablePolicyError,
   readBackendDescriptors,
   withBackendDescriptors,
@@ -69,13 +70,25 @@ function recorder(descriptors: readonly BackendDescriptor[]) {
   return { generate: withBackendDescriptors(generate, descriptors), calls };
 }
 
-/** `generate` held to `policy`, read afresh at every step, over `catalog`. */
+/**
+ * `generate` held to `policy`, read afresh at every step, over `catalog`, as the agent of `mode`:
+ * a selectable agent unless a test says otherwise.
+ */
 function hold(
   generate: GenerateFunction,
   policy: () => BureauModelPolicyOptions | undefined,
   catalog: readonly BackendDescriptor[] = [...rows, TWIN_OF_OPUS_5_5],
+  mode: GenerationMode = 'selectable',
 ): GenerateFunction {
-  return holdGenerateToModelPolicy(generate, { current: policy, catalog: () => catalog });
+  return holdGenerateToModelPolicy(generate, { current: policy, catalog: () => catalog }, mode);
+}
+
+/** `generate` held to `policy` as a fixed agent, over the default catalog. */
+function holdFixed(
+  generate: GenerateFunction,
+  policy: () => BureauModelPolicyOptions | undefined,
+): GenerateFunction {
+  return hold(generate, policy, undefined, 'fixed');
 }
 
 async function rejection(promise: Promise<unknown>): Promise<unknown> {
@@ -90,7 +103,7 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
 describe('a code agent whose generate reports one catalog row', () => {
   it('refuses a step with a ModelPolicyDeniedError naming the row and calls no provider', async () => {
     const { generate, calls } = recorder([OPUS_5_5]);
-    const held = hold(generate, () => DENY_OPUS_5_5);
+    const held = holdFixed(generate, () => DENY_OPUS_5_5);
 
     const failure = await rejection(held(step()));
 
@@ -107,7 +120,7 @@ describe('a code agent whose generate reports one catalog row', () => {
 
   it('runs a row the policy allows exactly as it ran', async () => {
     const { generate, calls } = recorder([OPUS_5_5]);
-    const held = hold(generate, () => DENY_OPUS_5);
+    const held = holdFixed(generate, () => DENY_OPUS_5);
 
     expect(await held(step())).toEqual({ content: 'ok', toolCalls: [] });
     expect(calls).toEqual([undefined]);
@@ -116,7 +129,7 @@ describe('a code agent whose generate reports one catalog row', () => {
   it('reads the policy at every step, so a change applies from the next one', async () => {
     const { generate, calls } = recorder([OPUS_5_5]);
     let policy: BureauModelPolicyOptions | undefined = ALLOW_ALL;
-    const held = hold(generate, () => policy);
+    const held = holdFixed(generate, () => policy);
 
     await held(step());
     policy = DENY_OPUS_5_5;
@@ -131,12 +144,12 @@ describe('a code agent whose generate reports one catalog row', () => {
   it('keeps the descriptors its generate reports', () => {
     const { generate } = recorder([OPUS_5_5]);
 
-    expect(readBackendDescriptors(hold(generate, () => DENY_OPUS_5_5))).toEqual([OPUS_5_5]);
+    expect(readBackendDescriptors(holdFixed(generate, () => DENY_OPUS_5_5))).toEqual([OPUS_5_5]);
   });
 
   it('judges a bare steer to a name two providers share by the row the agent itself reports', async () => {
     const { generate, calls } = recorder([TWIN_OF_OPUS_5_5]);
-    const held = hold(generate, () => DENY_OPENAI);
+    const held = holdFixed(generate, () => DENY_OPENAI);
 
     const failure = await rejection(held(step({ model: 'claude-opus-5-5' })));
 
@@ -199,9 +212,31 @@ describe('a steered model that the generate does not report', () => {
     expect(calls).toEqual(['retired-model']);
   });
 
-  it('runs though the one row the generate reports is forbidden', async () => {
+  it('runs a selectable agent steered to an allowed model though a row it reports is forbidden', async () => {
     const { generate, calls } = recorder([OPUS_5_5]);
     const held = hold(generate, () => DENY_OPUS_5_5);
+
+    await held(step({ model: 'claude-opus-5' }));
+
+    expect(calls).toEqual(['claude-opus-5']);
+  });
+});
+
+describe('a fixed agent carrying a model steer', () => {
+  it('judges the one row it reports and ignores the steered model, which its provider ignores too', async () => {
+    const { generate, calls } = recorder([OPUS_5_5]);
+    const held = holdFixed(generate, () => DENY_OPUS_5_5);
+
+    const failure = await rejection(held(step({ model: 'claude-opus-5' })));
+
+    expect(failure).toBeInstanceOf(ModelPolicyDeniedError);
+    expect(failure).toMatchObject({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    expect(calls).toEqual([]);
+  });
+
+  it('runs when the one row it reports is allowed, whatever model the steer names', async () => {
+    const { generate, calls } = recorder([OPUS_5_5]);
+    const held = holdFixed(generate, () => DENY_OPUS_5);
 
     await held(step({ model: 'claude-opus-5' }));
 

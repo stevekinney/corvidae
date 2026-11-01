@@ -171,6 +171,7 @@ describe('a durable run of a code agent reattached after a restart', () => {
         conversation: createConversationHistory({ id: 'recovered-coder' }),
       },
       definitionRevision: 1,
+      generationMode: 'fixed',
     }));
     await runtime.persistCatalogRunRecoveryRecord('recovered-coder-run', {
       agentName: 'coder',
@@ -230,6 +231,7 @@ describe('the run runtime of a catalog agent', () => {
           },
           definitionRevision: 1,
           agentResolvesGuardrails: false,
+          generationMode: 'fixed',
           instructions: undefined,
         },
       },
@@ -402,7 +404,7 @@ describe('holding the run options of a catalog agent', () => {
       { modelPolicy: source(DENY_OPUS_5) },
     );
 
-    const held = runtime.holdToModelPolicy(options);
+    const held = runtime.holdToModelPolicy(options, 'fixed');
 
     expect(held.generate).not.toBe(generate);
     expect({ ...held, generate }).toEqual(options);
@@ -411,6 +413,40 @@ describe('holding the run options of a catalog agent', () => {
   it('returns the options themselves when the composition reads no policy', async () => {
     const runtime = await createRuntimeComposition({ storage: new MemoryStorage() });
 
-    expect(runtime.holdToModelPolicy(options)).toBe(options);
+    expect(runtime.holdToModelPolicy(options, 'fixed')).toBe(options);
+  });
+});
+
+describe('a session of a fixed code agent carrying a model steer', () => {
+  it('refuses the agent its one row, and never calls its provider, whatever model the steer names', async () => {
+    // A `policyRef` model steer is held to the policy at admission, not to what the session's agent
+    // allows, so a fixed agent can carry one naming a model that is not its row, as a session
+    // switched to a fixed agent from a selectable one carries what it was steered to. The provider
+    // of a fixed agent is built for its row and ignores the steer, so the step runs that row.
+    const calls: string[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: { coder: createAgent({ name: 'coder', generate: fixedGenerate(OPUS_5_5, calls) }) },
+      storage: new MemoryStorage(),
+      durable: true,
+      modelPolicy: {
+        ...DENY_OPUS_5_5,
+        users: { cheaper: { exactOverride: { model: 'claude-opus-5' } } },
+      },
+    });
+    cleanups.push(() => bureau.dispose());
+    const contextId = 'steered-coder';
+    await runCoder(bureau, contextId);
+    const steered = await bureau.contexts.steer(contextId, {
+      id: 'to-opus-5',
+      principal: 'alice',
+      requestedValue: { target: 'model', policyRef: 'cheaper' },
+    });
+
+    const second = await runCoder(bureau, contextId);
+
+    expect(steered.outcome).toBe('accepted');
+    expect(second?.status).toBe('error');
+    expect(second?.error).toContain('anthropic/claude-opus-5-5');
+    expect(calls).toEqual([]);
   });
 });

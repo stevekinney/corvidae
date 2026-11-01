@@ -3407,6 +3407,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         options: resolvedOptions,
         definitionRevision: readGenerationProfile(agent).revision,
         agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+        generationMode: readGenerationProfile(agent).mode,
         recoveredChild: childContext !== undefined,
         ...(agentBinding === undefined ? {} : { agentBinding }),
       };

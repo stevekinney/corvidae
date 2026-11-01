@@ -633,7 +633,7 @@ export function createCatalogDispatcher({
       // catalog agent's run holds it (`holdToModelPolicy`).
       const withRuntime: RunOptions = {
         runtime: runtimeServices,
-        ...runtime.holdToModelPolicy(resolved),
+        ...runtime.holdToModelPolicy(resolved, readGenerationProfile(agent).mode),
       };
       // COR-1947: held as every run's toolbox is. A run that belongs to no chat, as a child and a
       // workflow step do not, has no mode, and is left to its toolbox.
@@ -1384,7 +1384,10 @@ export function createCatalogDispatcher({
     // the spread below leaves the agent's value in place, and this only bites
     // for a hand-written resolver that omits it.
     // COR-1996: and the agent's generate is held to the model policy, as the durable branch holds it.
-    resolvedOptions = { runtime: runtimeServices, ...runtime.holdToModelPolicy(resolvedOptions) };
+    resolvedOptions = {
+      runtime: runtimeServices,
+      ...runtime.holdToModelPolicy(resolvedOptions, readGenerationProfile(agent).mode),
+    };
 
     // COR-1524 — the snapshot is stored before the run starts.
     await fileReference;

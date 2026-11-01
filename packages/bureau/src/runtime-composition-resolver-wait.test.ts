@@ -109,6 +109,7 @@ describe('a composition that was told a resolver is coming (COR-1586)', () => {
 
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
         status: 'resolved',
+        generationMode: 'selectable',
         options: fakeRunOptions(),
         definitionRevision: 1,
       }));
@@ -146,6 +147,7 @@ describe('a composition that was told a resolver is coming (COR-1586)', () => {
       // Terminal: a resolver wired after the abandonment does not revive the composition.
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
         status: 'resolved',
+        generationMode: 'selectable',
         options: fakeRunOptions(),
         definitionRevision: 1,
       }));
