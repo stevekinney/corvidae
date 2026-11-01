@@ -87,7 +87,13 @@ import {
   runIsGoing,
   type AgUiStreamEnvironment,
 } from './ag-ui-stream.ts';
-import { type AgUiErrorCode, BUREAU_METADATA_KEY, stamp } from './ag-ui-vocabulary.ts';
+import {
+  type AgUiErrorCode,
+  BUREAU_METADATA_KEY,
+  stamp,
+  TOOL_GRANT_SETTLED_EVENT_NAME,
+  type ToolGrantSettledAnnouncement,
+} from './ag-ui-vocabulary.ts';
 import type { OwnerAccessPredicate } from './owner-predicate.ts';
 import { getOwn } from 'conversationalist';
 
@@ -103,7 +109,14 @@ type ResumeResult = {
   /** The native run the resume continued (a human wait) or created (a tool approval), or the old run when the policy gated again. */
   readonly runId: string;
   readonly mode: 'continued' | 'created' | 'superseded';
-  readonly outcomes: ReadonlyArray<{ readonly interruptId: string; readonly outcome: string }>;
+  readonly outcomes: ReadonlyArray<{
+    readonly interruptId: string;
+    readonly outcome: string;
+    /** COR-1990: set when the entry asked to remember the tool: whether the grant was stored with the decision. */
+    readonly remembered?: boolean;
+    /** COR-1990: set with `remembered`: whether the tool's next ask in the chat will be skipped. */
+    readonly loosened?: boolean;
+  }>;
   /** Set when a retry found the earlier attempt's effect already in place and finished it. */
   readonly recovered?: true;
   /** Set when this attempt took over a command another attempt had begun, so a `no-op` outcome is that attempt's work. */
@@ -158,7 +171,7 @@ export type ResumeRequest = {
 const CANCELLED_REASON = 'cancelled by the client';
 
 /** The fields a resume payload may hold, as the interrupt's `responseSchema` advertises (`additionalProperties: false`). */
-const RESUME_PAYLOAD_KEYS = new Set(['decision', 'reason', 'arguments', 'answer']);
+const RESUME_PAYLOAD_KEYS = new Set(['decision', 'reason', 'arguments', 'answer', 'remember']);
 
 function isPayload(value: unknown): value is AgUiResumePayload {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -173,6 +186,10 @@ function isPayload(value: unknown): value is AgUiResumePayload {
     return false;
   }
   if (payload['reason'] !== undefined && typeof payload['reason'] !== 'string') return false;
+  // COR-1990: `remember` is a boolean, and `true` is the approval of a tool, so a deny or a reject
+  // that asks for it is refused here rather than resolved without the grant it asked for.
+  if (payload['remember'] !== undefined && typeof payload['remember'] !== 'boolean') return false;
+  if (payload['remember'] === true && payload['decision'] !== 'approve') return false;
   if (payload['decision'] === 'reject') {
     return typeof payload['reason'] === 'string' && payload['reason'].trim() !== '';
   }
@@ -203,9 +220,12 @@ function resolutionFor(
   const base = { id: review.id, decision: payload.decision, principal: owner, ...fence } as const;
   if (payload.decision === 'approve') {
     if (review.kind === 'tool-approval') {
+      // COR-1990: the grant joins the chat in the same commit as the decision, so the continuation
+      // the resume starts already holds it. Only `true` is forwarded: `false` is the same as absent.
+      const withGrant = payload.remember === true ? { ...base, remember: true as const } : base;
       return Object.prototype.hasOwnProperty.call(payload, 'arguments')
-        ? { ...base, arguments: payload.arguments }
-        : base;
+        ? { ...withGrant, arguments: payload.arguments }
+        : withGrant;
     }
     return { ...base, payload: payload.answer };
   }
@@ -252,15 +272,60 @@ export function createResume(context: ResumeContext) {
   }
 
   /**
+   * The `bureau.tool-grant-settled` events of a resume (COR-1990): one for each tool approval it
+   * applied that asked to remember, read from the command's recorded outcomes, so an exact retry
+   * sends the same event again (a client tells it by `interruptId`). A superseded approval stored no
+   * grant and a no-op was another attempt's, so neither sends one; a recovered command recorded no
+   * outcomes, so it sends none either, a residual of taking over an attempt that died.
+   */
+  function grantEventsOf(
+    request: ResumeRequest,
+    reviews: ReadonlyMap<string, PendingReview>,
+    result: ResumeResult,
+  ): Event[] {
+    const stampContext = {
+      nativeRunId: result.runId,
+      sessionId: request.threadId,
+      now: () => runtime.clock.now(),
+    };
+    return result.outcomes.flatMap((outcome) => {
+      const review = reviews.get(outcome.interruptId);
+      if (
+        outcome.outcome !== 'applied' ||
+        outcome.remembered === undefined ||
+        review?.kind !== 'tool-approval'
+      ) {
+        return [];
+      }
+      const value: ToolGrantSettledAnnouncement = {
+        interruptId: review.id,
+        toolCallId: review.approval.callId,
+        toolName: review.approval.toolName,
+        runId: review.runId,
+        remembered: outcome.remembered,
+        loosened: outcome.remembered && outcome.loosened === true,
+      };
+      return [
+        stamp(
+          { type: EventType.CUSTOM, name: TOOL_GRANT_SETTLED_EVENT_NAME, value },
+          stampContext,
+          { durable: false },
+        ),
+      ];
+    });
+  }
+
+  /**
    * The stream for a resume that has an answer. A run the resume just created is
    * the client's to read from its first event, behind a replay of the call it
    * approved; any other stream, a retry's included, attaches to the run as it
-   * stands.
+   * stands. Either opens with the grants the resume settled, ahead of the replayed call.
    */
   function streamFor(
     request: ResumeRequest,
     readableAs: string | undefined,
     result: ResumeResult,
+    reviews: ReadonlyMap<string, PendingReview>,
     fresh?: {
       readonly prelude?: () => Event[];
       readonly answerRows?: ReadonlyArray<AnswerRow>;
@@ -268,6 +333,7 @@ export function createResume(context: ResumeContext) {
   ): Response {
     if (readableAs === undefined) return acknowledgement(request);
     const started = fresh?.prelude !== undefined;
+    const granted = result.outcomes.some((outcome) => outcome.remembered !== undefined);
     return openRunStream(environment, {
       threadId: request.threadId,
       runId: request.runId,
@@ -277,7 +343,14 @@ export function createResume(context: ResumeContext) {
       viewerIsOwner: request.owner === readableAs,
       replay: started ? 'beginning' : 'open-step',
       messagesSnapshot: !started,
-      ...(fresh?.prelude === undefined ? {} : { preludeEvents: fresh.prelude }),
+      ...(!granted && fresh?.prelude === undefined
+        ? {}
+        : {
+            preludeEvents: () => [
+              ...grantEventsOf(request, reviews, result),
+              ...(fresh?.prelude?.() ?? []),
+            ],
+          }),
       ...(fresh?.answerRows === undefined ? {} : { answerRows: fresh.answerRows }),
       answered: request.entries.map((entry) => entry.interruptId),
       ...(request.a2ui === undefined ? {} : { a2ui: request.a2ui }),
@@ -352,7 +425,7 @@ export function createResume(context: ResumeContext) {
       if (entry.status === 'resolved' && !isPayload(entry.payload)) {
         return context.refuse(
           'INVALID_INPUT',
-          'A resolved entry needs a payload with a decision (and a reason, to reject)',
+          'A resolved entry needs a payload with a decision (and a reason, to reject); "remember" is a boolean, and true only to approve',
         );
       }
       if (roundOfEntry(entry) === null) {
@@ -456,12 +529,15 @@ export function createResume(context: ResumeContext) {
       const review = reviews.get(entry.interruptId);
       const payload = entry.payload as AgUiResumePayload | undefined;
       if (entry.status !== 'resolved' || payload === undefined || review === undefined) continue;
-      const foreign = review.kind === 'human-wait' ? 'arguments' : 'answer';
-      if (Object.hasOwn(payload, foreign)) {
-        return context.refuse(
-          'INVALID_INPUT',
-          `The answer to interrupt "${entry.interruptId}" carries "${foreign}", which its kind does not take`,
-        );
+      // COR-1990: a human wait takes neither `arguments` nor `remember`, a tool approval no `answer`.
+      const foreign = review.kind === 'human-wait' ? ['arguments', 'remember'] : ['answer'];
+      for (const key of foreign) {
+        if (Object.hasOwn(payload, key)) {
+          return context.refuse(
+            'INVALID_INPUT',
+            `The answer to interrupt "${entry.interruptId}" carries "${key}", which its kind does not take`,
+          );
+        }
       }
     }
     const fitted: ResumeEntry[] = [];
@@ -588,8 +664,8 @@ export function createResume(context: ResumeContext) {
     reviews: ReadonlyMap<string, PendingReview>,
     result: ResumeResult,
   ): Response {
-    if (result.mode !== 'continued') return streamFor(request, readableAs, result);
-    return streamFor(request, readableAs, result, {
+    if (result.mode !== 'continued') return streamFor(request, readableAs, result, reviews);
+    return streamFor(request, readableAs, result, reviews, {
       answerRows: answerRowsOf(request, reviews, deliveredBy(result)),
     });
   }
@@ -604,12 +680,12 @@ export function createResume(context: ResumeContext) {
     if (!applied) return streamForRetry(request, readableAs, reviews, result);
     const delivered = deliveredBy(result);
     if (result.mode === 'continued') {
-      return streamFor(request, readableAs, result, {
+      return streamFor(request, readableAs, result, reviews, {
         answerRows: answerRowsOf(request, reviews, delivered),
       });
     }
     if (result.mode !== 'created' || result.recovered === true)
-      return streamFor(request, readableAs, result);
+      return streamFor(request, readableAs, result, reviews);
     // The prelude replays rows of the conversation to the reader, so it reads the session as the
     // owner the reader was authorized on, and a caller who may not read gets no rows at all.
     const session =
@@ -617,7 +693,7 @@ export function createResume(context: ResumeContext) {
         ? undefined
         : await readSessionOwnedBy(bureau, request.threadId, readableAs);
     const executed = executedArguments(request, reviews, delivered);
-    return streamFor(request, readableAs, result, {
+    return streamFor(request, readableAs, result, reviews, {
       prelude: () =>
         [...reviews.values()].flatMap((review) =>
           review.kind === 'tool-approval'
@@ -941,7 +1017,12 @@ export function createResume(context: ResumeContext) {
       return refuse('CONTINUATION_UNAVAILABLE', CONTINUATION_UNAVAILABLE_MESSAGE);
     }
 
-    const outcomes: Array<{ interruptId: string; outcome: string }> = [];
+    const outcomes: Array<{
+      interruptId: string;
+      outcome: string;
+      remembered?: boolean;
+      loosened?: boolean;
+    }> = [];
     let continued = false;
     let executed = false;
     let superseded = false;
@@ -965,6 +1046,10 @@ export function createResume(context: ResumeContext) {
         outcomes.push({
           interruptId: entry.interruptId,
           outcome: resolved.superseded === true ? 'superseded' : 'applied',
+          // COR-1990: what the grant came to, kept in the command's result so a retry re-sends it.
+          ...(resolved.remembered === undefined
+            ? {}
+            : { remembered: resolved.remembered, loosened: resolved.loosened === true }),
         });
         if (resolved.superseded === true) superseded = true;
         else if (review.kind === 'tool-approval') executed = true;

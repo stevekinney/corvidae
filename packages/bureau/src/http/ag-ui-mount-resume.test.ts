@@ -96,6 +96,14 @@ const chargeOnce = {
     toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
   },
 };
+/** The same charge asked for again later in the chat, under a call id of its own. */
+const chargeAgain = {
+  kind: 'respond' as const,
+  response: {
+    content: 'Charging again.',
+    toolCalls: [{ id: 'call-2', name: 'charge-card', arguments: { cents: 500 } }],
+  },
+};
 const chargeTwice = {
   kind: 'respond' as const,
   response: {
@@ -908,7 +916,7 @@ describe('the resume ledger’s retention', () => {
     const runtime = createManualRuntimeServices();
     await withHarness(
       {
-        script: [chargeOnce, say('Charged.'), chargeOnce, say('Again.')],
+        script: [chargeOnce, say('Charged.'), chargeAgain, say('Again.')],
         toolbox: approvalToolbox([]),
         storage: 'sqlite',
         agUi: { runtime },
@@ -2346,6 +2354,399 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         expect(committed).toHaveLength(1);
         expect(userTextRows(opening)).toEqual([]);
         expect(shownUserRows(opening)).toEqual(committed);
+      },
+    );
+  });
+});
+
+const TOOL_GRANT_SETTLED = 'bureau.tool-grant-settled';
+const allowForChat: ResumeEntry['payload'] = { decision: 'approve', remember: true };
+
+/** The `bureau.tool-grant-settled` events a stream carries, in order. */
+const grantEventsOf = (frames: ReadonlyArray<{ event: Event }>) =>
+  frames
+    .map((frame) => frame.event)
+    .filter((event) => event.type === EventType.CUSTOM && event.name === TOOL_GRANT_SETTLED);
+
+/** The tools the person allowed for the rest of the chat `thread-1`, as its session holds them. */
+async function grantsHeld(bureau: Harness['bureau']): Promise<unknown> {
+  const session = await bureau.internals.sessionStore?.load('thread-1');
+  return session?.metadata['approvalGrants'];
+}
+
+describe('resuming a tool approval with remember (COR-1990)', () => {
+  it('starts the continuation as Approve does, holds the grant, and says a code agent’s next ask is not skipped', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.'), chargeAgain, say('Again.')],
+        toolbox: approvalToolbox(charges),
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([onRound(resolved(id, allowForChat), 0)])),
+        );
+
+        const events = frames.map((frame) => frame.event);
+        expect(bureauMetadata(events[0]!)['runId']).not.toBe(first.nativeRunId);
+        expect(events.at(-1)).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'success' },
+        });
+        expect(charges).toEqual([500]);
+        expect(bureau.reviews.list()).toHaveLength(0);
+        expect(await grantsHeld(bureau)).toEqual([expect.stringContaining('charge-card')]);
+        const grants = grantEventsOf(frames);
+        expect(grants).toHaveLength(1);
+        expect(grants[0]).toMatchObject({
+          type: EventType.CUSTOM,
+          name: TOOL_GRANT_SETTLED,
+          value: {
+            interruptId: id,
+            toolCallId: 'call-1',
+            toolName: 'charge-card',
+            runId: first.nativeRunId,
+            remembered: true,
+            // A code agent's toolbox is the host's: the Bureau reads no grant for it, so the next
+            // ask is still asked and the notice must not promise otherwise. A file agent's grant
+            // that is read is proved in agent-file-approval-grants.test.ts.
+            loosened: false,
+          },
+        });
+        // After the opening events, before the call the resume replays, and not recorded as history.
+        const at = events.indexOf(grants[0]!);
+        expect(at).toBeGreaterThan(
+          events.findIndex((event) => event.type === EventType.RUN_STARTED),
+        );
+        expect(at).toBeLessThan(
+          events.findIndex((event) => event.type === EventType.TOOL_CALL_START),
+        );
+        expect(bureauMetadata(grants[0]!)['durable']).toBe(false);
+
+        // The same chat, the same tool: the code agent's next call is asked again.
+        const next = await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                runId: 'client-run-3',
+                messages: [{ id: 'user-2', role: 'user', content: 'charge again' }],
+              }),
+            ),
+          ),
+        );
+        expect(next.at(-1)!.event).toMatchObject({ outcome: { type: 'interrupt' } });
+        expect(bureau.reviews.list()).toHaveLength(1);
+        expect(charges).toEqual([500]);
+      },
+    );
+  });
+
+  it('sends no event and holds no grant when the approval does not ask to remember', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox([]) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+
+        const plain = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
+        );
+
+        expect(grantEventsOf(plain)).toEqual([]);
+        expect(await grantsHeld(bureau)).toBeUndefined();
+      },
+    );
+  });
+
+  it('accepts remember: false as an approval that grants nothing', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox(charges) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+
+        const frames = await readAgUiStream(
+          await handler(
+            resumeRequest([
+              resolved(first.interruptIds[0]!, { decision: 'approve', remember: false }),
+            ]),
+          ),
+        );
+
+        expect(charges).toEqual([500]);
+        expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(grantEventsOf(frames)).toEqual([]);
+        expect(await grantsHeld(bureau)).toBeUndefined();
+      },
+    );
+  });
+
+  it('refuses a remember that is not an approval of a tool, before anything is claimed or resolved', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Ok.')], toolbox: approvalToolbox([]), storage: 'sqlite' },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        const resolve = spyOn(bureau.reviews, 'resolve');
+        const refusals: Array<[string, ResumeEntry]> = [
+          ['a deny', resolved(id, { decision: 'deny', remember: true })],
+          ['a reject', resolved(id, { decision: 'reject', reason: 'No', remember: true })],
+          [
+            'a remember that is not a boolean',
+            resolved(id, { decision: 'approve', remember: 'yes' }),
+          ],
+        ];
+
+        for (const [index, [name, entry]] of refusals.entries()) {
+          const frames = await readAgUiStream(
+            await handler(resumeRequest([entry], {}, `client-run-${index + 2}`)),
+          );
+          expect(frames, name).toHaveLength(1);
+          expect(frames[0]!.event, name).toMatchObject({
+            type: EventType.RUN_ERROR,
+            code: 'INVALID_INPUT',
+          });
+        }
+
+        expect(resolve).not.toHaveBeenCalled();
+        resolve.mockRestore();
+        expect(await ledgerStates(bureau)).toEqual([]);
+        expect(bureau.reviews.list()).toHaveLength(1);
+        expect(await grantsHeld(bureau)).toBeUndefined();
+      },
+    );
+  });
+
+  it('accepts a deny or a reject that says remember: false, which is a no-op', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Ok.')], toolbox: approvalToolbox([]) },
+      async ({ handler }) => {
+        const first = await startUntilInterrupted(handler);
+
+        const frames = await readAgUiStream(
+          await handler(
+            resumeRequest([
+              resolved(first.interruptIds[0]!, { decision: 'deny', remember: false }),
+            ]),
+          ),
+        );
+
+        expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(grantEventsOf(frames)).toEqual([]);
+      },
+    );
+  });
+
+  it('refuses any remember on a human wait', async () => {
+    await withHarness(
+      {
+        script: [askHuman, say('Thanks.')],
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const resolve = spyOn(bureau.reviews, 'resolve');
+
+        for (const remember of [true, false]) {
+          const frames = await readAgUiStream(
+            await handler(
+              resumeRequest(
+                [
+                  resolved(first.interruptIds[0]!, {
+                    decision: 'approve',
+                    answer: 'yes',
+                    remember,
+                  }),
+                ],
+                {},
+                `client-run-${String(remember)}`,
+              ),
+            ),
+          );
+          expect(frames).toHaveLength(1);
+          expect(frames[0]!.event).toMatchObject({ code: 'INVALID_INPUT' });
+          expect((frames[0]!.event as { message: string }).message).toContain('remember');
+        }
+
+        expect(resolve).not.toHaveBeenCalled();
+        resolve.mockRestore();
+      },
+    );
+  });
+
+  it('is fenced on the round the person was shown: a stale Allow grants nothing', async () => {
+    await withHarness(
+      {
+        script: [chargeOnce, say('Never.')],
+        toolbox: regatingToolbox([]),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        // Allowed on round 0 and gated again: the policy superseded it, so nothing was granted.
+        const regated = await readAgUiStream(
+          await handler(resumeRequest([onRound(resolved(id, allowForChat), 0)])),
+        );
+        expect(roundOf(bureau, id)).toBe(1);
+        expect(grantEventsOf(regated)).toEqual([]);
+        expect(await grantsHeld(bureau)).toBeUndefined();
+
+        const stale = await readAgUiStream(
+          await handler(
+            resumeRequest([onRound(resolved(id, allowForChat), 0)], {}, 'client-run-3'),
+          ),
+        );
+
+        expect(stale).toHaveLength(1);
+        expect(stale[0]!.event).toMatchObject({ code: 'REVIEW_ROUND_CHANGED' });
+        expect(await grantsHeld(bureau)).toBeUndefined();
+      },
+    );
+  });
+
+  it('re-sends the same event to an exact retry without a second grant or a second run', async () => {
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox([]),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [resolved(first.interruptIds[0]!, allowForChat)];
+        const original = await readAgUiStream(await handler(resumeRequest(entries)));
+        const resolve = spyOn(bureau.reviews, 'resolve');
+        const runsBefore = listHeldTasks(bureau).length;
+
+        const retry = await readAgUiStream(
+          await handler(resumeRequest(entries, {}, 'client-run-3')),
+        );
+
+        expect(resolve).not.toHaveBeenCalled();
+        resolve.mockRestore();
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
+        expect(grantEventsOf(retry).map((event) => (event as { value: unknown }).value)).toEqual(
+          grantEventsOf(original).map((event) => (event as { value: unknown }).value),
+        );
+        expect(grantEventsOf(retry)).toHaveLength(1);
+      },
+    );
+  });
+
+  it('is a conflict to answer the same interrupt with Approve and then Allow', async () => {
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox([]),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        await readAgUiStream(await handler(resumeRequest([resolved(id)])));
+
+        const allow = await readAgUiStream(
+          await handler(resumeRequest([resolved(id, allowForChat)], {}, 'client-run-3')),
+        );
+
+        expect(allow).toHaveLength(1);
+        expect(allow[0]!.event).toMatchObject({ code: 'RESUME_CONFLICT' });
+        expect(await grantsHeld(bureau)).toBeUndefined();
+      },
+    );
+  });
+
+  it('says the grant did not loosen the tool when the chat asks about every call', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox([]) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        const steered = await bureau.contexts.steer('thread-1', {
+          id: 'always-mode',
+          principal: 'anonymous:local',
+          requestedValue: { target: 'permission-mode', override: 'always' },
+        });
+        expect(steered).toMatchObject({ outcome: 'accepted' });
+        // In always mode the chat asks about the approved call again: the first Allow is superseded.
+        const regated = await readAgUiStream(
+          await handler(resumeRequest([onRound(resolved(id, allowForChat), 0)])),
+        );
+        expect(grantEventsOf(regated)).toEqual([]);
+        expect(roundOf(bureau, id)).toBe(1);
+
+        const frames = await readAgUiStream(
+          await handler(
+            resumeRequest([onRound(resolved(id, allowForChat), 1)], {}, 'client-run-3'),
+          ),
+        );
+
+        expect(grantEventsOf(frames)).toHaveLength(1);
+        expect(grantEventsOf(frames)[0]).toMatchObject({
+          value: { remembered: true, loosened: false },
+        });
+        // The grant is stored all the same: it applies once the chat leaves always mode.
+        expect(await grantsHeld(bureau)).toHaveLength(1);
+      },
+    );
+  });
+
+  it('refuses an Allow no run can continue from, and grants nothing', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        // The agent goes on past the gated call, so its conversation ends in an assistant row.
+        script: [chargeOnce, say('Waiting for the approval.')],
+        toolbox: approvalToolbox(charges),
+        stopWhen: stopWhen.noToolCalls(),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        await readAgUiStream(await handler(startRequest(runAgentInput())));
+        await waitForCondition(
+          () => bureau.tasks.detail(listHeldTasks(bureau)[0]!.id)?.status === 'completed',
+          'run did not settle',
+        );
+        const id = bureau.reviews.list()[0]!.id;
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([resolved(id, allowForChat)])),
+        );
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
+        expect(charges).toEqual([]);
+        expect(bureau.reviews.list()).toHaveLength(1);
+        expect(await grantsHeld(bureau)).toBeUndefined();
+      },
+    );
+  });
+
+  it('reports a grant the decision did not store as remembered: false', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox([]) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const resolve = bureau.reviews.resolve.bind(bureau.reviews);
+        // The chat went away between the read and the commit: the decision is made, no grant stored.
+        const spy = spyOn(bureau.reviews, 'resolve').mockImplementation(async (input) => ({
+          ...(await resolve(input)),
+          remembered: false,
+          loosened: false,
+        }));
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!, allowForChat)])),
+        );
+        spy.mockRestore();
+
+        expect(grantEventsOf(frames)).toHaveLength(1);
+        expect(grantEventsOf(frames)[0]).toMatchObject({
+          value: { remembered: false, loosened: false },
+        });
       },
     );
   });

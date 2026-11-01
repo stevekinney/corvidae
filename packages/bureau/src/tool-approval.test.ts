@@ -18,6 +18,7 @@ import { z } from 'zod';
 
 import {
   createToolApprovalHooks,
+  grantLoosensTool,
   TOOL_APPROVAL_DEFAULT_MODE,
   TOOL_APPROVAL_MODES,
   type ToolApprovalMode,
@@ -301,5 +302,78 @@ describe('a remembered tool (COR-1828)', () => {
     }
 
     expect(asked).toEqual([]);
+  });
+});
+
+describe('grantLoosensTool (COR-1990)', () => {
+  const tool = (name: string, namespace: string | undefined, metadata: ToolMetadata) =>
+    createTool({
+      name,
+      ...(namespace === undefined ? {} : { namespace }),
+      version: '1.0.0',
+      description: name,
+      input: z.object({}),
+      metadata,
+      execute: async () => ({}),
+    });
+  const tools = { refund: tool('refund', undefined, { mutates: true }) };
+
+  it.each([
+    ['a tool with no setting, in the default mode', undefined, 'on-changes', true],
+    ['a tool set to on-changes, in allow-all', { refund: 'on-changes' }, 'allow-all', true],
+    ['a tool set to never', { refund: 'never' }, 'on-changes', true],
+    ['a tool set to always', { refund: 'always' }, 'on-changes', false],
+    ['a tool set to blocked', { refund: 'blocked' }, 'on-changes', false],
+    ['a tool in a chat that asks about every call', undefined, 'always', false],
+    ['a tool that changes something, in a read-only chat', undefined, 'read-only', false],
+  ] as const)('answers %s', (_name, toolApproval, mode, expected) => {
+    expect(
+      grantLoosensTool({
+        toolApproval,
+        tools,
+        reportedName: 'refund',
+        mode,
+      }),
+    ).toBe(expected);
+  });
+
+  it('reads the setting of the key a namespaced tool was declared under', () => {
+    const namespaced = { search: tool('search', 'docs', { mutates: true }) };
+
+    expect(
+      grantLoosensTool({
+        toolApproval: { search: 'always' },
+        tools: namespaced,
+        reportedName: 'docs:search',
+        mode: 'on-changes',
+      }),
+    ).toBe(false);
+    expect(
+      grantLoosensTool({
+        toolApproval: { search: 'never' },
+        tools: namespaced,
+        reportedName: 'docs:search',
+        mode: 'on-changes',
+      }),
+    ).toBe(true);
+  });
+
+  it('weighs only the chat’s mode for an agent whose tools the Bureau cannot read', () => {
+    expect(
+      grantLoosensTool({
+        toolApproval: undefined,
+        tools: undefined,
+        reportedName: 'anything',
+        mode: 'on-changes',
+      }),
+    ).toBe(true);
+    expect(
+      grantLoosensTool({
+        toolApproval: undefined,
+        tools: undefined,
+        reportedName: 'anything',
+        mode: 'always',
+      }),
+    ).toBe(false);
   });
 });

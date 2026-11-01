@@ -1240,6 +1240,17 @@ export interface ResolveReviewResult {
    * no grant, because the tool did not run.
    */
   remembered?: boolean;
+  /**
+   * COR-1990 — set with {@link ResolveReviewResult.remembered}: whether the next ask for the tool in
+   * this chat will be skipped, as the next call is decided now (the agent's `toolApproval` for the
+   * tool and the chat's permission mode). `false` when `remembered` is, and `false` for a tool its
+   * agent sets to `always` or `blocked`, a chat in `always` mode, and a tool a `read-only` chat
+   * denies: the grant is stored for those, but they answer `ask` or `deny` whatever it says. Also
+   * `false` for a code agent or a plugin agent: its toolbox belongs to the host, which the Bureau
+   * does not wire the chat's grants into, so its next call asks again. A file agent is weighed by its
+   * file's definition and a tried agent by the definition it was tried with.
+   */
+  loosened?: boolean;
 }
 
 /**

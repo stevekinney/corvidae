@@ -9,6 +9,7 @@ import type { PendingReview } from '../types.ts';
 import {
   interruptKey,
   RESUME_PAYLOAD_SCHEMA,
+  HUMAN_WAIT_RESPONSE_SCHEMA,
   responseSchemaFor,
   toInterrupt,
 } from './ag-ui-interrupts.ts';
@@ -52,9 +53,13 @@ describe('the advertised response schema', () => {
     [{ decision: 'approve' }],
     [{ decision: 'approve', arguments: { cents: 1 } }],
     [{ decision: 'approve', answer: 'yes' }],
+    [{ decision: 'approve', remember: true }],
+    [{ decision: 'approve', remember: false }],
     [{ decision: 'deny' }],
     [{ decision: 'deny', reason: 'no' }],
+    [{ decision: 'deny', remember: false }],
     [{ decision: 'reject', reason: 'Wrong customer' }],
+    [{ decision: 'reject', reason: 'Wrong customer', remember: false }],
   ])('accepts %j', (payload) => {
     expect(validate(payload)).toBe(true);
   });
@@ -65,6 +70,9 @@ describe('the advertised response schema', () => {
     ['an unknown decision', { decision: 'maybe' }],
     ['a payload with no decision', {}],
     ['a field it does not define', { decision: 'approve', extra: 1 }],
+    ['a remember that is not a boolean', { decision: 'approve', remember: 'yes' }],
+    ['a deny that asks to remember', { decision: 'deny', remember: true }],
+    ['a reject that asks to remember', { decision: 'reject', reason: 'No', remember: true }],
   ])('refuses %s', (_name, payload) => {
     expect(validate(payload)).toBe(false);
   });
@@ -77,8 +85,9 @@ describe('the response schema of a question that carries its own answer schema (
     'x-labels': { staging: 'Staging', production: 'Production' },
   } as const;
 
-  it('is the generic resume schema when there is no answer schema', () => {
-    expect(responseSchemaFor(undefined)).toBe(RESUME_PAYLOAD_SCHEMA);
+  it('is the human-wait schema, which has no remember, when there is no answer schema', () => {
+    expect(responseSchemaFor(undefined)).toBe(HUMAN_WAIT_RESPONSE_SCHEMA);
+    expect(responseSchemaFor(undefined)).not.toBe(RESUME_PAYLOAD_SCHEMA);
   });
 
   it('keeps decision and reason, and embeds the answer schema as properties.answer', () => {
@@ -113,8 +122,36 @@ describe('the response schema of a question that carries its own answer schema (
     ['an approval with an answer outside the enum', { decision: 'approve', answer: 'qa' }],
     ['a reject with no reason', { decision: 'reject' }],
     ['a field it does not define', { decision: 'approve', answer: 'staging', extra: 1 }],
+    ['a deny that asks to remember', { decision: 'deny', remember: true }],
+    ['a deny that says it does not remember', { decision: 'deny', remember: false }],
+    [
+      'an approval that asks to remember',
+      { decision: 'approve', answer: 'staging', remember: true },
+    ],
   ])('refuses %s', (_name, payload) => {
     expect(validate(payload)).toBe(false);
+  });
+
+  const validateWithoutAnswerSchema = new Ajv({ strict: false }).compile(
+    responseSchemaFor(undefined),
+  );
+
+  it.each([
+    [{ decision: 'approve' }],
+    [{ decision: 'approve', answer: 'yes' }],
+    [{ decision: 'deny' }],
+    [{ decision: 'reject', reason: 'No' }],
+  ])('accepts %j for a wait with no answer schema', (payload) => {
+    expect(validateWithoutAnswerSchema(payload)).toBe(true);
+  });
+
+  it.each([
+    ['an approval that asks to remember', { decision: 'approve', remember: true }],
+    ['an approval that says it does not remember', { decision: 'approve', remember: false }],
+    ['a deny that says it does not remember', { decision: 'deny', remember: false }],
+    ['a reject with no reason', { decision: 'reject' }],
+  ])('refuses %s for a wait with no answer schema', (_name, payload) => {
+    expect(validateWithoutAnswerSchema(payload)).toBe(false);
   });
 
   it('rebases the answer schema’s own local references so they still resolve', () => {
@@ -183,6 +220,6 @@ describe('the response schema of a question that carries its own answer schema (
     const interrupt = toInterrupt(wait);
 
     expect(interrupt.responseSchema).toEqual(responseSchemaFor(answerSchema));
-    expect(toInterrupt(plain).responseSchema).toBe(RESUME_PAYLOAD_SCHEMA);
+    expect(toInterrupt(plain).responseSchema).toBe(HUMAN_WAIT_RESPONSE_SCHEMA);
   });
 });

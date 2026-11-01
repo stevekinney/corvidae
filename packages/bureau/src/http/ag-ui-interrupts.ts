@@ -21,11 +21,46 @@ import { BUREAU_METADATA_KEY } from './ag-ui-vocabulary.ts';
  * The JSON Schema of the payload that answers an interrupt, the same for both
  * review kinds. `arguments` applies to a tool approval that is approved and
  * overrides the call's arguments; `answer` applies to a human wait that is
- * approved and is delivered as the signal's payload; `reason` is required, and
- * must hold a character other than whitespace, to `reject`, which is the rule the
- * resume boundary enforces.
+ * approved and is delivered as the signal's payload; `remember` applies to a tool
+ * approval that is approved and also allows the tool for the rest of the chat
+ * (`false` is the same as leaving it out, and is the only value a deny or a reject
+ * may carry); `reason` is required, and must hold a character other than
+ * whitespace, to `reject`, which is the rule the resume boundary enforces. It is the schema of a
+ * tool approval, the only interrupt `remember` applies to: a human wait refuses the key, even as
+ * `false`, so its schema is {@link HUMAN_WAIT_RESPONSE_SCHEMA}, which does not advertise it.
  */
 export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    decision: { enum: ['approve', 'deny', 'reject'] },
+    reason: { type: 'string' },
+    arguments: {},
+    answer: {},
+    remember: { type: 'boolean' },
+  },
+  required: ['decision'],
+  additionalProperties: false,
+  anyOf: [
+    { properties: { decision: { const: 'approve' } } },
+    { properties: { decision: { const: 'deny' }, remember: { const: false } } },
+    {
+      properties: {
+        decision: { const: 'reject' },
+        reason: { type: 'string', pattern: '\\S' },
+        remember: { const: false },
+      },
+      required: ['reason'],
+    },
+  ],
+};
+
+/**
+ * The JSON Schema of the payload that answers a human wait that was parked with no answer schema:
+ * {@link RESUME_PAYLOAD_SCHEMA} without `remember`, which the resume boundary refuses on a human
+ * wait whatever its value, so a client that builds an answer from the schema cannot build one the
+ * boundary refuses (COR-1990).
+ */
+export const HUMAN_WAIT_RESPONSE_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
     decision: { enum: ['approve', 'deny', 'reject'] },
@@ -36,7 +71,8 @@ export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   required: ['decision'],
   additionalProperties: false,
   anyOf: [
-    { properties: { decision: { enum: ['approve', 'deny'] } } },
+    { properties: { decision: { const: 'approve' } } },
+    { properties: { decision: { const: 'deny' } } },
     {
       properties: { decision: { const: 'reject' }, reason: { type: 'string', pattern: '\\S' } },
       required: ['reason'],
@@ -114,9 +150,9 @@ function withReferencesRebasedUnder(schema: unknown, base: string): unknown {
 }
 
 /**
- * The `responseSchema` of an interrupt (COR-1804). Without an `answerSchema` it is
- * {@link RESUME_PAYLOAD_SCHEMA}. With one (a human wait that was parked with a schema, whether the
- * model's per-call `answerSchema` or the author's per-signal one) it keeps `decision` and `reason`,
+ * The `responseSchema` of a human wait's interrupt (COR-1804). Without an `answerSchema` it is
+ * {@link HUMAN_WAIT_RESPONSE_SCHEMA}. Neither carries `remember`, which only a tool approval takes.
+ * With one (a human wait that was parked with a schema, whether the model's per-call `answerSchema` or the author's per-signal one) it keeps `decision` and `reason`,
  * which every answer needs, embeds the schema as `properties.answer`, and requires an `answer` to
  * approve: replacing the payload schema with the answer schema would leave no way to deny or
  * reject. The schema's own local `$ref`s are rebased to `#/properties/answer/...`. A client that
@@ -125,7 +161,7 @@ function withReferencesRebasedUnder(schema: unknown, base: string): unknown {
 export function responseSchemaFor(
   answerSchema: HumanInputSchema | undefined,
 ): Record<string, unknown> {
-  if (answerSchema === undefined) return RESUME_PAYLOAD_SCHEMA;
+  if (answerSchema === undefined) return HUMAN_WAIT_RESPONSE_SCHEMA;
   return {
     type: 'object',
     properties: {
@@ -153,6 +189,11 @@ export type AgUiResumePayload = {
   reason?: string;
   arguments?: unknown;
   answer?: unknown;
+  /**
+   * `tool-approval` approve only: also allow the tool for the rest of this chat (COR-1990), as
+   * `bureau.reviews.resolve`'s `remember` does. `false` is the same as leaving it out.
+   */
+  remember?: boolean;
 };
 
 /**
