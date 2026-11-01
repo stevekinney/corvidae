@@ -4,8 +4,9 @@ import { describe, expect, test } from 'bun:test';
 import { TOOL_APPROVALS } from './agent-definitions.ts';
 import { standingOf } from './tool-standing.ts';
 
-const reads = { defaultApproval: 'allow' } as const;
-const changes = { defaultApproval: 'ask' } as const;
+const reads = { defaultApproval: 'allow', tier: 'read-only' } as const;
+const changes = { defaultApproval: 'ask', tier: 'mutating' } as const;
+const unclassified = { defaultApproval: 'ask', tier: null } as const;
 
 describe('standingOf', () => {
   test('follows the tier’s default when the file states nothing or on-changes', () => {
@@ -18,6 +19,12 @@ describe('standingOf', () => {
   test('lets always and never replace the default, either way', () => {
     expect(standingOf(reads, 'always')).toBe('asks-first');
     expect(standingOf(changes, 'never')).toBe('runs');
+  });
+
+  test('still asks first for a tool with no tier under never, which Armorer never lets through unasked', () => {
+    expect(standingOf(unclassified, 'never')).toBe('asks-first');
+    expect(standingOf(unclassified, undefined)).toBe('asks-first');
+    expect(standingOf(unclassified, 'blocked')).toBe('blocked');
   });
 
   test('reads blocked as refused, whatever the default', () => {

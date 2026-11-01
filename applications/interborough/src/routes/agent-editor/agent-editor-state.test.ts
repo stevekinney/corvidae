@@ -425,7 +425,7 @@ describe('the tool approvals the Access tab sets', () => {
 describe('the tools the form shows', () => {
   const catalog = catalogFixture({
     tools: [
-      { name: 'a-read', description: 'Reads.', shortDescription: null },
+      { name: 'a-read', description: 'Reads.', shortDescription: null, tier: null },
       {
         name: 'b-change',
         description: 'Changes.',
@@ -473,6 +473,14 @@ describe('the tools the form shows', () => {
     expect(standing('a-read')).toBe('asks-first');
     expect(standing('b-change')).toBe('asks-first');
     expect(standing('c-read')).toBe('blocked');
+  });
+
+  test('marks a tool with no tier as asking first under never, as the runtime asks', () => {
+    const form = withTools(['a-read', 'b-change'], { 'a-read': 'never', 'b-change': 'never' });
+    const standing = (name: string) =>
+      form.standingOf(form.toolChoices.find((tool) => tool.name === name)!);
+    expect(standing('a-read')).toBe('asks-first');
+    expect(standing('b-change')).toBe('runs');
   });
 
   test('keeps the approval of a tool that is cleared and ticked again before the save', () => {

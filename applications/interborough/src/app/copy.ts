@@ -1722,6 +1722,9 @@ export const AGENT_PAGE_COPY = {
       always: 'Asks before every call.',
       blocked: 'Never runs. The model is told it was refused.',
     },
+    /** Under `never`, for a tool that declares no tier: Armorer still asks about a call it cannot classify. */
+    neverUnclassifiedHint:
+      'This tool declares no tier, so it still asks before every call, even here.',
     notInCatalog: 'Not offered by this host any more',
     noToolsTitle: 'This host offers no tools',
     noToolsDescription: 'Tools come from the host’s plugins and saved tool sources.',
