@@ -187,6 +187,14 @@ export class ToolSourceInputError extends Error {
   }
 }
 
+/** A source added with `createOnly` under an identifier a source already holds. */
+export class ToolSourceExistsError extends Error {
+  constructor(sourceId: string) {
+    super(`Tool source "${sourceId}" is already saved. Choose another name, or remove it first.`);
+    this.name = 'ToolSourceExistsError';
+  }
+}
+
 /** A local-command source asked for by a principal other than the owner. */
 export class ToolSourceOwnerOnlyError extends Error {
   constructor() {
@@ -380,6 +388,12 @@ export type ToolSourceConnection = {
   readonly id: unknown;
   /** Who is asking. A local command is added only by the owner. */
   readonly principal: string;
+  /**
+   * Refuse with {@link ToolSourceExistsError}, changing nothing, when a source is already saved
+   * under the identifier, instead of replacing it. The check is made in the source's turn, so two
+   * requests for one new name cannot both succeed.
+   */
+  readonly createOnly?: boolean;
 };
 
 /** What a change to the per-tool settings of a source asks for. Every field is `unknown` because it arrives from a request. */
@@ -1263,7 +1277,11 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           (signal) =>
             loadToolSource(source, {
               resolveCredential: ({ credential }) => supplied.get(credential),
-              oauth: oauthOptions(() => undefined, 'take', () => storage),
+              oauth: oauthOptions(
+                () => undefined,
+                'take',
+                () => storage,
+              ),
               signal,
               ...fetchOption,
             }),
@@ -1308,6 +1326,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         vault.exclusive(id, async () => {
           const { text: currentText, document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
+          if (request.createOnly === true && existing !== undefined) {
+            throw new ToolSourceExistsError(id);
+          }
           // What is held is carried over only for the same source going to the same place. A new
           // source starts with nothing, whatever an earlier source of the same id left in its
           // secret, and a source that now points elsewhere does not send the old credentials there.

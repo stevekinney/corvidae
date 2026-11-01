@@ -119,6 +119,8 @@ export type ToolSourceRequest = {
   readonly source: Readonly<Record<string, unknown>>;
   /** Credential name to value, for each credential `source` names. */
   readonly credentials: Readonly<Record<string, string>>;
+  /** For a connect: refuse, instead of replacing, a source already saved under the same name. */
+  readonly create?: true;
 };
 
 /** What a connect reports: the source is saved, and its tools are listed when the host starts again. */
@@ -131,6 +133,8 @@ export type ToolSourceAuthorization = z.infer<typeof authorizationSchema>;
 export type HostToolSourceFaultKind =
   /** The host refuses the write: it keeps its configuration in its deployment. */
   | 'locked'
+  /** A source is already saved under that name, and the request asked not to replace it. */
+  | 'exists'
   /** Only the owner may do this. */
   | 'owner-only'
   /** The host has no such source. */
@@ -183,6 +187,7 @@ async function faultOf(response: Response): Promise<HostToolSourceError> {
   const message = typeof rawMessage === 'string' ? rawMessage : '';
   switch (error) {
     case 'locked':
+    case 'exists':
     case 'owner-only':
     case 'not-found':
     case 'partial':
@@ -253,7 +258,11 @@ function jsonRequest(method: string, request: ToolSourceRequest): RequestInit {
   return {
     method,
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ source: request.source, credentials: request.credentials }),
+    body: JSON.stringify({
+      source: request.source,
+      credentials: request.credentials,
+      ...(request.create === true ? { create: true } : {}),
+    }),
   };
 }
 
@@ -342,6 +351,7 @@ export function toolSourceFaultTreatment(error: unknown): FaultTreatment {
       return { kind: 'unauthorized', message, mode: 'forbidden' };
     case 'not-found':
       return { kind: 'not-found', message };
+    case 'exists':
     case 'invalid':
       return { kind: 'invalid', message, fieldErrors: [] };
     case 'partial':

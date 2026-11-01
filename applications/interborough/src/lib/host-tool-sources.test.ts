@@ -268,6 +268,24 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
     ]);
   });
 
+  test('ask a connect not to replace a source when the page says so, and read the host’s refusal', async () => {
+    const created = recording(() =>
+      Response.json({ error: 'exists', field: 'id', message: 'Already saved.' }, { status: 409 }),
+    );
+
+    const failure = await failureOf(
+      connectToolSource('notes', { ...request, create: true }, { fetch: created.fetch }),
+    );
+
+    expect(JSON.parse(created.seen[0]?.body ?? '{}')).toMatchObject({ create: true });
+    expect(failure).toMatchObject({ kind: 'exists', message: 'Already saved.' });
+    const plain = recording(() =>
+      Response.json({ id: 'notes', changed: true, restartRequired: true }),
+    );
+    await connectToolSource('notes', request, { fetch: plain.fetch });
+    expect(JSON.parse(plain.seen[0]?.body ?? '{}')).not.toHaveProperty('create');
+  });
+
   test('read each outcome of a probe', async () => {
     const answer = async (body: unknown) =>
       probeToolSource('notes', request, { fetch: recording(() => Response.json(body)).fetch });
@@ -307,7 +325,7 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
 
     expect(failure).toBeInstanceOf(HostToolSourceError);
     expect(failure).toMatchObject({ kind: 'invalid', field: 'credentials.token' });
-    expect(String((failure as Error).message)).not.toContain('a-value');
+    expect((failure as Error).message).not.toContain('a-value');
     const owner = recording(() =>
       Response.json({ error: 'owner-only', message: 'Only the owner may.' }, { status: 403 }),
     );

@@ -3799,6 +3799,7 @@ export const CAPABILITIES_COPY = {
     /** What a refusal says when the host sent no words of its own. */
     refusal: {
       locked: 'This host keeps its configuration in its deployment, so it cannot be changed here.',
+      exists: 'A source with that name is already saved.',
       'owner-only': 'Only the owner can do this.',
       'not-found': 'The host has no such source.',
       invalid: 'The host did not accept the value.',
@@ -3852,7 +3853,6 @@ export const CAPABILITIES_COPY = {
         chosen: (name: string): string => `Using ${name}`,
         tooLarge: 'That file is larger than 3 MB.',
         unreadable: 'That file could not be read.',
-        remove: 'Choose another file',
       },
       baseUrl: {
         label: 'Base URL',
@@ -3881,7 +3881,6 @@ export const CAPABILITIES_COPY = {
       },
       probe: {
         action: 'Test connection',
-        stale: 'You changed the form after this test.',
         listed: (count: number): string =>
           count === 0
             ? 'It answered and lists no tools.'
@@ -3901,8 +3900,6 @@ export const CAPABILITIES_COPY = {
       failed: 'The source could not be connected',
       exists: (id: string): string =>
         `A source named ${id} is already saved. Choose another name, or remove it first.`,
-      locked:
-        'This host keeps its configuration in its deployment, so a source cannot be connected here.',
       errors: {
         idRequired: 'Give the source a name.',
         idInvalid: 'Use 1 to 20 lowercase letters, digits or hyphens, starting with a letter.',

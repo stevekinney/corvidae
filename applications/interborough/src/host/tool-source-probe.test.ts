@@ -118,7 +118,8 @@ describe('probing an MCP server', () => {
     expect(home.state.secrets.size).toBe(0);
     expect(home.state.configuration).toBeUndefined();
     expect(audited).toEqual([]);
-    expect((await manager.snapshot()).sources).toEqual([]);
+    const { sources } = await manager.snapshot();
+    expect(sources).toEqual([]);
     expect(server.authorizations).toContain(`Bearer ${TOKEN}`);
   });
 
@@ -138,7 +139,7 @@ describe('probing an MCP server', () => {
     expect(text).not.toContain('the-wrong-token-value');
     expect(text).not.toContain(TOKEN);
     expect(text).not.toContain('127.0.0.1');
-    expect(text).not.toContain(String(new URL(server.origin).port));
+    expect(text).not.toContain(new URL(server.origin).port);
     expect(probe).toMatchObject({ message: expect.stringContaining('could not be reached') });
   });
 
@@ -336,9 +337,13 @@ describe('a probe of a source that never answers', () => {
       started.push(...found);
       return found;
     };
-    await waitUntil(async () => (await pids()).length > 0, {
-      message: 'the command to start',
-    });
+    await waitUntil(
+      async () => {
+        const found = await pids();
+        return found.length > 0;
+      },
+      { message: 'the command to start' },
+    );
     // The product option is the deadline the probe asked for; this is that deadline passing.
     expect(deadlines.map((deadline) => deadline.milliseconds)).toEqual([1234]);
     deadlines[0]?.expire();

@@ -33,6 +33,10 @@ export type FakeToolSources = {
   restart: Response;
   /** Whether a `202` really restarts the host, so the sources waiting for it load. Off: nothing supervises it. */
   restartApplies: boolean;
+  /** Makes `POST /host/restart` fail as a connection that dropped does. */
+  restartUnreachable: boolean;
+  /** How many reads of the list fail, as the host's do while it is stopped. */
+  downReads: number;
   /** How many times the host was asked to restart. */
   restarts: number;
   /** Makes the next write answer with this response instead of making the change. */
@@ -87,6 +91,8 @@ export function fakeToolSources(initial: {
     probe: { outcome: 'listed', tools: [], skipped: [] },
     restart: Response.json({ restarting: true }, { status: 202 }),
     restartApplies: true,
+    restartUnreachable: false,
+    downReads: 0,
     restarts: 0,
     agents: initial.agents ?? {},
     ...(initial.lockReason === undefined ? {} : { lockReason: initial.lockReason }),
@@ -99,6 +105,7 @@ export function fakeToolSources(initial: {
     if (path === '/host/restart' && method === 'POST') {
       host.requests.push({ method, path, body });
       host.restarts += 1;
+      if (host.restartUnreachable) throw new TypeError('The connection dropped.');
       const answer = host.restart.clone();
       if (answer.status === 202 && host.restartApplies) {
         // The host starts again with every saved source loaded.
@@ -123,6 +130,12 @@ export function fakeToolSources(initial: {
       return refusal ?? Response.json(host.probe);
     }
     if (method === 'PUT' && rest === undefined && id !== undefined) {
+      if ((body as { create?: boolean }).create === true && found !== undefined) {
+        return Response.json(
+          { error: 'exists', field: 'id', message: `Tool source "${id}" is already saved.` },
+          { status: 409 },
+        );
+      }
       const saved = (
         body as {
           source: { kind: 'mcp' | 'openapi'; transport?: { authentication?: { type: string } } };
@@ -145,6 +158,10 @@ export function fakeToolSources(initial: {
         },
       ];
       return Response.json({ id, changed: true, restartRequired: true });
+    }
+    if (id === undefined && method === 'GET' && host.downReads > 0) {
+      host.downReads -= 1;
+      return new Response('down', { status: 503 });
     }
     if (id === undefined) {
       return Response.json({

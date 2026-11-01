@@ -9,8 +9,9 @@
    *
    * The form belongs to this dialog and to nothing the page reads, so a refetch of the sources never
    * touches it. What the page knows that the form depends on is whether the name is taken, and
-   * Connect reads the list again before it saves, so a source another tab saved under the same name
-   * in the meantime is reported with the form intact instead of being replaced.
+   * Connect asks the host to add the source only if the name is free (`create`), so a source another
+   * tab saved under the same name in the meantime is reported with the form intact instead of being
+   * replaced.
    *
    * A token or key lives in its field until the request is built and is cleared when the dialog
    * closes. It is never put in a message: the host words a refusal in terms of the field, and a probe
@@ -23,7 +24,6 @@
   import { showToast } from '../../app/toast-host.svelte';
   import {
     connectToolSource,
-    getToolSources,
     HostToolSourceError,
     probeToolSource,
     toolSourceFaultTreatment,
@@ -124,35 +124,29 @@
 
   const currentProbe = $derived(tested?.signature === signature ? tested.probe : undefined);
 
-  class SourceExistsError extends Error {}
-
   const test = createMutation(() => ({
     mutationFn: ({ name, request }: Ready) => probeToolSource(name, request),
     onSuccess: (probe, ready) => {
       tested = { signature: JSON.stringify(ready.request), probe };
     },
-    onError: (error: unknown, ready) => refuse(error, ready.name, copy.probe.failed),
+    onError: (error: unknown) => refuse(error, copy.probe.failed),
   }));
 
   const connect = createMutation(() => ({
-    mutationFn: async ({ name, request }: Ready) => {
-      // Read again, so a source saved elsewhere since this page listed them is not replaced.
-      const latest = await getToolSources();
-      if (latest.sources.some((source) => source.id === name)) throw new SourceExistsError();
-      return connectToolSource(name, request);
-    },
+    // `create`: the host refuses a name another tab saved since this page listed the sources.
+    mutationFn: ({ name, request }: Ready) => connectToolSource(name, { ...request, create: true }),
     onSuccess: async (_change, ready) => {
       showToast(copy.connected(ready.name));
       await queryClient.invalidateQueries({ queryKey: queryKeys.toolSources.list() });
       onConnected(ready.name);
     },
     onError: async (error: unknown, ready) => {
-      if (error instanceof SourceExistsError) {
+      if (error instanceof HostToolSourceError && error.kind === 'exists') {
         hostError = { field: 'id', message: copy.exists(ready.name) };
         await queryClient.invalidateQueries({ queryKey: queryKeys.toolSources.list() });
         return;
       }
-      refuse(error, ready.name, copy.failed);
+      refuse(error, copy.failed);
     },
   }));
 
@@ -162,7 +156,7 @@
   };
 
   /** Puts a refusal where it belongs: under the field the host named, or in words for the whole request. */
-  function refuse(error: unknown, name: string, lead: string): void {
+  function refuse(error: unknown, lead: string): void {
     const treatment = toolSourceFaultTreatment(error);
     const field =
       error instanceof HostToolSourceError && error.kind === 'invalid' && error.field !== undefined
@@ -173,23 +167,22 @@
       return;
     }
     failure = `${lead}. ${treatment.message}`;
-    void name;
   }
 
   /** The request, when the form can make one and the name is free; otherwise the fields are named. */
-  function ready(): Ready | undefined {
+  function requestToSend(): Ready | undefined {
     submitted = true;
     if (!('request' in built) || taken) return undefined;
     return { name: built.id, request: built.request };
   }
 
   function runTest(): void {
-    const target = ready();
+    const target = requestToSend();
     if (target !== undefined) test.mutate(target);
   }
 
   function runConnect(): void {
-    const target = ready();
+    const target = requestToSend();
     if (target !== undefined) connect.mutate(target);
   }
 

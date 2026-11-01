@@ -6,7 +6,10 @@
  *   uses, and the names of its stored credentials. It never carries a credential or a URL.
  * - `PUT /host/tool-sources/<id>` with `{ "source": { … }, "credentials": { "<name>": "<value>" } }`
  *   connects a source, or replaces it. `source` is Armorer's description and its `id` must be `<id>`.
- *   A credential the description names and the host already holds may be left out.
+ *   A credential the description names and the host already holds may be left out. With
+ *   `"create": true` it only connects: a source already saved under `<id>` answers 409
+ *   `{ "error": "exists", "field": "id" }` and nothing changes, which is how a page that lists the
+ *   sources adds one without replacing one another tab saved a moment before.
  * - `POST /host/tool-sources/<id>/probe` with the same body as the `PUT` contacts a source that is not
  *   saved, with the credentials in the body and none from the host's vault, and answers 200 with
  *   `{ "outcome": "listed", "tools": [{ "name", "tool", "tier" }], "skipped": […] }`, or
@@ -38,7 +41,7 @@
  * restartRequired: true }` (a removal adds `affectedAgents`): the source's tools are listed when the host starts again. A refusal
  * because the home is remote answers 403 with `reason: "deployment"`; a local command asked for by
  * anyone but the owner answers 403 with `error: "owner-only"`; a source the configuration does not
- * list answers 404; a request or configuration that cannot be used answers 400 naming the field;
+ * list answers 404; a source that `create` would replace answers 409; a request or configuration that cannot be used answers 400 naming the field;
  * a change that was applied but not recorded in the audit trail, or left half done, answers 500
  * with `error: "partial"`; anything else answers 500 with a message that names no value.
  *
@@ -49,6 +52,7 @@ import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   HOST_OAUTH_CALLBACK_ROUTE,
   ToolSourceAuditError,
+  ToolSourceExistsError,
   ToolSourceInputError,
   ToolSourceOwnerOnlyError,
   ToolSourcePartialChangeError,
@@ -113,6 +117,9 @@ function refusalOf(error: unknown): Response | undefined {
       { error: 'locked', reason: 'deployment', message: error.message },
       { status: 403 },
     );
+  }
+  if (error instanceof ToolSourceExistsError) {
+    return Response.json({ error: 'exists', field: 'id', message: error.message }, { status: 409 });
   }
   if (error instanceof ToolSourceOwnerOnlyError) {
     return Response.json({ error: 'owner-only', message: error.message }, { status: 403 });
@@ -207,6 +214,7 @@ export function toolSourceRoutes(
             source: body['source'],
             credentials: body['credentials'],
             principal: options.principal(request),
+            createOnly: body['create'] === true,
           });
         }),
       DELETE: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_ROUTE>) =>

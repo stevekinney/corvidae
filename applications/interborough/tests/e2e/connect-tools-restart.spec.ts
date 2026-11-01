@@ -25,12 +25,24 @@ const SOURCES = '/capabilities?tab=sources';
 
 const escapeForPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const dialog = (page: Page) => page.getByTestId('connect-form');
+/** Connect, in the dialog's footer; its name is exact because the page's own button is Connect a source. */
+const saveButton = (page: Page) =>
+  page.getByRole('dialog').getByRole('button', { name: copy.connect.actions.connect, exact: true });
 const detail = (page: Page) => page.getByTestId('source-detail');
 
 async function originsOf(request: APIRequestContext): Promise<ConnectOrigins> {
   const response = await request.get(`${E2E_BARRIER_URL}/connect/origins`);
   expect(response.ok()).toBe(true);
   return (await response.json()) as ConnectOrigins;
+}
+
+/** The sources the host reports, as the specification reads them. */
+async function snapshotOf(request: APIRequestContext) {
+  const response = await request.get('/host/tool-sources');
+  expect(response.ok()).toBe(true);
+  return (await response.json()) as {
+    sources: { id: string; state: string; authorized?: boolean }[];
+  };
 }
 
 async function openDialog(page: Page): Promise<void> {
@@ -47,7 +59,8 @@ async function fillMcp(page: Page, id: string, url: string): Promise<void> {
 
 async function bearer(page: Page, token: string): Promise<void> {
   await dialog(page).getByRole('radio', { name: copy.connect.authentication.bearer }).check();
-  await dialog(page).getByLabel(copy.connect.secret.bearer.label).fill(token);
+  // The radio has the same name as the field, so the field is found by what it is.
+  await dialog(page).locator('#connect-secret').fill(token);
 }
 
 test('starts empty, and offers to connect a source', async ({ page, checkA11y }) => {
@@ -70,7 +83,7 @@ for (const width of [375, 1280] as const) {
     await dialog(page).getByRole('radio', { name: copy.connect.kind.openapi }).check();
     await dialog(page).getByLabel(copy.connect.id.label).fill('a'.repeat(20));
     await dialog(page).getByRole('radio', { name: copy.connect.authentication['api-key'] }).check();
-    await dialog(page).getByLabel(copy.connect.secret['api-key'].label).fill('k'.repeat(300));
+    await dialog(page).locator('#connect-secret').fill('k'.repeat(300));
 
     const overflow = await page.evaluate(() => ({
       document: document.documentElement.scrollWidth - window.innerWidth,
@@ -129,7 +142,7 @@ test('tests a server with its token, and lists the tools it offers before anythi
   await expect(page.locator('[data-probe-tool="notes__lookup"]')).toContainText('Reads only');
   await expect(page.locator('[data-probe-tool="notes__wipe"]')).toContainText('Dangerous');
   // Nothing was saved.
-  const saved = await (await request.get('/host/tool-sources')).json();
+  const saved = await snapshotOf(request);
   expect(saved).toMatchObject({ sources: [] });
 });
 
@@ -142,7 +155,7 @@ test('connects an MCP server and an OpenAPI service, which wait for a restart', 
   await openDialog(page);
   await fillMcp(page, 'notes', `${origins.bearerMcp}/`);
   await bearer(page, E2E_CONNECT_TOKEN);
-  await dialog(page).getByRole('button', { name: copy.connect.actions.connect }).click();
+  await saveButton(page).click();
 
   await expect(detail(page)).toHaveAttribute('data-source', 'notes');
   await expect(detail(page)).toHaveAttribute('data-state', 'pending-restart');
@@ -157,7 +170,7 @@ test('connects an MCP server and an OpenAPI service, which wait for a restart', 
   await dialog(page).getByLabel(copy.connect.baseUrl.label).fill(origins.pets);
   await page.getByRole('button', { name: copy.connect.probe.action }).click();
   await expect(page.getByTestId('connect-listed')).toHaveText(copy.connect.probe.listed(3));
-  await dialog(page).getByRole('button', { name: copy.connect.actions.connect }).click();
+  await saveButton(page).click();
 
   await expect(detail(page)).toHaveAttribute('data-source', 'pets');
   await expect(page.getByTestId('sources-restart')).toContainText(copy.restart.title(2));
@@ -165,7 +178,7 @@ test('connects an MCP server and an OpenAPI service, which wait for a restart', 
   await page.goto('/capabilities');
   await expect(page.locator('[data-view="capabilities"]')).toHaveAttribute('data-state', 'ready');
   await expect(page.locator('[data-tool-row="notes__lookup"]')).toHaveCount(0);
-  const stored = await (await request.get('/host/tool-sources')).json();
+  const stored = await snapshotOf(request);
   expect(JSON.stringify(stored)).not.toContain(E2E_CONNECT_TOKEN);
 });
 
@@ -177,7 +190,7 @@ test('connects an MCP server behind OAuth, and signing in completes', async ({ p
   await dialog(page).getByRole('radio', { name: copy.connect.authentication.oauth }).check();
   await page.getByRole('button', { name: copy.connect.probe.action }).click();
   await expect(page.getByTestId('connect-needs-authorization')).toBeVisible();
-  await dialog(page).getByRole('button', { name: copy.connect.actions.connect }).click();
+  await saveButton(page).click();
 
   await expect(detail(page)).toHaveAttribute('data-source', 'ledger');
   await expect(page.getByTestId('source-state-description')).toHaveText(copy.signIn.savedFirst);
@@ -193,9 +206,7 @@ test('connects an MCP server behind OAuth, and signing in completes', async ({ p
   await page.reload();
   await expect(page.getByTestId('source-state-description')).toHaveText(copy.signIn.signedIn);
   expect(await page.content()).not.toMatch(/access-|refresh-/);
-  const after = (await (await request.get('/host/tool-sources')).json()) as {
-    sources: { id: string; authorized?: boolean }[];
-  };
+  const after = await snapshotOf(request);
   expect(after.sources.find((source) => source.id === 'ledger')).toMatchObject({
     authorized: true,
   });
@@ -246,9 +257,7 @@ test('restarts the host, and the tools of every source it loaded are in Capabili
     await expect(page.locator(`[data-tool-row="${name}"]`)).toHaveCount(1);
   }
   await expect(page.locator('[data-tool-row^="ledger__"]').first()).toBeVisible();
-  const snapshot = (await (await request.get('/host/tool-sources')).json()) as {
-    sources: { id: string; state: string }[];
-  };
+  const snapshot = await snapshotOf(request);
   expect(snapshot.sources.map((source) => [source.id, source.state])).toEqual([
     ['notes', 'loaded'],
     ['pets', 'loaded'],

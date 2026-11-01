@@ -181,9 +181,8 @@ describe('Connect a source', () => {
 
     await fireEvent.click(buttonLabelled(copy.connect.probe.action));
 
-    expect((await findByTestId('connect-needs-authorization')).textContent).toContain(
-      copy.connect.probe.needsAuthorization,
-    );
+    const notice = await findByTestId('connect-needs-authorization');
+    expect(notice.textContent).toContain(copy.connect.probe.needsAuthorization);
     // An OAuth source holds no credential of its own.
     expect(requestsTo(host, 'POST', '/probe')[0]?.body).toMatchObject({
       source: { transport: { authentication: { type: 'oauth' } } },
@@ -250,6 +249,7 @@ describe('Connect a source', () => {
           authentication: { type: 'api-key', header: 'x-api-key', credential: 'key' },
         },
         credentials: { key: TOKEN },
+        create: true,
       },
     });
     await waitFor(() => expect(document_dialogGone()).toBe(true));
@@ -295,6 +295,7 @@ describe('Connect a source', () => {
         transport: { type: 'stdio', command: 'npx', args: ['-y', '@acme/server'] },
       },
       credentials: {},
+      create: true,
     });
   });
 
@@ -339,20 +340,22 @@ describe('Connect a source', () => {
     expect(field('connect-url').value).toBe(ADDRESS);
   });
 
-  test('refuses a name that is taken, before and after the list is read again', async () => {
+  test('refuses a name that is taken, and one another tab took after the list was read', async () => {
     const { host, findByText } = await openDialog({ sources: [source('notes')] });
     await fillBearerMcp();
     await findByText(copy.connect.exists('notes'));
     await fireEvent.click(buttonLabelled(copy.connect.actions.connect));
     expect(requestsTo(host, 'PUT')).toEqual([]);
 
-    // Another tab saves `fresh` after this page listed its sources: Connect reads the list again.
+    // Another tab saves `fresh` after this page listed its sources: the host refuses to replace it.
     await type('connect-id', 'fresh');
     host.sources = [...host.sources, source('fresh')];
     await fireEvent.click(buttonLabelled(copy.connect.actions.connect));
 
     await findByText(copy.connect.exists('fresh'));
-    expect(requestsTo(host, 'PUT')).toEqual([]);
+    expect(requestsTo(host, 'PUT')).toHaveLength(1);
+    expect(requestsTo(host, 'PUT')[0]?.body).toMatchObject({ create: true });
+    expect(host.sources.find((entry) => entry.id === 'fresh')?.state).toBe('loaded');
     // The form is as it was.
     expect(field('connect-url').value).toBe(ADDRESS);
     expect(field('connect-secret').value).toBe(TOKEN);
@@ -422,9 +425,47 @@ describe('after a source is saved', () => {
 
     await fireEvent.click(buttonLabelled(copy.restart.action));
 
-    expect((await findByTestId('sources-restart-unconfirmed')).textContent).toContain(
-      copy.restart.unconfirmed,
+    const notice = await findByTestId('sources-restart-unconfirmed');
+    expect(notice.textContent).toContain(copy.restart.unconfirmed);
+  });
+
+  test('says the host is back once it has been down, even if the source still shows as waiting', async () => {
+    const { host, findByTestId } = await openDialog();
+    await fillBearerMcp();
+    await fireEvent.click(buttonLabelled(copy.connect.actions.connect));
+    await findByTestId('sources-restart');
+    // The first two reads after the restart find the host stopped.
+    host.restartApplies = false;
+    host.downReads = 2;
+
+    await fireEvent.click(buttonLabelled(copy.restart.action));
+
+    await findByTestId('sources-restart-back');
+    expect(host.downReads).toBe(0);
+  });
+
+  test('says when the host would not take the request, or could not be reached', async () => {
+    const { host, findByTestId } = await openDialog();
+    await fillBearerMcp();
+    await fireEvent.click(buttonLabelled(copy.connect.actions.connect));
+    await findByTestId('sources-restart');
+
+    host.restart = Response.json({ error: 'failed' }, { status: 500 });
+    await fireEvent.click(buttonLabelled(copy.restart.action));
+    await waitFor(() =>
+      expect(
+        document.body.querySelector('[data-testid="sources-restart-refusal"]')?.textContent,
+      ).toContain(copy.restart.refusal.refused),
     );
+
+    host.restartUnreachable = true;
+    await fireEvent.click(buttonLabelled(copy.restart.action));
+    await waitFor(() =>
+      expect(
+        document.body.querySelector('[data-testid="sources-restart-refusal"]')?.textContent,
+      ).toContain(copy.restart.refusal.unreachable),
+    );
+    expect(host.restarts).toBe(2);
   });
 
   test('says why the host would not restart, and offers the restart again', async () => {
@@ -436,9 +477,8 @@ describe('after a source is saved', () => {
 
     await fireEvent.click(buttonLabelled(copy.restart.action));
 
-    expect((await findByTestId('sources-restart-refusal')).textContent).toContain(
-      copy.restart.refusal.locked,
-    );
+    const refusal = await findByTestId('sources-restart-refusal');
+    expect(refusal.textContent).toContain(copy.restart.refusal.locked);
     expect(buttonLabelled(copy.restart.action)).not.toBeNull();
   });
 

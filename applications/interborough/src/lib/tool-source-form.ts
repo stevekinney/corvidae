@@ -37,6 +37,7 @@ export type ToolSourceAuthenticationChoice = 'none' | 'bearer' | 'oauth' | 'api-
 
 /** Everything the dialog asks for. */
 export type ToolSourceForm = {
+  /** Whether the source is an MCP server or an OpenAPI service. */
   readonly kind: ToolSourceFormKind;
   /** The name the source is saved under, and the prefix of its tools. */
   readonly id: string;
@@ -50,11 +51,13 @@ export type ToolSourceForm = {
   readonly args: string;
   /** For an OpenAPI service: a URL to the document, or the document itself from a file. */
   readonly specification: ToolSourceSpecificationChoice;
+  /** The address of the OpenAPI document, when it is fetched. */
   readonly specificationUrl: string;
   /** The text of the OpenAPI file the person chose, or the empty string. */
   readonly document: string;
   /** Where the service is, when the document does not say. */
   readonly baseUrl: string;
+  /** How the source signs the request in. */
   readonly authentication: ToolSourceAuthenticationChoice;
   /** The bearer token or the API key. */
   readonly secret: string;
@@ -81,14 +84,7 @@ export const EMPTY_TOOL_SOURCE_FORM: ToolSourceForm = {
 
 /** The fields a missing value can be named for. */
 export type ToolSourceFormField =
-  | 'id'
-  | 'url'
-  | 'command'
-  | 'specificationUrl'
-  | 'document'
-  | 'baseUrl'
-  | 'secret'
-  | 'header';
+  'id' | 'url' | 'command' | 'specificationUrl' | 'document' | 'baseUrl' | 'secret' | 'header';
 
 /** What building a request came to: the request, or the fields that need a value. */
 export type ToolSourceFormResult =

@@ -10,6 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import {
   createToolSourceManager,
   ToolSourceAuditError,
+  ToolSourceExistsError,
   ToolSourceInputError,
   ToolSourcePartialChangeError,
   ToolSourceWriteLockedError,
@@ -492,5 +493,80 @@ describe('a local command that is edited', () => {
     expect(await failureOf(connectShell(manager, moved))).toBeInstanceOf(ToolSourceInputError);
     const supplied = await connectShell(manager, moved, { tok: 'fresh', other: 'fresh-other' });
     expect(supplied.changed).toBe(true);
+  });
+});
+
+describe('a connection that must not replace (COR-1991)', () => {
+  test('is refused when the identifier is already saved, and changes nothing', async () => {
+    const home = memoryHome();
+    const { manager, audited } = await managerOver(home);
+    await connect(manager, 'first-key');
+    const secretBefore = home.state.secrets.get(toolSourceSecretKey('pets'));
+    const configurationBefore = home.state.configuration;
+    const auditedBefore = audited.length;
+
+    const failure = await failureOf(
+      manager.connect({
+        id: 'pets',
+        source: changedPets,
+        credentials: { key: 'second-key' },
+        principal: owner,
+        createOnly: true,
+      }),
+    );
+
+    expect(failure).toBeInstanceOf(ToolSourceExistsError);
+    expect((failure as Error).message).not.toContain('second-key');
+    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).toBe(secretBefore);
+    expect(home.state.configuration).toBe(configurationBefore);
+    expect(audited).toHaveLength(auditedBefore);
+  });
+
+  test('lets only one of two requests for a new identifier through', async () => {
+    const { manager } = await managerOver(memoryHome());
+    const request = {
+      id: 'pets',
+      source: petsSource(),
+      credentials: { key: 'k' },
+      principal: owner,
+      createOnly: true,
+    };
+
+    const outcomes = await Promise.allSettled([manager.connect(request), manager.connect(request)]);
+
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const rejected = outcomes.find((outcome) => outcome.status === 'rejected');
+    expect(rejected?.status === 'rejected' ? rejected.reason : undefined).toBeInstanceOf(
+      ToolSourceExistsError,
+    );
+  });
+
+  test('still replaces a source when it is not asked to create', async () => {
+    const { manager } = await managerOver(memoryHome());
+    await connect(manager, 'first-key');
+
+    const change = await connect(manager, 'second-key', 'pets', changedPets);
+
+    expect(change.changed).toBe(true);
+  });
+
+  test('answers 409 on the route, naming the field', async () => {
+    const { manager } = await managerOver(memoryHome());
+    await connect(manager, 'first-key');
+    const routes = toolSourceRoutes(manager, () => undefined, { principal: () => owner });
+    const request = Object.assign(
+      new Request('http://127.0.0.1/host/tool-sources/pets', {
+        method: 'PUT',
+        body: JSON.stringify({ source: petsSource(), credentials: { key: 'k' }, create: true }),
+      }),
+      { params: { id: 'pets' } },
+    );
+
+    const response = await routes['/host/tool-sources/:id'].PUT(
+      request as unknown as Bun.BunRequest<'/host/tool-sources/:id'>,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: 'exists', field: 'id' });
   });
 });
