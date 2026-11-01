@@ -70,6 +70,7 @@ import {
   type StoredTaskOrigin,
   type TaskOrigin,
   type TaskOriginKind,
+  taskOriginParentContextOf,
   taskOriginParentOf,
   taskOriginView,
 } from './task-origin';
@@ -223,6 +224,15 @@ export interface TaskRecord {
    * rule, because nothing says whose it is.
    */
   readonly ownerProcess?: string | undefined;
+  /**
+   * COR-1987 — when the run said it would wake, if it parked on a `scheduleWakeup` and has not
+   * since parked on something else: epoch milliseconds, as the run's own `schedule.wakeup` record
+   * dates it. It is kept on the record, not in memory, because a sleeping run outlives the process
+   * that announced the wakeup. It is a claim about the future, not a status: the view shows it only
+   * while it still holds ({@link TaskView.wakeAt}). Absent for a task that has none, and in a
+   * record written before it was kept.
+   */
+  readonly pendingWakeup?: { readonly wakeAt: number } | undefined;
 }
 
 /**
@@ -307,6 +317,14 @@ export interface TaskView {
   readonly updatedAt: string;
   readonly cleanup: TaskCleanupState | null;
   readonly openWaits: readonly TaskOpenWait[];
+  /**
+   * COR-1987 — when the run is due to wake, as an ISO 8601 instant, while it is parked on a
+   * `scheduleWakeup`: the task is `working`, the time is still ahead on the registry's clock, and
+   * no human wait is open. `null` otherwise, and always for a settled task, so a reader never
+   * shows a wakeup that has fired, been replaced by a wait for a person, or been overtaken by the
+   * end of the run. It carries no note: a view never holds message text.
+   */
+  readonly wakeAt: string | null;
 }
 
 /** What a context is doing, from its latest live task. */
@@ -409,6 +427,12 @@ export interface TaskListQuery<T = TaskView> {
   /** Only the subordinate tasks of this run (COR-1868); see {@link taskOriginParentOf}. */
   readonly parentRunId?: string | undefined;
   /**
+   * Only the child runs started from a run in this context (COR-1987): tasks of origin `agent`
+   * whose recorded `parentContextId` is this. A reloaded chat reads the children of every run in
+   * its thread this way. Matches no other kind of task, and no child whose parent had no context.
+   */
+  readonly parentContextId?: string | undefined;
+  /**
    * Only the tasks that share a parent run with this task, this task excluded. Matches nothing
    * when the task is absent, outside the caller's reach (`owner`), or has no parent run. It is
    * resolved once, when the listing starts.
@@ -445,6 +469,8 @@ export interface TaskQuery {
   readonly origin?: TaskOriginKind | undefined;
   /** See {@link TaskListQuery.parentRunId}. */
   readonly parentRunId?: string | undefined;
+  /** See {@link TaskListQuery.parentContextId}. */
+  readonly parentContextId?: string | undefined;
   /** See {@link TaskListQuery.siblingsOf}. */
   readonly siblingsOf?: string | undefined;
   /** See {@link TaskListQuery.topLevelOnly}. */
@@ -478,6 +504,14 @@ export interface TaskRegistry {
    * holds afterwards: the one it already had, or `tools`. `undefined` when there is no record.
    */
   recordToolGrant(taskId: string, tools: TaskToolGrant): Promise<TaskToolGrant | undefined>;
+  /**
+   * COR-1987 — records when a task's run said it would wake (`wakeAt`, epoch milliseconds), or
+   * clears it with `null`, which a run parking on something other than a wakeup does. It replaces
+   * any earlier time, writes nothing for a task with no record, and does not count as a change of
+   * the record: it moves no `revision`, and no listing key. {@link TaskView.wakeAt} decides
+   * whether the recorded time still shows.
+   */
+  recordWakeup(taskId: string, wakeAt: number | null): Promise<void>;
   /** Removes a record whose task never started. */
   discard(taskId: string): Promise<void>;
   /**
@@ -868,6 +902,10 @@ function isCleanupAcknowledgement(value: unknown): boolean {
   return value['status'] !== 'unresolved' || UNRESOLVED_REASONS.has(value['reason']);
 }
 
+function isPendingWakeup(value: unknown): boolean {
+  return isRecord(value) && typeof value['wakeAt'] === 'number' && Number.isFinite(value['wakeAt']);
+}
+
 /** Whether a stored value is a task record in every field a reader depends on. */
 function isTaskRecord(value: unknown): value is TaskRecord {
   return (
@@ -881,6 +919,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
     (value['ownerProcess'] === undefined || typeof value['ownerProcess'] === 'string') &&
+    (value['pendingWakeup'] === undefined || isPendingWakeup(value['pendingWakeup'])) &&
     (value['origin'] === undefined || isStoredTaskOrigin(value['origin'])) &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
@@ -914,6 +953,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   const watchers = new Map<string, Promise<TaskCleanupState>>();
   /** Where each followed task's cleanup stands, set as soon as its acknowledgement arrives. */
   const observed = new Map<string, TaskCleanupState>();
+  /** The latest wakeup write queued for each task, so a task's wakeup writes apply in order (COR-1987). */
+  const wakeupWrites = new Map<string, Promise<void>>();
   /** Who is waiting to be told a task has settled (COR-1482). */
   const settledListeners = new Map<string, Set<SettledListener>>();
   /** Who is waiting to be told a task's view changed (COR-1596). */
@@ -1044,6 +1085,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const updatedAt =
       record.settled?.at ??
       (live?.updatedAt === undefined ? record.createdAt : new Date(live.updatedAt).toISOString());
+    // COR-1987 — a recorded wakeup is shown only while it still holds.
+    const wakeAt =
+      status === 'working' &&
+      record.pendingWakeup !== undefined &&
+      record.pendingWakeup.wakeAt > Date.parse(clock.nowISO())
+        ? new Date(record.pendingWakeup.wakeAt).toISOString()
+        : null;
     return {
       id: record.taskId,
       contextId: record.contextId,
@@ -1059,6 +1107,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       updatedAt,
       cleanup,
       openWaits,
+      wakeAt,
     };
   }
 
@@ -1100,7 +1149,14 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   async function matchingViews(
     query: Pick<
       TaskQuery,
-      'owner' | 'contextId' | 'agentName' | 'status' | 'origin' | 'parentRunId' | 'topLevelOnly'
+      | 'owner'
+      | 'contextId'
+      | 'agentName'
+      | 'status'
+      | 'origin'
+      | 'parentRunId'
+      | 'parentContextId'
+      | 'topLevelOnly'
     >,
     siblings: TaskListingSiblings | null,
   ): Promise<TaskView[]> {
@@ -1127,6 +1183,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
     if (query.parentRunId !== undefined) {
       records = records.filter((record) => taskOriginParentOf(record.origin) === query.parentRunId);
+    }
+    if (query.parentContextId !== undefined) {
+      records = records.filter(
+        (record) => taskOriginParentContextOf(record.origin) === query.parentContextId,
+      );
     }
     if (siblings !== null) {
       const { of, parent } = siblings;
@@ -1168,6 +1229,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       status: query.status ?? null,
       origin: query.origin ?? null,
       parentRunId: query.parentRunId ?? null,
+      parentContextId: query.parentContextId ?? null,
       siblingsOf: query.siblingsOf ?? null,
       topLevelOnly: query.topLevelOnly === true,
       statusTimestampAfter:
@@ -1607,6 +1669,34 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         false,
       );
       return held;
+    },
+
+    async recordWakeup(taskId, wakeAt) {
+      // One task's wakeup writes apply in the order they were asked: a run's `schedule.wakeup` and
+      // the human-wait park that clears it can arrive within one step, and two compare-and-swap
+      // loops racing would otherwise let the earlier one commit last.
+      const write = (wakeupWrites.get(taskId) ?? Promise.resolve()).then(() =>
+        update(
+          taskId,
+          (record) => {
+            if (wakeAt === null) {
+              if (record.pendingWakeup === undefined) return undefined;
+              const { pendingWakeup: _cleared, ...rest } = record;
+              return rest;
+            }
+            return record.pendingWakeup?.wakeAt === wakeAt
+              ? undefined
+              : { ...record, pendingWakeup: { wakeAt } };
+          },
+          false,
+        ),
+      );
+      const release = (): void => {
+        if (wakeupWrites.get(taskId) === settled) wakeupWrites.delete(taskId);
+      };
+      const settled: Promise<void> = write.then(release, release);
+      wakeupWrites.set(taskId, settled);
+      await track(write);
     },
 
     async discard(taskId) {

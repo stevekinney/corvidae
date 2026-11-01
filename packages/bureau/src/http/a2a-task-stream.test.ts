@@ -28,6 +28,7 @@ const VIEW: TaskView = {
   updatedAt: '2026-10-22T00:00:00.000Z',
   cleanup: null,
   openWaits: [],
+  wakeAt: null,
 };
 
 function envelope(sequence: number, kind: string, payload: unknown = {}): DurableEventEnvelope {

@@ -5384,6 +5384,42 @@ async function constructBureau<const D extends AgentDefinitions>(
     }),
   );
 
+  /**
+   * COR-1987 — keeps a task's pending wakeup on its record, so a reload can read it back: a
+   * `schedule.wakeup` record sets it from the time the run announced, and the run parking on a
+   * human wait clears it, because the run then waits for a person, not the clock. A wakeup that
+   * has fired, or a run that ended, needs no write: the task's view shows a wakeup only while the
+   * task is working and the time is still ahead.
+   */
+  function recordTaskWakeup(action: {
+    readonly runId: string;
+    readonly type: string;
+    readonly detail: unknown;
+  }): void {
+    let wakeAt: number | null;
+    if (action.type === 'schedule.wakeup') {
+      const detail =
+        action.detail !== null && typeof action.detail === 'object'
+          ? (action.detail as Record<string, unknown>)
+          : {};
+      const announced = detail['wakeAt'];
+      if (typeof announced !== 'number' || !Number.isFinite(announced)) return;
+      wakeAt = announced;
+    } else if (action.type === 'multiagent.human-wait.parked') {
+      wakeAt = null;
+    } else {
+      return;
+    }
+    tasks.recordWakeup(action.runId, wakeAt).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not record the wakeup of task "${action.runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
+  }
+
   /** COR-1481 — records how a task ended, from the action that ended its run. */
   function recordTaskSettlement(action: {
     readonly runId: string;
@@ -5787,6 +5823,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           break;
         }
         recordTaskSettlement(storeActionEvent.action);
+        recordTaskWakeup(storeActionEvent.action);
         // COR-1302: a `bureau.run()` run is on `store` only so `getRun` and
         // `abortRun` resolve its id. Its actions stay off this bureau's
         // `'action'` stream and live frames, as they were before it was

@@ -118,6 +118,14 @@ export const taskViewSchema = z.object({
       z.object({ kind: z.literal('tool-approval'), reviewId: z.string(), callId: z.string() }),
     ]),
   ),
+  /**
+   * When the run is due to wake (COR-1987), as an ISO 8601 instant, while it is parked on a
+   * `scheduleWakeup`: the task is `working`, the time is still ahead, and no human wait is open.
+   * `null` otherwise, a settled task and a wakeup that has fired included. A reload reads this to
+   * show a pending wakeup the live announcement can no longer carry. It never carries the note the
+   * run left for itself: a task view holds no message text.
+   */
+  wakeAt: z.string().nullable(),
 });
 
 /** The paging fields the list operations share. */

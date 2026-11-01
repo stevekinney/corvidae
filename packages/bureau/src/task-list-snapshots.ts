@@ -12,7 +12,7 @@
  * windows: each window is its own record, built fresh, strictly after the key of the previous
  * window's last entry, and all windows of one listing share one expiry.
  *
- * Keys are `bureau-task-listing:v4:<principal>:<expiry>:<listing>:<window>`, so the sweep that
+ * Keys are `bureau-task-listing:v5:<principal>:<expiry>:<listing>:<window>`, so the sweep that
  * deletes expired records and the per-principal cap read keys alone, never a record.
  *
  * @module task-list-snapshots
@@ -24,10 +24,11 @@ import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lost
  * The key prefix of a task-listing snapshot. A snapshot stores whole task views, so the version
  * moves with the view's shape: `v2` (COR-1689) added `kind`, `v3` (COR-1867) added `origin`, and `v4`
  * (COR-1868) widened the origin union and added the parent filters to the page token's binding, and
- * a snapshot of an earlier version is never read as a view that lacks them. A record of an earlier
+ * `v5` (COR-1987) added `wakeAt` and the `parentContextId` filter; a snapshot of an earlier version
+ * is never read as a view that lacks them. A record of an earlier
  * version left in storage is not read, and is not swept.
  */
-export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v4:';
+export const TASK_LISTING_KEY_PREFIX = 'bureau-task-listing:v5:';
 
 /** How long a listing's tokens work, counted from the moment its first page was served. */
 export const TASK_LISTING_LIFETIME_MILLISECONDS = 15 * 60 * 1000;
@@ -73,6 +74,8 @@ export interface TaskListingFilters {
   readonly origin: string | null;
   /** Only the subordinate tasks of this run (COR-1868). */
   readonly parentRunId: string | null;
+  /** Only the child runs started from a run in this context (COR-1987). */
+  readonly parentContextId: string | null;
   /** Only the tasks sharing a parent run with this task (COR-1868). */
   readonly siblingsOf: string | null;
   /** Only top-level tasks: those a person, a schedule or the API started (COR-1868). */
@@ -242,6 +245,7 @@ function sameFilters(left: TaskListingFilters, right: TaskListingFilters): boole
     left.status === right.status &&
     left.origin === right.origin &&
     left.parentRunId === right.parentRunId &&
+    left.parentContextId === right.parentContextId &&
     left.siblingsOf === right.siblingsOf &&
     left.topLevelOnly === right.topLevelOnly &&
     left.statusTimestampAfter === right.statusTimestampAfter

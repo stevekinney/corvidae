@@ -30,6 +30,7 @@ const task = (change: Partial<TaskView> = {}): TaskView => ({
   updatedAt: '2026-10-30T12:00:01.000Z',
   cleanup: null,
   openWaits: [],
+  wakeAt: null,
   ...change,
 });
 
