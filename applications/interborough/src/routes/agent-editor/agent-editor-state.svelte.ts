@@ -7,14 +7,16 @@
  * unchanged. The `hash` says which version of the file the form was filled from, and every write
  * names it, so a file that changed since is refused rather than overwritten.
  */
-import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+import { AGENT_EDITOR_COPY, EFFORT_LABELS } from '../../app/copy.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   AGENT_IDENTIFIER_PATTERN,
+  EFFORTS,
   type AgentCatalog,
   type AgentDefinitionInput,
   type AgentDetail,
   type AgentSkill,
+  type Effort,
   type IdentifierConflictReason,
   type ToolApproval,
 } from '../../lib/agent-definitions.ts';
@@ -189,10 +191,19 @@ export class AgentEditorState {
   /** The model the file wrote, and the option it names, so an unchanged model is written back as it was. */
   readonly #writtenModel: string;
   readonly #writtenModelOption: string;
+  /** The effort the file wrote, so a cleared field is sent as `null` (which removes it) and not left out. */
+  readonly #writtenEffort: Effort | null;
 
   name = $state('');
   description = $state('');
-  model = $state('');
+  #model = $state('');
+  /**
+   * The effort a chat of the agent starts at, or `''` for none. The default model must support it
+   * (`effortChoices`); choosing another model clears one the new model cannot do.
+   */
+  defaultEffort = $state<Effort | ''>('');
+  /** The effort a change of model cleared, and the model that could not do it, until another is chosen. */
+  #clearedEffort = $state<{ readonly effort: Effort; readonly model: string } | null>(null);
   tools = $state<string[]>([]);
   instructions = $state('');
   /** The hash of the file this form was filled from; every write names it. `null` for a new agent. */
@@ -259,6 +270,7 @@ export class AgentEditorState {
     this.skillDescriptors = definition?.skillDescriptors ?? [];
     this.allowedSkills = definition?.allowedSkills ?? null;
     this.models = definition?.models ?? null;
+    this.#writtenEffort = definition?.defaultEffort ?? null;
     this.#warnAt = definition?.costBudget?.warnAt;
     this.#toolApproval = definition?.toolApproval ?? null;
     this.references = definition?.references ?? [];
@@ -280,16 +292,17 @@ export class AgentEditorState {
       listed === '' && this.#writtenModel !== '' ? this.#writtenModel : undefined,
     );
     if (definition === null) {
-      this.model = firstAvailableModel(this.modelGroups);
+      this.#model = firstAvailableModel(this.modelGroups);
       return;
     }
     this.name = definition.name;
     this.description = definition.description ?? '';
     // A copy of an agent that names no model (a scripted one) starts on the first model offered.
-    this.model =
+    this.#model =
       this.#writtenModelOption === ''
         ? firstAvailableModel(this.modelGroups)
         : this.#writtenModelOption;
+    this.defaultEffort = this.#writtenEffort ?? '';
     this.tools = [...definition.tools];
     if (mode === 'create') this.#seededTools = definition.tools;
     this.instructions = definition.instructions;
@@ -396,6 +409,56 @@ export class AgentEditorState {
     return this.#catalogHasModels;
   }
 
+  /** The model the form has chosen, written `<provider>/<model>`, or `''` while it has none. */
+  get model(): string {
+    return this.#model;
+  }
+
+  /**
+   * Chooses the model. An effort the new model does not support is cleared, with a notice
+   * (`effortNotice`); a model the catalog lacks is not judged, so the file's effort stays as written.
+   */
+  set model(next: string) {
+    this.#model = next;
+    this.#clearedEffort = null;
+    const portable = this.chosenModel?.row?.effort.portable;
+    if (
+      this.defaultEffort !== '' &&
+      portable !== undefined &&
+      !portable.includes(this.defaultEffort)
+    ) {
+      this.#clearedEffort = { effort: this.defaultEffort, model: next };
+      this.defaultEffort = '';
+    }
+  }
+
+  /**
+   * The efforts the chosen model supports, from least to most, which the field offers. Empty for a
+   * model with no effort control, and for one the catalog lacks, which cannot be judged.
+   */
+  get effortChoices(): readonly Effort[] {
+    const portable = this.chosenModel?.row?.effort.portable;
+    return portable === undefined ? [] : EFFORTS.filter((effort) => portable.includes(effort));
+  }
+
+  /**
+   * Why the effort cannot be saved with the chosen model, in words, or `''`. Only the effort a file
+   * already holds can be unsupported: a change of model clears it, and the field offers no other.
+   */
+  get effortError(): string {
+    const effort = this.defaultEffort;
+    const portable = this.chosenModel?.row?.effort.portable;
+    if (effort === '' || portable === undefined || portable.includes(effort)) return '';
+    return AGENT_EDITOR_COPY.effort.unsupported(EFFORT_LABELS[effort], this.model);
+  }
+
+  /** What a change of model did to the effort, in words, or `''` when it cleared none. */
+  get effortNotice(): string {
+    const cleared = this.#clearedEffort;
+    if (cleared === null || this.defaultEffort !== '') return '';
+    return AGENT_EDITOR_COPY.effort.cleared(EFFORT_LABELS[cleared.effort], cleared.model);
+  }
+
   /** The model the field has chosen, or `undefined` while it has none. */
   get chosenModel(): ModelChoice | undefined {
     return choiceOf(this.modelGroups, this.model);
@@ -411,13 +474,18 @@ export class AgentEditorState {
    * needed, because nothing is saved.
    */
   get canTry(): boolean {
-    return this.hasModels && this.model !== '' && Object.keys(this.limitErrors).length === 0;
+    return (
+      this.hasModels &&
+      this.model !== '' &&
+      this.effortError === '' &&
+      Object.keys(this.limitErrors).length === 0
+    );
   }
 
   /** Whether the form holds what a save needs. A save also waits for any request in flight. */
   get canSave(): boolean {
     if (!this.hasModels || this.model === '') return false;
-    if (Object.keys(this.limitErrors).length > 0) return false;
+    if (this.effortError !== '' || Object.keys(this.limitErrors).length > 0) return false;
     return this.mode === 'edit' || (this.identifier !== '' && this.#identifierIsValid());
   }
 
@@ -479,6 +547,16 @@ export class AgentEditorState {
     };
   }
 
+  /**
+   * The default effort as the Bureau takes it: the one chosen; `null` for a file that had one and
+   * now has none, which removes it; and nothing otherwise, which an update reads as keeping the
+   * file's (there is none).
+   */
+  #effortInput(): Pick<AgentDefinitionInput, 'defaultEffort'> {
+    if (this.defaultEffort !== '') return { defaultEffort: this.defaultEffort };
+    return this.mode === 'edit' && this.#writtenEffort !== null ? { defaultEffort: null } : {};
+  }
+
   /** The definition to try: the form's fields without `references`, which `bureau.agents.try` refuses. */
   toTryDefinition(): AgentDefinitionInput {
     const name = this.name.trim();
@@ -490,6 +568,7 @@ export class AgentEditorState {
       description: this.description.trim() === '' ? null : this.description,
       model: this.model === this.#writtenModelOption ? this.#writtenModel : this.model,
       ...(this.models === null ? {} : { models: this.models }),
+      ...this.#effortInput(),
       tools: chosen,
       skillDescriptors: this.skillDescriptors,
       ...(this.allowedSkills === null ? {} : { allowedSkills: this.allowedSkills }),

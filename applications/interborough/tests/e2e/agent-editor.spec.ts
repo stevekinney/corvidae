@@ -76,7 +76,9 @@ for (const width of WIDTHS) {
         name: copy.notConnected(providerDisplayName(first.name)),
       });
       const disabledId = await disabledOption.getAttribute('id');
+      // The model list's options only: the default effort select below holds options of its own.
       const optionIds = await page
+        .getByRole('listbox')
         .getByRole('option')
         .evaluateAll((rows) => rows.map((row) => row.id));
       const steps = optionIds.indexOf(disabledId ?? '');
@@ -128,6 +130,36 @@ for (const width of WIDTHS) {
       await expect(model).toHaveValue('anthropic/claude-haiku-4-5');
       await expect(abilities).toBeVisible();
       await expect(abilities).toContainText(/context window/);
+    });
+
+    test('offers the chosen model’s efforts, and clears one the next model cannot do', async ({
+      page,
+      checkA11y,
+    }) => {
+      const effort = page.getByLabel(AGENT_EDITOR_COPY.effort.label);
+      await page.goto('/agents/new');
+      await expect(effort.locator('option')).toHaveText([
+        'None',
+        'Low',
+        'Medium',
+        'High',
+        'Extra high',
+        'Maximum',
+      ]);
+      await effort.selectOption('max');
+      await checkA11y('the default effort chosen');
+
+      const model = page.getByRole('combobox', { name: 'Model' });
+      await model.fill('');
+      await page.getByRole('option', { name: /^anthropic\/claude-haiku-4-5/ }).click();
+      await expect(model).toHaveValue('anthropic/claude-haiku-4-5');
+      await expect(effort).toHaveValue('');
+      await expect(effort).toBeDisabled();
+      await expect(page.getByText(AGENT_EDITOR_COPY.effort.notSupportedByModel)).toBeVisible();
+      await expect(page.getByTestId('agent-effort-notice')).toContainText(
+        AGENT_EDITOR_COPY.effort.cleared('Maximum', 'anthropic/claude-haiku-4-5'),
+      );
+      await checkA11y('the default effort cleared by a model that cannot do it');
     });
   });
 }

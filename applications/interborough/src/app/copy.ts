@@ -311,6 +311,15 @@ export const NOT_FOUND_ROUTE_COPY = {
   action: { label: 'Go to chats', href: '/chats' },
 } as const;
 
+/** The words for a reasoning effort, from least to most: the agent editor, the agent page and Model policy say them alike. */
+export const EFFORT_LABELS = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Maximum',
+} as const;
+
 /** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:agent/edit`). */
 export const AGENT_EDITOR_COPY = {
   createHeading: 'New agent',
@@ -492,6 +501,25 @@ export const AGENT_EDITOR_COPY = {
     textOnly: 'Text only',
     context: (size: string): string => `${size} context window`,
     maxOutput: (size: string): string => `${size} largest answer`,
+  },
+  /**
+   * The default effort field (`agent-editor-effort-field.svelte`): the reasoning effort a chat of
+   * the agent starts at, limited to what the chosen model supports.
+   */
+  effort: {
+    label: 'Default effort',
+    description:
+      'How hard a chat of this agent thinks until the person changes it in the chat. None leaves the provider’s own default.',
+    /** The option that leaves the file without an effort. */
+    none: 'None',
+    /** The select's note for a model that has no effort control. */
+    notSupportedByModel: 'This model does not support a default effort.',
+    /** What the field says when a change of model dropped an effort the new model cannot do. */
+    cleared: (effort: string, model: string): string =>
+      `${effort} effort is not supported by ${model}, so the default effort was cleared. Choose another, or leave it as None.`,
+    /** Why the effort the file holds cannot be saved with the file's own model. */
+    unsupported: (effort: string, model: string): string =>
+      `${model} does not support ${effort} effort. Choose another effort or None, or choose another model.`,
   },
   /**
    * What the page shows instead of the form when the catalog holds no model: an agent cannot be
@@ -1960,7 +1988,7 @@ export const MODEL_POLICY_COPY = {
       'zero-day-retention': 'Zero-day retention',
       standard: 'Standard',
     },
-    effort: { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Maximum' },
+    effort: EFFORT_LABELS,
     cost: { 'lowest-cost': 'Lowest cost', balanced: 'Balanced', 'no-preference': 'No preference' },
     latency: {
       'lowest-latency': 'Fastest',
@@ -2407,6 +2435,7 @@ export const AGENT_PAGE_COPY = {
     stepLimitLabel: 'Step limit',
     /** The step limit of an agent whose file sets none: Operative's default applies. */
     stepLimitDefault: (steps: number): string => `Default (${String(steps)} steps)`,
+    defaultEffortLabel: 'Default effort',
     none: 'No limit',
     notSet: 'Not set',
     builtIn: 'This agent is built in, so its settings cannot be changed here.',

@@ -53,6 +53,7 @@ export type AgentDetailResult = {
   definition: {
     name: string;
     model: string;
+    defaultEffort: string | null;
     tools: string[];
     skillDescriptors: unknown[];
     allowedSkills: string[] | null;

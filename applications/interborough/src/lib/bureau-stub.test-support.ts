@@ -275,6 +275,7 @@ export function catalogModelFixture(fixture: CatalogModelFixture): CatalogModel 
     tools: true,
     structuredOutput: false,
     modalities: { text: { input: true }, image: { input: false } },
+    effort: { portable: ['low', 'medium', 'high'] },
     ...fixture,
   };
 }
@@ -336,6 +337,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       description: 'Finds and cites sources',
       model: 'anthropic/sonnet',
       models: null,
+      defaultEffort: null,
       tools: ['lookup-order'],
       allowedSkills: null,
       skillDescriptors: [

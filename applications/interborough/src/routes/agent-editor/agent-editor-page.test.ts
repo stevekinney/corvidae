@@ -553,6 +553,133 @@ describe('an agent that exists', () => {
   });
 });
 
+describe('the default effort', () => {
+  const catalog = () =>
+    catalogFixture({
+      models: [
+        {
+          provider: 'anthropic',
+          model: 'claude-sonnet-5',
+          aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+          effort: { portable: ['low', 'medium', 'high'] },
+        },
+        { provider: 'anthropic', model: 'claude-haiku-5', effort: { portable: ['low'] } },
+        { provider: 'openai', model: 'gpt-4.1', effort: { portable: [] } },
+      ],
+    });
+  const agentWith = (defaultEffort: 'low' | 'high' | null): AgentDetail => {
+    const detail = readyAgent();
+    return { ...detail, definition: { ...detail.definition!, defaultEffort } };
+  };
+  const optionsOf = (select: HTMLElement) =>
+    [...select.querySelectorAll('option')].map((option) => option.textContent);
+
+  test('offers None and the tiers the model supports, and sends the one chosen with the save', async () => {
+    const calls = bureau({ catalog: catalog() });
+    const { findByLabelText, getByRole } = mountEditor('researcher');
+    const select = await findByLabelText(AGENT_EDITOR_COPY.effort.label);
+    expect(optionsOf(select)).toEqual(['None', 'Low', 'Medium', 'High']);
+    expect((select as HTMLSelectElement).value).toBe('');
+
+    await fireEvent.change(select, { target: { value: 'medium' } });
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
+    const [update] = calls.callsTo('bureau.agents.definitions.update');
+    expect(update?.params['definition']).toMatchObject({ defaultEffort: 'medium' });
+  });
+
+  test('shows the effort the file holds, and sends null once it is set back to None', async () => {
+    const calls = bureau({ catalog: catalog(), agent: agentWith('high') });
+    const { findByLabelText, getByRole } = mountEditor('researcher');
+    const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
+    expect(select.value).toBe('high');
+
+    await fireEvent.change(select, { target: { value: '' } });
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
+    const [update] = calls.callsTo('bureau.agents.definitions.update');
+    expect(update?.params['definition']).toMatchObject({ defaultEffort: null });
+  });
+
+  test('keeps the effort across an unrelated edit, and writes it back unchanged', async () => {
+    const calls = bureau({ catalog: catalog(), agent: agentWith('high') });
+    const { findByRole, getByRole } = mountEditor('researcher');
+    await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
+    const [update] = calls.callsTo('bureau.agents.definitions.update');
+    expect(update?.params['definition']).toMatchObject({ defaultEffort: 'high' });
+  });
+
+  test('clears an effort the newly chosen model cannot do, says so, and sends null', async () => {
+    const calls = bureau({ catalog: catalog(), agent: agentWith('high') });
+    const { findByRole, findByLabelText, getByRole, getByTestId, queryByTestId } =
+      mountEditor('researcher');
+    const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
+    expect(queryByTestId('agent-effort-notice')).toBeNull();
+
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'anthropic/claude-haiku-5');
+
+    expect(select.value).toBe('');
+    expect(optionsOf(select)).toEqual(['None', 'Low']);
+    expect(getByTestId('agent-effort-notice').textContent).toContain(
+      AGENT_EDITOR_COPY.effort.cleared('High', 'anthropic/claude-haiku-5'),
+    );
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
+    const [update] = calls.callsTo('bureau.agents.definitions.update');
+    expect(update?.params['definition']).toMatchObject({
+      model: 'anthropic/claude-haiku-5',
+      defaultEffort: null,
+    });
+  });
+
+  test('is disabled, and says why, for a model with no effort control', async () => {
+    bureau({ catalog: catalog() });
+    const { findByRole, findByLabelText, getByText } = mountEditor('researcher');
+    const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
+    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'openai/gpt-4.1');
+    expect(optionsOf(select)).toEqual(['None']);
+    expect(select.disabled).toBe(true);
+    expect(getByText(AGENT_EDITOR_COPY.effort.notSupportedByModel)).not.toBeNull();
+  });
+
+  test('will not save an effort the file’s model does not support, and says so beside the field', async () => {
+    const calls = bureau({
+      catalog: catalog(),
+      agent: {
+        ...agentWith(null),
+        definition: {
+          ...agentWith(null).definition!,
+          model: 'anthropic/claude-haiku-5',
+          defaultEffort: 'high',
+        },
+      },
+    });
+    const { findByLabelText, findByText, getByRole } = mountEditor('researcher');
+    await findByLabelText(AGENT_EDITOR_COPY.effort.label);
+    expect(
+      await findByText(AGENT_EDITOR_COPY.effort.unsupported('High', 'anthropic/claude-haiku-5')),
+    ).not.toBeNull();
+    expect(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).toBeDisabled();
+    expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(0);
+  });
+
+  test('shows the Bureau’s reason when it refuses the effort at a save', async () => {
+    const calls = bureau({ catalog: catalog() });
+    calls.on('bureau.agents.definitions.update', () => {
+      throw faults.unprocessable('claude-sonnet-5 does not support high effort.');
+    });
+    const { findByLabelText, getByRole, findByText } = mountEditor('researcher');
+    await fireEvent.change(await findByLabelText(AGENT_EDITOR_COPY.effort.label), {
+      target: { value: 'high' },
+    });
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    expect(await findByText('claude-sonnet-5 does not support high effort.')).not.toBeNull();
+    expect(router.pathname).toBe('/');
+  });
+});
+
 describe('a file that changed outside Interborough', () => {
   test('is not overwritten by a save, and says so once, with a reload that discards unsaved edits', async () => {
     const calls = bureau();
