@@ -87,7 +87,7 @@
 <article class="ib-run-setup" data-page="run-setup">
   <PageHeader headingLevel={1} title={copy.title(type)} />
 
-  {#if resolution.isError}
+  {#if resolution.isError && current === undefined}
     <Alert variant="danger">
       <p class="ib-run-setup__alert-title">{copy.loadFailed.title}</p>
       <p class="ib-run-setup__alert-message">{copy.loadFailed.description}</p>

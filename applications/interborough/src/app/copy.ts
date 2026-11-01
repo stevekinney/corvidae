@@ -510,6 +510,14 @@ export const WORKFLOW_COPY = {
     cancel: 'Cancel',
     startFailed: 'The run was not started',
     scheduleFailed: 'The schedule was not created',
+    /** The answer was lost, so the Bureau may have acted: say so, and do not suggest trying again blindly. */
+    scheduleInvalid: 'A field in the schedule is not valid. Correct it, then create the schedule.',
+    startMaybe: 'The run may have started',
+    scheduleMaybe: 'The schedule may have been created',
+    lostDescription:
+      'The server did not answer. Check before trying again, so it is not done twice.',
+    checkRuns: 'Check the runs',
+    checkSchedules: 'Check the schedules',
     forbidden: 'You may not start runs or create schedules here.',
     loadFailed: {
       title: 'This workflow could not be loaded',

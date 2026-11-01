@@ -7,6 +7,7 @@
  * that write.
  */
 import { quietFor } from '@lostgradient/testing/wait-until';
+import type { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -52,10 +53,14 @@ const TOPIC_SCHEMA = {
   required: ['topic'],
 };
 
+/** A schema the form cannot draw, so its input is typed as JSON. */
+const LIST_SCHEMA = { type: 'array', items: { type: 'integer' } };
+
 function open(
   path: string,
   overrides: Partial<World> = {},
   scopes: readonly AuthorizationScope[] = AUTHORIZATION_SCOPES,
+  onQueryClient?: (queryClient: QueryClient) => void,
 ) {
   stub = installWorkflowWorld(
     emptyWorld({
@@ -65,6 +70,9 @@ function open(
             name: 'order-processing',
             inputSchema: TOPIC_SCHEMA,
           },
+        }),
+        codeDefinition('list-input', {
+          contract: { name: 'list-input', inputSchema: LIST_SCHEMA },
         }),
         codeDefinition('agentRun'),
         sourceDefinition('digest'),
@@ -80,7 +88,7 @@ function open(
     }),
   );
   router.navigate(path, { replace: true });
-  return render(Harness, { props: { client: stub.client, scopes } } as never);
+  return render(Harness, { props: { client: stub.client, scopes, onQueryClient } } as never);
 }
 
 const page = (root: ParentNode) => root.querySelector<HTMLElement>('[data-page="run-setup"]');
@@ -333,6 +341,17 @@ describe('starting now', () => {
     expect(stub?.world.startedRuns).toHaveLength(1);
   });
 
+  test('starts one run for two asks made while the form is still validating the first', async () => {
+    const { container } = open('/workflows/digest/run');
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'weather');
+    const button = primary(root);
+    // Both clicks land before the form's asynchronous validation of the first has finished.
+    await Promise.all([fireEvent.click(button), fireEvent.click(button)]);
+    await waitFor(() => expect(router.pathname).toMatch(/^\/workflows\/digest\/runs\//));
+    expect(stub?.callsTo('bureau.workflows.start')).toHaveLength(1);
+  });
+
   test('starts a workflow with no schema from its JSON, or from none', async () => {
     const { container } = open('/workflows/plain/run');
     const root = await ready(container);
@@ -361,6 +380,30 @@ describe('starting now', () => {
     await fireEvent.click(primary(root));
     expect(await findByText(COPY.invalidJson)).not.toBeNull();
     expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
+  });
+});
+
+describe('JSON input under a declared schema the form cannot draw', () => {
+  async function typeJson(path: string, value: string) {
+    const view = open(path);
+    const root = await ready(view.container);
+    await fireEvent.input(root.querySelector('textarea') as HTMLTextAreaElement, {
+      target: { value },
+    });
+    await fireEvent.click(primary(root));
+    return { ...view, root };
+  }
+
+  test('refuses input the schema rejects, names where, and starts nothing', async () => {
+    const view = await typeJson('/workflows/list-input/run', '[1, "two"]');
+    expect(await view.findByText(/^1: /)).not.toBeNull();
+    expect(stub?.callsTo('POST /workflows')).toEqual([]);
+    expect(router.pathname).toBe('/workflows/list-input/run');
+  });
+
+  test('starts input the schema accepts', async () => {
+    await typeJson('/workflows/list-input/run', '[1, 2]');
+    await waitFor(() => expect(stub?.callsTo('POST /workflows')).toHaveLength(1));
   });
 });
 
@@ -425,7 +468,50 @@ describe('a start that fails', () => {
   });
 });
 
+describe('a start whose answer is lost', () => {
+  test('says the run may have started, links to the runs, and keeps the input', async () => {
+    const { container, findByText, findByRole } = open('/workflows/order-processing/run');
+    stub?.on('POST /workflows', () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'refund');
+    await fireEvent.click(primary(root));
+    expect(await findByText(COPY.startMaybe)).not.toBeNull();
+    expect(container.textContent).not.toContain(COPY.startFailed);
+    expect(await findByRole('link', { name: COPY.checkRuns })).not.toBeNull();
+    expect(field(root, 'Topic').value).toBe('refund');
+  });
+});
+
 describe('a page that cannot be set up', () => {
+  test('keeps the form, and what was typed, when a later read of the workflow fails', async () => {
+    let queryClient: QueryClient | undefined;
+    const view = open('/workflows/digest/run', {}, AUTHORIZATION_SCOPES, (created) => {
+      queryClient = created;
+    });
+    const root = await ready(view.container);
+    stub?.on('bureau.workflows.start', () => {
+      throw new StubFault('Forbidden', 403, 'No.');
+    });
+    await type(field(root, 'Topic'), 'weather');
+    await fireEvent.click(primary(root));
+    expect(await view.findByText(COPY.startFailed)).not.toBeNull();
+    // A background read of the workflow is refused, and the page must not swap the form for it.
+    stub?.on('bureau.workflows.get', () => {
+      throw workflowFaults.unprocessable('Refused.');
+    });
+    await queryClient?.refetchQueries({ queryKey: ['workflow-catalog'] });
+    expect(
+      queryClient
+        ?.getQueryCache()
+        .findAll({ queryKey: ['workflow-catalog'] })
+        .some((query) => query.state.status === 'error'),
+    ).toBe(true);
+    expect(view.container.textContent).not.toContain(COPY.loadFailed.title);
+    expect(field(root, 'Topic').value).toBe('weather');
+  });
+
   test('says the workflow could not be loaded, and reads it again on retry', async () => {
     const { container, findByRole } = open('/workflows/digest/run');
     let reads = 0;
@@ -497,6 +583,18 @@ describe('on a schedule', () => {
     await chooseSchedule(root);
     await fireEvent.click(primary(root));
     await waitFor(() => expect(root.querySelector('[aria-invalid="true"]')).toBeTruthy());
+    expect(stub?.callsTo('POST /schedules')).toEqual([]);
+  });
+
+  test('refuses to create a schedule while a custom cron field on screen is out of range', async () => {
+    const { container, findByText, getByLabelText } = open('/workflows/order-processing/run');
+    const root = await ready(container);
+    await type(field(root, 'Topic'), 'refund');
+    await chooseSchedule(root);
+    await fireEvent.change(getByLabelText('Repeats'), { target: { value: 'cron' } });
+    await fireEvent.input(getByLabelText('Hour'), { target: { value: '99' } });
+    await fireEvent.click(primary(root));
+    expect(await findByText(COPY.scheduleInvalid)).not.toBeNull();
     expect(stub?.callsTo('POST /schedules')).toEqual([]);
   });
 

@@ -18,6 +18,16 @@ export type InputIssue = {
   readonly message: string;
 };
 
+/** One validation issue as a line of text: the path to the value, then what is wrong with it. */
+export function describeIssue(issue: InputIssue): string {
+  return issue.path.length === 0 ? issue.message : `${issue.path.join('.')}: ${issue.message}`;
+}
+
+/** The declared schema JSON input is held to, or `undefined` when none is declared. */
+export function declaredSchemaOf(schema: unknown): Record<string, unknown> | undefined {
+  return isRecord(schema) ? schema : undefined;
+}
+
 /** What a run is started from: a file the Bureau holds, or a type that code registered. */
 export type RunSetupTarget =
   | {

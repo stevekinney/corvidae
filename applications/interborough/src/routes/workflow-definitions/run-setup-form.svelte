@@ -21,6 +21,7 @@
     ScheduleBuilder,
     SchemaForm,
     Textarea,
+    validateSchemaFormValue,
     type ScheduleValue,
   } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
@@ -30,6 +31,7 @@
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
   import { getClient } from '../../lib/client.ts';
   import { computeNextFires } from '../../lib/format/cron-preview.ts';
+  import { isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleDetailPath, workflowRunPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
@@ -41,7 +43,14 @@
     scheduleValueToWireSpec,
   } from '../schedules/cadence.ts';
   import { createSchedule } from '../schedules/schedule-queries.ts';
-  import { formSchemaOf, inputIssuesOf, summaryOf, type InputIssue } from './run-setup-model.ts';
+  import {
+    declaredSchemaOf,
+    describeIssue,
+    formSchemaOf,
+    inputIssuesOf,
+    summaryOf,
+    type InputIssue,
+  } from './run-setup-model.ts';
 
   interface Props {
     /** The workflow's identifier. */
@@ -61,6 +70,10 @@
 
   /** The schema as the form mounted with it. */
   const formSchema = untrack(() => formSchemaOf(schema));
+  /** The schema the JSON editor's input is held to: Bureau and engine may not check it themselves. */
+  const jsonSchema = untrack(() =>
+    formSchema === undefined ? declaredSchemaOf(schema) : undefined,
+  );
   const FORM_ID = 'run-setup-input';
 
   /** `RadioGroup` holds its choice as a plain string. */
@@ -70,13 +83,25 @@
   let jsonText = $state('');
   let jsonError = $state('');
   let issues = $state<readonly InputIssue[]>([]);
-  let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
+  let failure = $state<{
+    readonly title: string;
+    readonly message: string;
+    /** Where to look when the answer was lost and the work may have been done. */
+    readonly check?: { readonly label: string; readonly path: string };
+  } | null>(null);
 
   let inputRegion: HTMLElement | undefined;
   /** The footer asked for a submit and its event has not been seen yet. */
   let asked = false;
-  /** The submit event the footer asked for, which is the only one that may start anything. */
-  let requested: Event | null = null;
+  /**
+   * The submit events the footer asked for, which are the only ones that may start anything. A
+   * second ask while the form is still validating the first is ignored by the form, which later
+   * answers with the first event, so every ask is kept; an ask the form never answers (the input
+   * was invalid) leaves an entry that no later event can match.
+   */
+  const requested = new WeakSet<Event>();
+  /** The schedule builder's region, where a field it shows as invalid is a cadence it did not emit. */
+  let scheduleRegion = $state<HTMLElement>();
   /**
    * Whether a start is in flight. It is set before the first `await`, because the mutation's own
    * `isPending` turns true a tick after `mutate`, and two asks can arrive in that tick.
@@ -135,6 +160,19 @@
         else jsonError = refused.map((issue) => issue.message).join(' ');
         return;
       }
+      if (isNetworkFailure(error)) {
+        // The request may have reached the Bureau before the answer was lost, so a second ask could
+        // create a second run: say it may have happened, and where to look.
+        const scheduled = variables.when === 'schedule';
+        failure = {
+          title: scheduled ? copy.scheduleMaybe : copy.startMaybe,
+          message: copy.lostDescription,
+          check: scheduled
+            ? { label: copy.checkSchedules, path: '/schedules' }
+            : { label: copy.checkRuns, path: '/runs' },
+        };
+        return;
+      }
       const title = variables.when === 'schedule' ? copy.scheduleFailed : copy.startFailed;
       const fault = agentFaultOf(error);
       switch (fault.kind) {
@@ -176,26 +214,48 @@
     run.mutate({ input, when, cadence: $state.snapshot(cadence) });
   }
 
-  /** Reads the JSON the editor holds: empty is no input, and anything else must parse. */
-  function beginFromJson(): void {
+  /**
+   * Reads the JSON the editor holds: empty is no input, and anything else must parse. A declared
+   * schema that the form cannot draw still holds the input, because the engine does not check it
+   * unless the workflow asks it to.
+   */
+  async function beginFromJson(): Promise<void> {
     if (sending) return;
+    sending = true;
+    const choice = { when, cadence: $state.snapshot(cadence) };
     const text = jsonText.trim();
-    if (text === '') {
-      begin(undefined);
-      return;
+    let input: unknown;
+    if (text !== '') {
+      try {
+        input = JSON.parse(text);
+      } catch {
+        sending = false;
+        jsonError = copy.invalidJson;
+        return;
+      }
     }
-    try {
-      begin(JSON.parse(text));
-    } catch {
-      jsonError = copy.invalidJson;
+    if (jsonSchema !== undefined) {
+      const result = await validateSchemaFormValue(jsonSchema, input);
+      if (!result.valid) {
+        sending = false;
+        jsonError = result.issues.map(describeIssue).join(' ');
+        return;
+      }
     }
+    run.mutate({ input, ...choice });
   }
 
   /** The footer's ask. The form validates, and starts only what this ask submitted. */
   function request(): void {
     if (sending || gate.disabled) return;
+    // The builder keeps the last cadence it emitted while a custom field is out of range, so the
+    // value held here is not the one on screen: refuse until what is shown is valid.
+    if (when === 'schedule' && scheduleRegion?.querySelector('[aria-invalid="true"]') != null) {
+      failure = { title: copy.scheduleFailed, message: copy.scheduleInvalid };
+      return;
+    }
     if (formSchema === undefined) {
-      beginFromJson();
+      void beginFromJson();
       return;
     }
     const form = inputRegion?.querySelector('form');
@@ -207,14 +267,21 @@
   /** Marks the submit the footer asked for, before the form handles it. */
   function noteSubmit(event: Event): void {
     // A submit that was not asked for leaves a pending ask alone: it only ever fails to match.
-    if (asked) requested = event;
+    if (asked) requested.add(event);
     asked = false;
   }
 
   function onSubmit(value: unknown, event: Event): void {
-    if (event !== requested) return;
-    requested = null;
+    if (!requested.has(event)) return;
     begin(value);
+  }
+
+  function openCheck(event: MouseEvent, path: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(path);
   }
 
   function cancel(): void {
@@ -228,6 +295,14 @@
       <p class="ib-run-setup__alert-title">{failure.title}</p>
       {#if failure.message !== failure.title}
         <p class="ib-run-setup__alert-message">{failure.message}</p>
+      {/if}
+      {#if failure.check !== undefined}
+        {@const check = failure.check}
+        <p class="ib-run-setup__alert-message">
+          <a href={router.href(check.path)} onclick={(event) => openCheck(event, check.path)}
+            >{check.label}</a
+          >
+        </p>
       {/if}
     </Alert>
   {/if}
@@ -290,12 +365,14 @@
       {/if}
     </RadioGroup>
     {#if when === 'schedule'}
-      <ScheduleBuilder
-        value={cadence}
-        onValueChange={(next) => (cadence = next)}
-        {computeNextFires}
-        label={copy.scheduleLabel}
-      />
+      <div bind:this={scheduleRegion}>
+        <ScheduleBuilder
+          value={cadence}
+          onValueChange={(next) => (cadence = next)}
+          {computeNextFires}
+          label={copy.scheduleLabel}
+        />
+      </div>
     {/if}
   </section>
 
