@@ -6,7 +6,7 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 import { type QueryClient } from '@tanstack/svelte-query';
-import { render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
@@ -25,7 +25,7 @@ import {
   type WorkflowStub,
   type World,
 } from '../lib/workflow-world.test-support.ts';
-import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { FIRST_RUN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
@@ -490,6 +490,40 @@ describe('the chat list, a new chat, and the agents', () => {
     const browse = container.querySelector('a[href="/agents"]');
     expect(browse?.textContent?.trim()).toBe('Browse agents');
     expect(container.querySelectorAll('.weft-view__empty a.cinder-button')).toHaveLength(2);
+  });
+
+  test('an empty chat page on a fresh installation shows the first-run steps above its actions, and none once they are dismissed', async () => {
+    window.localStorage.removeItem('interborough:first-run:dismissed');
+    restore = installFetchImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url === '/host/providers') {
+        return Response.json({
+          providers: [{ name: 'anthropic', configured: false, hasKey: false }],
+          catalog: [],
+          models: [],
+        });
+      }
+      const method = operationOf(init?.body)?.method ?? '';
+      if (method === 'bureau.contexts.list') return rpc(method, { contexts: [], nextOffset: null });
+      if (method === 'bureau.agents.list') return agents({ name: 'assistant' });
+      throw new Error(`Unexpected request: ${url} ${method}`);
+    });
+    const { container, findByTestId, findByRole } = mount('chat', { pattern: '/chats' });
+
+    const checklist = await findByTestId('first-run');
+
+    expect(
+      [...checklist.querySelectorAll('[data-step]')].map((step) => step.getAttribute('data-done')),
+    ).toEqual(['false', 'false', 'false']);
+    // The steps come first; the New chat action is still there for a person who skips them.
+    const actions = container.querySelector('.weft-view__actions');
+    expect(
+      checklist.compareDocumentPosition(actions as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await fireEvent.click(await findByRole('button', { name: FIRST_RUN_COPY.dismissLabel }));
+    expect(container.querySelector('[data-testid="first-run"]')).toBeNull();
+    expect(container.querySelector('a[href="/chats/new"]')?.textContent?.trim()).toBe('New chat');
+    window.localStorage.removeItem('interborough:first-run:dismissed');
   });
 
   test('the welcome names the agents a chat can start with, by their identifiers in monospace, and adds no padding of its own', async () => {

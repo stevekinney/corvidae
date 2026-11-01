@@ -10,6 +10,8 @@
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import type { HostPaths } from '../../lib/host-paths.ts';
+  import { connectProviderPath } from '../../lib/provider-return.ts';
+  import { router } from '../../lib/router.svelte.ts';
 
   interface Props {
     /** Where the host keeps its configuration and secrets, or `undefined` when it did not say. */
@@ -28,6 +30,21 @@
       ? { ...AGENT_EDITOR_COPY.noProvider, ...AGENT_EDITOR_COPY.remote.noProvider }
       : AGENT_EDITOR_COPY.noProvider,
   );
+
+  /**
+   * Whether a key can be saved from Settings › Models: a host that keeps its keys in its
+   * deployment refuses it, and then the steps below are the only way.
+   */
+  const canConnect = $derived(paths?.locked.providerKeys === undefined);
+  const connectPath = $derived(connectProviderPath(router.pathname));
+
+  function connect(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(connectPath);
+  }
 
   /** The first provider the host offers, as the example plugin the snippet enables. */
   const snippet = $derived.by(() => {
@@ -48,6 +65,17 @@
   data-testid="agent-no-provider"
 >
   {#snippet action()}
+    {#if canConnect}
+      <div class="weft-no-provider__connect">
+        <Button
+          variant="primary"
+          href={router.href(connectPath)}
+          onclick={connect}
+          data-testid="agent-connect-provider">{copy.connectAction}</Button
+        >
+        <p class="weft-no-provider__text">{copy.byHand}</p>
+      </div>
+    {/if}
     <ol class="weft-no-provider__steps">
       <li>
         <p class="weft-no-provider__text">{copy.configurationStep}</p>
@@ -91,6 +119,19 @@
     padding-inline: 0;
     padding-block: var(--cinder-space-4);
     align-items: stretch;
+  }
+
+  .weft-no-provider__connect {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
+    margin-block-end: var(--cinder-space-4);
+    text-align: start;
+  }
+
+  .weft-no-provider__connect .weft-no-provider__text {
+    margin: 0;
   }
 
   .weft-no-provider__steps {

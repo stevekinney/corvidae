@@ -487,6 +487,10 @@ export const AGENT_EDITOR_COPY = {
     restartStep: 'Restart the host, then check again.',
     reload: 'Check again',
     snippetLabel: 'Provider configuration',
+    /** The action that opens Settings › Models, which returns to the form once a provider is connected. */
+    connectAction: 'Connect a provider',
+    /** What leads the steps for a person who would rather edit the files. */
+    byHand: 'Or set it up by hand:',
   },
   toolsDescription: 'The tools this agent may call.',
   noTools: 'This installation offers no tools.',
@@ -1271,9 +1275,76 @@ export const SETTINGS_SECTION_COPY = {
   general: 'General',
   models: 'Models',
   modelPolicy: 'Model policy',
+  a2a: 'A2A',
   plugins: 'Plugins',
   dataAndRetention: 'Data and retention',
   apiReference: 'API reference',
+} as const;
+
+/**
+ * The checklist a new installation shows on Chat until it has a provider, an agent, and a chat
+ * (`app/first-run-checklist.svelte`). Each step names the page that completes it; the host's own
+ * answers say when it is done.
+ */
+export const FIRST_RUN_COPY = {
+  title: 'Get started',
+  description: 'Three steps to your first conversation.',
+  label: 'Getting started',
+  listLabel: 'Steps to get started',
+  dismiss: 'Dismiss',
+  dismissLabel: 'Dismiss the getting started steps',
+  completed: 'Completed',
+  steps: {
+    provider: {
+      title: 'Connect a provider',
+      description:
+        'An agent runs on a model, and a provider offers models. Save its API key to connect it.',
+      action: { label: 'Connect a provider', href: '/settings/models' },
+    },
+    agent: {
+      title: 'Create an agent',
+      description: 'Write an agent of your own, or start from one that ships with the host.',
+      action: { label: 'New agent', href: '/agents/new' },
+    },
+    chat: {
+      title: 'Say hello',
+      description: 'Start a chat with an agent. Your chats are kept here.',
+      action: { label: 'New chat', href: '/chats/new' },
+    },
+  },
+} as const;
+
+/**
+ * The words of Settings › A2A: the agents that opt in to being found and called by other agents,
+ * the address of each one's Agent Card, and (under them) the push-notification settings.
+ */
+export const A2A_COPY = {
+  intro:
+    'Other agents and A2A clients can find and call the agents you opt in. Each one publishes an Agent Card at the address below.',
+  agentsHeading: 'Agents reachable over A2A',
+  agentsDescription:
+    'Opt an agent in from its editor, with Available over A2A. Chats with an agent work either way.',
+  listLabel: 'Agents reachable over A2A',
+  loading: 'Loading the agents reachable over A2A',
+  loadFailed: {
+    title: 'The agents could not be listed',
+    description: 'The host did not answer. Check that it is running, then try again.',
+  },
+  empty: {
+    title: 'No agent is reachable over A2A',
+    description: 'Turn on Available over A2A in an agent’s editor and its Agent Card appears here.',
+    action: { label: 'Open agents', href: '/agents' },
+  },
+  cardLabel: 'Agent Card address',
+  copyCard: 'Copy address',
+  copiedCard: 'Copied',
+  editAction: 'Edit',
+  editAgent: (name: string): string => `Edit ${name}`,
+  fromCode: 'Defined in code',
+  needsKey: 'Needs an API key',
+  cardLoading: 'Reading the card',
+  cardUnavailable: 'Card unavailable',
+  cardRetry: 'Try again',
 } as const;
 
 /**
@@ -1344,6 +1415,13 @@ export const MODELS_COPY = {
   intro:
     'Connect the providers your agents call, choose which of their models are on, and set how decisions are made.',
   loading: 'Loading providers and models',
+  /** The notice shown when a page sent the person here to connect a provider, with the way back. */
+  returnNotice: {
+    title: 'Connect a provider to continue',
+    description: 'Save a key for one provider, then go back to the agent form.',
+    connectedDescription: 'A provider is connected. Go back to the agent form.',
+    action: 'Back to the agent form',
+  },
   loadFailed: {
     title: 'Providers are unavailable',
     description: 'The host did not answer. Check that it is running, then try again.',
@@ -1842,6 +1920,13 @@ export const MODEL_POLICY_COPY = {
 
 /** The words the settings page (`/settings`) uses outside its view states. */
 export const SETTINGS_COPY = {
+  /** What the A2A section asks before it saves. */
+  confirmA2a: {
+    title: 'Save the A2A settings?',
+    description:
+      'Push notifications make this host send requests to servers other people run. The change applies when the host restarts.',
+    confirm: 'Save settings',
+  },
   intro:
     'These apply to the whole deployment. A setting that applies live takes effect at its next use, and one that needs a restart is kept and applies when the host starts again.',
   /** The accessible name of the form that holds every setting. */

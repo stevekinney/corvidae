@@ -7,7 +7,7 @@
    * says so and offers to reload, because saving over a change would overwrite it. A save the
    * Bureau refuses as stale says the same.
    */
-  import { Alert, Button, validateSchemaFormValue } from '@lostgradient/cinder';
+  import { Alert, Button, ConfirmDialog, validateSchemaFormValue } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { onMount, untrack } from 'svelte';
 
@@ -53,6 +53,7 @@
     general: '/settings',
     'model-policy': '/settings/model-policy',
     decisions: '/settings/models',
+    a2a: '/settings/a2a',
   };
 
   const queryClient = useQueryClient();
@@ -158,6 +159,22 @@
     submit.mutate({ patch: form.patch(), expectedRevision: form.revision });
   }
 
+  /**
+   * Whether the A2A section is asking to be sure. Its settings decide whether the host sends
+   * requests to servers other people run, and they apply only after a restart, so a save is
+   * confirmed first; the other sections save at once, as they always have.
+   */
+  let confirming = $state(false);
+
+  /** Saves, after asking when the section's settings are the kind that reach other servers. */
+  function requestSave(): void {
+    if (section !== 'a2a') {
+      void save();
+      return;
+    }
+    if (form.canSave && !submit.isPending && !sending) confirming = true;
+  }
+
   // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
   onMount(() =>
     shortcuts.register({
@@ -166,7 +183,7 @@
       label: SETTINGS_COPY.saveAction,
       group: SETTINGS_COPY.shortcutGroup,
       scope: { route: SECTION_ROUTES[section] },
-      handler: () => void save(),
+      handler: requestSave,
     }),
   );
 
@@ -264,7 +281,7 @@
                 {control}
                 {form}
                 keyState={stateOf(key)}
-                requestSave={save}
+                {requestSave}
               />
             {/if}
           {/each}
@@ -279,7 +296,7 @@
       variant="primary"
       data-changes
       disabled={!form.canSave || submit.isPending}
-      onclick={() => void save()}>{SETTINGS_COPY.saveAction}</Button
+      onclick={requestSave}>{SETTINGS_COPY.saveAction}</Button
     >
     <Button
       type="button"
@@ -289,6 +306,14 @@
     >
   </div>
 </div>
+
+<ConfirmDialog
+  bind:open={confirming}
+  title={SETTINGS_COPY.confirmA2a.title}
+  description={SETTINGS_COPY.confirmA2a.description}
+  confirmLabel={SETTINGS_COPY.confirmA2a.confirm}
+  onConfirm={() => void save()}
+/>
 
 <style>
   .weft-settings-editor {

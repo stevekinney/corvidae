@@ -165,6 +165,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/audit': /schedule\.created/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
+  // The agent that opts in prints its name, and its card address holds it too.
+  '/settings/a2a': /responsive-long-description/,
   // Each group of the API reference prints a value only its live read gives.
   '/settings/api-reference': /weft\.alerts\.list/,
   '/settings/api-reference (discovery)': /\/api\/v1\/alerts/,
@@ -456,6 +458,9 @@ test.beforeAll(async ({ playwright }) => {
     await createAgentFile(request, AGENT_ID, {
       name: AGENT_ID,
       description: LONG_DESCRIPTION,
+      // It opts in to A2A, so Settings › A2A prints it and the long address of its card. A longer
+      // name would widen the agent facet of Runs, which lists every agent, past a phone.
+      a2a: true,
     });
     await removeAgent(request, INSTRUCTIONS_AGENT_ID);
     await createAgentFile(request, INSTRUCTIONS_AGENT_ID, {

@@ -15,6 +15,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { path: '/settings', label: SETTINGS_SECTION_COPY.general },
   { path: '/settings/models', label: SETTINGS_SECTION_COPY.models },
   { path: '/settings/model-policy', label: SETTINGS_SECTION_COPY.modelPolicy },
+  { path: '/settings/a2a', label: SETTINGS_SECTION_COPY.a2a },
   { path: '/settings/plugins', label: SETTINGS_SECTION_COPY.plugins },
   { path: '/settings/data-and-retention', label: SETTINGS_SECTION_COPY.dataAndRetention },
   { path: '/settings/api-reference', label: SETTINGS_SECTION_COPY.apiReference },

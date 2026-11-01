@@ -56,6 +56,8 @@ export const queryKeys = {
       ['contexts', 'list', agentName, filters] as const,
     /** The chats a pending review names that the list's loaded pages do not hold, by id. */
     waiting: (contextIds: readonly string[]) => ['contexts', 'waiting', contextIds] as const,
+    /** The newest chat, read by the first-run checklist to learn whether the person has had one. */
+    firstRun: () => ['contexts', 'first-run'] as const,
     /** Every session the caller owns, read to count and date each agent's chats. */
     usage: () => ['contexts', 'usage'] as const,
     /** The chats' titles, read by the notification feed to name what finished. */
@@ -233,6 +235,8 @@ export const queryKeys = {
   principal: () => ['principal'] as const,
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
+  /** One agent's public A2A Agent Card (`/bureau/a2a/<agent>/.well-known/agent-card.json`). */
+  a2aCard: (agent: string) => ['a2a', 'card', agent] as const,
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
   hostStorage: () => ['host', 'storage'] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */

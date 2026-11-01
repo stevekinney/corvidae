@@ -44,6 +44,7 @@
   import { anyScopeReason, getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
   import { CHAT_COPY, CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
+  import FirstRunChecklist from './first-run-checklist.svelte';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
   import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
@@ -272,6 +273,9 @@
     >
       {#snippet icon()}<Inbox size={28} aria-hidden="true" />{/snippet}
       {#snippet action()}
+        {#if initial.view === 'chat'}
+          <FirstRunChecklist />
+        {/if}
         {#if emptyCopy.action}
           {@const emptyAction = emptyCopy.action}
           {#if initial.view === 'chat'}
