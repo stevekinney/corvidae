@@ -12,17 +12,20 @@
   import type { AgentDetail } from '../../lib/agent-definitions.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import AgentPluginNote from './agent-plugin-note.svelte';
 
   interface Props {
     /** Where Edit goes: the agent's editor. */
     editPath: string;
+    /** The plugin that ships the agent, or `null`: its file is read-only. */
+    plugin: string | null;
     /** The agent as the Bureau shows it, once read. */
     detail: AgentDetail | undefined;
     failed: boolean;
     onRetry: () => void;
   }
 
-  let { editPath, detail, failed, onRetry }: Props = $props();
+  let { editPath, plugin, detail, failed, onRetry }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.instructions;
 
@@ -64,17 +67,19 @@
     <section class="ib-agent-section" aria-label={copy.heading}>
       <SectionHeading level={2} title={copy.heading}>
         {#snippet actions()}
-          {#if isFile}
+          {#if isFile && plugin === null}
             <Button href={router.href(editPath)} variant="secondary" size="sm" onclick={goToEditor}
               >{AGENT_EDITOR_COPY.editAction}</Button
             >
           {/if}
         {/snippet}
       </SectionHeading>
-      {#if !isFile}
+      {#if plugin !== null}
+        <AgentPluginNote {plugin} />
+      {:else if !isFile}
         <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
       {/if}
-      {#if html === '' && isFile}
+      {#if html === '' && isFile && plugin === null}
         <EmptyState
           kind="first-use"
           size="compact"

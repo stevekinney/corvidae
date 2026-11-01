@@ -161,6 +161,7 @@ export const OPERATION_MAP = {
   'bureau.agents.definitions.create': { member: 'agents.create' },
   'bureau.agents.definitions.update': { member: 'agents.update' },
   'bureau.agents.definitions.delete': { member: 'agents.delete' },
+  'bureau.agents.definitions.duplicate': { member: 'agents.duplicate' },
   'bureau.agents.definitions.get': { member: 'agents.detail' },
   'bureau.agents.definitions.list': { member: 'agents.list' },
   'bureau.agents.definitions.revisions': { member: 'agents.revisions' },

@@ -176,8 +176,10 @@ const catalogSchema = z.object({
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool (Armorer's tier rule). */
       defaultApproval: z.enum(['allow', 'ask']),
-      /** `bureau` for a tool Bureau adds, `host` for one the host provides. */
-      source: z.enum(['host', 'bureau']),
+      /** `bureau` for a tool Bureau adds, `plugin` for one a plugin contributes, `host` for one the host provides (an MCP server's). */
+      source: z.enum(['host', 'bureau', 'plugin']),
+      /** The plugin that contributes the tool when `source` is `plugin`, else `null`. */
+      plugin: z.string().nullable(),
       /** The agents that use the tool now. */
       users: z.array(z.string()),
     }),
@@ -321,6 +323,16 @@ export async function updateAgent(
 ): Promise<AgentWriteResult> {
   return writeResultSchema.parse(
     await callBureau('bureau.agents.definitions.update', { id, expectedHash, definition }, options),
+  );
+}
+
+/**
+ * Copies a plugin's read-only agent (`plugin:name`) into the owner's agents as `name`, with its
+ * tools unversioned. A name the owner already uses is a `Conflict` (`agent-file-exists`).
+ */
+export async function duplicateAgent(id: string, options?: Options): Promise<AgentWriteResult> {
+  return writeResultSchema.parse(
+    await callBureau('bureau.agents.definitions.duplicate', { id }, options),
   );
 }
 

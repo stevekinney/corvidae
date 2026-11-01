@@ -26,6 +26,7 @@ const TOOL: CatalogTool = {
   tier: 'read-only',
   defaultApproval: 'allow',
   source: 'host',
+  plugin: null,
   users: [],
 };
 
@@ -66,8 +67,9 @@ describe('a tool’s approval, source and summary', () => {
   test('say what an agent’s call does by default and where the tool comes from', () => {
     expect(approvalLabel(TOOL)).toBe('Runs without asking');
     expect(approvalLabel({ ...TOOL, defaultApproval: 'ask' })).toBe('Asks you first');
-    expect(toolSourceLabel(TOOL)).toBe('Provided by this host');
-    expect(toolSourceLabel({ ...TOOL, source: 'bureau' })).toBe('Built into Interborough');
+    expect(toolSourceLabel(TOOL)).toBe('MCP server');
+    expect(toolSourceLabel({ ...TOOL, source: 'bureau' })).toBe('Built in');
+    expect(toolSourceLabel({ ...TOOL, source: 'plugin', plugin: 'gemini' })).toBe('Plugin gemini');
   });
 
   test('is the one-line description, or the first line of the model’s when there is none', () => {

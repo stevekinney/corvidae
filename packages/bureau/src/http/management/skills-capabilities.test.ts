@@ -444,7 +444,7 @@ describe('bureau.agents.catalog', () => {
     for (const tool of tools) {
       expect(tool['inputSchema']).toMatchObject({ type: 'object' });
       expect(['allow', 'ask']).toContain(String(tool['defaultApproval']));
-      expect(['host', 'bureau']).toContain(String(tool['source']));
+      expect(['host', 'bureau', 'plugin']).toContain(String(tool['source']));
       expect(Array.isArray(tool['users'])).toBe(true);
     }
     expect(byName['lookup-order']).toMatchObject({

@@ -6,12 +6,14 @@
    * configuration in its deployment cannot save a key, and says so.
    */
   import { Alert, Button, StatusDot } from '@lostgradient/cinder';
-  import { useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { MODELS_COPY } from '../../../app/copy.ts';
   import { showToast } from '../../../app/toast-host.svelte';
+  import { getPlugins } from '../../../lib/host-plugins.ts';
   import { reloadProviders, type ProvidersSnapshot } from '../../../lib/host-providers.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import { router } from '../../../lib/router.svelte.ts';
   import ConnectDialog from './connect-dialog.svelte';
   import { providerDisplayName } from './format-model.ts';
 
@@ -27,6 +29,36 @@
   const queryClient = useQueryClient();
 
   let reloading = $state(false);
+
+  // A provider is a plugin too (`plugins/anthropic`, `openai`, `gemini`): one that is waiting for
+  // its key is `needs-setup` there. A page that cannot read the plugins says nothing about them.
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const needingSetup = $derived(
+    new Set(
+      (plugins.data?.plugins ?? [])
+        .filter((plugin) => plugin.status === 'needs-setup')
+        .map((plugin) => plugin.descriptor.name),
+    ),
+  );
+
+  function pluginPath(provider: string): string {
+    return `/settings/plugins?plugin=${encodeURIComponent(provider)}`;
+  }
+
+  function openPlugin(event: MouseEvent, provider: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(pluginPath(provider));
+  }
 
   const locked = $derived(snapshot.lockReason !== undefined);
   const connectingStatus = $derived(snapshot.providers.find((entry) => entry.name === connecting));
@@ -89,6 +121,15 @@
             onclick={() => (connecting = provider.name)}>{copy.manage}</Button
           >
         {:else}
+          {#if needingSetup.has(provider.name)}
+            <StatusDot status="warning" label={copy.needsSetup} labelVisible />
+            <a
+              class="ib-providers__plugin"
+              href={router.href(pluginPath(provider.name))}
+              onclick={(event) => openPlugin(event, provider.name)}
+              >{copy.pluginLink(nameOf(provider.name))}</a
+            >
+          {/if}
           <Button
             variant="primary"
             size="sm"
@@ -157,6 +198,10 @@
     min-width: 0;
     font-weight: 600;
     overflow-wrap: anywhere;
+  }
+
+  .ib-providers__plugin {
+    font-size: var(--cinder-text-sm);
   }
 
   .ib-providers__count {

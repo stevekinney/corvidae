@@ -18,3 +18,13 @@ export function agentEditPath(name: string): string {
 export function agentMemoryPath(name: string): string {
   return `${agentPath(name)}/memories`;
 }
+
+/**
+ * The plugin that ships the agent `name`, or `null` for an owner's agent or one defined in code.
+ * A plugin's agent is `plugin:name` (COR-1873), and an owner's file name never has a colon, so the
+ * colon tells them apart the way the Bureau does.
+ */
+export function pluginOfAgent(name: string): string | null {
+  const colon = name.indexOf(':');
+  return colon === -1 ? null : name.slice(0, colon);
+}

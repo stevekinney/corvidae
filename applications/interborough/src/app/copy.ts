@@ -906,6 +906,9 @@ export const MODELS_COPY = {
     description: 'A provider is connected once its API key is saved on this machine.',
     listLabel: 'Providers',
     connected: 'Connected',
+    /** A provider whose plugin is waiting for its key (`needs-setup` in `GET /host/plugins`). */
+    needsSetup: 'Needs setup',
+    pluginLink: (name: string): string => `Open the ${name} plugin`,
     connect: 'Connect',
     manage: 'Manage',
     connectLabel: (name: string): string => `Connect ${name}`,
@@ -1712,6 +1715,17 @@ export const AGENT_PAGE_COPY = {
     filteredTitle: 'No chats match',
     filteredDescription: 'None of this agent’s chats match these filters.',
     clearFilters: 'Clear filters',
+  },
+  /** A plugin's agent: read-only, with Duplicate to make a copy the owner can edit (COR-1873). */
+  plugin: {
+    duplicate: 'Duplicate',
+    note: (plugin: string): string =>
+      `The ${plugin} plugin ships this agent, so it is read-only. Duplicate it to make a copy you can edit.`,
+    exists: (name: string): string =>
+      `You already have an agent named ${name}. Open it, or rename or delete it to duplicate this one again.`,
+    notLoaded: 'This agent is not loaded now, so it cannot be duplicated.',
+    forbidden: 'You may not add agents.',
+    failed: 'The agent could not be duplicated.',
   },
   instructions: {
     heading: 'Instructions',
@@ -2812,9 +2826,11 @@ export const CAPABILITIES_COPY = {
       allow: 'Runs without asking',
       ask: 'Asks you first',
     },
+    /** Where a tool comes from; the host passes Interborough's MCP servers' tools, so its are an MCP server's. */
     sources: {
-      host: 'Provided by this host',
-      bureau: 'Built into Interborough',
+      host: 'MCP server',
+      bureau: 'Built in',
+      plugin: (plugin: string): string => `Plugin ${plugin}`,
     },
     loadFailed: {
       title: 'The tools could not be read',
