@@ -115,11 +115,11 @@ export function toolCountText(tools: readonly string[] | null): string | undefin
 }
 
 /**
- * The label of an agent's Memory action. The count follows once the Bureau has said how many
+ * The label of an agent's Memory tab. The count follows once the Bureau has said how many
  * memories there are, with a plus when only the first page of them has been read; an agent that
- * remembers nothing is just "Memory", because "Memory (0)" reads as a fault.
+ * remembers nothing is just "Memory", because "Memory 0" reads as a fault.
  */
-export function memoryActionText(count: number | undefined, more: boolean): string {
+export function memoryTabText(count: number | undefined, more: boolean): string {
   if (count === undefined || (count === 0 && !more)) return MEMORY_COPY.link;
   return AGENTS_COPY.memoryWithCount(count, more);
 }
