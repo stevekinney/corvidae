@@ -407,7 +407,11 @@ export class ChatSessionState {
 
   #stampAnnouncedAssets(): void {
     const announced = this.#wiring.drainAssets();
-    if (announced.length > 0) this.conversation = withAnnouncements(this.conversation, announced);
+    if (announced.length === 0) return;
+    // On the rows the turn made, else the turn's last row: never on a reply of an earlier turn.
+    this.conversation = withAnnouncements(this.conversation, announced, {
+      owns: (id) => this.#wiring.ownsRow(id),
+    });
   }
 
   /**

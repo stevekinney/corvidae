@@ -1995,8 +1995,12 @@ describe('the lines a run leaves under its messages', () => {
       { kind: 'wakeup', wakeAt: 1_900_000_000_000, note: 'check the deploy' },
       { kind: 'child-run', childRunId: 'child-1', agentName: 'researcher', status: 'completed' },
     ]);
-    // Stamped, so nothing is left for the end of the turn to stamp a second time.
-    expect(wiring.drainAssets()).toEqual([]);
+    // Stamped, so nothing is left for the end of the turn to stamp a second time, but a child run's
+    // end: the terminal's copy of a row the page held is thrown away by the merge, so the end is
+    // said again to the page's own row.
+    expect(wiring.drainAssets()).toEqual([
+      { kind: 'child-settled', childRunId: 'child-1', status: 'completed' },
+    ]);
   });
 
   test('are handed over, once, when the run ended without a history to stamp them on', async () => {
@@ -2052,6 +2056,35 @@ describe('the lines a run leaves under its messages', () => {
     expect(conversation.messages['reply-1']?.content).toContainEqual(
       expect.objectContaining({ type: 'thinking', thinking: 'Check the order first.' }),
     );
+  });
+});
+
+describe('a snapshot in the middle of a run', () => {
+  test('drops the assets it holds and keeps the lines it says nothing of', async () => {
+    const conversation = appendUserMessage(empty(), 'Remember it');
+    const { wiring } = wiringOver(
+      [
+        stream([
+          started(),
+          {
+            type: 'CUSTOM',
+            name: 'bureau.asset-part',
+            value: { messageId: 'reply-1', index: 1, assetId: 'asset-a', mediaType: 'image/png' },
+          },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.wakeup-scheduled',
+            value: { runId: 'native-1', duration: '6h', wakeAt: 1_900_000_000_000 },
+          },
+          { type: 'MESSAGES_SNAPSHOT', messages: [] },
+          { type: 'RUN_ERROR', message: 'No.', code: 'UNKNOWN' },
+        ]),
+      ],
+      () => conversation,
+    );
+    await frames(wiring, conversation).catch(() => undefined);
+
+    expect(wiring.drainAssets()).toMatchObject([{ kind: 'note', note: { kind: 'wakeup' } }]);
   });
 });
 

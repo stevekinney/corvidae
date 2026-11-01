@@ -51,8 +51,8 @@ const url = (input: Parameters<Fetcher>[0]): string =>
   typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
 describe('a turn that ends in an error', () => {
-  test('puts no line under the person’s own message, since its partial reply was taken back', async () => {
-    const session = open(async () =>
+  const erroring = () =>
+    open(async () =>
       sse([
         started,
         ...reply,
@@ -61,12 +61,78 @@ describe('a turn that ends in an error', () => {
       ]),
     );
 
+  test('puts the line under the person’s own message, since its partial reply was taken back', async () => {
+    const session = erroring();
+
     await session.controller.adapter
       .sendMessage({ role: 'user', content: 'Hi' }, [])
       .catch(() => undefined);
 
     expect(session.failure).toContain('Budget exceeded');
-    expect(session.conversation.ids.map((id) => notesOn(session, id))).toEqual([undefined]);
+    expect(session.conversation.ids.map((id) => notesOn(session, id))).toMatchObject([
+      [{ kind: 'wakeup' }],
+    ]);
+  });
+
+  test('never puts the line under the reply of the turn before', async () => {
+    const session = erroring();
+    session.conversation = appendMessages(
+      session.conversation,
+      { id: 'earlier-user', role: 'user', content: 'First' },
+      { id: 'earlier', role: 'assistant', content: 'An earlier reply.' },
+    );
+
+    await session.controller.adapter
+      .sendMessage({ role: 'user', content: 'Hi' }, [])
+      .catch(() => undefined);
+
+    expect(notesOn(session, 'earlier')).toBeUndefined();
+    expect(session.conversation.ids.at(-1)).not.toBe('earlier');
+    const last = session.conversation.ids.at(-1) ?? '';
+    expect(notesOn(session, last)).toMatchObject([{ kind: 'wakeup' }]);
+  });
+});
+
+describe('a child run that settles in a later turn than the one it started in', () => {
+  test('changes the line the page already holds, which the merge keeps over the terminal’s copy', async () => {
+    const session = open(async () =>
+      sse([
+        started,
+        ...reply,
+        {
+          type: 'CUSTOM',
+          name: 'bureau.child-run-settled',
+          value: { childRunId: 'child-1', status: 'failed' },
+        },
+        { ...started, type: 'RUN_FINISHED', outcome: { type: 'success' } },
+      ]),
+    );
+    session.conversation = appendMessages(
+      session.conversation,
+      { id: 'earlier-user', role: 'user', content: 'First' },
+      {
+        id: 'earlier',
+        role: 'assistant',
+        content: 'Handing it off.',
+        metadata: {
+          'cinder:notes': [
+            {
+              kind: 'child-run',
+              id: 'child:child-1',
+              childRunId: 'child-1',
+              agentName: 'researcher',
+              status: 'running',
+              href: '/runs/child-1',
+            },
+          ],
+        },
+      },
+    );
+
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'And now?' }, []);
+
+    expect(notesOn(session, 'earlier')).toMatchObject([{ kind: 'child-run', status: 'failed' }]);
+    expect(notesOn(session, 'reply')).toBeUndefined();
   });
 });
 

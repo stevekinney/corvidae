@@ -521,6 +521,10 @@ describe('resolveMessageNotes', () => {
       'text',
       { kind: 'memory', id: 'e', recordId: '', collection: 'c', memoryClass: 'k' },
       { kind: 'wakeup', id: 'f', wakeAt: Number.NaN },
+      // Finite, but no `Date` holds it: rendering it throws in `toISOString()`.
+      { kind: 'wakeup', id: 'f2', wakeAt: 1e17 },
+      { kind: 'wakeup', id: 'f3', wakeAt: -1e17 },
+      { kind: 'wakeup', id: 'f4', wakeAt: 8.64e15 + 1 },
       { kind: 'child-run', id: 'g', childRunId: 'x', agentName: 'h', status: 'paused' },
       { kind: 'stopped', id: 'h', reason: '  ' },
       { kind: 'unknown', id: 'i' },
@@ -530,6 +534,20 @@ describe('resolveMessageNotes', () => {
       message({ role: 'assistant', metadata: { 'cinder:notes': [...notes, ...malformed] } }),
     );
     expect(resolved).toEqual(notes as typeof resolved);
+  });
+
+  it('keeps the earliest and latest moments a Date can hold', () => {
+    const edges = [
+      { kind: 'wakeup', id: 'min', wakeAt: -8.64e15 },
+      { kind: 'wakeup', id: 'max', wakeAt: 8.64e15 },
+    ];
+    const resolved = resolveMessageNotes(
+      message({ role: 'assistant', metadata: { 'cinder:notes': edges } }),
+    );
+    expect(resolved).toEqual(edges as typeof resolved);
+    for (const note of resolved ?? []) {
+      if (note.kind === 'wakeup') expect(() => new Date(note.wakeAt).toISOString()).not.toThrow();
+    }
   });
 
   it('is undefined for a message with no valid note', () => {

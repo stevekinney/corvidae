@@ -43,8 +43,33 @@ describe('NotePart', () => {
     expect(link?.getAttribute('href')).toBe('/agents/helper/memories');
   });
 
+  test('a link inside the application keeps its query and fragment', () => {
+    const container = show({
+      type: 'note',
+      key: 'm:note:memory:r2',
+      kind: 'memory',
+      id: 'memory:r2',
+      recordId: 'r2',
+      collection: 'c',
+      memoryClass: 'semantic',
+      href: '/agents/helper/memories?class=semantic#r2',
+    });
+    expect(container.querySelector('a')?.getAttribute('href')).toBe(
+      '/agents/helper/memories?class=semantic#r2',
+    );
+  });
+
   test('a link that leaves the application is not rendered', () => {
-    for (const href of ['https://example.com/x', '//example.com/x', 'javascript:alert(1)']) {
+    for (const href of [
+      'https://example.com/x',
+      '//example.com/x',
+      'javascript:alert(1)',
+      // A browser reads a backslash as a slash, and drops a tab: both become `//evil.example`.
+      '/\\evil.example',
+      '/\t/evil.example',
+      '/\n/evil.example',
+      '/\\/evil.example',
+    ]) {
       const container = show({
         type: 'note',
         key: `m:note:${href}`,

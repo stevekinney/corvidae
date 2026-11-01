@@ -72,6 +72,14 @@ function runHref(childRunId: string): string {
   return identifierPath('runs', '/runs/:run', childRunId, new URLSearchParams());
 }
 
+/**
+ * Whether `value` is a moment a `Date` can hold. A finite number is not enough: `1e17` is finite
+ * and makes `new Date(value).toISOString()` throw, which fails the whole transcript's render.
+ */
+function isRepresentableTime(value: unknown): value is number {
+  return typeof value === 'number' && !Number.isNaN(new Date(value).getTime());
+}
+
 function isSettled(status: string | undefined): status is SettledStatus {
   return status === 'completed' || status === 'failed' || status === 'aborted';
 }
@@ -104,9 +112,7 @@ export function noteAnnouncementOf(
     case WAKEUP_SCHEDULED_EVENT_NAME: {
       const wakeAt = value['wakeAt'];
       const runId = text(value['runId']);
-      if (runId === undefined || typeof wakeAt !== 'number' || !Number.isFinite(wakeAt)) {
-        return undefined;
-      }
+      if (runId === undefined || !isRepresentableTime(wakeAt)) return undefined;
       const note = text(value['note']);
       return {
         kind: 'note',
@@ -183,48 +189,83 @@ function withNotes(
   };
 }
 
+type Row = ConversationHistory['messages'][string];
+
+/** The marker `@lostgradient/chat` stamps on a row the user sent while a run was working. */
+export const FOLLOW_UP_METADATA_KEY = '_followUp';
+
 /**
- * Where the notes of a run may go: `owns` says which rows the run made. The terminal history keeps
- * the page's own copy of a row that was on screen before the run (`mergeRunHistory`), so a note on
- * one would be thrown away with the terminal's copy; a run's notes go on its own rows. Without
- * `owns`, the placement is the last reply, which is how a note is put on the page after a merge.
+ * Where the notes of a run may go. A note belongs to its own turn, never to an earlier reply: the
+ * turn is the rows from the last message the person opened one with (a follow-up sent mid-run does
+ * not open one) to the end.
  */
 export type Placement = {
+  /**
+   * Says which rows the run made. The terminal history keeps the page's own copy of a row that was
+   * on screen before the run (`mergeRunHistory`), so a note on one would be thrown away with the
+   * terminal's copy; a run's notes go on its own rows. Without it, every row of the last turn is a
+   * candidate, which is how a note is put on a thread read back or on the page after a merge.
+   */
   readonly owns?: ((id: string) => boolean) | undefined;
-  /** Falls back to the last row shown, whatever its role, when there is no reply (a stop's note). */
-  readonly anyRow?: boolean | undefined;
+  /**
+   * Leaves a note unplaced when the run made no row to carry it, so the caller can place it once
+   * the page's own rows are in. Without it, such a note goes on the last turn's last row, which is
+   * the person's message when the turn has no other.
+   */
+  readonly ownedOnly?: boolean | undefined;
 };
 
-/**
- * The row a note with no better place goes under: the last reply the run made, else the last tool
- * row it made (a run that only called a tool has no reply, and its tool rows are shown as a group
- * that carries the note). A result row is shown inside its call's card, so it is never the place.
- */
-function lastRowId(conversation: ConversationHistory, placement: Placement): string | undefined {
-  const shown = conversation.ids.filter((id) => !conversation.messages[id]?.hidden);
-  const owned = (id: string): boolean => placement.owns?.(id) ?? true;
-  const reply = shown.findLast(
-    (id) => conversation.messages[id]?.role === 'assistant' && owned(id),
-  );
-  if (reply !== undefined) return reply;
-  if (placement.anyRow === true) {
-    return shown.findLast((id) => conversation.messages[id]?.role !== 'tool-result');
-  }
-  if (placement.owns === undefined) return undefined;
-  return shown.findLast((id) => conversation.messages[id]?.role === 'tool-call' && owned(id));
+function shownIds(conversation: ConversationHistory): string[] {
+  return conversation.ids.filter((id) => !conversation.messages[id]?.hidden);
 }
 
-function anchorRowId(
+/** Whether `row` is a message the person opened a turn with. */
+function opensTurn(row: Row | undefined): boolean {
+  return row?.role === 'user' && !row.hidden && row.metadata?.[FOLLOW_UP_METADATA_KEY] !== true;
+}
+
+/** The rows shown from the last message the person opened a turn with to the end. */
+function lastTurnIds(conversation: ConversationHistory): string[] {
+  const shown = shownIds(conversation);
+  const start = shown.findLastIndex((id) => opensTurn(conversation.messages[id]));
+  return start < 0 ? shown : shown.slice(start);
+}
+
+/**
+ * The row a note with no better place goes under: the last reply among `candidates`, else the last
+ * tool row (a turn that only called a tool has no reply, and its tool rows are shown as a group
+ * that carries the note). A result row is shown inside its call's card, so it is never the place.
+ */
+function carrierAmong(
+  conversation: ConversationHistory,
+  candidates: readonly string[],
+): string | undefined {
+  return (
+    candidates.findLast((id) => conversation.messages[id]?.role === 'assistant') ??
+    candidates.findLast((id) => conversation.messages[id]?.role === 'tool-call')
+  );
+}
+
+function placementRowId(
   conversation: ConversationHistory,
   anchor: string | undefined,
   placement: Placement,
 ): string | undefined {
+  const owned = (id: string): boolean => placement.owns?.(id) ?? true;
+  const turn = lastTurnIds(conversation);
   const preferred = anchor === undefined ? undefined : conversation.messages[anchor];
-  return preferred?.role === 'assistant' &&
+  if (
+    preferred?.role === 'assistant' &&
     !preferred.hidden &&
-    (placement.owns?.(preferred.id) ?? true)
-    ? preferred.id
-    : lastRowId(conversation, placement);
+    owned(preferred.id) &&
+    (placement.owns !== undefined || turn.includes(preferred.id))
+  ) {
+    return preferred.id;
+  }
+  const candidates = placement.owns === undefined ? turn : shownIds(conversation).filter(owned);
+  const carrier = carrierAmong(conversation, candidates);
+  if (carrier !== undefined || placement.ownedOnly === true) return carrier;
+  return turn.findLast((id) => conversation.messages[id]?.role !== 'tool-result');
 }
 
 /** The row `note` is on, when the conversation holds it. */
@@ -236,36 +277,45 @@ function rowHolding(conversation: ConversationHistory, id: string): string | und
 }
 
 /**
- * `conversation` with `note` on a row. A note the conversation already holds is replaced where it
- * is, so stamping the same note twice (an announcement, then the history it left) leaves one line.
+ * `conversation` with `note` on the row `rowId`, or on the row that already holds it: a note the
+ * conversation already holds is replaced where it is, so stamping the same note twice (an
+ * announcement, then the history it left) leaves one line. `undefined` when there is no such row.
  */
+function stampNote(
+  conversation: ConversationHistory,
+  note: MessageNoteInfo,
+  rowId: string | undefined,
+): ConversationHistory | undefined {
+  const target = rowHolding(conversation, note.id) ?? rowId;
+  const row = target === undefined ? undefined : conversation.messages[target];
+  if (target === undefined || row === undefined) return undefined;
+  const held = notesOf(row);
+  const exists = held.some((entry) => entry.id === note.id);
+  return withNotes(
+    conversation,
+    target,
+    exists ? held.map((entry) => (entry.id === note.id ? note : entry)) : [...held, note],
+  );
+}
+
 function putNote(
   conversation: ConversationHistory,
   note: MessageNoteInfo,
   anchor: string | undefined,
   placement: Placement = {},
-): ConversationHistory {
-  const rowId = rowHolding(conversation, note.id) ?? anchorRowId(conversation, anchor, placement);
-  const row = rowId === undefined ? undefined : conversation.messages[rowId];
-  if (rowId === undefined || row === undefined) return conversation;
-  const held = notesOf(row);
-  const exists = held.some((entry) => entry.id === note.id);
-  return withNotes(
-    conversation,
-    rowId,
-    exists ? held.map((entry) => (entry.id === note.id ? note : entry)) : [...held, note],
-  );
+): ConversationHistory | undefined {
+  return stampNote(conversation, note, placementRowId(conversation, anchor, placement));
 }
 
 function settleChild(
   conversation: ConversationHistory,
   childRunId: string,
   status: SettledStatus,
-): ConversationHistory {
+): ConversationHistory | undefined {
   const id = `child:${childRunId}`;
   const rowId = rowHolding(conversation, id);
   const row = rowId === undefined ? undefined : conversation.messages[rowId];
-  if (rowId === undefined || row === undefined) return conversation;
+  if (rowId === undefined || row === undefined) return undefined;
   return withNotes(
     conversation,
     rowId,
@@ -277,21 +327,36 @@ function settleChild(
 
 /**
  * `conversation` with each announced note on the row it belongs under: the row an announcement
- * names, else the last reply (see {@link Placement}). A child run's end changes the note of its start; one whose start was
- * never announced to this page (a page that joined the run late) has no line to change.
+ * names, else the run's last reply, else its last tool row (see {@link Placement}). A child run's
+ * end changes the note of its start. `unplaced` holds the announcements that found no row: a note
+ * the run made no row to carry (with `ownedOnly`), and an end whose start is not in this
+ * conversation, which a later conversation may hold (the page's own row of a turn that parked).
  */
+export function placeEventNotes(
+  conversation: ConversationHistory,
+  announced: readonly NoteAnnouncement[],
+  placement: Placement = {},
+): { readonly conversation: ConversationHistory; readonly unplaced: NoteAnnouncement[] } {
+  let current = conversation;
+  const unplaced: NoteAnnouncement[] = [];
+  for (const announcement of announced) {
+    const next =
+      announcement.kind === 'note'
+        ? putNote(current, announcement.note, announcement.anchor, placement)
+        : settleChild(current, announcement.childRunId, announcement.status);
+    if (next === undefined) unplaced.push(announcement);
+    else current = next;
+  }
+  return { conversation: current, unplaced };
+}
+
+/** {@link placeEventNotes} without the announcements it could not place. */
 export function withEventNotes(
   conversation: ConversationHistory,
   announced: readonly NoteAnnouncement[],
   placement: Placement = {},
 ): ConversationHistory {
-  return announced.reduce(
-    (current, announcement) =>
-      announcement.kind === 'note'
-        ? putNote(current, announcement.note, announcement.anchor, placement)
-        : settleChild(current, announcement.childRunId, announcement.status),
-    conversation,
-  );
+  return placeEventNotes(conversation, announced, placement).conversation;
 }
 
 function parsedContent(content: unknown): Record<string, unknown> {
@@ -320,6 +385,8 @@ export function withStoredMemoryNotes(
   let current = conversation;
   let reply: string | undefined;
   for (const row of rows) {
+    // A reply of an earlier turn is not where this turn's record was written.
+    if (opensTurn(row)) reply = undefined;
     if (row.role === 'assistant' && !row.hidden) reply = row.id;
     const call = row.toolCall;
     if (call?.name !== MEMORY_STORE_TOOL_NAME) continue;
@@ -337,7 +404,12 @@ export function withStoredMemoryNotes(
     ) {
       continue;
     }
-    current = putNote(current, memoryNote(recordId, collection, memoryClass, agentName), reply);
+    // The reply before the call in its own turn, else the call's own row, which a group of tool
+    // rows shows with the note.
+    const carrier = reply ?? (row.hidden ? undefined : row.id);
+    current =
+      stampNote(current, memoryNote(recordId, collection, memoryClass, agentName), carrier) ??
+      current;
   }
   return current;
 }
@@ -367,16 +439,19 @@ export function stopReasonOf(
   return reasons[key];
 }
 
-/** `conversation` with why its last run stopped under its last reply, when that run did stop. */
+/**
+ * `conversation` with why its last run stopped under its last turn's last reply, or under the
+ * person's message when the turn has none, when that run did stop.
+ */
 export function withStopReason(
   conversation: ConversationHistory,
   task: Pick<TaskView, 'status' | 'finishReason' | 'statusMessage'> | undefined,
 ): ConversationHistory {
   const reason = task === undefined ? undefined : stopReasonOf(task);
   if (reason === undefined) return conversation;
-  return putNote(conversation, { kind: 'stopped', id: 'stopped', reason }, undefined, {
-    anyRow: true,
-  });
+  return (
+    putNote(conversation, { kind: 'stopped', id: 'stopped', reason }, undefined) ?? conversation
+  );
 }
 
 /** The kinds of note only the stream announced, which a thread read from the Bureau cannot give back. */
@@ -396,7 +471,8 @@ export function carryLiveNotes(
     const before = previous.messages[id];
     if (before === undefined || current.messages[id] === undefined) continue;
     const carried = notesOf(before).filter((note) => LIVE_ONLY.has(note.kind));
-    for (const note of carried) current = putNote(current, note, id);
+    // On the row that held it: a wakeup held on a tool row stays there.
+    for (const note of carried) current = stampNote(current, note, id) ?? current;
   }
   return current;
 }

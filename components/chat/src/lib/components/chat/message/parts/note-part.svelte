@@ -11,9 +11,25 @@
     aborted: 'Stopped',
   };
 
-  /** A link inside the host application only: one slash, never a scheme or a protocol-relative URL. */
+  /** A stand-in origin to resolve a link against; any origin the link leaves is not the host's. */
+  const HOST_ORIGIN = 'https://host.invalid';
+
+  /**
+   * A link inside the host application only. The link is resolved the way a browser resolves it, so
+   * `/\evil.example` and a tab inside `//` (both read as a protocol-relative URL) leave the origin
+   * and are dropped, where a test of the first characters passes them. The resolved path is what
+   * is rendered, so the link followed is the link checked.
+   */
   function safeHref(href: string | undefined): string | undefined {
-    return href !== undefined && href.startsWith('/') && !href.startsWith('//') ? href : undefined;
+    if (href === undefined || !href.startsWith('/')) return undefined;
+    try {
+      const resolved = new URL(href, HOST_ORIGIN);
+      return resolved.origin === HOST_ORIGIN
+        ? `${resolved.pathname}${resolved.search}${resolved.hash}`
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /** The time of day for today and the date with it for any other day. */

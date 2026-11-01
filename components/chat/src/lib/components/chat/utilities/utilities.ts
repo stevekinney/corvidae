@@ -117,7 +117,8 @@ function isMessageNoteInfo(value: unknown): value is MessageNoteInfo {
       return (
         'wakeAt' in value &&
         typeof value.wakeAt === 'number' &&
-        Number.isFinite(value.wakeAt) &&
+        // A finite number is not always a moment: `1e17` makes `toISOString()` throw in the render.
+        !Number.isNaN(new Date(value.wakeAt).getTime()) &&
         isOptionalString('note' in value ? value.note : undefined)
       );
     case 'child-run':

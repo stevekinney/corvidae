@@ -75,20 +75,19 @@ import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-c
 import { getLastRun } from '../../lib/bureau-tasks.ts';
 import { readEvents } from './ag-ui-events.ts';
 import {
+  FOLLOW_UP_METADATA_KEY,
   noteAnnouncementKey,
   noteAnnouncementOf,
-  withEventNotes,
+  placeEventNotes,
   withStopReason,
   withStoredMemoryNotes,
   type NoteAnnouncement,
+  type Placement,
 } from './event-notes.ts';
 import { ResumableMapper } from './resumable-mapper.ts';
 
 /** The AG-UI mount's path, under the Bureau's. */
 export const AG_UI_PATH = `${BUREAU_PATH}/ag-ui`;
-
-/** The marker `@lostgradient/chat` stamps on a row the user sent while a run was working. */
-const FOLLOW_UP_KEY = '_followUp';
 
 /** Whether `event` is a valid `MESSAGES_SNAPSHOT`. */
 function isMessagesSnapshot(event: unknown): event is MessagesSnapshotEvent {
@@ -240,6 +239,11 @@ export type ChatRunWiring = {
    * puts them on the rows with {@link withAnnouncements}.
    */
   drainAssets(): readonly Announced[];
+  /**
+   * Whether the last turn made the row `id`, as opposed to the page holding it when the turn began.
+   * The announcements {@link drainAssets} answers go on the turn's own rows.
+   */
+  ownsRow(id: string): boolean;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -342,7 +346,7 @@ function heldCalls(conversation: ConversationHistory): ReadonlySet<string> {
 }
 
 function isFollowUp(message: ConversationHistory['messages'][string] | undefined): boolean {
-  return message?.metadata?.[FOLLOW_UP_KEY] === true;
+  return message?.metadata?.[FOLLOW_UP_METADATA_KEY] === true;
 }
 
 /**
@@ -542,12 +546,21 @@ async function* parkApprovals(
       yield frame;
       continue;
     }
-    const parked = withStoredMemoryNotes(
-      withAnnouncements(withApprovalRows(frame.conversation, interrupts()), announced, owns),
-      agentName(),
+    const placed = placeAnnouncements(
+      withApprovalRows(frame.conversation, interrupts()),
+      announced,
+      { owns, ownedOnly: true },
     );
-    // Stamped, so nothing is left for the end of the turn to put on a row a second time.
-    announced.splice(0);
+    const parked = withStoredMemoryNotes(placed.conversation, agentName());
+    // Stamped, so nothing is left for the end of the turn to put on a row a second time. Two kinds
+    // stay: what found no row of the run's own, and the end of a child run. The merge keeps the
+    // page's copy of every row the page held, and the terminal's copy that took the end is thrown
+    // away with it, so the end of the turn puts both on the page's rows. Changing a note to the
+    // status it already has is no change, so an end that was stamped here is stamped again safely.
+    const settled = announced.filter(
+      (announcement) => isNoteAnnouncement(announcement) && announcement.kind === 'child-settled',
+    );
+    announced.splice(0, announced.length, ...new Set([...placed.unplaced, ...settled]));
     stamped();
     yield {
       ...frame,
@@ -688,18 +701,33 @@ export function withAssetParts(
 
 /**
  * The conversation with everything the run announced on the rows it belongs to: the assets a row
- * carries, and the lines under a message (memory written, a wakeup, a child run).
+ * carries, and the lines under a message (memory written, a wakeup, a child run). `unplaced` holds
+ * the lines that found no row (see {@link placeEventNotes}).
  */
+export function placeAnnouncements(
+  conversation: ConversationHistory,
+  announced: readonly Announced[],
+  placement: Placement = {},
+): { readonly conversation: ConversationHistory; readonly unplaced: NoteAnnouncement[] } {
+  return placeEventNotes(
+    withAssetParts(conversation, announced),
+    announced.filter(isNoteAnnouncement),
+    placement,
+  );
+}
+
+/** {@link placeAnnouncements} without the lines it could not place. */
 export function withAnnouncements(
   conversation: ConversationHistory,
   announced: readonly Announced[],
-  owns?: (id: string) => boolean,
+  placement: Placement = {},
 ): ConversationHistory {
-  return withEventNotes(
-    withAssetParts(conversation, announced),
-    announced.filter(isNoteAnnouncement),
-    { owns },
-  );
+  return placeAnnouncements(conversation, announced, placement).conversation;
+}
+
+/** Drops the assets from `announcements`: a snapshot holds them, and says nothing of the notes. */
+function forgetAssets(announcements: Announced[]): void {
+  announcements.splice(0, announcements.length, ...announcements.filter(isNoteAnnouncement));
 }
 
 /** The AG-UI part type an attachment of `mimeType` is sent as. A text file is a document. */
@@ -810,6 +838,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let detached = false;
   /** The assets the turn on screen announced that no terminal frame has put on a row. */
   let unstamped: Announced[] = [];
+  /** The rows on screen when the last turn began. */
+  let turnStartIds: ReadonlySet<string> = new Set();
   /** Recovery survives an unsuccessful turn draining its UI handoff after rollback. */
   let assetRun: { readonly id: string; readonly announcements: Announced[] } | undefined;
   let transportGeneration = 0;
@@ -982,8 +1012,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         if (isRecord(event) && (event['type'] === 'RUN_FINISHED' || event['type'] === 'RUN_ERROR'))
           options.onTerminal?.();
         if (isRecord(event) && event['type'] === 'MESSAGES_SNAPSHOT') {
-          announced.splice(0);
-          assetRun?.announcements.splice(0);
+          // A snapshot holds the rows' assets, and not the lines a run announced: a wakeup or a
+          // child run is not in the thread, so an unusable cursor must not drop them.
+          forgetAssets(announced);
+          if (assetRun !== undefined) forgetAssets(assetRun.announcements);
         }
         const announcement =
           announcementOf(event) ?? noteAnnouncementOf(event, options.agentName());
@@ -1243,6 +1275,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     }
     const generation = ++transportGeneration;
     const startIds = new Set(request.conversation.ids);
+    turnStartIds = startIds;
     const announced: Announced[] = [];
     unstamped = announced;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
@@ -1403,6 +1436,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     drainAssets() {
       return unstamped.splice(0);
     },
+    ownsRow: (id) => !turnStartIds.has(id),
     async discardAttach() {
       const dropped = attached;
       attached = undefined;

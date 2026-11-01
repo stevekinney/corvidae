@@ -205,7 +205,7 @@ export type ChildRunStatus = 'running' | 'completed' | 'failed' | 'aborted';
  * record the agent wrote (`memory`), a time the run parked itself until (`wakeup`), a run it handed
  * work to (`child-run`), or why the run stopped (`stopped`). `id` is the note's stable identity
  * within its message. An `href` is a path inside the host application; Chat renders it as a link
- * only when it starts with a single `/`.
+ * only when it starts with `/` and still resolves inside the host (not `//host` or `/\host`).
  */
 export type MessageNoteInfo =
   | {
