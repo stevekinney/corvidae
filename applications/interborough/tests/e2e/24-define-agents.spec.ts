@@ -5,11 +5,12 @@
  * offers, so a save really writes. Every view meets axe at the two widths the application is
  * built for.
  */
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { AGENT_EDITOR_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
 import {
   addTools,
   agentDirectory,
@@ -68,6 +69,18 @@ async function expectNoSidewaysScroll(page: Page, where: string): Promise<void> 
 
 const copy = AGENT_EDITOR_COPY;
 
+/** The option the model field lists for each provider the host can call and has no key for. */
+async function unconnectedProviderOptions(request: APIRequestContext): Promise<string[]> {
+  const response = await request.get('/host/providers');
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as {
+    providers: { name: string; hasKey: boolean }[];
+  };
+  return body.providers
+    .filter((provider) => !provider.hasKey)
+    .map((provider) => copy.model.notConnected(providerDisplayName(provider.name)));
+}
+
 test.describe('a new agent', () => {
   for (const width of WIDTHS) {
     test(`is made from what the catalog offers, and written as a file, at ${width} pixels`, async ({
@@ -83,11 +96,21 @@ test.describe('a new agent', () => {
 
       // Only the models and tools `bureau.agents.catalog` returns.
       const catalog = await readCatalog(request);
-      const options = page.getByRole('combobox', { name: 'Model' }).getByRole('option');
-      await expect(options).toHaveText(
-        catalog.models.map((model) => `${model.provider}/${model.model}`),
-      );
-      await expect(options).toHaveText(['anthropic/claude-sonnet-5', 'anthropic/claude-haiku-4-5']);
+      const unconnectedOptions = await unconnectedProviderOptions(request);
+      const model = page.getByRole('combobox', { name: 'Model' });
+      // The field holds the chosen model, and opening it as it stands lists every option.
+      await model.click();
+      const options = page.locator('.cinder-combobox__option-label');
+      await expect(options).toHaveText([
+        ...catalog.models.map((row) => `${row.provider}/${row.model}`),
+        // A provider the host can call and has no key for is listed, disabled.
+        ...unconnectedOptions,
+      ]);
+      await expect(options.first()).toHaveText('anthropic/claude-sonnet-5');
+      await expect(page.locator('.cinder-_option-group__label').first()).toHaveText('Anthropic');
+      // The chosen model's abilities show under the field.
+      await expect(page.getByTestId('agent-model-abilities')).toBeVisible();
+      await page.keyboard.press('Escape');
       // A new agent has no tool; the picker offers each tool the catalog lists, once.
       await expect(page.getByTestId('agent-tool-count')).toHaveText(
         copy.toolCount(0, catalog.tools.length),
@@ -95,7 +118,9 @@ test.describe('a new agent', () => {
       await expect(page.getByRole('checkbox')).toHaveCount(0);
       await openToolPicker(page);
       await expect(page.getByRole('checkbox')).toHaveCount(catalog.tools.length);
-      await expect(page.getByRole('checkbox', { name: 'lookup-order', exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('checkbox', { name: 'demo:lookup-order', exact: true }),
+      ).toBeVisible();
       await closeToolPicker(page);
 
       await page.getByRole('textbox', { name: /^Name/ }).fill('E2E New Agent');
@@ -103,7 +128,7 @@ test.describe('a new agent', () => {
       await page
         .getByRole('textbox', { name: /^Instructions/ })
         .fill('Answer in one short sentence.');
-      await addTools(page, ['lookup-order']);
+      await addTools(page, ['demo:lookup-order']);
       await expect(page.getByTestId('agent-tool-count')).toHaveText(
         copy.toolCount(1, catalog.tools.length),
       );
@@ -423,10 +448,11 @@ test.describe('an agent that exists', () => {
     await makeAgent(request, 'e2e-model');
     await page.goto('/agents/e2e-model/edit');
     const select = page.getByRole('combobox', { name: 'Model' });
-    // The file wrote an alias, and the select shows the model it names.
+    // The file wrote an alias, and the field shows the model it names.
     await expect(select).toHaveValue('anthropic/claude-sonnet-5');
 
-    await select.selectOption('anthropic/claude-haiku-4-5');
+    await select.fill('');
+    await page.getByRole('option', { name: /^anthropic\/claude-haiku-4-5/ }).click();
     await page.getByRole('button', { name: copy.saveAction }).click();
     await expect(page).toHaveURL(/\/agents\/e2e-model$/);
 

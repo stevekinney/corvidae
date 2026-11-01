@@ -14,6 +14,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { SETTINGS_COPY, VIEW_COPY } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
+  catalogFixture,
   STUB_REMOTE_AGENT_DIRECTORY,
   STUB_REMOTE_CONFIGURATION_FILE,
   STUB_REMOTE_PROVIDERS,
@@ -338,13 +339,14 @@ describe('a save', () => {
 
   test('offers the catalog’s rows for the models a setting names, never a typed name', async () => {
     const { container, findByRole } = open(servedSettings(), undefined, {
-      'bureau.agents.catalog': () => ({
-        models: [
-          { provider: 'anthropic', model: 'claude-haiku-5-5', aliases: [] },
-          { provider: 'openai', model: 'gpt-5', aliases: [] },
-        ],
-        tools: [],
-      }),
+      'bureau.agents.catalog': () =>
+        catalogFixture({
+          models: [
+            { provider: 'anthropic', model: 'claude-haiku-5-5' },
+            { provider: 'openai', model: 'gpt-5' },
+          ],
+          tools: [],
+        }),
     });
     const form = await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const select = row(container, 'context.summarizerModel')?.querySelector(

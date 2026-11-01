@@ -27,6 +27,11 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { shortcuts } from '../../lib/shortcuts.ts';
+import {
+  chooseModel,
+  openModelOptions,
+  optionLabel,
+} from './agent-editor-model-support.test-support.ts';
 import Harness from './agent-editor-test-harness.test-harness.svelte';
 
 let stub: BureauStub | undefined;
@@ -52,6 +57,10 @@ function bureau(
     readonly hostMode?: 'local' | 'remote';
     /** The saved versions, newest first. */
     readonly versions?: readonly unknown[];
+    /** The providers `/host/providers` reports. Left out, the host does not answer. */
+    readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
+    /** The `modelPolicy` setting. Left out, the settings are not readable. */
+    readonly modelPolicy?: unknown;
   } = {},
 ): BureauStub {
   const agent = options.agent ?? readyAgent();
@@ -70,8 +79,19 @@ function bureau(
       }),
       'bureau.agents.definitions.update': () => ({ id: agent.id, hash: 'hash-2' }),
       'bureau.agents.definitions.delete': () => ({ id: agent.id, hash: 'deleted' }),
+      ...(options.modelPolicy === undefined
+        ? {}
+        : {
+            'bureau.settings.get': () => ({
+              values: { modelPolicy: options.modelPolicy },
+              revision: 1,
+              persisted: true,
+              keys: {},
+            }),
+          }),
     },
     {
+      ...(options.hostProviders === undefined ? {} : { hostProviders: options.hostProviders }),
       ...(options.hostPaths === undefined ? {} : { hostPaths: options.hostPaths }),
       ...(options.hostMode === undefined ? {} : { hostMode: options.hostMode }),
     },
@@ -124,11 +144,8 @@ describe('a new agent', () => {
     const { findByRole, getAllByRole, getByRole, getByTestId, queryAllByRole } = view;
     const select = await findByRole('combobox', { name: 'Model' });
 
-    expect(
-      within(select)
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toEqual(['openai/gpt-4.1', 'anthropic/claude-haiku-5']);
+    const listed = await openModelOptions(select);
+    expect(listed.map(optionLabel)).toEqual(['openai/gpt-4.1', 'anthropic/claude-haiku-5']);
     // A new agent has no tool yet, and the picker offers every tool the catalog lists.
     expect(getByTestId('agent-tool-count').textContent?.trim()).toBe('0 of 2 chosen');
     expect(queryAllByRole('checkbox')).toEqual([]);
@@ -474,8 +491,8 @@ describe('an agent that exists', () => {
     const calls = bureau();
     const { findByRole, getByRole } = mountEditor('researcher');
     const select = await findByRole('combobox', { name: 'Model' });
-    expect(within(select).getAllByRole('option')).toHaveLength(2);
-    await fireEvent.change(select, { target: { value: 'anthropic/claude-haiku-5' } });
+    expect(await openModelOptions(select)).toHaveLength(2);
+    await chooseModel(select, 'anthropic/claude-haiku-5');
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');

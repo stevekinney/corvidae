@@ -10,21 +10,14 @@
    * Tools are chosen from a drawer (`agent-editor-tool-picker.svelte`) and listed with a count (`agent-editor-tools.svelte`).
    *
    * The form owns no requests. The page that renders it sends a save and a delete, and says whether one is in flight. The page does not render the form for a catalog
-   * with no model (`agent-editor-no-provider.svelte`), so every choice here has something to pick.
+   * with no model (`agent-editor-no-provider.svelte`). The model is chosen in `agent-editor-model-field.svelte`.
    */
-  import {
-    Button,
-    EmptyState,
-    FormSection,
-    Input,
-    Select,
-    Textarea,
-    Toggle,
-  } from '@lostgradient/cinder';
+  import { Button, EmptyState, FormSection, Input, Textarea, Toggle } from '@lostgradient/cinder';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
+  import AgentEditorModelField from './agent-editor-model-field.svelte';
   import AgentEditorToolPicker from './agent-editor-tool-picker.svelte';
   import AgentEditorTools from './agent-editor-tools.svelte';
 
@@ -43,11 +36,6 @@
 
   const copy = AGENT_EDITOR_COPY;
   let pickerOpen = $state(false);
-
-  const modelOptionList = $derived([
-    ...(editor.model === '' ? [{ value: '', label: copy.modelPlaceholder, disabled: true }] : []),
-    ...editor.modelChoices,
-  ]);
 
   function submit(event: SubmitEvent): void {
     event.preventDefault();
@@ -94,15 +82,7 @@
 
   <!-- The section's title names each control below, so the control's own label is not shown twice. -->
   <FormSection heading={copy.sections.model} columns={1}>
-    <Select
-      id="agent-model"
-      label={copy.modelLabel}
-      labelVisible={false}
-      description={copy.modelDescription}
-      options={modelOptionList}
-      value={editor.model}
-      onchange={(event) => (editor.model = event.currentTarget.value)}
-    />
+    <AgentEditorModelField {editor} />
   </FormSection>
 
   <FormSection heading={copy.sections.instructions} columns={1}>

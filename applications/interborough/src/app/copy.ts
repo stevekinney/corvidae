@@ -274,6 +274,47 @@ export const AGENT_EDITOR_COPY = {
   modelDescription: 'The models this installation offers.',
   modelPlaceholder: 'Choose a model',
   /**
+   * The model field's words (`agent-editor-model-field.svelte`): models grouped by provider, a
+   * provider with no key disabled and pointing to Settings › Models, a model that is not offered
+   * disabled with its reason, and the abilities of the chosen one.
+   */
+  model: {
+    /** The option that stands for a provider with no key. */
+    notConnected: (provider: string): string => `${provider} is not connected`,
+    notConnectedDescription: 'Connect it in Settings › Models to use its models.',
+    /** What precedes the link to Settings › Models when a provider is not connected. */
+    unconnectedLead: (providers: readonly string[]): string => {
+      const names = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(
+        providers,
+      );
+      return providers.length === 1
+        ? `${names} is not connected. Connect it in`
+        : `${names} are not connected. Connect them in`;
+    },
+    settingsLink: 'Settings › Models',
+    /** Why a model is listed and cannot be chosen. */
+    reasons: {
+      'provider-denied': 'The model policy does not allow this provider.',
+      'model-denied': 'The model policy does not allow this model.',
+      'turned-off': 'Turned off in Settings › Models.',
+      retired: 'Retired by its provider.',
+      'not-in-catalog': 'This installation no longer offers this model.',
+    },
+    /** What the field says about the agent's own model when it cannot be chosen now. */
+    keptNotice: (model: string, reason: string): string =>
+      `This agent’s model, ${model}, is not offered now. ${reason} Saving keeps it unless you choose another.`,
+    abilitiesLabel: 'Abilities of the chosen model',
+    abilities: {
+      tools: 'Tools',
+      images: 'Images',
+      structuredOutput: 'Structured output',
+      streaming: 'Streaming',
+    },
+    textOnly: 'Text only',
+    context: (size: string): string => `${size} context window`,
+    maxOutput: (size: string): string => `${size} largest answer`,
+  },
+  /**
    * What the page shows instead of the form when the catalog holds no model: an agent cannot be
    * saved without one, and nothing in the application can add a provider.
    */

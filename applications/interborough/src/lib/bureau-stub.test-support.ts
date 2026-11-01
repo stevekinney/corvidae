@@ -5,7 +5,12 @@
  * call, so a test can say what was sent. The real Bureau is exercised end to end in the Playwright
  * suite; this is for the component's own branches.
  */
-import type { AgentCatalog, AgentDetail, AgentRevision } from './agent-definitions.ts';
+import type {
+  AgentCatalog,
+  AgentDetail,
+  AgentRevision,
+  CatalogModel,
+} from './agent-definitions.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
 
 export type BureauCall = { readonly method: string; readonly params: Record<string, unknown> };
@@ -135,6 +140,11 @@ export function installBureauStub(
   handlers: Record<string, BureauHandler>,
   options: {
     readonly hostPaths?: string | null;
+    /**
+     * The providers `/host/providers` reports, each with whether it has an API key. Left out, the
+     * route answers `Not found`, as a host that does not say would.
+     */
+    readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
     /** `remote` makes `/host/paths` answer as a host that keeps its state in Postgres and a bucket. */
     readonly hostMode?: 'local' | 'remote';
     readonly passThrough?: boolean;
@@ -150,6 +160,7 @@ export function installBureauStub(
     if (
       options.passThrough === true &&
       url.pathname !== '/host/paths' &&
+      url.pathname !== '/host/providers' &&
       url.pathname !== '/bureau/jsonrpc'
     ) {
       return before(input, init);
@@ -162,6 +173,16 @@ export function installBureauStub(
           ? stubRemoteHostPaths()
           : stubHostPaths(directory, STUB_WORKFLOW_DIRECTORY),
       );
+    }
+    if (url.pathname === '/host/providers' && options.hostProviders !== undefined) {
+      return Response.json({
+        providers: options.hostProviders.map((provider) => ({
+          ...provider,
+          configured: provider.hasKey,
+        })),
+        catalog: [],
+        models: [],
+      });
     }
     const subscription = url.pathname.startsWith(SUBSCRIPTION_PREFIX)
       ? options.subscriptions?.[url.pathname.slice(SUBSCRIPTION_PREFIX.length)]
@@ -235,22 +256,48 @@ export type CatalogToolFixture = Pick<
 > &
   Partial<AgentCatalog['tools'][number]>;
 
+/**
+ * A catalog model as a test writes it: the provider and the model, and its aliases when it has
+ * any. The rest defaults to an available, stable model that can call tools and stream and takes
+ * text only, with a 200,000-token window.
+ */
+export type CatalogModelFixture = Pick<CatalogModel, 'provider' | 'model'> & Partial<CatalogModel>;
+
+/** A catalog model, filled in from the keys a test names. */
+export function catalogModelFixture(fixture: CatalogModelFixture): CatalogModel {
+  return {
+    aliases: [],
+    lifecycle: 'stable',
+    availability: 'available',
+    contextWindowTokens: 200_000,
+    maxOutputTokens: 64_000,
+    streaming: true,
+    tools: true,
+    structuredOutput: false,
+    modalities: { text: { input: true }, image: { input: false } },
+    ...fixture,
+  };
+}
+
 /** The catalog a deployment with one provider offers: two models, one with an alias, and one tool. */
 export function catalogFixture(
-  overrides: Omit<Partial<AgentCatalog>, 'tools'> & {
+  overrides: Omit<Partial<AgentCatalog>, 'tools' | 'models'> & {
+    readonly models?: readonly CatalogModelFixture[];
     readonly tools?: readonly CatalogToolFixture[];
   } = {},
 ): AgentCatalog {
-  const { tools: overriddenTools, ...rest } = overrides;
+  const { tools: overriddenTools, models: overriddenModels, ...rest } = overrides;
   return {
-    models: [
-      {
-        provider: 'anthropic',
-        model: 'claude-sonnet-5',
-        aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
-      },
-      { provider: 'anthropic', model: 'claude-haiku-5', aliases: [] },
-    ],
+    models: (
+      overriddenModels ?? [
+        {
+          provider: 'anthropic',
+          model: 'claude-sonnet-5',
+          aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+        },
+        { provider: 'anthropic', model: 'claude-haiku-5' },
+      ]
+    ).map(catalogModelFixture),
     tools: (
       overriddenTools ?? [
         {

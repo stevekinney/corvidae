@@ -19,6 +19,16 @@ import {
   type ToolApproval,
 } from '../../lib/agent-definitions.ts';
 import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
+import {
+  canonicalModel,
+  choiceOf,
+  firstAvailableModel,
+  modelGroups,
+  NO_RESTRICTIONS,
+  type ModelChoice,
+  type ModelGroup,
+  type ModelRestrictions,
+} from './agent-editor-models.ts';
 
 /**
  * An identifier the Bureau accepts and the editor refuses: `/agents/new` creates an agent, so an
@@ -127,39 +137,6 @@ export function limitsOf(
   };
 }
 
-/** One model an agent may name, written `<provider>/<model>`. */
-export type ModelOption = { readonly value: string; readonly label: string };
-
-/** The models the catalog offers, one option each, in the catalog's order. */
-export function modelOptions(catalog: AgentCatalog): readonly ModelOption[] {
-  const seen = new Set<string>();
-  const options: ModelOption[] = [];
-  for (const row of catalog.models) {
-    const value = `${row.provider}/${row.model}`;
-    if (seen.has(value)) continue;
-    seen.add(value);
-    options.push({ value, label: value });
-  }
-  return options;
-}
-
-/**
- * The option a written model names, or `''` when the catalog offers no such model. A file may
- * write an alias (`anthropic/sonnet`), and the option is the model it resolves to.
- */
-export function canonicalModel(written: string, catalog: AgentCatalog): string {
-  const separator = written.indexOf('/');
-  if (separator === -1) return '';
-  const provider = written.slice(0, separator);
-  const name = written.slice(separator + 1);
-  const row = catalog.models.find(
-    (candidate) =>
-      candidate.provider === provider &&
-      (candidate.model === name || candidate.aliases.some((entry) => entry.alias === name)),
-  );
-  return row === undefined ? '' : `${row.provider}/${row.model}`;
-}
-
 /** An identifier a name suggests: lowercase letters and digits, joined by single hyphens. */
 export function slugify(name: string): string {
   const slug = name
@@ -172,11 +149,25 @@ export function slugify(name: string): string {
   return slug.replace(/-+$/, '');
 }
 
+/**
+ * What the model field is narrowed by besides the catalog: the providers the host reports, with
+ * whether each has a key, and what the model policy forbids. Either is left out when it could not
+ * be read, and the field then offers what the catalog lists.
+ */
+export type ModelContext = {
+  readonly hostProviders?:
+    readonly { readonly name: string; readonly hasKey: boolean }[] | undefined;
+  readonly restrictions?: ModelRestrictions | undefined;
+};
+
 export class AgentEditorState {
   readonly mode: 'create' | 'edit';
   /** The identifier of the agent being edited. A new agent has none until it is named. */
   readonly #editedId: string | undefined;
-  readonly modelChoices: readonly ModelOption[];
+  /** The models grouped by provider, as the field lists them; fixed when the form is built. */
+  readonly modelGroups: readonly ModelGroup[];
+  /** Whether the catalog holds any model row at all, offered or not. */
+  readonly #catalogHasModels: boolean;
   readonly toolChoices: AgentCatalog['tools'];
   /** `skillDescriptors` is carried through a save untouched. */
   readonly skillDescriptors: readonly AgentSkill[];
@@ -232,9 +223,9 @@ export class AgentEditorState {
     mode: 'create' | 'edit',
     catalog: AgentCatalog,
     detail: AgentDetail | undefined,
+    context: ModelContext,
   ) {
     this.mode = mode;
-    this.modelChoices = modelOptions(catalog);
     this.toolChoices = catalog.tools;
     const definition = detail?.definition ?? null;
     this.#editedId = detail?.id;
@@ -243,9 +234,19 @@ export class AgentEditorState {
     this.#warnAt = definition?.costBudget?.warnAt;
     this.#toolApproval = definition?.toolApproval ?? null;
     this.#writtenModel = definition?.model ?? '';
-    this.#writtenModelOption = canonicalModel(this.#writtenModel, catalog);
+    // The option the file's model names. A model the catalog lacks stays the selection under the
+    // name the file wrote, so a save does not change it for another.
+    const listed = canonicalModel(this.#writtenModel, catalog);
+    this.#writtenModelOption = listed === '' ? this.#writtenModel : listed;
+    this.#catalogHasModels = catalog.models.length > 0;
+    this.modelGroups = modelGroups(
+      catalog,
+      context.hostProviders,
+      context.restrictions ?? NO_RESTRICTIONS,
+      listed === '' && this.#writtenModel !== '' ? this.#writtenModel : undefined,
+    );
     if (definition === null) {
-      this.model = this.modelChoices[0]?.value ?? '';
+      this.model = firstAvailableModel(this.modelGroups);
       return;
     }
     this.name = definition.name;
@@ -271,17 +272,21 @@ export class AgentEditorState {
         : String(definition.toolBudget.maxDurationSeconds);
   }
 
-  /** A form for a new agent, with the catalog's first model chosen. */
-  static create(catalog: AgentCatalog): AgentEditorState {
-    return new AgentEditorState('create', catalog, undefined);
+  /** A form for a new agent, with the first model that can be chosen. */
+  static create(catalog: AgentCatalog, context: ModelContext = {}): AgentEditorState {
+    return new AgentEditorState('create', catalog, undefined, context);
   }
 
   /** A form filled from an agent file that loaded. */
-  static edit(detail: AgentDetail, catalog: AgentCatalog): AgentEditorState {
+  static edit(
+    detail: AgentDetail,
+    catalog: AgentCatalog,
+    context: ModelContext = {},
+  ): AgentEditorState {
     if (detail.definition === null || detail.hash === null) {
       throw new TypeError(`The agent "${detail.id}" has no definition to edit.`);
     }
-    return new AgentEditorState('edit', catalog, detail);
+    return new AgentEditorState('edit', catalog, detail, context);
   }
 
   /** The agent's identifier: fixed once it exists, otherwise what the person typed or the name suggests. */
@@ -320,9 +325,14 @@ export class AgentEditorState {
     );
   }
 
-  /** Whether the catalog offers any model at all. */
+  /** Whether the catalog holds any model at all. */
   get hasModels(): boolean {
-    return this.modelChoices.length > 0;
+    return this.#catalogHasModels;
+  }
+
+  /** The model the field has chosen, or `undefined` while it has none. */
+  get chosenModel(): ModelChoice | undefined {
+    return choiceOf(this.modelGroups, this.model);
   }
 
   /** Why each limit field cannot be saved as typed, in words; a field with nothing wrong has no entry. */

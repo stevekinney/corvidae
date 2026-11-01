@@ -149,6 +149,49 @@ describe('the operations', () => {
     expect(stub.calls[0]?.params).toEqual({});
   });
 
+  test('catalog keeps the abilities and standing of each model, and drops what it does not read', async () => {
+    // A row as Bureau's `modelSchema` leaves it: the keys the editor reads, and others it does not.
+    const row = {
+      descriptorVersion: 1,
+      provider: 'anthropic',
+      endpoint: 'https://api.anthropic.com',
+      model: 'claude-sonnet-5',
+      aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+      lifecycle: 'stable',
+      modalities: {
+        text: { input: true, output: true, sourceForms: [] },
+        image: { input: true, output: false, sourceForms: ['base64'] },
+      },
+      contextWindowTokens: 1_000_000,
+      maxOutputTokens: 64_000,
+      streaming: true,
+      tools: true,
+      parallelTools: true,
+      structuredOutput: true,
+      availability: 'unavailable',
+      health: 'healthy',
+    };
+    stub = installBureauStub({
+      'bureau.agents.catalog': () => ({ models: [row], tools: [] }),
+    });
+    const catalog = await getAgentCatalog();
+    expect(catalog.models).toEqual([
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+        lifecycle: 'stable',
+        availability: 'unavailable',
+        contextWindowTokens: 1_000_000,
+        maxOutputTokens: 64_000,
+        streaming: true,
+        tools: true,
+        structuredOutput: true,
+        modalities: { text: { input: true }, image: { input: true } },
+      },
+    ]);
+  });
+
   test('create names the identifier and the definition, and answers the hash', async () => {
     stub = installBureauStub({
       'bureau.agents.definitions.create': () => ({ id: 'researcher', hash: 'new-hash' }),
