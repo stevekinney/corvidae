@@ -1,8 +1,8 @@
 /**
  * The tool calls of a transcript as a person reads them. A step of a run that calls a tool is one
  * row of the conversation, and a turn that calls several has a row for each, back to back. They
- * are shown as one group: a line saying how many tools were used and how many need a decision,
- * which opens to a row per call. A call that needs a decision is never inside the fold.
+ * are shown as one group: a line saying how many tools were used, which, and how many need a
+ * decision, which opens to a row per call. A call that needs a decision is never inside the fold.
  */
 import {
   pairToolCallsWithResults,
@@ -89,15 +89,31 @@ function entryOf(pair: ToolCallPair): ToolCallEntry {
   };
 }
 
-/** What a group's line says: how many tools, and how many of them need a decision, failed or were denied. */
+/** The tools a group used, each name once in the order of its first call, with `×N` when it was called more than once. */
+function toolNames(entries: readonly ToolCallEntry[]): string {
+  const counts = new Map<string, number>();
+  for (const entry of entries) counts.set(entry.name, (counts.get(entry.name) ?? 0) + 1);
+  return [...counts]
+    .map(([name, count]) => (count > 1 ? `${name} ×${String(count)}` : name))
+    .join(', ');
+}
+
+/**
+ * What a group's line says: how many tools were used, which ones (with how many calls of each), and
+ * how many of them need a decision, failed or were denied. It carries no elapsed time: neither a
+ * tool call nor its result records one, and the rows of a conversation are stamped when the page
+ * builds them, so a duration read from them would be the page's and not the tool's.
+ */
 export function groupSummary(entries: readonly ToolCallEntry[]): string {
   const needing = entries.filter((entry) => entry.state === 'needs-you').length;
   const failed = entries.filter((entry) => entry.state === 'failed').length;
   const used = `Used ${String(entries.length)} ${entries.length === 1 ? 'tool' : 'tools'}`;
-  if (needing > 0) return `${used} · ${String(needing)} ${needing === 1 ? 'needs' : 'need'} you`;
+  const named = [used, toolNames(entries)];
+  if (needing > 0)
+    return [...named, `${String(needing)} ${needing === 1 ? 'needs' : 'need'} you`].join(' · ');
   const denied = entries.filter((entry) => entry.state === 'denied').length;
   return [
-    used,
+    ...named,
     ...(failed > 0 ? [`${String(failed)} failed`] : []),
     ...(denied > 0 ? [`${String(denied)} denied`] : []),
   ].join(' · ');

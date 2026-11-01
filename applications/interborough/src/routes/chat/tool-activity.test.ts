@@ -142,28 +142,42 @@ describe('a call the person refused', () => {
 });
 
 describe('groupSummary', () => {
-  const entry = (state: ToolCallEntry['state']): ToolCallEntry => ({
-    callId: state,
-    name: 't',
+  const entry = (state: ToolCallEntry['state'], name = 't'): ToolCallEntry => ({
+    callId: `${state}-${name}`,
+    name,
     arguments: {},
     state,
     summary: '',
     result: undefined,
   });
 
-  test('counts the tools, and says how many need a decision or failed', () => {
-    expect(groupSummary([entry('done'), entry('done')])).toBe('Used 2 tools');
-    expect(groupSummary([entry('done'), entry('needs-you')])).toBe('Used 2 tools · 1 needs you');
-    expect(groupSummary([entry('failed'), entry('done'), entry('done')])).toBe(
-      'Used 3 tools · 1 failed',
+  test('counts the tools, names each once with its count, and says how many need a decision or failed', () => {
+    expect(groupSummary([entry('done'), entry('done')])).toBe('Used 2 tools · t ×2');
+    expect(groupSummary([entry('done', 'a'), entry('needs-you', 'b')])).toBe(
+      'Used 2 tools · a, b · 1 needs you',
     );
-    expect(groupSummary([entry('done')])).toBe('Used 1 tool');
+    expect(groupSummary([entry('failed', 'a'), entry('done', 'b'), entry('done', 'b')])).toBe(
+      'Used 3 tools · a, b ×2 · 1 failed',
+    );
+    expect(groupSummary([entry('done', 'lookup-order')])).toBe('Used 1 tool · lookup-order');
+  });
+
+  test('lists the names in the order the calls were made, and a repeated name where it first appeared', () => {
+    expect(
+      groupSummary([
+        entry('done', 'lookup-order'),
+        entry('done', 'issue-refund'),
+        entry('done', 'lookup-order'),
+      ]),
+    ).toBe('Used 3 tools · lookup-order ×2, issue-refund');
   });
 
   test('says denied for a refused call, and failed only for one that failed', () => {
-    expect(groupSummary([entry('denied'), entry('done')])).toBe('Used 2 tools · 1 denied');
-    expect(groupSummary([entry('denied'), entry('failed'), entry('done')])).toBe(
-      'Used 3 tools · 1 failed · 1 denied',
+    expect(groupSummary([entry('denied', 'a'), entry('done', 'b')])).toBe(
+      'Used 2 tools · a, b · 1 denied',
+    );
+    expect(groupSummary([entry('denied', 'a'), entry('failed', 'b'), entry('done', 'c')])).toBe(
+      'Used 3 tools · a, b, c · 1 failed · 1 denied',
     );
   });
 });

@@ -1,5 +1,5 @@
 /**
- * A turn's tool calls: a row per call with where it stands, a Details disclosure for what it was
+ * A turn's tool calls: a row per call with where it stands, a chevron that opens what it was
  * given and what it answered, and a fold for a turn with several that never hides a call waiting
  * on a person.
  */
@@ -28,7 +28,7 @@ describe('a turn’s tool calls', () => {
     expect(view.getByRole('img', { name: 'Done' })).not.toBeNull();
     expect(view.getByText('Found the order')).not.toBeNull();
     // One call is not folded into a group.
-    expect(view.queryByRole('button', { name: 'Show' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Show tool calls' })).toBeNull();
   });
 
   test('each state is named for a person, and a running or waiting call has no answer line', () => {
@@ -48,7 +48,7 @@ describe('a turn’s tool calls', () => {
     } as never);
 
     // Several calls fold, but the failed row is shown once the group opens.
-    return fireEvent.click(view.getByRole('button', { name: 'Show' })).then(() => {
+    return fireEvent.click(view.getByRole('button', { name: 'Show tool calls' })).then(() => {
       expect(view.getByRole('img', { name: 'Failed' })).not.toBeNull();
       expect(view.getByRole('img', { name: 'Running' })).not.toBeNull();
       expect(view.getByRole('img', { name: 'Needs you' })).not.toBeNull();
@@ -67,9 +67,9 @@ describe('a turn’s tool calls', () => {
     expect(view.getByText('Too much')).not.toBeNull();
   });
 
-  test('the Details disclosure lists what the call was given and what it answered', async () => {
+  test('the chevron on a call lists what the call was given and what it answered', async () => {
     const view = render(Harness, { props: { entries: [entry({ callId: 'c1' })] } } as never);
-    const details = view.getByRole('button', { name: 'Details' });
+    const details = view.getByRole('button', { name: 'Details for lookup-order' });
     expect(details.getAttribute('aria-expanded')).toBe('false');
 
     await fireEvent.click(details);
@@ -93,14 +93,13 @@ describe('a turn’s tool calls', () => {
         ],
       },
     } as never);
-    await fireEvent.click(view.getByRole('button', { name: 'Show' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Show tool calls' }));
 
-    const [countDetails, pingDetails] = view.getAllByRole('button', { name: 'Details' });
-    await fireEvent.click(countDetails as HTMLElement);
+    await fireEvent.click(view.getByRole('button', { name: 'Details for count-orders' }));
     expect(view.getByText('Result: result')).not.toBeNull();
     expect(view.getByText('42')).not.toBeNull();
 
-    await fireEvent.click(pingDetails as HTMLElement);
+    await fireEvent.click(view.getByRole('button', { name: 'Details for ping' }));
     expect(view.getAllByText(/^Result:/)).toHaveLength(1);
   });
 
@@ -119,14 +118,35 @@ describe('a turn’s tool calls', () => {
     expect(view.getByText('issue-refund')).not.toBeNull();
     expect(view.getByText('Decide on issue-refund')).not.toBeNull();
 
-    const toggle = view.getByRole('button', { name: 'Show' });
+    const toggle = view.getByRole('button', { name: 'Show tool calls' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     await fireEvent.click(toggle);
 
     expect(view.getByText('lookup-order')).not.toBeNull();
-    const hide = view.getByRole('button', { name: 'Hide' });
+    const hide = view.getByRole('button', { name: 'Hide tool calls' });
     expect(hide.getAttribute('aria-expanded')).toBe('true');
     await fireEvent.click(hide);
     expect(view.queryByText('lookup-order')).toBeNull();
+  });
+
+  test('the fold line names each tool with its count, and every toggle is an icon button, not a worded one', async () => {
+    const view = render(Harness, {
+      props: {
+        entries: [
+          entry({ callId: 'c1', name: 'lookup-order' }),
+          entry({ callId: 'c2', name: 'lookup-order' }),
+        ],
+      },
+    } as never);
+
+    expect(view.getByText('Used 2 tools · lookup-order ×2')).not.toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Show tool calls' }));
+    const buttons = view.getAllByRole('button');
+    // The group's chevron and one on each of the two calls.
+    expect(buttons).toHaveLength(3);
+    for (const button of buttons) {
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.hasAttribute('aria-expanded')).toBe(true);
+    }
   });
 });

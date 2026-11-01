@@ -113,7 +113,9 @@ test.describe('a tool approval', () => {
     const text = (await transcript(page).innerText()) ?? '';
     expect(text).not.toMatch(/requires approval|mutating tier|run-\d/);
     // The turn's two calls are folded to one line, and the call that needs a decision is not in it.
-    await expect(conversation(page).getByText('Used 2 tools · 1 needs you')).toBeVisible();
+    await expect(
+      conversation(page).getByText('Used 2 tools · lookup-order, issue-refund · 1 needs you'),
+    ).toBeVisible();
     await expect(conversation(page).getByText('issue-refund').first()).toBeVisible();
     // The seeded turn already refunded the order once, so one reply is the one the session opened with.
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(1);
@@ -176,7 +178,7 @@ test.describe('a tool approval', () => {
 });
 
 test.describe('a tool call', () => {
-  test('is one short row with its summary, and Details shows its arguments and its result', async ({
+  test('is one short row with its summary, and its chevron shows its arguments and its result', async ({
     page,
     request,
   }) => {
@@ -186,17 +188,48 @@ test.describe('a tool call', () => {
 
     await page.goto(`/chats/${threadId}`);
 
-    await expect(conversation(page).getByText('Used 2 tools')).toBeVisible();
-    await page.getByRole('button', { name: 'Show' }).click();
+    await expect(
+      conversation(page).getByText('Used 2 tools · lookup-order, issue-refund'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Show tool calls' }).click();
     const lookup = page.locator('[data-tool-call-row]').filter({ hasText: 'lookup-order' });
     await expect(lookup).toContainText('orderId order-1001, status delivered, totalCents 4200');
     const box = await lookup.locator('.ib-tool__line').boundingBox();
     expect(box?.height ?? 999).toBeLessThanOrEqual(48);
-    await lookup.getByRole('button', { name: 'Details' }).click();
+    await lookup.getByRole('button', { name: 'Details for lookup-order' }).click();
     await expect(lookup.locator('dt', { hasText: 'orderId' }).first()).toBeVisible();
     await expect(lookup.locator('dt', { hasText: 'Result: totalCents' })).toBeVisible();
     await expect(lookup.locator('dd', { hasText: '4200' })).toBeVisible();
   });
+});
+
+test.describe('a folded group of tool calls', () => {
+  for (const width of [375, 1280]) {
+    test(`names its tools on one line and opens from a chevron without overflowing at ${String(width)} pixels`, async ({
+      page,
+      request,
+    }) => {
+      const threadId = newThreadId('demo:tool-runner');
+      const stream = await runToEnd(request, 'demo:tool-runner', threadId, 'Refund order-1001');
+      await approveThroughMount(request, threadId, stream);
+      await page.setViewportSize({ width, height: 812 });
+      await page.goto(`/chats/${threadId}`);
+
+      const fold = page.locator('.ib-tools__fold');
+      await expect(fold).toContainText('Used 2 tools · lookup-order, issue-refund');
+      const toggle = fold.getByRole('button', { name: 'Show tool calls' });
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await toggle.click();
+      await expect(fold.getByRole('button', { name: 'Hide tool calls' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+      await expect(page.locator('[data-tool-call-row]')).toHaveCount(2);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+    });
+  }
 });
 
 test.describe('a follow-up sent while the run is going', () => {
