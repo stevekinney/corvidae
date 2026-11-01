@@ -262,11 +262,11 @@ describe('skills in configuration.json', () => {
         { id: 'plugin:p', kind: 'plugin', location: pluginSkills, precedence: 35, plugin: 'p' },
       ],
     });
-    expect(catalog.records.map((record) => [record.name, record.available]).toSorted()).toEqual([
-      ['deploy', false],
-      ['plugged', true],
-      ['summarize', true],
-    ]);
+    expect(Object.fromEntries(catalog.records.map((r) => [r.name, r.available]))).toEqual({
+      deploy: false,
+      plugged: true,
+      summarize: true,
+    });
 
     const failure = await failureOf(
       discoverFirstSkills({
