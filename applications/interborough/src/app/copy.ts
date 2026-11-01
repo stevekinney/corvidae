@@ -57,7 +57,9 @@ export const RUN_DETAIL_COPY = {
     heading: 'Stream chunks',
     close: 'Close',
     loading: 'Loading chunks',
+    noChunksTitle: 'No chunks yet',
     noChunks: 'This stream has no chunks.',
+    sweptTitle: 'Chunks no longer kept',
     swept: 'This run was cancelled or timed out, so its stream chunks are no longer kept.',
     liveNote: 'New chunks appear here every 2 seconds while the run is active.',
     chunkLabel: (sequence: number): string => `Chunk ${sequence}`,
@@ -74,6 +76,120 @@ export const RUN_DETAIL_COPY = {
     timedOut: (name: string): string =>
       `${name} had not answered when the wait ended. It stays queued, and its result appears here once it is answered.`,
   },
+} as const;
+
+/** The words the run page uses for its steps, and for the lines the run logged. */
+export const RUN_STEPS_COPY = {
+  heading: 'Steps',
+  listLabel: 'Steps',
+  detailLabel: 'Step',
+  filterLabel: 'Show steps',
+  count: (shown: number, total: number): string =>
+    shown === total ? `${String(total)} steps` : `${String(shown)} of ${String(total)} steps`,
+  waterfallLabel: (starts: string, took: string | undefined): string =>
+    took === undefined
+      ? `Started ${starts} into the run`
+      : `Started ${starts} into the run, took ${took}`,
+  chooseTitle: 'Choose a step',
+  chooseDescription: 'Choose a step to see what went into it, what came out, and what it logged.',
+  emptyTitle: 'No steps yet',
+  emptyDescription: 'The steps this run takes appear here as it works.',
+  filteredTitle: 'No steps match',
+  filteredDescription: 'None of this run’s steps is in that state.',
+  showAll: 'Show all steps',
+  loading: 'Loading the steps',
+  loadFailedTitle: 'The steps could not be read',
+  startedAfter: (offset: string): string => `started +${offset}`,
+  took: (duration: string): string => `took ${duration}`,
+  stillGoing: 'still going',
+  noStart: 'no start time kept',
+  runningDuration: 'running',
+  input: 'Input',
+  output: 'Output',
+  error: 'Error',
+  nothingKept: 'Nothing was kept.',
+  branches: 'Branches',
+  branchesUnreported: 'This step’s branches were not reported.',
+  branchOutcome: { won: 'won', lost: 'lost', fulfilled: 'finished', rejected: 'failed' } as const,
+  omitted: (count: number): string => `${String(count)} more not listed`,
+  eventsFilteredHint: 'The Events section shows only this step’s events.',
+  page: (page: number, pages: number): string => `Page ${String(page)} of ${String(pages)}`,
+  previous: 'Previous',
+  next: 'Next',
+  jumpToStep: 'Jump to step',
+  go: 'Go',
+  paginationLabel: 'Steps pagination',
+  awaitingCompletion: 'Awaiting external completion',
+  complete: 'Complete…',
+  unattachedNote: 'This could not be tied to a single step. Complete it from here.',
+  workerProvenanceFor: (label: string): string => `Worker provenance for ${label}`,
+} as const;
+
+/** The words for the runs related to one run, in its Details rail and the topology that opens from it. */
+export const RUN_RELATED_COPY = {
+  heading: 'Related runs',
+  parent: 'Started by',
+  children: 'Started',
+  siblings: 'Started alongside',
+  topology: 'Topology',
+  topologyTitle: 'Run topology',
+  topologyDescription: 'The run that started this one, the runs it started, and its siblings.',
+  thisRun: 'This run',
+  parentGone: 'No longer kept',
+  more: (count: number): string => `${String(count)} more`,
+  partial: (shown: number, total: number): string =>
+    `Showing ${String(shown)} of ${String(total)}. Filter the workflow list by this run’s parent to see the rest.`,
+  revisionTitle: (revision: string): string => `Revision (exact executable artifact): ${revision}`,
+  noneTitle: 'No related runs',
+  noneDescription: 'No run started this one, and it has not started any.',
+  loadFailedTitle: 'Related runs could not be read',
+  openRun: (label: string): string => `Open run ${label}`,
+} as const;
+
+/** The words for a run's checkpoints: the list, the replay of one, and the fork it can start. */
+export const RUN_CHECKPOINTS_COPY = {
+  loadFailedTitle: 'Checkpoints could not be read',
+  emptyTitle: 'No checkpoint history retained',
+  emptyDescription:
+    'Checkpoints are not being kept for this run, or none has been recorded for it yet.',
+  chooseTitle: 'Select a checkpoint',
+  chooseDescription: 'Choose a step to replay or fork from.',
+  modeLabel: 'Open the checkpoint as',
+  replay: 'Replay',
+  fork: 'Fork',
+  divergenceLabel: 'Divergence from the forked run',
+  divergenceNote:
+    'Diverged steps are highlighted. Both runs are identical up to the fork, so they differ only at or after it.',
+  nothingToCompareTitle: 'Nothing to compare',
+  nothingToCompareDescription: 'Neither run has any steps yet.',
+  replayLockedTitle: 'Replay unavailable',
+  replayNotice: (step: number): string =>
+    `This is a replay of step ${String(step)}. It is read-only and does not change the live run.`,
+  nothingStored: 'Nothing was stored at this step.',
+  replayNoneTitle: 'No replay available',
+  replayNoneDescription: (step: number): string =>
+    `No checkpoint is retained at step ${String(step)}.`,
+  revisionUnknown:
+    'Not known. The original record is gone, it predates revision tracking, or the ID has been reused by a different run.',
+  compacted: (sequence: number): string =>
+    `Earlier events before sequence ${String(sequence)} were removed by retention.`,
+} as const;
+
+/** The words for the lines a run logged, in a step and under the run's Details. */
+export const RUN_LOGS_COPY = {
+  heading: 'Logs',
+  count: (lines: number): string => (lines === 1 ? '1 line' : `${String(lines)} lines`),
+  listLabel: 'Log lines',
+  truncated: 'Cut short',
+  truncatedTitle: 'The message was longer than the log keeps, so the end of it is missing.',
+  emptyTitle: 'Nothing was logged',
+  emptyDescription:
+    'This run has not logged anything. Lines are kept with the run for a limited time, so an old run may have lost them.',
+  dropped: (count: number): string =>
+    count === 1
+      ? '1 older line was removed to stay within the limit.'
+      : `${String(count)} older lines were removed to stay within the limit.`,
+  loadFailedTitle: 'The logs could not be read',
 } as const;
 
 /**
@@ -98,11 +214,10 @@ export const RUN_PAGE_COPY = {
   activityHeading: 'Activity',
   /** Names the plugin a panel on the run page comes from. */
   panelFromPlugin: (plugin: string) => `From the ${plugin} plugin`,
-  timelineHeading: 'Timeline',
   eventsHeading: 'Events',
+  eventsLockedTitle: 'Events are locked',
   checkpointsHeading: 'Checkpoints',
-  logsHeading: 'Logs',
-  relatedHeading: 'Related runs',
+  lineageHeading: 'Lineage',
   detailsHeading: 'Details',
   attributesAndWorkerLabel: 'Attributes and worker',
   changeHeading: 'Change or ask this run',

@@ -28,6 +28,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { rm } from 'node:fs/promises';
 
 import { SEEDED_GOAL_RUN_IDENTIFIER } from '@lostgradient/plugin-demo';
+import { RUN_STEPS_RUN_ID } from '../../fixtures/run-steps-ids.ts';
 import { STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
@@ -129,6 +130,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/workflows/:workflow/run (code, on a schedule)': /Starts a run as soon as you confirm/,
   '/runs (start picker)': /Choose the workflow to run/,
   '/runs/:run': /Input and output/,
+  // The step list is there; the 300-character value is in the whole log, which `reveal` opens.
+  '/runs/:run (steps and logs)': /Input and output/,
   // The list prints the question each waiting review asks, and the open review its source line,
   // which links to the chat whose title is the long word.
   '/reviews': /Refund order order-1001 for/,
@@ -280,6 +283,13 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
  * time, so it searches for the long key's start and opens the key.
  */
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  // The whole log is closed until asked for; open it so its lines are measured too.
+  '/runs/:run (steps and logs)': async (page) => {
+    const logs = page.locator('[data-section="logs"]');
+    await logs.getByRole('button', { name: /^Logs/ }).click();
+    await expect(logs.getByText('finished after the last step')).toBeVisible();
+    await expect(logs.getByText(/vvvvvvvvvv/)).toBeVisible();
+  },
   // When opens on a schedule, so the builder's Repeats, At and Time zone are measured too.
   '/workflows/:workflow/run (code, on a schedule)': async (page) => {
     await page.getByRole('radio', { name: new RegExp(WORKFLOW_COPY.runSetup.schedule) }).click();
@@ -441,6 +451,10 @@ test.beforeAll(async ({ playwright }) => {
     await addCatalogRow(request, LONG_MODEL);
     const listed = await request.get('/v1/workflows?type=order-processing&limit=1');
     const runs = (await listed.json()) as { items?: { id: string }[] };
+    const timelineResponse = await request.get(
+      `/v1/workflows/${encodeURIComponent(RUN_STEPS_RUN_ID)}/timeline`,
+    );
+    const stepsTimeline = (await timelineResponse.json()) as { step: number }[];
     const made = await request.post('/v1/schedules', {
       data: {
         type: 'order-processing',
@@ -470,6 +484,8 @@ test.beforeAll(async ({ playwright }) => {
       workflowFile: WORKFLOW_FILE,
       runSetupFile: RUN_SETUP_FILE,
       run: runs.items?.[0]?.id ?? 'responsive-run',
+      stepsRun: RUN_STEPS_RUN_ID,
+      stepsRunStep: stepsTimeline[1]?.step ?? 1,
       schedule: LONG_SCHEDULE_ID,
       goal: SEEDED_GOAL_RUN_IDENTIFIER,
       hook: hook.id,

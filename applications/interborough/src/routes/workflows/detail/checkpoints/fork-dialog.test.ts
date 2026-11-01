@@ -193,7 +193,7 @@ describe('ForkDialog', () => {
     expect(getByText(/^Unpinned source/)).not.toBeNull();
   });
 
-  test('the unpinned-legacy variant does NOT promise the catalog-active revision (Codex review, PR #978, round 3) — eager registration and sole dynamic-source candidates can both bypass the active pointer', async () => {
+  test('the unpinned-legacy variant does NOT promise the catalog-active revision (Codex review, PR #978, round 3): it says the revision can be a different one', async () => {
     const { getByText, queryByText } = render(ForkDialogHarness, {
       props: {
         client: baseClient(),
@@ -207,7 +207,7 @@ describe('ForkDialog', () => {
     });
 
     expect(
-      getByText(/eager-registered type instead runs whatever this process currently has/),
+      getByText(/It usually follows the active revision, but it can be a different one/),
     ).not.toBeNull();
     expect(
       queryByText(/resolves normally against\s*whichever revision is currently active/),

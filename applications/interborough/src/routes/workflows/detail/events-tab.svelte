@@ -44,9 +44,9 @@
    * here narrows the rendered entries rather than the design mock's
    * literal indigo-edge/dim treatment; the Timeline track's report
    * covers the upstream Cinder gap. The mock's exact copy also names
-   * "Events and Logs" — this tab only ever says "Events": Logs is a
-   * permanent empty state (see `logs-tab.svelte`), so there is nothing
-   * there to filter and claiming otherwise would overclaim.
+   * "Events and Logs" — this tab only ever says "Events": a step's log
+   * lines are shown with the step (`steps/step-detail.svelte`), not filtered
+   * here, and claiming otherwise would overclaim.
    */
   import {
     Badge,

@@ -171,12 +171,19 @@ async function scriptRemoteRun(page: Page): Promise<Scripted> {
 
 async function openTimeline(page: Page, href: string): Promise<void> {
   await page.goto(href);
-  await expect(page.getByRole('heading', { level: 3, name: 'Timeline' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 3, name: 'Steps' })).toBeVisible();
   await expect(page.getByText('reserveInventory').first()).toBeVisible();
+}
+
+/** Opens a step by its number: a step's own record and provenance are in its detail, beside the list. */
+async function openStep(page: Page, step: number): Promise<void> {
+  // The row's attributes are on its button.
+  await page.locator(`[data-step-row="${String(step)}"]`).click();
 }
 
 async function openRunningRemoteTask(page: Page, href: string) {
   await openTimeline(page, href);
+  await openStep(page, 2);
   const toggle = page.getByRole('button', { name: 'Remote task for reserveInventory' });
   await expect(toggle).toBeVisible();
   await toggle.click();
@@ -192,15 +199,25 @@ test('remote steps, settled and running, show their ledger records, and local st
   const { href, ledgerReads } = await scriptRemoteRun(page);
   await openTimeline(page, href);
 
-  // Only the two remote steps offer a record: not the settled local step, and not the running
-  // local async activity, whose token the ledger does not know.
+  // Only the two remote steps offer a record, each in its own detail: not the settled local step,
+  // and not the running local async activity, whose token the ledger does not know.
+  const remoteButtons = page.getByRole('button', { name: /^Remote task for / });
+  await openStep(page, 1);
   await expect(page.getByRole('button', { name: 'Remote task for chargeCard' })).toBeVisible();
+  await expect(remoteButtons).toHaveCount(1);
+  await openStep(page, 3);
+  await expect(page.getByRole('article', { name: 'Send receipt' })).toBeVisible();
+  await expect(remoteButtons).toHaveCount(0);
+  await openStep(page, 4);
+  await expect(page.getByRole('article', { name: 'Approve refund' })).toBeVisible();
+  await expect(remoteButtons).toHaveCount(0);
+  await openStep(page, 2);
   await expect(
     page.getByRole('button', { name: 'Remote task for reserveInventory' }),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: /^Remote task for / })).toHaveCount(2);
-  await expect(page.getByText('approveRefund').first()).toBeVisible();
+  await expect(remoteButtons).toHaveCount(1);
 
+  await openStep(page, 1);
   await page.getByRole('button', { name: 'Remote task for chargeCard' }).click();
   const settled = page.getByRole('region', { name: 'Remote task for chargeCard' });
   await expect(settled.getByText('Resolved', { exact: true })).toBeVisible();
@@ -214,6 +231,7 @@ test('remote steps, settled and running, show their ledger records, and local st
     new RegExp(`task=${encodeURIComponent(SETTLED_OPERATION_ID)}`),
   );
 
+  await openStep(page, 2);
   await page.getByRole('button', { name: 'Remote task for reserveInventory' }).click();
   const running = page.getByRole('region', { name: 'Remote task for reserveInventory' });
   await expect(running.getByText('Queued for a worker')).toBeVisible();
@@ -227,7 +245,7 @@ test('remote steps, settled and running, show their ledger records, and local st
   );
   expect(ledgerReads).not.toContain(RUNNING_OPERATION_ID);
 
-  await checkA11y('workflow detail — timeline, remote tasks');
+  await checkA11y('workflow detail — steps, remote tasks');
 });
 
 test('the running remote task panel keeps every value inside its card at supported widths and themes', async ({

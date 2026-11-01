@@ -134,7 +134,7 @@ describe('additional coverage', () => {
       }),
     ];
 
-    const { getByText } = render(TimelineTabHarness, {
+    const { getByText, getByRole } = render(TimelineTabHarness, {
       props: {
         client: baseClient(entries, [
           {
@@ -152,9 +152,13 @@ describe('additional coverage', () => {
       },
     });
 
+    await fireEvent.click(
+      await waitFor(() => getByRole('button', { name: /Print shipping label/ })),
+    );
+
     await waitFor(() => {
-      expect(getByText('printShippingLabel')).not.toBeNull();
       expect(getByText('Awaiting external completion')).not.toBeNull();
+      expect(getByRole('button', { name: 'Complete…' })).not.toBeNull();
     });
   });
 
@@ -183,44 +187,8 @@ describe('additional coverage', () => {
     });
 
     await waitFor(() => {
-      expect(getByText(/Couldn't link this to a single timeline step/)).not.toBeNull();
+      expect(getByText(/could not be tied to a single step/)).not.toBeNull();
     });
-  });
-
-  test('the Coordination and Saga quick filters narrow the rendered steps', async () => {
-    const liveObservations = new WorkflowLiveObservations(
-      new InertFleet(),
-      inertQueryClient(),
-      'wf-1',
-    );
-    // `race` and `parallel` entries render their STRUCTURAL label ("Race" /
-    // "All (parallel)"), not their raw `operationLabel` — see
-    // `timeline-mapping.ts`'s `STRUCTURAL_OPERATION_LABEL`.
-    const entries = [
-      entry({ step: 1, operationType: 'race', operationLabel: 'raceProviders' }),
-      entry({ step: 2, operationType: 'activity', operationLabel: 'compensate:refund' }),
-      entry({ step: 3, operationType: 'activity', operationLabel: 'chargeCard' }),
-    ];
-
-    const { getByText, getByRole, queryByText } = render(TimelineTabHarness, {
-      props: {
-        client: baseClient(entries),
-        workflow: workflow({ id: 'wf-filter-coord' }),
-        liveObservations,
-        finalizerStatus: null,
-      },
-    });
-
-    await waitFor(() => expect(getByText('Race')).not.toBeNull());
-    await fireEvent.click(getByRole('radio', { name: 'Coordination' }));
-    flushSync();
-    expect(getByText('Race')).not.toBeNull();
-    expect(queryByText('chargeCard')?.outerHTML ?? null).toBeNull();
-
-    await fireEvent.click(getByRole('radio', { name: 'Saga' }));
-    flushSync();
-    expect(getByText('compensate:refund')).not.toBeNull();
-    expect(queryByText('Race')?.outerHTML ?? null).toBeNull();
   });
 
   test('a cancelled workflow with a failed finalizer shows the cleanup-failed strip', async () => {
@@ -272,8 +240,10 @@ describe('additional coverage', () => {
       },
     });
 
-    await waitFor(() => expect(getByText('printShippingLabel')).not.toBeNull());
-    const [completeButton] = getAllByRole('button', { name: 'Complete…' });
+    await fireEvent.click(
+      await waitFor(() => getByRole('button', { name: /Print shipping label/ })),
+    );
+    const [completeButton] = await waitFor(() => getAllByRole('button', { name: 'Complete…' }));
     if (!completeButton) throw new Error('expected a Complete… button');
     await fireEvent.click(completeButton);
 

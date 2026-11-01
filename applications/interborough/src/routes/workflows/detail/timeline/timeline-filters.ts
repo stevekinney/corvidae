@@ -4,55 +4,52 @@
  */
 import type { WorkflowTimelineEntry } from '@lostgradient/weft';
 
-/** Quick-filter facets a step can be checked against (plan T3.1 "quick filters"). */
-export type TimelineQuickFilter = 'all' | 'failed' | 'running' | 'coordination' | 'saga';
+/**
+ * Quick-filter facets a step can be checked against: every step, the ones that failed, and the
+ * ones the run is waiting on. A step is waiting when it has begun and has not ended, which is how a
+ * run looks while it sleeps, waits for a signal, a review or a child, or a worker is still at it.
+ */
+export type TimelineQuickFilter = 'all' | 'failed' | 'waiting';
 
-export const TIMELINE_QUICK_FILTERS: readonly TimelineQuickFilter[] = [
-  'all',
-  'failed',
-  'running',
-  'coordination',
-  'saga',
-];
+export const TIMELINE_QUICK_FILTERS: readonly TimelineQuickFilter[] = ['all', 'failed', 'waiting'];
 
 const QUICK_FILTER_LABEL: Readonly<Record<TimelineQuickFilter, string>> = {
-  all: 'All steps',
+  all: 'All',
   failed: 'Failed',
-  running: 'Running',
-  coordination: 'Coordination',
-  saga: 'Saga',
+  waiting: 'Waiting',
 };
 
 export function timelineQuickFilterLabel(filter: TimelineQuickFilter): string {
   return QUICK_FILTER_LABEL[filter];
 }
 
-function matchesQuickFilter(entry: WorkflowTimelineEntry, filter: TimelineQuickFilter): boolean {
+function matchesQuickFilter(
+  entry: WorkflowTimelineEntry,
+  filter: TimelineQuickFilter,
+  openSteps: ReadonlySet<number>,
+): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'failed':
       return entry.status === 'failed' || entry.status === 'timed-out';
-    case 'running':
-      return entry.status === 'running';
-    case 'coordination':
-      return (
-        entry.operationType === 'race' ||
-        entry.operationType === 'parallel' ||
-        entry.operationType === 'speculate'
-      );
-    case 'saga':
-      return entry.operationType === 'activity' && entry.operationLabel.startsWith('compensate:');
+    case 'waiting':
+      return openSteps.has(entry.step);
     default:
       return false;
   }
 }
 
+/**
+ * The entries a quick filter keeps. `openSteps` is the steps the run is still in (`openStepNumbers`),
+ * which is what Waiting means: an entry the engine kept as `running` is not waiting once the run left it.
+ */
 export function filterTimelineEntries(
   entries: readonly WorkflowTimelineEntry[],
   filter: TimelineQuickFilter,
+  openSteps: ReadonlySet<number>,
 ): WorkflowTimelineEntry[] {
-  return entries.filter((entry) => matchesQuickFilter(entry, filter));
+  return entries.filter((entry) => matchesQuickFilter(entry, filter, openSteps));
 }
 
 /**

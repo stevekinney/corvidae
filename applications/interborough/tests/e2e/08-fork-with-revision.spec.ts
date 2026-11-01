@@ -53,20 +53,21 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await orderRow.getByRole('link').click();
   await expect(page.getByRole('heading', { level: 1, name: 'order-processing' })).toBeVisible();
 
-  // Header revision badge + active-comparison badge (WFT-117). The seeded
+  // The Details rail's Revision row, with the active comparison beside it (WFT-117). The seeded
   // server never activates the candidate fixture, so the original,
   // eagerly-registered revision stays active — this run's own persisted
-  // revision matches it.
-  await expect(page.getByText(/^rev /).first()).toBeVisible();
-  await expect(page.getByText('Active', { exact: true })).toBeVisible();
-  await checkA11y('workflow detail — header (revision + active-comparison badges)');
+  // revision matches it. (The run page has no header badge since it became one page.)
+  await expect(
+    page.getByRole('complementary', { name: 'Details' }).getByText(/ — active$/),
+  ).toBeVisible();
+  await checkA11y('run — Details rail (revision + active comparison)');
 
-  await page.getByRole('tab', { name: 'Checkpoints' }).click();
+  await page.getByRole('button', { name: 'Checkpoints' }).click();
   const checkpointList = page.locator('.weft-checkpoints-tab__list');
   await expect(checkpointList).toBeVisible();
   await checkpointList.locator('.weft-checkpoints-tab__row').first().click();
 
-  await page.getByRole('button', { name: 'Fork' }).click();
+  await page.getByRole('radio', { name: 'Fork' }).click();
   await expect(page.getByText(/^Retains rev /)).toBeVisible();
   await checkA11y('workflow detail — checkpoints, Fork panel (default retention line)');
 
@@ -134,7 +135,7 @@ test('the revision surfaces are usable across supported widths and themes', asyn
       await expect(orderRow).toBeVisible();
       await orderRow.getByRole('link').click();
 
-      await expect(page.getByText(/^rev /).first()).toBeVisible();
+      await expect(page.getByText(/ — active$/).first()).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,

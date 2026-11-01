@@ -1,34 +1,31 @@
 <script lang="ts">
   /**
-   * Timeline tab (plan T3.1/T3.2, design §E linked selection + §F
-   * branch/saga cards): `RunStepTimeline` from `getTimeline()`, quick
-   * filters, step-range pagination + jump-to-step, linked selection with
-   * Events, the finalizer strip + run-level badges, and the async-activity
-   * "awaiting external completion" affordance. See the sibling modules
-   * under `./timeline/` and `./async-activity/` for what's real vs.
-   * honestly degraded — this component is orchestration only.
+   * The run's steps: a list of every durable step the engine recorded (`getTimeline()`), each with
+   * a waterfall bar, and the open step beside it with what went in, what came out. The list is a ListDetail, so it moves with `j` and `k`,
+   * keeps the open step in the address (`?step=`), and shows one pane at a time on a narrow screen.
+   * The filter offers All, Failed and Waiting (steps that have begun and not ended); past
+   * 500 steps the list pages and offers a jump to a step number. This component is orchestration:
+   * the sibling modules under `./steps/`, `./timeline/` and `./async-activity/` draw and map.
    *
-   * ## Step selection (WFC-7: adopted Cinder's public selection API)
+   * ## Linked selection
    *
-   * Cinder 0.24.0 added `selectedStepId`/`onStepSelect` to
-   * `RunStepTimeline` itself, so the click/keyboard/ARIA selection UI is
-   * Cinder's own now — a native, focusable control per row (`Select
-   * <label>`, `aria-pressed`) that Cinder renders and manages, including
-   * ignoring clicks that land on interactive descendants (so it composes
-   * cleanly with the async-activity "Complete…" button rendered in the
-   * `children` snippet below). We just wire `selection.selectedStepId` and
-   * `selectTimelineStep` straight through. See
-   * `./timeline/run-step-timeline-selection.ts`'s module doc for the
-   * DOM-composition workaround this replaced, and for the divergence
-   * highlighting that's unrelated and still needed.
+   * Opening a step sets the shared selection (`./timeline/timeline-selection-store.svelte.ts`),
+   * which the Events section reads to show only that step's events; clearing it there leaves the
+   * step open here. The selection is the step's number, minted as `step-<n>`.
+   *
+   * ## What a step can do
+   *
+   * An activity waiting on an outside completion offers Complete, a stream offers its stored
+   * chunks, and an activity that ran on a worker offers that worker's record. Each is a separate
+   * component mounted in the open step, so a step that offers none shows none.
    */
   import {
-    Badge,
+    Alert,
     Button,
     EmptyState,
+    ErrorState,
     Input,
-    RunStepTimeline,
-    type RunStepTimelineEntry,
+    ListDetail,
     SegmentedControl,
     Segment,
     Skeleton,
@@ -41,10 +38,11 @@
     WorkflowState,
     WorkflowTimelineEntry,
   } from '@lostgradient/weft';
-  import { Clock, Link, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
-  import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { RETRY_LABEL, RUN_STEPS_COPY, RUN_DETAIL_COPY } from '../../../app/copy.ts';
+  import { routerSelectionLocationFor } from '../../../lib/router-selection-location.ts';
+  import { router } from '../../../lib/router.svelte.ts';
 
   import { attachPendingActivitiesToSteps } from './async-activity/async-activity-matching.ts';
   import {
@@ -55,6 +53,9 @@
   import AsyncActivityDrawer from './async-activity/async-activity-drawer.svelte';
   import ActivityWorkerProvenance from './async-activity/activity-worker-provenance.svelte';
   import RemoteTaskStep from './remote-task-step.svelte';
+  import StepDetail from './steps/step-detail.svelte';
+  import StepRow from './steps/step-row.svelte';
+  import { openStepNumbers, stepWaterfall } from './steps/step-waterfall.ts';
   import StreamChunksView from './streams/stream-chunks-view.svelte';
   import type { StreamChunksClient } from './streams/stream-chunks-data.ts';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
@@ -68,14 +69,9 @@
     timelineQuickFilterLabel,
     type TimelineQuickFilter,
   } from './timeline/timeline-filters.ts';
+  import { stepNumberFromRunStepId, timelineStepId } from './timeline/timeline-mapping.ts';
   import {
-    mapTimelineToSteps,
-    stepNumberFromRunStepId,
-    timelineStepId,
-  } from './timeline/timeline-mapping.ts';
-  import {
-    clearTimelineSelection,
-    selectTimelineStep,
+    setTimelineSelection,
     timelineSelectionFor,
   } from './timeline/timeline-selection-store.svelte.ts';
   import type { WorkflowLiveObservations } from './timeline/workflow-live-observations.svelte.ts';
@@ -94,6 +90,8 @@
     readonly finalizerStatus: WorkflowFinalizerStatus | null | undefined;
     /** Whether the principal holds `streams:read`, which a stream's chunks need. Without it no stream link renders. */
     readonly canReadStreams?: boolean | undefined;
+    /** The present moment, for the bar of a step still going; the run page passes its ticking clock. */
+    readonly now?: number | undefined;
   }
 
   let {
@@ -102,6 +100,7 @@
     liveObservations,
     finalizerStatus,
     canReadStreams = false,
+    now,
   }: TimelineTabProps = $props();
 
   const timelineQuery = createQuery(() => ({
@@ -121,8 +120,18 @@
 
   const entries = $derived(timelineQuery.data ?? []);
 
+  // One scale for every step of the run, whatever page or filter is showing.
+  const openSteps = $derived(openStepNumbers(entries, workflow.status));
+  const bars = $derived(
+    stepWaterfall(entries, {
+      runStartedAt: workflow.createdAt,
+      now: now ?? Date.now(),
+      runStatus: workflow.status,
+    }),
+  );
+
   let quickFilter = $state<TimelineQuickFilter>('all');
-  const filteredEntries = $derived(filterTimelineEntries(entries, quickFilter));
+  const filteredEntries = $derived(filterTimelineEntries(entries, quickFilter, openSteps));
 
   let pageIndex = $state(0);
 
@@ -136,8 +145,6 @@
     paginated ? timelineEntriesForPage(filteredEntries, pageIndex) : filteredEntries,
   );
 
-  const steps: RunStepTimelineEntry[] = $derived(mapTimelineToSteps(pageEntries));
-
   // Called once at component init, not reactively: `timelineSelectionFor`
   // both reads AND (conditionally) mutates the shared module-level store,
   // which Svelte forbids inside a `$derived` evaluation. `workflow.id` is
@@ -146,7 +153,25 @@
   // id change — see `timeline-selection-store.svelte.ts`'s module doc).
   // `untrack()` makes that one-time read explicit instead of triggering the
   // `state_referenced_locally` compiler warning.
-  const selection = timelineSelectionFor(untrack(() => workflow.id));
+  timelineSelectionFor(untrack(() => workflow.id));
+
+  /** Below this width the list and the open step take turns, so each keeps room to read. */
+  const STEPS_PUSH_BELOW = 600;
+  const STEPS_LIST_WIDTH = 240;
+
+  // The run page has two addresses, and the outlet mounts this fresh for each, so the address it
+  // was opened at is the one its selection belongs to.
+  const selectionLocation = routerSelectionLocationFor(untrack(() => router.pathname));
+  let selectedKey = $state<string | null>(null);
+  const openEntry = $derived(
+    selectedKey === null ? undefined : entries.find((entry) => String(entry.step) === selectedKey),
+  );
+
+  /** Links the open step to the Events section, which shows only that step's events. */
+  function changeSelection(key: string | null): void {
+    const step = key === null ? null : Number(key);
+    setTimelineSelection(step !== null && Number.isSafeInteger(step) ? timelineStepId(step) : null);
+  }
 
   let jumpToStepText = $state('');
 
@@ -156,6 +181,25 @@
     const target = timelinePageForStep(filteredEntries, step);
     if (target !== null) pageIndex = target;
   }
+
+  // A step opened from the address (`?step=450`) can be on a later page than the first, and the list
+  // finds an open step only among the rows it shows. So when the selection changes to a step on
+  // another page, the page follows it once. The page is left alone after that, so paging away from
+  // the open step does not snap back.
+  let pageFollowedKey: string | null = null;
+  $effect(() => {
+    const key = selectedKey;
+    const candidates = filteredEntries;
+    if (key === null) {
+      pageFollowedKey = null;
+      return;
+    }
+    if (key === pageFollowedKey) return;
+    const target = timelinePageForStep(candidates, Number(key));
+    if (target === null) return;
+    pageFollowedKey = key;
+    if (untrack(() => pageIndex) !== target) pageIndex = target;
+  });
 
   const attachedPendingActivities = $derived(
     attachPendingActivitiesToSteps(
@@ -252,155 +296,139 @@
 <div class="weft-timeline-tab">
   <FinalizerStrip baseStatus={workflow.status} status={finalizerStatus} />
 
-  {#if unattachedPendingActivities.length > 0}
-    <div class="weft-timeline-tab__unattached">
-      {#each unattachedPendingActivities as activity (activity.token)}
-        <div class="weft-timeline-tab__unattached-row">
-          <Badge variant="warning">
-            <Clock aria-hidden="true" size={11} />
-            Awaiting external completion
-          </Badge>
-          <span class="weft-timeline-tab__unattached-name">{activity.activityName}</span>
-          <span class="weft-timeline-tab__unattached-note">
-            Couldn't link this to a single timeline step — see the run's Complete list.
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            label="Complete…"
-            onclick={() => (openDrawerToken = activity.token)}
-          />
-        </div>
-      {/each}
-    </div>
-  {/if}
+  {#each unattachedPendingActivities as activity (activity.token)}
+    <Alert variant="warning">
+      <span class="weft-timeline-tab__unattached-name">{activity.activityName}</span>
+      {RUN_STEPS_COPY.awaitingCompletion}. {RUN_STEPS_COPY.unattachedNote}
+      <Button
+        variant="secondary"
+        size="sm"
+        label={RUN_STEPS_COPY.complete}
+        onclick={() => (openDrawerToken = activity.token)}
+      />
+    </Alert>
+  {/each}
 
   {#if timelineQuery.isPending}
-    <div style="padding: var(--cinder-density-pad-card);"><Skeleton height="8rem" /></div>
+    <Skeleton height="8rem" />
+  {:else if timelineQuery.isError}
+    <ErrorState
+      variant="flat"
+      title={RUN_STEPS_COPY.loadFailedTitle}
+      description={timelineQuery.error.message}
+      headingLevel={3}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => void timelineQuery.refetch()}
+    />
   {:else if entries.length === 0}
     <EmptyState
-      title="No timeline entries yet"
-      description="Durable operations this run has performed will appear here as it executes."
+      kind="first-use"
+      headingLevel={3}
+      title={RUN_STEPS_COPY.emptyTitle}
+      description={RUN_STEPS_COPY.emptyDescription}
     />
   {:else}
-    <div class="weft-timeline-tab__toolbar">
-      <SegmentedControl
-        id={`timeline-quick-filter-${workflow.id}`}
-        label="Quick filter"
-        labelVisible={false}
-        density="toolbar"
-        value={quickFilter}
-        onValueChange={changeQuickFilter}
+    <div class="ib-steps-frame" data-testid="run-steps">
+      <ListDetail
+        items={pageEntries}
+        key={(entry: WorkflowTimelineEntry) => String(entry.step)}
+        label={RUN_STEPS_COPY.listLabel}
+        detailLabel={RUN_STEPS_COPY.detailLabel}
+        emptyTitle={RUN_STEPS_COPY.chooseTitle}
+        emptyDescription={RUN_STEPS_COPY.chooseDescription}
+        selectionParameter="step"
+        {selectionLocation}
+        bind:selectedKey
+        onSelectedKeyChange={changeSelection}
+        storageKey="interborough-run-steps"
+        pushBelow={STEPS_PUSH_BELOW}
+        defaultListWidth={STEPS_LIST_WIDTH}
       >
-        {#each TIMELINE_QUICK_FILTERS as filter (filter)}
-          <Segment value={filter}>{timelineQuickFilterLabel(filter)}</Segment>
-        {/each}
-      </SegmentedControl>
-
-      {#if paginated}
-        <nav class="weft-timeline-tab__pagination" aria-label="Timeline pagination">
-          <Button
-            variant="ghost"
-            size="sm"
-            label="Previous"
-            disabled={pageIndex === 0}
-            onclick={() => (pageIndex = Math.max(0, pageIndex - 1))}
-          />
-          <span class="weft-timeline-tab__page-label">Page {pageIndex + 1} of {pageCount}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            label="Next"
-            disabled={pageIndex >= pageCount - 1}
-            onclick={() => (pageIndex = Math.min(pageCount - 1, pageIndex + 1))}
-          />
-          <Input
-            id={`timeline-jump-to-step-${workflow.id}`}
-            label="Jump to step"
+        {#snippet header()}
+          <div class="ib-steps-summary">
+            <h3 class="ib-steps-summary__title">{RUN_STEPS_COPY.heading}</h3>
+            <span class="ib-steps-summary__count" data-testid="steps-count">
+              {RUN_STEPS_COPY.count(filteredEntries.length, entries.length)}
+            </span>
+          </div>
+          <SegmentedControl
+            id={`timeline-quick-filter-${workflow.id}`}
+            label={RUN_STEPS_COPY.filterLabel}
             labelVisible={false}
-            placeholder="Jump to step"
-            inputmode="numeric"
-            bind:value={jumpToStepText}
-            onkeydown={(event) => {
-              if (event.key === 'Enter') jumpToStep();
-            }}
-          />
-          <Button variant="ghost" size="sm" label="Go" onclick={jumpToStep} />
-        </nav>
-      {/if}
-    </div>
-
-    {#if filteredEntries.length === 0}
-      <EmptyState title="No steps match this filter" description="Try a different quick filter." />
-    {:else}
-      <RunStepTimeline
-        {steps}
-        label={`${workflow.type} timeline`}
-        selectedStepId={selection.selectedStepId}
-        onStepSelect={selectTimelineStep}
-      >
-        {#snippet children(step)}
-          {#if attachedPendingActivities.some((activity) => activity.stepId === step.id)}
-            {@const activity = attachedPendingActivities.find(
-              (candidate) => candidate.stepId === step.id,
-            )}
-            {#if activity}
-              <div class="weft-timeline-tab__step-async">
-                <Badge variant="warning">
-                  <Clock aria-hidden="true" size={11} />
-                  Awaiting external completion
-                </Badge>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  label="Complete…"
-                  onclick={() => (openDrawerToken = activity.token)}
-                />
-              </div>
-            {/if}
-          {/if}
-          {@const stream = streamsClient === undefined ? undefined : streamEntryFor(step.id)}
-          {#if stream !== undefined}
-            <div class="weft-timeline-tab__step-stream">
+            density="toolbar"
+            value={quickFilter}
+            onValueChange={changeQuickFilter}
+          >
+            {#each TIMELINE_QUICK_FILTERS as filter (filter)}
+              <Segment value={filter}>{timelineQuickFilterLabel(filter)}</Segment>
+            {/each}
+          </SegmentedControl>
+          {#if paginated}
+            <nav class="ib-steps-pagination" aria-label={RUN_STEPS_COPY.paginationLabel}>
               <Button
                 variant="ghost"
                 size="sm"
-                label={RUN_DETAIL_COPY.streams.viewChunks(stream.operationLabel)}
-                aria-expanded={openStreamKey === stream.operationLabel}
-                onclick={() => (openStreamKey = stream.operationLabel)}
+                label={RUN_STEPS_COPY.previous}
+                disabled={pageIndex === 0}
+                onclick={() => (pageIndex = Math.max(0, pageIndex - 1))}
               />
-            </div>
-          {/if}
-          {@const remote = readTask === undefined ? undefined : remoteTaskFor(step.id)}
-          {#if remote !== undefined && readTask !== undefined}
-            {#key remote.operationId}
-              <RemoteTaskStep
-                operationId={remote.operationId}
-                label={remote.label}
-                {readTask}
-                probe={remote.probe}
-              />
-            {/key}
-          {/if}
-          {@const settled = readTask === undefined ? undefined : settledActivityEntry(step.id)}
-          {#if settled?.taskOperationId !== undefined && readTask !== undefined}
-            <div class="weft-timeline-tab__step-provenance">
+              <span class="ib-steps-pagination__label"
+                >{RUN_STEPS_COPY.page(pageIndex + 1, pageCount)}</span
+              >
               <Button
                 variant="ghost"
                 size="sm"
-                label={`Worker provenance for ${settled.operationLabel}`}
-                aria-expanded={provenanceStep === settled.step}
-                onclick={() =>
-                  (provenanceStep = provenanceStep === settled.step ? null : settled.step)}
+                label={RUN_STEPS_COPY.next}
+                disabled={pageIndex >= pageCount - 1}
+                onclick={() => (pageIndex = Math.min(pageCount - 1, pageIndex + 1))}
               />
-              {#if provenanceStep === settled.step}
-                <ActivityWorkerProvenance operationId={settled.taskOperationId} {readTask} />
-              {/if}
-            </div>
+              <Input
+                id={`timeline-jump-to-step-${workflow.id}`}
+                label={RUN_STEPS_COPY.jumpToStep}
+                labelVisible={false}
+                placeholder={RUN_STEPS_COPY.jumpToStep}
+                inputmode="numeric"
+                bind:value={jumpToStepText}
+                onkeydown={(event) => {
+                  if (event.key === 'Enter') jumpToStep();
+                }}
+              />
+              <Button variant="ghost" size="sm" label={RUN_STEPS_COPY.go} onclick={jumpToStep} />
+            </nav>
           {/if}
         {/snippet}
-      </RunStepTimeline>
-    {/if}
+        {#snippet list(entry, row)}
+          <StepRow {entry} bar={bars.get(entry.step)} open={openSteps.has(entry.step)} {row} />
+        {/snippet}
+        {#snippet listEmpty()}
+          <EmptyState
+            kind="filtered"
+            size="compact"
+            headingLevel={4}
+            title={RUN_STEPS_COPY.filteredTitle}
+            description={RUN_STEPS_COPY.filteredDescription}
+            onClearFilters={() => changeQuickFilter('all')}
+            clearFiltersLabel={RUN_STEPS_COPY.showAll}
+          />
+        {/snippet}
+        {#snippet empty()}
+          <EmptyState
+            kind="first-use"
+            headingLevel={4}
+            title={RUN_STEPS_COPY.chooseTitle}
+            description={RUN_STEPS_COPY.chooseDescription}
+          />
+        {/snippet}
+        {#snippet detail(entry)}
+          <StepDetail
+            {entry}
+            bar={bars.get(entry.step)}
+            open={openSteps.has(entry.step)}
+            actions={stepActions}
+          />
+        {/snippet}
+      </ListDetail>
+    </div>
   {/if}
 
   {#if streamsClient !== undefined && openStreamKey !== null}
@@ -414,22 +442,64 @@
       />
     {/key}
   {/if}
-
-  {#if selection.selectedStepId !== null}
-    <div class="weft-timeline-tab__selection-chip">
-      <Link aria-hidden="true" size={12} />
-      Selected — Events filtered to this step
-      <button
-        type="button"
-        class="weft-timeline-tab__selection-clear"
-        onclick={clearTimelineSelection}
-      >
-        <X aria-hidden="true" size={11} />
-        Clear
-      </button>
-    </div>
-  {/if}
 </div>
+
+{#snippet stepActions()}
+  <!-- Reads the open step, so a step that offers nothing renders nothing. -->
+  {#if openEntry !== undefined}
+    {@const stepId = timelineStepId(openEntry.step)}
+    {@const activity = attachedPendingActivities.find((candidate) => candidate.stepId === stepId)}
+    {#if activity}
+      <div class="weft-timeline-tab__step-async">
+        <span>{RUN_STEPS_COPY.awaitingCompletion}</span>
+        <Button
+          variant="secondary"
+          size="sm"
+          label={RUN_STEPS_COPY.complete}
+          onclick={() => (openDrawerToken = activity.token)}
+        />
+      </div>
+    {/if}
+    {@const stream = streamsClient === undefined ? undefined : streamEntryFor(stepId)}
+    {#if stream !== undefined}
+      <div class="weft-timeline-tab__step-stream">
+        <Button
+          variant="ghost"
+          size="sm"
+          label={RUN_DETAIL_COPY.streams.viewChunks(stream.operationLabel)}
+          aria-expanded={openStreamKey === stream.operationLabel}
+          onclick={() => (openStreamKey = stream.operationLabel)}
+        />
+      </div>
+    {/if}
+    {@const remote = readTask === undefined ? undefined : remoteTaskFor(stepId)}
+    {#if remote !== undefined && readTask !== undefined}
+      {#key remote.operationId}
+        <RemoteTaskStep
+          operationId={remote.operationId}
+          label={remote.label}
+          {readTask}
+          probe={remote.probe}
+        />
+      {/key}
+    {/if}
+    {@const settled = readTask === undefined ? undefined : settledActivityEntry(stepId)}
+    {#if settled?.taskOperationId !== undefined && readTask !== undefined}
+      <div class="weft-timeline-tab__step-provenance">
+        <Button
+          variant="ghost"
+          size="sm"
+          label={RUN_STEPS_COPY.workerProvenanceFor(settled.operationLabel)}
+          aria-expanded={provenanceStep === settled.step}
+          onclick={() => (provenanceStep = provenanceStep === settled.step ? null : settled.step)}
+        />
+        {#if provenanceStep === settled.step}
+          <ActivityWorkerProvenance operationId={settled.taskOperationId} {readTask} />
+        {/if}
+      </div>
+    {/if}
+  {/if}
+{/snippet}
 
 {#if openActivity}
   <AsyncActivityDrawer
@@ -445,51 +515,50 @@
   .weft-timeline-tab {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: var(--cinder-density-pad-card);
-  }
-
-  .weft-timeline-tab__unattached {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .weft-timeline-tab__unattached-row {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    background: var(--cinder-surface-inset);
-    border-radius: var(--cinder-radius-md);
-    font-size: var(--cinder-text-xs);
+    gap: var(--cinder-space-3);
+    min-width: 0;
   }
 
   .weft-timeline-tab__unattached-name {
     font-weight: 600;
   }
 
-  .weft-timeline-tab__unattached-note {
-    flex: 1;
-    color: var(--cinder-text-disabled);
-    font-size: var(--cinder-text-2xs);
+  /* The list owns its height and scrolls each pane, so the frame gives it one. */
+  .ib-steps-frame {
+    block-size: max(24rem, 60dvh);
+    min-inline-size: 0;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    overflow: hidden;
   }
 
-  .weft-timeline-tab__toolbar {
+  .ib-steps-summary {
     display: flex;
-    align-items: center;
-    gap: 12px;
     flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
   }
 
-  .weft-timeline-tab__pagination {
+  .ib-steps-summary__title {
+    margin: 0;
+    font-size: var(--cinder-text-md);
+    font-weight: 600;
+  }
+
+  .ib-steps-summary__count {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-subtle);
+  }
+
+  .ib-steps-pagination {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    margin-inline-start: auto;
+    gap: var(--cinder-space-2);
   }
 
-  .weft-timeline-tab__page-label {
+  .ib-steps-pagination__label {
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-text-subtle);
     white-space: nowrap;
@@ -498,43 +567,14 @@
   .weft-timeline-tab__step-provenance {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-top: 6px;
-  }
-
-  .weft-timeline-tab__step-stream {
-    margin-top: 6px;
+    gap: var(--cinder-space-2);
   }
 
   .weft-timeline-tab__step-async {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    margin-top: 6px;
-  }
-
-  .weft-timeline-tab__selection-chip {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: var(--cinder-space-2) var(--cinder-space-2);
-    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
-    border-radius: var(--cinder-radius-md);
-    font-size: var(--cinder-text-2xs);
-    color: var(--cinder-accent-text);
-  }
-
-  .weft-timeline-tab__selection-clear {
-    margin-inline-start: auto;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-height: 24px;
+    gap: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
   }
 </style>

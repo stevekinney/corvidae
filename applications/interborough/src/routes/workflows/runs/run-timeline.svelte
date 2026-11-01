@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The run's timeline, from the workflow engine, with the async-activity completion tokens the
+   * The run's steps, from the workflow engine, with the async-activity completion tokens the
    * fleet feed reports for it. The observations start when the timeline mounts, which is as early
    * as this page can reach (`workflow-live-observations.svelte.ts` says why not earlier), and end
    * with it. Only a run the engine answered for mounts this, so a caller without engine access
@@ -39,4 +39,5 @@
   {liveObservations}
   finalizerStatus={engine.finalizerStatus}
   {canReadStreams}
+  now={engine.clock.now}
 />

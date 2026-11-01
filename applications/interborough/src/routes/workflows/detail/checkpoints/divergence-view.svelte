@@ -7,10 +7,11 @@
    * `timeline/run-step-timeline-selection.ts`'s module doc for why
    * `RunStepTimeline` needs this at all.
    */
-  import { EmptyState, RunStepTimeline, Skeleton } from '@lostgradient/cinder';
+  import { Alert, EmptyState, RunStepTimeline, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient } from '@lostgradient/weft';
 
+  import { RUN_CHECKPOINTS_COPY } from '../../../../app/copy.ts';
   import { applyRunStepTimelineDivergenceHighlight } from '../timeline/run-step-timeline-selection.ts';
   import { mapTimelineToSteps } from '../timeline/timeline-mapping.ts';
   import { workflowTimelineQueryKey } from '../workflow-timeline-data.ts';
@@ -67,14 +68,13 @@
     <Skeleton height="12rem" />
   {:else if rows.length === 0}
     <EmptyState
-      title="Nothing to compare"
-      description="Neither run has any timeline entries yet."
+      kind="first-use"
+      size="compact"
+      title={RUN_CHECKPOINTS_COPY.nothingToCompareTitle}
+      description={RUN_CHECKPOINTS_COPY.nothingToCompareDescription}
     />
   {:else}
-    <p class="weft-divergence-view__note">
-      Diverged steps are highlighted. Both timelines are identical through the fork point by
-      construction — divergence only appears at or after it.
-    </p>
+    <Alert variant="info">{RUN_CHECKPOINTS_COPY.divergenceNote}</Alert>
     <div class="weft-divergence-view__columns">
       <div class="weft-divergence-view__column">
         <div class="weft-divergence-view__column-label">Original</div>
@@ -97,12 +97,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-  }
-
-  .weft-divergence-view__note {
-    margin: 0;
-    font-size: var(--cinder-text-2xs);
-    color: var(--cinder-text-disabled);
   }
 
   .weft-divergence-view__columns {

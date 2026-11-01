@@ -11,7 +11,7 @@
    * Loading, no record, denied, malformed, and fault states are each explicit.
    * The attempt history and worker identity stay in `activity-worker-provenance`.
    */
-  import { Badge, DescriptionList, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { Badge, DescriptionList, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import Lock from '@lucide/svelte/icons/lock';
 
@@ -55,6 +55,9 @@
     </div>
   {:else if error && isForbidden(error)}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
       title="The remote task is locked"
       description={`${scopeReason('system:read')} to read this activity’s task record.`}
     >
@@ -63,15 +66,28 @@
       {/snippet}
     </EmptyState>
   {:else if error instanceof MalformedTaskLedgerError}
-    <EmptyState title="Malformed server response" description={error.message} />
+    <ErrorState
+      variant="flat"
+      title="Malformed server response"
+      description={error.message}
+      headingLevel={4}
+    />
   {:else if notRecorded}
     <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={4}
       title="No task record"
       description="The task ledger holds no record for this dispatch. It may have been removed after its retention window."
     />
   {:else if error}
     {@const treatment = faultTreatment(error)}
-    <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
+    <ErrorState
+      variant="flat"
+      title={FAULT_TREATMENT_TITLE[treatment.kind]}
+      description={treatment.message}
+      headingLevel={4}
+    />
   {:else if task !== undefined && state !== undefined}
     <div class="weft-remote-task__state">
       <Badge variant={state.variant}>{state.label}</Badge>

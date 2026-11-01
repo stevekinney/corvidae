@@ -112,24 +112,6 @@
 /* Lineage panel                                                          */
 /* ---------------------------------------------------------------------- */
 
-.weft-lineage-panel {
-  background: var(--cinder-surface-raised);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
-  overflow: hidden;
-  margin-top: 14px;
-}
-
-.weft-lineage-panel__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-bottom: 1px solid var(--cinder-border-muted);
-  font-size: var(--cinder-text-sm);
-  font-weight: 600;
-}
-
 .weft-lineage-panel__body {
   padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
   display: flex;
@@ -155,20 +137,6 @@
 .weft-lineage-panel__section-label {
   font-size: var(--cinder-text-2xs);
   color: var(--cinder-text-disabled);
-}
-
-.weft-lineage-panel__children {
-  display: flex;
-  flex-direction: column;
-}
-
-.weft-lineage-panel__child-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: var(--cinder-space-2) var(--cinder-space-2);
-  border-radius: var(--cinder-radius-sm);
-  font-size: var(--cinder-text-xs);
 }
 
 .weft-lineage-panel__note {
@@ -282,42 +250,4 @@
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-/* ---------------------------------------------------------------------- */
-/* Children tab                                                           */
-/* ---------------------------------------------------------------------- */
-
-.weft-children-tab {
-  max-width: 920px;
-  background: var(--cinder-surface-raised);
-  border: 1px solid var(--cinder-border);
-  border-radius: var(--cinder-radius-lg);
-  overflow: hidden;
-}
-
-.weft-children-tab__scroll {
-  overflow-x: auto;
-}
-
-.weft-children-tab__row {
-  display: grid;
-  grid-template-columns: 120px 1fr 110px 90px;
-  gap: 10px;
-  align-items: center;
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
-  border-bottom: 1px solid var(--cinder-border-muted);
-  min-width: 480px;
-}
-
-.weft-children-tab__row:last-child {
-  border-bottom: none;
-}
-
-.weft-children-tab__header {
-  font-size: var(--cinder-text-2xs);
-  font-weight: 600;
-  color: var(--cinder-text-subtle);
-  background: var(--cinder-surface-inset);
-  border-bottom: 1px solid var(--cinder-border-muted);
 }
