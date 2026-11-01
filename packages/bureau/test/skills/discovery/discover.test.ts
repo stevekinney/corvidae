@@ -152,6 +152,28 @@ describe('discoverSkills', () => {
     expect(loser?.shadowedBy).toBe('project');
   });
 
+  it('finds the available record of a name whose shadowed twin sorts first', async () => {
+    const winnerRoot = await scratch();
+    const loserRoot = await scratch();
+    await writeSkill(winnerRoot, 'shared', { description: 'Winning copy.' });
+    await writeSkill(loserRoot, 'shared', { description: 'Losing copy.' });
+
+    const revision = await discoverSkills({
+      sources: [
+        source('zeta', winnerRoot, { kind: 'project', precedence: 10 }),
+        source('alpha', loserRoot, { precedence: 20 }),
+      ],
+      trustPolicy: trustEverything,
+      now,
+    });
+
+    // The records are ordered by source id, so the shadowed loser is the first of the two.
+    expect(revision.records.filter((record) => record.name === 'shared')[0]?.sourceId).toBe(
+      'alpha',
+    );
+    expect(findRecord(revision, 'shared')).toMatchObject({ sourceId: 'zeta', available: true });
+  });
+
   it('shadows an identical duplicate without treating it as a conflict', async () => {
     const first = await scratch();
     const second = await scratch();

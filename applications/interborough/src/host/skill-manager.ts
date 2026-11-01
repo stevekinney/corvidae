@@ -30,9 +30,11 @@
  *   change there is refused with the lock reason `deployment` ({@link SkillWriteLockedError}).
  * - **A catalog is replaced, never edited.** Each discovery makes a new revision. A skill client
  *   offers the revision it was built with and, given `currentCatalog` (COR-1926), checks a skill
- *   against the current catalog when the skill is used. The host does not build a skill client for
- *   its agents' runs yet, so `standing` is what such a client would be given as `currentCatalog`;
- *   until file agents can declare skills, nothing in the host consumes it.
+ *   against the current catalog when the skill is used. A file agent that lists `allowedSkills`
+ *   (COR-1975) gets a skill client per run: Bureau reads `standing` for the revision the run is
+ *   bound to, for that check, and when a write grants a skill. The manager needs the Bureau, and
+ *   Bureau recovers durable runs before `createBureau` returns, so a run recovered then reads
+ *   {@link discoverFirstSkills} instead, or it would find no catalog and lose the skills it held.
  *
  * @module skill-manager
  */
@@ -45,7 +47,11 @@ import {
   type SkillSourceStanding,
   type SkillsStanding,
 } from '@lostgradient/bureau';
-import { discoverSkills, type SkillSource } from '@lostgradient/bureau/skills';
+import {
+  discoverSkills,
+  type SkillCatalogRevision,
+  type SkillSource,
+} from '@lostgradient/bureau/skills';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
 import { hostWriteLocks } from './locations.ts';
@@ -183,6 +189,29 @@ export type SkillManagerOptions = {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The catalog the configuration describes, discovered before the Bureau exists. It serves only the
+ * window until {@link createSkillManager} has a catalog of its own, in which the runs Bureau
+ * recovers at boot are composed. `pluginSources` are what the plugins that are to run will ship.
+ */
+export async function discoverFirstSkills(
+  options: Pick<SkillManagerOptions, 'bungalow' | 'pluginSources'>,
+): Promise<SkillCatalogRevision> {
+  const { bungalow } = options;
+  const location = bungalow.configurationLocation;
+  let text: string | undefined;
+  try {
+    text = await bungalow.readConfiguration();
+  } catch {
+    throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
+  }
+  const configuration = readSkillsConfiguration(text, location);
+  return discoverSkills({
+    sources: [...toSkillSources(configuration), ...((await options.pluginSources?.()) ?? [])],
+    trustPolicy: trustPolicyOf(configuration),
+  });
 }
 
 /** Create the manager and discover the first catalog from the configuration as it is now. */

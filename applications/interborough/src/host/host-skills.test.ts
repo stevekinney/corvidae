@@ -14,9 +14,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
-import { SkillInputError } from './skill-manager.ts';
+import { discoverFirstSkills, SkillInputError } from './skill-manager.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -105,6 +106,15 @@ async function listSkills(host: Host) {
 }
 
 /** The skills the host listed, as `bureau.skills.list` answers them. */
+async function rpc(host: Host, method: string, params: Record<string, unknown>) {
+  const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+  });
+  return (await response.json()) as { result?: unknown; error?: { message: string } };
+}
+
 async function skillsOf(host: Host) {
   const listed = await listSkills(host);
   return listed.skills;
@@ -196,6 +206,77 @@ describe('skills in configuration.json', () => {
       ['deploy', 'untrusted'],
       ['summarize', 'trusted'],
     ]);
+  });
+
+  test('lets a file agent be granted a trusted skill, and refuses an untrusted one (COR-1975)', async () => {
+    const { home, userSkills, projectSkills } = await layout();
+    await writeProviderHome(home);
+    await writeFile(
+      join(home, 'configuration.json'),
+      JSON.stringify({
+        ...(await configurationOf(home)),
+        skills: {
+          sources: [
+            { id: 'home', kind: 'user', path: userSkills },
+            { id: 'workspace', kind: 'project', path: projectSkills },
+          ],
+          trusted: ['home'],
+        },
+      }),
+    );
+    const host = await startAt(home);
+    const create = (id: string, allowedSkills: readonly string[]) =>
+      rpc(host, 'bureau.agents.definitions.create', {
+        id,
+        definition: { model: 'anthropic/sonnet', instructions: 'Help.', allowedSkills },
+      });
+
+    const granted = await create('granted', ['summarize']);
+    expect(granted.error).toBeUndefined();
+    const refused = await create('refused', ['deploy']);
+    expect(refused.error?.message).toContain('source-untrusted');
+  });
+
+  test('discovers the configured skills and the plugins’ before the Bureau exists (COR-1975)', async () => {
+    const { home, userSkills, projectSkills } = await layout();
+    const pluginSkills = await scratch('interborough-skills-plugin-');
+    await writeSkill(pluginSkills, 'plugged');
+    const bungalow = {
+      mode: 'local' as const,
+      configurationLocation: join(home, 'configuration.json'),
+      readConfiguration: async () =>
+        JSON.stringify({
+          skills: {
+            sources: [
+              { id: 'home', kind: 'user', path: userSkills },
+              { id: 'workspace', kind: 'project', path: projectSkills },
+            ],
+            trusted: ['home'],
+          },
+        }),
+      writeConfiguration: async () => {},
+    };
+    const catalog = await discoverFirstSkills({
+      bungalow,
+      pluginSources: () => [
+        { id: 'plugin:p', kind: 'plugin', location: pluginSkills, precedence: 35, plugin: 'p' },
+      ],
+    });
+    expect(Object.fromEntries(catalog.records.map((r) => [r.name, r.available]))).toEqual({
+      deploy: false,
+      plugged: true,
+      summarize: true,
+    });
+
+    const failure = await failureOf(
+      discoverFirstSkills({
+        bungalow: {
+          ...bungalow,
+          readConfiguration: () => Promise.reject(new Error('down')),
+        },
+      }),
+    );
+    expect(failure).toBeInstanceOf(ProviderConfigurationError);
   });
 
   test('loads a configuration written before the key existed, and lists no skills', async () => {

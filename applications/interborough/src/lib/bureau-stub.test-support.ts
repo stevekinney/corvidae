@@ -337,6 +337,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       model: 'anthropic/sonnet',
       models: null,
       tools: ['lookup-order'],
+      allowedSkills: null,
       skillDescriptors: [
         {
           id: 'cite',

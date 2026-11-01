@@ -95,6 +95,7 @@ export {
   AGENT_TOOL_BUDGET_MAXIMUM_CALLS,
   AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
   agentFileFrontmatterSchema,
+  agentAllowedSkillsSchema,
   agentToolApprovalSchema,
   agentToolBudgetSchema,
   AgentFileConflictError,

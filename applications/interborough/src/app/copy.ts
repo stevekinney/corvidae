@@ -2359,7 +2359,9 @@ export const AGENT_PAGE_COPY = {
     noToolsDescription: 'Tools come from the host’s plugins and saved tool sources.',
     skillsHeading: 'Skills',
     skillsDescription:
-      'Executable skills the host found. Every skill from a trusted source is available to every agent; a skill from a source the host does not trust is refused, and cannot be granted here.',
+      'Executable skills the host found. This agent can activate only the ones checked here. A skill from a source the host does not trust cannot be granted.',
+    skillsReadOnlyDescription:
+      'Executable skills the host found. A skill from a source the host does not trust is refused wherever an agent would use it.',
     skillsListLabel: 'Skills',
     skillsLoadFailed: 'The skills could not be loaded.',
     noSkillsTitle: 'No skills found',

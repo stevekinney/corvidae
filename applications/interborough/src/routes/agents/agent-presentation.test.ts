@@ -156,6 +156,7 @@ describe('an agent’s facts', () => {
     models: null,
     tools: [...tools],
     skillDescriptors: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
+    allowedSkills: null,
     a2a: true,
     stepLimit: null,
     retry: null,

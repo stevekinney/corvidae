@@ -55,6 +55,7 @@ export type AgentDetailResult = {
     model: string;
     tools: string[];
     skillDescriptors: unknown[];
+    allowedSkills: string[] | null;
     a2a: boolean;
     instructions: string;
   } | null;

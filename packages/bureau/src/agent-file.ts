@@ -72,6 +72,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'models',
   'tools',
   'skillDescriptors',
+  'allowedSkills',
   'a2a',
   'stepLimit',
   'retry',
@@ -94,6 +95,7 @@ export type AgentFileProblemCode =
   | 'missing-reference'
   | 'reference-unresolved'
   | 'reference-too-large'
+  | 'skill-not-grantable'
   | 'shadows-code-agent'
   | 'missing-frontmatter'
   | 'invalid-yaml'
@@ -107,7 +109,8 @@ export interface AgentFileIssue {
   readonly message: string;
   /**
    * The id the definition names that nothing loaded holds: a tool for `unknown-tool`, a guardrail
-   * or run hook set for `reference-unresolved` (COR-1879). Absent on every other issue.
+   * or run hook set for `reference-unresolved` (COR-1879), a skill for `skill-not-grantable`
+   * (COR-1975). Absent on every other issue.
    */
   readonly reference?: string;
 }
@@ -118,7 +121,8 @@ export interface AgentFileProblem {
   readonly message: string;
   /**
    * Every schema failure, for `invalid-frontmatter`; the missing names, for `unknown-tool`; the
-   * names `toolApproval` gives a value that `tools` does not list, for `unknown-approval-tool`.
+   * names `toolApproval` gives a value that `tools` does not list, for `unknown-approval-tool`;
+   * the skills a write could not grant, for `skill-not-grantable`.
    */
   readonly issues?: readonly AgentFileIssue[];
 }
@@ -141,6 +145,17 @@ export const agentSkillDescriptorSchema = z.strictObject({
  * says nothing, and a definition holds none.
  */
 export const agentContributionIdsSchema = z.array(z.string().min(1));
+
+/**
+ * A file's `allowedSkills` (COR-1975): the executable skills, by name, a run of the agent may
+ * activate. An empty list grants none, and is not the same as no list, so a list emptied one box
+ * at a time keeps saying so. A name is not checked here: whether a skill can be granted depends on
+ * the deployment's skill catalog, which a write asks (`skill-not-grantable`) and a scan does not,
+ * because a source stops being trusted without the file changing.
+ */
+export const agentAllowedSkillsSchema = z
+  .array(z.string().min(1))
+  .refine((names) => unique(names), { message: 'skill names must be unique' });
 
 /** The most steps an agent file may allow a run (`stepLimit`). */
 export const AGENT_STEP_LIMIT_MAXIMUM = 1000;
@@ -332,6 +347,12 @@ export const agentFileFrontmatterSchema = z
       })
       .nullish(),
     /**
+     * The executable skills a run may activate, by name (COR-1975). Absent, the file grants none
+     * and the agent has no skills. Not `skills`, the name `skillDescriptors` had, which an old file
+     * may still carry and Bureau ignores.
+     */
+    allowedSkills: agentAllowedSkillsSchema.nullish(),
+    /**
      * Whether the agent opts into A2A, the agent-to-agent protocol. A strict boolean; defaults to
      * `false`. Chat and every other surface serve a ready agent whatever this says.
      */
@@ -445,6 +466,8 @@ export const agentFileDefinitionSchema = z.object({
   tools: z.array(z.string().min(1)).default([]),
   /** Absent from a snapshot written before the field was renamed from `skills`; read as none. */
   skillDescriptors: z.array(agentSkillDescriptorSchema).default([]),
+  /** Absent from a snapshot written before the field existed, and from a file that has none. */
+  allowedSkills: agentAllowedSkillsSchema.optional(),
   /** Absent from a snapshot written before the A2A opt-in existed; read as `false`. */
   a2a: z.boolean().default(false),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
@@ -537,6 +560,12 @@ export interface AgentFileDefinition {
   readonly tools: readonly string[];
   /** Descriptive Agent Card skills (COR-1301), never executable skills. */
   readonly skillDescriptors: readonly AgentSkillDescriptor[];
+  /**
+   * The executable skills a run of the agent may activate, by name. Absent when the file lists
+   * none: the agent has no skills. An empty list grants none too, and is kept, because it is what
+   * the file says. A name the catalog no longer trusts stays here and is refused at activation.
+   */
+  readonly allowedSkills?: readonly string[];
   /** Whether the agent opts into A2A. This part only records it; the A2A mount reads it. */
   readonly a2a: boolean;
   /** The most steps one run may take. Absent when the file sets none: Operative's default applies. */
@@ -594,6 +623,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   models: true,
   tools: true,
   skillDescriptors: true,
+  allowedSkills: true,
   a2a: true,
   stepLimit: true,
   retry: true,
@@ -638,6 +668,11 @@ export interface AgentFileDefinitionInput {
   readonly tools?: readonly string[] | undefined;
   /** See {@link AgentFileDefinition.skillDescriptors}. */
   readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
+  /**
+   * See {@link AgentFileDefinition.allowedSkills}. An update that omits it keeps the file's value;
+   * `null` removes it, and an empty list grants none.
+   */
+  readonly allowedSkills?: readonly string[] | null | undefined;
   /** See {@link AgentFileDefinition.a2a}. An update that omits it keeps the file's value. */
   readonly a2a?: boolean | undefined;
   /**
@@ -841,6 +876,7 @@ function toDefinition(
     tools: frontmatter.tools ?? [],
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
     skillDescriptors: (frontmatter.skillDescriptors ?? []) as readonly AgentSkillDescriptor[],
+    ...(frontmatter.allowedSkills == null ? {} : { allowedSkills: frontmatter.allowedSkills }),
     a2a: frontmatter.a2a ?? false,
     ...(frontmatter.stepLimit == null ? {} : { stepLimit: frontmatter.stepLimit }),
     ...(frontmatter.retry == null ? {} : { retry: retryOf(frontmatter.retry) }),
@@ -953,6 +989,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
       ...descriptor,
     }));
   }
+  if (definition.allowedSkills != null) known['allowedSkills'] = [...definition.allowedSkills];
   if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
   if (definition.stepLimit != null) known['stepLimit'] = definition.stepLimit;
   if (definition.retry != null) known['retry'] = retryOf(definition.retry);
@@ -995,6 +1032,7 @@ export function resolveAgentFileDefinition(
     ...(input.models === undefined ? {} : { models: input.models }),
     tools: input.tools ?? [],
     skillDescriptors: input.skillDescriptors ?? [],
+    ...(input.allowedSkills == null ? {} : { allowedSkills: [...input.allowedSkills] }),
     a2a: input.a2a ?? false,
     ...(input.stepLimit == null ? {} : { stepLimit: input.stepLimit }),
     ...(input.retry == null ? {} : { retry: retryOf(input.retry) }),
@@ -1017,11 +1055,12 @@ export function resolveAgentFileDefinition(
 export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `hooks`,
-  // `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and a version that has none must remove
-  // it: `null` says so.
+  // An update that omits `allowedSkills`, `stepLimit`, `retry`, `compaction`, `references`,
+  // `guardrails`, `hooks`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value, and
+  // a version that has none must remove it: `null` says so.
   return {
     ...input,
+    allowedSkills: definition.allowedSkills ?? null,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry ?? null,
     compaction: definition.compaction ?? null,
@@ -1049,13 +1088,14 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`a2a`, `stepLimit`, `retry`, `compaction`, `references`,
-  // `guardrails`, `hooks`, `costBudget`, `toolBudget`, `toolApproval`) is not a change to it: the file keeps the value it has, and a file
-  // with no such key is not given one.
+  // A key the caller leaves out (`allowedSkills`, `a2a`, `stepLimit`, `retry`, `compaction`,
+  // `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget`, `toolApproval`) is not a change
+  // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
   const next = resolveAgentFileDefinition(id, {
     ...input,
     ...(keptA2a ? { a2a: before.a2a } : {}),
+    ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
     ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
     ...(input.retry === undefined ? { retry: before.retry } : {}),
     ...(input.compaction === undefined ? { compaction: before.compaction } : {}),
@@ -1082,6 +1122,7 @@ export function serializeUpdatedAgentFile(
       knownFrontmatter({
         ...input,
         ...(keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { a2a: before.a2a } : {}),
+        ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
         ...(input.stepLimit === undefined ? { stepLimit: before.stepLimit } : {}),
         ...(input.retry === undefined ? { retry: before.retry } : {}),
         ...(input.compaction === undefined ? { compaction: before.compaction } : {}),

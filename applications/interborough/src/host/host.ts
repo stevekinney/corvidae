@@ -174,7 +174,7 @@ import { contributedProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
 import { isShellNavigation } from './shell-request.ts';
-import { createSkillManager, type SkillManager } from './skill-manager.ts';
+import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
@@ -703,6 +703,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
             locked: { ...callerLocks, ...REMOTE_LOCKED_SETTINGS },
           }
         : options.settings;
+    // Bureau recovers durable runs before it returns, and the skill manager waits for the Bureau, so
+    // a run recovered at boot reads this catalog, or it would lose the skills it held.
+    const firstSkills = await discoverFirstSkills({
+      bungalow,
+      pluginSources: () =>
+        pluginManager.loadable().flatMap((entry) => {
+          const shipped = entry.descriptor.content;
+          const source =
+            shipped === undefined
+              ? undefined
+              : createPluginSkillSource(entry.descriptor.name, shipped);
+          return source === undefined ? [] : [source];
+        }),
+    });
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: { ...options.extraAgents?.agents },
@@ -744,6 +758,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
       agentSource: createAgentSource(bungalow, agentContent, toolSources.tools()),
+      agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
       pluginAgentSource: createPluginAgentSource,
       // The approvals a file agent's tools raise are signed with the host's approval secret, so a

@@ -84,18 +84,27 @@ export function agentSkillsRun(hooks: object | undefined): AgentSkillsRunHandle 
   return hooks === undefined ? undefined : runHandles.get(hooks);
 }
 
-const skillCatalogs = new WeakMap<object, SkillCatalogRevision>();
+const skillCatalogs = new WeakMap<
+  object,
+  { readonly catalog: SkillCatalogRevision; readonly allowedSkills: readonly string[] | undefined }
+>();
 
 /**
  * The names of the executable skills an agent's `skills` value (`createAgent({ skills })`) makes
  * available: the available records of the catalog revision {@link createAgentSkills} was given,
- * ordered by name. Empty for an agent with no skills, and for a `skills` value that did not come
- * from {@link createAgentSkills}, whose catalog Bureau cannot read. An unavailable skill (an
- * untrusted source, say) is not named: the agent cannot activate it.
+ * ordered by name, narrowed to `allowedSkills` when the agent states one. Empty for an agent with
+ * no skills, and for a `skills` value that did not come from {@link createAgentSkills}, whose
+ * catalog Bureau cannot read. An unavailable skill (an untrusted source, say) is not named: the
+ * agent cannot activate it. Neither is one its allow-list leaves out, so a copy of the agent is
+ * granted what the original can use.
  */
 export function agentSkillNames(skills: object | undefined): readonly string[] {
-  const catalog = skills === undefined ? undefined : skillCatalogs.get(skills);
-  return catalog === undefined ? [] : availableRecords(catalog).map((record) => record.name);
+  const held = skills === undefined ? undefined : skillCatalogs.get(skills);
+  if (held === undefined) return [];
+  const allowed = held.allowedSkills === undefined ? undefined : new Set(held.allowedSkills);
+  return availableRecords(held.catalog)
+    .map((record) => record.name)
+    .filter((name) => allowed === undefined || allowed.has(name));
 }
 
 /** Options for {@link createAgentSkills}. */
@@ -114,6 +123,14 @@ export interface AgentSkillsOptions {
    * change. See `CreateSkillClientOptions.currentCatalog`.
    */
   readonly currentCatalog?: (() => SkillCatalogRevision) | undefined;
+  /**
+   * The only skills this agent's runs may activate, by name (COR-1975). A skill it leaves out is
+   * neither offered nor activated, and is refused as an absent one is (`not-in-catalog`), while
+   * `skill.rejected` names the `allow-list` rule. It only narrows: a skill it names from a source
+   * the catalog does not trust is refused `source-untrusted`. Omit it and the runs may use every
+   * available skill of the catalog.
+   */
+  readonly allowedSkills?: readonly string[] | undefined;
   /**
    * Whether the model is handed `activate_skill`, `load_skill_resource` and
    * `deactivate_skill` and shown the catalog at step 0. Defaults to `true`.
@@ -196,6 +213,9 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
       const client = createSkillClient({
         catalog: options.catalog,
         ...(options.currentCatalog === undefined ? {} : { currentCatalog: options.currentCatalog }),
+        ...(options.allowedSkills === undefined
+          ? {}
+          : { admissionPolicy: { allowList: [...options.allowedSkills] } }),
         loadArtifact: options.loadArtifact ?? createSkillArtifactLoader({}),
         runtime: run.runtime,
         correlation: { agentName: run.agentName },
@@ -266,6 +286,6 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
       return withToolboxLayer(toolbox, (rebuilt) => withActiveSkillToolPolicy(rebuilt, policy));
     },
   };
-  skillCatalogs.set(skills, options.catalog);
+  skillCatalogs.set(skills, { catalog: options.catalog, allowedSkills: options.allowedSkills });
   return skills;
 }
