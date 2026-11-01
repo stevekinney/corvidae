@@ -30,7 +30,7 @@ import {
 } from '@lostgradient/chat';
 
 import { CHAT_COPY } from '../../app/copy.ts';
-import { sendContextInput, type Fetcher } from '../../lib/bureau-client.ts';
+import { sendContextInput, wireCodeOf, type Fetcher } from '../../lib/bureau-client.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { AgUiHttpError } from './ag-ui-events.ts';
 import {
@@ -50,7 +50,30 @@ export type ChatSessionOptions = {
   readonly fetch?: Fetcher;
   /** Told when a run this page started has begun. */
   readonly onRunStarted?: () => void;
+  /**
+   * Takes over editing a message the person sent. Without it the controller edits in place, by
+   * rewinding the transcript to before the message and running it again on the same thread, which
+   * the Bureau's thread cannot follow; with it the page decides what an edit does.
+   */
+  readonly onEdit?: (event: { readonly messageId: string; readonly content: string }) => void;
+  /**
+   * Whether the chat is closed: it was deleted, so a send would start a new chat under the same
+   * identifier. A closed session sends nothing, and says why to whoever tried.
+   */
+  readonly closed?: () => boolean;
+  /**
+   * Told when the Bureau answered a read or a send with not-found. That answer is also what a
+   * caller who cannot change the chat is given, so the page reads the chat again to learn which.
+   */
+  readonly onNotFound?: () => void;
 };
+
+/** Whether `error` is the Bureau, or the AG-UI door, saying it has no such thread. */
+function isNotFound(error: unknown): boolean {
+  return (
+    (error instanceof AgUiHttpError && error.status === 404) || wireCodeOf(error) === 'NotFound'
+  );
+}
 
 /** The text a follow-up sends: the Bureau takes text, or a list of parts, as session input. */
 function inputPayload(message: MessageInput): string {
@@ -118,6 +141,7 @@ export class ChatSessionState {
   readonly #wiring: ChatRunWiring;
   readonly #abort = new AbortController();
   readonly sessionId: string;
+  readonly #onNotFound: (() => void) | undefined;
   #retryTimer: ReturnType<typeof setTimeout> | undefined;
   #retryGeneration = 0;
   #retryFailures = 0;
@@ -127,6 +151,7 @@ export class ChatSessionState {
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
+    this.#onNotFound = options.onNotFound;
     this.conversation = createConversationHistory({ id: options.sessionId });
     this.#wiring = createChatRunWiring({
       conversation: () => this.conversation,
@@ -160,6 +185,7 @@ export class ChatSessionState {
       // A follow-up goes to the run in flight. Its row id is the input's id, so a retry of the
       // same row is the same input.
       sendRunInput: async (conversationId, message, _attachments, { messageId }) => {
+        if (options.closed?.() === true) throw new Error(CHAT_COPY.gone.title);
         const result = await sendContextInput(
           conversationId,
           { id: messageId, payload: inputPayload(message) },
@@ -188,6 +214,7 @@ export class ChatSessionState {
           }
         },
         onError: (error) => {
+          if (isNotFound(error)) options.onNotFound?.();
           const failure =
             runFailureMessage(error, { hadAttachments: this.#turnHadAttachments }) ??
             (error instanceof Error ? error.message : String(error));
@@ -201,16 +228,24 @@ export class ChatSessionState {
         },
       },
     });
-    const adapter = this.controller.adapter;
+    // The controller's own edit rewinds this thread in place, which the Bureau's thread cannot
+    // follow, so it is replaced by the page's (`onEdit`) or removed.
+    const { editMessage: _editInPlace, ...adapter } = this.controller.adapter;
     this.adapter = {
       ...adapter,
+      ...(options.onEdit === undefined
+        ? {}
+        : { editMessage: async (event) => options.onEdit?.(event) }),
       sendMessage: async (message, attachments) => {
+        // A deleted chat is not written to: the run would start it again under the same identifier.
+        if (options.closed?.() === true) throw new Error(CHAT_COPY.gone.title);
         this.#turnHadAttachments = attachments.length > 0;
         await this.#attachment;
         // What a refused resume still owes goes first, so the new message reaches the agent after
         // it, once, and not as a row of the resume, which the mount never reads.
         await this.#repeatOwedResume();
         if (this.#holdsAsAnswer(message)) return;
+        if (options.closed?.() === true) throw new Error(CHAT_COPY.gone.title);
         const turn = adapter.sendMessage(messageWithAttachments(message, attachments), attachments);
         this.#activeTurn = turn.catch(() => undefined);
         return turn;
@@ -335,6 +370,15 @@ export class ChatSessionState {
     return !this.#attachFailed;
   }
 
+  /**
+   * Sends `content` as the person's next message, as if it had been typed in the composer. It waits
+   * for the attach in progress, so it goes to the run the attach joins, or starts one when there is
+   * none. A failure is shown on the row, which offers Retry, and in `failure`.
+   */
+  send(content: string): Promise<void> {
+    return this.adapter.sendMessage({ role: 'user', content }, []);
+  }
+
   /** Stops telling the person of the last failure. */
   dismissFailure(): void {
     this.failure = undefined;
@@ -406,6 +450,7 @@ export class ChatSessionState {
       // rejection with an empty transcript.
       if (generation !== this.#retryGeneration || signal.aborted) return false;
       this.#attachFailed = true;
+      if (isNotFound(error)) this.#onNotFound?.();
       if (!rereading) this.failure = error instanceof Error ? error.message : String(error);
       this.#scheduleReconnect(error);
       return false;
