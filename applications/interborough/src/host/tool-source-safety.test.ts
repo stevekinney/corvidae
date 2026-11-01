@@ -530,6 +530,38 @@ describe('a sign-in', () => {
     expect(oauth.issuedAccessTokens).toHaveLength(1);
   });
 
+  test('reports stored tokens the server refused at load as rejected, and a new sign-in clears it', async () => {
+    const { oauth, home, keys, manager } = await signingIn();
+    await manager.completeAuthorization(
+      'calendar',
+      await callbackAfterAuthorizing(manager, 'calendar'),
+    );
+    oauth.revokeTokens();
+
+    const restarted = managerOver(home, keys);
+    await restarted.start();
+    const [rejected] = await standingsOf(restarted);
+    // Tokens were stored, so the page must not tell the person to restart: it would change nothing.
+    expect(rejected).toMatchObject({ state: 'needs-authorization', tokensRejected: true });
+
+    await restarted.completeAuthorization(
+      'calendar',
+      await callbackAfterAuthorizing(restarted, 'calendar'),
+    );
+    const [signedAgain] = await standingsOf(restarted);
+    expect(signedAgain).toMatchObject({ state: 'needs-authorization', authorized: true });
+    expect(signedAgain).not.toHaveProperty('tokensRejected');
+  });
+
+  test('does not call a source with no stored tokens rejected', async () => {
+    const { home, keys } = await signingIn();
+    const restarted = managerOver(home, keys);
+    await restarted.start();
+    const [standing] = await standingsOf(restarted);
+    expect(standing).toMatchObject({ state: 'needs-authorization', authorized: false });
+    expect(standing).not.toHaveProperty('tokensRejected');
+  });
+
   test('is refused once the source has been removed, and nothing is stored for it', async () => {
     const { oauth, home, manager } = await signingIn();
     const callback = await callbackAfterAuthorizing(manager, 'calendar');

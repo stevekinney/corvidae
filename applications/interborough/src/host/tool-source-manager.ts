@@ -267,6 +267,12 @@ export type ToolSourceToolStanding = {
   readonly tool: string;
   /** Whether the running host lets the tool receive the plaintext of a secret answer (COR-1932). */
   readonly acceptsSecrets: boolean;
+  /**
+   * Whether the saved settings allow it: what `acceptsSecrets` becomes at the next start. It differs
+   * from `acceptsSecrets` after a change to the tool's settings that the running host has not
+   * loaded (`settingsPending`), so a page reads back what it saved and not only what runs.
+   */
+  readonly savedAcceptsSecrets: boolean;
   /** Its capability tier (`read-only`, `mutating`, `dangerous`), or `null` when it has none. */
   readonly tier: string | null;
 };
@@ -296,8 +302,13 @@ export type ToolSourceStanding = {
   readonly settingsPending?: true;
   /** The names of the credentials stored for it, never their values. */
   readonly credentials: readonly string[];
-  /** For an OAuth source: whether tokens are stored. */
+  /** For an OAuth source: whether tokens are stored. Stored tokens are not proof that they work: see `tokensRejected`. */
   readonly authorized?: boolean;
+  /**
+   * True when tokens were stored but the server refused them when the host loaded the source, so
+   * a person must sign in again. A restart does not help until they do; a completed sign-in clears it.
+   */
+  readonly tokensRejected?: true;
 };
 
 /** The saved tool sources as the host holds them, with no credential. */
@@ -799,7 +810,10 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     entry: ConfiguredToolSource,
     state: ToolSourceState,
     extra: Partial<
-      Pick<ToolSourceStanding, 'message' | 'tools' | 'skipped' | 'unmatchedSettings'>
+      Pick<
+        ToolSourceStanding,
+        'message' | 'tools' | 'skipped' | 'unmatchedSettings' | 'tokensRejected'
+      >
     > = {},
   ): ToolSourceStanding {
     return {
@@ -853,6 +867,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     const remember = (standing: ToolSourceStanding): void => {
       booted.set(source.id, { standing, description, settings });
     };
+    // Whether tokens were stored when the load began, so a refusal of them is told from no sign-in.
+    let hadTokens = false;
     // A saved source must not stop the host: its tools would collide with a built-in plugin's namespace.
     if (RESERVED_TOOL_SOURCE_IDENTIFIERS.includes(source.id)) {
       const message = `The identifier "${source.id}" is reserved for the host's own tools, so this source is not loaded. Remove it.`;
@@ -868,6 +884,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           remember(standingOf(entry, 'needs-authorization'));
           return;
         }
+        hadTokens = true;
       }
       // A sign-in is never started here: the URL the loader hands over is dropped, and the
       // source reports `needs-authorization` for a person to start it.
@@ -912,6 +929,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           name,
           tool: tool.name,
           acceptsSecrets,
+          savedAcceptsSecrets: acceptsSecrets,
           tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
         });
       }
@@ -928,7 +946,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       remember(standingOf(entry, 'loaded', { tools, skipped, unmatchedSettings }));
     } catch (error) {
       if (error instanceof ToolSourceAuthorizationRequiredError) {
-        remember(standingOf(entry, 'needs-authorization'));
+        remember(
+          standingOf(entry, 'needs-authorization', hadTokens ? { tokensRejected: true } : {}),
+        );
         return;
       }
       const message = describeFailure(error);
@@ -1097,6 +1117,11 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
               : [];
           return standingWithSecrets(entry, {
             ...standing,
+            // The saved settings as they are now, not as they were when the host loaded the source.
+            tools: standing.tools.map((tool) => ({
+              ...tool,
+              savedAcceptsSecrets: entry.tools.get(tool.tool)?.acceptsSecrets === true,
+            })),
             unmatchedSettings,
             ...(previous.settings === settingsRevision(entry)
               ? {}
@@ -1437,6 +1462,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           // The recorded state and verifier are good for one sign-in. Clearing them makes the next
           // start a new one, and a replayed callback finds none waiting.
           await storage.clear?.(['codeVerifier', 'state']);
+          // The tokens the server refused at load are replaced, so the page stops asking to sign in again.
+          const previous = booted.get(id);
+          if (previous?.standing.tokensRejected === true) {
+            const { tokensRejected: _replaced, ...standing } = previous.standing;
+            booted.set(id, { ...previous, standing });
+          }
           await record('tool.source.authorized', entry.source);
           return { id, changed: true, restartRequired: true as const };
         }),

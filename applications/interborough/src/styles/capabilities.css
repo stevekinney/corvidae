@@ -100,3 +100,59 @@
   list-style: none;
   min-width: 0;
 }
+
+/* ── Sources: the tool sources the host saved ────────────────── */
+
+.ib-source__sign-in,
+.ib-source__remove {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-source__help,
+.ib-source__standing {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ib-source__tools {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.ib-source__tool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+  padding: var(--cinder-space-3) 0;
+  border-top: 1px solid var(--cinder-border-muted);
+}
+
+.ib-source__tool-heading,
+.ib-source__switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-source__notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}

@@ -6,6 +6,8 @@
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
 import type { AgentCatalog } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
+import type { ToolSourceStanding, ToolSourceTool } from '../../lib/host-tool-sources.ts';
+import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
 
 /** One tool as the catalog lists it. */
 export type CatalogTool = AgentCatalog['tools'][number];
@@ -95,4 +97,58 @@ export function unavailableText(skill: Skill): string | undefined {
 export function matchesFilter(name: string, typed: string): boolean {
   const needle = typed.trim().toLowerCase();
   return needle === '' || name.toLowerCase().includes(needle);
+}
+
+const SOURCE = CAPABILITIES_COPY.source;
+
+/** The badge variant that matches where a tool source stands. */
+export function sourceStateVariant(
+  state: ToolSourceStanding['state'],
+): 'success' | 'warning' | 'danger' | 'info' {
+  if (state === 'loaded') return 'success';
+  if (state === 'failed') return 'danger';
+  if (state === 'needs-authorization') return 'warning';
+  return 'info';
+}
+
+/** The words for where a tool source stands. */
+export function sourceStateLabel(state: ToolSourceStanding['state']): string {
+  return SOURCE.states[state];
+}
+
+/** A sentence saying what a source's standing means for its tools. */
+export function sourceStateDescription(state: ToolSourceStanding['state']): string {
+  return SOURCE.stateDescriptions[state];
+}
+
+/** The words for the kind of source. */
+export function sourceKindLabel(source: ToolSourceStanding): string {
+  return SOURCE.kinds[source.kind];
+}
+
+/** The tier a source's tool declares, or `unclassified` when it declares none or one this build does not know. */
+export function sourceToolTier(tool: ToolSourceTool): ToolTier {
+  switch (tool.tier) {
+    case 'read-only':
+    case 'mutating':
+    case 'dangerous':
+      return tool.tier;
+    default:
+      return 'unclassified';
+  }
+}
+
+/**
+ * What happens when an agent whose file says nothing about the tool calls it: Armorer asks first for
+ * every tool that is not read-only, and for one that declares nothing, so the tier is the answer.
+ */
+export function sourceToolStanding(tool: ToolSourceTool): ToolStanding {
+  const tier = sourceToolTier(tool);
+  return standingOf(
+    {
+      tier: tier === 'unclassified' ? null : tier,
+      defaultApproval: tier === 'read-only' ? 'allow' : 'ask',
+    },
+    undefined,
+  );
 }
