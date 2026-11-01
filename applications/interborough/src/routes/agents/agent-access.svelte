@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * The Access tab of an agent's page: which tools the agent may call and when each asks you first
-   * (never, on changes, always, blocked), the skills the host found (read-only, with whether their
-   * source is trusted), the plugin guardrails it runs besides the default ones, and its spend and
+   * (never, on changes, always, blocked), which of the skills the host found it may activate (one
+   * from a source the host does not trust cannot be granted), the plugin guardrails it runs besides the default ones, and its spend and
    * tool budgets. It saves the lot as one write that names the hash of the file the page read, so
    * a file that changed since is refused instead of overwritten, and the page says so with a reload.
    *
@@ -204,7 +204,7 @@
       {/if}
     </section>
 
-    <AgentAccessSkills />
+    <AgentAccessSkills form={state} />
 
     <section class="ib-agent-section" aria-label={copy.guardrailsHeading}>
       <SectionHeading

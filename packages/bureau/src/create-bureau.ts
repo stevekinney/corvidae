@@ -106,6 +106,7 @@ import {
   sessionOwnerOf,
 } from '@lostgradient/operative';
 import {
+  createSkillArtifactLoader,
   SkillActivatedEvent,
   SkillDeactivatedEvent,
   SkillFailedEvent,
@@ -3220,6 +3221,18 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
               contributions: options.agentContributions,
+              // COR-1975: the skills a file's `allowedSkills` draws on, read through the host.
+              ...(options.agentSkillCatalog === undefined
+                ? {}
+                : {
+                    skills: {
+                      catalog: options.agentSkillCatalog,
+                      loadArtifact: createSkillArtifactLoader(
+                        runtime.kv === undefined ? {} : { storage: runtime.kv },
+                      ),
+                      events: runtime.skillEvents,
+                    },
+                  }),
               // COR-1920: a file agent's per-run toolbox resolves secret answers as the Bureau's does.
               ...(runtime.secretAnswers === undefined
                 ? {}

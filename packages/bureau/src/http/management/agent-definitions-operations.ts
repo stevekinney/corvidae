@@ -46,6 +46,7 @@ import type { AgentDefinitions } from '../../agent-catalog.ts';
 import type { BureauAgents } from '../../types.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
+  agentAllowedSkillsSchema,
   agentCompactionSchema,
   agentCostBudgetSchema,
   agentReferencesSchema,
@@ -155,6 +156,8 @@ const definitionOutputSchema = z.object({
   models: z.array(z.string()).nullable(),
   tools: z.array(z.string()),
   skillDescriptors: z.array(agentSkillDescriptorSchema),
+  /** The executable skills a run may activate, by name (COR-1975); `null` when the file lists none and the agent has no skills. */
+  allowedSkills: agentAllowedSkillsSchema.nullable(),
   a2a: z.boolean(),
   /** The most steps one run may take; `null` when the file sets none and Operative's default applies. */
   stepLimit: z.number().int().nullable(),
@@ -200,11 +203,12 @@ const agentDetailSchema = agentListingSchema.extend({
 });
 
 /**
- * What a caller supplies to `create` or `update`. An update keeps `a2a`, `stepLimit`, `retry`,
- * `compaction`, `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget` and `toolApproval` when it leaves them out,
- * so an editor that rewrites a definition cannot turn an agent's A2A opt-in off, or drop its step
- * limit, retry, compaction, references, guardrails, hooks, spend limit or tool approvals, by omitting
- * them; `null` removes any of them but `a2a`.
+ * What a caller supplies to `create` or `update`. An update keeps `allowedSkills`, `a2a`,
+ * `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget`
+ * and `toolApproval` when it leaves them out, so an editor that rewrites a definition cannot change
+ * an agent's skills, turn its A2A opt-in off, or drop its step limit, retry, compaction, references,
+ * guardrails, hooks, spend limit or tool approvals, by omitting them; `null` removes any of them
+ * but `a2a`.
  */
 const definitionInputSchema = z
   .strictObject({
@@ -221,6 +225,13 @@ const definitionInputSchema = z
     models: z.array(z.string()).nullable().optional(),
     tools: z.array(z.string().min(1)).optional(),
     skillDescriptors: z.array(agentSkillDescriptorSchema).optional(),
+    /**
+     * The executable skills a run may activate, by name. A name the file does not list already must
+     * be a skill the deployment can grant: one from a source it does not trust, or one its catalog
+     * lacks, is refused as `skill-not-grantable`. An empty list grants none. Omitted, a create lists
+     * none and an update keeps the file's; `null` removes the file's.
+     */
+    allowedSkills: agentAllowedSkillsSchema.nullable().optional(),
     /** Whether the agent opts into A2A. Omitted, a create is `false` and an update keeps the file's value. */
     a2a: z.boolean().optional(),
     /**
@@ -282,7 +293,7 @@ const definitionInputSchema = z
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` and `hooks` (ids of plugin guardrails and run hooks, each `plugin:name`), `costBudget` (`perRunUsd`, `perChatUsd`, and `warnAt` fractions), `toolBudget` (`maxCalls`, `maxDurationSeconds`), `toolApproval` (a tool from `tools` mapped to `never`, `on-changes`, `always` or `blocked`) and `instructions`.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `tools`, `skillDescriptors`, `allowedSkills` (the executable skills a run may activate), `a2a` (whether the agent opts into A2A), `stepLimit` (the most steps a run takes, 1 to 1000), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` and `hooks` (ids of plugin guardrails and run hooks, each `plugin:name`), `costBudget` (`perRunUsd`, `perChatUsd`, and `warnAt` fractions), `toolBudget` (`maxCalls`, `maxDurationSeconds`), `toolApproval` (a tool from `tools` mapped to `never`, `on-changes`, `always` or `blocked`) and `instructions`.',
   );
 
 /**
@@ -351,6 +362,7 @@ function definitionView(definition: AgentFileDefinition) {
     models: definition.models === undefined ? null : [...definition.models],
     tools: [...definition.tools],
     skillDescriptors: definition.skillDescriptors.map(skillView),
+    allowedSkills: definition.allowedSkills === undefined ? null : [...definition.allowedSkills],
     a2a: definition.a2a,
     stepLimit: definition.stepLimit ?? null,
     retry: definition.retry === undefined ? null : { ...definition.retry },
@@ -594,7 +606,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget` or `toolApproval` keeps the file’s value (`null` removes any but `a2a`). A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `allowedSkills`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget` or `toolApproval` keeps the file’s value (`null` removes any but `a2a`). An `allowedSkills` entry the file does not already list must be a skill the deployment can grant: one from a source it does not trust, or one its catalog lacks, is refused `Unprocessable` with the reason `skill-not-grantable`. A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -613,7 +625,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // An omitted `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value: the catalog applies that rule itself.
+      // An omitted `allowedSkills`, `a2a`, `stepLimit`, `retry`, `compaction`, `references`, `guardrails`, `hooks`, `costBudget`, `toolBudget` or `toolApproval` keeps the file's value: the catalog applies that rule itself.
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
         savedBy: ownerOfPrincipal(principal),

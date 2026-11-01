@@ -1,6 +1,6 @@
 /**
- * The Access tab (COR-1853): the tools an agent may call and when each asks first, the skills the
- * host found (read-only), the plugin guardrails and the budgets, and the one write that saves them.
+ * The Access tab (COR-1853): the tools an agent may call and when each asks first, the skills it
+ * may activate (COR-1975), the plugin guardrails and the budgets, and the one write that saves them.
  * The write sends the whole definition, because an update that leaves out `tools` removes them, and
  * it names the hash of the file the page read.
  */
@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { AGENT_PAGE_COPY } from '../../app/copy.ts';
+import type { Skill } from '../../lib/bureau-skills.ts';
 import {
   catalogFixture,
   faults,
@@ -18,7 +19,7 @@ import {
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
-import { AgentAccessState } from './agent-access-state.svelte.ts';
+import { AgentAccessState, skillGrantLocked } from './agent-access-state.svelte.ts';
 import AgentDetail from './agent-detail.svelte';
 
 const copy = AGENT_PAGE_COPY.access;
@@ -503,18 +504,127 @@ describe('the tab', () => {
 });
 
 describe('the skills', () => {
-  test('lists a skill from an untrusted source as not trusted, with no way to grant it', async () => {
+  test('disables an untrusted skill and says why, so it cannot be granted', async () => {
     landAt('/agents/researcher?tab=access');
     serve();
-    const { container, findByText } = mount();
+    const { container, findByRole } = mount();
 
-    await findByText('deploy');
+    const box = await findByRole('checkbox', { name: 'deploy' });
+    expect(box).toHaveProperty('disabled', true);
+    expect(box).toHaveProperty('checked', false);
     const deploy = container.querySelector('[data-skill="deploy"]');
     expect(deploy?.getAttribute('data-trust')).toBe('untrusted');
     expect(deploy?.textContent).toContain('Not trusted');
     expect(deploy?.textContent).toContain('Its source is not trusted');
-    expect(deploy?.querySelector('input, select, button')).toBeNull();
+    expect(await findByRole('checkbox', { name: 'summarize' })).toHaveProperty('disabled', false);
     expect(container.querySelector('[data-skill="summarize"]')?.textContent).toContain('Trusted');
+  });
+
+  test('grants a skill with the rest of the tab, and keeps the file with no list until then', async () => {
+    landAt('/agents/researcher?tab=access');
+    const served = serve({
+      [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }),
+    });
+    const { findByRole } = mount();
+
+    const box = await findByRole('checkbox', { name: 'summarize' });
+    const save = await findByRole('button', { name: copy.saveAction });
+    expect(box).toHaveProperty('checked', false);
+
+    await fireEvent.click(box);
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    await fireEvent.click(box);
+    // Checking and unchecking leaves the file as it was: nothing to save, and no empty list.
+    await waitFor(() => expect(save).toHaveProperty('disabled', true));
+
+    await fireEvent.click(box);
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    await fireEvent.click(save);
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    const [update] = updatesOf(served);
+    expect(update?.params['definition']).toMatchObject({ allowedSkills: ['summarize'] });
+  });
+
+  test('withdraws the last skill as an empty list, which grants none', async () => {
+    landAt('/agents/researcher?tab=access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ allowedSkills: ['summarize'] }),
+    );
+    const { findByRole } = mount();
+
+    const box = await findByRole('checkbox', { name: 'summarize' });
+    expect(box).toHaveProperty('checked', true);
+    await fireEvent.click(box);
+    const save = await findByRole('button', { name: copy.saveAction });
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    await fireEvent.click(save);
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ allowedSkills: [] });
+  });
+
+  test('lets a skill the file names be withdrawn once its source is untrusted, and not granted back', async () => {
+    landAt('/agents/researcher?tab=access');
+    serve({}, detailWith({ allowedSkills: ['deploy'] }));
+    const { findByRole } = mount();
+
+    const box = await findByRole('checkbox', { name: 'deploy' });
+    expect(box).toHaveProperty('checked', true);
+    expect(box).toHaveProperty('disabled', false);
+    await fireEvent.click(box);
+    await waitFor(() => expect(box).toHaveProperty('disabled', true));
+    expect(box).toHaveProperty('checked', false);
+  });
+
+  test('keeps a skill the host no longer lists, marked, until it is withdrawn', async () => {
+    landAt('/agents/researcher?tab=access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ allowedSkills: ['gone', 'summarize'] }),
+      [],
+    );
+    const { container, findByRole, queryByText } = mount();
+
+    const gone = await findByRole('checkbox', { name: 'gone' });
+    expect(gone).toHaveProperty('checked', true);
+    expect(container.querySelector('[data-skill="gone"]')?.textContent).toContain(
+      copy.notInCatalog,
+    );
+    expect(queryByText(copy.noSkillsTitle)).toBeNull();
+
+    await fireEvent.click(gone);
+    const save = await findByRole('button', { name: copy.saveAction });
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    await fireEvent.click(save);
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      allowedSkills: ['summarize'],
+    });
+  });
+
+  test('shows the Bureau’s refusal of a grant', async () => {
+    landAt('/agents/researcher?tab=access');
+    serve({
+      [UPDATE]: () => {
+        throw new StubFault('Unprocessable', 422, 'The definition cannot grant "summarize".');
+      },
+    });
+    const { findByRole, findByText } = mount();
+
+    await fireEvent.click(await findByRole('checkbox', { name: 'summarize' }));
+    const save = await findByRole('button', { name: copy.saveAction });
+    await waitFor(() => expect(save).toHaveProperty('disabled', false));
+    await fireEvent.click(save);
+    await findByText('The definition cannot grant "summarize".');
+  });
+
+  test('a shadowed twin of an available skill has no box of its own to change', () => {
+    const available = SKILLS[0] as unknown as Skill;
+    const twin = { ...available, available: false, unavailableReason: 'shadowed' } as Skill;
+    expect(skillGrantLocked(twin, [available, twin], true)).toBe(true);
+    expect(skillGrantLocked(twin, [twin], true)).toBe(false);
+    expect(skillGrantLocked(twin, [twin], false)).toBe(true);
+    expect(skillGrantLocked(available, [available, twin], false)).toBe(false);
   });
 
   test('says there are none, with the way to the skills, and that they could not be loaded', async () => {

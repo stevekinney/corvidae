@@ -6,8 +6,9 @@
  * skill directories, decides which sources it admits, and hands the result to the handler as
  * `BureauHandlerOptions.skills`. This operation only reports that standing. An untrusted skill is
  * listed, with `available: false` and the reason, and is refused where an agent would use it: the
- * skill client answers `source-untrusted` to an activation of it. A Bureau whose host passed no
- * skills answers an empty list.
+ * skill client answers `source-untrusted` to an activation of it, and a write that names it in a
+ * file's `allowedSkills` is refused `skill-not-grantable`. A Bureau whose host passed no skills
+ * answers an empty list.
  *
  * A caller needs `bureau.agents:read`, the scope of the rest of the capabilities an agent is built
  * from (`bureau.agents.catalog`), unless it owns the deployment's agents; anyone else is refused

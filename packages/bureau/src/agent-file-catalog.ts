@@ -52,9 +52,10 @@
  * @module agent-file-catalog
  */
 
-import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { RuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
 import {
   type AgentSkillDescriptor,
+  type AgentSkills,
   type BackendDescriptor,
   type ContextManagementOptions,
   createAgent,
@@ -78,6 +79,7 @@ import {
 } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
+import { createAgentSkills } from './agent-skills';
 import {
   AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT,
   AGENT_FILE_SIZE_LIMIT,
@@ -129,6 +131,7 @@ import {
   createAgentVersionStore,
 } from './agent-version-store';
 import type { AgentSnapshot } from './agent-snapshot-store';
+import type { SkillArtifactLoader, SkillCatalogRevision, SkillEventMap } from './skills';
 import type { Models } from './models/create-models';
 import { ownerOrLocal } from './owner-of-record';
 import { createDefinitionScanner, type DefinitionScannerHealth } from './definition-scanner';
@@ -354,6 +357,36 @@ export function readFileAgentCostBudget(
   return fileAgentCostBudgets.get(agent);
 }
 
+/**
+ * Why `name` cannot be granted against `catalog`, or `undefined` when it can. A name can hold
+ * several records, a shadowed one among them, and the skill a run would get is the available one.
+ */
+function skillGrantRefusal(
+  name: string,
+  catalog: SkillCatalogRevision | undefined,
+): string | undefined {
+  const records = catalog?.records.filter((record) => record.name === name) ?? [];
+  if (records.some((record) => record.available)) return undefined;
+  const refused = records.find((record) => record.unavailableReason !== 'shadowed') ?? records[0];
+  return refused === undefined
+    ? `"${name}", which is not in the deployment's skill catalog`
+    : `"${name}", which is not available (${refused.unavailableReason ?? 'unknown reason'})`;
+}
+
+/** What the catalog needs to give a file agent the skills its `allowedSkills` names (COR-1975). */
+export interface AgentFileSkills {
+  /**
+   * The deployment's skill catalog as it is now, or `undefined` while it has none. Read when a run
+   * starts, which binds the run's offer; each time the run uses a skill, which narrows it; and when
+   * a write grants a skill.
+   */
+  readonly catalog: () => SkillCatalogRevision | undefined;
+  /** Reads a catalog record's bundle, for a skill a run activates. */
+  readonly loadArtifact: SkillArtifactLoader;
+  /** Where the skill lifecycle events of a file agent's runs are dispatched. */
+  readonly events?: TypedEventTarget<SkillEventMap> | undefined;
+}
+
 export interface AgentFileCatalogOptions {
   /** Where the agent files come from and are written back to. */
   readonly source: AgentSource;
@@ -399,6 +432,11 @@ export interface AgentFileCatalogOptions {
    * nothing is contributed, so a file that lists any is invalid.
    */
   readonly contributions?: AgentContributions | undefined;
+  /**
+   * The executable skills a file's `allowedSkills` draws on (COR-1975). Omitted, no skill can be
+   * granted, and a file that lists one has no skills.
+   */
+  readonly skills?: AgentFileSkills | undefined;
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -458,7 +496,7 @@ export interface AgentFileCatalog extends AgentFileWriter {
   /**
    * Builds an agent from `definition` as `create` would, and writes nothing (COR-1911): the same
    * serialization, size limit, frontmatter schema and deployment checks (reserved names, the model,
-   * the tools, `toolApproval`, compaction), so a definition that would not load as a file is
+   * the tools, `toolApproval`, compaction, skill grants), so a definition that would not load as a file is
    * refused with the same field-named {@link AgentFileError} and one that would is built. The
    * agent is not in the catalog, is not tied to a file or a snapshot, and exists only as long as
    * the caller holds it. `id` names the agent in the run records it makes; it is not checked as a
@@ -652,6 +690,59 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     return names.filter((name) => !Object.hasOwn(options.tools, name));
   }
 
+  /**
+   * The skills `definition` newly grants that the deployment cannot grant, as a problem (COR-1975).
+   * Asked by a write and never by a scan: a file keeps loading when a source stops being trusted
+   * after the grant, and the skill client refuses the skill when a run asks for it. A skill the file
+   * already lists (`before`) is not a new grant, so an edit that keeps it is not refused for it.
+   */
+  function checkSkillGrants(
+    definition: AgentFileDefinition,
+    before: AgentFileDefinition | undefined,
+  ): AgentFileProblem | undefined {
+    const held = new Set(before?.allowedSkills ?? []);
+    const catalog = options.skills?.catalog();
+    const issues = (definition.allowedSkills ?? []).flatMap((name, index) => {
+      if (held.has(name)) return [];
+      const message = skillGrantRefusal(name, catalog);
+      return message === undefined
+        ? []
+        : [{ path: `allowedSkills.${index}`, message, reference: name }];
+    });
+    if (issues.length === 0) return undefined;
+    return {
+      code: 'skill-not-grantable',
+      message: `The definition cannot grant ${issues.map((issue) => issue.message).join('; ')}.`,
+      issues,
+    };
+  }
+
+  /** The skills of `definition` as a run's `createAgent` option: none for a file that grants none. */
+  function fileAgentSkills(definition: AgentFileDefinition): { readonly skills?: AgentSkills } {
+    const hostSkills = options.skills;
+    const allowedSkills = definition.allowedSkills;
+    if (hostSkills === undefined || allowedSkills === undefined || allowedSkills.length === 0) {
+      return {};
+    }
+    return {
+      skills: {
+        // The catalog is read per run, not per build: discovery can replace it at any time without
+        // the file changing, and a rescan would not rebuild this agent for that.
+        composeRun(run) {
+          const catalog = hostSkills.catalog();
+          if (catalog === undefined) return run.toolbox;
+          return createAgentSkills({
+            catalog,
+            currentCatalog: () => hostSkills.catalog() ?? catalog,
+            allowedSkills,
+            loadArtifact: hostSkills.loadArtifact,
+            events: hostSkills.events,
+          }).composeRun(run);
+        },
+      },
+    };
+  }
+
   /** The model and the tools, which a snapshot is rebuilt against as much as a file is. */
   function checkResources(
     definition: AgentFileDefinition,
@@ -831,6 +922,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         : { skillDescriptors: definition.skillDescriptors }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
+      ...fileAgentSkills(definition),
       // Built for each run (COR-1913): the hook is the agent's per-tool approval, and the secret
       // signs the approvals it raises, so a restart can still resolve one.
       toolboxOptions: (context) => {
@@ -1280,9 +1372,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   const writer = createAgentFileWriter({
     source: options.source,
     read: readFresh,
-    async validate(id, definition) {
+    async validate(id, definition, before) {
       const checked = checkDeployment(id, definition);
       if ('problem' in checked) return checked.problem;
+      const refused = checkSkillGrants(definition, before);
+      if (refused !== undefined) return refused;
       // The host's resolver is asked here too, so a write is refused for a model it cannot set
       // up rather than committed and then listed invalid.
       try {
@@ -1435,6 +1529,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       }
       const checked = checkDeployment(id, parsedDefinition);
       if ('problem' in checked) return refuse(fieldNamed(checked.problem, parsedDefinition));
+      const refused = checkSkillGrants(parsedDefinition, undefined);
+      if (refused !== undefined) return refuse(refused);
       try {
         return buildAgent(
           id,

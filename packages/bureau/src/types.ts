@@ -567,6 +567,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentContributions?: AgentContributions;
   /**
+   * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `allowedSkills`
+   * draws on. Discovery and the trust decision stay the host's (COR-752), so this is a read, called
+   * when a file agent's run starts, each time the run uses a skill, and when a write grants a skill;
+   * a host whose discovery finishes after `createBureau` answers `undefined` until then. A run of
+   * an agent whose file grants no skill reads nothing and has no skills. Omitted, no skill can be
+   * granted. Used only with {@link BureauOptions.agentSource}.
+   */
+  agentSkillCatalog?: () => SkillCatalogRevision | undefined;
+  /**
    * COR-1702 — where workflow definitions are loaded from, watched in, and written back to. Pass
    * `workflowFileDirectory(path)` from `@lostgradient/bureau/sources` for a directory of JSON
    * workflow files (COR-1527): every `*.json` file in it is an agent-authored workflow

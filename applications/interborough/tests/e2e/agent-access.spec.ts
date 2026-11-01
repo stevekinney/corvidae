@@ -3,8 +3,8 @@
  * tab, save, and see the file hold it, then chat with the agent as another client would and see the
  * setting enforced. `demo:lookup-order` only reads, so under the default (`on-changes`) a chat runs it;
  * the ask in the second case is the tab's doing alone. The chats are scripted by markers
- * (`access-provider.ts`). A skill from a source the host does not trust is listed with no way to
- * grant it.
+ * (`access-provider.ts`). A skill from a trusted source can be granted; one from a source the host
+ * does not trust has its box disabled with the reason, and the Bureau refuses the write too.
  */
 import type { Page } from '@playwright/test';
 
@@ -147,19 +147,46 @@ test.describe('the Access tab', () => {
     expect(definition).not.toHaveProperty('toolApproval.demo:lookup-order');
   });
 
-  test('lists a skill from an untrusted source and offers no way to grant it', async ({
-    page,
-    request,
-  }) => {
+  test('grants a trusted skill, and cannot grant an untrusted one', async ({ page, request }) => {
     const id = 'e2e-access-skills';
     await agentWithLookup(request, id);
 
     await page.goto(`/agents/${id}?tab=access`);
     const skills = page.getByTestId('agent-access-skills');
     const untrusted = skills.locator(`[data-skill="${E2E_SKILLS.deploy.name}"]`);
-    await expect(untrusted).toBeVisible();
     await expect(untrusted).toHaveAttribute('data-trust', 'untrusted');
-    await expect(untrusted.locator('input, select, button')).toHaveCount(0);
+    await expect(untrusted.getByRole('checkbox')).toBeDisabled();
+    await expect(untrusted).toContainText('source is not trusted');
+
+    await skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name }).check();
+    await save(page);
+    const granted = await definitionOf(request, id);
+    expect(granted?.allowedSkills).toEqual([E2E_SKILLS.summarize.name]);
+
+    await page.reload();
+    await expect(skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name })).toBeChecked();
+  });
+
+  test('the write operation refuses an untrusted skill', async ({ request }) => {
+    const id = 'e2e-access-skill-refused';
+    await agentWithLookup(request, id);
+    const before = await readAgent(request, id);
+    const definition = before.definition;
+    if (definition === null) throw new Error('expected a definition');
+
+    const refused = await bureau(request, 'bureau.agents.definitions.update', {
+      id,
+      expectedHash: before.hash,
+      definition: {
+        model: definition.model,
+        instructions: definition.instructions,
+        allowedSkills: [E2E_SKILLS.deploy.name],
+      },
+    });
+
+    expect(refused.fault?.code).toBe('Unprocessable');
+    const unchanged = await definitionOf(request, id);
+    expect(unchanged?.allowedSkills).toBeNull();
   });
 });
 

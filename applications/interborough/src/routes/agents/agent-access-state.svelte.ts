@@ -1,6 +1,6 @@
 /**
- * The Access tab's form: which tools an agent may call, when each asks first, the plugin
- * guardrails it runs, and its spend and tool budgets. It is filled from the agent's file and sends
+ * The Access tab's form: which tools an agent may call, when each asks first, the skills it may
+ * activate, the plugin guardrails it runs, and its spend and tool budgets. It is filled from the agent's file and sends
  * a whole definition back, because `bureau.agents.definitions.update` removes `tools` and `models`
  * when they are left out. The keys the tab does not edit (`stepLimit`, `references`, `retry`,
  * `compaction`, `hooks`) are left out of the write, which keeps the file's value.
@@ -8,6 +8,10 @@
  * `toolApproval` may only name a tool the file lists, or the Bureau refuses the write, so a tool
  * that is not allowed has its approval left out of the write. The approval itself is kept in the
  * form, so allowing the tool again restores what was chosen instead of loosening it.
+ *
+ * `allowedSkills` is written whole, so a skill the file names that the host no longer offers stays
+ * until someone withdraws it. A file with no list keeps none until a skill is granted, and a list
+ * emptied box by box is written empty, which is what the file then says.
  */
 import { SvelteMap } from 'svelte/reactivity';
 
@@ -17,6 +21,7 @@ import {
   type AgentDetail,
   type ToolApproval,
 } from '../../lib/agent-definitions.ts';
+import type { Skill } from '../../lib/bureau-skills.ts';
 import {
   limitErrorsOf,
   limitsOf,
@@ -35,6 +40,20 @@ export const DEFAULT_APPROVAL: ToolApproval = 'on-changes';
 
 type Definition = NonNullable<AgentDetail['definition']>;
 
+/**
+ * Whether a skill's box cannot be changed. A skill an agent cannot activate (an untrusted source,
+ * say) cannot be granted, but one the file already names can be withdrawn. A name with an available
+ * record is that record's row: its shadowed twin is only a report.
+ */
+export function skillGrantLocked(
+  skill: Skill,
+  skills: readonly Skill[],
+  granted: boolean,
+): boolean {
+  if (skill.available) return false;
+  return !granted || skills.some((other) => other.name === skill.name && other.available);
+}
+
 export class AgentAccessState {
   /** The hash of the file this form was filled from; the write names it. */
   readonly hash: string;
@@ -46,6 +65,8 @@ export class AgentAccessState {
   tools = $state<string[]>([]);
   /** The approvals the file states. A tool absent here asks `on-changes`. */
   readonly approvals = new SvelteMap<string, ToolApproval>();
+  /** The skills the agent may activate, in the order the file lists them and then the order they were granted. */
+  allowedSkills = $state<string[]>([]);
   /** The plugin guardrails as typed, one per line. */
   guardrails = $state('');
   spendPerRun = $state('');
@@ -67,6 +88,7 @@ export class AgentAccessState {
     for (const [tool, approval] of Object.entries(definition.toolApproval ?? {})) {
       this.approvals.set(tool, approval);
     }
+    this.allowedSkills = [...(definition.allowedSkills ?? [])];
     this.guardrails = (definition.guardrails ?? []).join('\n');
     this.spendPerRun =
       definition.costBudget === null ? '' : String(definition.costBudget.perRunUsd);
@@ -103,6 +125,20 @@ export class AgentAccessState {
       return;
     }
     this.tools = this.tools.filter((tool) => tool !== name);
+  }
+
+  /** Whether the agent may activate the skill. */
+  isGranted(name: string): boolean {
+    return this.allowedSkills.includes(name);
+  }
+
+  /** Grants or withdraws one skill. */
+  setGranted(name: string, granted: boolean): void {
+    if (granted) {
+      if (!this.allowedSkills.includes(name)) this.allowedSkills = [...this.allowedSkills, name];
+      return;
+    }
+    this.allowedSkills = this.allowedSkills.filter((skill) => skill !== name);
   }
 
   /** When the tool asks first: the file's statement, or `on-changes`. */
@@ -170,6 +206,8 @@ export class AgentAccessState {
       ...(file.models === null ? {} : { models: file.models }),
       tools: this.tools,
       skillDescriptors: file.skillDescriptors,
+      allowedSkills:
+        file.allowedSkills === null && this.allowedSkills.length === 0 ? null : this.allowedSkills,
       a2a: file.a2a,
       guardrails: limits.guardrails ?? null,
       costBudget: limits.costBudget ?? null,

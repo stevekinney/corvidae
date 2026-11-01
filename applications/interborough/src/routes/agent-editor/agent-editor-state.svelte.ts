@@ -175,6 +175,12 @@ export class AgentEditorState {
   /** `skillDescriptors` is carried through a save untouched. */
   readonly skillDescriptors: readonly AgentSkill[];
   /**
+   * The skills a run may activate, as the file lists them, or `null` when it lists none. The Access
+   * tab edits them. They are carried through a save so a copy of an agent keeps them; an update
+   * that left them out would keep the file's too, but a create would have none.
+   */
+  readonly allowedSkills: readonly string[] | null;
+  /**
    * The models a session may be switched to (COR-1559), as the file lists them, or `null` when it
    * lists none. Carried through a save untouched, like `skillDescriptors`: the editor shows no control for
    * it, and an update that left it out would remove the list.
@@ -251,6 +257,7 @@ export class AgentEditorState {
     const definition = seed ?? detail?.definition ?? null;
     this.#editedId = detail?.id;
     this.skillDescriptors = definition?.skillDescriptors ?? [];
+    this.allowedSkills = definition?.allowedSkills ?? null;
     this.models = definition?.models ?? null;
     this.#warnAt = definition?.costBudget?.warnAt;
     this.#toolApproval = definition?.toolApproval ?? null;
@@ -485,6 +492,7 @@ export class AgentEditorState {
       ...(this.models === null ? {} : { models: this.models }),
       tools: chosen,
       skillDescriptors: this.skillDescriptors,
+      ...(this.allowedSkills === null ? {} : { allowedSkills: this.allowedSkills }),
       a2a: this.a2a,
       ...this.#carried,
       ...(toolApproval === undefined ? {} : { toolApproval }),

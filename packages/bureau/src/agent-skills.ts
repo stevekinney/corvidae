@@ -115,6 +115,14 @@ export interface AgentSkillsOptions {
    */
   readonly currentCatalog?: (() => SkillCatalogRevision) | undefined;
   /**
+   * The only skills this agent's runs may activate, by name (COR-1975). A skill it leaves out is
+   * neither offered nor activated, and is refused as an absent one is (`not-in-catalog`), while
+   * `skill.rejected` names the `allow-list` rule. It only narrows: a skill it names from a source
+   * the catalog does not trust is refused `source-untrusted`. Omit it and the runs may use every
+   * available skill of the catalog.
+   */
+  readonly allowedSkills?: readonly string[] | undefined;
+  /**
    * Whether the model is handed `activate_skill`, `load_skill_resource` and
    * `deactivate_skill` and shown the catalog at step 0. Defaults to `true`.
    * `false` keeps the catalog out of the model's reach, so nothing can
@@ -196,6 +204,9 @@ export function createAgentSkills(options: AgentSkillsOptions): AgentSkills {
       const client = createSkillClient({
         catalog: options.catalog,
         ...(options.currentCatalog === undefined ? {} : { currentCatalog: options.currentCatalog }),
+        ...(options.allowedSkills === undefined
+          ? {}
+          : { admissionPolicy: { allowList: [...options.allowedSkills] } }),
         loadArtifact: options.loadArtifact ?? createSkillArtifactLoader({}),
         runtime: run.runtime,
         correlation: { agentName: run.agentName },

@@ -1,7 +1,8 @@
 /**
- * Which agents use each executable skill. The Bureau lists skills without their users, and only an
- * agent defined in code names skills (`codeDefinition.skills`, from `bureau.agents.definitions.get`),
- * so the users are read from those agents. An agent file lists none: its skill cards are descriptive.
+ * Which agents use each executable skill. The Bureau lists skills without their users, so they are
+ * read from each agent (`bureau.agents.definitions.get`): an agent defined in code names its skills
+ * in `codeDefinition.skills`, and an agent file in `definition.allowedSkills`. A file's skill cards
+ * (`skillDescriptors`) are descriptive and name nothing.
  */
 import { getAgentDefinition } from './agent-definitions.ts';
 import { listAgents } from './bureau-client.ts';
@@ -14,19 +15,18 @@ export async function listSkillUsers(
 ): Promise<ReadonlyMap<string, readonly string[]>> {
   const agents = await listAgents(options);
   const details = await Promise.all(
-    agents
-      .filter((agent) => agent.kind === 'code')
-      .map(async (agent) => ({
-        agent: agent.name,
-        detail: await getAgentDefinition(agent.name, options),
-      })),
+    agents.map(async (agent) => ({
+      agent: agent.name,
+      detail: await getAgentDefinition(agent.name, options),
+    })),
   );
   const users = new Map<string, string[]>();
   for (const { agent, detail } of details) {
-    for (const skill of detail.codeDefinition?.skills ?? []) {
-      const named = users.get(skill);
-      if (named === undefined) users.set(skill, [agent]);
-      else if (!named.includes(agent)) named.push(agent);
+    const named = detail.codeDefinition?.skills ?? detail.definition?.allowedSkills ?? [];
+    for (const skill of named) {
+      const using = users.get(skill);
+      if (using === undefined) users.set(skill, [agent]);
+      else if (!using.includes(agent)) using.push(agent);
     }
   }
   return users;
