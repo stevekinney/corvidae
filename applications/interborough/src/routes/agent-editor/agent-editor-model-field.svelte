@@ -12,7 +12,11 @@
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { providerDisplayName } from '../settings/models/format-model.ts';
-  import { abilitiesOf, type ModelChoice } from './agent-editor-models.ts';
+  import {
+    abilitiesOf,
+    type ModelChoice,
+    type ModelUnavailableReason,
+  } from './agent-editor-models.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
 
   interface Props {
@@ -88,15 +92,27 @@
       .map((group) => providerDisplayName(group.provider)),
   );
 
+  /** What a save does with the agent's own model decides which notice the field shows. */
+  function noticeFor(reason: ModelUnavailableReason): (model: string, reason: string) => string {
+    switch (reason) {
+      case 'provider-denied':
+      case 'model-denied':
+        return copy.refusedNotice;
+      case 'retired':
+      case 'not-in-catalog':
+        return copy.replacementNotice;
+      case 'turned-off':
+        return copy.keptNotice;
+    }
+  }
+
   const chosen = $derived(editor.chosenModel);
   const abilities = $derived(chosen?.row === undefined ? undefined : abilitiesOf(chosen.row));
   /** Why the agent's own model cannot be chosen now, or `undefined` when it can. */
   const notice = $derived(
     chosen?.unavailable === undefined || editor.mode === 'create'
       ? undefined
-      : (chosen.unavailable === 'provider-denied' || chosen.unavailable === 'model-denied'
-          ? copy.refusedNotice
-          : copy.keptNotice)(chosen.value, copy.reasons[chosen.unavailable]),
+      : noticeFor(chosen.unavailable)(chosen.value, copy.reasons[chosen.unavailable]),
   );
 
   /** Follows the link in the app's router, unless the click asks for a new tab. */

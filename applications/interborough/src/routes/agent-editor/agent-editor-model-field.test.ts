@@ -4,7 +4,7 @@
  * model policy forbids (or one turned off or retired) listed with its reason and not offered, the
  * abilities of the chosen model, and an agent's own model that is no longer offered, which is
  * shown with a notice that says what a save does with it: kept when it is only turned off, refused
- * when the model policy forbids it.
+ * when it is retired, gone from the catalog, or forbidden by the model policy.
  */
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -356,6 +356,25 @@ describe('an agent whose model is no longer offered', () => {
     );
   });
 
+  test('says a save needs another model when the agent’s own model is retired', async () => {
+    bureau({
+      agent: written('anthropic/old'),
+      catalog: catalogFixture({
+        models: [
+          { provider: 'anthropic', model: 'old', lifecycle: 'retired' },
+          { provider: 'anthropic', model: 'current' },
+        ],
+      }),
+    });
+    const { findByRole, getByTestId } = mountEditor('researcher');
+    const field = await findByRole('combobox', { name: 'Model' });
+
+    expect(field).toHaveValue('anthropic/old');
+    const notice = getByTestId('agent-model-notice').textContent ?? '';
+    expect(notice).toContain(copy.replacementNotice('anthropic/old', copy.reasons.retired));
+    expect(notice).not.toContain('Saving keeps it');
+  });
+
   test('keeps the notice that a save keeps a model that is only turned off', async () => {
     const calls = bureau({
       agent: written('anthropic/off'),
@@ -407,7 +426,10 @@ describe('an agent whose model is no longer offered', () => {
     const { findByRole, getByTestId } = mountEditor('researcher');
     const field = await findByRole('combobox', { name: 'Model' });
     expect(field).toHaveValue('gemini/gemini-2.5-pro');
-    expect(getByTestId('agent-model-notice').textContent).toContain(copy.reasons['not-in-catalog']);
+    expect(getByTestId('agent-model-notice').textContent).toContain(
+      copy.replacementNotice('gemini/gemini-2.5-pro', copy.reasons['not-in-catalog']),
+    );
+    expect(getByTestId('agent-model-notice').textContent).not.toContain('Saving keeps it');
     await openModelOptions(field);
     expect(groupsOf().at(-1)).toEqual({
       name: 'Gemini',

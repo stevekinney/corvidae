@@ -460,8 +460,8 @@ export const AGENT_EDITOR_COPY = {
       'not-in-catalog': 'This installation no longer offers this model.',
     },
     /**
-     * What the field says about the agent's own model when it cannot be chosen now for a reason
-     * other than the model policy (turned off, retired, or gone from the catalog).
+     * What the field says about the agent's own model when it is only turned off in Settings ›
+     * Models: the Bureau does not judge availability at a save, so a save writes it back.
      */
     keptNotice: (model: string, reason: string): string =>
       `This agent’s model, ${model}, is not offered now. ${reason} Saving keeps it unless you choose another.`,
@@ -471,6 +471,12 @@ export const AGENT_EDITOR_COPY = {
      */
     refusedNotice: (model: string, reason: string): string =>
       `This agent’s model, ${model}, is not offered now. ${reason} Saving needs another model, and a run fails until you choose one.`,
+    /**
+     * What the field says when the agent's own model is retired or gone from the catalog: the
+     * Bureau resolves the model at every save and refuses one it cannot find (`unknown-model`).
+     */
+    replacementNotice: (model: string, reason: string): string =>
+      `This agent’s model, ${model}, is not offered now. ${reason} Saving needs another model.`,
     abilitiesLabel: 'Abilities of the chosen model',
     abilities: {
       tools: 'Tools',
@@ -1909,7 +1915,7 @@ export const HEALTH_OVERVIEW_COPY = {
 /** The words of Settings › Model policy: which models may be used, and the caller's own preferences. */
 export const MODEL_POLICY_COPY = {
   intro:
-    'Choose which providers and models agents may use. Everything not ruled out here stays allowed.',
+    'Choose which providers and models agent files and plans may use. Everything not ruled out here stays allowed.',
   allowedModels: {
     title: 'Allowed models',
     description:
