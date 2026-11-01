@@ -130,6 +130,8 @@ The configuration is written atomically (Bungalow's `writeConfiguration`: a temp
 
 ### Plugins
 
+To write a plugin, start with [the authoring guide](../../packages/interborough-plugin/README.md); this section is the host's side.
+
 The host loads the workspace's plugins (`src/host/plugins.ts`; `HostOptions.plugins` replaces the list for a host that must load others) and composes them into the Bureau with `createBureau({ plugins, pluginConfiguration, pluginSecrets })`. The owner's choices live under `plugins.<name>` in `configuration.json`; a plugin the key does not name takes its descriptor's `enabledByDefault` (`true` when the descriptor leaves it out), and `setup` receives only that entry's `configuration`.
 
 ```json
