@@ -4,7 +4,7 @@
    * avatar, its name (and its identifier beside it when they differ), its description, how many
    * chats it has had (a link to the agent's page) and when the last was, a Needs you marker when a
    * chat of its own waits on the person, and the actions that are open to it: Memory and New chat
-   * as icon buttons, and Edit for a file. The toolbar under the heading has the count, a search
+   * as icon buttons, and Edit for a file (Duplicate for a plugin's read-only agent). The toolbar under the heading has the count, a search
    * over the names, and New agent.
    *
    * An agent file the Bureau cannot use is not an agent that can run, so `bureau.agents.list`
@@ -18,6 +18,7 @@
    */
   import {
     Avatar,
+    Alert,
     Badge,
     Button,
     CodeLocation,
@@ -28,12 +29,27 @@
     StackedListItem,
   } from '@lostgradient/cinder';
   import { Brain, MessageSquarePlus, Plus } from '@lucide/svelte';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { AGENT_EDITOR_COPY, AGENTS_COPY, CHAT_COPY, MEMORY_COPY } from '../../app/copy.ts';
+  import {
+    AGENT_EDITOR_COPY,
+    AGENT_PAGE_COPY,
+    AGENTS_COPY,
+    CHAT_COPY,
+    MEMORY_COPY,
+  } from '../../app/copy.ts';
   import RecordsToolbar from '../../app/records/records-toolbar.svelte';
-  import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
-  import { agentEditPath, agentMemoryPath, agentPath } from '../../lib/agent-paths.ts';
+  import {
+    agentFaultOf,
+    duplicateAgent,
+    listAgentDefinitions,
+  } from '../../lib/agent-definitions.ts';
+  import {
+    agentEditPath,
+    agentMemoryPath,
+    agentPath,
+    pluginOfAgent,
+  } from '../../lib/agent-paths.ts';
   import { listAgents, listAllContexts } from '../../lib/bureau-client.ts';
   import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
@@ -94,6 +110,31 @@
   );
   const count = $derived(visible.length + visibleInvalid.length);
 
+  // A plugin's agent is read-only, so its row offers Duplicate, the call its page makes, in place of
+  // Edit: a copy goes into the owner's agents and opens.
+  const queryClient = useQueryClient();
+  let duplicateProblem = $state<string | null>(null);
+  const duplicate = createMutation(() => ({
+    mutationFn: (id: string) => duplicateAgent(id),
+    onMutate: () => {
+      duplicateProblem = null;
+    },
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
+      router.navigate(agentPath(result.id));
+    },
+    onError: (error, id) => {
+      const fault = agentFaultOf(error);
+      const words = AGENT_PAGE_COPY.plugin;
+      if (fault.kind === 'identifier-taken')
+        duplicateProblem = words.exists(id.slice(id.indexOf(':') + 1));
+      else if (fault.kind === 'not-found') duplicateProblem = words.notLoaded;
+      else if (fault.kind === 'forbidden') duplicateProblem = words.forbidden;
+      else duplicateProblem = words.failed;
+    },
+  }));
+
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
@@ -148,6 +189,11 @@
       {#snippet action()}{@render newAgent()}{/snippet}
     </EmptyState>
   {:else}
+    {#if duplicateProblem !== null}
+      <Alert variant="danger" dismissible onDismiss={() => (duplicateProblem = null)}>
+        <p>{duplicateProblem}</p>
+      </Alert>
+    {/if}
     <DataList
       class="ib-agents__list"
       items={visible}
@@ -206,7 +252,16 @@
           {/snippet}
           {#snippet trailing()}
             <span class="ib-agent-row__actions">
-              {#if agent.kind === 'file'}
+              {#if pluginOfAgent(agent.name) !== null}
+                <Button
+                  data-changes
+                  variant="ghost"
+                  size="sm"
+                  loading={duplicate.isPending && duplicate.variables === agent.name}
+                  onclick={() => duplicate.mutate(agent.name)}
+                  >{AGENT_PAGE_COPY.plugin.duplicate}</Button
+                >
+              {:else if agent.kind === 'file'}
                 <Button
                   href={router.href(agentEditPath(agent.name))}
                   variant="ghost"
