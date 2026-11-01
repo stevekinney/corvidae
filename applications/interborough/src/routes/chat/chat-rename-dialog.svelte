@@ -14,6 +14,7 @@
   import { CHAT_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { renameContext, wireCodeOf } from '../../lib/bureau-client.ts';
+  import { chatIsGone } from './chat-gone.ts';
   import { CHAT_TITLE_LIMIT } from './chat-title.ts';
 
   interface Props {
@@ -82,7 +83,15 @@
       sending = false;
       onClose();
     } catch (error) {
-      failure = wireCodeOf(error) === 'NotFound' ? copy.notFound : copy.fault;
+      if (wireCodeOf(error) !== 'NotFound') {
+        failure = copy.fault;
+      } else if (await chatIsGone(sessionId)) {
+        // The page learns it too: the chats are read again, and the open chat's read says so.
+        void queryClient.invalidateQueries({ queryKey: ['contexts'] });
+        failure = copy.gone;
+      } else {
+        failure = copy.refused;
+      }
       sending = false;
     }
   }

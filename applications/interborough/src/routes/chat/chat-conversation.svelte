@@ -23,7 +23,9 @@
    * (`branch-origin.svelte`). The header's More menu (`chat-more-menu.svelte`) renames, branches,
    * exports and deletes the chat, and editing a message the person sent resends by fork
    * (`edit-fork.ts`): the chat is branched before the message and the edited text is sent on the
-   * branch.
+   * branch. An edit that does not branch keeps its text in a notice with Copy and Try again.
+   * A chat deleted while its page is open closes the composer and says so, with a way back to the
+   * list: the Bureau would start it again if it were sent to.
    *
    * A new chat (`isNew`, at `/chats/new`) has no session yet. The client names the thread, the agent
    * is chosen from the pill in the composer, the transcript's place shows a greeting, the prompts
@@ -52,6 +54,7 @@
     getContextWindow,
     listAgents,
     steerContext,
+    wireCodeOf,
     type AgentSummary,
     type Effort,
     type PermissionMode,
@@ -129,6 +132,9 @@
     agentName: () => agent,
     // Editing a message resends by fork (`editMessage`), not in place.
     onEdit: (event) => editMessage(event),
+    // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
+    closed: () => gone,
+    onNotFound: () => void context.refetch(),
     onRunStarted: () => {
       if (!choosing) return;
       choosing = false;
@@ -202,6 +208,10 @@
       });
     }
   });
+  // The chat was deleted, here or elsewhere: the Bureau reads `session.deleted` into the chats, this
+  // read is asked again, and it says not-found. A send then would start the chat again under the
+  // same identifier, with every row it had, so the composer is closed.
+  const gone = $derived(context.isError && wireCodeOf(context.error) === 'NotFound');
   const displayTitle = $derived(context.data?.title ?? title ?? CHAT_COPY.untitled);
 
   /** Reads the session again, for the settings' controls, and says whether it could. */
@@ -319,6 +329,9 @@
   );
   let branching = $state(false);
   let branchFailure = $state<string | undefined>(undefined);
+  // The text of an edit that did not branch. Chat closes its editor when the person saves, so this
+  // is the only place the text is kept.
+  let keptEdit = $state<{ readonly messageId: string; readonly content: string } | undefined>();
   const branchCommands = createPendingCommandKey();
   // The reply the More menu's Branch branches from: the last one a branch can be made from.
   const lastBranchTarget = $derived(lastBranchPoint(session.conversation, branchPoints));
@@ -338,6 +351,7 @@
   async function branchThrough(messageId: string | null, edited?: string): Promise<void> {
     branching = true;
     branchFailure = undefined;
+    if (edited === undefined) keptEdit = undefined;
     try {
       const branchId = await forkContext({
         contextId: sessionId,
@@ -345,6 +359,7 @@
         throughMessageId: messageId,
       });
       branchCommands.confirmed();
+      keptEdit = undefined;
       if (edited !== undefined) holdEdit(branchId, edited);
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
       router.navigate(chatSessionPath(branchId));
@@ -370,6 +385,9 @@
    * the edited text is sent on the branch. The chat the person edited from is left as it was.
    */
   function editMessage(event: { readonly messageId: string; readonly content: string }): void {
+    // Kept until the branch is made: the editor has closed on the text, and a refusal or a failed
+    // branch would otherwise lose it.
+    keptEdit = event;
     const sent = session.conversation.messages[event.messageId];
     // The edited text is all that goes to the branch, so a message that carried files would lose them.
     if (sent !== undefined && assetsOf(sent).length > 0) {
@@ -382,6 +400,17 @@
       return;
     }
     void branchThrough(point, event.content);
+  }
+
+  /** Puts the kept edit on the clipboard, and says whether it got there. */
+  async function copyKeptEdit(): Promise<void> {
+    if (keptEdit === undefined) return;
+    try {
+      await navigator.clipboard.writeText(keptEdit.content);
+      showToast(CHAT_COPY.edit.copied);
+    } catch {
+      showToast(CHAT_COPY.edit.copyFailed, { variant: 'danger', duration: 0 });
+    }
   }
 
   /** Saves the conversation as a Markdown file. */
@@ -636,8 +665,48 @@
   {/if}
 
   {#if branchFailure !== undefined}
-    <Alert variant="danger" dismissible onDismiss={() => (branchFailure = undefined)}>
+    <Alert
+      variant="danger"
+      dismissible
+      onDismiss={() => {
+        branchFailure = undefined;
+        keptEdit = undefined;
+      }}
+    >
       <p class="weft-chat-approval__message">{branchFailure}</p>
+      {#if keptEdit !== undefined}
+        <p class="weft-chat-approval__message">{CHAT_COPY.edit.kept}</p>
+        <blockquote class="weft-chat-approval__message" data-testid="kept-edit">
+          {keptEdit.content}
+        </blockquote>
+        <Button
+          size="sm"
+          variant="secondary"
+          label={CHAT_COPY.edit.copy}
+          onclick={() => void copyKeptEdit()}
+        />
+        <Button
+          data-changes
+          size="sm"
+          variant="secondary"
+          label={CHAT_COPY.edit.tryAgain}
+          disabled={branching}
+          onclick={() => keptEdit !== undefined && editMessage(keptEdit)}
+        />
+      {/if}
+    </Alert>
+  {/if}
+
+  {#if gone}
+    <Alert variant="danger" data-testid="chat-gone">
+      <p class="weft-chat-approval__title">{CHAT_COPY.gone.title}</p>
+      <p class="weft-chat-approval__message">{CHAT_COPY.gone.description}</p>
+      <Button
+        size="sm"
+        variant="secondary"
+        label={CHAT_COPY.gone.back}
+        onclick={() => router.navigate('/chats')}
+      />
     </Alert>
   {/if}
 
@@ -648,9 +717,14 @@
       conversation={shown}
       adapter={session.chatAdapter}
       streaming={session.streaming}
-      disabled={connection.unreachable || session.disconnected}
+      disabled={connection.unreachable || session.disconnected || gone}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
-      capabilities={{ attachments: attachable, editing: !session.attaching, quote: true }}
+      capabilities={{
+        attachments: attachable && !gone,
+        // A new chat has no context to branch yet, and a deleted one has none to branch from.
+        editing: !session.attaching && !choosing && !gone,
+        quote: true,
+      }}
       uploadAttachment={upload}
       acceptedTypes={settings?.acceptedTypes ?? []}
       maxFileSize={settings?.maxFileSize}

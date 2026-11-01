@@ -15,6 +15,7 @@
   import { deleteContext, wireCodeOf, type ContextDeleteReceipt } from '../../lib/bureau-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { chatIsGone } from './chat-gone.ts';
   import ChatRenameDialog from './chat-rename-dialog.svelte';
 
   interface Props {
@@ -80,9 +81,14 @@
       leave();
     } catch (error) {
       if (wireCodeOf(error) === 'NotFound') {
-        // Deleted somewhere else already: the chat is gone either way.
-        showToast(copy.deleteDialog.alreadyGone, { variant: 'warning' });
-        leave();
+        // `NotFound` is also what a caller who may read the chat but not change it is told, so the
+        // chat is read again before the page claims it is gone.
+        if (await chatIsGone(sessionId)) {
+          showToast(copy.deleteDialog.alreadyGone, { variant: 'warning' });
+          leave();
+        } else {
+          showToast(copy.deleteDialog.notAllowed, { variant: 'danger', duration: 0 });
+        }
         return;
       }
       showToast(copy.deleteDialog.fault, { variant: 'danger', duration: 0 });

@@ -2228,7 +2228,10 @@ export const CHAT_COPY = {
       tooLong: 'The title is over 200 characters.',
       renamed: 'Chat renamed.',
       fault: 'The chat could not be renamed.',
-      notFound: 'This chat no longer exists.',
+      /** The Bureau answered not-found, and a read of the chat shows it is still there: the change was refused. */
+      refused: 'The chat could not be renamed: the change was refused.',
+      /** The Bureau answered not-found, and a read of the chat says it is gone. */
+      gone: 'This chat no longer exists.',
     },
     /** The delete confirmation: what is lost, and what happens to a run that is going. */
     deleteDialog: {
@@ -2246,7 +2249,15 @@ export const CHAT_COPY = {
       refused: 'The server is shutting down, so the chat was not deleted.',
       fault: 'The chat could not be deleted.',
       alreadyGone: 'This chat was already deleted.',
+      /** The Bureau answered not-found, and a read of the chat shows it is still there. */
+      notAllowed: 'The chat was not deleted: the change was refused.',
     },
+  },
+  /** Shown when the chat on screen has been deleted: nothing more can be sent to it. */
+  gone: {
+    title: 'This chat was deleted',
+    description: 'It no longer exists, so nothing more can be sent here.',
+    back: 'Back to chats',
   },
   /** Editing a message you sent: the chat is branched before it and the edited text is sent there. */
   edit: {
@@ -2258,6 +2269,12 @@ export const CHAT_COPY = {
       'That message has files attached, so it cannot be edited. Send a new message instead.',
     /** Any other fault; the chat the person is in is untouched. */
     fault: 'The message could not be edited. You are still in this chat.',
+    /** Heads the edited text kept after an edit that did not branch. */
+    kept: 'Your edited text is kept here:',
+    copy: 'Copy text',
+    copied: 'Copied.',
+    copyFailed: 'The text could not be copied. Select it and copy it by hand.',
+    tryAgain: 'Try again',
   },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {
