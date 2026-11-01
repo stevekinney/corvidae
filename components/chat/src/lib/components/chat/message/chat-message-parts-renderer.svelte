@@ -15,6 +15,7 @@
   import ImagePart from './parts/image-part.svelte';
   import EntryFrame from './entry-frame.svelte';
   import TranscriptEntryPart from './parts/transcript-entry-part.svelte';
+  import NotePart from './parts/note-part.svelte';
 
   let {
     parts,
@@ -97,6 +98,8 @@
     <ReasoningPart {part} expanded={reasoningExpanded} onToggle={onreasoning} />
   {:else if part.type === 'transcript-entry'}
     <TranscriptEntryPart {part} />
+  {:else if part.type === 'note'}
+    <NotePart note={part} />
   {:else}
     <!-- Unhandled part type — a new ChatMessagePart variant was added without a
          renderer branch. `part` narrows to `never` here, so svelte-check flags

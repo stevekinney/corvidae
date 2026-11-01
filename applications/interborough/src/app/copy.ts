@@ -2075,6 +2075,20 @@ export const AGENT_PAGE_COPY = {
 
 /** The words the chat view uses outside its states. */
 export const CHAT_COPY = {
+  /**
+   * Why a chat's last run stopped, under its last message when the page opens on the chat again.
+   * The task's own message wins; these are the words for a stop that left none.
+   */
+  stopReasons: {
+    error: 'The run failed.',
+    tripwire: 'A guardrail stopped the run.',
+    'maximum-steps': 'The run reached its step limit.',
+    'elicitation-denied': 'A question was declined, so the run stopped.',
+    'budget-exceeded': 'The run reached its budget.',
+    aborted: 'The run was stopped.',
+    canceled: 'The run was stopped.',
+    failed: 'The run failed.',
+  },
   /** What a session with no title is called, in the header and in lists. */
   untitled: 'New chat',
   newChat: 'New chat',

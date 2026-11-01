@@ -12,6 +12,7 @@ import {
   normalizeArtifactTitle,
   resolveMessageArtifact,
   resolveMessageArtifactValue,
+  resolveMessageNotes,
   resolveMessageReasoning,
   resolveMessageSteps,
   resolveMessageSuggestions,
@@ -504,5 +505,40 @@ describe('resolveMessageSuggestions', () => {
   it('a callback returning an empty array suppresses suggestions (does NOT fall back)', () => {
     const m = message({ role: 'assistant', metadata: { 'cinder:suggestions': ['meta'] } });
     expect(resolveMessageSuggestions(m, () => [])).toBeUndefined();
+  });
+});
+
+describe('resolveMessageNotes', () => {
+  it('resolves every note kind from namespaced metadata and drops malformed entries', () => {
+    const notes = [
+      { kind: 'memory', id: 'a', recordId: 'r', collection: 'c', memoryClass: 'episodic' },
+      { kind: 'wakeup', id: 'b', wakeAt: 1_700_000_000_000, note: 'later' },
+      { kind: 'child-run', id: 'c', childRunId: 'x', agentName: 'helper', status: 'running' },
+      { kind: 'stopped', id: 'd', reason: 'Budget exceeded' },
+    ];
+    const malformed = [
+      null,
+      'text',
+      { kind: 'memory', id: 'e', recordId: '', collection: 'c', memoryClass: 'k' },
+      { kind: 'wakeup', id: 'f', wakeAt: Number.NaN },
+      { kind: 'child-run', id: 'g', childRunId: 'x', agentName: 'h', status: 'paused' },
+      { kind: 'stopped', id: 'h', reason: '  ' },
+      { kind: 'unknown', id: 'i' },
+      { kind: 'stopped', reason: 'no id' },
+    ];
+    const resolved = resolveMessageNotes(
+      message({ role: 'assistant', metadata: { 'cinder:notes': [...notes, ...malformed] } }),
+    );
+    expect(resolved).toEqual(notes as typeof resolved);
+  });
+
+  it('is undefined for a message with no valid note', () => {
+    expect(resolveMessageNotes(message({ role: 'assistant' }))).toBeUndefined();
+    expect(
+      resolveMessageNotes(message({ role: 'assistant', metadata: { 'cinder:notes': 'x' } })),
+    ).toBeUndefined();
+    expect(
+      resolveMessageNotes(message({ role: 'assistant', metadata: { 'cinder:notes': [{}] } })),
+    ).toBeUndefined();
   });
 });

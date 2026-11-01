@@ -121,6 +121,9 @@ test.describe('the Access tab', () => {
     await expect(page.getByText('Budget exceeded: max calls 1').first()).toBeVisible();
     // The chat this made is not one of the spec's threads, so it is found by its address and removed.
     await expect(page).toHaveURL(/\/chats\/(?!new(?:$|\?))[^/?]+$/);
+    // The reason is not only for the page that watched the run: the chat says it again once reloaded.
+    await page.reload();
+    await expect(page.getByText('Budget exceeded: max calls 1').first()).toBeVisible();
     threads.push(decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1) ?? ''));
   });
 

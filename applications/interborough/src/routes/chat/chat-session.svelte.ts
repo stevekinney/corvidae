@@ -34,9 +34,10 @@ import { sendContextInput, wireCodeOf, type Fetcher } from '../../lib/bureau-cli
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { AgUiHttpError } from './ag-ui-events.ts';
 import { questionKeyOf } from './answer-rows.ts';
+import { carryLiveNotes } from './event-notes.ts';
 import {
   createChatRunWiring,
-  withAssetParts,
+  withAnnouncements,
   type ChatRunWiring,
   type HumanRequest,
   type Refusal,
@@ -406,7 +407,7 @@ export class ChatSessionState {
 
   #stampAnnouncedAssets(): void {
     const announced = this.#wiring.drainAssets();
-    if (announced.length > 0) this.conversation = withAssetParts(this.conversation, announced);
+    if (announced.length > 0) this.conversation = withAnnouncements(this.conversation, announced);
   }
 
   /**
@@ -424,7 +425,7 @@ export class ChatSessionState {
     if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
     const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
     if (history === undefined || this.streaming || this.attaching) return false;
-    this.conversation = history;
+    this.restore(history);
     await this.attach({ rereading: true });
     // A read that failed has not said what the run waits on, so the caller reads again.
     return !this.#attachFailed;
@@ -531,7 +532,9 @@ export class ChatSessionState {
 
   /** Replaces the transcript with the authoritative snapshot from the Bureau. */
   private restore(restored: ConversationHistory): void {
-    this.conversation = restored;
+    // What the stream told this page about the run (a wakeup, a child run) is not in the Bureau's
+    // thread, so the rows that are still there keep it.
+    this.conversation = carryLiveNotes(this.conversation, restored);
   }
 
   #scheduleReconnect(error: unknown): void {

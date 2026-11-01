@@ -550,6 +550,13 @@ function mountOver(answers: {
   const bodies: Array<{ messages: unknown[]; resume?: Array<{ interruptId: string }> }> = [];
   const fetchStub: Fetcher = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    // The page also reads the chat's last run for why it stopped; this chat has none.
+    if (url.endsWith('/jsonrpc'))
+      return Response.json({
+        jsonrpc: '2.0',
+        id: 'tasks',
+        result: { tasks: [], nextPageToken: null },
+      });
     requests.push(`${init?.method ?? 'GET'} ${url}`);
     if (url.endsWith('/messages')) {
       return answers.history?.() ?? Response.json({ threadId: THREAD, messages: [] });

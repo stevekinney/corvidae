@@ -81,6 +81,8 @@
     reasoning?: import('../utilities/types.ts').ReasoningInfo | string | undefined;
     /** Structured transcript event rows sourced from namespaced message metadata. */
     entries?: import('../utilities/types.ts').TranscriptEntryInfo[] | undefined;
+    /** Lines a run left under the message, sourced from `cinder:notes` metadata. */
+    notes?: import('../utilities/types.ts').MessageNoteInfo[] | undefined;
     /**
      * Step list to surface as a stepper before the body.
      * Each entry maps to one `step` part in the derived parts.
@@ -165,6 +167,7 @@
     toolCallPresentation,
     reasoning,
     entries,
+    notes,
     steps,
     suggestions,
     reasoningExpanded = false,
@@ -364,6 +367,7 @@
       // explicit per-message props; never written back to the transcript.
       reasoning,
       entries,
+      notes,
       steps,
       // C5: suggestions are UI-only overlays; never written back to the transcript.
       suggestions,

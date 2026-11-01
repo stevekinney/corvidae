@@ -69,7 +69,7 @@
 >
   <EntryFrame
     id={labelId}
-    label={`Reasoning${tokenDisplay}`}
+    label={`Thinking${tokenDisplay}`}
     labelClass="chat-reasoning-label"
     status={part.streaming ? 'In progress' : undefined}
     triggerClass="chat-reasoning-toggle"

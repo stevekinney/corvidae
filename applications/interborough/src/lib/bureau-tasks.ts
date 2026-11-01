@@ -132,7 +132,7 @@ export type TaskFilter = {
   readonly origin?: TaskOriginKind;
 };
 
-type Options = { readonly signal?: AbortSignal };
+type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
 /**
  * One page of tasks, most recently changed first (`bureau.tasks.list`). The first page's
@@ -143,6 +143,22 @@ export async function listTasks(
   options?: Options,
 ): Promise<TaskPage> {
   return taskPageSchema.parse(await callBureau('bureau.tasks.list', input, options));
+}
+
+/** The origins of a task that a person's chat did not start: a run's own child, a goal's attempt, a workflow's step. */
+const NOT_THE_CHAT_RUN: ReadonlySet<string> = new Set(['agent', 'goal', 'parent']);
+
+/**
+ * The run a session ran last (`bureau.tasks.list`, newest change first), or `undefined` for a
+ * session with none. A run the session's own run handed work to is not the session's run, so
+ * those are passed over.
+ */
+export async function getLastRun(
+  contextId: string,
+  options?: Options,
+): Promise<TaskView | undefined> {
+  const page = await listTasks({ contextId, limit: 25 }, options);
+  return page.tasks.find((task) => !NOT_THE_CHAT_RUN.has(task.origin?.kind ?? ''));
 }
 
 /**

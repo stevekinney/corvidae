@@ -67,6 +67,8 @@ Design review outcome: approved. The two surfaces are Chat-owned because they ne
 
 ## Shared transcript entry frame
 
+The lines a run leaves under a message (`cinder:notes` metadata: memory written, a time the run continues at, a child run, why the run stopped) are plain text rows. A time is a `<time>` with a machine-readable `datetime`, a link is shown only when it is a path inside the application, and a child run's status is spelled out in words rather than shown by colour. The disclosure that holds a model's reasoning is labelled "Thinking".
+
 Reasoning, tool calls, approval details, and step groups use the same Collapsible-based entry frame. The nearest existing patterns are `Collapsible` for disclosure state and `RunStepTimeline` for grouped execution history. The frame exists to unify the trigger, chevron, expanded-region semantics, and bounded body while leaving each domain part responsible for its own status and controls.
 
 Design review outcome: approved. The frame removes competing disclosure treatments without inventing a second visual hierarchy, keeps native button semantics, and preserves the existing tool-approval actions. Consecutive completed tool calls may collapse into a timeline summary; action-required calls stay individual so Approve and Reject remain available.

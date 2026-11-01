@@ -47,6 +47,13 @@ function makePart(overrides?: Partial<ReasoningMessagePart>): ReasoningMessagePa
   };
 }
 
+describe('ReasoningPart — label', () => {
+  test('reads Thinking, with the approximate token count', () => {
+    const { container } = render(ReasoningPart, { props: { part: makePart() } });
+    expect(container.querySelector('.chat-reasoning-label')?.textContent).toMatch(/^Thinking/);
+  });
+});
+
 describe('ReasoningPart — collapsed state (default)', () => {
   test('renders a disclosure button', () => {
     const { container } = render(ReasoningPart, { props: { part: makePart() } });
