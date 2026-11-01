@@ -94,7 +94,9 @@
   const notice = $derived(
     chosen?.unavailable === undefined || editor.mode === 'create'
       ? undefined
-      : copy.keptNotice(chosen.value, copy.reasons[chosen.unavailable]),
+      : (chosen.unavailable === 'provider-denied' || chosen.unavailable === 'model-denied'
+          ? copy.refusedNotice
+          : copy.keptNotice)(chosen.value, copy.reasons[chosen.unavailable]),
   );
 
   /** Follows the link in the app's router, unless the click asks for a new tab. */

@@ -459,9 +459,18 @@ export const AGENT_EDITOR_COPY = {
       retired: 'Retired by its provider.',
       'not-in-catalog': 'This installation no longer offers this model.',
     },
-    /** What the field says about the agent's own model when it cannot be chosen now. */
+    /**
+     * What the field says about the agent's own model when it cannot be chosen now for a reason
+     * other than the model policy (turned off, retired, or gone from the catalog).
+     */
     keptNotice: (model: string, reason: string): string =>
       `This agent’s model, ${model}, is not offered now. ${reason} Saving keeps it unless you choose another.`,
+    /**
+     * What the field says when the model policy forbids the agent's own model: the Bureau refuses a
+     * save that keeps it, and a run of the agent fails until the policy or the model changes.
+     */
+    refusedNotice: (model: string, reason: string): string =>
+      `This agent’s model, ${model}, is not offered now. ${reason} Saving needs another model, and a run fails until you choose one.`,
     abilitiesLabel: 'Abilities of the chosen model',
     abilities: {
       tools: 'Tools',
@@ -1904,7 +1913,7 @@ export const MODEL_POLICY_COPY = {
   allowedModels: {
     title: 'Allowed models',
     description:
-      'Nothing listed here can be used by any agent or plan, whoever starts it. Leave a list empty to allow everything in it.',
+      'Nothing listed here can be used by an agent file or a plan, whoever starts it. Leave a list empty to allow everything in it.',
   },
   yourPreferences: {
     title: 'Your preferences',

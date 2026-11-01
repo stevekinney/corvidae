@@ -6,8 +6,9 @@
  * model for an agent file:
  *
  * - The model policy (Settings › Model policy). Its `deployment` and `bureau` layers are the
- *   operator's rules, so a provider or model they deny is not offered. The Bureau does not yet
- *   refuse such a model in an agent file (COR-1980), so this is the only place it is held back. Operative's selector matches a denied
+ *   operator's rules, so a provider or model they deny is not offered. The Bureau also refuses a
+ *   save that names such a model (`model-policy-denied`) and fails a run step on it, so the field
+ *   marks in advance what a save would be refused for. Operative's selector matches a denied
  *   provider by its name and a denied model by the catalog row's own model name (`policy.ts`,
  *   `narrowedByList`), and so does this module. The `users` layer holds one caller's preferences,
  *   not a rule about an agent, and is not read.
@@ -18,7 +19,8 @@
  *
  * A model that is not offered is still listed, disabled, with its reason, so the person sees why
  * it is missing. The model an agent file already names is kept as the selection even when it is
- * not offered, and a save writes it back as it was.
+ * not offered, so the person sees what the file holds. A save that keeps a model the policy forbids
+ * is refused by the Bureau, and the page shows its reason.
  */
 import type { AgentCatalog, CatalogModel } from '../../lib/agent-definitions.ts';
 import { policyOf } from '../settings/model-policy-edit.ts';
@@ -63,7 +65,8 @@ function namesIn(layer: unknown, field: string): string[] {
 }
 
 /**
- * The denials of a `modelPolicy` setting's `deployment` and `bureau` layers, which the page reads as binding every run (the Bureau does not yet enforce them: COR-1980).
+ * The denials of a `modelPolicy` setting's `deployment` and `bureau` layers, which bind every file
+ * agent: the Bureau refuses a save that names a denied model and fails a run step on one.
  * A value that is not a policy denies nothing.
  */
 export function restrictionsOf(policyValue: unknown): ModelRestrictions {
