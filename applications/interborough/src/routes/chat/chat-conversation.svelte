@@ -650,7 +650,7 @@
       streaming={session.streaming}
       disabled={connection.unreachable || session.disconnected}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
-      capabilities={{ attachments: attachable, editing: true, quote: true }}
+      capabilities={{ attachments: attachable, editing: !session.attaching, quote: true }}
       uploadAttachment={upload}
       acceptedTypes={settings?.acceptedTypes ?? []}
       maxFileSize={settings?.maxFileSize}

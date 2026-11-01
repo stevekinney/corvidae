@@ -14,9 +14,7 @@
   import { CHAT_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { renameContext, wireCodeOf } from '../../lib/bureau-client.ts';
-
-  /** The longest title the Bureau stores. */
-  const TITLE_LIMIT = 200;
+  import { CHAT_TITLE_LIMIT } from './chat-title.ts';
 
   interface Props {
     sessionId: string;
@@ -65,7 +63,7 @@
   async function submit(): Promise<void> {
     if (sending) return;
     const title = value.trim();
-    if (title.length > TITLE_LIMIT) {
+    if (title.length > CHAT_TITLE_LIMIT) {
       valueError = copy.tooLong;
       return;
     }
