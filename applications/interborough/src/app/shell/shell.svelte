@@ -44,6 +44,7 @@
   import CommandPaletteLauncher from './command-palette.svelte';
   import CriticalAlertStrip from './critical-alert-strip.svelte';
   import { registerShellShortcuts } from './destinations.ts';
+  import PluginProblemsBanner from './plugin-problems-banner.svelte';
   import RouteOutlet from './route-outlet.svelte';
   import ShortcutMap from './shortcut-map.svelte';
   import Sidebar from './sidebar.svelte';
@@ -267,6 +268,7 @@
       >
     {/if}
     <AuthModeBanner mode={principalStore.bannerMode} />
+    <PluginProblemsBanner unreachable={connection.unreachable} />
     <CriticalAlertStrip store={notifications} />
     <RouteOutlet />
   </div>

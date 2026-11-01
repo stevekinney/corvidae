@@ -1,6 +1,6 @@
 /**
  * An empty view offers a way to create its first item. The link only changes the query string, so
- * the frame must stop calling the view empty at that location, or the wizard and the drawer never
+ * the frame must stop calling the view empty at that location, or the picker and the drawer never
  * mount and an empty install cannot make its first run or schedule.
  */
 import { HttpClient } from '@lostgradient/weft';
@@ -12,7 +12,7 @@ import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
-import { VIEW_COPY } from '../copy.ts';
+import { VIEW_COPY, WORKFLOW_COPY } from '../copy.ts';
 import Harness from './route-outlet.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -71,7 +71,7 @@ const FLOWS = [
     // The empty runs view points to a chat, which a caller without `workflows:read` can start; the
     // engine's start flow is reached by its address.
     label: null,
-    heading: { role: 'heading', name: 'Start workflow' },
+    heading: { role: 'heading', name: WORKFLOW_COPY.runPicker.title },
   },
   {
     view: 'schedules',

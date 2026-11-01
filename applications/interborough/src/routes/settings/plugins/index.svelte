@@ -24,14 +24,24 @@
 
   import { PLUGINS_COPY, RETRY_LABEL } from '../../../app/copy.ts';
   import { showToast } from '../../../app/toast-host.svelte';
-  import { getPlugins, type PluginStanding } from '../../../lib/host-plugins.ts';
+  import {
+    getPlugins,
+    type PluginProblem,
+    type PluginStanding,
+  } from '../../../lib/host-plugins.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { routerSelectionLocationFor } from '../../../lib/router-selection-location.ts';
   import SettingsSectionNav from '../settings-section-nav.svelte';
   import DisableDialog from './disable-dialog.svelte';
   import PluginDetail from './plugin-detail.svelte';
   import { PluginDrafts } from './plugin-drafts.svelte.ts';
-  import { isShadowed, listKey, sourceWord, statusOf } from './plugin-presentation.ts';
+  import {
+    clashCounterpart,
+    isShadowed,
+    listKey,
+    sourceWord,
+    statusOf,
+  } from './plugin-presentation.ts';
   import RestartDialog from './restart-dialog.svelte';
   import { RestartFlow } from './restart-flow.svelte.ts';
   import SecretDialog, { type SecretTarget } from './secret-dialog.svelte';
@@ -57,6 +67,8 @@
 
   let disabling = $state<PluginStanding | null>(null);
   let secret = $state<SecretTarget | null>(null);
+  // The open plugin's key. The list fills it from the address, and a problem's `Show both` sets it.
+  let openKey = $state<string | null>(null);
 
   const snapshot = $derived(plugins.data);
   const locked = $derived(snapshot?.lockReason !== undefined);
@@ -126,6 +138,16 @@
     drafts.setEnabled(plugin, false);
     disabling = null;
     restart();
+  }
+
+  // What `Show both` does for a name clash: open the other plugin that holds the name, or nothing
+  // when that plugin is not in the list.
+  function showBoth(plugin: PluginStanding, problem: PluginProblem): (() => void) | undefined {
+    if (snapshot === undefined) return undefined;
+    const other = clashCounterpart(snapshot, plugin, problem);
+    if (other === undefined) return undefined;
+    const key = listKey(snapshot, other);
+    return () => (openKey = key);
   }
 
   const refusalWords = $derived(
@@ -206,6 +228,7 @@
           detailLabel={copy.detailLabel}
           emptyTitle={copy.emptyDetail.title}
           emptyDescription={copy.emptyDetail.description}
+          bind:selectedKey={openKey}
           selectionParameter="plugin"
           {selectionLocation}
           storageKey="interborough-settings-plugins"
@@ -244,6 +267,7 @@
                 : undefined}
               onDisable={(target) => (disabling = target)}
               onSecret={(target, key) => (secret = { plugin: target.descriptor.name, key })}
+              {showBoth}
             />
           {/snippet}
         </ListDetail>

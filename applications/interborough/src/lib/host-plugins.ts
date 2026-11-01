@@ -90,6 +90,17 @@ export type PluginSecret = PluginStanding['secrets'][number];
 /** A folder the host could not load a plugin from. */
 export type UnloadedPlugin = PluginsSnapshot['unloaded'][number];
 
+/**
+ * How many plugins did not load at startup: the ones the host listed `skipped` and the folders it
+ * could not load a plugin from at all, which have no name and are listed apart from the plugins.
+ */
+export function didNotLoadCount(snapshot: PluginsSnapshot): number {
+  return (
+    snapshot.plugins.filter((plugin) => plugin.status === 'skipped').length +
+    snapshot.unloaded.length
+  );
+}
+
 /** What the host reports after it stores a plugin's choices. */
 export type PluginChange = {
   /** The plugin's name. */

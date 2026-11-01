@@ -96,7 +96,6 @@ describe('the copy rules', () => {
         ...component('<!-- The Bureau, COR-1 -->\n<p>Hello</p>'),
         'src/routes/page.test.ts': "const text = 'The Bureau';",
         'src/routes/thing.test-harness.svelte': '<p>The Bureau</p>',
-        'src/mcp-apps/app.svelte': '<p>The Bureau</p>',
         'src/host/server.ts': "export const A = 'The Bureau did not answer.';",
         'src/lib/thing.test-support.ts': "export const A = 'The Bureau did not answer.';",
       }),

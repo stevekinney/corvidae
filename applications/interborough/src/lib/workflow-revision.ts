@@ -139,7 +139,7 @@ export const EAGER_REVISION_HEDGE: string =
 
 /**
  * Single-source-of-truth hedge for every "fresh start" surface — the
- * start wizard's review step, a checkpoint-less retry, and an
+ * run setup page, a checkpoint-less retry, and an
  * `onTerminalConflict: 'start-new'` replacement — reused verbatim so the
  * caveat wording cannot drift between call sites (Codex review, PR #978).
  * Unlike {@link EAGER_REVISION_HEDGE} (which hedges "will retain the

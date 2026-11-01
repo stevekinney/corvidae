@@ -4,13 +4,12 @@
  * Tool calls are answered from fixtures, so the spec proves the page, not the Bureau.
  */
 import { default as Axe } from '@axe-core/playwright';
+import { runInspector } from '@lostgradient/plugin-inspectors';
 import type { McpUiResourceCsp } from '@modelcontextprotocol/ext-apps/app-bridge';
 import { expect, test, type Page } from '@playwright/test';
 
-import {
-  buildRunInspectorPage,
-  RUN_INSPECTOR_UI_META,
-} from '../../src/host/run-inspector-resource.ts';
+import { buildMcpAppPage } from '../../src/host/mcp-app-build.ts';
+import { MCP_APP_UI_META } from '../../src/host/mcp-app-mounts.ts';
 
 const HOST_ORIGIN = 'http://reference-host.test';
 
@@ -25,7 +24,11 @@ test.beforeAll(async () => {
   });
   if (!bundle.success) throw new AggregateError(bundle.logs, 'The reference host did not build');
   hostScript = await bundle.outputs[0]!.text();
-  const built = await buildRunInspectorPage();
+  const built = await buildMcpAppPage({
+    entry: runInspector.entry.href,
+    title: runInspector.title,
+    styles: runInspector.styles ?? '',
+  });
   pageHtml = built.html;
 });
 
@@ -102,7 +105,7 @@ async function open(page: Page, fixture: Fixture) {
     },
     {
       html: pageHtml,
-      csp: RUN_INSPECTOR_UI_META.csp,
+      csp: MCP_APP_UI_META.csp,
       inspected: fixture.inspection,
       events: fixture.events ?? { events: [], nextCursor: null, ended: false },
     },

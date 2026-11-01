@@ -211,9 +211,12 @@ export interface AgentToolDescription {
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
    * Where the tool comes from: `bureau` for a tool Bureau adds itself (the settings and workflow
-   * tools), `host` for a tool the host passed in `agentSource.tools`.
+   * tools, and the built-in `bureau` plugin's), `plugin` for a tool another plugin contributes
+   * (`plugin:name`, COR-1892), `host` for a tool the host passed in `agentSource.tools`.
    */
-  readonly source: 'host' | 'bureau';
+  readonly source: 'host' | 'bureau' | 'plugin';
+  /** The plugin that contributes the tool when {@link AgentToolDescription.source} is `plugin`, else `null`. */
+  readonly plugin: string | null;
   /**
    * The identifiers of the agents that use the tool now, sorted: a ready agent file that lists it
    * in `tools`, and a code-defined agent that names it. Read from the definitions as they stand,
@@ -242,6 +245,18 @@ export function describeToolCapability(
     tier: tier ?? null,
     defaultApproval: defaultToolApproval(tier),
   };
+}
+
+/** Where the tool `name` comes from, and the plugin that contributes it. */
+function toolOrigin(
+  name: string,
+  options: Pick<AgentFileCatalogOptions, 'bureauToolNames' | 'pluginToolNames'>,
+): Pick<AgentToolDescription, 'source' | 'plugin'> {
+  if (options.bureauToolNames?.has(name) === true) return { source: 'bureau', plugin: null };
+  if (options.pluginToolNames?.has(name) === true) {
+    return { source: 'plugin', plugin: name.slice(0, name.indexOf(':')) };
+  }
+  return { source: 'host', plugin: null };
 }
 
 /** The reserved name of the implicit Bureau-wide agent, which no longer exists. No file may take its name. */
@@ -351,6 +366,11 @@ export interface AgentFileCatalogOptions {
    * host (`AgentToolDescription.source`). Omitted, every tool is the host's.
    */
   readonly bureauToolNames?: ReadonlySet<string> | undefined;
+  /**
+   * The names in {@link AgentFileCatalogOptions.tools} that a plugin other than the built-in
+   * `bureau` plugin contributes (`plugin:name`, COR-1892). Omitted, none is.
+   */
+  readonly pluginToolNames?: ReadonlySet<string> | undefined;
   readonly models: Pick<Models, 'catalog' | 'summarizer'>;
   /** Turns a catalog model into the function a run calls. The host holds the credentials. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
@@ -1376,7 +1396,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           description: tool.description,
           shortDescription: readToolShortDescription(tool.metadata) ?? null,
           ...describeToolCapability(tool),
-          source: options.bureauToolNames?.has(name) === true ? 'bureau' : 'host',
+          ...toolOrigin(name, options),
           users: (users.get(name) ?? []).toSorted(),
         }))
         .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));

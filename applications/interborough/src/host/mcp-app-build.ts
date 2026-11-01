@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 /** A built page and the digest of its bytes. */
 export type BuiltMcpApp = {
+  /** The whole document: inline script and styles, no external reference. */
   readonly html: string;
   /** `sha256:<64 hex>`, the form `bureau.interactive-surface.v1` names. */
   readonly contentDigest: string;
@@ -15,6 +16,11 @@ export type BuiltMcpApp = {
 /** Escape what would end the inline script early. */
 function inlineScript(code: string): string {
   return code.replaceAll('</script', '<\\/script').replaceAll('<!--', '<\\!--');
+}
+
+/** Escape text placed in an element, so a title cannot open a tag. */
+function escapeText(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;');
 }
 
 /** Compute the contract's digest of `html`. */
@@ -39,6 +45,6 @@ export async function buildMcpAppPage(options: {
     throw new AggregateError(result.logs, `The ${options.title} page did not build`);
   }
   const script = await result.outputs[0]!.text();
-  const html = `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${options.title}</title><style>${options.styles}</style><div id="root"></div><script type="module">${inlineScript(script)}</script>`;
+  const html = `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeText(options.title)}</title><style>${options.styles.replaceAll('</style', '<\\/style')}</style><div id="root"></div><script type="module">${inlineScript(script)}</script>`;
   return { html, contentDigest: digestOf(html) };
 }

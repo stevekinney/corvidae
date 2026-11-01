@@ -25,6 +25,7 @@
  * fails it too.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
+import { rm } from 'node:fs/promises';
 
 import { SEEDED_GOAL_RUN_IDENTIFIER } from '@lostgradient/plugin-demo';
 import { STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
@@ -41,6 +42,7 @@ import {
 } from './responsive-routes.ts';
 import { bureauCall, waitingReviewOf } from './task-support.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
+import { createWorkflowFile, removeWorkflow, workflowFilePath } from './workflow-support.ts';
 
 const WIDTHS = [375, 768, 1280] as const;
 const HEIGHT = 900;
@@ -79,6 +81,10 @@ const LONG_REVIEW_TITLE = `Refund ${'w'.repeat(300)}`;
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
 const WORKFLOW_FILE = 'e2e-digest';
+/** The agent-authored workflow the run setup page is measured on, with a field of one 300-character word. */
+const RUN_SETUP_FILE = 'responsive-run-setup';
+const LONG_FIELD = `longField${'f'.repeat(300)}`;
+const LONG_FIELD_DESCRIPTION = `What it holds ${'d'.repeat(300)}`;
 
 /** The state the frame is in once a route holds its seeded content; `ready` unless listed. */
 const EXPECTED_STATE: Readonly<Record<string, string>> = {};
@@ -113,6 +119,11 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The builder's summary prints the file's trigger and steps; the JSON tab's editor text does not count.
   '/workflows/new': /In plain words/,
   '/workflows/:workflow/edit': /In plain words/,
+  // The form prints the field's description, which is the long word.
+  '/workflows/:workflow/run': /dddddddddd/,
+  // Before the page is opened on a schedule, which `reveal` does, the page prints its choices.
+  '/workflows/:workflow/run (code, on a schedule)': /Starts a run as soon as you confirm/,
+  '/runs (start picker)': /Choose the workflow to run/,
   '/runs/:run': /Input and output/,
   // The list prints the question each waiting review asks, and the open review its source line,
   // which links to the chat whose title is the long word.
@@ -263,6 +274,11 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
  * time, so it searches for the long key's start and opens the key.
  */
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  // When opens on a schedule, so the builder's Repeats, At and Time zone are measured too.
+  '/workflows/:workflow/run (code, on a schedule)': async (page) => {
+    await page.getByRole('radio', { name: new RegExp(WORKFLOW_COPY.runSetup.schedule) }).click();
+    await expect(page.getByRole('combobox', { name: 'Time zone' })).toBeVisible();
+  },
   // The file's header carries its four actions; measure the page only once all four are there.
   '/workflows/:workflow (file)': async (page) => {
     const header = page.locator('[data-page="workflow-detail"] .cinder-page-header__actions');
@@ -437,6 +453,7 @@ test.beforeAll(async ({ playwright }) => {
       memory: longMemory?.id ?? 'responsive-memory',
       workflow: 'order-processing',
       workflowFile: WORKFLOW_FILE,
+      runSetupFile: RUN_SETUP_FILE,
       run: runs.items?.[0]?.id ?? 'responsive-run',
       schedule: schedules.items?.[0]?.id ?? 'responsive-schedule',
       goal: SEEDED_GOAL_RUN_IDENTIFIER,
@@ -444,6 +461,19 @@ test.beforeAll(async ({ playwright }) => {
       review: `bureau:${waitingReview}`,
       decidedReview: `bureau:${decidedReview}`,
     };
+    await createWorkflowFile(request, RUN_SETUP_FILE, {
+      // A signal starts it, because a schedule fires with no input and the schema requires some.
+      trigger: { kind: 'signal', name: 'responsive-run-setup-go' },
+      steps: [{ kind: 'await-signal', signal: 'responsive-run-setup-wait' }],
+      inputSchema: {
+        type: 'object',
+        properties: {
+          [LONG_FIELD]: { type: 'string', description: LONG_FIELD_DESCRIPTION },
+          topic: { type: 'string', title: 'Topic' },
+        },
+        required: ['topic'],
+      },
+    });
     addresses = responsiveAddresses(seed);
     variantAddresses = responsiveVariants(seed);
   } finally {
@@ -456,6 +486,8 @@ test.afterAll(async ({ playwright }) => {
   try {
     await removeAgent(request, AGENT_ID);
     await removeAgent(request, INSTRUCTIONS_AGENT_ID);
+    await removeWorkflow(request, RUN_SETUP_FILE);
+    await rm(await workflowFilePath(request, RUN_SETUP_FILE), { force: true });
     await request.delete(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`);
     await removeCatalogRow(request, LONG_MODEL);
     const hooks = (await bureauCall(request, 'bureau.hooks.list', {})) as {

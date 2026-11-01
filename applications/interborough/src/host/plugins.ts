@@ -18,6 +18,7 @@ import type { BureauPluginEntry, BureauPluginSettings } from '@lostgradient/bure
 import anthropic from '@lostgradient/plugin-anthropic';
 import demo from '@lostgradient/plugin-demo';
 import gemini from '@lostgradient/plugin-gemini';
+import inspectors from '@lostgradient/plugin-inspectors';
 import openai from '@lostgradient/plugin-openai';
 import typesafe from '@lostgradient/plugin-typesafe';
 
@@ -34,6 +35,7 @@ export function workspacePlugins(): readonly BureauPluginEntry[] {
     { descriptor: openai, source: 'package', location: '@lostgradient/plugin-openai' },
     { descriptor: gemini, source: 'package', location: '@lostgradient/plugin-gemini' },
     { descriptor: typesafe, source: 'package', location: '@lostgradient/plugin-typesafe' },
+    { descriptor: inspectors, source: 'package', location: '@lostgradient/plugin-inspectors' },
     { descriptor: demo, source: 'package', location: '@lostgradient/plugin-demo' },
   ];
 }

@@ -127,47 +127,66 @@ describe('standingCounts', () => {
 });
 
 describe('problemView', () => {
-  test('words each code the host reports', () => {
-    expect(problemView({ code: 'secret-missing', key: 'k-api-key' })).toMatchObject({
-      secretKey: 'k-api-key',
+  test('gives each code its status, title, body and action', () => {
+    expect(
+      problemView({ code: 'secret-missing', key: 'k-api-key', contributions: ['k:a'] }),
+    ).toEqual({
+      status: { label: 'Needs setup', dot: 'warning' },
+      title: 'A secret isn’t saved yet',
+      body: 'k-api-key isn’t saved, so k:a is unavailable. Save it and it works at once; no restart.',
+      action: { kind: 'secret', label: 'Add the key', key: 'k-api-key' },
     });
-    expect(
-      problemView({ code: 'reference-unresolved', file: 'agents/t.md', id: 'x:y' }).body,
-    ).toContain('agents/t.md names x:y');
-    expect(
-      problemView({
-        code: 'pinned-version-unavailable',
-        id: 'x:y',
-        version: '0.3.0',
-        waitingRuns: 2,
-      }).body,
-    ).toContain('2 waiting runs recorded x:y at version 0.3.0');
-    expect(
-      problemView({
-        code: 'name-clash',
-        name: 'linear',
-        first: { source: 'package', location: '@x/linear' },
-        second: { source: 'folder', location: '/p/linear' },
-      }).body,
-    ).toContain('@x/linear and by /p/linear');
-    expect(problemView({ code: 'development-source', path: '/code/linear' }).body).toContain(
-      '/code/linear',
-    );
-    for (const code of ['setup-failed', 'secret-refused', 'load-failed', 'after-start-failed']) {
-      expect(problemView({ code, message: 'it broke' })).toEqual({
-        title: PLUGINS_COPY.problems.failed.title,
+    expect(problemView({ code: 'reference-unresolved', file: 'x:t', id: 'x:y' })).toMatchObject({
+      status: { label: 'Loaded, 1 file skipped', dot: 'warning' },
+      body: 'x:t lists x:y, which no loaded plugin adds. The agent is unavailable until the name matches.',
+      action: { kind: 'link', label: 'Open the file', href: '/agents/x%3At/edit' },
+    });
+    expect(problemView({ code: 'development-source', path: '/code/linear' })).toMatchObject({
+      status: { label: 'Development', dot: 'accent' },
+      action: { kind: 'copy', label: 'Open the folder', text: '/code/linear' },
+    });
+    for (const code of ['setup-failed', 'load-failed']) {
+      expect(problemView({ code, message: 'it broke' })).toMatchObject({
+        status: { label: 'Not loaded', dot: 'danger' },
         body: 'it broke',
       });
     }
+    expect(problemView({ code: 'after-start-failed', message: 'it broke' }).status.dot).toBe(
+      'warning',
+    );
+    expect(
+      problemView({ code: 'mcp-app-failed', app: 'panel', message: 'no entry' }),
+    ).toMatchObject({
+      status: { label: 'Loaded, a page was not built', dot: 'warning' },
+      body: 'The page panel is not served. no entry',
+    });
+  });
+
+  test('reads an empty field as the whole configuration, and a model list as its own problem', () => {
     expect(problemView({ code: 'configuration-invalid', field: '', message: 'bad' }).body).toBe(
       'bad',
     );
+    expect(
+      problemView({ code: 'configuration-invalid', field: 'models', message: 'bad' }).title,
+    ).toBe('A model list names a model nobody offers');
+    expect(
+      problemView({ code: 'configuration-invalid', field: 'modelsX', message: 'bad' }).title,
+    ).toBe('A setting is invalid');
+  });
+
+  test('has no button for a problem with nothing to go to', () => {
+    expect(problemView({ code: 'secret-missing', contributions: [] }).action).toBeUndefined();
+    expect(problemView({ code: 'reference-unresolved', id: 'x:y' }).action).toBeUndefined();
+    expect(problemView({ code: 'development-source' }).action).toBeUndefined();
   });
 
   test('keeps a code it has no words for, and reads missing fields as empty', () => {
-    expect(problemView({ code: 'new-thing' }).body).toBe(
-      PLUGINS_COPY.problems.unknown('new-thing'),
+    expect(problemView({ code: 'new-thing' }).body).toBe('Reported as new-thing.');
+    expect(problemView({ code: 'name-clash', name: 'x' }).body).toBe(
+      'The built-in x plugin and the built-in x plugin are both named x. The built-in x plugin loaded; rename the other.',
     );
-    expect(problemView({ code: 'name-clash', name: 'x' }).body).toContain('x is claimed by');
+    expect(problemView({ code: 'secret-missing', key: 'k' }).body).toBe(
+      'k isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.',
+    );
   });
 });

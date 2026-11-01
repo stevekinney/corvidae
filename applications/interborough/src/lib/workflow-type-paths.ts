@@ -29,6 +29,11 @@ export function internalWorkflowsPath(): string {
   return '/internal-workflows';
 }
 
+/** The page that sets up one run of a workflow: its input, and whether it starts now or on a schedule. */
+export function workflowRunSetupPath(type: string): string {
+  return `${workflowTypePath(type)}/run`;
+}
+
 /** The editor for one agent-authored workflow's file. */
 export function workflowEditPath(type: string): string {
   return `${workflowTypePath(type)}/edit`;

@@ -34,6 +34,7 @@ const TOOLS = [
     tier: 'read-only',
     defaultApproval: 'allow',
     source: 'host',
+    plugin: null,
     users: ['assistant'],
   },
   {
@@ -44,6 +45,18 @@ const TOOLS = [
     tier: null,
     defaultApproval: 'ask',
     source: 'bureau',
+    plugin: null,
+    users: [],
+  },
+  {
+    name: 'gemini:search',
+    description: 'Searches with Gemini.',
+    shortDescription: 'Searches the web',
+    inputSchema: null,
+    tier: 'read-only',
+    defaultApproval: 'allow',
+    source: 'plugin',
+    plugin: 'gemini',
     users: [],
   },
 ];
@@ -107,13 +120,35 @@ function serve(tools: unknown[] = TOOLS, skills: unknown[] = SKILLS) {
 const copy = CAPABILITIES_COPY;
 
 describe('the Tools tab', () => {
+  test('shows each tool’s source in its row: the plugin, built in, or an MCP server', async () => {
+    restore = serve().restore;
+    landAt('/capabilities');
+    const { container, findByText } = mount();
+
+    await findByText('read-file');
+    const sourceOf = (name: string) =>
+      container
+        .querySelector(`[data-tool-row="${name}"] [data-testid="tool-row-source"]`)
+        ?.textContent?.trim();
+    expect(sourceOf('gemini:search')).toBe('Plugin gemini');
+    expect(sourceOf('run-shell')).toBe('Built in');
+    expect(sourceOf('read-file')).toBe('MCP server');
+
+    await fireEvent.click(container.querySelector('[data-tool-row="gemini:search"]')!);
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="tool-source"]')?.textContent).toBe(
+        'Plugin gemini',
+      ),
+    );
+  });
+
   test('lists every tool with its tier, and shows the open tool’s details, inputs and users', async () => {
     restore = serve().restore;
     landAt('/capabilities');
     const { container, findByText, getByRole } = mount();
 
     await findByText('read-file');
-    expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe('2');
+    expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe('3');
     const row = (name: string) => container.querySelector(`[data-tool-row="${name}"]`);
     expect(row('read-file')?.textContent).toContain('Reads only');
     expect(row('read-file')?.textContent).toContain('Reads one file');
@@ -131,9 +166,7 @@ describe('the Tools tab', () => {
     expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent).toBe(
       'Runs without asking',
     );
-    expect(detail.querySelector('[data-testid="tool-source"]')?.textContent).toBe(
-      'Provided by this host',
-    );
+    expect(detail.querySelector('[data-testid="tool-source"]')?.textContent).toBe('MCP server');
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       'Path',
     );
@@ -189,12 +222,12 @@ describe('the Tools tab', () => {
     const empty = container.querySelector('[data-cinder-kind="filtered"]');
     expect(empty).not.toBeNull();
     expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe(
-      '0 of 2',
+      '0 of 3',
     );
 
     await fireEvent.click(await findByRole('button', { name: copy.tool.filtered.clear }));
     await findByText('read-file');
-    expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe('2');
+    expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe('3');
   });
 
   test('is a first-use empty state, with no list, when the catalog holds no tool', async () => {

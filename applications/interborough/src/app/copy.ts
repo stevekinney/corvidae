@@ -288,6 +288,39 @@ export const AGENT_EDITOR_COPY = {
   },
   toolsDescription: 'The tools this agent may call.',
   noTools: 'This installation offers no tools.',
+  /** The count above the chosen tools, such as `2 of 48 chosen`. */
+  toolCount: (chosen: number, offered: number): string =>
+    `${String(chosen)} of ${String(offered)} chosen`,
+  /** The name of the list of the tools the agent has. */
+  chosenToolsLabel: 'Chosen tools',
+  /** What the list says when the agent has no tool yet. */
+  noToolsChosen: 'No tools chosen. The agent can reply, but it cannot call anything.',
+  /** The action that opens the picker. */
+  addToolsAction: 'Add tools',
+  /** The button that takes one tool away from the agent, and the name a screen reader hears for it. */
+  removeAction: 'Remove',
+  removeToolLabel: (tool: string): string => `Remove ${tool}`,
+  /** The marker on a tool that asks before it runs, and on one that never runs. */
+  toolStanding: {
+    'asks-first': 'Asks first',
+    blocked: 'Blocked',
+  },
+  /** The tool picker (`Add tools`): a search over every tool the installation offers, grouped by source. */
+  toolPicker: {
+    title: 'Add tools',
+    done: 'Done',
+    searchLabel: 'Search tools',
+    searchPlaceholder: 'Search by name, description or source',
+    /** Announced as the search narrows. */
+    resultCount: (count: number): string => (count === 1 ? '1 tool' : `${String(count)} tools`),
+    noMatchesTitle: 'No tools match',
+    noMatchesDescription: (search: string): string =>
+      `Nothing is named or described like “${search}”.`,
+    /** The count in a group's heading, such as `2 of 5`. */
+    groupCount: (chosen: number, total: number): string => `${String(chosen)} of ${String(total)}`,
+    /** The heading of a saved tool source's group; the source is the identifier its tool names start with. */
+    savedSource: (source: string): string => source,
+  },
   /** The disclosure on a tool row that shows the full text the model is told about the tool. */
   toolDisclosure: 'What the agent is told',
   instructionsLabel: 'Instructions',
@@ -460,7 +493,7 @@ export const WORKFLOW_COPY = {
       /** A paused file starts nothing, so its empty state says so rather than promising a trigger. */
       emptyDescriptionPaused:
         'This workflow is paused, so its trigger starts nothing. Resume it and a run appears here once one starts.',
-      /** A code-defined type has no Start action on this page (COR-1855), so something else starts it. */
+      /** A type that code registered is also started by its schedules, so the empty state names no one starter. */
       emptyDescriptionCode: 'A run appears here as soon as something starts one.',
     },
     /** The Code tab. */
@@ -478,16 +511,77 @@ export const WORKFLOW_COPY = {
       unavailableDescription: 'It is not defined in code, or you may not read workflows.',
     },
   },
-  /** Starting a run from the page's header. */
-  startDialog: {
-    title: 'Start a run',
-    description: (name: string): string => `Starts one run of ${name}.`,
-    inputLabel: 'Input',
-    inputDescription: 'JSON. Leave empty to start with no input.',
-    invalidInput: 'The input must be valid JSON, or left empty.',
-    confirm: 'Start run',
+  /** `/workflows/:workflow/run`: one run of the workflow in the path, started now or on a schedule. */
+  runSetup: {
+    /** The page's entry in the breadcrumb trail. */
+    crumb: 'Run',
+    title: (name: string): string => `Run ${name}`,
+    inputHeading: 'Input',
+    inputDescription: 'What the run starts with.',
+    /** A workflow that declares no schema takes its input as JSON. */
+    jsonLabel: 'Input (JSON)',
+    jsonDescription: 'JSON. Leave empty to start with no input.',
+    invalidJson: 'The input must be valid JSON, or left empty.',
+    whenHeading: 'When',
+    whenLabel: 'When to run',
+    now: 'Now',
+    nowDescription: 'Starts a run as soon as you confirm.',
+    schedule: 'On a schedule',
+    scheduleDescription: 'Starts a run each time the schedule fires, with this input.',
+    /** The schedule choice for a workflow whose schedule is the trigger in its file. */
+    scheduleInFile:
+      'This workflow is agent-authored, so its schedule is the trigger in its file. Change it in the workflow.',
+    scheduleLabel: 'Schedule',
+    summaryNow: (name: string): string => `Starts ${name} now with this input.`,
+    /** An interval counts elapsed time, so it names no zone. */
+    summarySchedule: (name: string, cadence: string, timeZone: string | undefined): string =>
+      timeZone === undefined
+        ? `Runs ${name}: ${cadence}.`
+        : `Runs ${name}: ${cadence}, in ${timeZone}.`,
+    startAction: 'Start run',
+    scheduleAction: 'Create schedule',
     cancel: 'Cancel',
-    failed: 'The run was not started',
+    startFailed: 'The run was not started',
+    scheduleFailed: 'The schedule was not created',
+    /** The answer was lost, so the Bureau may have acted: say so, and do not suggest trying again blindly. */
+    scheduleInvalid: 'A field in the schedule is not valid. Correct it, then create the schedule.',
+    startMaybe: 'The run may have started',
+    scheduleMaybe: 'The schedule may have been created',
+    lostDescription:
+      'The server did not answer. Check before trying again, so it is not done twice.',
+    checkRuns: 'Check the runs',
+    checkSchedules: 'Check the schedules',
+    forbidden: 'You may not start runs or create schedules here.',
+    loadFailed: {
+      title: 'This workflow could not be loaded',
+      description: 'Try again, or check that you may read workflows.',
+    },
+    /** A workflow that cannot be run from this page, and where to go instead. */
+    blocked: {
+      openWorkflow: 'Open the workflow',
+      engineTitle: 'Interborough starts this workflow itself',
+      engineDescription: 'There is nothing to set up here.',
+      invalidTitle: 'This workflow cannot run yet',
+      invalidDescription: 'Its file has a problem. Fix it in the workflow, and it can run.',
+      pausedTitle: 'This workflow is paused',
+      pausedDescription: 'Resume it in the workflow, and it can run.',
+    },
+  },
+  /** Choosing the workflow to run, from the runs list. */
+  runPicker: {
+    title: 'Start a run',
+    description: 'Choose the workflow to run. The next page sets up its input and when it runs.',
+    listLabel: 'Workflows you can run',
+    /** The filter is offered once there are more workflows than fit at a glance. */
+    filterLabel: 'Find a workflow',
+    noMatchTitle: 'No workflow matches that search',
+    noMatchDescription: 'Change the search to see more workflows.',
+    cancel: 'Cancel',
+    loadFailedTitle: 'The workflows could not be loaded',
+    loadFailedDescription: 'Try again, or check that you may read workflows.',
+    emptyTitle: 'No workflow can run yet',
+    emptyDescription: 'Make a workflow, and it appears here to run.',
+    emptyAction: 'New workflow',
   },
   /** `/workflows/new`. */
   creator: {
@@ -906,6 +1000,9 @@ export const MODELS_COPY = {
     description: 'A provider is connected once its API key is saved on this machine.',
     listLabel: 'Providers',
     connected: 'Connected',
+    /** A provider whose plugin is waiting for its key (`needs-setup` in `GET /host/plugins`). */
+    needsSetup: 'Needs setup',
+    pluginLink: (name: string): string => `Open the ${name} plugin`,
     connect: 'Connect',
     manage: 'Manage',
     connectLabel: (name: string): string => `Connect ${name}`,
@@ -1173,41 +1270,113 @@ export const PLUGINS_COPY = {
       close: 'Close',
     },
   },
+  /**
+   * One card per problem code (COR-1895). The table of the first six is the owner's wording
+   * (Interborough plugins, boards 26–28); the cards after `developmentSource` are for codes the
+   * host added later, in the same voice. A body is a function of the fields its code carries.
+   */
   problems: {
     title: 'Needs attention',
     unknown: (code: string): string => `Reported as ${code}.`,
+    /** The status of a problem whose code this page has no words for. */
+    unknownStatus: 'Not recognised',
     secretMissing: {
+      status: 'Needs setup',
       title: 'A secret isn’t saved yet',
-      body: (key: string): string =>
+      body: (key: string, what: string): string =>
+        `${key} isn’t saved, so ${what} is unavailable. Save it and it works at once; no restart.`,
+      /** The body when the host lists nothing that waits for the secret. */
+      bodyWithoutContributions: (key: string): string =>
         `${key} isn’t saved, so what this plugin adds is unavailable. Save it and it works at once; no restart.`,
       action: 'Add the key',
     },
     configurationInvalid: {
+      status: 'Not loaded',
       title: 'A setting is invalid',
       body: (field: string, message: string): string =>
         field === '' ? message : `${field}: ${message}`,
+      action: 'Fix the setting',
+    },
+    /** A provider plugin's `models` allowlist names a model nobody offers: `configuration-invalid` at `models[<index>]`. */
+    allowlistInvalid: {
+      status: 'Not loaded',
+      title: 'A model list names a model nobody offers',
+      action: 'Fix the setting',
     },
     referenceUnresolved: {
-      title: 'A file names something nobody adds',
+      status: 'Loaded, 1 file skipped',
+      title: 'An agent names something nobody adds',
       body: (file: string, id: string): string =>
-        `${file} names ${id}, which no loaded plugin adds. It is unavailable until the name matches.`,
-    },
-    pinnedVersionUnavailable: {
-      title: 'A waiting run needs a version that isn’t loaded',
-      body: (id: string, version: string, runs: number): string =>
-        `${String(runs)} waiting ${runs === 1 ? 'run' : 'runs'} recorded ${id} at version ${version}, which isn’t loaded, so ${runs === 1 ? 'it shows' : 'they show'} as unavailable.`,
+        `${file} lists ${id}, which no loaded plugin adds. The agent is unavailable until the name matches.`,
+      action: 'Open the file',
     },
     nameClash: {
+      status: 'Not loaded',
       title: 'Two plugins share a name',
-      body: (name: string, first: string, second: string): string =>
-        `${name} is claimed by ${first} and by ${second}. The first to load keeps it; rename the other.`,
+      body: (first: string, second: string, name: string, loaded: string): string =>
+        `${first} and ${second} are both named ${name}. ${loaded} loaded; rename the other.`,
+      action: 'Show both',
     },
-    failed: { title: 'It did not load' },
+    pinnedVersionUnavailable: {
+      status: 'After a restart',
+      title: 'A waiting run needs a version that isn’t loaded',
+      body: (id: string, version: string, runs: number): string =>
+        runs === 1
+          ? `1 waiting run is pinned to ${id}@${version}, so it shows as unavailable. Cancel it, or go back to ${version} and restart.`
+          : `${String(runs)} waiting runs are pinned to ${id}@${version}, so they show as unavailable. Cancel them, or go back to ${version} and restart.`,
+      action: 'Open the run',
+    },
     developmentSource: {
+      status: 'Development',
       title: 'Loaded from your working copy',
       body: (path: string): string =>
-        `Started from ${path}. Interborough restarts when its code changes.`,
+        `Started with --plugin ${path}. Interborough restarts when its code changes; its agents and workflows reload without one.`,
+      action: 'Open the folder',
+      /** What the page says once it has put the folder’s path on the clipboard: a browser cannot open a folder. */
+      copied: 'The folder’s path is copied.',
+      copyFailed: 'The folder’s path could not be copied.',
     },
+    /** The host refused a secret the plugin declared; the message names the key and never a value. */
+    secretRefused: {
+      status: 'Not loaded',
+      title: 'A secret can’t be kept here',
+      body: (key: string, message: string): string =>
+        message === '' ? `${key} can’t be used as this plugin’s secret.` : message,
+    },
+    /** The plugin’s code did not load from its folder, such as an import nothing provides. */
+    loadFailed: {
+      status: 'Not loaded',
+      title: 'The plugin’s code didn’t load',
+      body: (message: string): string => message,
+    },
+    /** The plugin’s `setup` threw, or returned something that cannot be registered. */
+    setupFailed: {
+      status: 'Not loaded',
+      title: 'The plugin’s setup failed',
+      body: (message: string): string => message,
+    },
+    /** The plugin’s `afterStart` threw; what it adds stays registered. */
+    afterStartFailed: {
+      status: 'Loaded, a step after startup failed',
+      title: 'A step after startup failed',
+      body: (message: string): string => message,
+    },
+    /** A page the plugin contributed could not be built; the plugin and its other parts run. */
+    mcpAppFailed: {
+      status: 'Loaded, a page was not built',
+      title: 'A page the plugin adds did not build',
+      body: (app: string, message: string): string => `The page ${app} is not served. ${message}`,
+    },
+  },
+  /** The banner every page shows after a startup where a plugin or a folder did not load. */
+  startupBanner: {
+    /** The accessible name of the region. */
+    label: 'Plugins that did not load',
+    message: (count: number): string =>
+      count === 1
+        ? '1 plugin didn’t load at startup. Agents and workflows that use it show as unavailable.'
+        : `${String(count)} plugins didn’t load at startup. Agents and workflows that use them show as unavailable.`,
+    action: 'Open Plugins',
   },
   unloaded: {
     heading: 'Folders that did not load',
@@ -1647,6 +1816,17 @@ export const AGENT_PAGE_COPY = {
     filteredDescription: 'None of this agent’s chats match these filters.',
     clearFilters: 'Clear filters',
   },
+  /** A plugin's agent: read-only, with Duplicate to make a copy the owner can edit (COR-1873). */
+  plugin: {
+    duplicate: 'Duplicate',
+    note: (plugin: string): string =>
+      `The ${plugin} plugin ships this agent, so it is read-only. Duplicate it to make a copy you can edit.`,
+    exists: (name: string): string =>
+      `You already have an agent named ${name}. Open it, or rename or delete it to duplicate this one again.`,
+    notLoaded: 'This agent is not loaded now, so it cannot be duplicated.',
+    forbidden: 'You may not add agents.',
+    failed: 'The agent could not be duplicated.',
+  },
   instructions: {
     heading: 'Instructions',
     builtIn: 'This agent is built in, so its instructions cannot be edited here.',
@@ -1689,6 +1869,9 @@ export const AGENT_PAGE_COPY = {
       always: 'Asks before every call.',
       blocked: 'Never runs. The model is told it was refused.',
     },
+    /** Under `never`, for a tool that declares no tier: Armorer still asks about a call it cannot classify. */
+    neverUnclassifiedHint:
+      'This tool declares no tier, so it still asks before every call, even here.',
     notInCatalog: 'Not offered by this host any more',
     noToolsTitle: 'This host offers no tools',
     noToolsDescription: 'Tools come from the host’s plugins and saved tool sources.',
@@ -2835,9 +3018,11 @@ export const CAPABILITIES_COPY = {
       allow: 'Runs without asking',
       ask: 'Asks you first',
     },
+    /** Where a tool comes from; the host passes Interborough's MCP servers' tools, so its are an MCP server's. */
     sources: {
-      host: 'Provided by this host',
-      bureau: 'Built into Interborough',
+      host: 'MCP server',
+      bureau: 'Built in',
+      plugin: (plugin: string): string => `Plugin ${plugin}`,
     },
     loadFailed: {
       title: 'The tools could not be read',

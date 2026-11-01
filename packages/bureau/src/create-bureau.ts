@@ -3193,6 +3193,10 @@ async function constructBureau<const D extends AgentDefinitions>(
         name.startsWith(`${BUREAU_PLUGIN_NAME}:`),
       ),
     ]);
+    // COR-1892: the tools another plugin contributes, which the tool catalog reports as a plugin's.
+    const pluginToolNames: ReadonlySet<string> = new Set(
+      Object.keys(composedPlugins.tools).filter((name) => !bureauToolNames.has(name)),
+    );
     // COR-1815: built before the catalog, which asks it which revisions a retained run references.
     const agentSnapshots = createAgentSnapshotStore({
       store: runtime.kv,
@@ -3207,6 +3211,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
               tools: agentToolCatalog,
               bureauToolNames,
+              pluginToolNames,
               models,
               resolveGenerate: (row) => models.generate(row),
               ...(options.agentApprovalSecret === undefined

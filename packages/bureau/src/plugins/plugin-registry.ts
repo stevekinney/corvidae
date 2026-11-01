@@ -249,6 +249,8 @@ type PinnedTally = Map<string, Map<string, { id: string; version: string; runs: 
 /** The registry over the records composition produced. */
 export function createPluginRegistry(records: readonly PluginRecord[]): PluginRegistry {
   const laterProblems = new Map<string, PluginProblem[]>();
+  // The MCP apps the host could not build, by plugin name, then app name, with the message.
+  const failedApps = new Map<string, Map<string, string>>();
   const pinned: PinnedTally = new Map();
   let reads: PluginReferenceReads | undefined;
   const started = Promise.withResolvers<void>();
@@ -264,6 +266,11 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         version,
         waitingRuns: runs.size,
       })),
+      ...[...(failedApps.get(name) ?? [])].map(([app, message]): PluginProblem => ({
+        code: 'mcp-app-failed',
+        app,
+        message,
+      })),
       ...(laterProblems.get(name) ?? []),
     ];
   };
@@ -277,6 +284,29 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         records
           .filter((record) => record.status === 'running')
           .map((record) => record.entry.descriptor.name),
+      mcpApps: () =>
+        records.flatMap((record) =>
+          record.status === 'running'
+            ? (record.setup?.result.mcpApps ?? [])
+                .filter((app) => !failedApps.get(record.entry.descriptor.name)?.has(app.name))
+                .map((app) => ({
+                  plugin: record.entry.descriptor.name,
+                  version: record.entry.descriptor.version,
+                  app,
+                }))
+            : [],
+        ),
+      reportMcpAppFailure: (plugin, app, message) => {
+        const record = records.find(
+          (candidate) =>
+            candidate.status === 'running' && candidate.entry.descriptor.name === plugin,
+        );
+        const declared = record?.setup?.result.mcpApps?.some((each) => each.name === app);
+        if (record?.setup === undefined || declared !== true) return;
+        const byApp = failedApps.get(plugin) ?? new Map<string, string>();
+        failedApps.set(plugin, byApp);
+        if (!byApp.has(app)) byApp.set(app, record.setup.redact(message));
+      },
       ready: () => started.promise,
     },
     observe(given) {

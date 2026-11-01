@@ -30,6 +30,8 @@
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { pluginOfAgent } from '../../lib/agent-paths.ts';
+  import AgentPluginNote from './agent-plugin-note.svelte';
   import AgentVersions from './agent-versions.svelte';
   import { settingsOf } from './agent-settings.ts';
 
@@ -47,7 +49,10 @@
   const copy = AGENT_PAGE_COPY.settings;
   const queryClient = useQueryClient();
 
+  const plugin = $derived(pluginOfAgent(id));
   const isFile = $derived(detail?.source === 'file');
+  /** A plugin's agent is a file the owner cannot write: no Delete, no saved versions. */
+  const writable = $derived(isFile && plugin === null);
   const hash = $derived(detail?.hash ?? null);
   const settings = $derived(detail === undefined ? undefined : settingsOf(detail));
 
@@ -111,7 +116,9 @@
 
     <section class="ib-agent-section" aria-label={copy.heading}>
       <SectionHeading level={2} title={copy.heading} />
-      {#if !isFile}
+      {#if plugin !== null}
+        <AgentPluginNote {plugin} />
+      {:else if !isFile}
         <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
       {/if}
       <dl class="ib-agent-settings__list">
@@ -142,7 +149,7 @@
           </div>
         {/if}
       </dl>
-      {#if isFile}
+      {#if writable}
         <div class="ib-agent-settings__actions">
           <Button
             data-changes
@@ -155,7 +162,7 @@
       {/if}
     </section>
 
-    {#if isFile}
+    {#if writable}
       <AgentVersions {id} currentHash={hash} />
     {/if}
   {/if}

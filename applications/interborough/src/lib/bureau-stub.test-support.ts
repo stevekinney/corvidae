@@ -264,6 +264,7 @@ export function catalogFixture(
       tier: 'read-only' as const,
       defaultApproval: 'allow' as const,
       source: 'host' as const,
+      plugin: null,
       users: [],
       ...tool,
     })),

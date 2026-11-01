@@ -1,5 +1,5 @@
 /**
- * The start wizard reads the engine, so `/runs` tells a caller without
+ * The start picker reads the engine's workflows, so `/runs` tells a caller without
  * `workflows:read` so, in the words copy.ts holds, instead of sending them to a form the engine
  * would refuse.
  */
@@ -35,7 +35,7 @@ function open(path: string) {
   } as never);
 }
 
-describe('the engine’s start wizard for a caller who may not read the engine', () => {
+describe('the start picker for a caller who may not read the engine', () => {
   test('?view=start says the engine’s scope is needed', async () => {
     const view = open('/runs?view=start');
 

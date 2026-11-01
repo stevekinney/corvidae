@@ -75,8 +75,7 @@
 
   /**
    * The generated operation-client output types `groups[].key` as `unknown`
-   * (matching `weft.system.registry`'s same conservative-typing pattern —
-   * see `registry-types.ts`'s doc), even though the operation's own Zod
+   * (matching `weft.system.registry`'s same conservative-typing pattern), even though the operation's own Zod
    * schema validates it as `z.union([z.string(), z.null()])`. Narrow it
    * back to the real shape here rather than threading `unknown` through
    * every helper this view calls.

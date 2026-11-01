@@ -149,8 +149,11 @@ describe('a plugin that contributes a provider', () => {
 
 describe('the providers the workspace ships', () => {
   test('declare exactly the four keys the host has always used, and the demo plugin one of its own', () => {
+    // The inspectors plugin ships panels, not a provider, and declares no secret.
     expect(
-      workspacePlugins().map(({ descriptor }) => [descriptor.name, descriptor.secrets]),
+      workspacePlugins()
+        .filter(({ descriptor }) => descriptor.secrets !== undefined)
+        .map(({ descriptor }) => [descriptor.name, descriptor.secrets]),
     ).toEqual([
       ['anthropic', ['anthropic-api-key']],
       ['openai', ['openai-api-key']],
