@@ -26,7 +26,8 @@
     canSkip: boolean;
     /** A write is in flight. */
     busy: boolean;
-    onSkip: () => void;
+    /** Skips the run the button sits beside, named by its time in milliseconds since the epoch. */
+    onSkip: (occurrence: number) => void;
     /** Where the list counts from only when the schedule carries no `nextFireAt`; a test can fix it. */
     now?: number;
   }
@@ -70,8 +71,12 @@
           {#if fire.skipped}
             <Badge variant="neutral">{copy.skipped}</Badge>
           {:else if fire === next && canSkip && !anySkipped}
-            <Button data-changes variant="ghost" size="sm" disabled={busy} onclick={onSkip}
-              >{copy.skipNext}</Button
+            <Button
+              data-changes
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onclick={() => onSkip(fire.at)}>{copy.skipNext}</Button
             >
           {/if}
         </li>

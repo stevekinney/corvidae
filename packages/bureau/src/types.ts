@@ -2108,8 +2108,19 @@ export interface BureauSchedules {
    * Resolves `true`, or `undefined` when no durable engine is composed. A schedule that does not
    * exist, and a workflow file's schedule, reject with `NOT_FOUND`; a schedule that is paused or
    * cancelled has no next run and rejects. `guard` as for {@link BureauSchedules.pause}.
+   *
+   * A fire moves neither the schedule's `revision` nor its `status`, so the run a caller read can
+   * start before the skip is written, and the skip would take the one after it (COR-1985).
+   * `occurrence`, the run the caller means in milliseconds since the epoch (the summary's
+   * `nextFireAt` or `skipUntil`), is compared inside the same write with the schedule's next real
+   * run, and the call rejects with Weft's `ScheduleOccurrenceNotNextError` and writes nothing when
+   * it is neither that run nor the run already skipped. Left out, whichever run is next is skipped.
    */
-  skipNext(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+  skipNext(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+    occurrence?: number,
+  ): Promise<true | undefined>;
 
   /**
    * Start one run of a durable schedule now (COR-1829), by wrapping Weft's `triggerSchedule`, under

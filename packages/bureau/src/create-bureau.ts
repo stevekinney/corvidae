@@ -19632,13 +19632,14 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function skipNextSchedule(
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
+    occurrence?: number,
   ): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    await runtime.durable.engine.skipNextScheduleOccurrence(
-      scheduleId,
-      scheduleTransitionOptions(guard),
-    );
+    await runtime.durable.engine.skipNextScheduleOccurrence(scheduleId, {
+      ...scheduleTransitionOptions(guard),
+      ...(occurrence === undefined ? {} : { occurrence }),
+    });
     return true;
   }
 

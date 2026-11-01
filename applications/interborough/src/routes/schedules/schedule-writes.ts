@@ -5,10 +5,11 @@
  * `bureau.workflows.pause` and `resume` with the hash of the file the caller read, and any other
  * through the engine, which has no stale check.
  */
-import type { HttpClient, ScheduleSummary } from '@lostgradient/weft';
+import { isWeftFault, type HttpClient, type ScheduleSummary } from '@lostgradient/weft';
 
 import {
   cancelAgentSchedule,
+  isOccurrenceNotNext,
   listAgentScheduleMissed,
   pauseAgentSchedule,
   resumeAgentSchedule,
@@ -31,7 +32,7 @@ import {
 
 /** A schedule as the page read it, and what owns it. */
 export type ScheduleTarget = {
-  readonly schedule: Pick<ScheduleSummary, 'id' | 'revision' | 'status' | 'nextFireAt'>;
+  readonly schedule: Pick<ScheduleSummary, 'id' | 'revision' | 'status'>;
   readonly kind: ScheduleKind;
 };
 
@@ -156,10 +157,13 @@ export async function cancelTarget(client: HttpClient, target: ScheduleTarget): 
 }
 
 /**
- * A write that the schedule it was made for is no longer the one the person saw: the engine has no
- * revision to compare inside its own write, so the page reads the schedule again just before it
- * writes and refuses when its revision or status moved. This narrows the window to one round trip
- * and does not close it; the Bureau's schedules close it, because they compare inside the write.
+ * A write that the schedule it was made for is no longer the one the person saw. The engine's
+ * pause, resume, and cancel have no revision to compare inside their own write, so the page reads
+ * the schedule again just before it writes and refuses when its revision or status moved. This
+ * narrows the window to one round trip and does not close it; the Bureau's schedules close it,
+ * because they compare inside the write. A skip names the run it means and the server compares that
+ * inside its own write, so a fire between the read and the skip is refused there and is raised as
+ * this too ({@link skipNextTarget}).
  */
 export class StaleScheduleError extends Error {
   readonly scheduleId: string;
@@ -171,36 +175,51 @@ export class StaleScheduleError extends Error {
   }
 }
 
-/**
- * Refuses a write to an engine schedule that moved on after the page read it. A fire moves
- * `nextFireAt` and not the revision, so a write that names the run it means (a skip) also compares
- * `nextFireAt`: the person chose the run the page showed, not the one that is next by now.
- */
+/** Refuses a write to an engine schedule that moved on after the page read it. */
 async function assertUnchanged(
   client: Pick<HttpClient, 'getSchedule'>,
   target: ScheduleTarget,
-  options: { readonly nextFireAt?: boolean } = {},
 ): Promise<void> {
   const now = await client.getSchedule(target.schedule.id);
   if (
     now === null ||
     now.revision !== target.schedule.revision ||
-    now.status !== target.schedule.status ||
-    (options.nextFireAt === true && now.nextFireAt !== target.schedule.nextFireAt)
+    now.status !== target.schedule.status
   ) {
     throw new StaleScheduleError(target.schedule.id);
   }
 }
 
-/** Skips the next fire of an active schedule, through the service that owns it. */
-export async function skipNextTarget(client: HttpClient, target: ScheduleTarget): Promise<void> {
+/**
+ * Skips the run the person saw (`occurrence`, in milliseconds since the epoch), through the service
+ * that owns the schedule. A fire moves neither the revision nor the status, so the server compares
+ * the run inside its own write; a skip it refuses because that run is no longer the next one is
+ * raised as a {@link StaleScheduleError}, and the page reads the schedule again.
+ */
+export async function skipNextTarget(
+  client: HttpClient,
+  target: ScheduleTarget,
+  occurrence: number,
+): Promise<void> {
   switch (target.kind.kind) {
     case 'agent-run':
-      await skipNextAgentSchedule(target.schedule.id, target.schedule.revision);
+      try {
+        await skipNextAgentSchedule(target.schedule.id, target.schedule.revision, occurrence);
+      } catch (error) {
+        if (isOccurrenceNotNext(error)) throw new StaleScheduleError(target.schedule.id);
+        throw error;
+      }
       return;
     case 'code':
-      await assertUnchanged(client, target, { nextFireAt: true });
-      await skipNextSchedule(client, target.schedule.id);
+      await assertUnchanged(client, target);
+      try {
+        await skipNextSchedule(client, target.schedule.id, occurrence);
+      } catch (error) {
+        if (isWeftFault(error, 'ScheduleOccurrenceNotNextError')) {
+          throw new StaleScheduleError(target.schedule.id);
+        }
+        throw error;
+      }
       return;
     case 'workflow-file':
     case 'unknown':

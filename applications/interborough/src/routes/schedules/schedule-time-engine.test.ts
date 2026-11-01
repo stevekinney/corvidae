@@ -3,11 +3,13 @@
  * a schedule is made in a real engine on a clock the test moves, the engine is asked to skip, and
  * the list must name the run the engine skipped and no time it does not fire at.
  */
+import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient, isWeftFault } from '@lostgradient/weft';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
+import { skipNextSchedule } from './schedule-queries.ts';
 import { upcomingFires } from './schedule-time.ts';
 
 const iso = (at: number | undefined): string | undefined =>
@@ -101,6 +103,40 @@ describe('the next runs against the engine', () => {
       // A page whose clock is a week ahead of the engine still starts the list at `nextFireAt`.
       const [first] = upcomingFires(schedule, 2, clock + 7 * 86_400_000);
       expect(first?.at).toBe(schedule.nextFireAt ?? -1);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+describe('skipping the run the page names, against the engine', () => {
+  test('skips the run that is next, refuses one that is not, and writes nothing for the refusal', async () => {
+    const clock = Date.UTC(2026, 10, 2, 12, 0, 0);
+    const server = await startLiveSourceTestServer({ getNow: () => clock });
+    try {
+      await server.engine.schedule({
+        workflow: 'inventory-sync-sweep',
+        id: 'named',
+        cron: '0 9 * * *',
+        timeZone: 'UTC',
+        input: { warehouseId: 'wh-main' },
+      });
+      const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+      const next = Date.UTC(2026, 10, 3, 9, 0, 0);
+
+      // The run after the one the page showed is not the next run: a fire in between moved it.
+      const refused = await rejectionOf(skipNextSchedule(client, 'named', next + 86_400_000));
+      expect(isWeftFault(refused, 'ScheduleOccurrenceNotNextError')).toBe(true);
+      const unchanged = await client.getSchedule('named');
+      expect(unchanged?.skipUntil).toBeUndefined();
+
+      await skipNextSchedule(client, 'named', next);
+      const skipped = await client.getSchedule('named');
+      expect(skipped?.skipUntil).toBe(next);
+      // The same run again changes nothing.
+      await skipNextSchedule(client, 'named', next);
+      const again = await client.getSchedule('named');
+      expect(again?.skipUntil).toBe(next);
     } finally {
       await server.stop();
     }

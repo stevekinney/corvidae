@@ -322,7 +322,7 @@
           {schedule}
           canSkip={allowed.skipNext && !writeGate.disabled}
           busy={actions.busy}
-          onSkip={() => actions.skipNext.mutate(target)}
+          onSkip={(occurrence) => actions.skipNext.mutate({ target, occurrence })}
         />
         <SchedulePastRuns {schedule} zone={scheduleZone(schedule)} />
       </div>

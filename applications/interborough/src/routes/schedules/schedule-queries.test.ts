@@ -8,7 +8,7 @@
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { HttpClientError, type ScheduleSummary } from '@lostgradient/weft';
+import { HttpClientError, isWeftFault, type ScheduleSummary } from '@lostgradient/weft';
 
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 
@@ -292,12 +292,13 @@ describe('the engine controls of a schedule', () => {
   });
 
   test('skip next posts to the REST address with the client’s headers, and reads a 204 as done', async () => {
-    const seen: { url: string; method: string | undefined; headers: unknown }[] = [];
+    const seen: { url: string; method: string | undefined; headers: unknown; body: unknown }[] = [];
     restore = installFetchImplementation((input, init) => {
       seen.push({
         url: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
         method: init?.method,
         headers: init?.headers,
+        body: init?.body,
       });
       return Promise.resolve(new Response(null, { status: 204 }));
     });
@@ -305,13 +306,15 @@ describe('the engine controls of a schedule', () => {
     await skipNextSchedule(
       { baseUrl: 'http://host:7399', headers: { Authorization: 'Bearer t' } },
       'a b',
+      1_893_488_400_000,
     );
 
     expect(seen).toEqual([
       {
         url: 'http://host:7399/v1/schedules/a%20b/skip-next',
         method: 'POST',
-        headers: { Authorization: 'Bearer t' },
+        headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json' },
+        body: '{"occurrence":1893488400000}',
       },
     ]);
   });
@@ -324,11 +327,32 @@ describe('the engine controls of a schedule', () => {
     );
 
     const refused = await rejectionOf(
-      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1'),
+      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1', 1),
     );
 
     expect(refused).toBeInstanceOf(HttpClientError);
     expect(refused).toMatchObject({ status: 409, message: 'Schedule is paused' });
+  });
+
+  test('skip next carries the weftCode of a skip refused for naming a run that is no longer the next', async () => {
+    restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json(
+          {
+            error: 'The occurrence changed after it was read.',
+            weftCode: 'ScheduleOccurrenceNotNextError',
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    const refused = await rejectionOf(
+      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1', 1),
+    );
+
+    expect(isWeftFault(refused, 'ScheduleOccurrenceNotNextError')).toBe(true);
+    expect(refused).toMatchObject({ status: 409 });
   });
 
   test('skip next keeps the status text when the refusal has no JSON body', async () => {
@@ -337,7 +361,7 @@ describe('the engine controls of a schedule', () => {
     );
 
     const refused = await rejectionOf(
-      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1'),
+      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1', 1),
     );
 
     expect(refused).toMatchObject({ status: 502, message: 'Bad Gateway' });
