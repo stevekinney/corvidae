@@ -1,12 +1,6 @@
 {
   "entries": [
     {
-      "rule": "app-header-class",
-      "file": "src/routes/schedules/schedule-form-drawer.svelte",
-      "subject": ".weft-schedule-drawer__header",
-      "issue": "COR-1979"
-    },
-    {
       "rule": "cinder-selector",
       "file": "src/routes/workflows/detail/async-activity/async-activity-drawer.svelte",
       "subject": ".cinder-code-block",

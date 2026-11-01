@@ -1,59 +1,33 @@
 <script lang="ts">
   /**
-   * Field body for the create/edit schedule drawer (Track B; design
-   * `Weft New Surfaces.dc.html` §A2 — layout binding, see
-   * `overlap-policy.ts`'s doc for the one deliberate copy departure).
-   * Mutates the passed-in `form` (`ScheduleFormState`) instance directly —
-   * a plain rune-backed class, not a bindable prop, so field edits here are
-   * visible to the parent drawer without prop-drilling every field.
-   *
-   * `mode: 'edit'` disables only the fields `weft.schedules.update` cannot
-   * change: workflow type, input payload, and start-paused. `description`,
-   * overlap policy, jitter, backfill, and `revisionPolicy` are all editable
-   * (COR-15 unlocked the first four; WFT-117 wired `revisionPolicy`) —
+   * The fields of the page that edits a code-defined schedule (`schedule-edit.svelte`; design
+   * `Weft New Surfaces.dc.html` §A2 — layout binding, see `overlap-policy.ts`'s doc for the one
+   * deliberate copy departure). A schedule is made on its own page (`new-schedule.svelte`); here the
+   * workflow type is shown and fixed, and `weft.schedules.update` changes the rest: the description,
+   * the cadence, the overlap policy, jitter, backfill, and `revisionPolicy` (COR-15 unlocked the
+   * first four; WFT-117 wired `revisionPolicy`). Mutates the passed-in `form`
+   * (`ScheduleFormState`) instance directly — a plain rune-backed class, not a bindable prop, so
+   * field edits here are visible to the parent without prop-drilling every field.
    * `ScheduleFormState.toUpdateOptions()` sends only the ones that changed.
    */
-  import {
-    Button,
-    Input,
-    JsonEditor,
-    RadioGroup,
-    ScheduleBuilder,
-    Select,
-    Toggle,
-    type ScheduleValue,
-  } from '@lostgradient/cinder';
+  import { Button, Input, RadioGroup, Toggle, type ScheduleValue } from '@lostgradient/cinder';
   import { TriangleAlert } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
   import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '@lostgradient/weft';
 
   import { SCHEDULE_COPY } from '../../app/copy.ts';
-  import { computeNextFires } from '../../lib/format/cron-preview.ts';
   import { FRESH_START_REVISION_HEDGE } from '../../lib/workflow-revision.ts';
   import { OVERLAP_POLICIES } from './overlap-policy.ts';
   import { REVISION_POLICIES } from './revision-policy.ts';
   import type { ScheduleFormState } from './schedule-form-state.svelte.ts';
+  import ScheduleWhen from './schedule-when.svelte';
 
   interface Props {
     form: ScheduleFormState;
-    mode: 'create' | 'edit';
-    /** Registry-driven workflow type options. `undefined` (still loading, errored, or `system:read` unavailable — the create action itself doesn't require it, plan §9.3) or an empty array (the registry resolved successfully but has no registered workflows) both fall back to a free-text field, but with distinct descriptions — "unavailable" vs "no registered workflow types found" — so an authorized schedule creator is never told the server is empty when the lookup merely hasn't settled yet. Only a non-empty array renders the Select. */
-    workflowTypeOptions: readonly string[] | undefined;
-    /** How many types the registry holds, before those another owner starts are left out of `workflowTypeOptions`. Tells an empty registry from one whose every type is reserved. */
-    registeredTypeCount?: number;
   }
 
-  let { form, mode, workflowTypeOptions, registeredTypeCount = 0 }: Props = $props();
-
-  /** Why the workflow type is typed, not chosen: the registry could not be read, is empty, or holds only types that are started elsewhere. */
-  const typedTypeDescription = $derived(
-    workflowTypeOptions === undefined
-      ? 'Registry lookup unavailable — enter the workflow type name.'
-      : registeredTypeCount > 0
-        ? SCHEDULE_COPY.form.allTypesReserved
-        : 'No registered workflow types found — enter the workflow type name.',
-  );
+  let { form }: Props = $props();
 
   function onCadenceChange(next: ScheduleValue): void {
     form.setCadence(next);
@@ -93,7 +67,7 @@
   /**
    * Same `RadioGroup.value`-is-a-plain-string proxy pattern as `overlapDraft`
    * above. Both drafts are submitted in edit mode (`toUpdateOptions()`), so
-   * a stale one-shot capture is a real correctness bug: `schedule-form-drawer.svelte`'s edit-mode `$effect` can reconstruct
+   * a stale one-shot capture is a real correctness bug: `schedule-edit.svelte`'s `$effect` can reconstruct
    * `form` as a brand-new `ScheduleFormState` — e.g. on a background
    * `editDetailQuery` refetch (window focus, an unrelated invalidation)
    * while this component stays mounted — and Svelte does not remount a
@@ -105,7 +79,7 @@
    * warns `state_proxy_equality_mismatch` on raw `!==` comparisons across a
    * reactive-class prop boundary — proxy identity is not the same object
    * the parent's `$state` wraps), the fix lives in the parent:
-   * `schedule-form-drawer.svelte` wraps this component in `{#key form}`,
+   * `schedule-edit.svelte` wraps this component in `{#key form}`,
    * which destroys and recreates it whenever `form` is swapped — the same
    * "let a fresh mount see the current value at construction" idiom
    * `fork-dialog.svelte` already uses for `initialStep`. A one-shot
@@ -122,62 +96,18 @@
 <div class="weft-schedule-form">
   <section class="weft-schedule-form__section">
     <h3 class="weft-schedule-form__section-title">Basics</h3>
-    {#if mode === 'create'}
-      <Input
-        id="weft-schedule-form-id"
-        label="Schedule ID"
-        description="Optional — auto-generated when left blank."
-        placeholder="auto-generate"
-        bind:value={form.id}
-        error={form.errors.id ?? ''}
-      />
-    {/if}
-    {#if mode === 'create' && workflowTypeOptions !== undefined && workflowTypeOptions.length > 0}
-      <Select
-        id="weft-schedule-form-workflow-type"
-        label="Workflow type"
-        bind:value={form.workflowType}
-        options={[
-          // The select starts on no type, so the value the form holds matches an option.
-          { value: '', label: 'Choose a workflow type', disabled: true },
-          ...workflowTypeOptions.map((type) => ({ value: type, label: type })),
-        ]}
-        error={form.errors.workflowType ?? ''}
-      />
-    {:else if mode === 'create'}
-      <Input
-        id="weft-schedule-form-workflow-type"
-        label="Workflow type"
-        description={typedTypeDescription}
-        bind:value={form.workflowType}
-        error={form.errors.workflowType ?? ''}
-      />
-    {:else}
-      <Input
-        id="weft-schedule-form-workflow-type"
-        label="Workflow type"
-        value={form.workflowType}
-        disabled
-      />
-    {/if}
+    <Input
+      id="weft-schedule-form-workflow-type"
+      label="Workflow type"
+      value={form.workflowType}
+      disabled
+    />
     <Input
       id="weft-schedule-form-description"
       label="Description"
       description="Optional — shown to operators alongside the schedule."
       bind:value={form.description}
     />
-    {#if mode === 'create'}
-      <JsonEditor
-        id="weft-schedule-form-input"
-        label="Input (JSON)"
-        description="The payload passed to each launched run."
-        rows={3}
-        value={form.inputText}
-        onValueChange={(next) => (form.inputText = next)}
-        validFeedbackVisible={false}
-        error={form.errors.input ?? ''}
-      />
-    {/if}
   </section>
 
   <section class="weft-schedule-form__section">
@@ -197,12 +127,7 @@
         >
       </div>
     {:else}
-      <ScheduleBuilder
-        value={form.cadence}
-        onValueChange={onCadenceChange}
-        {computeNextFires}
-        label="Cadence"
-      />
+      <ScheduleWhen value={form.cadence} onValueChange={onCadenceChange} label="Cadence" />
     {/if}
   </section>
 
@@ -223,27 +148,14 @@
       {/each}
     </RadioGroup>
 
-    <div class="weft-schedule-form__row">
-      <Input
-        id="weft-schedule-form-jitter"
-        label="Jitter"
-        description="Random delay added to each fire."
-        placeholder="30s"
-        bind:value={form.jitterText}
-        error={form.errors.jitter ?? ''}
-      />
-      <label class="weft-schedule-form__toggle-field">
-        <Toggle
-          id="weft-schedule-form-start-paused"
-          label="Start paused"
-          disabled={mode === 'edit'}
-          bind:checked={form.startPaused}
-        />
-        <span class="weft-schedule-form__toggle-description">
-          Created paused — no fires until you resume it.
-        </span>
-      </label>
-    </div>
+    <Input
+      id="weft-schedule-form-jitter"
+      label="Jitter"
+      description="Random delay added to each fire."
+      placeholder="30s"
+      bind:value={form.jitterText}
+      error={form.errors.jitter ?? ''}
+    />
 
     <label class="weft-schedule-form__backfill">
       <Toggle
@@ -260,11 +172,6 @@
           immediately in a bounded catch-up window instead of being skipped.
         </span>
       </div>
-    {/if}
-    {#if mode === 'edit'}
-      <p class="weft-schedule-form__edit-note">
-        Workflow type, input payload, and start-paused can only be set at creation.
-      </p>
     {/if}
   </section>
 
@@ -285,7 +192,7 @@
         />
       {/each}
     </RadioGroup>
-    {#if mode === 'edit' && revisionPolicyDraft === 'pinned' && revisionPolicyDraft !== form.initialRevisionPolicy}
+    {#if revisionPolicyDraft === 'pinned' && revisionPolicyDraft !== form.initialRevisionPolicy}
       <div class="weft-schedule-form__backfill-warning">
         <TriangleAlert aria-hidden="true" size={14} />
         <span>
@@ -316,28 +223,6 @@
     font-weight: 600;
   }
 
-  .weft-schedule-form__row {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-  }
-
-  .weft-schedule-form__row > :global(*) {
-    flex: 1;
-  }
-
-  .weft-schedule-form__toggle-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .weft-schedule-form__toggle-description,
-  .weft-schedule-form__edit-note {
-    font-size: var(--cinder-text-2xs);
-    color: var(--cinder-text-disabled);
-  }
-
   .weft-schedule-form__backfill-warning {
     display: flex;
     align-items: flex-start;
@@ -348,9 +233,5 @@
     border-radius: var(--cinder-radius-md);
     color: var(--cinder-status-warning-text);
     font-size: var(--cinder-text-xs);
-  }
-
-  .weft-schedule-form__edit-note {
-    margin: 0;
   }
 </style>

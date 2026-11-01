@@ -80,42 +80,8 @@ export function fetchScheduleDetail(
   return client.getSchedule(id);
 }
 
-/**
- * The one call the registry-driven workflow picker needs (plan §9.3:
- * "workflow picker from registry"), narrowed to its exact shape rather than
- * `Pick<HttpClient, 'operations'>` — the full `operations` catalog type
- * requires every one of its ~50 typed methods to be present even on a
- * structural stub, which defeats testing this in isolation. A real
- * `HttpClient` satisfies this narrower interface structurally.
- *
- * `activeRevisions` is typed `unknown` (matching the generated catalog's
- * own output type for this operation — its free-form registry snapshot
- * isn't deeply typed there either), so `fetchRegisteredWorkflowTypes`
- * narrows it with a runtime guard before reading keys off it. Reading
- * `activeRevisions` (a `name -> revision` map, v2 — WFT-6) rather than
- * `workflows` (now a `WorkflowRevisionManifest[]`) is deliberate: it is
- * exactly the currently-active workflow-name set the picker wants, with no
- * need to filter the manifest array by revision itself.
- */
-export interface RegistryProbeClient {
-  readonly operations: {
-    'weft.system.registry': (
-      input: Record<string, never>,
-    ) => Promise<{ readonly activeRevisions: unknown }>;
-  };
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Sorted workflow type names from `GET /api/v1/registry` (`system:read`) for the create/edit form's workflow picker. */
-export async function fetchRegisteredWorkflowTypes(
-  client: RegistryProbeClient,
-): Promise<readonly string[]> {
-  const snapshot = await client.operations['weft.system.registry']({});
-  const activeRevisions = isPlainObject(snapshot.activeRevisions) ? snapshot.activeRevisions : {};
-  return Object.keys(activeRevisions).toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 export interface CreateScheduleArgs {

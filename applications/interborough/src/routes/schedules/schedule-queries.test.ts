@@ -15,7 +15,6 @@ import { installFetchImplementation } from '../../lib/live-source/fetch.test-sup
 import {
   cancelSchedule,
   createSchedule,
-  fetchRegisteredWorkflowTypes,
   fetchScheduleDetail,
   fetchScheduleList,
   fetchScheduleRunHistory,
@@ -114,29 +113,6 @@ describe('fetchScheduleDetail', () => {
 
     const missing = { getSchedule: async () => null };
     expect(await fetchScheduleDetail(missing, 'missing')).toBeNull();
-  });
-});
-
-describe('fetchRegisteredWorkflowTypes', () => {
-  test('returns sorted workflow type names from the registry snapshot', async () => {
-    const client = {
-      operations: {
-        'weft.system.registry': async () => ({
-          registryVersion: 2 as const,
-          activeRevisions: {
-            'report-gen': 'report-gen-rev',
-            'cache-warm': 'cache-warm-rev',
-            'invoice-batch': 'invoice-batch-rev',
-          },
-        }),
-      },
-    };
-
-    expect(await fetchRegisteredWorkflowTypes(client)).toEqual([
-      'cache-warm',
-      'invoice-batch',
-      'report-gen',
-    ]);
   });
 });
 

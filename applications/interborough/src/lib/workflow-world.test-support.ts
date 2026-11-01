@@ -323,6 +323,10 @@ export type World = {
   missedFires: Record<string, { occurrence: number; reason: 'late' | 'dst-gap'; count: number }[]>;
   /** What `bureau.agents.list` answers. */
   agents: Array<Record<string, unknown>>;
+  /** The chats `bureau.contexts.list` answers with, as the Bureau's `chat` sessions. */
+  contexts: Array<Record<string, unknown>>;
+  /** Makes `bureau.contexts.list` answer with a fault, as a Bureau that is down would. */
+  failContexts: boolean;
   /** Makes `bureau.schedules.list` answer with a fault, as a Bureau that is down would. */
   failBureauSchedules: boolean;
   /** Makes `bureau.workflows.list` answer with a fault, as a Bureau that is down would. */
@@ -347,6 +351,8 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     scheduleInputs: {},
     missedFires: {},
     agents: [],
+    contexts: [],
+    failContexts: false,
     failBureauSchedules: false,
     failBureauFiles: false,
     ...overrides,
@@ -463,6 +469,10 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
 
   const bureauHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
     'bureau.agents.list': () => ({ agents: world.agents }),
+    'bureau.contexts.list': () => {
+      if (world.failContexts) throw workflowFaults.unavailable();
+      return { contexts: world.contexts, nextOffset: null };
+    },
     'bureau.schedules.list': () => {
       if (world.failBureauSchedules) throw workflowFaults.unavailable();
       return { schedules: world.schedules.filter(bureauKnows).map(bureauView), nextOffset: null };
@@ -716,11 +726,6 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       const limit = typeof params['limit'] === 'number' ? params['limit'] : matching.length;
       return { items: matching.slice(0, limit), total: matching.length };
     },
-    'weft.system.registry': () => ({
-      activeRevisions: Object.fromEntries(
-        world.definitions.map((definition) => [definition.name, definition.revision]),
-      ),
-    }),
     'weft.workflows.revisions.list': (params) =>
       world.installedRevisions[String(params['name'])] ?? [],
     'weft.workflows.active.get': () => {

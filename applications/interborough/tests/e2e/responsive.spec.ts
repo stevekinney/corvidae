@@ -28,7 +28,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { rm } from 'node:fs/promises';
 
 import { SEEDED_GOAL_RUN_IDENTIFIER } from '@lostgradient/plugin-demo';
-import { STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { SCHEDULE_COPY, STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { routes } from '../../src/app/routes.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
@@ -135,6 +135,10 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/reviews (review open)': /wwwwwwwwww/,
   '/reviews (done tab, review open)': /wwwwwwwwww/,
   '/schedules': /inventory-sync/,
+  // Before a workflow is chosen, which `reveal` does for the variants, the page prints its lead.
+  '/schedules/new': /A schedule runs a workflow on a timer/,
+  '/schedules/new (chat)': /A schedule runs a workflow on a timer/,
+  '/schedules/new (workflow)': /A schedule runs a workflow on a timer/,
   // The long-named schedule's page prints its next runs and the zone they are shown in.
   '/schedules/:schedule': /Next runs/,
   '/schedules/:schedule/edit': /Description/,
@@ -275,6 +279,20 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
   await untilQuiet(page);
 }
 
+/** Types into a picker and chooses the option with that text, as a person does. */
+async function choosePicker(
+  page: Page,
+  label: RegExp,
+  query: string,
+  option: string,
+): Promise<void> {
+  await page.getByRole('combobox', { name: label }).fill(query);
+  await page
+    .getByRole('option', { name: new RegExp(option) })
+    .first()
+    .click();
+}
+
 /**
  * What a page needs done before it prints a seeded value: the storage page lists keys a page at a
  * time, so it searches for the long key's start and opens the key.
@@ -284,6 +302,26 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   '/workflows/:workflow/run (code, on a schedule)': async (page) => {
     await page.getByRole('radio', { name: new RegExp(WORKFLOW_COPY.runSetup.schedule) }).click();
     await expect(page.getByRole('combobox', { name: 'Time zone' })).toBeVisible();
+  },
+  // The built-in chat asks for an agent and a message, and a chat to continue: the seeded chat whose title is one 300-character word.
+  '/schedules/new (chat)': async (page) => {
+    await choosePicker(page, /^Workflow/, 'chat', SCHEDULE_COPY.create.chat.label);
+    await expect(page.getByTestId('new-schedule-chat-input')).toBeVisible();
+    await choosePicker(
+      page,
+      new RegExp(`^${SCHEDULE_COPY.create.chatLabel}`),
+      'responsive-memory',
+      'responsive-memory',
+    );
+    await expect(page.getByLabel(new RegExp(`^${SCHEDULE_COPY.create.chatLabel}`))).toHaveValue(
+      /responsive-memory/,
+    );
+  },
+  // A code-defined workflow follows with its input (this host's declares none) and the engine's options.
+  '/schedules/new (workflow)': async (page) => {
+    await choosePicker(page, /^Workflow/, 'order', 'Order Processing');
+    await expect(page.getByTestId('new-schedule-no-input')).toBeVisible();
+    await expect(page.getByLabel('Jitter')).toBeVisible();
   },
   // The file's header carries its four actions; measure the page only once all four are there.
   '/workflows/:workflow (file)': async (page) => {

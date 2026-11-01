@@ -43,6 +43,8 @@ export const queryKeys = {
   contexts: {
     /** One chat session, as `bureau.contexts.get` shows it. */
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
+    /** The newest chats, for a picker that continues one (`bureau.contexts.list`). */
+    picker: () => ['contexts', 'picker'] as const,
     /** How full one chat's context window is, and what fills it (`bureau.contexts.window`). */
     window: (contextId: string) => ['contexts', 'window', contextId] as const,
     /** One chat as a row of the chat list, read apart from the chat's own page. */

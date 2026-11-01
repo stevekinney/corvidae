@@ -1,16 +1,13 @@
 /**
- * COR-1494: what the create drawer and the edit page offer for each kind of schedule.
+ * COR-1494: what the edit page offers for each kind of schedule.
  *
  * - Editing an agent run offers exactly the cadence, the description, and the overlap policy
  *   (`skip` or `allow`), which are the fields `bureau.schedules.update` takes. A code-defined
- *   schedule keeps the engine's full drawer. A workflow file's schedule has no drawer, because its
+ *   schedule keeps the engine's full page. A workflow file's schedule has no form, because its
  *   cadence is the trigger in the file.
- * - Creating asks what to start. An agent run goes through `bureau.schedules.create`, and a
- *   code-defined workflow type through the engine. The list of types leaves out the agent-authored
- *   ones, whose schedule is the file's own trigger, and `agentRun`, whose schedules only the agent
- *   choice makes, with its owner and agent checks.
  *
- * Driven against `installWorkflowWorld`, as `schedule-owners.test.ts` is.
+ * Making a schedule is its own page (`new-schedule.test.ts`). Driven against
+ * `installWorkflowWorld`, as `schedule-owners.test.ts` is.
  */
 import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
@@ -27,7 +24,6 @@ import {
   readyFile,
   scheduleFixture,
   sourceDefinition,
-  workflowFaults,
   type WorkflowStub,
   type World,
 } from '../../lib/workflow-world.test-support.ts';
@@ -95,31 +91,14 @@ function open(
   return render(IndexHarness, { props: { client: stub.client, externalBureau: true } });
 }
 
-/** The drawer, once it has the form for the schedule's kind. */
-async function drawer(name: 'Edit schedule' | 'Create schedule') {
+/** The edit page, once it has the form for the schedule's kind. */
+async function drawer(name: 'Edit schedule') {
   const view = within(document.body);
-  if (name === 'Edit schedule') {
-    await view.findByRole('heading', { level: 1, name });
-    return requireElement(document.querySelector('[data-page="schedule-edit"]'), HTMLElement);
-  }
-  return view.findByRole('dialog', { name });
+  await view.findByRole('heading', { level: 1, name });
+  return requireElement(document.querySelector('[data-page="schedule-edit"]'), HTMLElement);
 }
 
 const OVERLAP = 'If a run is still going when the next fire is due';
-
-/** Opens "Advanced: start a code-defined workflow", whose fields are not there until it is open. */
-async function openWorkflowFields(dialog: ReturnType<typeof within>): Promise<void> {
-  await fireEvent.click(
-    await dialog.findByRole('button', { name: SCHEDULE_COPY.form.advancedWorkflowLabel }),
-  );
-}
-
-/** Opens the "Advanced" disclosure of an agent run, which holds the session to continue. */
-async function openAdvanced(dialog: ReturnType<typeof within>): Promise<void> {
-  await fireEvent.click(
-    await dialog.findByRole('button', { name: SCHEDULE_COPY.form.advancedLabel }),
-  );
-}
 
 /** The checkbox that skips a fire while the previous run is still going. */
 const SKIP = SCHEDULE_COPY.form.skipOverlapLabel;
@@ -154,7 +133,7 @@ describe('editing an agent run', () => {
     expect(dialog.queryByRole('radio', { name: /Queue/ })).toBeNull();
   });
 
-  test('saves through bureau.schedules.update, with the cadence and the revision the drawer read', async () => {
+  test('saves through bureau.schedules.update, with the cadence and the revision the page read', async () => {
     open(`/schedules/${AGENT_SCHEDULE}/edit`);
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
@@ -265,313 +244,7 @@ describe('editing a workflow file’s schedule', () => {
   });
 });
 
-describe('creating a schedule', () => {
-  test('starts an agent without choosing a kind: an agent, what to send, a cadence, a description, and whether to skip a fire', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-    // There is no question of what to start: the first thing asked is the agent.
-    expect(dialog.queryByRole('radio', { name: 'An agent run' })).toBeNull();
-
-    const agent = await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel });
-    expect([...(agent as HTMLSelectElement).options].map((option) => option.value)).toEqual([
-      '',
-      'tool-runner',
-      'assistant',
-    ]);
-    expect(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel)).not.toBeNull();
-    expect(dialog.getByLabelText(SCHEDULE_COPY.form.descriptionLabel)).not.toBeNull();
-    expect((dialog.getByLabelText(SKIP) as HTMLInputElement).checked).toBe(true);
-    // The session to continue is optional, and under "Advanced".
-    expect(dialog.queryByLabelText(SCHEDULE_COPY.form.sessionLabel)).toBeNull();
-    await openAdvanced(dialog);
-    expect(await dialog.findByLabelText(SCHEDULE_COPY.form.sessionLabel)).not.toBeNull();
-    // The engine's workflow type, its id, and its input are not part of an agent run.
-    expect(dialog.queryByLabelText('Workflow type')).toBeNull();
-    expect(dialog.queryByLabelText('Schedule ID')).toBeNull();
-  });
-
-  test('creates an agent run through bureau.schedules.create, and opens it', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-
-    expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
-    await fireEvent.change(
-      await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel }),
-      {
-        target: { value: 'tool-runner' },
-      },
-    );
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
-      target: { value: 'Summarize yesterday.' },
-    });
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.descriptionLabel), {
-      target: { value: 'Nightly' },
-    });
-    await openAdvanced(dialog);
-    await fireEvent.input(await dialog.findByLabelText(SCHEDULE_COPY.form.sessionLabel), {
-      target: { value: 'digest-session' },
-    });
-    await waitFor(() =>
-      expect(dialog.getByRole('button', { name: 'Create schedule' })).not.toBeDisabled(),
-    );
-    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
-
-    await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
-    expect(stub?.callsTo('bureau.schedules.create')[0]?.params).toEqual({
-      agentName: 'tool-runner',
-      spec: '1h',
-      input: 'Summarize yesterday.',
-      description: 'Nightly',
-      sessionId: 'digest-session',
-      overlap: 'skip',
-    });
-    // Nothing went to the engine's create.
-    expect(stub?.callsTo('POST /schedules')).toEqual([]);
-    await waitFor(() => expect(router.pathname).toMatch(/^\/schedules\/schedule-created-/));
-  });
-
-  test('refuses an overlap of allow for a schedule that continues a session, before it asks the Bureau', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-    await fireEvent.change(
-      await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel }),
-      {
-        target: { value: 'tool-runner' },
-      },
-    );
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
-      target: { value: 'Hello' },
-    });
-    await openAdvanced(dialog);
-    await fireEvent.input(await dialog.findByLabelText(SCHEDULE_COPY.form.sessionLabel), {
-      target: { value: 'digest-session' },
-    });
-    await fireEvent.click(dialog.getByLabelText(SKIP));
-
-    await dialog.findByText(SCHEDULE_COPY.form.sessionWithAllow, { exact: false });
-    expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
-    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
-  });
-
-  test('says in the drawer what the Bureau refused', async () => {
-    open('/schedules?create=1', {}, (installed) =>
-      installed.on('bureau.schedules.create', () => {
-        throw workflowFaults.invalidParams();
-      }),
-    );
-    const dialog = within(await drawer('Create schedule'));
-    await fireEvent.change(
-      await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel }),
-      {
-        target: { value: 'tool-runner' },
-      },
-    );
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
-      target: { value: 'Hello' },
-    });
-
-    await waitFor(() =>
-      expect(dialog.getByRole('button', { name: 'Create schedule' })).not.toBeDisabled(),
-    );
-    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
-
-    await dialog.findByText(/contains a dot/);
-  });
-
-  test('offers the code-defined workflow types, and leaves out the agent-authored ones and agentRun', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-
-    // The typed name stands in until the registry answers, and then the list of types replaces it.
-    const type = (await dialog.findByRole('combobox', {
-      name: 'Workflow type',
-    })) as HTMLSelectElement;
-    const values = () => [...type.options].map((option) => option.value);
-    // Both types the Bureau owns are in the registry, and neither is offered.
-    await waitFor(() => expect(values()).toContain('order-processing'));
-    expect(values()).toEqual(['', 'inventory-sync', 'order-processing']);
-    // None of the types the Bureau's run engine registers is offered, whichever they are.
-    for (const reserved of RUN_ENGINE_WORKFLOW_TYPES)
-      expect(values(), reserved).not.toContain(reserved);
-    expect(values()).not.toContain('agentRun');
-    expect(values()).not.toContain('digest');
-  });
-
-  test('says why nothing is offered when the registry holds only reserved types, and keeps the free-text field', async () => {
-    // A host whose console is the Bureau's engine and whose registry holds nothing else.
-    open('/schedules?create=1', {
-      definitions: RUN_ENGINE_WORKFLOW_TYPES.map((type) => codeDefinition(type)),
-      files: [],
-    });
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-
-    await dialog.findByText(SCHEDULE_COPY.form.allTypesReserved);
-    const type = dialog.getByLabelText('Workflow type');
-    expect(type.tagName).toBe('INPUT');
-    expect(dialog.queryByText(/No registered workflow types found/)).toBeNull();
-    // A type that is not in the registry can still be typed and created.
-    await fireEvent.input(type, { target: { value: 'unlisted-type' } });
-    await waitFor(() =>
-      expect(dialog.getByRole('button', { name: 'Create schedule' })).not.toBeDisabled(),
-    );
-  });
-
-  test('says nothing is registered when the registry is empty', async () => {
-    open('/schedules?create=1', { definitions: [], files: [] });
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-
-    await dialog.findByText('No registered workflow types found — enter the workflow type name.');
-    expect(dialog.queryByText(SCHEDULE_COPY.form.allTypesReserved)).toBeNull();
-  });
-
-  test('refuses a typed name that is agentRun or an agent-authored workflow, when the registry cannot be read', async () => {
-    open('/schedules?create=1', {}, (installed) =>
-      installed.on('weft.system.registry', () => {
-        throw workflowFaults.unavailable();
-      }),
-    );
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-    const type = await dialog.findByLabelText('Workflow type');
-    await waitFor(() => expect(type.tagName).toBe('INPUT'));
-
-    await fireEvent.input(type, { target: { value: 'digest' } });
-    await dialog.findByText(SCHEDULE_COPY.form.reservedAgentAuthored, { exact: false });
-    expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
-
-    await fireEvent.input(type, { target: { value: 'agentRun' } });
-    await dialog.findByText(SCHEDULE_COPY.form.reservedAgentRun, { exact: false });
-    expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
-
-    for (const reserved of RUN_ENGINE_WORKFLOW_TYPES.filter((type) => type !== 'agentRun')) {
-      await fireEvent.input(type, { target: { value: reserved } });
-      await dialog.findByText(SCHEDULE_COPY.form.reservedBureauWorkflow, { exact: false });
-      expect(dialog.getByRole('button', { name: 'Create schedule' }), reserved).toBeDisabled();
-    }
-
-    await fireEvent.input(type, { target: { value: 'order-processing' } });
-    await waitFor(() =>
-      expect(dialog.getByRole('button', { name: 'Create schedule' })).not.toBeDisabled(),
-    );
-  });
-
-  test('creates a code-defined workflow’s schedule through the engine', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-    const type = (await dialog.findByRole('combobox', {
-      name: 'Workflow type',
-    })) as HTMLSelectElement;
-
-    // The first type is the one chosen, as for the agent above.
-    await fireEvent.change(type, { target: { value: 'inventory-sync' } });
-    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
-
-    await waitFor(() => expect(stub?.callsTo('POST /schedules').length).toBe(1));
-    expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({ type: 'inventory-sync' });
-    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
-  });
-
-  test('refuses to create while the Bureau’s file list failed, even for a type that is a workflow file’s (probe C23)', async () => {
-    open('/schedules?create=1', { failBureauFiles: true });
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-    const type = (await dialog.findByRole('combobox', {
-      name: 'Workflow type',
-    })) as HTMLSelectElement;
-    // `digest` is a workflow file's type. With the file list unread it is offered, and chosen.
-    await waitFor(() =>
-      expect([...type.options].map((option) => option.value)).toContain('digest'),
-    );
-    await fireEvent.change(type, { target: { value: 'digest' } });
-    await waitFor(() => expect(type.value).toBe('digest'));
-
-    const create = dialog.getByRole('button', { name: 'Create schedule' });
-    expect(create).toBeDisabled();
-    await fireEvent.click(create);
-
-    expect(stub?.callsTo('POST /schedules')).toEqual([]);
-    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
-  });
-
-  test('refuses to create while the Bureau’s file list is still pending, for a type that is chosen', async () => {
-    open('/schedules?create=1', {}, (installed) =>
-      // Never answers, so the list stays pending for the whole test.
-      installed.on('bureau.workflows.list', () => new Promise<never>(() => undefined)),
-    );
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-    const type = (await dialog.findByRole('combobox', {
-      name: 'Workflow type',
-    })) as HTMLSelectElement;
-    await waitFor(() =>
-      expect([...type.options].map((option) => option.value)).toContain('digest'),
-    );
-    await fireEvent.change(type, { target: { value: 'digest' } });
-    await waitFor(() => expect(type.value).toBe('digest'));
-    await dialog.findByText(SCHEDULE_COPY.form.overlayLoading, { exact: false });
-
-    const create = dialog.getByRole('button', { name: 'Create schedule' });
-    expect(create).toBeDisabled();
-    await fireEvent.click(create);
-
-    expect(stub?.callsTo('POST /schedules')).toEqual([]);
-  });
-
-  test('does not offer a workflow type until the Bureau has said which are agent-authored', async () => {
-    open('/schedules?create=1', { failBureauFiles: true });
-    const dialog = within(await drawer('Create schedule'));
-    await openWorkflowFields(dialog);
-
-    await dialog.findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
-    expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
-  });
-});
-
-describe('the drawers when something is not as it was', () => {
-  test('a new agent run takes a typed agent name when the Bureau cannot list the agents', async () => {
-    open('/schedules?create=1', {}, (installed) =>
-      installed.on('bureau.agents.list', () => {
-        throw workflowFaults.unavailable();
-      }),
-    );
-    const dialog = within(await drawer('Create schedule'));
-
-    const agent = await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel);
-    await waitFor(() => expect(agent.tagName).toBe('INPUT'));
-    await fireEvent.input(agent, { target: { value: 'assistant' } });
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
-      target: { value: 'Hello' },
-    });
-    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
-
-    await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
-    expect(stub?.callsTo('bureau.schedules.create')[0]?.params).toMatchObject({
-      agentName: 'assistant',
-    });
-  });
-
-  test('says there are no agents when the Bureau lists none', async () => {
-    open('/schedules?create=1', { agents: [] });
-    const dialog = within(await drawer('Create schedule'));
-
-    await dialog.findByText(SCHEDULE_COPY.form.noAgents, { exact: false });
-  });
-
-  test('closes with Cancel, and creates nothing', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-
-    await fireEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
-
-    await waitFor(() => expect(router.search.get('create')).toBeNull());
-    expect(stub?.callsTo('POST /schedules')).toEqual([]);
-    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
-  });
-
+describe('the edit pages when something is not as it was', () => {
   test('an edit says so when the Bureau has not said what the schedule is, and offers nothing', async () => {
     // A workflow file's schedule: only the Bureau says whose it is, and it did not answer.
     open(`/schedules/${FILE_SCHEDULE}/edit`, {
@@ -645,48 +318,6 @@ describe('the drawers when something is not as it was', () => {
     await dialog.findByText(SCHEDULE_COPY.edit.invalidCadence);
     expect(stub?.callsTo('bureau.schedules.update')).toEqual([]);
     expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}/edit`);
-  });
-
-  test('a new agent run is not created while the cadence builder shows a field out of range', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-    await fireEvent.change(
-      await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel }),
-      { target: { value: 'tool-runner' } },
-    );
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
-      target: { value: 'Hello' },
-    });
-    await fireEvent.change(await dialog.findByLabelText('Repeats'), { target: { value: 'cron' } });
-    await fireEvent.input(dialog.getByLabelText('Hour'), { target: { value: '99' } });
-    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
-
-    await dialog.findByText(SCHEDULE_COPY.edit.invalidCadence);
-    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
-  });
-
-  test('a new agent run’s cadence can be a cron expression, which is sent as written', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-    await fireEvent.change(
-      await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel }),
-      {
-        target: { value: 'tool-runner' },
-      },
-    );
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
-      target: { value: 'Hello' },
-    });
-
-    await fireEvent.change(dialog.getByLabelText('Repeats'), { target: { value: 'cron' } });
-    // The minute field's raw expression, which the cadence follows.
-    const minute = document.querySelector('[id$="cron-field-0-raw"]');
-    if (!(minute instanceof HTMLInputElement)) throw new Error('expected the minute field');
-    await fireEvent.input(minute, { target: { value: '30' } });
-    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
-
-    await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
-    expect(stub?.callsTo('bureau.schedules.create')[0]?.params['spec']).toMatch(/^30 /);
   });
 });
 
@@ -824,27 +455,6 @@ describe('a description that is too long', () => {
     await waitFor(() =>
       expect(dialog.getByRole('button', { name: 'Save changes' })).not.toBeDisabled(),
     );
-  });
-
-  test('says so when a new agent run is created, too', async () => {
-    open('/schedules?create=1');
-    const dialog = within(await drawer('Create schedule'));
-    await fireEvent.change(
-      await dialog.findByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel }),
-      {
-        target: { value: 'tool-runner' },
-      },
-    );
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
-      target: { value: 'Hello' },
-    });
-
-    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.descriptionLabel), {
-      target: { value: TOO_LONG },
-    });
-
-    await dialog.findByText(SCHEDULE_COPY.form.descriptionTooLong(2_000), { exact: false });
-    expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
   });
 });
 
