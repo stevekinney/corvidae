@@ -4,9 +4,11 @@
  * file's asset identifier) rides in the one resume with the others, with no row of the person's to
  * carry it. The stub mount answers the way the Bureau's does (`ag-ui-resume.ts`).
  */
+import { validateSchemaFormValue } from '@lostgradient/cinder';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { CHAT_COPY } from '../../app/copy.ts';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { ChatSessionState } from './chat-session.svelte.ts';
 
@@ -277,5 +279,149 @@ describe('a question answered in its control', () => {
     expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
     // The answer that did not fit is not sent a second time.
     expect(mounted.bodies).toHaveLength(2);
+  });
+});
+
+/**
+ * A question whose answer schema keeps its definitions apart and refers to itself, as the mount
+ * sends it: every local reference rebased under `#/properties/answer` (`responseSchemaFor`).
+ */
+const REBASED_SCHEMA = {
+  type: 'object',
+  properties: {
+    region: { $ref: '#/properties/answer/$defs/region' },
+    children: { type: 'array', items: { $ref: '#/properties/answer' } },
+    note: { type: 'string', default: '#/properties/answer/$defs/region' },
+  },
+  required: ['region'],
+  $defs: { region: { type: 'string', enum: ['eu', 'us'] } },
+};
+const rebased = {
+  id: `human-wait:${NATIVE}:rebased:0`,
+  reason: 'human-wait',
+  message: 'Which region?',
+  responseSchema: responseSchema(REBASED_SCHEMA),
+};
+
+describe('a question whose schema refers to itself', () => {
+  test('is handed to the form with its references back at the schema’s own root', async () => {
+    const mounted = mount([parkedStart([rebased])]);
+    const session = open(mounted.fetch);
+
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    const schema = session.humanRequests[0]?.schema;
+    expect(schema).toEqual({
+      type: 'object',
+      properties: {
+        region: { $ref: '#/$defs/region' },
+        children: { type: 'array', items: { $ref: '#' } },
+        // Data under a `default` is not a reference.
+        note: { type: 'string', default: '#/properties/answer/$defs/region' },
+      },
+      required: ['region'],
+      $defs: { region: { type: 'string', enum: ['eu', 'us'] } },
+    });
+  });
+
+  test('can be answered: the form’s validator resolves its references and checks the answer', async () => {
+    const mounted = mount([parkedStart([rebased])]);
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+    const schema = session.humanRequests[0]?.schema ?? {};
+
+    const fits = await validateSchemaFormValue(schema, {
+      region: 'eu',
+      children: [{ region: 'us' }],
+    });
+    const wrong = await validateSchemaFormValue(schema, { region: 'mars' });
+    const nestedWrong = await validateSchemaFormValue(schema, {
+      region: 'eu',
+      children: [{ region: 'mars' }],
+    });
+
+    expect(fits.valid).toBe(true);
+    expect(wrong.valid).toBe(false);
+    expect(nestedWrong.valid).toBe(false);
+  });
+});
+
+describe('a question answered in its control when the resume is not applied', () => {
+  /** The thread's attach after a refusal: the run is still parked on `environment`. */
+  const stillParked = () => stillParkedOn(environment);
+
+  test('comes back with the reason when the request fails with a 500', async () => {
+    const mounted = mount([
+      parkedStart([environment]),
+      () => new Response('boom', { status: 500 }),
+    ]);
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    const answered = await session.answerQuestion(environment.id, 'staging');
+
+    expect(answered).toBe(false);
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
+    expect(session.failure).toBeDefined();
+    expect(session.failure).not.toBe('');
+  });
+
+  test('comes back with the reason when the request is rejected', async () => {
+    const mounted = mount([
+      parkedStart([environment]),
+      () => {
+        throw new TypeError('network down');
+      },
+    ]);
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    const answered = await session.answerQuestion(environment.id, 'staging');
+
+    expect(answered).toBe(false);
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
+    expect(session.failure).toBeDefined();
+  });
+
+  test('comes back with the reason when the thread is busy', async () => {
+    const busy = () =>
+      sse([{ type: 'RUN_ERROR', message: 'Thread has a run in progress', code: 'THREAD_BUSY' }]);
+    const mounted = mount([parkedStart([environment]), busy], [stillParked]);
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    const answered = await session.answerQuestion(environment.id, 'staging');
+
+    // The thread is read again after the refusal, and says the run still waits on the question.
+    await waitUntil(() => session.humanRequests.length === 1 && !session.streaming, {
+      message: 'the question to be offered again',
+    });
+    expect(answered).toBe(false);
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
+    expect(session.failure).toBe(CHAT_COPY.answerNotSent);
+  });
+
+  test('is answered again from the control that came back, once, without the failed value', async () => {
+    const mounted = mount([
+      parkedStart([environment]),
+      () => new Response('boom', { status: 500 }),
+      success,
+    ]);
+    const session = open(mounted.fetch);
+    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+    await session.answerQuestion(environment.id, 'staging');
+
+    const answered = await session.answerQuestion(environment.id, 'production');
+
+    expect(answered).toBe(true);
+    expect(mounted.bodies).toHaveLength(3);
+    expect(mounted.bodies[2]?.resume).toEqual([
+      {
+        interruptId: environment.id,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: 'production' },
+      },
+    ]);
+    expect(session.humanRequests).toEqual([]);
   });
 });

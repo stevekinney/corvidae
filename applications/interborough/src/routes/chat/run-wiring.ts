@@ -196,6 +196,13 @@ export type ChatRunWiring = {
    */
   holdValue(interruptId: string, value: unknown): boolean;
   /**
+   * Lets go of the value `holdValue` held for `interruptId` when the resume that carried it was not
+   * applied, so the question is offered again. `false` when no such value is held (the resume was
+   * applied, or the thread no longer waits on the question). A typed answer is not released: its
+   * row holds it.
+   */
+  releaseValue(interruptId: string): boolean;
+  /**
    * What the last turn was refused with, once: the one-event `RUN_ERROR` a mount answers a request
    * with that it did not admit, which carries no run's identifier. Nothing for a turn that was not
    * refused. The page reads the thread again after a refused resume.
@@ -363,10 +370,83 @@ function onlyRow(
   return { ...conversation, ids: [message.id], messages: { [message.id]: message } };
 }
 
+/** Where the mount embeds a question's answer schema in the interrupt's response schema. */
+const ANSWER_SCHEMA_BASE = '#/properties/answer';
+
+/** Keywords whose value is one subschema (the mount's `SUBSCHEMA_KEYWORDS`). */
+const SUBSCHEMA_KEYWORDS: ReadonlySet<string> = new Set([
+  'items',
+  'additionalProperties',
+  'contains',
+  'propertyNames',
+  'not',
+  'if',
+  'then',
+  'else',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+  'contentSchema',
+]);
+/** Keywords whose value is an array of subschemas (the mount's `SUBSCHEMA_LIST_KEYWORDS`). */
+const SUBSCHEMA_LIST_KEYWORDS: ReadonlySet<string> = new Set([
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'prefixItems',
+]);
+/** Keywords whose value maps a name the author chose to a subschema (the mount's `SUBSCHEMA_MAP_KEYWORDS`). */
+const SUBSCHEMA_MAP_KEYWORDS: ReadonlySet<string> = new Set([
+  'properties',
+  'patternProperties',
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+]);
+
+/**
+ * `schema` with every local reference the mount rebased under {@link ANSWER_SCHEMA_BASE} moved
+ * back, so the answer schema is a document of its own again: `#/properties/answer/$defs/x` is
+ * `#/$defs/x` and `#/properties/answer` is `#`. It walks only where JSON Schema puts a subschema,
+ * as the mount did when it rebased, so a `default`, `const`, `enum` or `examples` that holds such a
+ * string is data and stays.
+ */
+function withReferencesRebasedToRoot(schema: unknown): unknown {
+  if (!isRecord(schema)) return schema;
+  // Built with `fromEntries`, which defines each key, so a property named `__proto__` stays a key.
+  return Object.fromEntries(
+    Object.entries(schema).map(([key, entry]): [string, unknown] => {
+      if (key === '$ref' && typeof entry === 'string') {
+        if (entry === ANSWER_SCHEMA_BASE) return [key, '#'];
+        if (entry.startsWith(`${ANSWER_SCHEMA_BASE}/`)) {
+          return [key, `#${entry.slice(ANSWER_SCHEMA_BASE.length)}`];
+        }
+        return [key, entry];
+      }
+      if (SUBSCHEMA_KEYWORDS.has(key)) return [key, withReferencesRebasedToRoot(entry)];
+      if (SUBSCHEMA_LIST_KEYWORDS.has(key) && Array.isArray(entry)) {
+        return [key, (entry as unknown[]).map(withReferencesRebasedToRoot)];
+      }
+      if (SUBSCHEMA_MAP_KEYWORDS.has(key) && isRecord(entry)) {
+        return [
+          key,
+          Object.fromEntries(
+            Object.entries(entry).map(([name, child]) => [
+              name,
+              withReferencesRebasedToRoot(child),
+            ]),
+          ),
+        ];
+      }
+      return [key, entry];
+    }),
+  );
+}
+
 /**
  * The schema a question's answer must satisfy: the `answer` property of the interrupt's response
- * schema (`responseSchemaFor` in the mount). The generic resume schema leaves `answer` as `{}`,
- * which says nothing about the answer, so it is no schema.
+ * schema (`responseSchemaFor` in the mount), with its references moved back to its own root. The
+ * generic resume schema leaves `answer` as `{}`, which says nothing about the answer, so it is no
+ * schema.
  */
 function answerSchemaOf(interrupt: Interrupt): Record<string, unknown> | undefined {
   const properties: unknown = isRecord(interrupt.responseSchema)
@@ -374,7 +454,9 @@ function answerSchemaOf(interrupt: Interrupt): Record<string, unknown> | undefin
     : undefined;
   const answer =
     isRecord(properties) && Object.hasOwn(properties, 'answer') ? properties['answer'] : undefined;
-  return isRecord(answer) && Object.keys(answer).length > 0 ? answer : undefined;
+  if (!isRecord(answer) || Object.keys(answer).length === 0) return undefined;
+  const rooted = withReferencesRebasedToRoot(answer);
+  return isRecord(rooted) ? rooted : undefined;
 }
 
 /** The questions among `interrupts`, as the page shows them. */
@@ -737,6 +819,16 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       },
       rowId: undefined,
     });
+    options.onHumanRequests?.(unansweredRequests());
+    return true;
+  }
+
+  function releaseValue(interruptId: string): boolean {
+    const held = answers.get(interruptId);
+    // A typed answer has a row that holds it, and the person's next message takes its place.
+    if (held === undefined || held.rowId !== undefined) return false;
+    answers.delete(interruptId);
+    if (decisions.size === 0 && answers.size === 0) refusedResume = false;
     options.onHumanRequests?.(unansweredRequests());
     return true;
   }
@@ -1229,6 +1321,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     },
     holdAnswer,
     holdValue,
+    releaseValue,
     owesResume: () => refusedResume && (decisions.size > 0 || answers.size > 0),
     owedResumeIncomplete: () => refusedResume && entriesOwed().incomplete,
     takeSettledAnswerRows() {

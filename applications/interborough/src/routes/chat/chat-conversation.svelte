@@ -298,7 +298,9 @@
 
   // Chat lays out the conversation without the Bureau's files in it; they are shown under their
   // rows (`chat-assets.svelte`). An answer to a question is shown as it was typed (`answer-rows.ts`).
-  const shown = $derived(withoutAssetParts(withTypedAnswers(session.conversation)));
+  const shown = $derived(
+    withoutAssetParts(withTypedAnswers(session.conversation, session.schemaOfAnswer)),
+  );
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
   // not finished its last message.

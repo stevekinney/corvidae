@@ -2062,6 +2062,8 @@ export const CHAT_COPY = {
   /** Said while a message waits for the answers sent before it to be applied. */
   answersNotApplied:
     'Your earlier answers have not been applied yet. Your message was not sent; send it again in a moment.',
+  /** Said when an answer chosen in a control could not be applied, and the question is asked again. */
+  answerNotSent: 'Your answer was not applied. Answer the question again.',
   /** The typing indicator's label from a Stop until the turn has ended. */
   stopping: 'Stopping…',
   approve: 'Approve',
