@@ -5,11 +5,15 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
+import { Engine } from '../engine.ts';
+import { DEFAULT_POLL_INTERVAL_MS } from '../types/constants.ts';
 import {
   closeOpenedEngines,
+  engineStorage,
   nextTimerArmed,
   openEngines,
   SCHEDULE_ID,
@@ -17,7 +21,13 @@ import {
   tickB,
 } from './schedule-across-engines.test-support.ts';
 import { ScheduleOccurrenceNotNextError } from './schedule-occurrence-not-next-error.ts';
-import { drainEngine, listRunningWorkflowIds, MINUTE } from './schedule.test-support.ts';
+import {
+  drainEngine,
+  listRunningWorkflowIds,
+  MINUTE,
+  registerWorkflow,
+  START,
+} from './schedule.test-support.ts';
 
 afterEach(closeOpenedEngines);
 
@@ -390,5 +400,248 @@ describe('an interval update that keeps the interval while another engine ticks 
     expect(state.nextFireAt).toBe(occurrence + 5 * MINUTE);
     expect(await shared.get(KEYS.scheduleTick(occurrence, SCHEDULE_ID))).toBeNull();
     expect(await nextTimerArmed(shared)).toBe(true);
+  });
+});
+
+describe('a retained schedule timer delivered again after a tick stood aside from it (COR-1998)', () => {
+  const EVERY_FIVE_MINUTES = { every: '5m' } as const;
+  // One poll interval and a second: how late a tick may reach an occurrence and still run it.
+  const LATE_LIMIT = DEFAULT_POLL_INTERVAL_MS + 1000;
+
+  /**
+   * Engine A ticks `occurrence + lateBy` and is parked at its write; engine B's update keeps the
+   * interval and the occurrence, so A's write loses and A keeps the timer it fired.
+   */
+  async function standAside(
+    opened: Awaited<ReturnType<typeof openEngines>>,
+    occurrence: number,
+    lateBy: number,
+  ): Promise<void> {
+    const { clock, a, engineA, engineB } = opened;
+    const hold = a.holdScheduleWrite();
+    clock.now = occurrence + lateBy;
+    const ticking = engineA.scheduler.tick(clock.now);
+    await hold.reached;
+    await engineB.updateSchedule(SCHEDULE_ID, EVERY_FIVE_MINUTES, { description: 'renamed' });
+    hold.release();
+    await ticking;
+    await drainEngine();
+  }
+
+  async function armedOccurrence(opened: Awaited<ReturnType<typeof openEngines>>): Promise<number> {
+    await opened.engineA.updateSchedule(SCHEDULE_ID, EVERY_FIVE_MINUTES);
+    const { nextFireAt } = await stateOf(opened.shared);
+    return nextFireAt!;
+  }
+
+  it('runs the occurrence when the delivery is a poll interval after the tick that stood aside, though that is past the limit counted from the occurrence', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA } = opened;
+    const occurrence = await armedOccurrence(opened);
+    const firstLateBy = 1500;
+    expect(firstLateBy + DEFAULT_POLL_INTERVAL_MS).toBeGreaterThan(LATE_LIMIT);
+
+    await standAside(opened, occurrence, firstLateBy);
+    const stoodAside = await stateOf(shared);
+    expect(stoodAside.lastFireAt).toBeUndefined();
+    clock.now += DEFAULT_POLL_INTERVAL_MS;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(1);
+    expect(state.lastFireAt).toBe(occurrence);
+    expect(state.missedFireCount).toBe(0);
+    expect(state.lastMissedFireAt).toBeUndefined();
+    expect(state.nextFireAt).toBe(occurrence + 5 * MINUTE);
+    expect(await shared.get(KEYS.scheduleTick(occurrence, SCHEDULE_ID))).toBeNull();
+  });
+
+  it('keeps counting from the latest delivery that stood aside when it stands aside again', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA } = opened;
+    const occurrence = await armedOccurrence(opened);
+
+    await standAside(opened, occurrence, 1500);
+    await standAside(opened, occurrence, 1500 + DEFAULT_POLL_INTERVAL_MS);
+    clock.now += DEFAULT_POLL_INTERVAL_MS;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(1);
+    expect(state.lastFireAt).toBe(occurrence);
+    expect(state.missedFireCount).toBe(0);
+  });
+
+  it('records the occurrence missed when the delivery comes more than the limit after the tick that stood aside (the engine was down)', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA } = opened;
+    const occurrence = await armedOccurrence(opened);
+
+    await standAside(opened, occurrence, 1500);
+    clock.now += LATE_LIMIT + 1;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(0);
+    expect(state.lastFireAt).toBeUndefined();
+    expect(state.missedFireCount).toBe(1);
+    expect(state.lastMissedFireAt).toBe(occurrence);
+  });
+
+  it('records the occurrence missed when the first tick to reach it is already past the limit', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA } = opened;
+    const occurrence = await armedOccurrence(opened);
+
+    clock.now = occurrence + LATE_LIMIT + 1;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(0);
+    expect(state.missedFireCount).toBe(1);
+    expect(state.lastMissedFireAt).toBe(occurrence);
+  });
+
+  it('counts a tick that stood aside already past the limit as late when the delivery comes', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA } = opened;
+    const occurrence = await armedOccurrence(opened);
+
+    await standAside(opened, occurrence, LATE_LIMIT + 1);
+    clock.now += DEFAULT_POLL_INTERVAL_MS;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(0);
+    expect(state.lastFireAt).toBeUndefined();
+    expect(state.missedFireCount).toBe(1);
+    expect(state.lastMissedFireAt).toBe(occurrence);
+  });
+
+  it('documents that the other engine, which has not delivered the timer before, counts from the occurrence (the sighting is memory only)', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA, engineB } = opened;
+    const occurrence = await armedOccurrence(opened);
+
+    await standAside(opened, occurrence, 1500);
+    clock.now += DEFAULT_POLL_INTERVAL_MS;
+    await engineB.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(0);
+    expect(state.missedFireCount).toBe(1);
+    expect(state.lastMissedFireAt).toBe(occurrence);
+  });
+
+  it('starts the occurrence of a backfilling schedule however long after the delivery that stood aside', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA } = opened;
+    await engineA.updateSchedule(SCHEDULE_ID, EVERY_FIVE_MINUTES, { backfill: true });
+    const { nextFireAt } = await stateOf(shared);
+    const occurrence = nextFireAt!;
+
+    await standAside(opened, occurrence, 1500);
+    clock.now += 2 * MINUTE;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(1);
+    expect(state.lastFireAt).toBe(occurrence);
+    expect(state.missedFireCount).toBe(0);
+  });
+
+  it('leaves a schedule the other engine paused alone when the timer comes again', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA, engineB } = opened;
+    const occurrence = await armedOccurrence(opened);
+
+    await standAside(opened, occurrence, 1500);
+    await engineB.pauseSchedule(SCHEDULE_ID);
+    clock.now += DEFAULT_POLL_INTERVAL_MS;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(0);
+    expect(state.status).toBe('paused');
+    expect(state.missedFireCount).toBe(0);
+    expect(await shared.get(KEYS.scheduleTick(occurrence, SCHEDULE_ID))).toBeNull();
+  });
+
+  it('leaves a schedule the other engine cancelled alone when the timer comes again', async () => {
+    const opened = await openEngines();
+    const { clock, shared, engineA, engineB } = opened;
+    const occurrence = await armedOccurrence(opened);
+
+    await standAside(opened, occurrence, 1500);
+    await engineB.cancelSchedule(SCHEDULE_ID);
+    clock.now += DEFAULT_POLL_INTERVAL_MS;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(0);
+    const state = await stateOf(shared);
+    expect(state.status).toBe('cancelled');
+    expect(state.missedFireCount).toBe(0);
+    expect(await shared.get(KEYS.scheduleTick(occurrence, SCHEDULE_ID))).toBeNull();
+  });
+
+  it('scales the limit with the poll interval of two engines under a workflow lease', async () => {
+    const pollIntervalMs = 5000;
+    const clock = { now: START };
+    const shared = new BunSQLiteStorage(':memory:');
+    const a = engineStorage(shared);
+    const b = engineStorage(shared);
+    const create = (storage: ReturnType<typeof engineStorage>['storage']) =>
+      Engine.create({
+        recover: false,
+        storage,
+        getNow: () => clock.now,
+        schedulerPollIntervalMs: pollIntervalMs,
+        ownership: 'workflow-lease',
+        backgroundTasks: 'manual',
+        resolveWorkflowServices: async () => ({ status: 'available', services: {} }),
+      });
+    const engineA = await create(a.storage);
+    const engineB = await create(b.storage);
+    try {
+      for (const engine of [engineA, engineB]) {
+        registerWorkflow(engine, 'across-workflow', async function* (ctx) {
+          yield* ctx.waitForSignal('release');
+          return 'done';
+        });
+      }
+      await engineA.schedule('across-workflow', null, EVERY_FIVE_MINUTES, { id: SCHEDULE_ID });
+      const { nextFireAt } = await stateOf(shared);
+      const occurrence = nextFireAt!;
+      const hold = a.holdScheduleWrite();
+      // Past one poll interval from the occurrence by the time the timer comes again, but on time
+      // for each tick counted from the one before.
+      clock.now = occurrence + pollIntervalMs - 2000;
+      const ticking = engineA.scheduler.tick(clock.now);
+      await hold.reached;
+      await engineB.updateSchedule(SCHEDULE_ID, EVERY_FIVE_MINUTES, { description: 'renamed' });
+      hold.release();
+      await ticking;
+      await drainEngine();
+      clock.now += pollIntervalMs;
+      expect(clock.now - occurrence).toBeGreaterThan(pollIntervalMs + 1000);
+      await engineA.scheduler.tick(clock.now);
+      await drainEngine();
+
+      const state = await stateOf(shared);
+      expect(state.lastFireAt).toBe(occurrence);
+      expect(state.missedFireCount).toBe(0);
+    } finally {
+      engineA[Symbol.dispose]();
+      engineB[Symbol.dispose]();
+    }
   });
 });
