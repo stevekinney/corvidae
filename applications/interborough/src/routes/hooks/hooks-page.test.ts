@@ -664,6 +664,29 @@ describe('the hook editor', () => {
     expect(stub?.callsTo('bureau.hooks.update')[0]?.params).not.toHaveProperty('scope');
   });
 
+  test('shows a scope kind it does not know as a disabled choice, and renames the hook without its events', async () => {
+    const { view } = open([hook('alpha', { scope: { kind: 'team', id: 'blue' } })], {
+      path: '/hooks/alpha',
+    });
+    const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
+    await waitFor(() => expect(only.value).toBe('team'));
+    const unknown = Array.from(only.options).find((option) => option.value === 'team');
+    expect(unknown?.disabled).toBe(true);
+    expect(unknown?.textContent?.trim()).toBe(HOOKS_COPY.editor.onlyFor.unknownKind('team'));
+
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.check.nameLabel), {
+      target: { value: 'Renamed' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.update')[0]?.params).toEqual({
+      hookId: 'alpha',
+      expectedRevision: 1,
+      name: 'Renamed',
+    });
+  });
+
   // COR-1978: a remote home cannot hold a signing secret, so it writes every other action.
   test('does not offer a signed message on a remote home, and starts on notify', async () => {
     const { view } = open([], { path: '/hooks/new', hostMode: 'remote' });
@@ -708,7 +731,6 @@ describe('the hook editor', () => {
       hookId: 'alpha',
       expectedRevision: 1,
       name: 'Kept',
-      events: ['review.requested'],
     });
     expect(Object.keys(sent)).not.toContain('signingSecret');
   });
@@ -1034,7 +1056,7 @@ describe('when the Bureau refuses', () => {
 });
 
 describe('the editor for a hook it cannot change the action of', () => {
-  test('a hook from a plugin keeps its action, and saves its name and events only', async () => {
+  test('a hook from a plugin keeps its action, and saves only what changed', async () => {
     const { view } = open(
       [hook('alpha', { action: { type: 'plugin', plugin: 'acme', kind: 'page' }, name: 'Paged' })],
       { path: '/hooks/alpha' },
@@ -1055,7 +1077,6 @@ describe('the editor for a hook it cannot change the action of', () => {
       hookId: 'alpha',
       expectedRevision: 1,
       name: 'Paged',
-      events: ['review.requested'],
     });
   });
 

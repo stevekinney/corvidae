@@ -264,14 +264,19 @@ export class HookFormState {
    * editor changes its name and events only. The secret goes only when one was typed. The action goes
    * only when it differs from the hook's, because the Bureau asks again whether a workflow is
    * allowed whenever an action is sent, and a rename is never held up by a workflow since paused.
-   * The scope goes only when it changed, so a kind this page does not know is left as it is.
+   * The scope goes only when it changed, so a kind this page does not know is left as it is, and the
+   * events go only when they changed, because the Bureau asks whether the scope fits them whenever
+   * they are sent, which would refuse a rename of a hook whose scope kind this page does not know.
    */
   toChange(hook: Hook): HookChange {
     const scopeChanged =
       this.scopeKind !== (hook.scope?.kind ?? '') || this.scopeId !== (hook.scope?.id ?? '');
+    const eventsChanged =
+      this.events.length !== hook.events.length ||
+      this.events.some((event, index) => event !== hook.events[index]);
     return {
       name: this.name.trim() === '' ? null : this.name.trim(),
-      events: [...this.events],
+      ...(eventsChanged ? { events: [...this.events] } : {}),
       ...(scopeChanged ? { scope: this.scope() ?? null } : {}),
       ...(hook.action.type === 'plugin' || !this.actionChanged(hook)
         ? {}

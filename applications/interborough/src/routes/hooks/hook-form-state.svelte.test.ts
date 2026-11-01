@@ -100,7 +100,7 @@ describe('an existing hook', () => {
     expect(form.signingSecret).toBe('');
     expect(form.isValid).toBe(true);
     // The action is the hook's own, so it is not sent again.
-    expect(form.toChange(loaded)).toEqual({ name: 'Kept', events: ['review.requested'] });
+    expect(form.toChange(loaded)).toEqual({ name: 'Kept' });
   });
 
   test('sends the action only when it changed, and a rename never carries a workflow', () => {
@@ -232,5 +232,16 @@ describe('Only for', () => {
     const form = new HookFormState(false);
     form.load(scoped);
     expect(form.toChange(scoped)).not.toHaveProperty('scope');
+  });
+
+  test('renames a hook with a kind it does not know without sending its events', () => {
+    const scoped = hook({ type: 'notify', title: null }, { scope: { kind: 'team', id: 'blue' } });
+    const form = new HookFormState(false);
+    form.load(scoped);
+    form.name = 'Renamed';
+    // The Bureau checks the scope against any events it is sent, and would refuse this rename.
+    expect(form.toChange(scoped)).toEqual({ name: 'Renamed' });
+    form.events = ['goal.failed'];
+    expect(form.toChange(scoped)).toEqual({ name: 'Renamed', events: ['goal.failed'] });
   });
 });

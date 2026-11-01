@@ -68,6 +68,11 @@
     ...(isScopeKind(form.scopeKind) && !allowed.includes(form.scopeKind)
       ? [{ value: form.scopeKind, label: copy.kinds[form.scopeKind], disabled: true }]
       : []),
+    // A kind this page does not know (a newer release wrote it) stays shown, so the select reads
+    // what the hook holds, and cannot be chosen again.
+    ...(form.scopeKind !== '' && !isScopeKind(form.scopeKind)
+      ? [{ value: form.scopeKind, label: copy.unknownKind(form.scopeKind), disabled: true }]
+      : []),
   ]);
 
   /** The subjects of the kind chosen, as the Bureau lists them. */

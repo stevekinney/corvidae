@@ -126,8 +126,12 @@ function parseScope(value: unknown): HookScope | undefined {
  * another action has no `url`, so it is not readable there (see `documentation/hooks.md`).
  */
 function serializedHook(record: HookRecord): string {
+  // A scoped record is written as version 2, so a release that predates scopes refuses to read it
+  // (it reads only version 1) instead of firing it for the whole Bureau. Clearing the scope writes
+  // version 1 again.
+  const versioned = { ...record, version: record.scope === undefined ? 1 : 2 };
   return JSON.stringify(
-    record.action.type === 'webhook' ? { ...record, url: record.action.url } : record,
+    record.action.type === 'webhook' ? { ...versioned, url: record.action.url } : versioned,
   );
 }
 
@@ -140,7 +144,7 @@ function parseHook(raw: string): HookRecord | undefined {
   }
   if (
     !isRecord(value) ||
-    value['version'] !== 1 ||
+    (value['version'] !== 1 && value['version'] !== 2) ||
     typeof value['id'] !== 'string' ||
     typeof value['owner'] !== 'string' ||
     !Array.isArray(value['events']) ||

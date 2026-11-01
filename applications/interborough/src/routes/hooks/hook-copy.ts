@@ -119,6 +119,8 @@ export const HOOKS_COPY = {
       refused:
         'One of these events cannot tell what this is limited to. Remove the event, or choose Everything.',
       loadFailed: 'The choices could not be read.',
+      /** The kind a hook holds that this page does not know: shown, never offered. */
+      unknownKind: (kind: string): string => `${kind} (not editable here)`,
       kinds: { agent: 'One agent', workflow: 'One workflow', schedule: 'One schedule' },
       subject: {
         agent: 'Agent',

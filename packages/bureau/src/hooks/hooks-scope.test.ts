@@ -12,7 +12,7 @@ import type { BureauEventEnvelope } from '../bureau-event-feed.ts';
 import type { WebhookDeliveryEngine } from '../webhook-notifier.ts';
 import { createHooks, type HookScopeInput } from './create-hooks.ts';
 import { type HookSubjectSources, subjectsOfPayload } from './hook-scope.ts';
-import { HOOK_KEY_PREFIX } from './hook-store.ts';
+import { createHookStore, HOOK_KEY_PREFIX } from './hook-store.ts';
 import { type Hook, HookError } from './hook-types.ts';
 
 const RUNS: Readonly<Record<string, Awaited<ReturnType<HookSubjectSources['run']>>>> = {
@@ -287,6 +287,92 @@ describe('writing a scope', () => {
     const stored = JSON.parse((await run.kv.get(`${HOOK_KEY_PREFIX}${hook.id}`))!) as object;
     expect(stored).not.toHaveProperty('scope');
     expect(await run.hooks.get(hook.id)).not.toHaveProperty('scope');
+  });
+});
+
+describe('the stored version of a scoped hook', () => {
+  /** What a release that predates scopes reads: version 1 only. */
+  function readableByOlderRelease(raw: string | null): boolean {
+    return raw !== null && (JSON.parse(raw) as { version?: unknown }).version === 1;
+  }
+
+  it('writes version 2 for a scoped hook, so an older release refuses it, and version 1 without a scope', async () => {
+    const run = setup();
+    const scoped = await run.notifyHook(['run.settled'], { kind: 'agent', id: 'alpha' });
+    const plain = await run.notifyHook(['run.settled']);
+
+    const scopedRaw = await run.kv.get(`${HOOK_KEY_PREFIX}${scoped.id}`);
+    const plainRaw = await run.kv.get(`${HOOK_KEY_PREFIX}${plain.id}`);
+    expect(JSON.parse(scopedRaw!)).toMatchObject({
+      version: 2,
+      scope: { kind: 'agent', id: 'alpha' },
+    });
+    expect(JSON.parse(plainRaw!)).toMatchObject({ version: 1 });
+    expect(readableByOlderRelease(scopedRaw)).toBe(false);
+    expect(readableByOlderRelease(plainRaw)).toBe(true);
+  });
+
+  it('writes version 2 through a rename, and version 1 again once the scope is cleared or set later', async () => {
+    const run = setup();
+    const hook = await run.notifyHook(['run.settled'], { kind: 'agent', id: 'alpha' });
+    const versionOf = async (): Promise<unknown> =>
+      (JSON.parse((await run.kv.get(`${HOOK_KEY_PREFIX}${hook.id}`))!) as { version: unknown })
+        .version;
+
+    await run.hooks.update(hook.id, { name: 'Renamed' });
+    expect(await versionOf()).toBe(2);
+    await run.hooks.update(hook.id, { scope: null });
+    expect(await versionOf()).toBe(1);
+    await run.hooks.update(hook.id, { scope: { kind: 'agent', id: 'beta' } });
+    expect(await versionOf()).toBe(2);
+  });
+
+  it('refuses a scoped webhook hook to an older release too, and still keeps its top-level url', async () => {
+    const kv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
+    const store = createHookStore(kv);
+    await store.createHook({
+      version: 1,
+      id: 'hook-webhook',
+      owner: 'api-key:alice',
+      action: { type: 'webhook', url: 'https://hooks.example.com/receive' },
+      events: ['run.settled'],
+      scope: { kind: 'agent', id: 'alpha' },
+      enabled: true,
+      createdAt: 1,
+      updatedAt: 1,
+      revision: 1,
+    });
+
+    const raw = await kv.get(`${HOOK_KEY_PREFIX}hook-webhook`);
+    expect(JSON.parse(raw!)).toMatchObject({
+      version: 2,
+      url: 'https://hooks.example.com/receive',
+    });
+    expect(readableByOlderRelease(raw)).toBe(false);
+    const stored = await store.getHook('hook-webhook');
+    expect(stored?.record.scope).toEqual({
+      kind: 'agent',
+      id: 'alpha',
+    });
+  });
+
+  it('still reads a scoped record written as version 1, as a release before this rule wrote it', async () => {
+    const run = setup();
+    const hook = await run.notifyHook(['run.settled'], { kind: 'agent', id: 'alpha' });
+    const raw = JSON.parse((await run.kv.get(`${HOOK_KEY_PREFIX}${hook.id}`))!) as object;
+    await run.kv.set(`${HOOK_KEY_PREFIX}${hook.id}`, JSON.stringify({ ...raw, version: 1 }));
+
+    const read = await run.hooks.get(hook.id);
+    expect(read?.scope).toEqual({ kind: 'agent', id: 'alpha' });
+  });
+
+  it('does not read a version it does not know', async () => {
+    const run = setup();
+    const hook = await run.notifyHook(['run.settled'], { kind: 'agent', id: 'alpha' });
+    const raw = JSON.parse((await run.kv.get(`${HOOK_KEY_PREFIX}${hook.id}`))!) as object;
+    await run.kv.set(`${HOOK_KEY_PREFIX}${hook.id}`, JSON.stringify({ ...raw, version: 3 }));
+
+    expect(await run.hooks.get(hook.id)).toBeUndefined();
   });
 });
 

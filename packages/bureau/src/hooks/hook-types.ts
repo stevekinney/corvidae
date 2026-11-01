@@ -141,8 +141,12 @@ export interface Hook {
  * rewritten.
  */
 export interface HookRecord extends Hook {
-  /** The stored shape's version. */
-  readonly version: 1;
+  /**
+   * The stored shape's version: 2 when the record has a `scope`, so a release that predates scopes
+   * refuses it instead of firing it for the whole Bureau, and 1 otherwise. The store sets it on
+   * every write.
+   */
+  readonly version: 1 | 2;
 }
 
 /** What one attempt to deliver came to. */
