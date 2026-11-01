@@ -4,7 +4,7 @@
  * the refusals that no screen reaches, because a schedule is never written through the wrong service
  * for want of knowing which owns it.
  */
-import { throwingRejectionOf } from '@lostgradient/testing';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 import { HttpClient } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -13,8 +13,12 @@ import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
 import {
   actionsOf,
   cancelTarget,
+  missedOf,
   pauseTarget,
   resumeTarget,
+  runNowTarget,
+  skipNextTarget,
+  StaleScheduleError,
   type ScheduleTarget,
 } from './schedule-writes.ts';
 
@@ -48,10 +52,18 @@ describe('what a schedule can be asked to do', () => {
         pause: true,
         resume: false,
         cancel: true,
+        skipNext: true,
+        runNow: true,
         edit: true,
         editInWorkflow: false,
       });
-      expect(actionsOf(target(kind, 'paused'))).toMatchObject({ pause: false, resume: true });
+      // A paused schedule has no next fire to skip, and can still be run.
+      expect(actionsOf(target(kind, 'paused'))).toMatchObject({
+        pause: false,
+        resume: true,
+        skipNext: false,
+        runNow: true,
+      });
     }
   });
 
@@ -61,6 +73,8 @@ describe('what a schedule can be asked to do', () => {
       pause: true,
       resume: false,
       cancel: false,
+      skipNext: false,
+      runNow: false,
       edit: false,
       editInWorkflow: true,
     });
@@ -79,7 +93,15 @@ describe('what a schedule can be asked to do', () => {
   });
 
   test('a cancelled schedule, and one of no known kind, offer nothing', () => {
-    const none = { pause: false, resume: false, cancel: false, edit: false, editInWorkflow: false };
+    const none = {
+      pause: false,
+      resume: false,
+      cancel: false,
+      skipNext: false,
+      runNow: false,
+      edit: false,
+      editInWorkflow: false,
+    };
     expect(actionsOf(target({ kind: 'code' }, 'cancelled'))).toEqual(none);
     expect(actionsOf(target({ kind: 'unknown' }))).toEqual(none);
   });
@@ -104,5 +126,69 @@ describe('a write that no service owns', () => {
     const unnamed = target({ kind: 'workflow-file', file: { ...FILE, hash: null } });
     expect(await throwingRejectionOf(pauseTarget(client, unnamed))).toThrow('no hash');
     expect(await throwingRejectionOf(resumeTarget(client, unnamed))).toThrow('no hash');
+  });
+});
+
+describe('the controls that skip and run', () => {
+  test('are refused for a workflow file’s schedule and for one of no known kind', async () => {
+    for (const kind of [{ kind: 'workflow-file', file: FILE }, { kind: 'unknown' }] as const) {
+      expect(await throwingRejectionOf(skipNextTarget(client, target(kind)))).toThrow(
+        'cannot be skipped',
+      );
+      expect(await throwingRejectionOf(runNowTarget(client, target(kind)))).toThrow(
+        'cannot be run now',
+      );
+    }
+  });
+});
+
+describe('a write to an engine schedule that moved on after it was read', () => {
+  /** An engine whose `getSchedule` answers with the schedule as it is now. */
+  function engineAt(now: { revision: number; status: 'active' | 'paused' | 'cancelled' } | null) {
+    const calls: string[] = [];
+    const fake = {
+      getSchedule: () => Promise.resolve(now),
+      pauseSchedule: (id: string) => Promise.resolve(void calls.push(`pause ${id}`)),
+      resumeSchedule: (id: string) => Promise.resolve(void calls.push(`resume ${id}`)),
+      cancelSchedule: (id: string) => Promise.resolve(void calls.push(`cancel ${id}`)),
+    };
+    return { calls, client: fake as unknown as HttpClient };
+  }
+
+  test('is refused as stale for each write, and nothing is written', async () => {
+    const moved = engineAt({ revision: 4, status: 'active' });
+    for (const write of [pauseTarget, resumeTarget, cancelTarget, skipNextTarget]) {
+      expect(await rejectionOf(write(moved.client, target({ kind: 'code' })))).toBeInstanceOf(
+        StaleScheduleError,
+      );
+    }
+    expect(moved.calls).toEqual([]);
+  });
+
+  test('is refused when the status moved, or the schedule is gone', async () => {
+    for (const now of [{ revision: 3, status: 'paused' as const }, null]) {
+      const moved = engineAt(now);
+      expect(await rejectionOf(pauseTarget(moved.client, target({ kind: 'code' })))).toBeInstanceOf(
+        StaleScheduleError,
+      );
+      expect(moved.calls).toEqual([]);
+    }
+  });
+
+  test('is written when the schedule is the one that was read', async () => {
+    const same = engineAt({ revision: 3, status: 'active' });
+    await pauseTarget(same.client, target({ kind: 'code' }));
+    expect(same.calls).toEqual(['pause s-1']);
+  });
+});
+
+describe('the missed fires of a schedule', () => {
+  const rows = [{ occurrence: 10, reason: 'late' as const, count: 1, recordedAt: 11 }];
+  const engine = {
+    operations: { 'weft.schedules.missed': () => Promise.resolve({ missed: rows }) },
+  } as unknown as Parameters<typeof missedOf>[0];
+
+  test('are read from the engine for a schedule that runs a workflow', async () => {
+    expect(await missedOf(engine, { id: 's-1', workflowType: 'order-processing' })).toEqual(rows);
   });
 });

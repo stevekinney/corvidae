@@ -1,123 +1,116 @@
-/* ── Schedules: a list of what is set to run, and one schedule's page ───────── */
+/* ── Schedules: a table of what is set to run, and one schedule's page ───────── */
 
-.ib-schedules,
 .ib-schedule {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
   min-width: 0;
 }
 
-/* The page header's own padding is left to the shell's outlet, which already pads the page, so the
- * title lines up with the rows. The title and the filters are one bar, and every control in it is one
- * height. It wraps to two lines on a narrow screen, with the controls under the title. */
-.ib-schedules__header .cinder-page-header__row,
-.ib-schedule__header .cinder-page-header__row {
-  flex-wrap: wrap;
-  align-items: center;
-  padding-inline: 0;
-}
-
-.ib-schedules__header .cinder-page-header__actions,
-.ib-schedule__header .cinder-page-header__actions {
-  flex-wrap: wrap;
-  max-width: 100%;
-}
-
-.ib-schedules__filters {
+.ib-schedule__sentence {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-md);
+  overflow-wrap: anywhere;
+}
+
+.ib-schedule__alert {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* The On switch is a control of the header, so it sits with the buttons and keeps its own height. */
+.ib-schedule__switch {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The runs and the details beside them; below the wide breakpoint the details follow the runs. */
+.ib-schedule__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--cinder-space-6);
+  min-width: 0;
+}
+
+@media (min-width: 64rem) {
+  .ib-schedule__layout {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+    align-items: start;
+  }
+}
+
+.ib-schedule__main,
+.ib-schedule__rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-5);
+  min-width: 0;
+}
+
+.ib-schedule__section {
+  display: flex;
+  flex-direction: column;
   gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-schedule__section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+}
+
+.ib-schedule__section-head > p {
   margin: 0;
 }
 
-.ib-schedules__filters > .cinder-form-field {
-  flex: 0 0 11rem;
-}
-
-@media (max-width: 47.99rem) {
-  .ib-schedules__header .cinder-page-header__actions {
-    width: 100%;
-  }
-
-  .ib-schedules__filters {
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .ib-schedules__filters > .cinder-form-field {
-    flex: 1 1 9rem;
-  }
-}
-
-.ib-schedules__list {
+.ib-schedule__fires,
+.ib-schedule__queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* One dense row per schedule: its name, a line of facts, and the start of what it sends. */
-.ib-schedule-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--cinder-space-3);
-  padding-block: var(--cinder-space-2);
-  border-bottom: 1px solid var(--cinder-border-muted);
-}
-
-.ib-schedule-row__body {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-  min-width: 0;
-}
-
-.ib-schedule-row__title {
+.ib-schedule__fire {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--cinder-space-1) var(--cinder-space-2);
-}
-
-.ib-schedule-row__name {
-  font-weight: 600;
-  color: inherit;
-  text-decoration: none;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  min-height: var(--cinder-control-height-sm, 2rem);
   overflow-wrap: anywhere;
 }
 
-.ib-schedule-row__name:hover {
-  text-decoration: underline;
+.ib-schedule__fire[data-skipped='true'] time {
+  color: var(--cinder-text-muted);
+  text-decoration: line-through;
 }
 
-.ib-schedule-row__facts,
-.ib-schedule__status {
+/* The details: a label above its value, one fact to a row, as the page's facts are. */
+.ib-schedule__facts {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--cinder-space-1) var(--cinder-space-2);
+  flex-direction: column;
+  gap: var(--cinder-space-3);
   margin: 0;
+}
+
+.ib-schedule__facts .ib-facts__item dt {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
 }
 
-/* The separator follows its fact, so a line that wraps never begins with one. */
-.ib-schedule-row__facts > :not(:last-child)::after {
-  content: '·';
-  margin-inline-start: var(--cinder-space-2);
-}
-
-.ib-schedule-row__input {
+.ib-schedule__facts .ib-facts__item dd {
   margin: 0;
-  overflow: hidden;
-  color: var(--cinder-text-subtle);
-  font-size: var(--cinder-text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
+/* A kind, an agent or a workflow, and the link to it, wrap instead of widening the page. */
 .ib-schedule-target {
   display: inline-flex;
   flex-wrap: wrap;
@@ -135,102 +128,28 @@
   vertical-align: text-bottom;
 }
 
-.ib-schedule__back {
-  align-self: flex-start;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--cinder-text-subtle);
-  font: inherit;
-  font-size: var(--cinder-text-sm);
-  cursor: pointer;
+.ib-schedule-edit {
+  min-width: 0;
 }
 
-.ib-schedule__status {
-  font-size: var(--cinder-text-md);
+.ib-schedule-edit__body {
+  min-width: 0;
 }
 
-.ib-schedule__input {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.ib-schedule__block {
+.ib-schedule-edit__footer {
   display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-}
-
-.ib-schedule__label {
-  margin: 0;
-  color: var(--cinder-text-subtle);
-  font-size: var(--cinder-text-sm);
-  font-weight: 600;
-}
-
-.ib-schedule__muted {
-  margin: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-schedule__fires,
-.ib-schedule__runs {
-  display: flex;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ib-schedule__fires {
   flex-wrap: wrap;
-  gap: var(--cinder-space-1) var(--cinder-space-2);
-  font-size: var(--cinder-text-sm);
-}
-
-/* The separator follows its item, so a line that wraps never begins with one. */
-.ib-schedule__fires > li:not(:last-child)::after {
-  content: '·';
-  margin-inline-start: var(--cinder-space-2);
-}
-
-.ib-schedule__runs {
-  flex-direction: column;
-  gap: var(--cinder-space-1);
-}
-
-.ib-schedule__runs > li {
-  display: flex;
-  align-items: center;
   gap: var(--cinder-space-2);
+  justify-content: flex-end;
 }
 
-.ib-schedule__run {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--cinder-space-1);
-  color: inherit;
-  text-decoration: none;
-}
-
-.ib-schedule__run:hover {
-  text-decoration: underline;
-}
-
-.ib-schedule__overlap {
-  margin: 0;
+/* The start of what a schedule sends, under its name: one line, cut short rather than wrapped. */
+.ib-schedule__input {
+  margin: var(--cinder-space-1) 0 0;
+  overflow: hidden;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
-}
-
-.ib-schedule__overlap span {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--cinder-space-1);
-}
-
-.ib-schedule__engine {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28rem;
 }

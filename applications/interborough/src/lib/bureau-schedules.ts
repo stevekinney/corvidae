@@ -31,7 +31,11 @@ const viewSchema = z.object({
   status: statusSchema,
   overlap: z.enum(['skip', 'queue', 'cancel-running', 'allow']),
   revision: z.number().int(),
+  /** The IANA zone a cron cadence is read in; `UTC` for an interval and for a schedule made without one. */
+  timeZone: z.string(),
   nextFireAt: z.string().nullable(),
+  /** The fire a person asked to skip, or `null` when none is. */
+  skipUntil: z.string().nullable(),
   lastFireAt: z.string().nullable(),
   missedFireCount: z.number().int(),
   skippedCount: z.number().int(),
@@ -204,4 +208,76 @@ export async function updateAgentSchedule(
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
   return receiptSchema.parse(await callBureau('bureau.schedules.update', params, options));
+}
+
+/** Skips the next fire of an active schedule (`bureau.schedules.skipnext`), guarded by the revision the caller read. */
+export function skipNextAgentSchedule(
+  scheduleId: string,
+  expectedRevision: number | undefined,
+  options?: Options,
+): Promise<BureauScheduleReceipt> {
+  return guardedWrite('bureau.schedules.skipnext', scheduleId, expectedRevision, options);
+}
+
+const runNowSchema = z.discriminatedUnion('outcome', [
+  z.object({ outcome: z.literal('started'), taskId: z.string() }),
+  z.object({ outcome: z.literal('queued'), taskId: z.string() }),
+  z.object({ outcome: z.literal('skipped'), blockingTaskId: z.string().nullable() }),
+]);
+
+/** What a run now did under the schedule's overlap policy: it started, queued behind the running one, or was skipped. */
+export type RunNowOutcome =
+  | { readonly outcome: 'started' | 'queued'; readonly runId: string }
+  | { readonly outcome: 'skipped'; readonly blockingRunId: string | null };
+
+/**
+ * Starts one run of the schedule now (`bureau.schedules.runnow`). The Bureau takes no revision for
+ * it: a run now is not a change to the schedule, and a schedule that was cancelled meanwhile is
+ * refused as a `Conflict`.
+ */
+export async function runNowAgentSchedule(
+  scheduleId: string,
+  options?: Options,
+): Promise<RunNowOutcome> {
+  const answer = runNowSchema.parse(
+    await callBureau('bureau.schedules.runnow', { scheduleId }, options),
+  );
+  return answer.outcome === 'skipped'
+    ? { outcome: 'skipped', blockingRunId: answer.blockingTaskId }
+    : { outcome: answer.outcome, runId: answer.taskId };
+}
+
+const missedRowSchema = z.object({
+  occurrence: z.string(),
+  reason: z.enum(['late', 'dst-gap']),
+  count: z.number().int(),
+  recordedAt: z.string(),
+});
+
+/** One fire a schedule missed, as the schedule recorded it. `occurrence` is the instant it is recorded at. */
+export type MissedFire = {
+  /** The instant the miss is recorded at, in milliseconds: the occurrence's time for `late`, the end of the gap for `dst-gap`. */
+  readonly occurrence: number;
+  /** Why it was missed: the host was down or too slow (`late`), or the clock skipped the time (`dst-gap`). */
+  readonly reason: 'late' | 'dst-gap';
+  /** How many fires the row stands for. */
+  readonly count: number;
+  /** When the schedule recorded the miss, in milliseconds. */
+  readonly recordedAt: number;
+};
+
+/** The fires one schedule missed, newest first (`bureau.schedules.missed`), which a reload still lists. */
+export async function listAgentScheduleMissed(
+  scheduleId: string,
+  options?: Options,
+): Promise<readonly MissedFire[]> {
+  const answer = z
+    .object({ missed: z.array(missedRowSchema) })
+    .parse(await callBureau('bureau.schedules.missed', { scheduleId }, options));
+  return answer.missed.map((row) => ({
+    occurrence: Date.parse(row.occurrence),
+    reason: row.reason,
+    count: row.count,
+    recordedAt: Date.parse(row.recordedAt),
+  }));
 }

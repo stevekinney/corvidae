@@ -41,7 +41,7 @@ describe('ScheduleFormDrawer — create', () => {
     let closed = false;
     try {
       const { getByRole } = render(ScheduleFormDrawerHarness, {
-        props: { client, mode: 'create', onClose: () => (closed = true) },
+        props: { client, onClose: () => (closed = true) },
       });
 
       // A new schedule runs an agent; a code-defined workflow is under "Advanced".
@@ -79,7 +79,7 @@ describe('ScheduleFormDrawer — create', () => {
     let closed = false;
     try {
       const { getByRole } = render(ScheduleFormDrawerHarness, {
-        props: { client, mode: 'create', onClose: () => (closed = true) },
+        props: { client, onClose: () => (closed = true) },
       });
 
       // A new schedule runs an agent; a code-defined workflow is under "Advanced".
@@ -119,7 +119,6 @@ describe('ScheduleFormDrawer — create', () => {
       const { getByRole, getByText } = render(ScheduleFormDrawerHarness, {
         props: {
           client,
-          mode: 'create',
           onClose: () => {},
           scopes: ['schedules:read'],
         },
@@ -143,7 +142,7 @@ describe('ScheduleFormDrawer — create', () => {
 
     try {
       const { getByRole } = render(ScheduleFormDrawerHarness, {
-        props: { client, mode: 'create', onClose: () => {} },
+        props: { client, onClose: () => {} },
       });
 
       // No workflow type chosen yet — invalid.

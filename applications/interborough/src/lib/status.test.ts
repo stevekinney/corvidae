@@ -10,6 +10,7 @@ import type { TaskState } from './bureau-tasks.ts';
 import StatusLabel from './status-label.svelte';
 import {
   goalStatusWord,
+  scheduleStatusWord,
   STATUS_BADGE_VARIANTS,
   STATUS_TONES,
   STATUS_WORDS,
@@ -96,5 +97,13 @@ describe('the word an instance of a workflow reads as', () => {
       expect(workflowRunStatusWord(status as keyof typeof words)).toBe(word);
       expect(STATUS_WORDS).toContain(word);
     }
+  });
+});
+
+describe('the status word of a schedule', () => {
+  test('reads an active schedule as Scheduled, a paused one as Paused and a cancelled one as Canceled', () => {
+    expect(scheduleStatusWord('active')).toBe('Scheduled');
+    expect(scheduleStatusWord('paused')).toBe('Paused');
+    expect(scheduleStatusWord('cancelled')).toBe('Canceled');
   });
 });

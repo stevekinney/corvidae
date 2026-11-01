@@ -13,21 +13,24 @@
  * something genuinely blocks you … make the smallest local workaround"
  * rather than editing the frozen file for one missing key.
  */
-import type {
-  Duration,
-  HttpClient,
-  PaginatedResult,
-  ScheduleFilter,
-  ScheduleOptions,
-  ScheduleOverlapPolicy,
-  ScheduleRevisionPolicy,
-  ScheduleSpec,
-  ScheduleSummary,
-  ScheduleUpdateOptions,
-  WorkflowSummary,
+import {
+  HttpClientError,
+  type Duration,
+  type HttpClient,
+  type PaginatedResult,
+  type ScheduleFilter,
+  type ScheduleOptions,
+  type ScheduleOverlapPolicy,
+  type ScheduleRevisionPolicy,
+  type ScheduleSpec,
+  type ScheduleSummary,
+  type ScheduleUpdateOptions,
+  type WorkflowSummary,
 } from '@lostgradient/weft';
 
 import type { QueryKey } from '@tanstack/svelte-query';
+
+import type { MissedFire, RunNowOutcome } from '../../lib/bureau-schedules.ts';
 
 export function scheduleDetailQueryKey(id: string): QueryKey {
   return ['schedules', 'detail', id] as const;
@@ -35,6 +38,10 @@ export function scheduleDetailQueryKey(id: string): QueryKey {
 
 export function scheduleRunHistoryQueryKey(id: string): QueryKey {
   return ['schedules', 'run-history', id] as const;
+}
+
+export function scheduleMissedQueryKey(id: string): QueryKey {
+  return ['schedules', 'missed', id] as const;
 }
 
 const SCHEDULE_RUN_HISTORY_LIMIT = 10;
@@ -190,4 +197,79 @@ export function cancelSchedule(
   id: string,
 ): Promise<void> {
   return client.cancelSchedule(id);
+}
+
+/** The engine operations a schedule's controls call, narrowed so a plain test fake can satisfy them. */
+export interface ScheduleControlClient {
+  readonly operations: {
+    'weft.schedules.runnow': (input: {
+      scheduleId: string;
+    }) => Promise<
+      | { readonly outcome: 'started'; readonly workflowId: string }
+      | { readonly outcome: 'queued'; readonly workflowId: string }
+      | { readonly outcome: 'skipped'; readonly blockingWorkflowId?: string }
+    >;
+    'weft.schedules.missed': (input: { scheduleId: string }) => Promise<{
+      readonly missed: ReadonlyArray<{
+        readonly occurrence: number;
+        readonly reason: 'late' | 'dst-gap';
+        readonly count: number;
+        readonly recordedAt: number;
+      }>;
+    }>;
+  };
+}
+
+/**
+ * `POST /api/v1/schedules/:id/skip-next` ('weft.schedules.skipnext'): the next fire that would
+ * start a run starts none. It answers `204` with no body, which the JSON-RPC operation client
+ * reads as an invalid response, so this is the REST call, made with the client's own address and
+ * headers. A refusal is an `HttpClientError`, as every other write of the client raises.
+ */
+export async function skipNextSchedule(
+  client: Pick<HttpClient, 'baseUrl' | 'headers'>,
+  id: string,
+): Promise<void> {
+  const response = await fetch(
+    `${client.baseUrl}/v1/schedules/${encodeURIComponent(id)}/skip-next`,
+    { method: 'POST', headers: client.headers },
+  );
+  if (response.ok) return;
+  let message = response.statusText;
+  let data: Record<string, unknown> | undefined;
+  try {
+    const body: unknown = await response.json();
+    if (isPlainObject(body)) {
+      if (typeof body['error'] === 'string') message = body['error'];
+      data = body;
+    }
+  } catch {
+    // A body that is not JSON leaves the status text as the message.
+  }
+  throw new HttpClientError(response.status, message, data === undefined ? {} : { data });
+}
+
+/** `POST /api/v1/schedules/:id/run-now` (`weft.schedules.runnow`): one run now, under the schedule's overlap policy. */
+export async function runNowSchedule(
+  client: Pick<ScheduleControlClient, 'operations'>,
+  id: string,
+): Promise<RunNowOutcome> {
+  const answer = await client.operations['weft.schedules.runnow']({ scheduleId: id });
+  return answer.outcome === 'skipped'
+    ? { outcome: 'skipped', blockingRunId: answer.blockingWorkflowId ?? null }
+    : { outcome: answer.outcome, runId: answer.workflowId };
+}
+
+/** `GET /api/v1/schedules/:id/missed` (`weft.schedules.missed`): the fires the schedule missed, newest first. */
+export async function listScheduleMissed(
+  client: Pick<ScheduleControlClient, 'operations'>,
+  id: string,
+): Promise<readonly MissedFire[]> {
+  const answer = await client.operations['weft.schedules.missed']({ scheduleId: id });
+  return answer.missed.map(({ occurrence, reason, count, recordedAt }) => ({
+    occurrence,
+    reason,
+    count,
+    recordedAt,
+  }));
 }

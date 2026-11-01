@@ -2,8 +2,9 @@
  * COR-1494: the schedules area writes each kind of schedule through the service that owns it, and
  * labels and links each by what it starts. An agent run is the Bureau's (`bureau.schedules.*`, with
  * the revision the page read), a workflow file's schedule is its trigger (`bureau.workflows.pause`
- * and `resume`, with the hash of the file the page read), and any other is the engine's, with no
- * stale check. A write that was stale says so inline, and reloads the row.
+ * and `resume`, with the hash of the file the page read), and any other is the engine's, which has no
+ * revision to compare, so the page reads the schedule again just before it writes. A write that was
+ * stale says so inline, and reloads the row.
  *
  * The list and one schedule's page are driven against `installWorkflowWorld`, a stand-in for the
  * engine and the Bureau that keeps the schedules and files as a world a test can change, and
@@ -68,7 +69,7 @@ function open(path: string, overrides: Partial<World> = {}) {
 }
 
 const row = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLElement>(`li[data-schedule="${id}"]`);
+  container.querySelector<HTMLElement>(`tr[data-schedule="${id}"]`);
 
 /** The list once it has said what each schedule starts. */
 async function listed(container: HTMLElement): Promise<void> {
@@ -85,6 +86,25 @@ async function openMenu(container: HTMLElement, id: string) {
 }
 
 const stale = () => document.body.querySelector('[data-testid="schedule-notice"]');
+
+/** The page's On switch, waited for until it says `on` or off and is free to be pressed again. */
+async function switchIs(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+  on: boolean,
+): Promise<void> {
+  await waitFor(async () => {
+    const toggle = await findByRole('switch', { name: 'On' });
+    expect(toggle.getAttribute('aria-checked')).toBe(String(on));
+    expect((toggle as HTMLButtonElement).disabled).toBe(false);
+  });
+}
+
+/** Presses the page's On switch. */
+async function pressSwitch(
+  findByRole: (role: string, options: { name: string }) => Promise<HTMLElement>,
+): Promise<void> {
+  await fireEvent.click(await findByRole('switch', { name: 'On' }));
+}
 
 describe('what a schedule starts', () => {
   test('is labelled by kind and linked: an agent run to its agent, a workflow to its page', async () => {
@@ -116,12 +136,15 @@ describe('what a schedule starts', () => {
 
   test('is linked the same way on one schedule’s page', async () => {
     const { findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
-    await waitFor(async () => {
-      const target = await findByTestId('schedule-target');
-      expect(target.textContent).toContain('assistant');
-    });
-    const target = await findByTestId('schedule-target');
+    // The sentence under the title and the details beside the runs each say what it runs.
+    const sentence = within(await findByTestId('schedule-status-line'));
+    const target = await sentence.findByTestId('schedule-target');
+    await waitFor(() => expect(target.textContent).toContain('assistant'));
     expect(within(target).getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe(
+      '/agents/assistant',
+    );
+    const rail = within(await findByTestId('schedule-rail'));
+    expect(rail.getByRole('link', { name: 'assistant' }).getAttribute('href')).toBe(
       '/agents/assistant',
     );
   });
@@ -297,33 +320,35 @@ describe('a stale write', () => {
     await waitFor(() => expect(row(container, FILE_SCHEDULE)?.dataset['status']).toBe('paused'));
   });
 
-  test('does not exist for a schedule the engine owns: it has no revision to be stale against', async () => {
+  test('on a schedule the engine owns is refused too, because the page reads it again just before it writes', async () => {
     const { container } = open('/schedules');
     await listed(container);
     const code = stub?.world.schedules.find((schedule) => schedule.id === CODE_SCHEDULE);
     if (code === undefined) throw new Error('expected the seeded schedule');
+    // Another caller changed the schedule after the list read it.
     code.revision = 9;
 
     const view = await openMenu(container, CODE_SCHEDULE);
     await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
 
-    await waitFor(() => expect(row(container, CODE_SCHEDULE)?.dataset['status']).toBe('paused'));
-    expect(stale()).toBeNull();
+    await waitFor(() => expect(stale()).not.toBeNull());
+    expect(stub?.callsTo('POST pause /schedules/:schedule')).toEqual([]);
+    expect(row(container, CODE_SCHEDULE)?.dataset['status']).toBe('active');
   });
 
   test('on one schedule’s page says it changed since it was loaded, and reloads it', async () => {
     const { findByRole, findByText } = open(`/schedules/${AGENT_SCHEDULE}`);
-    const pause = await findByRole('button', { name: /Pause/ });
+    await switchIs(findByRole, true);
     const other = stub?.world.schedules.find((schedule) => schedule.id === AGENT_SCHEDULE);
     if (other === undefined) throw new Error('expected the seeded schedule');
     other.status = 'paused';
     other.revision = 4;
 
-    await fireEvent.click(pause);
+    await pressSwitch(findByRole);
 
     await findByText(SCHEDULE_COPY.stale.title(AGENT_SCHEDULE));
     // Reloaded: what the page offers now is what the schedule is now.
-    await findByRole('button', { name: /Resume/ });
+    await switchIs(findByRole, false);
   });
 });
 
@@ -345,7 +370,7 @@ describe('a workflow file’s schedule', () => {
   test('offers neither on its page, and links to the editor instead', async () => {
     const { findByRole, queryByRole } = open(`/schedules/${FILE_SCHEDULE}`);
 
-    const edit = await findByRole('button', { name: new RegExp(SCHEDULE_COPY.editWorkflowAction) });
+    const edit = await findByRole('link', { name: new RegExp(SCHEDULE_COPY.editWorkflowAction) });
     expect(queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(queryByRole('button', { name: /Cancel/ })).toBeNull();
     await fireEvent.click(edit);
@@ -492,27 +517,28 @@ describe('one schedule’s page, by kind', () => {
   test('an agent run pauses and resumes through the Bureau, naming the revision each time', async () => {
     const { findByRole } = open(`/schedules/${AGENT_SCHEDULE}`);
 
-    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
-    await findByRole('button', { name: /Resume/ });
+    await switchIs(findByRole, true);
+    await pressSwitch(findByRole);
+    await switchIs(findByRole, false);
     expect(stub?.callsTo('bureau.schedules.pause')[0]?.params).toEqual({
       scheduleId: AGENT_SCHEDULE,
       expectedRevision: 3,
     });
-    await fireEvent.click(await findByRole('button', { name: /Resume/ }));
-    await findByRole('button', { name: /Pause/ });
+    await pressSwitch(findByRole);
+    await switchIs(findByRole, true);
     expect(stub?.callsTo('bureau.schedules.resume')[0]?.params).toEqual({
       scheduleId: AGENT_SCHEDULE,
       expectedRevision: 4,
     });
   });
 
-  test('an agent run opens its edit drawer from Edit', async () => {
+  test('an agent run opens its edit page from Edit', async () => {
     const { findByRole } = open(`/schedules/${AGENT_SCHEDULE}`);
 
     await fireEvent.click(await findByRole('button', { name: 'Edit' }));
 
-    await findByRole('dialog', { name: 'Edit schedule' });
-    expect(router.search.get('edit')).toBe('1');
+    await findByRole('heading', { level: 1, name: 'Edit schedule' });
+    expect(router.pathname).toBe(`/schedules/${AGENT_SCHEDULE}/edit`);
   });
 
   test('an agent run is cancelled through the Bureau, after the confirmation', async () => {
@@ -533,10 +559,11 @@ describe('one schedule’s page, by kind', () => {
   test('a workflow file’s schedule pauses and resumes through its file', async () => {
     const { findByRole } = open(`/schedules/${FILE_SCHEDULE}`);
 
-    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
-    await findByRole('button', { name: /Resume/ });
-    await fireEvent.click(await findByRole('button', { name: /Resume/ }));
-    await findByRole('button', { name: /Pause/ });
+    await switchIs(findByRole, true);
+    await pressSwitch(findByRole);
+    await switchIs(findByRole, false);
+    await pressSwitch(findByRole);
+    await switchIs(findByRole, true);
 
     expect(stub?.callsTo('bureau.workflows.pause')[0]?.params).toEqual({
       id: 'digest',
@@ -548,9 +575,10 @@ describe('one schedule’s page, by kind', () => {
   test('a code-defined schedule pauses through the engine', async () => {
     const { findByRole } = open(`/schedules/${CODE_SCHEDULE}`);
 
-    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
+    await switchIs(findByRole, true);
+    await pressSwitch(findByRole);
 
-    await findByRole('button', { name: /Resume/ });
+    await switchIs(findByRole, false);
     expect(stub?.callsTo('POST pause /schedules/:schedule')).toHaveLength(1);
   });
 
@@ -561,7 +589,7 @@ describe('one schedule’s page, by kind', () => {
     });
 
     await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
-    expect(queryByRole('button', { name: /Pause/ })).toBeNull();
+    expect(queryByRole('switch', { name: 'On' })).toBeNull();
     expect(queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
@@ -587,8 +615,9 @@ describe('a code-defined schedule while the Bureau is not answering', () => {
       failBureauFiles: true,
     });
 
-    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
-    await findByRole('button', { name: /Resume/ });
+    await switchIs(findByRole, true);
+    await pressSwitch(findByRole);
+    await switchIs(findByRole, false);
     await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
     expect(stub?.callsTo('POST pause /schedules/:schedule')).toHaveLength(1);
   });
@@ -672,7 +701,18 @@ describe('a schedule is named by what it does', () => {
     expect(menu.getByRole('menuitem', { name: 'Copy ID' })).not.toBeNull();
   });
 
-  test('the Agent filter narrows the list to that agent’s schedules, and the address carries it', async () => {
+  test('the agent in the address narrows the list to that agent’s schedules, and the filter says so', async () => {
+    const { container, findByRole } = open('/schedules?agent=assistant');
+
+    // Only the agent's schedule is left of the three.
+    await waitFor(() => expect(container.querySelectorAll('tr[data-schedule]').length).toBe(1));
+    expect(row(container, AGENT_SCHEDULE)).not.toBeNull();
+    await fireEvent.click(await findByRole('button', { name: 'Clear all filters' }));
+    await waitFor(() => expect(router.search.get('agent')).toBeNull());
+    await waitFor(() => expect(container.querySelectorAll('tr[data-schedule]').length).toBe(3));
+  });
+
+  test('choosing an agent puts it in the address', async () => {
     const { container, findByRole } = open('/schedules');
     await listed(container);
 
@@ -681,9 +721,7 @@ describe('a schedule is named by what it does', () => {
     });
 
     await waitFor(() => expect(router.search.get('agent')).toBe('assistant'));
-    // Only the agent's schedule is left of the three.
-    await waitFor(() => expect(container.querySelectorAll('li[data-schedule]').length).toBe(1));
-    expect(row(container, AGENT_SCHEDULE)).not.toBeNull();
+    await waitFor(() => expect(container.querySelectorAll('tr[data-schedule]').length).toBe(1));
   });
 
   test('one schedule’s page says what it sends', async () => {

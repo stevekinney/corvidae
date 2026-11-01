@@ -189,7 +189,8 @@ export const routes: readonly RouteDefinition[] = [
     view: 'runs',
     load: runArea,
   },
-  // The list, and one schedule's page: one component dispatches on whether the path names one.
+  // The list, one schedule's page, and the page that edits its cadence: one component dispatches on
+  // what the path names. The page that makes one is still the drawer over the list.
   {
     pattern: '/schedules',
     kind: 'reading',
@@ -201,6 +202,13 @@ export const routes: readonly RouteDefinition[] = [
     pattern: '/schedules/:schedule',
     kind: 'reading',
     crumb: { param: 'schedule' },
+    view: 'schedules',
+    load: schedulesArea,
+  },
+  {
+    pattern: '/schedules/:schedule/edit',
+    kind: 'form',
+    crumb: 'Edit',
     view: 'schedules',
     load: schedulesArea,
   },

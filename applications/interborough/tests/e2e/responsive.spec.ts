@@ -77,6 +77,10 @@ const DECIDED_REVIEW_THREAD = newThreadId('responsive-decided-review');
 /** A hook with a name at the Bureau's longest and an address that has no place to break. */
 const LONG_HOOK_NAME = 'h'.repeat(100);
 const LONG_HOOK_URL = `http://127.0.0.1:9/${'u'.repeat(300)}`;
+/** A schedule whose name is one unbroken 300-character word, read in a zone with a long name. */
+const LONG_SCHEDULE_ID = `responsive-schedule-${String(Date.now())}`;
+const LONG_SCHEDULE_DESCRIPTION = `Responsive ${'s'.repeat(300)}`;
+const LONG_SCHEDULE_ZONE = 'America/Argentina/Buenos_Aires';
 const LONG_REVIEW_TITLE = `Refund ${'w'.repeat(300)}`;
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
@@ -131,7 +135,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/reviews (review open)': /wwwwwwwwww/,
   '/reviews (done tab, review open)': /wwwwwwwwww/,
   '/schedules': /inventory-sync/,
-  '/schedules/:schedule': /Next fires/,
+  // The long-named schedule's page prints its next runs and the zone they are shown in.
+  '/schedules/:schedule': /Next runs/,
+  '/schedules/:schedule/edit': /Description/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
@@ -435,8 +441,17 @@ test.beforeAll(async ({ playwright }) => {
     await addCatalogRow(request, LONG_MODEL);
     const listed = await request.get('/v1/workflows?type=order-processing&limit=1');
     const runs = (await listed.json()) as { items?: { id: string }[] };
-    const scheduled = await request.get('/v1/schedules');
-    const schedules = (await scheduled.json()) as { items?: { id: string }[] };
+    const made = await request.post('/v1/schedules', {
+      data: {
+        type: 'order-processing',
+        id: LONG_SCHEDULE_ID,
+        description: LONG_SCHEDULE_DESCRIPTION,
+        cronExpression: '0 9 * * 1-5',
+        timeZone: LONG_SCHEDULE_ZONE,
+        input: { orderId: 'responsive-order' },
+      },
+    });
+    expect(made.status(), `creating the long-named schedule: ${await made.text()}`).toBe(201);
     const hook = (await bureauCall(request, 'bureau.hooks.create', {
       name: LONG_HOOK_NAME,
       events: ['goal.attempt.evaluating', 'review.requested', 'definitions.changed'],
@@ -455,7 +470,7 @@ test.beforeAll(async ({ playwright }) => {
       workflowFile: WORKFLOW_FILE,
       runSetupFile: RUN_SETUP_FILE,
       run: runs.items?.[0]?.id ?? 'responsive-run',
-      schedule: schedules.items?.[0]?.id ?? 'responsive-schedule',
+      schedule: LONG_SCHEDULE_ID,
       goal: SEEDED_GOAL_RUN_IDENTIFIER,
       hook: hook.id,
       review: `bureau:${waitingReview}`,
@@ -490,6 +505,7 @@ test.afterAll(async ({ playwright }) => {
     await rm(await workflowFilePath(request, RUN_SETUP_FILE), { force: true });
     await request.delete(`/v1/storage/${encodeURIComponent(LONG_STORAGE_KEY)}`);
     await removeCatalogRow(request, LONG_MODEL);
+    await request.delete(`/v1/schedules/${LONG_SCHEDULE_ID}`);
     const hooks = (await bureauCall(request, 'bureau.hooks.list', {})) as {
       hooks: { id: string; name: string | null }[];
     };

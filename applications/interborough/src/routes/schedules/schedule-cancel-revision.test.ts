@@ -73,7 +73,7 @@ describe('cancelling from the list', () => {
     const body = within(view.container.ownerDocument.body);
     await waitFor(() =>
       expect(
-        view.container.querySelector<HTMLElement>(`li[data-schedule="${SCHEDULE}"]`)?.dataset[
+        view.container.querySelector<HTMLElement>(`tr[data-schedule="${SCHEDULE}"]`)?.dataset[
           'kind'
         ],
       ).toBe('agent-run'),

@@ -1,7 +1,7 @@
 /**
- * Component tests for the Schedules domain router (`index.svelte`) — URL
- * query state switches between list/detail/create/edit, per that file's own
- * doc (no `/schedules/:schedule` entry in the frozen `routes.ts`).
+ * Component tests for the Schedules domain router (`index.svelte`): the address says whether the
+ * list, one schedule, or its edit page is shown, and the create drawer is query state over the
+ * list.
  */
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
@@ -74,7 +74,7 @@ describe('Schedules index router', () => {
     }
   });
 
-  test('/schedules/<id>?edit=1 renders the detail page with the edit drawer open', async () => {
+  test('/schedules/<id>/edit renders the edit page, not the detail page', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -83,14 +83,16 @@ describe('Schedules index router', () => {
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
-    resetLocation('/schedules/nightly-rollup?edit=1');
+    resetLocation('/schedules/nightly-rollup/edit');
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText, getByRole } = render(IndexHarness, { props: { client } });
-      await waitFor(() => expect(getByText('Nightly rollup', { selector: 'h1' })).not.toBeNull());
-      expect(getByRole('dialog')).not.toBeNull();
-      expect(getByRole('heading', { name: 'Edit schedule' })).not.toBeNull();
+      const { getByRole, queryByRole } = render(IndexHarness, { props: { client } });
+      await waitFor(() =>
+        expect(getByRole('heading', { level: 1, name: 'Edit schedule' })).not.toBeNull(),
+      );
+      expect(queryByRole('dialog')).toBeNull();
+      expect(queryByRole('heading', { level: 1, name: 'Nightly rollup' })).toBeNull();
     } finally {
       await server.stop();
     }

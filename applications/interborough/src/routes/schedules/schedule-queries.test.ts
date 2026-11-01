@@ -5,9 +5,12 @@
  * so these tests pass a minimal structural fake rather than constructing a
  * real `HttpClient` or reaching for an `as HttpClient` cast.
  */
-import { describe, expect, test } from 'bun:test';
+import { rejectionOf } from '@lostgradient/testing';
+import { afterEach, describe, expect, test } from 'bun:test';
 
-import type { ScheduleSummary } from '@lostgradient/weft';
+import { HttpClientError, type ScheduleSummary } from '@lostgradient/weft';
+
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 
 import {
   cancelSchedule,
@@ -16,11 +19,16 @@ import {
   fetchScheduleDetail,
   fetchScheduleList,
   fetchScheduleRunHistory,
+  listScheduleMissed,
   pauseSchedule,
   resumeSchedule,
+  runNowSchedule,
   scheduleDetailQueryKey,
+  scheduleMissedQueryKey,
   scheduleRunHistoryQueryKey,
+  skipNextSchedule,
   updateScheduleSpec,
+  type ScheduleControlClient,
 } from './schedule-queries.ts';
 
 const SUMMARY: ScheduleSummary = {
@@ -275,5 +283,122 @@ describe('updateScheduleSpec / pauseSchedule / resumeSchedule / cancelSchedule',
     await updateScheduleSpec(client, 's1', { cron: '0 2 * * *' });
 
     expect(receivedOptions).toBeUndefined();
+  });
+});
+
+describe('scheduleMissedQueryKey', () => {
+  test('is a tuple of its own for the schedule', () => {
+    expect(scheduleMissedQueryKey('nightly-rollup')).toEqual([
+      'schedules',
+      'missed',
+      'nightly-rollup',
+    ]);
+  });
+});
+
+type ControlOperations = ScheduleControlClient['operations'];
+
+/** A client whose operations are the ones a test gives, and refuse the rest. */
+function controlClient(given: Partial<ControlOperations>): ScheduleControlClient {
+  const unused = () => Promise.reject(new Error('unused'));
+  return {
+    operations: {
+      'weft.schedules.runnow': unused,
+      'weft.schedules.missed': unused,
+      ...given,
+    },
+  };
+}
+
+describe('the engine controls of a schedule', () => {
+  let restore: (() => void) | undefined;
+  afterEach(() => {
+    restore?.();
+    restore = undefined;
+  });
+
+  test('skip next posts to the REST address with the client’s headers, and reads a 204 as done', async () => {
+    const seen: { url: string; method: string | undefined; headers: unknown }[] = [];
+    restore = installFetchImplementation((input, init) => {
+      seen.push({
+        url: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+        method: init?.method,
+        headers: init?.headers,
+      });
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+
+    await skipNextSchedule(
+      { baseUrl: 'http://host:7399', headers: { Authorization: 'Bearer t' } },
+      'a b',
+    );
+
+    expect(seen).toEqual([
+      {
+        url: 'http://host:7399/v1/schedules/a%20b/skip-next',
+        method: 'POST',
+        headers: { Authorization: 'Bearer t' },
+      },
+    ]);
+  });
+
+  test('skip next raises the refusal as the client does, with its status, message and body', async () => {
+    restore = installFetchImplementation(() =>
+      Promise.resolve(
+        Response.json({ error: 'Schedule is paused', weftCode: 'Conflict' }, { status: 409 }),
+      ),
+    );
+
+    const refused = await rejectionOf(
+      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1'),
+    );
+
+    expect(refused).toBeInstanceOf(HttpClientError);
+    expect(refused).toMatchObject({ status: 409, message: 'Schedule is paused' });
+  });
+
+  test('skip next keeps the status text when the refusal has no JSON body', async () => {
+    restore = installFetchImplementation(() =>
+      Promise.resolve(new Response('nope', { status: 502, statusText: 'Bad Gateway' })),
+    );
+
+    const refused = await rejectionOf(
+      skipNextSchedule({ baseUrl: 'http://host', headers: {} }, 's-1'),
+    );
+
+    expect(refused).toMatchObject({ status: 502, message: 'Bad Gateway' });
+  });
+
+  test('run now names the run that started, queued, or was in the way', async () => {
+    const answers: Record<
+      string,
+      Awaited<ReturnType<ControlOperations['weft.schedules.runnow']>>
+    > = {
+      a: { outcome: 'started', workflowId: 'run-1' },
+      b: { outcome: 'queued', workflowId: 'run-2' },
+      c: { outcome: 'skipped', blockingWorkflowId: 'run-0' },
+      d: { outcome: 'skipped' },
+    };
+    const client = controlClient({
+      'weft.schedules.runnow': ({ scheduleId }) =>
+        Promise.resolve(answers[scheduleId] ?? { outcome: 'skipped' }),
+    });
+
+    expect(await runNowSchedule(client, 'a')).toEqual({ outcome: 'started', runId: 'run-1' });
+    expect(await runNowSchedule(client, 'b')).toEqual({ outcome: 'queued', runId: 'run-2' });
+    expect(await runNowSchedule(client, 'c')).toEqual({
+      outcome: 'skipped',
+      blockingRunId: 'run-0',
+    });
+    expect(await runNowSchedule(client, 'd')).toEqual({ outcome: 'skipped', blockingRunId: null });
+  });
+
+  test('missed rows come back as the engine recorded them', async () => {
+    const row = { occurrence: 5, reason: 'dst-gap' as const, count: 2, recordedAt: 6 };
+    const client = controlClient({
+      'weft.schedules.missed': () => Promise.resolve({ missed: [row] }),
+    });
+
+    expect(await listScheduleMissed(client, 's-1')).toEqual([row]);
   });
 });

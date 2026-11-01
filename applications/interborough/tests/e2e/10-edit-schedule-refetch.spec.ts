@@ -1,8 +1,8 @@
 /**
  * COR-15 schedule edit flow against the seeded real Weft server: create a
- * schedule, open its edit drawer, change `revisionPolicy` (plus the
+ * schedule, open its edit page, change `revisionPolicy` (plus the
  * newly-editable overlap policy, jitter, backfill, and description), force a
- * background refetch of the drawer's schedule query BEFORE saving, confirm
+ * background refetch of the page's schedule query BEFORE saving, confirm
  * the in-progress edits survived it, save, and confirm they persisted.
  *
  * The forced refetch is a real one: dispatching `visibilitychange` on a
@@ -48,8 +48,8 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
 
   await page.getByRole('button', { name: 'Edit' }).click();
-  const drawer = page.getByRole('dialog', { name: 'Edit schedule' });
-  await expect(drawer).toBeVisible();
+  const drawer = page.locator('[data-page="schedule-edit"]');
+  await expect(drawer.getByRole('heading', { level: 1, name: 'Edit schedule' })).toBeVisible();
 
   // The formerly create-only options are editable now.
   const overlap = drawer.getByRole('group', {
@@ -89,28 +89,27 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await expect(backfill).toBeChecked();
 
   await drawer.getByRole('button', { name: 'Save changes' }).click();
-  await expect(drawer).not.toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/schedules/${SCHEDULE_ID}$`));
 
-  // Persisted: the detail page reflects every saved change. The overlap policy is one line; the
-  // engine's fields (the revision policy, the jitter) are under the Advanced disclosure.
+  // Persisted: the detail page reflects every saved change in its details.
   await expect(page.getByText('Queues a fire if the previous run is still going')).toBeVisible();
-  await page.getByRole('main').getByRole('button', { name: 'Advanced' }).click();
   await expect(page.getByText(/^Pinned \(/)).toBeVisible();
   await expect(page.getByText('±30000ms')).toBeVisible();
+  await expect(page.getByText('Runs the fires it missed')).toBeVisible();
   await checkA11y('schedule detail — edited options persisted');
 
   // The detail page renders neither description nor backfill, so reopen the
   // drawer (rebuilt from the server's copy) to prove both reached the server.
   await page.reload();
   await page.getByRole('button', { name: 'Edit' }).click();
-  const reopened = page.getByRole('dialog', { name: 'Edit schedule' });
-  await expect(reopened).toBeVisible();
+  const reopened = page.locator('[data-page="schedule-edit"]');
+  await expect(reopened.getByRole('heading', { level: 1, name: 'Edit schedule' })).toBeVisible();
   await expect(reopened.getByLabel('Description')).toHaveValue('Edited by the e2e flow');
   await expect(reopened.getByRole('switch', { name: 'Backfill missed occurrences' })).toBeChecked();
   await expect(reopened.getByLabel('Jitter')).toHaveValue('30000ms');
 });
 
-test('the schedule edit drawer is usable across supported widths and themes', async ({ page }) => {
+test('the schedule edit page is usable across supported widths and themes', async ({ page }) => {
   for (const theme of ['light', 'dark'] as const) {
     for (const viewport of [
       { width: 375, height: 812 },
@@ -121,10 +120,10 @@ test('the schedule edit drawer is usable across supported widths and themes', as
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto(`/schedules/${SCHEDULE_ID}?edit=1`);
+      await page.goto(`/schedules/${SCHEDULE_ID}/edit`);
 
-      const drawer = page.getByRole('dialog', { name: 'Edit schedule' });
-      await expect(drawer).toBeVisible();
+      const drawer = page.locator('[data-page="schedule-edit"]');
+      await expect(drawer.getByRole('heading', { level: 1, name: 'Edit schedule' })).toBeVisible();
       await expect(drawer.getByLabel('Description')).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

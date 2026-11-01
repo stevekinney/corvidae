@@ -9,18 +9,16 @@
 
   interface Props {
     client: HttpClient;
-    mode: 'create' | 'edit';
-    scheduleId?: string | undefined;
     onClose: () => void;
     scopes?: readonly AuthorizationScope[] | undefined;
     onQueryClient?: ((queryClient: QueryClient) => void) | undefined;
   }
 
-  let { client, mode, scheduleId, onClose, scopes, onQueryClient }: Props = $props();
+  let { client, onClose, scopes, onQueryClient }: Props = $props();
 </script>
 
 <SchedulesTestHarness {client} {scopes} {onQueryClient}>
   {#snippet children()}
-    <ScheduleFormDrawer {mode} {scheduleId} {onClose} />
+    <ScheduleFormDrawer {onClose} />
   {/snippet}
 </SchedulesTestHarness>
