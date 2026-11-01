@@ -89,6 +89,7 @@ describe('the schedule control operations', () => {
     await engine.pauseSchedule('hourly');
     const conflict = await post(engine, '/v1/schedules/hourly/skip-next');
     expect(conflict.status).toBe(409);
+    expect(await conflict.json()).not.toHaveProperty('weftCode');
     expect(await statusOf(post(engine, '/v1/schedules/nope/skip-next'))).toBe(404);
   });
 
@@ -106,8 +107,10 @@ describe('the schedule control operations', () => {
         JSON.stringify({ occurrence }),
       );
       expect(refused.status).toBe(409);
+      // `weftCode` is what tells this refusal from the Conflict of a paused or cancelled schedule.
       expect(await refused.json()).toMatchObject({
         error: expect.stringContaining(`has its next run at ${next}`),
+        weftCode: 'ScheduleOccurrenceNotNextError',
       });
       expect(await skipUntilOf(engine)).toBeUndefined();
     }

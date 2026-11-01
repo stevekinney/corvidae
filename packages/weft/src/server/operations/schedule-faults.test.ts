@@ -79,7 +79,7 @@ describe('mapScheduleErrorToFault', () => {
     expect(mapScheduleErrorToFault('daily', error)).toEqual({
       code: 'Conflict',
       message: error.message,
-      data: { reason: 'occurrence-not-next' },
+      data: { reason: 'occurrence-not-next', weftCode: 'ScheduleOccurrenceNotNextError' },
     });
   });
 

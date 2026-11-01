@@ -158,7 +158,13 @@ export function mapScheduleErrorToFault(scheduleId: string, error: unknown): Ope
     };
   }
   if (error instanceof ScheduleOccurrenceNotNextError) {
-    return { code: 'Conflict', message: error.message, data: { reason: 'occurrence-not-next' } };
+    // `weftCode` is how a REST client tells this refusal from a paused or cancelled schedule: REST
+    // never discloses `Conflict.data.reason` (see `REST_FAULT_DATA_EXTRACTORS`).
+    return {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: 'occurrence-not-next', weftCode: error.code },
+    };
   }
   const revisionFault = mapRevisionUnavailableToFault(error);
   if (revisionFault !== undefined) {

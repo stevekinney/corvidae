@@ -33,6 +33,7 @@ import {
   PersistedDataCorruptError,
   PersistedDataIncompatibleError,
   ReviewTimeoutError,
+  ScheduleOccurrenceNotNextError,
   StartOrSignalConflictError,
   UndeclaredWorkflowMessageError,
   UpdateTimeoutError,
@@ -191,6 +192,7 @@ const cases: Record<WeftErrorCode, () => WeftError> = {
   WorkflowRevisionUnavailableError: () =>
     new WorkflowRevisionUnavailableError('checkout', 'r1', 'not-registered'),
   ForkSourceReplacedError: () => new ForkSourceReplacedError('wf-1'),
+  ScheduleOccurrenceNotNextError: () => new ScheduleOccurrenceNotNextError('daily', 100, 200),
 };
 
 describe('WeftError', () => {

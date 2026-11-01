@@ -10,6 +10,7 @@ import { KEYS } from '../../storage/keys.ts';
 import { encode } from '../codec.ts';
 import {
   closeOpenedEngines,
+  nextTimerArmed,
   openEngines,
   SCHEDULE_ID,
   stateOf,
@@ -330,5 +331,64 @@ describe('skipping the next run while another engine counts missed fires (late w
     expect(state.missedFireCount).toBe(4);
     expect(state.nextFireAt).toBe(first + 4 * MINUTE);
     expect(state.skipUntil).toBe(first + 4 * MINUTE);
+  });
+});
+
+describe('an interval update that keeps the interval while another engine ticks its occurrence', () => {
+  it('keeps the timer the update armed for the occurrence the parked tick stood aside from', async () => {
+    const { clock, shared, a, engineA, engineB } = await openEngines();
+    await engineA.updateSchedule(SCHEDULE_ID, { every: '5m' });
+    const before = await stateOf(shared);
+    const occurrence = before.nextFireAt!;
+    const hold = a.holdScheduleWrite();
+
+    // Engine A's tick has read the schedule for the occurrence and is about to start it.
+    clock.now = occurrence;
+    const ticking = engineA.scheduler.tick(clock.now);
+    await hold.reached;
+    // Engine B's update keeps the interval, so it keeps the anchor and the occurrence, and arms
+    // the timer again under the key the tick is about to delete.
+    await engineB.updateSchedule(SCHEDULE_ID, { every: '5m' }, { description: 'renamed' });
+    hold.release();
+    await ticking;
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(state.nextFireAt).toBe(occurrence);
+    expect(state.lastFireAt).toBeUndefined();
+    // Without the timer nothing would fire the occurrence until an engine booted.
+    expect(await nextTimerArmed(shared)).toBe(true);
+    expect(await shared.get(KEYS.scheduleTick(occurrence, SCHEDULE_ID))).not.toBeNull();
+
+    // The entry the tick kept is delivered again, and that delivery starts the occurrence once and
+    // lets the timer go: keeping it does not park the schedule.
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+    const fired = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(1);
+    expect(fired.lastFireAt).toBe(occurrence);
+    expect(fired.nextFireAt).toBe(occurrence + 5 * MINUTE);
+    expect(await shared.get(KEYS.scheduleTick(occurrence, SCHEDULE_ID))).toBeNull();
+    expect(await nextTimerArmed(shared)).toBe(true);
+  });
+
+  it('starts the occurrence once and drops its timer when nothing else touched the schedule', async () => {
+    const { clock, shared, engineA } = await openEngines();
+    await engineA.updateSchedule(SCHEDULE_ID, { every: '5m' });
+    const armed = await stateOf(shared);
+    const occurrence = armed.nextFireAt!;
+
+    clock.now = occurrence;
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+    await engineA.scheduler.tick(clock.now);
+    await drainEngine();
+
+    const state = await stateOf(shared);
+    expect(await listRunningWorkflowIds(engineA)).toHaveLength(1);
+    expect(state.lastFireAt).toBe(occurrence);
+    expect(state.nextFireAt).toBe(occurrence + 5 * MINUTE);
+    expect(await shared.get(KEYS.scheduleTick(occurrence, SCHEDULE_ID))).toBeNull();
+    expect(await nextTimerArmed(shared)).toBe(true);
   });
 });

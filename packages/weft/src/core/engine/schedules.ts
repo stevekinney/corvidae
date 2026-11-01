@@ -466,7 +466,7 @@ export async function updateSchedule(
           getNextScheduleOccurrence({ ...cadenceFields, timeZone, createdAt: anchor }, now),
         ),
       };
-      const skipUntil = survivingSkip(state, updatedState);
+      const skipUntil = survivingSkip(internals, state, updatedState, now);
       if (skipUntil !== undefined) updatedState.skipUntil = skipUntil;
       await writeScheduleState(internals, updatedState, {
         includeTimer: state.status === 'active',

@@ -70,9 +70,10 @@ export async function skipNextScheduleOccurrence(
         );
       }
       const now = internals.options.getNow();
-      const skipUntil = findFiringScheduleOccurrence(
-        state,
-        firstOccurrenceStillToFire(internals, { ...state, nextFireAt: state.nextFireAt }, now),
+      const skipUntil = nextRunnableOccurrence(
+        internals,
+        { ...state, nextFireAt: state.nextFireAt },
+        now,
       );
       if (
         occurrence !== undefined &&
@@ -89,6 +90,20 @@ export async function skipNextScheduleOccurrence(
       );
     },
   );
+}
+
+/**
+ * The occurrence a skip of `state` lands on (COR-1985): the first one that would start a run,
+ * which is what a person means by "the next run". `nextFireAt` can precede it (a backfill
+ * catching up, an interval that is overdue), so it is not `nextFireAt` alone. An update asks the
+ * same question of the schedule it writes to know whether the skip it carries still lands there.
+ */
+export function nextRunnableOccurrence(
+  internals: EngineInternals,
+  state: ScheduleState & { nextFireAt: number },
+  now: number,
+): number {
+  return findFiringScheduleOccurrence(state, firstOccurrenceStillToFire(internals, state, now));
 }
 
 /**

@@ -86,31 +86,39 @@ export async function handleScheduleTimer(
       resumeScheduleTimer(internals, entry.workflowId, pending, callbacks),
     );
   }
-  return (await catchUpStillOwed(internals, entry)) ? 'retain' : undefined;
+  return (await timerStillOwed(internals, entry)) ? 'retain' : undefined;
 }
 
 /**
- * Whether the tick that fired `entry` has left a catch-up behind that nothing else would wake. A
- * backfill commits each occurrence it starts (`lastFireAt`) and moves `nextFireAt`, and so replaces
- * the entry, only with the last. A tick that stands aside because another engine went on with the
- * catch-up (its start or write lost) leaves the schedule with `lastFireAt` at or past `nextFireAt`
- * and the fired entry as its only timer; if that engine then dies before its last write, deleting
- * the entry would leave an active schedule that no timer wakes until some engine boots
- * (COR-1925). So the entry is kept, and delivered again, until the stored schedule shows the
- * catch-up finished (`nextFireAt` moved, and the last write armed the next timer) or no longer
- * active. A delivery that finds the remaining occurrences already started by the other engine
- * starts none of them again: it resumes after `lastFireAt`, and its starts are conditioned on the
- * schedule it read.
+ * Whether the stored schedule still owes the occurrence `entry` fired, so that deleting the entry
+ * would leave an active schedule that no timer wakes until some engine boots (COR-1925,
+ * COR-1985). That is the case whenever the stored schedule is active and its next occurrence is
+ * still the entry's, whatever the tick did. Two ways to get there:
+ *
+ * - A catch-up. A backfill commits each occurrence it starts (`lastFireAt`) and moves
+ *   `nextFireAt`, and so replaces the entry, only with the last. A tick that stands aside because
+ *   another engine went on with the catch-up (its start or write lost) leaves the fired entry as
+ *   the schedule's only timer; if that engine dies before its last write, deleting the entry
+ *   would strand the schedule. A delivery that finds the remaining occurrences already started by
+ *   the other engine starts none of them again: it resumes after `lastFireAt`, and its starts are
+ *   conditioned on the schedule it read.
+ * - A write that re-armed the same occurrence. An update that keeps the interval keeps the anchor
+ *   and `nextFireAt`, and so puts the timer again under the key (`schedule-due:<at>:<id>`) the
+ *   tick that stood aside from it is about to delete. The key names the occurrence, not the
+ *   generation of the timer, so the tick cannot tell the entry it fired from the one the write
+ *   put; only the stored schedule can.
+ *
+ * So the entry is kept, and delivered again, until the stored schedule shows its occurrence
+ * handled (`nextFireAt` moved, and the last write armed the next timer) or no longer active. A
+ * tick that handled the occurrence itself has moved `nextFireAt`, so a normal tick keeps nothing.
  */
-async function catchUpStillOwed(internals: EngineInternals, entry: TimerEntry): Promise<boolean> {
+async function timerStillOwed(internals: EngineInternals, entry: TimerEntry): Promise<boolean> {
   if (internals.disposed) return false;
   const loaded = await loadScheduleState(internals, entry.workflowId);
   const state = loaded?.state;
   return (
     state?.status === 'active' &&
     state.nextFireAt !== null &&
-    state.lastFireAt !== undefined &&
-    state.lastFireAt >= state.nextFireAt &&
     resolveEffectiveScheduleFireAt(state, state.nextFireAt) === entry.fireAt
   );
 }

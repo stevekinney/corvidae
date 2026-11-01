@@ -434,6 +434,83 @@ describe('skipping the next occurrence', () => {
     expect(runs).toEqual(['2026-01-01T02:00:00.000Z']);
   });
 
+  it('keeps the skip of an overdue interval schedule, which names the run after now, not nextFireAt', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock, runs } = opened;
+    await engine.schedule('report', null, { every: '1h' }, { id: 'hourly' });
+    // Nothing ticked, so the schedule still waits for 01:00; a tick now would count the hours up
+    // to 03:30 missed, and the next run is 04:00.
+    clock.now = at('2026-01-01T03:30:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+    expect(isoOf(await fieldOf(engine, 'hourly', 'skipUntil'))).toBe('2026-01-01T04:00:00.000Z');
+
+    await engine.updateSchedule('hourly', { every: '1h' }, { description: 'edited' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T01:00:00.000Z');
+    expect(isoOf(summary.skipUntil)).toBe('2026-01-01T04:00:00.000Z');
+    await tickEngine(engine, clock, at('2026-01-01T04:00:00.000Z'));
+    await tickEngine(engine, clock, at('2026-01-01T05:00:00.000Z'));
+    expect(runs).toEqual(['2026-01-01T05:00:00.000Z']);
+  });
+
+  it('keeps the skip of a backfilled interval schedule that is catching up, which names the run after lastFireAt', async () => {
+    const storage = new MemoryStorage();
+    opened = open('2026-01-01T00:00:00.000Z', { storage });
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, { every: '1h' }, { id: 'hourly', backfill: true });
+    // A catch-up that has started the 01:00 and 02:00 runs and not yet moved nextFireAt.
+    const stored = decodeScheduleState((await storage.get(KEYS.schedule('hourly')))!);
+    await storage.put(
+      KEYS.schedule('hourly'),
+      encode({ ...stored, lastFireAt: at('2026-01-01T02:00:00.000Z') }),
+    );
+    clock.now = at('2026-01-01T02:30:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+    expect(isoOf(await fieldOf(engine, 'hourly', 'skipUntil'))).toBe('2026-01-01T03:00:00.000Z');
+
+    await engine.updateSchedule('hourly', { every: '1h' }, { description: 'edited' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T01:00:00.000Z');
+    expect(isoOf(summary.skipUntil)).toBe('2026-01-01T03:00:00.000Z');
+  });
+
+  it('keeps the skip of an overdue cron schedule, which names the run after now', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+    clock.now = at('2026-01-03T12:00:00.000Z');
+    await engine.skipNextScheduleOccurrence('daily');
+    expect(isoOf(await fieldOf(engine, 'daily', 'skipUntil'))).toBe('2026-01-04T09:00:00.000Z');
+
+    await engine.updateSchedule('daily', '0 9 * * *', { description: 'edited' });
+
+    expect(isoOf(await fieldOf(engine, 'daily', 'skipUntil'))).toBe('2026-01-04T09:00:00.000Z');
+  });
+
+  it('keeps the skip of a backfilled cron schedule that is catching up when an update leaves the same run next', async () => {
+    const storage = new MemoryStorage();
+    opened = open('2026-01-01T00:00:00.000Z', { storage });
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, '0 * * * *', { id: 'hourly', backfill: true });
+    const stored = decodeScheduleState((await storage.get(KEYS.schedule('hourly')))!);
+    await storage.put(
+      KEYS.schedule('hourly'),
+      encode({ ...stored, lastFireAt: at('2026-01-01T02:00:00.000Z') }),
+    );
+    clock.now = at('2026-01-01T02:30:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+    expect(isoOf(await fieldOf(engine, 'hourly', 'skipUntil'))).toBe('2026-01-01T03:00:00.000Z');
+
+    // A cron update computes its next run from now, which ends the catch-up the skip belonged to.
+    await engine.updateSchedule('hourly', '0 * * * *', { description: 'edited' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T03:00:00.000Z');
+    expect(isoOf(summary.skipUntil)).toBe('2026-01-01T03:00:00.000Z');
+  });
+
   it('re-anchors an interval schedule whose interval changes, and ends the skip', async () => {
     opened = open('2026-01-01T00:00:00.000Z');
     const { engine, clock } = opened;

@@ -84,7 +84,8 @@ export type WeftErrorCode =
   | 'WorkflowRevisionUnavailableError'
   | 'EagerRecoveryRevisionRefusedError'
   | 'ForkSourceReplacedError'
-  | 'WorkflowCheckpointConflictError';
+  | 'WorkflowCheckpointConflictError'
+  | 'ScheduleOccurrenceNotNextError';
 
 /**
  * Generic abstract base for all Weft library errors. The `TCode` parameter
@@ -177,6 +178,7 @@ const publicWeftErrorCodeMap = {
   EagerRecoveryRevisionRefusedError: true,
   ForkSourceReplacedError: true,
   WorkflowCheckpointConflictError: true,
+  ScheduleOccurrenceNotNextError: true,
 } satisfies Record<WeftErrorCode, true>;
 
 const PUBLIC_WEFT_ERROR_CODES = new Set<string>(Object.keys(publicWeftErrorCodeMap));

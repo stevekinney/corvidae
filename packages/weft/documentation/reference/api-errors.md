@@ -111,82 +111,82 @@ function describeFailure(error: unknown): string {
 
 The registered public vocabulary—every code `isWeftErrorCode` accepts—with the file under `src/` that defines each class. A code outside this list is not stable and may change between releases. That includes every error not exported from `@lostgradient/weft`, and also the root-exported classes listed below.
 
-| `WeftErrorCode`                             | Defined in                                     |
-| ------------------------------------------- | ---------------------------------------------- |
-| `WorkflowAlreadyExistsError`                | `core/engine/errors.ts`                        |
-| `BulkDeleteRequiresTerminalWorkflowsError`  | `core/engine/errors.ts`                        |
-| `BulkOperationConfirmationError`            | `core/engine/errors.ts`                        |
-| `WorkflowTypeNotRegisteredForRecoveryError` | `core/engine/errors.ts`                        |
-| `EngineCreateNameMismatchError`             | `core/engine/errors.ts`                        |
-| `DefinitionSchemaRequiredError`             | `core/engine/schema-policy.ts`                 |
-| `EngineDisposedError`                       | `core/engine/errors.ts`                        |
-| `EngineDisposalError`                       | `core/engine/errors.ts`                        |
-| `WorkflowNotFoundError`                     | `core/engine/errors.ts`                        |
-| `WorkflowNotRegisteredError`                | `core/engine/errors.ts`                        |
-| `WorkflowConcurrencyLimitExceededError`     | `core/engine/errors.ts`                        |
-| `WorkflowSuspendNotSupportedError`          | `core/engine/errors.ts`                        |
-| `ActivityResolutionError`                   | `core/engine/errors.ts`                        |
-| `BranchTopologyChangedError`                | `core/context/parallel-cache-entry.ts`         |
-| `PersistedDataIncompatibleError`            | `core/persisted-data-incompatible-error.ts`    |
-| `PersistedDataCorruptError`                 | `core/persisted-data-incompatible-error.ts`    |
-| `WorkflowTimeoutError`                      | `core/timeouts.ts`                             |
-| `HttpClientError`                           | `client/http-request.ts`                       |
-| `WorkerProtocolIncompatibleError`           | `worker/worker-protocol-incompatible-error.ts` |
-| `UpdateTimeoutError`                        | `core/updates.ts`                              |
-| `UpdateValidationError`                     | `core/updates.ts`                              |
-| `WorkflowTerminalError`                     | `core/updates.ts`                              |
-| `WorkflowBuilderError`                      | `core/types/workflow-builder-runtime.ts`       |
-| `VersionMismatchError`                      | `core/versioning.ts`                           |
-| `EffectReplayConflictError`                 | `core/effect-log/index.ts`                     |
-| `ReviewTimeoutError`                        | `core/review/index.ts`                         |
-| `AtomicStateConflictError`                  | `core/atomic-state.ts`                         |
-| `StandardSchemaValidationError`             | `core/types/standard-schema-validate.ts`       |
-| `ActivityReconciliationCapabilityError`     | `core/engine/activity-reconciliation.ts`       |
-| `ActivityReconciliationConflictError`       | `core/engine/activity-reconciliation.ts`       |
-| `ActivityReconciliationIndeterminateError`  | `core/engine/activity-reconciliation.ts`       |
-| `DurableActivityScopeError`                 | `core/context/durable-activity.ts`             |
-| `DurableActivityUnsupportedError`           | `core/context/durable-activity.ts`             |
-| `AsyncActivityTokenNotFoundError`           | `core/engine/async-activity-completion.ts`     |
-| `ActivityScheduleToCloseTimeoutError`       | `core/context/activity-schedule-to-close.ts`   |
-| `ActivityPerAttemptTimeoutError`            | `core/context/activity-schedule-to-close.ts`   |
-| `PayloadSizeExceededError`                  | `core/payload-size.ts`                         |
-| `StartOrSignalConflictError`                | `core/engine/errors.ts`                        |
-| `UndeclaredWorkflowMessageError`            | `core/engine/declared-messages.ts`             |
-| `WorkflowTeardownPendingError`              | `core/engine/errors.ts`                        |
-| `IdempotencyKeyPurgedError`                 | `core/engine/errors.ts`                        |
-| `WorkerManifestBuildError`                  | `worker/manifest/registry-contract-builder.ts` |
-| `OwnershipModeMismatchError`                | `core/engine/lease-errors.ts`                  |
-| `ApplicationCommandValidationError`         | `core/mailbox-guards.ts`                       |
-| `MailboxContentionError`                    | `core/mailbox-internals.ts`                    |
-| `ApplicationDeliveryValidationError`        | `core/outbox-guards.ts`                        |
-| `OutboxContentionError`                     | `core/outbox-internals.ts`                     |
-| `WaitBudgetElapsedError`                    | `core/application-primitive-abort.ts`          |
-| `WorkflowCatalogConflictError`              | `core/catalog/errors.ts`                       |
-| `WorkflowRevisionNotInstalledError`         | `core/catalog/errors.ts`                       |
-| `WorkflowSourceValidationError`             | `core/source/errors.ts`                        |
-| `WorkflowSourceNotRegisteredError`          | `core/engine/dynamic-source-errors.ts`         |
-| `DynamicWorkflowSourceUnavailableError`     | `core/engine/dynamic-source-errors.ts`         |
-| `WorkflowRevisionUnavailableError`          | `core/engine/revision-errors.ts`               |
-| `EagerRecoveryRevisionRefusedError`         | `core/engine/revision-errors.ts`               |
-| `ForkSourceReplacedError`                   | `core/engine/fork-source-replaced-error.ts`    |
-| `WorkflowCheckpointConflictError`           | `core/engine/checkpoint-conflict-error.ts`     |
+| `WeftErrorCode` | Defined in |
+| --- | --- |
+| `WorkflowAlreadyExistsError` | `core/engine/errors.ts` |
+| `BulkDeleteRequiresTerminalWorkflowsError` | `core/engine/errors.ts` |
+| `BulkOperationConfirmationError` | `core/engine/errors.ts` |
+| `WorkflowTypeNotRegisteredForRecoveryError` | `core/engine/errors.ts` |
+| `EngineCreateNameMismatchError` | `core/engine/errors.ts` |
+| `DefinitionSchemaRequiredError` | `core/engine/schema-policy.ts` |
+| `EngineDisposedError` | `core/engine/errors.ts` |
+| `EngineDisposalError` | `core/engine/errors.ts` |
+| `WorkflowNotFoundError` | `core/engine/errors.ts` |
+| `WorkflowNotRegisteredError` | `core/engine/errors.ts` |
+| `WorkflowConcurrencyLimitExceededError` | `core/engine/errors.ts` |
+| `WorkflowSuspendNotSupportedError` | `core/engine/errors.ts` |
+| `ActivityResolutionError` | `core/engine/errors.ts` |
+| `BranchTopologyChangedError` | `core/context/parallel-cache-entry.ts` |
+| `PersistedDataIncompatibleError` | `core/persisted-data-incompatible-error.ts` |
+| `PersistedDataCorruptError` | `core/persisted-data-incompatible-error.ts` |
+| `WorkflowTimeoutError` | `core/timeouts.ts` |
+| `HttpClientError` | `client/http-request.ts` |
+| `WorkerProtocolIncompatibleError` | `worker/worker-protocol-incompatible-error.ts` |
+| `UpdateTimeoutError` | `core/updates.ts` |
+| `UpdateValidationError` | `core/updates.ts` |
+| `WorkflowTerminalError` | `core/updates.ts` |
+| `WorkflowBuilderError` | `core/types/workflow-builder-runtime.ts` |
+| `VersionMismatchError` | `core/versioning.ts` |
+| `EffectReplayConflictError` | `core/effect-log/index.ts` |
+| `ReviewTimeoutError` | `core/review/index.ts` |
+| `AtomicStateConflictError` | `core/atomic-state.ts` |
+| `StandardSchemaValidationError` | `core/types/standard-schema-validate.ts` |
+| `ActivityReconciliationCapabilityError` | `core/engine/activity-reconciliation.ts` |
+| `ActivityReconciliationConflictError` | `core/engine/activity-reconciliation.ts` |
+| `ActivityReconciliationIndeterminateError` | `core/engine/activity-reconciliation.ts` |
+| `DurableActivityScopeError` | `core/context/durable-activity.ts` |
+| `DurableActivityUnsupportedError` | `core/context/durable-activity.ts` |
+| `AsyncActivityTokenNotFoundError` | `core/engine/async-activity-completion.ts` |
+| `ActivityScheduleToCloseTimeoutError` | `core/context/activity-schedule-to-close.ts` |
+| `ActivityPerAttemptTimeoutError` | `core/context/activity-schedule-to-close.ts` |
+| `PayloadSizeExceededError` | `core/payload-size.ts` |
+| `StartOrSignalConflictError` | `core/engine/errors.ts` |
+| `UndeclaredWorkflowMessageError` | `core/engine/declared-messages.ts` |
+| `WorkflowTeardownPendingError` | `core/engine/errors.ts` |
+| `IdempotencyKeyPurgedError` | `core/engine/errors.ts` |
+| `WorkerManifestBuildError` | `worker/manifest/registry-contract-builder.ts` |
+| `OwnershipModeMismatchError` | `core/engine/lease-errors.ts` |
+| `ApplicationCommandValidationError` | `core/mailbox-guards.ts` |
+| `MailboxContentionError` | `core/mailbox-internals.ts` |
+| `ApplicationDeliveryValidationError` | `core/outbox-guards.ts` |
+| `OutboxContentionError` | `core/outbox-internals.ts` |
+| `WaitBudgetElapsedError` | `core/application-primitive-abort.ts` |
+| `WorkflowCatalogConflictError` | `core/catalog/errors.ts` |
+| `WorkflowRevisionNotInstalledError` | `core/catalog/errors.ts` |
+| `WorkflowSourceValidationError` | `core/source/errors.ts` |
+| `WorkflowSourceNotRegisteredError` | `core/engine/dynamic-source-errors.ts` |
+| `DynamicWorkflowSourceUnavailableError` | `core/engine/dynamic-source-errors.ts` |
+| `WorkflowRevisionUnavailableError` | `core/engine/revision-errors.ts` |
+| `EagerRecoveryRevisionRefusedError` | `core/engine/revision-errors.ts` |
+| `ForkSourceReplacedError` | `core/engine/fork-source-replaced-error.ts` |
+| `WorkflowCheckpointConflictError` | `core/engine/checkpoint-conflict-error.ts` |
+| `ScheduleOccurrenceNotNextError` | `core/engine/schedule-occurrence-not-next-error.ts` |
 
 ### Root-exported errors without a registered code
 
 These classes are exported from the package root and extend `WeftError`, but their codes are not in `WeftErrorCode`. `isWeftErrorCode` rejects them, and `isWeftErrorLike` and `isWeftFault` do not match them; use `instanceof` or `isWeftError` instead. The lease and claim errors are internal-only by design under ADR 0002; `src/core/engine/lease-errors.test.ts` asserts `WorkflowClaimUnavailableError` stays unregistered, following the `EngineLease*` precedent.
 
-| Class                                    | Defined in                                          |
-| ---------------------------------------- | --------------------------------------------------- |
-| `CodegenEmitError`                       | `json-schema/codegen-emit-keywords.ts`              |
-| `EngineLeaseAcquisitionTimeoutError`     | `core/engine/lease-errors.ts`                       |
-| `EngineLeaseCorruptedError`              | `core/engine/lease-errors.ts`                       |
-| `EngineLeaseNotHeldError`                | `core/engine/lease-errors.ts`                       |
-| `ScheduleOccurrenceNotNextError`         | `core/engine/schedule-occurrence-not-next-error.ts` |
-| `ScheduleReservedKeyError`               | `core/engine/schedule-reserved-key-error.ts`        |
-| `ScheduleStaleRevisionError`             | `core/engine/schedule-stale-revision-error.ts`      |
-| `WorkflowCatalogActivationConflictError` | `core/catalog/errors.ts`                            |
-| `WorkflowClaimUnavailableError`          | `core/engine/lease-errors.ts`                       |
-| `WorkflowContractConversionError`        | `core/contract/build.ts`                            |
+| Class                                    | Defined in                                     |
+| ---------------------------------------- | ---------------------------------------------- |
+| `CodegenEmitError`                       | `json-schema/codegen-emit-keywords.ts`         |
+| `EngineLeaseAcquisitionTimeoutError`     | `core/engine/lease-errors.ts`                  |
+| `EngineLeaseCorruptedError`              | `core/engine/lease-errors.ts`                  |
+| `EngineLeaseNotHeldError`                | `core/engine/lease-errors.ts`                  |
+| `ScheduleReservedKeyError`               | `core/engine/schedule-reserved-key-error.ts`   |
+| `ScheduleStaleRevisionError`             | `core/engine/schedule-stale-revision-error.ts` |
+| `WorkflowCatalogActivationConflictError` | `core/catalog/errors.ts`                       |
+| `WorkflowClaimUnavailableError`          | `core/engine/lease-errors.ts`                  |
+| `WorkflowContractConversionError`        | `core/contract/build.ts`                       |
 
 ### Root-exported errors outside the WeftError family
 
