@@ -88,6 +88,7 @@
   }
 
   .chat-note__link {
-    color: var(--cinder-text-link, inherit);
+    color: inherit;
+    text-decoration: underline;
   }
 </style>
