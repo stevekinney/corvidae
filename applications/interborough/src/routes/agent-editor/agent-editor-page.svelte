@@ -44,11 +44,15 @@
   } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
+  import { getSettings } from '../../lib/bureau-settings.ts';
   import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
+  import { getProviders } from '../../lib/host-providers.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { AgentEditorState } from './agent-editor-state.svelte.ts';
+  import { restrictionsOf } from './agent-editor-models.ts';
+  import { MODEL_POLICY_KEY } from '../settings/settings-controls.ts';
+  import { AgentEditorState, type ModelContext } from './agent-editor-state.svelte.ts';
   import AgentEditorForm from './agent-editor-form.svelte';
   import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
@@ -94,6 +98,35 @@
     enabled: agentId !== undefined,
   }));
 
+  // What narrows the model field besides the catalog: the host's providers, to name the ones with
+  // no key, and the model policy, to leave out what it forbids. The page works without either, and
+  // offers what the catalog lists; the Bureau still refuses a model the policy forbids.
+  const providers = createQuery(() => ({
+    ...stable,
+    queryKey: queryKeys.hostProviders(),
+    queryFn: ({ signal }) => getProviders({ signal }),
+  }));
+  const policy = createQuery(() => ({
+    ...stable,
+    queryKey: queryKeys.settings.snapshot(),
+    queryFn: ({ signal }) => getSettings({ signal }),
+  }));
+
+  /** Both have answered, one way or the other, so the form is built from what they said. */
+  const modelContextSettled = $derived(!providers.isPending && !policy.isPending);
+
+  function modelContext(
+    providersData: typeof providers.data,
+    policyData: typeof policy.data,
+  ): ModelContext {
+    return {
+      hostProviders: providersData?.providers,
+      ...(policyData === undefined
+        ? {}
+        : { restrictions: restrictionsOf(policyData.values[MODEL_POLICY_KEY]) }),
+    };
+  }
+
   // Where the file is. The page works without it, so a host that does not say shows the path
   // relative to the state directory.
   const hostPaths = createQuery(() => ({
@@ -125,13 +158,15 @@
   $effect(() => {
     const catalogData = catalog.data;
     const detailData = detail.data;
+    const settled = modelContextSettled;
+    const context = modelContext(providers.data, policy.data);
     untrack(() => {
-      if (editor !== undefined || catalogData === undefined) return;
+      if (editor !== undefined || catalogData === undefined || !settled) return;
       if (catalogData.models.length === 0) return;
       if (agentId === undefined) {
-        editor = AgentEditorState.create(catalogData);
+        editor = AgentEditorState.create(catalogData, context);
       } else if (detailData?.state === 'ready' && detailData.definition !== null) {
-        editor = AgentEditorState.edit(detailData, catalogData);
+        editor = AgentEditorState.edit(detailData, catalogData, context);
       }
     });
   });
@@ -256,7 +291,12 @@
 
   /** Reads the file again and fills the form from it, which discards whatever was typed. */
   async function reload(): Promise<void> {
-    const [catalogResult, detailResult] = await Promise.all([catalog.refetch(), detail.refetch()]);
+    const [catalogResult, detailResult, providersResult, policyResult] = await Promise.all([
+      catalog.refetch(),
+      detail.refetch(),
+      providers.refetch(),
+      policy.refetch(),
+    ]);
     if (detailResult.isError) {
       failWith(agentFaultOf(detailResult.error), copy.loadFailed.title);
       return;
@@ -267,11 +307,12 @@
     const detailData = detailResult.data;
     if (catalogData === undefined || detailData === undefined) return;
     // A catalog that has lost its last model offers nothing to fill the form from.
+    const context = modelContext(providersResult.data, policyResult.data);
     editor =
       catalogData.models.length > 0 &&
       detailData.state === 'ready' &&
       detailData.definition !== null
-        ? AgentEditorState.edit(detailData, catalogData)
+        ? AgentEditorState.edit(detailData, catalogData, context)
         : undefined;
   }
 
