@@ -4,11 +4,13 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   callBureau,
+  type ContextWindow,
   type Fetcher,
   forkContext,
   forkRefusalReason,
   getAgentModels,
   getContext,
+  getContextWindow,
   getThreadMessages,
   listAgents,
   listContexts,
@@ -246,6 +248,42 @@ describe('switching a session’s model and branching it', () => {
         expectedRevision: 4,
       },
     });
+  });
+
+  test('getContextWindow asks for one session’s window and reads the counts', async () => {
+    const report: ContextWindow = {
+      maxTokens: 200_000,
+      usedEstimated: 1_300,
+      usedReported: null,
+      categories: [
+        { name: 'system', tokens: 300 },
+        { name: 'messages', tokens: 1_000 },
+      ],
+    };
+    const stub = answering(result(report));
+
+    const window = await withStub(stub.fetch, () => getContextWindow('c1'));
+
+    expect(window).toEqual(report);
+    expect(stub.calls[0]?.body).toMatchObject({
+      method: 'bureau.contexts.window',
+      params: { contextId: 'c1' },
+    });
+  });
+
+  test('getContextWindow refuses a report that names a category the page does not know', async () => {
+    const stub = answering(
+      result({
+        maxTokens: null,
+        usedEstimated: 1,
+        usedReported: null,
+        categories: [{ name: 'reasoning', tokens: 1 }],
+      }),
+    );
+
+    expect(await rejectionOf(withStub(stub.fetch, () => getContextWindow('c1')))).toBeInstanceOf(
+      Error,
+    );
   });
 
   test('steerContext sends an effort without an override', async () => {

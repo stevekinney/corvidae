@@ -3,37 +3,25 @@
    * The model picker in a session's composer: the models the session's agent allows
    * (`bureau.agents.models`), with the one the session runs on selected. The session's own model
    * (`bureau.contexts.get`'s `model`) wins; a session never switched runs on the agent's default.
-   * It is hidden unless the agent allows more than one model, because a single model is no choice.
+   * The model is always shown: an agent that allows one model, or none, gets the picker disabled on
+   * that model (or on "Agent default"), because a single model is no choice but is still the answer
+   * to which model this chat runs on.
    *
    * Choosing a model asks the Bureau to switch the session (`bureau.contexts.steer`) with the
    * `configVersion` the page last read as `expectedRevision`, and the new model is used from the
-   * session's next step. The choice is shown at once and stays until the Bureau has answered:
-   *
-   * - Admitted, including an exact replay of the same command: the choice stands, and the session is
-   *   read again so the page agrees with the Bureau.
-   * - Refused because the session changed since it was read: the session is read again and the
-   *   picker shows the model it has now.
-   * - Any other refusal: the previous selection comes back. Each says why in its own words
-   *   (`CHAT_COPY.modelPicker`).
-   * - A fault: nobody knows whether the Bureau took the switch, so the session is read again and
-   *   the picker shows the model it has now.
-   *
-   * A command keeps its identifier until the Bureau answers it, so a retry after a fault is the same
-   * command and the Bureau does not apply it twice (`pending-command-key.ts`).
+   * live run's next step, or by the next run of an idle chat. The choice is shown at once and stays
+   * until the Bureau has answered; how each answer ends is `steer-change.ts`'s, with the words of
+   * `CHAT_COPY.modelPicker`.
    */
   import { Select } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy.ts';
-  import {
-    getAgentModels,
-    steerContext,
-    steerRefusalReason,
-    type AgentModelChoice,
-    type SteerOutcome,
-  } from '../../lib/bureau-client.ts';
+  import { getAgentModels, steerContext, type AgentModelChoice } from '../../lib/bureau-client.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { agentModel } from './agent-model.ts';
+  import { changeSetting, type SteerNotices } from './steer-change.ts';
 
   type ModelName = { readonly provider: string | null; readonly model: string };
 
@@ -46,9 +34,24 @@
     revision: number | undefined;
     /** Reads the session again, and says whether it could. */
     reload: () => Promise<boolean>;
+    /** Whether another setting of the session is being changed, which takes no second change. */
+    locked?: boolean;
+    /** Called as a change starts and as it ends, so the other settings wait for the new revision. */
+    onBusyChange?: (busy: boolean) => void;
+    /** Called when the Bureau took a switch. */
+    onApplied?: () => void;
   }
 
-  let { sessionId, agentName, current, revision, reload }: ModelPickerProps = $props();
+  let {
+    sessionId,
+    agentName,
+    current,
+    revision,
+    reload,
+    locked = false,
+    onBusyChange,
+    onApplied,
+  }: ModelPickerProps = $props();
 
   const COPY = CHAT_COPY.modelPicker;
 
@@ -75,7 +78,7 @@
     );
   }
 
-  const known = $derived(current ?? models.data?.default ?? null);
+  const known = $derived(current ?? agentModel(models.data));
   const knownKey = $derived.by(() => {
     if (known === null) return '';
     const choice = listed(known);
@@ -113,87 +116,58 @@
     })),
   ]);
 
-  /** What a refusal says, in its own words. */
-  function refusalNotice(outcome: SteerOutcome): string {
-    switch (outcome.outcome) {
-      case 'rejected':
-        switch (outcome.failure.reason) {
-          case 'stale-revision':
-            return COPY.staleRevision;
-          case 'model-not-allowed':
-          case 'policy-denied':
-            return COPY.modelNotAllowed;
-          case 'session-terminal':
-            return COPY.sessionTerminal;
-          default:
-            return COPY.notSwitched;
-        }
-      case 'session-terminal':
-        return COPY.sessionTerminal;
-      case 'unsupported-capability':
-        return COPY.unsupportedCapability;
-      default:
-        return COPY.notSwitched;
-    }
-  }
+  /** The picker's refusals, in the words of a model. */
+  const NOTICES: SteerNotices = {
+    staleRevision: COPY.staleRevision,
+    denied: COPY.modelNotAllowed,
+    sessionTerminal: COPY.sessionTerminal,
+    unsupportedCapability: COPY.unsupportedCapability,
+    notChanged: COPY.notSwitched,
+    fault: COPY.fault,
+  };
 
   async function choose(next: string): Promise<void> {
     const choice = choices.find((entry) => keyOf(entry) === next);
     if (choice === undefined || next === shown || revision === undefined) return;
     pending = next;
     busy = true;
+    onBusyChange?.(true);
     notice = undefined;
     try {
-      const outcome = await steerContext({
-        contextId: sessionId,
-        commandId: commands.keyFor(sessionId, next),
-        override: { provider: choice.provider, model: choice.model },
-        expectedRevision: revision,
+      const result = await changeSetting({
+        commands,
+        scope: sessionId,
+        content: next,
+        send: (commandId) =>
+          steerContext({
+            contextId: sessionId,
+            commandId,
+            override: { provider: choice.provider, model: choice.model },
+            expectedRevision: revision,
+          }),
+        reload,
+        notices: NOTICES,
       });
-      // The Bureau answered, so the command is settled whatever it said.
-      commands.confirmed();
-      if (outcome.outcome === 'accepted' || outcome.outcome === 'replayed') {
-        // Until the session is read again the admitted choice stays on screen.
-        if (await reload()) pending = undefined;
-        return;
-      }
-      notice = refusalNotice(outcome);
-      if (outcome.outcome === 'rejected' && outcome.failure.reason === 'stale-revision') {
-        await reload();
-      }
-      pending = undefined;
-    } catch (error) {
-      const reason = steerRefusalReason(error);
-      if (reason !== undefined) {
-        // The Bureau refused the request itself: it is settled, with a reason of its own, and the
-        // chat keeps its model.
-        commands.confirmed();
-        notice = reason;
-        pending = undefined;
-        return;
-      }
-      // Nobody knows whether the Bureau took it, so the command keeps its identifier for a retry,
-      // and the session is read again to show the model it has now.
-      notice = COPY.fault;
-      await reload();
-      pending = undefined;
+      notice = result.notice;
+      // Until the session is read again the admitted choice stays on screen.
+      if (!result.applied || result.reloaded) pending = undefined;
+      if (result.applied) onApplied?.();
     } finally {
       busy = false;
+      onBusyChange?.(false);
     }
   }
 </script>
 
-{#if choices.length > 1}
-  <Select
-    data-changes
-    id="weft-chat-model"
-    class="weft-chat-model"
-    label={COPY.label}
-    labelVisible={false}
-    {options}
-    value={shown}
-    onchange={(event) => void choose(event.currentTarget.value)}
-    disabled={busy || revision === undefined}
-    {...notice === undefined ? {} : { error: notice }}
-  />
-{/if}
+<Select
+  data-changes
+  id="weft-chat-model"
+  class="weft-chat-model"
+  label={COPY.label}
+  labelVisible={false}
+  {options}
+  value={shown}
+  onchange={(event) => void choose(event.currentTarget.value)}
+  disabled={busy || locked || revision === undefined || choices.length < 2}
+  {...notice === undefined ? {} : { error: notice }}
+/>

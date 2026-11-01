@@ -327,7 +327,7 @@ describe('a branch’s header', () => {
 
     const link = await findByRole('link', { name: 'The original chat' });
     expect(link.getAttribute('href')).toBe('/chats/parent-1');
-    expect(container.querySelector('.weft-chat-header')?.textContent).toContain(
+    expect(container.querySelector('[data-testid="chat-header"]')?.textContent).toContain(
       CHAT_COPY.branch.branchedFrom,
     );
   });
@@ -413,7 +413,7 @@ describe('the model picker in a session’s composer', () => {
     );
   });
 
-  test('is not there when the agent allows one model', async () => {
+  test('is shown, disabled on that model, when the agent allows one model', async () => {
     const only = {
       provider: 'anthropic',
       model: 'claude-sonnet-5',
@@ -430,6 +430,10 @@ describe('the model picker in a session’s composer', () => {
     );
     await tick();
 
-    expect(container.querySelector('select') === null).toBe(true);
+    const select = container.querySelector<HTMLSelectElement>('#weft-chat-model');
+    expect(select?.disabled).toBe(true);
+    expect([...(select?.options ?? [])].map((option) => option.textContent)).toEqual([
+      'claude-sonnet-5',
+    ]);
   });
 });

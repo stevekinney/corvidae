@@ -32,7 +32,7 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { Alert, Button, Combobox, EmptyState } from '@lostgradient/cinder';
+  import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
   import { Chat } from '@lostgradient/chat';
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -43,9 +43,14 @@
   import {
     forkContext,
     forkRefusalReason,
+    getAgentModels,
     getContext,
+    getContextWindow,
     listAgents,
+    steerContext,
     type AgentSummary,
+    type Effort,
+    type PermissionMode,
   } from '../../lib/bureau-client.ts';
   import {
     attachmentSettings,
@@ -63,7 +68,10 @@
   import { router } from '../../lib/router.svelte.ts';
   import BranchOrigin from './branch-origin.svelte';
   import { branchPointIds } from './branch-points.ts';
+  import { agentModel } from './agent-model.ts';
   import ChatAssets from './chat-assets.svelte';
+  import ContextWindowRing from './context-window-ring.svelte';
+  import SettingSelect from './setting-select.svelte';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
@@ -157,16 +165,87 @@
     }),
     undefined,
   );
+  // How full the session's window is. Like the title, it is read when the page opens and again when
+  // a run ends, since a run adds to the conversation; and when the model changes, which changes the
+  // window (`reloadContext`).
+  const contextWindow = createQuery(
+    () => ({
+      queryKey: queryKeys.contexts.window(sessionId),
+      queryFn: ({ signal }) => getContextWindow(sessionId, { signal }),
+      enabled: !choosing,
+      retry: false,
+    }),
+    undefined,
+  );
   $effect(() => {
-    // Only the end of a run asks again. Reading the query here would make each answer ask again.
-    if (!choosing && !session.streaming) untrack(() => void context.refetch());
+    // Only the end of a run asks again. Reading the queries here would make each answer ask again.
+    if (!choosing && !session.streaming) {
+      untrack(() => {
+        void context.refetch();
+        void contextWindow.refetch();
+      });
+    }
   });
   const displayTitle = $derived(context.data?.title ?? title ?? CHAT_COPY.untitled);
 
-  /** Reads the session again, for the model picker, and says whether it could. */
+  /** Reads the session again, for the settings' controls, and says whether it could. */
   async function reloadContext(): Promise<boolean> {
     const result = await context.refetch();
+    // A new model has a window of its own.
+    void contextWindow.refetch();
     return !result.isError;
+  }
+
+  // The settings the header shows and the composer changes. The model is always shown: the session's
+  // own, else its agent's default.
+  const SETTINGS = CHAT_COPY.settings;
+  const models = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.models(agent),
+      queryFn: ({ signal }) => getAgentModels(agent, { signal }),
+      enabled: !choosing,
+      retry: false,
+    }),
+    undefined,
+  );
+  const shownModel = $derived.by(() => {
+    if (context.data === undefined) return undefined;
+    const name = context.data.model ?? agentModel(models.data);
+    if (name === null) return SETTINGS.agentDefault;
+    const listed = models.data?.models.find(
+      (choice) =>
+        choice.model === name.model &&
+        (name.provider === null || choice.provider === name.provider),
+    );
+    return listed?.displayName ?? name.model;
+  });
+  const shownEffort = $derived(
+    context.data === undefined
+      ? undefined
+      : (SETTINGS.effortOptions.find((option) => option.value === context.data?.effort)?.label ??
+          SETTINGS.agentDefault),
+  );
+  const shownPermission = $derived(
+    SETTINGS.permissionOptions.find((option) => option.value === context.data?.permissionMode)
+      ?.label,
+  );
+  const permissionDescription = $derived(
+    context.data === undefined || context.data.permissionMode === 'on-changes'
+      ? undefined
+      : SETTINGS.permissionDescriptions[context.data.permissionMode],
+  );
+
+  // The settings share one revision, so while one is being changed the others wait for it.
+  let steering = $state(false);
+  // When the change the person made takes effect, which depends on whether a run is going.
+  let appliesNote = $state<string | undefined>(undefined);
+  $effect(() => {
+    // A note about a run's next step is out of date once the run starts or ends.
+    void session.streaming;
+    untrack(() => (appliesNote = undefined));
+  });
+  function noted(setting: 'step' | 'toolCall'): void {
+    appliesNote = session.streaming ? SETTINGS.applies[setting] : SETTINGS.applies.nextRun;
   }
 
   function openAgent(event: MouseEvent, name: string): void {
@@ -374,21 +453,59 @@
   });
 </script>
 
+{#snippet details()}
+  <a
+    class="weft-chat-header__agent"
+    href={router.href(agentPath(agent))}
+    onclick={(event) => openAgent(event, agent)}><code class="ib-identifier">{agent}</code></a
+  >
+  {#if context.data?.parentContextId}
+    <BranchOrigin parentId={context.data.parentContextId} />
+  {/if}
+{/snippet}
+
+{#snippet headerActions()}
+  <ContextWindowRing report={contextWindow.data} failed={contextWindow.isError} />
+{/snippet}
+
 <section class="weft-chat-route" aria-label={CHAT_COPY.regionLabel} data-session={sessionId}>
-  <header class="weft-chat-header">
-    <h1 class="weft-chat-header__title">{displayTitle}</h1>
-    <!-- While the chat is new, the agent is chosen from the pill in the composer, the one place to choose it. -->
-    {#if !choosing}
-      <a
-        class="weft-chat-header__agent"
-        href={router.href(agentPath(agent))}
-        onclick={(event) => openAgent(event, agent)}><code class="ib-identifier">{agent}</code></a
-      >
-      {#if context.data?.parentContextId}
-        <BranchOrigin parentId={context.data.parentContextId} />
+  {#if choosing}
+    <PageHeader data-testid="chat-header" title={displayTitle} headingLevel={1} />
+  {:else}
+    <PageHeader
+      data-testid="chat-header"
+      title={displayTitle}
+      headingLevel={1}
+      description={details}
+      actions={headerActions}
+    />
+  {/if}
+  {#if !choosing}
+    <div class="weft-chat-settings" data-testid="chat-settings">
+      {#if context.data !== undefined}
+        <dl class="weft-chat-settings__list" aria-label={SETTINGS.summaryLabel}>
+          <div class="weft-chat-settings__item">
+            <dt>{SETTINGS.model}</dt>
+            <dd data-setting="model">{shownModel}</dd>
+          </div>
+          <div class="weft-chat-settings__item">
+            <dt>{SETTINGS.effort}</dt>
+            <dd data-setting="effort">{shownEffort}</dd>
+          </div>
+          <div class="weft-chat-settings__item">
+            <dt>{SETTINGS.permission}</dt>
+            <dd data-setting="permission">{shownPermission}</dd>
+          </div>
+        </dl>
       {/if}
-    {/if}
-  </header>
+      <p class="weft-chat-strip" role="status" data-testid="chat-settings-note">
+        {#if appliesNote !== undefined}{appliesNote}{/if}
+        {#if permissionDescription !== undefined}
+          <span data-testid="permission-description">{permissionDescription}</span>
+        {/if}
+      </p>
+    </div>
+  {/if}
 
   {#if !choosing}
     <SessionTasks {sessionId} streaming={session.streaming} />
@@ -480,13 +597,59 @@
             />
           </div>
         {:else}
-          <ModelPicker
-            {sessionId}
-            agentName={agent}
-            current={context.data?.model}
-            revision={context.data?.configVersion}
-            reload={reloadContext}
-          />
+          <div class="weft-chat-controls">
+            <ModelPicker
+              {sessionId}
+              agentName={agent}
+              current={context.data?.model}
+              revision={context.data?.configVersion}
+              reload={reloadContext}
+              locked={steering}
+              onBusyChange={(busy) => (steering = busy)}
+              onApplied={() => noted('step')}
+            />
+            <SettingSelect
+              {sessionId}
+              id="weft-chat-effort"
+              label={SETTINGS.effort}
+              options={SETTINGS.effortOptions}
+              current={context.data?.effort}
+              unsetLabel={SETTINGS.agentDefault}
+              revision={context.data?.configVersion}
+              send={(value, commandId, expectedRevision) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  effort: value as Effort,
+                })}
+              notices={SETTINGS.effortNotices}
+              reload={reloadContext}
+              locked={steering}
+              onBusyChange={(busy) => (steering = busy)}
+              onApplied={() => noted('step')}
+            />
+            <SettingSelect
+              {sessionId}
+              id="weft-chat-permission"
+              label={SETTINGS.permission}
+              options={SETTINGS.permissionOptions}
+              current={context.data?.permissionMode}
+              revision={context.data?.configVersion}
+              send={(value, commandId, expectedRevision) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  permissionMode: value as PermissionMode,
+                })}
+              notices={SETTINGS.permissionNotices}
+              reload={reloadContext}
+              locked={steering}
+              onBusyChange={(busy) => (steering = busy)}
+              onApplied={() => noted('toolCall')}
+            />
+          </div>
         {/if}
       {/snippet}
       {#snippet messageActions({ message })}
