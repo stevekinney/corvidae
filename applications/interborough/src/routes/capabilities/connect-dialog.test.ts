@@ -427,6 +427,12 @@ describe('after a source is saved', () => {
 
     const notice = await findByTestId('sources-restart-unconfirmed');
     expect(notice.textContent).toContain(copy.restart.unconfirmed);
+    await fireEvent.click(notice.querySelector<HTMLElement>('.cinder-alert__dismiss')!);
+    await waitFor(() =>
+      expect(
+        document.body.querySelector('[data-testid="sources-restart-unconfirmed"]') === null,
+      ).toBe(true),
+    );
   });
 
   test('says the host is back once it has been down, even if the source still shows as waiting', async () => {
@@ -440,8 +446,15 @@ describe('after a source is saved', () => {
 
     await fireEvent.click(buttonLabelled(copy.restart.action));
 
-    await findByTestId('sources-restart-back');
+    const back = await findByTestId('sources-restart-back');
     expect(host.downReads).toBe(0);
+    // The person reads how it ended and dismisses it.
+    await fireEvent.click(back.querySelector<HTMLElement>('.cinder-alert__dismiss')!);
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-testid="sources-restart-back"]') === null).toBe(
+        true,
+      ),
+    );
   });
 
   test('says when the host would not take the request, or could not be reached', async () => {
