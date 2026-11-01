@@ -144,7 +144,9 @@ describe('a new chat', () => {
 
     const pill = await findByRole('combobox', { name: 'Agent' });
     expect(pill.closest('.ib-agent-pill')).not.toBeNull();
-    expect(container.querySelector('.weft-chat-header')?.querySelector('input, select')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="chat-header"]')?.querySelector('input, select'),
+    ).toBeNull();
     expect(container.querySelectorAll('[role="combobox"]')).toHaveLength(1);
   });
 

@@ -59,6 +59,7 @@
   import { RunEngine } from './run-engine.svelte.ts';
   import RunHeader from './run-header.svelte';
   import RunInputOutput from './run-input-output.svelte';
+  import RunPanels from './run-panels.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
 
@@ -443,6 +444,9 @@
             engine={workflow === undefined ? undefined : engine}
             {workflow}
           />
+          {#if task.data !== undefined}
+            <RunPanels taskId={task.data.id} />
+          {/if}
           {#if workflow !== undefined}
             <RunChange {engine} {workflow} />
             <RunEnginePanels {engine} {workflow} />

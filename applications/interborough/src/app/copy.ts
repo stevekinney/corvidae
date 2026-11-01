@@ -96,6 +96,8 @@ export const RUN_PAGE_COPY = {
   inputPayload: 'Input payload',
   resultPayload: 'Result payload',
   activityHeading: 'Activity',
+  /** Names the plugin a panel on the run page comes from. */
+  panelFromPlugin: (plugin: string) => `From the ${plugin} plugin`,
   timelineHeading: 'Timeline',
   eventsHeading: 'Events',
   checkpointsHeading: 'Checkpoints',
@@ -272,6 +274,47 @@ export const AGENT_EDITOR_COPY = {
   modelDescription: 'The models this installation offers.',
   modelPlaceholder: 'Choose a model',
   /**
+   * The model field's words (`agent-editor-model-field.svelte`): models grouped by provider, a
+   * provider with no key disabled and pointing to Settings › Models, a model that is not offered
+   * disabled with its reason, and the abilities of the chosen one.
+   */
+  model: {
+    /** The option that stands for a provider with no key. */
+    notConnected: (provider: string): string => `${provider} is not connected`,
+    notConnectedDescription: 'Connect it in Settings › Models to use its models.',
+    /** What precedes the link to Settings › Models when a provider is not connected. */
+    unconnectedLead: (providers: readonly string[]): string => {
+      const names = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(
+        providers,
+      );
+      return providers.length === 1
+        ? `${names} is not connected. Connect it in`
+        : `${names} are not connected. Connect them in`;
+    },
+    settingsLink: 'Settings › Models',
+    /** Why a model is listed and cannot be chosen. */
+    reasons: {
+      'provider-denied': 'The model policy does not allow this provider.',
+      'model-denied': 'The model policy does not allow this model.',
+      'turned-off': 'Turned off in Settings › Models.',
+      retired: 'Retired by its provider.',
+      'not-in-catalog': 'This installation no longer offers this model.',
+    },
+    /** What the field says about the agent's own model when it cannot be chosen now. */
+    keptNotice: (model: string, reason: string): string =>
+      `This agent’s model, ${model}, is not offered now. ${reason} Saving keeps it unless you choose another.`,
+    abilitiesLabel: 'Abilities of the chosen model',
+    abilities: {
+      tools: 'Tools',
+      images: 'Images',
+      structuredOutput: 'Structured output',
+      streaming: 'Streaming',
+    },
+    textOnly: 'Text only',
+    context: (size: string): string => `${size} context window`,
+    maxOutput: (size: string): string => `${size} largest answer`,
+  },
+  /**
    * What the page shows instead of the form when the catalog holds no model: an agent cannot be
    * saved without one, and nothing in the application can add a provider.
    */
@@ -288,6 +331,39 @@ export const AGENT_EDITOR_COPY = {
   },
   toolsDescription: 'The tools this agent may call.',
   noTools: 'This installation offers no tools.',
+  /** The count above the chosen tools, such as `2 of 48 chosen`. */
+  toolCount: (chosen: number, offered: number): string =>
+    `${String(chosen)} of ${String(offered)} chosen`,
+  /** The name of the list of the tools the agent has. */
+  chosenToolsLabel: 'Chosen tools',
+  /** What the list says when the agent has no tool yet. */
+  noToolsChosen: 'No tools chosen. The agent can reply, but it cannot call anything.',
+  /** The action that opens the picker. */
+  addToolsAction: 'Add tools',
+  /** The button that takes one tool away from the agent, and the name a screen reader hears for it. */
+  removeAction: 'Remove',
+  removeToolLabel: (tool: string): string => `Remove ${tool}`,
+  /** The marker on a tool that asks before it runs, and on one that never runs. */
+  toolStanding: {
+    'asks-first': 'Asks first',
+    blocked: 'Blocked',
+  },
+  /** The tool picker (`Add tools`): a search over every tool the installation offers, grouped by source. */
+  toolPicker: {
+    title: 'Add tools',
+    done: 'Done',
+    searchLabel: 'Search tools',
+    searchPlaceholder: 'Search by name, description or source',
+    /** Announced as the search narrows. */
+    resultCount: (count: number): string => (count === 1 ? '1 tool' : `${String(count)} tools`),
+    noMatchesTitle: 'No tools match',
+    noMatchesDescription: (search: string): string =>
+      `Nothing is named or described like “${search}”.`,
+    /** The count in a group's heading, such as `2 of 5`. */
+    groupCount: (chosen: number, total: number): string => `${String(chosen)} of ${String(total)}`,
+    /** The heading of a saved tool source's group; the source is the identifier its tool names start with. */
+    savedSource: (source: string): string => source,
+  },
   /** The disclosure on a tool row that shows the full text the model is told about the tool. */
   toolDisclosure: 'What the agent is told',
   instructionsLabel: 'Instructions',
@@ -1053,6 +1129,9 @@ export const MODELS_COPY = {
     description: 'A provider is connected once its API key is saved on this machine.',
     listLabel: 'Providers',
     connected: 'Connected',
+    /** A provider whose plugin is waiting for its key (`needs-setup` in `GET /host/plugins`). */
+    needsSetup: 'Needs setup',
+    pluginLink: (name: string): string => `Open the ${name} plugin`,
     connect: 'Connect',
     manage: 'Manage',
     connectLabel: (name: string): string => `Connect ${name}`,
@@ -1866,6 +1945,17 @@ export const AGENT_PAGE_COPY = {
     filteredDescription: 'None of this agent’s chats match these filters.',
     clearFilters: 'Clear filters',
   },
+  /** A plugin's agent: read-only, with Duplicate to make a copy the owner can edit (COR-1873). */
+  plugin: {
+    duplicate: 'Duplicate',
+    note: (plugin: string): string =>
+      `The ${plugin} plugin ships this agent, so it is read-only. Duplicate it to make a copy you can edit.`,
+    exists: (name: string): string =>
+      `You already have an agent named ${name}. Open it, or rename or delete it to duplicate this one again.`,
+    notLoaded: 'This agent is not loaded now, so it cannot be duplicated.',
+    forbidden: 'You may not add agents.',
+    failed: 'The agent could not be duplicated.',
+  },
   instructions: {
     heading: 'Instructions',
     builtIn: 'This agent is built in, so its instructions cannot be edited here.',
@@ -1908,6 +1998,9 @@ export const AGENT_PAGE_COPY = {
       always: 'Asks before every call.',
       blocked: 'Never runs. The model is told it was refused.',
     },
+    /** Under `never`, for a tool that declares no tier: Armorer still asks about a call it cannot classify. */
+    neverUnclassifiedHint:
+      'This tool declares no tier, so it still asks before every call, even here.',
     notInCatalog: 'Not offered by this host any more',
     noToolsTitle: 'This host offers no tools',
     noToolsDescription: 'Tools come from the host’s plugins and saved tool sources.',
@@ -2077,6 +2170,100 @@ export const CHAT_COPY = {
     notSwitched: 'The model was not changed. The chat keeps its current model.',
     /** The request itself failed, so nobody knows whether the Bureau took it; the chat is read again. */
     fault: 'The model may not have been changed. Showing the model the chat uses now.',
+  },
+  /**
+   * The chat's settings, shown in its header and changed from its composer: the model (its own
+   * picker, `modelPicker`), the reasoning effort and the permission mode.
+   */
+  settings: {
+    /** The header's summary of the settings. */
+    summaryLabel: 'Chat settings',
+    model: 'Model',
+    effort: 'Effort',
+    permission: 'Permissions',
+    /** What the model or the effort says when the chat has none of its own. */
+    agentDefault: 'Agent default',
+    effortOptions: [
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Extra high' },
+      { value: 'max', label: 'Max' },
+    ],
+    /** The modes, in the order of how much they ask. */
+    permissionOptions: [
+      { value: 'always', label: 'Always ask' },
+      { value: 'on-changes', label: 'Ask on changes' },
+      { value: 'allow-all', label: 'Allow all' },
+      { value: 'read-only', label: 'Read-only' },
+    ],
+    /** What each mode does, as `bureau.contexts.steer` defines it. */
+    permissionDescriptions: {
+      'on-changes': 'Tools ask as each tool’s own setting says.',
+      always: 'Every tool call asks first.',
+      'allow-all':
+        'Skips the asks that Ask on changes would raise. A tool set to always ask still asks, a tool that declares no setting of its own still asks, a blocked tool is still refused, and a child agent keeps its own stricter mode.',
+      'read-only': 'Every tool that is not read-only is denied.',
+    },
+    /** When a change takes effect. A mode is read at each tool call; the model and effort at each step. */
+    applies: {
+      step: 'Applies from the run’s next step.',
+      toolCall: 'Applies from the run’s next tool call.',
+      nextRun: 'Applies to the next run.',
+    },
+    /** Why the controls are disabled for a chat this principal did not start. */
+    notYours: 'Only the person who started this chat can change its settings.',
+    /**
+     * Said when an effort could not be changed. An effort the catalog holds is accepted for any
+     * model, and the provider then clamps it or leaves it out for a model that lacks it.
+     */
+    effortNotices: {
+      staleRevision: 'This chat changed elsewhere. Showing its settings now.',
+      denied: 'This deployment’s model catalog does not hold that effort.',
+      sessionTerminal: 'This chat has ended, so its effort cannot be changed.',
+      unsupportedCapability: 'This agent cannot change its effort.',
+      notChanged: 'The effort was not changed. The chat keeps its current effort.',
+      fault: 'The effort may not have been changed. Showing the effort the chat uses now.',
+    },
+    /** Said when a permission mode could not be changed. */
+    permissionNotices: {
+      staleRevision: 'This chat changed elsewhere. Showing its settings now.',
+      denied: 'This chat cannot use that mode.',
+      sessionTerminal: 'This chat has ended, so its permissions cannot be changed.',
+      unsupportedCapability: 'This agent cannot change its permissions.',
+      notChanged: 'The permission mode was not changed. The chat keeps its current mode.',
+      fault: 'The permission mode may not have been changed. Showing the mode the chat uses now.',
+    },
+  },
+  /** The ring in the header that says how full the chat's context window is. */
+  contextWindow: {
+    label: 'Context window',
+    /** The trigger's accessible name; `percent` is `null` when the model's window is not known. */
+    trigger: (percent: number | null, used: string, max: string | null) =>
+      percent === null || max === null
+        ? `Context window: about ${used} tokens in use, window size unknown. Opens the breakdown`
+        : `Context window: ${String(percent)}% used, about ${used} of ${max} tokens. Opens the breakdown`,
+    /** The visible reading beside the ring. */
+    reading: (percent: number | null, used: string) =>
+      percent === null ? `${used} tokens` : `${String(percent)}%`,
+    summary: (used: string, max: string | null) =>
+      max === null
+        ? `About ${used} tokens, in a window of unknown size.`
+        : `About ${used} of ${max} tokens.`,
+    estimate: 'An estimate of the next prompt this chat would send.',
+    reported: (tokens: string) =>
+      `The provider counted ${tokens} input tokens for the latest step.`,
+    notReported: 'The provider has not reported a count for this chat yet.',
+    breakdown: 'What fills it',
+    categories: {
+      system: 'Instructions',
+      tools: 'Tools',
+      messages: 'Messages',
+      memory: 'Memory',
+      attachments: 'Attachments',
+    },
+    category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
+    unavailable: 'Context window unavailable',
   },
   /** Branching a chat from one of an agent's replies. */
   branch: {
@@ -2965,9 +3152,11 @@ export const CAPABILITIES_COPY = {
       allow: 'Runs without asking',
       ask: 'Asks you first',
     },
+    /** Where a tool comes from; the host passes Interborough's MCP servers' tools, so its are an MCP server's. */
     sources: {
-      host: 'Provided by this host',
-      bureau: 'Built into Interborough',
+      host: 'MCP server',
+      bureau: 'Built in',
+      plugin: (plugin: string): string => `Plugin ${plugin}`,
     },
     loadFailed: {
       title: 'The tools could not be read',

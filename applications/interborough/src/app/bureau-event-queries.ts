@@ -60,6 +60,8 @@ const SESSION_EVENT_KINDS: ReadonlySet<string> = new Set([
   'session.created',
   'session.saved',
   'session.deleted',
+  // A steer from another window changes the model, effort or mode this chat's controls show.
+  'steering.accepted',
 ]);
 
 const RECOVERY_EVENT_KINDS: ReadonlySet<string> = new Set([

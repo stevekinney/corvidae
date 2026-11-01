@@ -27,6 +27,11 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { shortcuts } from '../../lib/shortcuts.ts';
+import {
+  chooseModel,
+  openModelOptions,
+  optionLabel,
+} from './agent-editor-model-support.test-support.ts';
 import Harness from './agent-editor-test-harness.test-harness.svelte';
 
 let stub: BureauStub | undefined;
@@ -52,6 +57,10 @@ function bureau(
     readonly hostMode?: 'local' | 'remote';
     /** The saved versions, newest first. */
     readonly versions?: readonly unknown[];
+    /** The providers `/host/providers` reports. Left out, the host does not answer. */
+    readonly hostProviders?: readonly { readonly name: string; readonly hasKey: boolean }[];
+    /** The `modelPolicy` setting. Left out, the settings are not readable. */
+    readonly modelPolicy?: unknown;
   } = {},
 ): BureauStub {
   const agent = options.agent ?? readyAgent();
@@ -70,8 +79,19 @@ function bureau(
       }),
       'bureau.agents.definitions.update': () => ({ id: agent.id, hash: 'hash-2' }),
       'bureau.agents.definitions.delete': () => ({ id: agent.id, hash: 'deleted' }),
+      ...(options.modelPolicy === undefined
+        ? {}
+        : {
+            'bureau.settings.get': () => ({
+              values: { modelPolicy: options.modelPolicy },
+              revision: 1,
+              persisted: true,
+              keys: {},
+            }),
+          }),
     },
     {
+      ...(options.hostProviders === undefined ? {} : { hostProviders: options.hostProviders }),
       ...(options.hostPaths === undefined ? {} : { hostPaths: options.hostPaths }),
       ...(options.hostMode === undefined ? {} : { hostMode: options.hostMode }),
     },
@@ -81,6 +101,18 @@ function bureau(
 
 function mountEditor(id?: string) {
   return render(Harness, { props: id === undefined ? {} : { id } } as never);
+}
+
+type EditorQueries = ReturnType<typeof mountEditor>;
+
+/** Opens the Add tools picker. */
+async function openPicker(view: Pick<EditorQueries, 'getByRole'>): Promise<void> {
+  await fireEvent.click(view.getByRole('button', { name: AGENT_EDITOR_COPY.addToolsAction }));
+}
+
+/** Closes the Add tools picker with Done. */
+async function closePicker(view: Pick<EditorQueries, 'getByRole'>): Promise<void> {
+  await fireEvent.click(view.getByRole('button', { name: AGENT_EDITOR_COPY.toolPicker.done }));
 }
 
 async function type(element: HTMLElement, value: string): Promise<void> {
@@ -108,14 +140,16 @@ describe('a new agent', () => {
         ],
       }),
     });
-    const { findByRole, getAllByRole, getByRole } = mountEditor();
+    const view = mountEditor();
+    const { findByRole, getAllByRole, getByRole, getByTestId, queryAllByRole } = view;
     const select = await findByRole('combobox', { name: 'Model' });
 
-    expect(
-      within(select)
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toEqual(['openai/gpt-4.1', 'anthropic/claude-haiku-5']);
+    const listed = await openModelOptions(select);
+    expect(listed.map(optionLabel)).toEqual(['openai/gpt-4.1', 'anthropic/claude-haiku-5']);
+    // A new agent has no tool yet, and the picker offers every tool the catalog lists.
+    expect(getByTestId('agent-tool-count').textContent?.trim()).toBe('0 of 2 chosen');
+    expect(queryAllByRole('checkbox')).toEqual([]);
+    await openPicker(view);
     expect(getAllByRole('checkbox').map((box) => box.getAttribute('id'))).toEqual([
       'agent-tool-lookup-order',
       'agent-tool-issue-refund',
@@ -225,7 +259,10 @@ describe('a new agent', () => {
         ],
       }),
     });
-    const { findByRole, getAllByTestId, getByText, queryAllByTestId } = mountEditor();
+    const view = mountEditor();
+    const { findByRole, getAllByTestId, getByText, queryAllByTestId } = view;
+    await findByRole('button', { name: AGENT_EDITOR_COPY.addToolsAction });
+    await openPicker(view);
     await findByRole('checkbox', { name: /bureau:workflows-create/ });
 
     const lines = getAllByTestId('agent-tool-line').map((line) => line.textContent ?? '');
@@ -251,7 +288,8 @@ describe('a new agent', () => {
 
   test('fills the identifier from the name until it is edited, and creates the agent', async () => {
     const calls = bureau();
-    const { findByRole, getByRole } = mountEditor();
+    const view = mountEditor();
+    const { findByRole, getByRole } = view;
     const name = await findByRole('textbox', { name: /^Name/ });
     const identifier = getByRole('textbox', { name: /^Identifier/ }) as HTMLInputElement;
 
@@ -262,7 +300,9 @@ describe('a new agent', () => {
     expect(identifier.value).toBe('helper');
 
     await type(getByRole('textbox', { name: /^Instructions/ }), 'Be careful.');
+    await openPicker(view);
     await fireEvent.click(getByRole('checkbox', { name: /lookup-order/ }));
+    await closePicker(view);
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
 
     await waitFor(() => expect(router.pathname).toBe('/agents/helper'));
@@ -368,13 +408,18 @@ describe('an agent that exists', () => {
     const { findByRole, getByRole, getByTestId } = mountEditor('researcher');
 
     expect(await findByRole('heading', { level: 1, name: 'Edit Researcher' })).not.toBeNull();
+    expect(getByTestId('agent-tool-count').textContent?.trim()).toBe('1 of 1 chosen');
     expect(getByRole('textbox', { name: /^Name/ })).toHaveValue('Researcher');
     expect(getByRole('textbox', { name: /^Description/ })).toHaveValue('Finds and cites sources');
     expect(getByRole('textbox', { name: /^Instructions/ })).toHaveValue(
       'You are a careful researcher.',
     );
     expect(getByRole('combobox', { name: 'Model' })).toHaveValue('anthropic/claude-sonnet-5');
-    expect(getByRole('checkbox', { name: /lookup-order/ })).toBeChecked();
+    expect(
+      within(getByRole('list', { name: AGENT_EDITOR_COPY.chosenToolsLabel })).getByText(
+        'lookup-order',
+      ),
+    ).not.toBeNull();
     expect(getByRole('textbox', { name: /^Identifier/ })).toHaveAttribute('readonly');
     expect(getByTestId('agent-file-path').textContent).toBe(
       `${STUB_AGENT_DIRECTORY}/researcher.md`,
@@ -446,8 +491,8 @@ describe('an agent that exists', () => {
     const calls = bureau();
     const { findByRole, getByRole } = mountEditor('researcher');
     const select = await findByRole('combobox', { name: 'Model' });
-    expect(within(select).getAllByRole('option')).toHaveLength(2);
-    await fireEvent.change(select, { target: { value: 'anthropic/claude-haiku-5' } });
+    expect(await openModelOptions(select)).toHaveLength(2);
+    await chooseModel(select, 'anthropic/claude-haiku-5');
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');

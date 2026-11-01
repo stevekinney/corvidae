@@ -155,7 +155,9 @@ describe('the operations, against the real Bureau', () => {
     expect(byName.get('demo:lookup-order')).toMatchObject({
       tier: 'read-only',
       defaultApproval: 'allow',
-      source: 'host',
+      // The demo plugin contributes it (COR-1892).
+      source: 'plugin',
+      plugin: 'demo',
       // The `tool-runner` agent's own toolbox holds its own `lookup-order`, not the catalog's.
       users: [],
     });

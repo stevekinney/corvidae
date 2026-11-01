@@ -56,7 +56,9 @@
         size="sm"
         {options}
         value={approval}
-        description={copy.approvalHints[approval]}
+        description={approval === 'never' && tool.catalog?.tier === null
+          ? copy.neverUnclassifiedHint
+          : copy.approvalHints[approval]}
         onchange={(event) => onApproval(event.currentTarget.value as ToolApproval)}
       />
     </div>

@@ -14,6 +14,11 @@ import type { BureauStub } from '../../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import {
+  installFakePluginHost,
+  type FakePluginHost,
+  type PluginFixture,
+} from '../plugins/plugins-host.test-support.ts';
+import {
   installSettingsBureau,
   servedSettings,
   type SettingsServed,
@@ -27,9 +32,13 @@ const GPT = model('openai', 'gpt-5', { tools: false, structuredOutput: false });
 
 let stub: BureauStub | undefined;
 let host: FakeHost | undefined;
+let pluginHost: FakePluginHost | undefined;
 
 afterEach(() => {
   cleanup();
+  // Newest first: each stand-in restores the fetch it found.
+  pluginHost?.restore();
+  pluginHost = undefined;
   host?.restore();
   host = undefined;
   stub?.restore();
@@ -42,6 +51,7 @@ function open(
     catalog?: Parameters<typeof installFakeHost>[0]['catalog'];
     lockReason?: 'deployment';
     served?: SettingsServed;
+    plugins?: PluginFixture[];
   } = {},
 ) {
   stub = installSettingsBureau(options.served ?? servedSettings(), {
@@ -53,6 +63,7 @@ function open(
     ...(options.catalog === undefined ? {} : { catalog: options.catalog }),
     ...(options.lockReason === undefined ? {} : { lockReason: options.lockReason }),
   });
+  if (options.plugins !== undefined) pluginHost = installFakePluginHost(options.plugins);
   landAt('/settings/models');
   return render(RouteOutletHarness, {
     props: {
@@ -119,6 +130,33 @@ describe('the page', () => {
     expect(within(unconnected!).queryByRole('button', { name: /Manage/ })).toBeNull();
     expect(unconnected?.textContent).not.toContain(MODELS_COPY.providers.connected);
     expect(container.textContent?.toLowerCase()).not.toContain('not connected');
+  });
+
+  test('shows a provider whose plugin needs setup as needing setup, with a link to the plugin', async () => {
+    const { container } = open({
+      plugins: [
+        { name: 'anthropic', status: 'running' },
+        { name: 'gemini', status: 'needs-setup' },
+      ],
+    });
+    await loaded(container);
+
+    const gemini = providerOf(container, 'gemini')!;
+    await waitFor(() => expect(gemini.textContent).toContain(MODELS_COPY.providers.needsSetup));
+    const link = within(gemini).getByRole('link', {
+      name: MODELS_COPY.providers.pluginLink('Gemini'),
+    });
+    expect(link.getAttribute('href')).toBe('/settings/plugins?plugin=gemini');
+    // It can still be connected from here, which is what sets the plugin up.
+    expect(within(gemini).getByRole('button', { name: /Connect/ })).toBeDefined();
+    // A provider whose plugin is running, or that has no plugin, says nothing of the sort.
+    expect(providerOf(container, 'anthropic')?.textContent).not.toContain(
+      MODELS_COPY.providers.needsSetup,
+    );
+    expect(providerOf(container, 'openai')?.textContent).not.toContain(
+      MODELS_COPY.providers.needsSetup,
+    );
+    expect(within(providerOf(container, 'openai')!).queryByRole('link')).toBeNull();
   });
 
   test('lists every model the connected providers offer, with context, abilities and price', async () => {

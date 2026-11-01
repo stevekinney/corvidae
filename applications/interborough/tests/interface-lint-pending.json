@@ -1,12 +1,6 @@
 {
   "entries": [
     {
-      "rule": "cinder-selector",
-      "file": "src/routes/agent-editor/agent-editor-tool-row.svelte",
-      "subject": ".cinder-form-field__label",
-      "issue": "COR-1963"
-    },
-    {
       "rule": "app-header-class",
       "file": "src/routes/schedules/schedule-form-drawer.svelte",
       "subject": ".weft-schedule-drawer__header",
@@ -41,12 +35,6 @@
       "file": "src/styles/agents.css",
       "subject": ".ib-agents__header",
       "issue": "COR-1843"
-    },
-    {
-      "rule": "app-header-class",
-      "file": "src/styles/chat.css",
-      "subject": ".weft-chat-header",
-      "issue": "COR-1967"
     },
     {
       "rule": "app-header-class",

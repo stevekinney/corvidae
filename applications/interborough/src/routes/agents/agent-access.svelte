@@ -27,6 +27,8 @@
   import { untrack } from 'svelte';
 
   import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { pluginOfAgent } from '../../lib/agent-paths.ts';
+  import AgentPluginNote from './agent-plugin-note.svelte';
   import {
     agentFaultOf,
     getAgentCatalog,
@@ -116,6 +118,7 @@
     }
   }
 
+  const plugin = $derived(pluginOfAgent(id));
   const isFile = $derived(detail?.source === 'file');
   const builtInTools = $derived(detail?.codeDefinition?.tools ?? []);
 
@@ -281,6 +284,21 @@
         }}>{RETRY_LABEL}</Button
       >
     </Alert>
+  {:else if plugin !== null}
+    <!-- A plugin's agent is read-only: the tools its file names, and no editor. -->
+    <section class="ib-agent-section" aria-label={copy.heading}>
+      <SectionHeading level={2} title={copy.toolsHeading} />
+      <AgentPluginNote {plugin} />
+      {#if detail === undefined}
+        <Skeleton height="4rem" />
+      {:else}
+        <ul class="ib-agent-chips" aria-label={copy.toolsListLabel}>
+          {#each keyedByOccurrence(detail.definition?.tools ?? [], (tool) => tool) as { key, item: tool } (key)}
+            <li><Badge variant="neutral" size="sm" monospace>{tool}</Badge></li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
   {:else if isFile && detail?.definition === null}
     <Alert variant="warning">
       <p>{copy.invalid}</p>

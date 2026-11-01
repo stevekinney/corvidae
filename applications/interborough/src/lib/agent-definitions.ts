@@ -155,14 +155,44 @@ const versionsSchema = z.object({
 /** A saved version of an agent's definition, as `bureau.agents.versions.list` shows it. */
 export type AgentVersion = z.infer<typeof versionsSchema>['versions'][number];
 
+/**
+ * A model of `bureau.agents.catalog`: the keys of the catalog row (`modelSchema` in Bureau's
+ * `agent-definitions-operations.ts`, the `general` projection) that the editor reads. The Bureau
+ * returns every row unfiltered, with the abilities each declares, so a model that is turned off
+ * (`availability: 'unavailable'`) or retired is still listed and the editor says why it is not
+ * offered. A key this schema does not name is stripped, and a price is never on the wire.
+ *
+ * The catalog holds rows only for providers the host can call, so a provider with no API key has
+ * none: the providers that are not connected come from the host (`/host/providers`,
+ * `host-providers.ts`), which owns the keys, and the editor lays the two side by side.
+ */
+const catalogModelSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  aliases: z.array(z.object({ alias: z.string(), resolvesTo: z.string() })),
+  /** Where the row is in its life; the Bureau refuses an agent file whose model is `retired`. */
+  lifecycle: z.enum(['preview', 'stable', 'deprecated', 'retired']),
+  /** `unavailable` is a row turned off in Settings › Models, which agents and plans do not use. */
+  availability: z.enum(['available', 'unavailable', 'unknown']),
+  /** The model's context window, in tokens. */
+  contextWindowTokens: z.number(),
+  /** The most tokens one answer may hold. */
+  maxOutputTokens: z.number(),
+  /** Whether the model streams its answer. */
+  streaming: z.boolean(),
+  /** Whether the model can call tools. */
+  tools: z.boolean(),
+  /** Whether the model can answer to a schema. */
+  structuredOutput: z.boolean(),
+  /** What the model takes and gives, by modality (`text`, `image`, ...): only `input` is read. */
+  modalities: z.record(z.string(), z.object({ input: z.boolean() })),
+});
+
+/** One model of the catalog, with the abilities and standing the Bureau reports for it. */
+export type CatalogModel = z.infer<typeof catalogModelSchema>;
+
 const catalogSchema = z.object({
-  models: z.array(
-    z.object({
-      provider: z.string(),
-      model: z.string(),
-      aliases: z.array(z.object({ alias: z.string(), resolvesTo: z.string() })),
-    }),
-  ),
+  models: z.array(catalogModelSchema),
   tools: z.array(
     z.object({
       name: z.string(),
@@ -176,8 +206,10 @@ const catalogSchema = z.object({
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool (Armorer's tier rule). */
       defaultApproval: z.enum(['allow', 'ask']),
-      /** `bureau` for a tool Bureau adds, `host` for one the host provides. */
-      source: z.enum(['host', 'bureau']),
+      /** `bureau` for a tool Bureau adds, `plugin` for one a plugin contributes, `host` for one the host provides (an MCP server's). */
+      source: z.enum(['host', 'bureau', 'plugin']),
+      /** The plugin that contributes the tool when `source` is `plugin`, else `null`. */
+      plugin: z.string().nullable(),
       /** The agents that use the tool now. */
       users: z.array(z.string()),
     }),
@@ -321,6 +353,16 @@ export async function updateAgent(
 ): Promise<AgentWriteResult> {
   return writeResultSchema.parse(
     await callBureau('bureau.agents.definitions.update', { id, expectedHash, definition }, options),
+  );
+}
+
+/**
+ * Copies a plugin's read-only agent (`plugin:name`) into the owner's agents as `name`, with its
+ * tools unversioned. A name the owner already uses is a `Conflict` (`agent-file-exists`).
+ */
+export async function duplicateAgent(id: string, options?: Options): Promise<AgentWriteResult> {
+  return writeResultSchema.parse(
+    await callBureau('bureau.agents.definitions.duplicate', { id }, options),
   );
 }
 

@@ -14,13 +14,23 @@
    */
   import { untrack } from 'svelte';
 
-  import { Button, PageHeader, Tabs } from '@lostgradient/cinder';
-  import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
+  import { Alert, Button, PageHeader, Tabs } from '@lostgradient/cinder';
+  import {
+    createInfiniteQuery,
+    createMutation,
+    createQuery,
+    useQueryClient,
+  } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, AGENTS_COPY, CHAT_COPY } from '../../app/copy.ts';
-  import { agentEditPath, agentMemoryPath, agentPath } from '../../lib/agent-paths.ts';
-  import { getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import {
+    agentEditPath,
+    agentMemoryPath,
+    agentPath,
+    pluginOfAgent,
+  } from '../../lib/agent-paths.ts';
+  import { agentFaultOf, duplicateAgent, getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { listMemories, MEMORY_PAGE_SIZE } from '../../lib/memory-client.ts';
@@ -81,6 +91,32 @@
   );
   const memoryLabel = $derived(memoryActionText(memoryCount, memories.hasNextPage));
 
+  const plugin = pluginOfAgent(id);
+  const queryClient = useQueryClient();
+  let duplicateProblem = $state<string | null>(null);
+
+  // A plugin's agent is read-only; Duplicate writes a copy into the owner's agents and opens it.
+  const duplicate = createMutation(() => ({
+    mutationFn: () => duplicateAgent(id),
+    onMutate: () => {
+      duplicateProblem = null;
+    },
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
+      router.navigate(agentPath(result.id));
+    },
+    onError: (error) => {
+      const fault = agentFaultOf(error);
+      const words = AGENT_PAGE_COPY.plugin;
+      if (fault.kind === 'identifier-taken')
+        duplicateProblem = words.exists(id.slice(id.indexOf(':') + 1));
+      else if (fault.kind === 'not-found') duplicateProblem = words.notLoaded;
+      else if (fault.kind === 'forbidden') duplicateProblem = words.forbidden;
+      else duplicateProblem = words.failed;
+    },
+  }));
+
   const editPath = agentEditPath(id);
   const settingsPath = `${agentPath(id)}?tab=settings`;
   const memoryPath = agentMemoryPath(id);
@@ -138,7 +174,15 @@
 
 {#snippet headerActions()}
   <!-- An agent defined in code has no file, so there is nothing to edit. -->
-  {#if agent?.kind === 'file'}
+  {#if plugin !== null}
+    <Button
+      data-changes
+      variant="secondary"
+      size="sm"
+      loading={duplicate.isPending}
+      onclick={() => duplicate.mutate()}>{AGENT_PAGE_COPY.plugin.duplicate}</Button
+    >
+  {:else if agent?.kind === 'file'}
     <Button
       href={router.href(editPath)}
       variant="secondary"
@@ -164,13 +208,19 @@
       <code class="ib-agent-id">{agent.name}</code>
     {/if}
 
+    {#if duplicateProblem !== null}
+      <Alert variant="danger" dismissible onDismiss={() => (duplicateProblem = null)}>
+        <p>{duplicateProblem}</p>
+      </Alert>
+    {/if}
+
     {#if agent.description}
       <p class="ib-agent__description">{agent.description}</p>
     {/if}
 
     <AgentFacts {agent} detailed />
 
-    {#if agent.kind === 'file' && fileVersion !== undefined}
+    {#if agent.kind === 'file' && plugin === null && fileVersion !== undefined}
       <p class="ib-agent__version" data-testid="agent-file-version">
         {AGENTS_COPY.fileVersion}
         <code title={fileVersion}>{shortVersion(fileVersion)}</code>
@@ -194,6 +244,7 @@
       <Tabs.Panel value="instructions">
         <AgentInstructions
           {editPath}
+          {plugin}
           detail={definition.data}
           failed={definition.isError}
           onRetry={() => void definition.refetch()}

@@ -164,6 +164,39 @@ export async function getContext(
   return contextDetailSchema.parse(await callBureau('bureau.contexts.get', { contextId }, options));
 }
 
+/** What fills a context's window, as `bureau.contexts.window` names the categories, in its order. */
+export const WINDOW_CATEGORIES = ['system', 'tools', 'messages', 'memory', 'attachments'] as const;
+
+/** One thing that fills a context's window. */
+export type WindowCategoryName = (typeof WINDOW_CATEGORIES)[number];
+
+const contextWindowSchema = z.object({
+  maxTokens: z.number().int().nonnegative().nullable(),
+  usedEstimated: z.number().int().nonnegative(),
+  usedReported: z.number().int().nonnegative().nullable(),
+  categories: z.array(
+    z.object({ name: z.enum(WINDOW_CATEGORIES), tokens: z.number().int().nonnegative() }),
+  ),
+});
+
+/**
+ * How full a context's window is (`bureau.contexts.window`): `maxTokens` is the window of the model
+ * that would answer, `null` when it is not known; `usedEstimated` is the estimated size of the next
+ * prompt and always the sum of `categories`; `usedReported` is the provider's own count for the
+ * latest step, `null` when there is none. It holds counts only.
+ */
+export type ContextWindow = z.infer<typeof contextWindowSchema>;
+
+/** How full one session's window is, and what fills it (`bureau.contexts.window`). */
+export async function getContextWindow(
+  contextId: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<ContextWindow> {
+  return contextWindowSchema.parse(
+    await callBureau('bureau.contexts.window', { contextId }, options),
+  );
+}
+
 /** One model an agent allows, named the way a model override names it. */
 const agentModelChoiceSchema = z.object({
   provider: z.string(),

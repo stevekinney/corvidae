@@ -8,12 +8,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
 import { catalogFixture, readyAgent } from '../../lib/bureau-stub.test-support.ts';
-import {
-  AgentEditorState,
-  canonicalModel,
-  modelOptions,
-  slugify,
-} from './agent-editor-state.svelte.ts';
+import { restrictionsOf } from './agent-editor-models.ts';
+import { AgentEditorState, slugify } from './agent-editor-state.svelte.ts';
 
 describe('slugify', () => {
   test('lowercases, joins words with single hyphens, and trims the ends', () => {
@@ -34,36 +30,6 @@ describe('slugify', () => {
     expect(slug.length).toBeLessThanOrEqual(64);
     expect(slug.endsWith('-')).toBe(false);
     expect(slugify('a'.repeat(100))).toBe('a'.repeat(64));
-  });
-});
-
-describe('the catalog', () => {
-  test('offers one option per model, as <provider>/<model>, once, in the catalog’s order', () => {
-    const catalog = catalogFixture({
-      models: [
-        { provider: 'openai', model: 'gpt-4.1', aliases: [] },
-        { provider: 'anthropic', model: 'claude-sonnet-5', aliases: [] },
-        { provider: 'openai', model: 'gpt-4.1', aliases: [] },
-      ],
-    });
-    expect(modelOptions(catalog)).toEqual([
-      { value: 'openai/gpt-4.1', label: 'openai/gpt-4.1' },
-      { value: 'anthropic/claude-sonnet-5', label: 'anthropic/claude-sonnet-5' },
-    ]);
-    expect(modelOptions(catalogFixture({ models: [] }))).toEqual([]);
-  });
-
-  test('resolves a model, or an alias of one, to the option it names', () => {
-    const catalog = catalogFixture();
-    expect(canonicalModel('anthropic/claude-sonnet-5', catalog)).toBe('anthropic/claude-sonnet-5');
-    expect(canonicalModel('anthropic/sonnet', catalog)).toBe('anthropic/claude-sonnet-5');
-  });
-
-  test('resolves nothing for a model the catalog does not offer', () => {
-    const catalog = catalogFixture();
-    expect(canonicalModel('openai/gpt-4.1', catalog)).toBe('');
-    expect(canonicalModel('anthropic/unknown', catalog)).toBe('');
-    expect(canonicalModel('sonnet', catalog)).toBe('');
   });
 });
 
@@ -181,6 +147,88 @@ describe('a new agent', () => {
   });
 });
 
+describe('the model the form chooses', () => {
+  const restrictions = restrictionsOf({
+    deployment: { deniedProviders: ['openai'] },
+    policyRevision: 1,
+  });
+  const catalog = catalogFixture({
+    models: [
+      { provider: 'openai', model: 'gpt-4.1' },
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+      },
+    ],
+  });
+
+  /** An agent whose file writes `model`. */
+  function writing(model: string) {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    detail.definition = { ...detail.definition, model };
+    return detail;
+  }
+
+  test('is the first model that can be chosen for a new agent, not one the policy forbids', () => {
+    expect(AgentEditorState.create(catalog).model).toBe('openai/gpt-4.1');
+    expect(AgentEditorState.create(catalog, { restrictions }).model).toBe(
+      'anthropic/claude-sonnet-5',
+    );
+  });
+
+  test('is none, and cannot be saved, when every model is forbidden', () => {
+    const form = AgentEditorState.create(catalog, {
+      restrictions: restrictionsOf({
+        deployment: { deniedProviders: ['openai', 'anthropic'] },
+        policyRevision: 1,
+      }),
+    });
+    form.name = 'Researcher';
+    expect(form.hasModels).toBe(true);
+    expect(form.model).toBe('');
+    expect(form.chosenModel).toBeUndefined();
+    expect(form.canSave).toBe(false);
+  });
+
+  test('stays the file’s model when the policy now forbids it, and is written back as it was', () => {
+    const form = AgentEditorState.edit(writing('openai/gpt-4.1'), catalog, { restrictions });
+    expect(form.model).toBe('openai/gpt-4.1');
+    expect(form.chosenModel?.unavailable).toBe('provider-denied');
+    expect(form.canSave).toBe(true);
+    expect(form.toDefinition().model).toBe('openai/gpt-4.1');
+  });
+
+  test('stays the file’s alias, written back as the file wrote it, while the option is the model', () => {
+    const form = AgentEditorState.edit(writing('anthropic/sonnet'), catalog, { restrictions });
+    expect(form.model).toBe('anthropic/claude-sonnet-5');
+    expect(form.toDefinition().model).toBe('anthropic/sonnet');
+  });
+
+  test('stays the file’s model when the catalog no longer lists it, and is written back unchanged', () => {
+    const form = AgentEditorState.edit(writing('gemini/gemini-2.5-pro'), catalog, {
+      hostProviders: [{ name: 'gemini', hasKey: false }],
+    });
+    expect(form.model).toBe('gemini/gemini-2.5-pro');
+    expect(form.chosenModel?.unavailable).toBe('not-in-catalog');
+    expect(form.canSave).toBe(true);
+    expect(form.toDefinition().model).toBe('gemini/gemini-2.5-pro');
+    // It joined the group of its provider, which has no key.
+    expect(form.modelGroups.map((group) => [group.provider, group.connected])).toEqual([
+      ['openai', true],
+      ['anthropic', true],
+      ['gemini', false],
+    ]);
+  });
+
+  test('sends a model the person chose instead of the file’s', () => {
+    const form = AgentEditorState.edit(writing('openai/gpt-4.1'), catalog, { restrictions });
+    form.model = 'anthropic/claude-sonnet-5';
+    expect(form.toDefinition().model).toBe('anthropic/claude-sonnet-5');
+  });
+});
+
 describe('an agent that exists', () => {
   test('is filled from its file, with the alias resolved to the option it names', () => {
     const form = AgentEditorState.edit(readyAgent(), catalogFixture());
@@ -243,19 +291,6 @@ describe('an agent that exists', () => {
     const form = AgentEditorState.edit(readyAgent(), catalogFixture());
     form.model = 'anthropic/claude-haiku-5';
     expect(form.toDefinition().model).toBe('anthropic/claude-haiku-5');
-  });
-
-  test('has nothing chosen when the file’s model is not one the catalog offers, and will not save', () => {
-    const detail = readyAgent();
-    const form = AgentEditorState.edit(
-      {
-        ...detail,
-        definition: detail.definition && { ...detail.definition, model: 'openai/gpt-4.1' },
-      },
-      catalogFixture(),
-    );
-    expect(form.model).toBe('');
-    expect(form.canSave).toBe(false);
   });
 
   test('keeps a missing description as null and offers only the tools the catalog lists', () => {
@@ -419,5 +454,76 @@ describe('the tool approvals the Access tab sets', () => {
     form.setTool('lookup-order', false);
     expect(form.toDefinition().tools).toEqual([]);
     expect(form.toDefinition().toolApproval).toBeNull();
+  });
+});
+
+describe('the tools the form shows', () => {
+  const catalog = catalogFixture({
+    tools: [
+      { name: 'a-read', description: 'Reads.', shortDescription: null, tier: null },
+      {
+        name: 'b-change',
+        description: 'Changes.',
+        shortDescription: null,
+        tier: 'mutating',
+        defaultApproval: 'ask',
+      },
+      { name: 'c-read', description: 'Reads too.', shortDescription: null },
+    ],
+  });
+  const withTools = (
+    tools: string[],
+    toolApproval: Record<string, 'always' | 'never' | 'blocked'> | null,
+  ) => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    return AgentEditorState.edit(
+      { ...detail, definition: { ...detail.definition, tools, toolApproval } },
+      catalog,
+    );
+  };
+
+  test('lists the chosen tools in the catalog’s order, leaving out a tool the catalog dropped', () => {
+    const form = withTools(['c-read', 'gone', 'a-read'], null);
+    expect(form.chosenTools.map((tool) => tool.name)).toEqual(['a-read', 'c-read']);
+    form.setTool('b-change', true);
+    expect(form.chosenTools.map((tool) => tool.name)).toEqual(['a-read', 'b-change', 'c-read']);
+  });
+
+  test('says what the file states about a tool, and nothing for a name it does not state', () => {
+    const form = withTools(['a-read'], { 'a-read': 'always' });
+    expect(form.approvalOf('a-read')).toBe('always');
+    expect(form.approvalOf('b-change')).toBeUndefined();
+    expect(form.approvalOf('constructor')).toBeUndefined();
+    expect(AgentEditorState.create(catalog).approvalOf('a-read')).toBeUndefined();
+  });
+
+  test('marks a tool that asks first by the file’s word or the tier’s default', () => {
+    const form = withTools(['a-read', 'b-change', 'c-read'], {
+      'a-read': 'always',
+      'c-read': 'blocked',
+    });
+    const standing = (name: string) =>
+      form.standingOf(form.toolChoices.find((tool) => tool.name === name)!);
+    expect(standing('a-read')).toBe('asks-first');
+    expect(standing('b-change')).toBe('asks-first');
+    expect(standing('c-read')).toBe('blocked');
+  });
+
+  test('marks a tool with no tier as asking first under never, as the runtime asks', () => {
+    const form = withTools(['a-read', 'b-change'], { 'a-read': 'never', 'b-change': 'never' });
+    const standing = (name: string) =>
+      form.standingOf(form.toolChoices.find((tool) => tool.name === name)!);
+    expect(standing('a-read')).toBe('asks-first');
+    expect(standing('b-change')).toBe('runs');
+  });
+
+  test('keeps the approval of a tool that is cleared and ticked again before the save', () => {
+    const form = withTools(['b-change'], { 'b-change': 'never' });
+    form.setTool('b-change', false);
+    expect(form.toDefinition().toolApproval).toBeNull();
+    form.setTool('b-change', true);
+    expect(form.toDefinition().toolApproval).toEqual({ 'b-change': 'never' });
+    expect(form.standingOf(form.chosenTools[0]!)).toBe('runs');
   });
 });
