@@ -39,7 +39,7 @@ const runCommand = async (command: string) => {
   };
 };
 
-const results = [];
+const results: Awaited<ReturnType<typeof runCommand>>[] = [];
 for (const command of commands) results.push(await runCommand(command));
 
 describe('the authoring guide walkthrough', () => {
