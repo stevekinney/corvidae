@@ -2,6 +2,7 @@ import { type DecisionRequest, DecisionSchemaError } from '@lostgradient/operati
 import { type AnyToolbox, createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
+import { ModelPolicyDeniedError } from '../file-agent-generate.ts';
 import {
   DECISION_SCHEMA_MAXIMUM_BYTES,
   DecisionSchemaRefusedError,
@@ -44,6 +45,7 @@ export type DecideRefusalReason =
   | 'invalid-request'
   | 'invalid-schema'
   | 'not-configured'
+  | 'model-policy-denied'
   | 'model-answer-invalid';
 
 /** What the `decide` tool returns. A refusal is a result, not a throw, so the agent can react. */
@@ -178,6 +180,10 @@ export function createDecideToolbox(options: DecideToolOptions): AnyToolbox {
             refusal: 'not-configured',
             message: 'No model is configured to answer decisions.',
           };
+        }
+        if (error instanceof ModelPolicyDeniedError) {
+          // The policy leaves no model that may answer; the agent can read why and carry on.
+          return { ok: false, refusal: 'model-policy-denied', message: error.message };
         }
         if (code === 'BAD_REQUEST') {
           return {
