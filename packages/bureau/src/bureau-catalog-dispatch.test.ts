@@ -73,6 +73,7 @@ function durableRuntime(claimed: boolean): RuntimeComposition {
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
+    holdToModelPolicy: (options: unknown) => options,
     claimCatalogRunRecoveryRecord: async () => claimed,
     persistCatalogRunRecoveryRecord: () => {
       throw new Error('a child never overwrites a recovery record');
@@ -129,6 +130,7 @@ describe('createCatalogDispatcher — startChildRun', () => {
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
       } as unknown as RuntimeComposition,
     });
 
@@ -189,6 +191,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       createBureauInvariantHooks: () => undefined,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
+      holdToModelPolicy: (options: unknown) => options,
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;
@@ -243,6 +246,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       createBureauInvariantHooks: () => undefined,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
+      holdToModelPolicy: (options: unknown) => options,
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;
@@ -314,6 +318,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
         claimCatalogRunRecoveryRecord: async () => true,
         persistCatalogRunRecoveryRecord: async () => {},
         ...runtimeOverrides,
@@ -439,6 +444,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
         claimCatalogRunRecoveryRecord: async () => false,
         loadCatalogRunRecoveryRecord: async () =>
           record === undefined
@@ -544,6 +550,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         durable: { engine, checkpointStore },
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
         // What the runtime composition does for a goal attempt's run.
         createBureauInvariantHooks: (goalAttempt?: { goalRunId: string }) => {
           const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
@@ -654,6 +661,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
         claimCatalogRunRecoveryRecord: async (runId: string, record: Record<string, unknown>) => {
           if (records.has(runId)) return false;
           records.set(runId, { schemaVersion: 1, ...record });
@@ -791,6 +799,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
           createBureauInvariantHooks: () => undefined,
           mediaOptionsFor: () => ({}),
           withChatPermission: (toolbox: unknown) => toolbox,
+          holdToModelPolicy: (options: unknown) => options,
           claimCatalogRunRecoveryRecord: async () => false,
           loadCatalogRunRecoveryRecord: async () => ({ status: 'found', record: claimed }),
           persistCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
@@ -870,6 +879,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         createBureauInvariantHooks: () => undefined,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
+        holdToModelPolicy: (options: unknown) => options,
         claimCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
           claims.push(record);
           return true;
@@ -920,6 +930,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
+    holdToModelPolicy: (options: unknown) => options,
   } as unknown as RuntimeComposition;
 
   async function durableComposition(): Promise<RuntimeComposition> {
@@ -938,6 +949,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
       createBureauInvariantHooks: () => undefined,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
+      holdToModelPolicy: (options: unknown) => options,
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;

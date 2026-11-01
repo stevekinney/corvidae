@@ -186,6 +186,7 @@ import type {
   SkillRuntimeConfiguration,
 } from './types';
 import { ownEntry } from './own-entry';
+import { holdGenerateToModelPolicy, type ModelPolicySource } from './code-agent-model-policy';
 
 export type BureauToolbox = AnyToolbox;
 
@@ -1624,6 +1625,13 @@ export type RuntimeCompositionDependencies = {
    */
   permissionModeOfRun?: (runId: string) => Promise<ChatPermissionReading | undefined>;
   /**
+   * COR-1996 — the model policy now in force and the model catalog, read at every step of a
+   * catalog agent's run so that a plugin code agent's generate is held to the policy as a file
+   * agent's is. `createBureau` supplies it from its settings and catalog. Without it no code
+   * agent's model is judged.
+   */
+  modelPolicy?: ModelPolicySource;
+  /**
    * COR-1710 — the tools task `taskId` was granted when it started, from its admission record;
    * for a task recorded before grants were, the settings now, recorded on it once. Without this,
    * a resumed task is offered what the options say, as before grants existed.
@@ -2165,6 +2173,12 @@ export interface RuntimeComposition {
    * to. Every toolbox a run calls goes through this once, whatever kind of agent built it.
    */
   withChatPermission(toolbox: BureauToolbox, runId: string): BureauToolbox;
+  /**
+   * COR-1996 — `options` with its `generate` held to the model policy: a step whose catalog rows
+   * the policy forbids fails with a `ModelPolicyDeniedError` before the provider is called. Every
+   * `RunOptions` a catalog agent resolves goes through this once, whatever path starts the run.
+   */
+  holdToModelPolicy<Options extends Pick<RunOptions, 'generate'>>(options: Options): Options;
   setRequestAuthorityValidator(
     validator: ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined,
   ): void;
@@ -3157,6 +3171,20 @@ async function buildRuntimeComposition(
   const configuredGenerate: GenerateFunction | undefined =
     options.generate === undefined ? undefined : applyCache(options.generate, options.cache, kv);
 
+  /** {@link RuntimeComposition.holdToModelPolicy}. */
+  function holdToModelPolicy<Options extends Pick<RunOptions, 'generate'>>(
+    resolved: Options,
+  ): Options {
+    const generate = holdGenerateOfAgent(resolved.generate);
+    return generate === resolved.generate ? resolved : { ...resolved, generate };
+  }
+
+  /** A catalog agent's `generate`, held to the model policy when this composition reads one. */
+  function holdGenerateOfAgent(generate: GenerateFunction): GenerateFunction {
+    const policy = dependencies.modelPolicy;
+    return policy === undefined ? generate : holdGenerateToModelPolicy(generate, policy);
+  }
+
   /** {@link RuntimeComposition.withChatPermission}. */
   function governedByChat(toolbox: BureauToolbox, runId: string): BureauToolbox {
     const read = dependencies.permissionModeOfRun;
@@ -3313,8 +3341,12 @@ async function buildRuntimeComposition(
   ) {
     const sessionAgent = runtimeOptions?.sessionAgent;
     const requestContext = request.requestContext;
+    // COR-1996: a catalog agent's generate is held to the model policy; the Bureau-wide one is the
+    // deployment's own and no agent's choice.
     const generate =
-      sessionAgent !== undefined ? sessionAgent.options.generate : configuredGenerate;
+      sessionAgent !== undefined
+        ? holdGenerateOfAgent(sessionAgent.options.generate)
+        : configuredGenerate;
 
     if (!generate) {
       throw new Error('No generate function configured');
@@ -4528,7 +4560,8 @@ async function buildRuntimeComposition(
         : chatToolbox;
     const services: DurableRunDeps = {
       options: {
-        ...resolution.options,
+        // COR-1996: held to the model policy as a fresh dispatch's generate is.
+        ...holdToModelPolicy(resolution.options),
         // The run's owner of record resolves its assets and holds the same
         // unverified-asset policy as on a fresh dispatch, unless the agent set its own.
         ...unsetMediaOptions(
@@ -5353,6 +5386,7 @@ async function buildRuntimeComposition(
     // resume a signed pending approval, not only the specific per-run clone.
     baseToolbox,
     withChatPermission: governedByChat,
+    holdToModelPolicy,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
     },
