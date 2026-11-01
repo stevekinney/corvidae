@@ -2042,6 +2042,100 @@ export const CHAT_COPY = {
     /** The request itself failed, so nobody knows whether the Bureau took it; the chat is read again. */
     fault: 'The model may not have been changed. Showing the model the chat uses now.',
   },
+  /**
+   * The chat's settings, shown in its header and changed from its composer: the model (its own
+   * picker, `modelPicker`), the reasoning effort and the permission mode.
+   */
+  settings: {
+    /** The header's summary of the settings. */
+    summaryLabel: 'Chat settings',
+    model: 'Model',
+    effort: 'Effort',
+    permission: 'Permissions',
+    /** What the model or the effort says when the chat has none of its own. */
+    agentDefault: 'Agent default',
+    effortOptions: [
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Extra high' },
+      { value: 'max', label: 'Max' },
+    ],
+    /** The modes, in the order of how much they ask. */
+    permissionOptions: [
+      { value: 'always', label: 'Always ask' },
+      { value: 'on-changes', label: 'Ask on changes' },
+      { value: 'allow-all', label: 'Allow all' },
+      { value: 'read-only', label: 'Read-only' },
+    ],
+    /** What each mode does, as `bureau.contexts.steer` defines it. */
+    permissionDescriptions: {
+      'on-changes': 'Tools ask as each tool’s own setting says.',
+      always: 'Every tool call asks first.',
+      'allow-all':
+        'Skips the asks that Ask on changes would raise. A tool set to always ask still asks, a tool that declares no setting of its own still asks, a blocked tool is still refused, and a child agent keeps its own stricter mode.',
+      'read-only': 'Every tool that is not read-only is denied.',
+    },
+    /** When a change takes effect. A mode is read at each tool call; the model and effort at each step. */
+    applies: {
+      step: 'Applies from the run’s next step.',
+      toolCall: 'Applies from the run’s next tool call.',
+      nextRun: 'Applies to the next run.',
+    },
+    /** Why the controls are disabled for a chat this principal did not start. */
+    notYours: 'Only the person who started this chat can change its settings.',
+    /**
+     * Said when an effort could not be changed. An effort the catalog holds is accepted for any
+     * model, and the provider then clamps it or leaves it out for a model that lacks it.
+     */
+    effortNotices: {
+      staleRevision: 'This chat changed elsewhere. Showing its settings now.',
+      denied: 'This deployment’s model catalog does not hold that effort.',
+      sessionTerminal: 'This chat has ended, so its effort cannot be changed.',
+      unsupportedCapability: 'This agent cannot change its effort.',
+      notChanged: 'The effort was not changed. The chat keeps its current effort.',
+      fault: 'The effort may not have been changed. Showing the effort the chat uses now.',
+    },
+    /** Said when a permission mode could not be changed. */
+    permissionNotices: {
+      staleRevision: 'This chat changed elsewhere. Showing its settings now.',
+      denied: 'This chat cannot use that mode.',
+      sessionTerminal: 'This chat has ended, so its permissions cannot be changed.',
+      unsupportedCapability: 'This agent cannot change its permissions.',
+      notChanged: 'The permission mode was not changed. The chat keeps its current mode.',
+      fault: 'The permission mode may not have been changed. Showing the mode the chat uses now.',
+    },
+  },
+  /** The ring in the header that says how full the chat's context window is. */
+  contextWindow: {
+    label: 'Context window',
+    /** The trigger's accessible name; `percent` is `null` when the model's window is not known. */
+    trigger: (percent: number | null, used: string, max: string | null) =>
+      percent === null || max === null
+        ? `Context window: about ${used} tokens in use, window size unknown. Opens the breakdown`
+        : `Context window: ${String(percent)}% used, about ${used} of ${max} tokens. Opens the breakdown`,
+    /** The visible reading beside the ring. */
+    reading: (percent: number | null, used: string) =>
+      percent === null ? `${used} tokens` : `${String(percent)}%`,
+    summary: (used: string, max: string | null) =>
+      max === null
+        ? `About ${used} tokens, in a window of unknown size.`
+        : `About ${used} of ${max} tokens.`,
+    estimate: 'An estimate of the next prompt this chat would send.',
+    reported: (tokens: string) =>
+      `The provider counted ${tokens} input tokens for the latest step.`,
+    notReported: 'The provider has not reported a count for this chat yet.',
+    breakdown: 'What fills it',
+    categories: {
+      system: 'Instructions',
+      tools: 'Tools',
+      messages: 'Messages',
+      memory: 'Memory',
+      attachments: 'Attachments',
+    },
+    category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
+    unavailable: 'Context window unavailable',
+  },
   /** Branching a chat from one of an agent's replies. */
   branch: {
     /** The action on a reply that ends a completed turn. */

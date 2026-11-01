@@ -38,12 +38,6 @@
     },
     {
       "rule": "app-header-class",
-      "file": "src/styles/chat.css",
-      "subject": ".weft-chat-header",
-      "issue": "COR-1967"
-    },
-    {
-      "rule": "app-header-class",
       "file": "src/styles/foundation.css",
       "subject": ".weft-notification-panel__header",
       "issue": "COR-1861"

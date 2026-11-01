@@ -10,25 +10,122 @@
   min-height: 0;
 }
 
-.weft-chat-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
-}
-
-.weft-chat-header__title {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
-}
-
 .weft-chat-header__agent {
   color: var(--cinder-text-muted);
   text-decoration: none;
+  font-size: var(--cinder-text-sm);
+}
+
+/* The chat's settings under its title: what each is now, and when a change takes effect. */
+.weft-chat-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+}
+
+.weft-chat-settings__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-4);
   margin: 0;
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-chat-settings__item {
+  display: flex;
+  gap: var(--cinder-space-1);
+}
+
+.weft-chat-settings__item dt {
+  color: var(--cinder-text-muted);
+}
+
+.weft-chat-settings__item dd {
+  margin: 0;
+}
+
+/* The composer's three controls: they wrap under each other on a narrow screen. */
+.weft-chat-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+/* The context window's ring: a button with a ring and a reading. */
+.weft-context-ring {
+  gap: var(--cinder-space-2);
+}
+
+.weft-context-ring__svg {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  flex: none;
+}
+
+.weft-context-ring__track,
+.weft-context-ring__fill {
+  fill: none;
+  stroke-width: 3;
+}
+
+.weft-context-ring__track {
+  stroke: var(--cinder-border-muted);
+}
+
+.weft-context-ring__fill {
+  stroke: var(--cinder-accent-solid);
+}
+
+.weft-context-ring[data-tone='warning'] .weft-context-ring__fill {
+  stroke: var(--cinder-status-warning-solid);
+}
+
+.weft-context-ring[data-tone='danger'] .weft-context-ring__fill {
+  stroke: var(--cinder-status-danger-solid);
+}
+
+.weft-context-ring__unavailable {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
+}
+
+.weft-context-window {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-inline-size: min(20rem, 100%);
+}
+
+.weft-context-window__summary,
+.weft-context-window__note {
+  margin: 0;
+}
+
+.weft-context-window__note {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-context-window__categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weft-context-window__category {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-context-window__category > :last-child {
+  grid-column: 1 / -1;
 }
 
 .weft-chat-surface {

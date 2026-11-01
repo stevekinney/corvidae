@@ -2,7 +2,7 @@
  * Switching a session's model from the composer (COR-1565), against the real host. The seeded
  * `model-switcher` is selectable over two models and names the one that answered, so a session
  * switched between two messages shows which model each ran on, and a reload shows the picker keep
- * the choice. An agent that allows one model, or none, has no picker. The case runs at a phone's
+ * the choice. An agent that allows one model, or none, has a disabled one. The case runs at a phone's
  * width and a desktop's, with axe passing.
  */
 import type { Page } from '@playwright/test';
@@ -69,7 +69,7 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
-test('has no picker for an agent that allows one model, and none for an agent that allows none', async ({
+test('shows the picker disabled for an agent that allows one model, and for one that allows none', async ({
   page,
   request,
 }) => {
@@ -79,6 +79,10 @@ test('has no picker for an agent that allows one model, and none for an agent th
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(1);
-    await expect(picker(page)).toHaveCount(0);
+    // There is no choice to make, so the picker is disabled, and still says which model answers.
+    await expect(picker(page)).toBeDisabled();
+    await expect(picker(page).locator('option:checked')).toHaveText(
+      agent === SINGLE_MODEL_AGENT_NAME ? SONNET.model : 'Agent default',
+    );
   }
 });

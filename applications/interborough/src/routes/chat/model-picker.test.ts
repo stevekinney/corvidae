@@ -27,6 +27,8 @@ const SONNET_4 = {
 const COPY = CHAT_COPY.modelPicker;
 
 let stub: BureauStub | undefined;
+/** The query client of the picker most recently mounted. */
+let mounted: QueryClient | undefined;
 afterEach(() => {
   cleanup();
   stub?.restore();
@@ -63,10 +65,14 @@ function mount(
     revision?: number | undefined;
     afterReload?: Session;
     reload?: () => Promise<boolean>;
+    locked?: boolean;
+    onBusyChange?: (busy: boolean) => void;
+    onApplied?: () => void;
   } = {},
 ) {
   const reloads: number[] = [];
   const client = createQueryClient();
+  mounted = client;
   const pageProps = (session: {
     current?: Session['current'] | undefined;
     revision?: number | undefined;
@@ -78,6 +84,9 @@ function mount(
       current: session.current,
       revision: session.revision,
       reload,
+      ...(props.locked === undefined ? {} : { locked: props.locked }),
+      ...(props.onBusyChange === undefined ? {} : { onBusyChange: props.onBusyChange }),
+      ...(props.onApplied === undefined ? {} : { onApplied: props.onApplied }),
     },
   });
   const reload =
@@ -114,6 +123,12 @@ async function modelsAnswered(client: QueryClient): Promise<void> {
   await tick();
 }
 
+/** Waits until the models the agent allows have reached the most recently mounted picker. */
+async function modelsListed(): Promise<void> {
+  if (mounted === undefined) throw new Error('No picker is mounted.');
+  await modelsAnswered(mounted);
+}
+
 function picker(container: HTMLElement): HTMLSelectElement {
   const select = container.querySelector('select');
   if (select === null) throw new Error('The picker did not render.');
@@ -134,7 +149,7 @@ describe('which models the picker offers', () => {
     serve();
     const { container } = mount({ current: null });
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     expect([...picker(container).options].map((option) => option.textContent)).toEqual([
       'claude-sonnet-5',
       'claude-haiku-4-5',
@@ -146,7 +161,7 @@ describe('which models the picker offers', () => {
     serve({ models: [SONNET, { ...HAIKU, unpriced: true }] });
     const { container } = mount({ current: null });
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     const options = [...picker(container).options];
     expect(options.map((option) => option.textContent)).toEqual([
       'claude-sonnet-5',
@@ -159,7 +174,7 @@ describe('which models the picker offers', () => {
     serve();
     const { container } = mount({ current: { provider: 'anthropic', model: 'claude-haiku-4-5' } });
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     expect(shownModel(container)).toBe('claude-haiku-4-5');
   });
 
@@ -173,29 +188,66 @@ describe('which models the picker offers', () => {
     });
   });
 
-  test('is hidden when the agent allows one model', async () => {
+  test('is shown, disabled on that model, when the agent allows one model', async () => {
     serve({ models: [SONNET] });
     const { container, client } = mount();
 
     await modelsAnswered(client);
 
-    expect(container.querySelector('select') === null).toBe(true);
+    expect([...picker(container).options].map((option) => option.textContent)).toEqual([
+      'claude-sonnet-5',
+    ]);
+    expect(shownModel(container)).toBe('claude-sonnet-5');
+    expect(picker(container).disabled).toBe(true);
   });
 
-  test('is hidden when the agent allows none', async () => {
+  test('shows the one model an agent allows when the Bureau names no default for it', async () => {
+    serve({ models: [SONNET], defaultModel: null });
+    const { container } = mount({ current: null });
+
+    await modelsListed();
+
+    expect(shownModel(container)).toBe('claude-sonnet-5');
+    expect(picker(container).disabled).toBe(true);
+  });
+
+  test('is shown, disabled on the agent’s default, when the agent allows none', async () => {
     serve({ models: [], defaultModel: null });
     const { container, client } = mount();
 
     await modelsAnswered(client);
 
-    expect(container.querySelector('select') === null).toBe(true);
+    expect(picker(container).selectedOptions[0]?.textContent).toBe(COPY.agentDefault);
+    expect(picker(container).disabled).toBe(true);
+  });
+
+  test('takes no choice while another setting of the session is being changed', async () => {
+    serve();
+    const { container } = mount({ locked: true });
+    await waitFor(() => expect(picker(container).options).toHaveLength(2));
+
+    expect(picker(container).disabled).toBe(true);
+  });
+
+  test('says when it starts and ends a switch, and when the Bureau took it', async () => {
+    serve();
+    const events: string[] = [];
+    const { container } = mount({
+      onBusyChange: (busy) => events.push(busy ? 'busy' : 'idle'),
+      onApplied: () => events.push('applied'),
+    });
+    await waitFor(() => expect(picker(container).options).toHaveLength(2));
+
+    await chooseModel(container, 'claude-haiku-4-5');
+
+    await waitFor(() => expect(events).toEqual(['busy', 'applied', 'idle']));
   });
 
   test('shows a session’s model that the agent no longer lists, so the picker never shows another', async () => {
     serve();
     const { container } = mount({ current: { provider: 'anthropic', model: 'claude-retired-1' } });
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     expect(shownModel(container)).toBe('claude-retired-1');
     expect(picker(container).selectedOptions[0]?.disabled).toBe(true);
   });
@@ -204,7 +256,7 @@ describe('which models the picker offers', () => {
     serve();
     const { container } = mount({ current: { provider: null, model: 'claude-haiku-4-5' } });
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     expect(shownModel(container)).toBe('claude-haiku-4-5');
   });
 
@@ -212,7 +264,7 @@ describe('which models the picker offers', () => {
     serve({ defaultModel: null });
     const { container } = mount({ current: null });
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     expect(picker(container).selectedOptions[0]?.textContent).toBe(COPY.agentDefault);
   });
 });
@@ -224,7 +276,7 @@ describe('choosing a model', () => {
       revision: 7,
       afterReload: { current: HAIKU_NAME, revision: 8 },
     });
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
 
@@ -245,7 +297,7 @@ describe('choosing a model', () => {
   test('shows the new model for an exact replay of the command, as for a new one', async () => {
     serve({ steer: () => ({ outcome: 'replayed', command: {} }) });
     const { container, reloads } = mount({ afterReload: { current: HAIKU_NAME, revision: 4 } });
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
 
@@ -256,7 +308,7 @@ describe('choosing a model', () => {
   test('keeps an admitted choice on screen when the session cannot be read again', async () => {
     serve();
     const { container } = mount({ reload: async () => false });
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
 
@@ -278,7 +330,7 @@ describe('choosing a model', () => {
       revision: 1,
       afterReload: { current: { provider: 'anthropic', model: 'claude-sonnet-4-6' }, revision: 2 },
     });
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     expect(shownModel(container)).toBe('claude-sonnet-5');
 
     await chooseModel(container, 'claude-haiku-4-5');
@@ -325,7 +377,7 @@ describe('choosing a model', () => {
     test(`restores the previous selection and says so in its own words for ${name}`, async () => {
       serve({ steer: () => outcome });
       const { container, reloads, findByText } = mount();
-      await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+      await modelsListed();
 
       await chooseModel(container, 'claude-haiku-4-5');
 
@@ -347,7 +399,7 @@ describe('choosing a model', () => {
       },
     });
     const { container, reloads, findByText } = mount();
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
 
@@ -367,7 +419,7 @@ describe('choosing a model', () => {
     const { container, reloads, findByText } = mount({
       afterReload: { current: HAIKU_NAME, revision: 4 },
     });
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
 
@@ -388,7 +440,7 @@ describe('choosing a model', () => {
     const { container, reloads, findByText } = mount({
       afterReload: { current: SONNET_NAME, revision: 3 },
     });
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
 
@@ -407,7 +459,7 @@ describe('choosing a model', () => {
       },
     });
     const { container, findByText } = mount();
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
 
     await chooseModel(container, 'claude-haiku-4-5');
     await findByText(COPY.fault);
@@ -423,7 +475,7 @@ describe('choosing a model', () => {
     serve();
     const { container } = mount({ current: undefined, revision: undefined });
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    await modelsListed();
     expect(picker(container).disabled).toBe(true);
   });
 });

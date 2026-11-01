@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Where a branch came from, in its conversation's header: "Branched from" and a link to the
+   * Where a branch came from, in its conversation's header (inside the title's description, so a phrase and not a paragraph): "Branched from" and a link to the
    * session it was branched from (`parentContextId`). The link names the parent by its title. A
    * parent that has been deleted is a not-found read, and the header says so without a link, since
    * there is nowhere to go. A parent that has not been read yet, or cannot be, is still linked: the
@@ -42,7 +42,7 @@
   }
 </script>
 
-<p class="weft-chat-header__origin">
+<span class="weft-chat-header__origin">
   {CHAT_COPY.branch.branchedFrom}
   {#if deleted}
     {CHAT_COPY.branch.parentDeleted}
@@ -51,4 +51,4 @@
       >{parent.data?.title ?? CHAT_COPY.untitled}</a
     >
   {/if}
-</p>
+</span>
