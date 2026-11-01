@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { MEMORY_COPY } from '../../app/copy.ts';
 import type { Memory, MemoryLineage } from '../../lib/memory-client.ts';
 import {
+  addRefusalWords,
   excerpt,
   formatMemoryTime,
   groupOf,
@@ -179,6 +180,26 @@ describe('refusalWords', () => {
     );
     expect(refusalWords({ kind: 'other', message: 'The disk is full.' })).toEqual({
       title: MEMORY_COPY.correct.refusal.other.title,
+      description: 'The disk is full.',
+    });
+  });
+});
+
+describe('addRefusalWords', () => {
+  test('says what happened to a memory that was not admitted', () => {
+    expect(addRefusalWords({ kind: 'not-admitted' })).toEqual(
+      MEMORY_COPY.add.refusal['not-admitted'],
+    );
+    expect(addRefusalWords({ kind: 'forbidden' })).toEqual(MEMORY_COPY.correct.refusal.forbidden);
+  });
+
+  test('says the agent is gone, because a new memory has no memory to miss', () => {
+    expect(addRefusalWords({ kind: 'not-found' })).toEqual(MEMORY_COPY.add.refusal['not-found']);
+  });
+
+  test('titles a failure it has no name for as the add it is, in the server’s words', () => {
+    expect(addRefusalWords({ kind: 'other', message: 'The disk is full.' })).toEqual({
+      title: MEMORY_COPY.add.notSaved,
       description: 'The disk is full.',
     });
   });

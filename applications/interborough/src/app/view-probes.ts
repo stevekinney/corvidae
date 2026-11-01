@@ -217,12 +217,9 @@ export function probeFor(
         const agent = parameters['agent'];
         if (agent === undefined) return { empty: agents.length === 0 };
         if (!agents.some((entry) => entry.name === agent)) throw notFound('agent');
-        // An agent's memory page is empty when the agent has no memory: ranking has no score floor,
-        // so a search finds something whenever one exists, and there is no other empty state.
-        if (pattern === AGENT_MEMORY_PATTERN) {
-          const page = await listMemories(agent, { limit: 1 });
-          return { empty: page.memories.length === 0 };
-        }
+        // An agent's memory page shows even when the agent has no memory, because that is where
+        // the first one is added, and says so itself. This read settles whether it can be shown.
+        if (pattern === AGENT_MEMORY_PATTERN) await listMemories(agent, { limit: 1 });
         return { empty: false };
       };
     case 'audit':

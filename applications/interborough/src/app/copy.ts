@@ -2860,9 +2860,10 @@ export const MEMORY_COPY = {
       : `${matched}${plus} ${matched === 1 && plus === '' ? 'memory matches' : 'memories match'}`;
   },
   /** The list is empty because the agent forgot its last memory while the page was open. */
-  nothingLeft: {
-    title: 'This agent remembers nothing now',
-    description: 'What it learns in a chat from here on is listed here.',
+  nothing: {
+    title: 'This agent remembers nothing',
+    description:
+      'A memory is saved when the agent answers in a chat, and you can add one in your own words.',
   },
   /** The list is empty because a search matched nothing. */
   noMatch: {
@@ -2909,7 +2910,7 @@ export const MEMORY_COPY = {
   },
   /** The kind in the engine's own terms, with a sentence for the person who did not choose it. */
   kind: {
-    operator: { label: 'Operator', description: 'Operator: a correction you wrote' },
+    operator: { label: 'Operator', description: 'Operator: words you wrote' },
     working: {
       label: 'Working',
       description: 'Working: a note the agent keeps while it works on something',
@@ -3051,6 +3052,47 @@ export const MEMORY_COPY = {
     } satisfies Record<MemoryDeletionState, string>,
     failed: 'The memory was not forgotten',
   },
+  add: {
+    action: 'Add a memory',
+    dialog: {
+      title: 'Add a memory',
+      description:
+        'Your words are kept until you correct or forget them, and the agent recalls them in its chats with you. Text the content rules flag is held back instead, and you can remove it here.',
+      label: 'What the agent should remember',
+      submit: 'Save memory',
+      cancel: 'Cancel',
+    },
+    saved: {
+      title: 'Memory added',
+      description: 'The agent recalls it in its chats with you.',
+    },
+    /** The title of a refusal the Bureau gave its own words for. */
+    notSaved: 'The memory was not saved',
+    /** Text the content rules flagged: stored for inspection, in no list, and the agent never recalls it. */
+    held: {
+      title: 'The text was held back',
+      description:
+        'Interborough’s content rules flagged it, so the agent will not recall it. A copy is still stored for inspection until you remove it. Remove it, or reword the text and save again: saving again removes the held copy first.',
+      remove: 'Remove the held copy',
+      removing: 'Removing…',
+      notRemoved: {
+        title: 'The held copy was not removed',
+        description:
+          'The server did not confirm the removal, so the copy is still stored. Try removing it again.',
+      },
+    },
+    refusal: {
+      'not-admitted': {
+        title: 'The memory was not accepted',
+        description:
+          'Interborough’s content rules or this agent’s memory limit refused it, so nothing was saved. Reword it and try again.',
+      },
+      'not-found': {
+        title: 'This agent was not found',
+        description: 'It may have been deleted, or it may not be yours to change.',
+      },
+    },
+  },
   correct: {
     action: 'Correct',
     /** The name of the icon button that edits the open memory in place. */
@@ -3085,7 +3127,8 @@ export const MEMORY_COPY = {
       },
       forbidden: {
         title: 'Changing memory is locked',
-        description: 'Correcting or forgetting a memory needs the bureau.memory:write scope.',
+        description:
+          'Adding, correcting or forgetting a memory needs the bureau.memory:write scope.',
       },
       'not-found': {
         title: 'This memory was not found',
@@ -4068,13 +4111,6 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       '/agents/:agent/memories': {
         title: 'Loading memory',
         description: 'Asking the server what this agent remembers of your chats.',
-      },
-    },
-    emptyByPattern: {
-      '/agents/:agent/memories': {
-        title: 'This agent remembers nothing yet',
-        description:
-          'A memory is saved when the agent answers in a chat. Start a chat with it, then come back.',
       },
     },
     errorByPattern: {

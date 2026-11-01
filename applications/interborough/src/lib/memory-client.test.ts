@@ -41,6 +41,13 @@ describe('memoryFaultOf', () => {
     ).toEqual({ kind: 'successor-not-admitted' });
   });
 
+  test('sorts a memory that was not admitted', () => {
+    const unprocessable = (reason: string) =>
+      memoryFaultOf(wireFault({ weftCode: 'Unprocessable', httpStatus: 422, reason }));
+
+    expect(unprocessable('memory-not-admitted')).toEqual({ kind: 'not-admitted' });
+  });
+
   test('treats a Conflict or an Unprocessable with another reason as an ordinary failure, in the Bureau’s words', () => {
     expect(
       memoryFaultOf(wireFault({ weftCode: 'Conflict', httpStatus: 409, reason: 'other' }, 'Busy.')),

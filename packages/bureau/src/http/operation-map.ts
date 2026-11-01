@@ -127,6 +127,7 @@ export const OPERATION_MAP = {
   'bureau.memory.list': { member: 'memory.list' },
   'bureau.memory.search': { member: 'memory.search' },
   'bureau.memory.get': { member: 'memory.get' },
+  'bureau.memory.remember': { member: 'memory.write' },
   'bureau.memory.forget': { member: 'memory.forget' },
   // `correct` stays composed in the handler over `forget` plus a write.
   'bureau.memory.correct': { member: 'memory.forget' },

@@ -604,6 +604,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.memory.hold.release',
         'bureau.memory.list',
         'bureau.memory.quarantine',
+        'bureau.memory.remember',
         'bureau.memory.search',
         'bureau.memory.share',
         'bureau.memory.share.revoke',

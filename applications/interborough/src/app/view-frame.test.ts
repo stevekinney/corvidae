@@ -723,14 +723,12 @@ describe('an agent’s memory page, under the Agents view', () => {
     expect(words?.title).not.toBe(copy.loading.title);
   });
 
-  test('is empty when the agent has no memory, which is the only empty state a search can have', async () => {
+  test('shows the page when the agent has no memory, which is where the first one is added', async () => {
     stubBureau(() => rpc('bureau.memory.list', { memories: [], nextOffset: null }));
-    const { container, findByRole } = mountMemory();
-    const words = copy.emptyByPattern?.[PATTERN];
+    const { container, findByTestId } = mountMemory();
 
-    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(container.textContent).toContain(words?.description ?? '');
-    expect(frame(container).dataset['state']).toBe('empty');
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
   });
 
   test('is failing, with a retry, when the Bureau cannot answer', async () => {
