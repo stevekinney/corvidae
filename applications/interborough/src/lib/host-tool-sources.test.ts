@@ -3,10 +3,12 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   authorizeToolSource,
+  connectToolSource,
   getToolSources,
   HOST_TOOL_SOURCES_ROUTE,
   HostToolSourceError,
   previewToolSourceRemoval,
+  probeToolSource,
   removeToolSource,
   setAcceptsSecrets,
 } from './host-tool-sources.ts';
@@ -239,6 +241,80 @@ describe('previewToolSourceRemoval and removeToolSource', () => {
     );
     expect(await failureOf(removeToolSource('notes', { fetch: refused.fetch }))).toMatchObject({
       kind: 'locked',
+    });
+  });
+});
+
+describe('probeToolSource and connectToolSource (COR-1991)', () => {
+  const request = {
+    source: { id: 'notes', kind: 'mcp', transport: { type: 'http', url: 'http://127.0.0.1:9/' } },
+    credentials: { token: 'a-value' },
+  };
+
+  test('send the description and the credentials in one body to the route of the source', async () => {
+    const probe = recording(() => Response.json({ outcome: 'listed', tools: [], skipped: [] }));
+    const connect = recording(() =>
+      Response.json({ id: 'notes', changed: true, restartRequired: true }),
+    );
+
+    await probeToolSource('notes', request, { fetch: probe.fetch });
+    await connectToolSource('notes', request, { fetch: connect.fetch });
+
+    expect(probe.seen).toEqual([
+      { path: '/host/tool-sources/notes/probe', method: 'POST', body: JSON.stringify(request) },
+    ]);
+    expect(connect.seen).toEqual([
+      { path: '/host/tool-sources/notes', method: 'PUT', body: JSON.stringify(request) },
+    ]);
+  });
+
+  test('read each outcome of a probe', async () => {
+    const answer = async (body: unknown) =>
+      probeToolSource('notes', request, { fetch: recording(() => Response.json(body)).fetch });
+
+    expect(
+      await answer({
+        outcome: 'listed',
+        tools: [{ name: 'notes__lookup', tool: 'lookup', tier: null }],
+        skipped: [{ tool: 'a__b', reason: 'its name has two underscores' }],
+      }),
+    ).toMatchObject({ outcome: 'listed', tools: [{ tier: null }] });
+    expect(await answer({ outcome: 'needs-authorization' })).toEqual({
+      outcome: 'needs-authorization',
+    });
+    expect(
+      await answer({ outcome: 'failed', message: 'The source did not answer in time.' }),
+    ).toEqual({
+      outcome: 'failed',
+      message: 'The source did not answer in time.',
+    });
+    expect(await failureOf(answer({ outcome: 'maybe' }))).toBeInstanceOf(HostToolSourceError);
+  });
+
+  test('turn a refusal into the host’s words and the field it names, and never repeat the body', async () => {
+    const refused = recording(() =>
+      Response.json(
+        {
+          error: 'invalid',
+          field: 'credentials.token',
+          message: 'Invalid credentials.token: a value is required.',
+        },
+        { status: 400 },
+      ),
+    );
+
+    const failure = await failureOf(probeToolSource('notes', request, { fetch: refused.fetch }));
+
+    expect(failure).toBeInstanceOf(HostToolSourceError);
+    expect(failure).toMatchObject({ kind: 'invalid', field: 'credentials.token' });
+    expect(String((failure as Error).message)).not.toContain('a-value');
+    const owner = recording(() =>
+      Response.json({ error: 'owner-only', message: 'Only the owner may.' }, { status: 403 }),
+    );
+    expect(
+      await failureOf(connectToolSource('notes', request, { fetch: owner.fetch })),
+    ).toMatchObject({
+      kind: 'owner-only',
     });
   });
 });

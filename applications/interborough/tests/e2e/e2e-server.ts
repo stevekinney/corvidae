@@ -33,10 +33,12 @@ import { fakeProvider, writeProviderHome } from '../../src/host/fake-provider.te
 import { startHost } from '../../src/host/host.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
+import { startConnectHost } from './connect-host.ts';
 import {
   E2E_BARRIER_PORT,
   E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
+  E2E_CONNECT_PORT,
   E2E_DEPLOYMENT_NAME,
   E2E_FIRST_RUN_PORT,
   E2E_FLEET_WORKER_ID,
@@ -302,6 +304,17 @@ const firstRunHost = await startHost({
 });
 await firstRunHost.bureau.plugins.ready();
 
+// The sixth host, which only the connect specification opens (`connect-tools-restart.spec.ts`): the
+// production entry under the real supervisor, so a restart really stops and starts it, beside the
+// servers the dialog connects to. See `connect-host.ts`.
+const connectHome = join(scratch, 'connect-home');
+await mkdir(connectHome, { recursive: true });
+const connectHost = await startConnectHost({
+  home: connectHome,
+  buildDirectory,
+  port: E2E_CONNECT_PORT,
+});
+
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
 // host holds its runs on a barrier of its own, under `/journey`.
@@ -316,6 +329,8 @@ const barrierControl = Bun.serve({
         return Response.json({ released: true });
       },
     },
+    // The addresses of the servers the connect host's specification connects to: loopback origins, no secret.
+    '/connect/origins': { GET: () => Response.json(connectHost.origins) },
     '/journey/waiting': { GET: () => Response.json({ waiting: journeyBarrier.waiting() }) },
     '/journey/release': {
       POST: () => {
@@ -332,6 +347,7 @@ process.stdout.write(
     `Interborough E2E Bureau host listening on ${bureauHost.url}`,
     `Interborough E2E journey host listening on ${journeyHost.url}`,
     `Interborough E2E first-run host listening on ${firstRunHost.url}`,
+    `Interborough E2E connect host listening on http://127.0.0.1:${E2E_CONNECT_PORT}/`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
     'Seeded COR-281 cross-build retry storm',
@@ -347,6 +363,7 @@ async function shutDown(): Promise<void> {
   for (const versionedWorker of versionedWorkers) await versionedWorker.disconnect();
   await longPollWorker.stop();
   await fleetWorker.disconnect();
+  await connectHost.stop();
   await firstRunHost.close();
   await journeyHost.close();
   await bureauHost.close();

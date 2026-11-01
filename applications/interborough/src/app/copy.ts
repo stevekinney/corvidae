@@ -3772,6 +3772,8 @@ export const CAPABILITIES_COPY = {
         'Finish signing in in the tab that opened, then restart Interborough to list the tools.',
       already: 'Already signed in. Restart Interborough to list the tools.',
       signedIn: 'Signed in. Restart Interborough to list the tools.',
+      savedFirst:
+        'It is saved. Sign in to the server, then restart Interborough to list its tools.',
       rejected:
         'The sign-in this source had stored no longer works, so restarting will not list its tools. Sign in again.',
       failed: 'Signing in could not be started',
@@ -3811,6 +3813,134 @@ export const CAPABILITIES_COPY = {
       heading: 'Settings that reach no tool',
       description:
         'These saved settings name a tool the server does not list. Nothing is applied to a different tool.',
+    },
+    /** The dialog that connects a source (`connect-dialog.svelte`). */
+    connect: {
+      action: 'Connect a source',
+      title: 'Connect a tool source',
+      intro:
+        'An MCP server or an OpenAPI service whose tools your agents can call. Its tools join Capabilities when Interborough starts again.',
+      kind: { label: 'What kind of source', mcp: 'MCP server', openapi: 'OpenAPI service' },
+      id: {
+        label: 'Name',
+        description:
+          'Lowercase letters, digits and hyphens, starting with a letter. Each of its tools is named after it, such as notes__lookup.',
+        placeholder: 'notes',
+      },
+      transport: { label: 'How Interborough reaches it', http: 'A URL', stdio: 'A command' },
+      url: {
+        label: 'Server URL',
+        description: 'The address of the MCP server over HTTP.',
+        placeholder: 'https://example.com/mcp',
+      },
+      command: {
+        label: 'Command',
+        description:
+          'Interborough runs it on this machine, as you. Only the owner can connect one.',
+        placeholder: 'npx',
+      },
+      args: { label: 'Arguments', description: 'One per line.' },
+      specification: { label: 'Where the document is', url: 'A URL', file: 'A file' },
+      specificationUrl: {
+        label: 'OpenAPI document URL',
+        description: 'The address of the OpenAPI document.',
+        placeholder: 'https://example.com/openapi.json',
+      },
+      file: {
+        label: 'OpenAPI file',
+        description: 'A JSON file of up to 3 MB.',
+        chosen: (name: string): string => `Using ${name}`,
+        tooLarge: 'That file is larger than 3 MB.',
+        unreadable: 'That file could not be read.',
+        remove: 'Choose another file',
+      },
+      baseUrl: {
+        label: 'Base URL',
+        description:
+          'Where requests are sent. Leave it empty to use the first server the document names.',
+        placeholder: 'https://api.example.com',
+      },
+      authentication: {
+        label: 'How it signs you in',
+        none: 'Nothing',
+        bearer: 'Bearer token',
+        oauth: 'OAuth sign-in',
+        'api-key': 'API key',
+        oauthHelp:
+          'You sign in from the source’s page once it is saved. Interborough keeps the tokens it receives.',
+      },
+      secret: {
+        bearer: { label: 'Bearer token' },
+        'api-key': { label: 'API key' },
+        description: 'Stored encrypted on this machine and never shown again.',
+      },
+      header: {
+        label: 'Header name',
+        description: 'The header the key is sent in.',
+        placeholder: 'x-api-key',
+      },
+      probe: {
+        action: 'Test connection',
+        stale: 'You changed the form after this test.',
+        listed: (count: number): string =>
+          count === 0
+            ? 'It answered and lists no tools.'
+            : count === 1
+              ? 'It answered and lists 1 tool.'
+              : `It answered and lists ${String(count)} tools.`,
+        toolsLabel: 'Tools it lists',
+        skipped: (count: number): string =>
+          `${String(count)} of its tools cannot be offered under a name an agent can use.`,
+        needsAuthorization:
+          'The server is there and asks you to sign in. Connect it, then sign in from its page.',
+        failedTitle: 'It did not answer',
+        failed: 'The source could not be tested',
+      },
+      actions: { connect: 'Connect', cancel: 'Cancel' },
+      connected: (id: string): string => `Connected ${id}. Restart Interborough to list its tools.`,
+      failed: 'The source could not be connected',
+      exists: (id: string): string =>
+        `A source named ${id} is already saved. Choose another name, or remove it first.`,
+      locked:
+        'This host keeps its configuration in its deployment, so a source cannot be connected here.',
+      errors: {
+        idRequired: 'Give the source a name.',
+        idInvalid: 'Use 1 to 20 lowercase letters, digits or hyphens, starting with a letter.',
+        urlRequired: 'Enter the server’s URL.',
+        commandRequired: 'Enter the command to run.',
+        specificationUrlRequired: 'Enter the document’s URL.',
+        documentRequired: 'Choose an OpenAPI file.',
+        documentInvalid: 'That file is not a JSON object.',
+        secretRequired: {
+          bearer: 'Enter the bearer token.',
+          'api-key': 'Enter the API key.',
+        },
+        headerRequired: 'Enter the header the key is sent in.',
+      },
+    },
+    /** The restart that lists the tools of the sources saved since the host started (`restart-banner.svelte`). */
+    restart: {
+      title: (count: number): string =>
+        count === 1
+          ? '1 source is saved and not running yet'
+          : `${String(count)} sources are saved and not running yet`,
+      description:
+        'Their tools join Capabilities when Interborough starts again. Restarting stops anything in progress for a moment.',
+      action: 'Restart Interborough',
+      progress: {
+        requesting: 'Asking Interborough to restart',
+        stopping: 'Interborough is stopping',
+        starting: 'Interborough is starting again',
+      },
+      back: 'Interborough is back. The tools of the sources it loaded are in Capabilities.',
+      unconfirmed:
+        'Interborough did not restart. Nothing supervises it, or the restart failed. Start it again yourself to list the tools.',
+      refusal: {
+        locked:
+          'This host keeps its configuration in its deployment, so it cannot be restarted here.',
+        refused: 'Interborough would not restart.',
+        unreachable: 'Interborough could not be reached to ask it to restart.',
+      },
     },
     remove: {
       action: 'Remove source',
