@@ -2,7 +2,8 @@
  * COR-1860: a run's steps, logs, related runs and checkpoint replay.
  *
  * - Steps are a list with a waterfall bar each, and the open step beside it with input and output
- *   side by side. The run's whole log, oldest first, is under Details.
+ *   side by side, and the log lines placed under it. The run's whole log, oldest first, is under
+ *   Details.
  * - Related runs, in the Details rail, list the run that started this one, the runs it started and
  *   the runs started alongside it, with a topology that opens in a drawer.
  * - A checkpoint's replay has no colored edge, and says it is a replay in an Alert.
@@ -85,17 +86,40 @@ test('each step has a waterfall bar placed by its start, and the open step shows
   await checkA11y('run steps — a step open');
 });
 
-test('the whole log is under Details, and no step carries a log of its own', async ({
+test('each step shows the log lines placed under it, and the whole log is still under Details', async ({
   page,
   request,
 }) => {
   const timeline = await timelineOf(request, RUN_STEPS_RUN_ID);
-  const [firstStep] = timeline;
-  if (firstStep === undefined) throw new Error('Too few steps seeded.');
+  expect(timeline.length).toBe(4);
   await page.goto(`/runs/${RUN_STEPS_RUN_ID}`);
 
-  await openStep(page, firstStep.step);
-  await expect(page.locator('article[data-step]').getByText('run started')).toHaveCount(0);
+  // A line goes under the entry with the greatest step index not past the line's own step, so the
+  // run's four lines land under the first step, the first child, and the last step; the second
+  // child has none.
+  const expectedByStep: ReadonlyArray<readonly [number, readonly string[]]> = [
+    [1, ['run started']],
+    [2, ['prepared, about to settle']],
+    [3, []],
+    [4, ['children done', 'finished after the last step']],
+  ];
+  const stepLogs = page.locator('article[data-step] [data-section="step-logs"]');
+  for (const [step, messages] of expectedByStep) {
+    await openStep(page, step);
+    await expect(page.locator(`article[data-step="${String(step)}"]`)).toBeVisible();
+    if (messages.length === 0) {
+      await expect(stepLogs).toHaveCount(0);
+      continue;
+    }
+    const items = stepLogs.getByRole('listitem');
+    await expect(items).toHaveCount(messages.length);
+    for (const [position, message] of messages.entries()) {
+      await expect(items.nth(position)).toContainText(message);
+    }
+  }
+
+  // Every line is logged after a step has started, so none is kept apart before the first step.
+  await expect(page.locator('[data-section="logs-before-first-step"]')).toHaveCount(0);
 
   // The whole log, in the rail: every line the run logged, including the one logged after the last step.
   const logs = page.locator('[data-section="logs"]');
