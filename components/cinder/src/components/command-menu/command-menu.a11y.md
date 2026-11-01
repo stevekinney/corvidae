@@ -10,6 +10,12 @@ For a textarea host, keep the native textbox role and apply:
 
 Do not add `aria-expanded` to a native textarea; axe flags it as unsupported for that role. For a single-line text input, the host may additionally use `role="combobox"` and `aria-expanded={open}`. Selection belongs to `CommandMenu.onSelect`; do not put replacement logic on `CommandItem.onSelect` inside `CommandMenu`.
 
+## Scrolling
+
+The `<ul role="listbox">` is the scroller; the floating panel around it only caps the height (the caret-anchored overlay writes its viewport-fitted `max-block-size` onto the panel, and the panel is a flex column, so the list takes what is left after the empty-state message). Keyboard users never scroll it directly: focus stays on the host, the arrow keys, Home and End move the active option, and the active option is scrolled into view with `scrollIntoView({ block: 'nearest' })`, including when the move lands past a disabled option.
+
+axe's `scrollable-region-focusable` rule needs a scrolling region to be in the tab order, to hold something that is, or to be the popup of a `role="combobox"`. The listbox is that popup when the host is an `<input role="combobox" aria-controls={listboxId}>`, so an input host passes with no tab stop. A native `<textarea>` host cannot take the combobox role, so axe still reports the rule on a listbox that overflows. Adding a tab stop to the listbox or to an option would not help a keyboard user, because the arrow keys are bound to the host and a focused listbox would be a dead stop, so it is deliberately not done.
+
 ## Empty state
 
 When no items match, the `empty` snippet renders in a `role="status"` element that is a sibling of the `<ul role="listbox">`, not a child of it — `listbox` only permits `option`/`group` descendants, so the message can't live inside the list without breaking that contract. Instead, the listbox gets `aria-describedby` pointing at the empty-state element, so a screen reader user who lands on the (otherwise childless) listbox still hears why it's empty. The listbox also keeps a 1px `min-block-size` while empty so it never collapses to a zero-size box.

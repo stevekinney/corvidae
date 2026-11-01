@@ -55,10 +55,12 @@ describe('DropdownItem', () => {
     expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
   });
 
-  test('button has tabindex=-1 for roving-focus compatibility', async () => {
+  test('rows use a roving tabindex: the first enabled row is the tab stop and the rest are -1', async () => {
     const { container } = await openMenu();
-    const item = requiredInstance(container.querySelector('[role="menuitem"]'), HTMLElement);
-    expect(item.getAttribute('tabindex')).toBe('-1');
+    const [first, ...rest] = Array.from(container.querySelectorAll('[role="menuitem"]'));
+    expect(first?.getAttribute('tabindex')).toBe('0');
+    expect(rest.length).toBeGreaterThan(0);
+    for (const item of rest) expect(item.getAttribute('tabindex')).toBe('-1');
   });
 
   test('menuitemradio rows expose aria-checked state', async () => {
@@ -115,7 +117,9 @@ describe('DropdownItem — polymorphism', () => {
     expect(linkItem?.tagName.toLowerCase()).toBe('a');
     expect(linkItem?.getAttribute('href')).toBe('https://example.com');
     expect(linkItem?.getAttribute('role')).toBe('menuitem');
-    expect(linkItem?.getAttribute('tabindex')).toBe('-1');
+    // The first enabled row is the menu's tab stop; a link is no different from a button.
+    expect(linkItem?.getAttribute('tabindex')).toBe('0');
+    expect(items[1]?.getAttribute('tabindex')).toBe('-1');
   });
 
   test('submit item renders as a <button type="submit">', async () => {

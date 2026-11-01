@@ -19,6 +19,8 @@ const { render, fireEvent, waitFor, cleanup } = await import('@testing-library/s
 const { default: Dropdown } = await import('./dropdown.svelte');
 const { default: DropdownCompoundFixture } =
   await import('../../test/fixtures/dropdown-compound-fixture.svelte');
+const { default: DropdownRovingFixture } =
+  await import('../../test/fixtures/dropdown-roving-fixture.svelte');
 const { default: DropdownTriggerNoCaretFixture } =
   await import('../../test/fixtures/dropdown-trigger-no-caret-fixture.svelte');
 const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
@@ -712,6 +714,102 @@ describe('Dropdown', () => {
       key: 'ArrowDown',
     });
     expect(document.activeElement?.textContent).toContain('Copy link');
+  });
+
+  // COR-1999: axe's `scrollable-region-focusable` fails a scrolling menu whose
+  // items are all `tabindex="-1"`. The focused item carries the single tab stop
+  // (roving tabindex) rather than the scroller, which would compete with it.
+  describe('roving tabindex', () => {
+    function menuItemTabindexes(container: HTMLElement): Record<string, string | null> {
+      return Object.fromEntries(
+        Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((item) => [
+          item.textContent?.trim() ?? '',
+          item.getAttribute('tabindex'),
+        ]),
+      );
+    }
+
+    async function openRovingMenu() {
+      const view = { ...render(DropdownRovingFixture), container: document.body };
+      await fireEvent.click(
+        requiredInstance(view.container.querySelector('.trigger'), HTMLElement),
+      );
+      await waitFor(() => {
+        expect(document.activeElement?.textContent).toContain('Alpha');
+      });
+      return view;
+    }
+
+    test('the focused item is the only tab stop and a disabled item is never one', async () => {
+      const { container } = await openRovingMenu();
+
+      expect(menuItemTabindexes(container)).toEqual({
+        Locked: '-1',
+        Alpha: '0',
+        Beta: '-1',
+        Gamma: '-1',
+      });
+    });
+
+    test('the tab stop follows the arrow keys, Home and End', async () => {
+      const { container } = await openRovingMenu();
+
+      await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {
+        key: 'ArrowDown',
+      });
+      expect(document.activeElement?.textContent).toContain('Beta');
+      expect(menuItemTabindexes(container)).toEqual({
+        Locked: '-1',
+        Alpha: '-1',
+        Beta: '0',
+        Gamma: '-1',
+      });
+
+      await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {
+        key: 'End',
+      });
+      expect(menuItemTabindexes(container)).toEqual({
+        Locked: '-1',
+        Alpha: '-1',
+        Beta: '-1',
+        Gamma: '0',
+      });
+    });
+
+    test('an item added while the menu is open joins as a non-stop and the stop stays put', async () => {
+      const { container, rerender } = await openRovingMenu();
+
+      await rerender({ showExtra: true });
+
+      await waitFor(() => {
+        expect(menuItemTabindexes(container)).toEqual({
+          Locked: '-1',
+          Alpha: '0',
+          Beta: '-1',
+          Extra: '-1',
+          Gamma: '-1',
+        });
+      });
+    });
+
+    test('closing the menu and reopening it starts the stop on the first enabled item again', async () => {
+      const { container } = await openRovingMenu();
+      await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {
+        key: 'End',
+      });
+      await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {
+        key: 'Escape',
+      });
+      flushSync();
+      expect(container.querySelector('[role="menu"]')).toBeNull();
+
+      await fireEvent.click(requiredInstance(container.querySelector('.trigger'), HTMLElement));
+      await waitFor(() => {
+        expect(document.activeElement?.textContent).toContain('Alpha');
+      });
+      expect(menuItemTabindexes(container)['Alpha']).toBe('0');
+      expect(menuItemTabindexes(container)['Gamma']).toBe('-1');
+    });
   });
 
   test('Enter activates the focused menu item and closes the menu', async () => {

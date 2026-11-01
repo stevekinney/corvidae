@@ -154,6 +154,64 @@ describe('CommandMenu', () => {
     }
   });
 
+  test('the listbox is the scroller and the panel only caps its height (COR-1999)', async () => {
+    // axe's `scrollable-region-focusable` exempts a scroller that is itself the
+    // popup of a `role="combobox"` host and fails a role-less wrapper that scrolls.
+    // The listbox is the element the host's `aria-controls` names, so it scrolls.
+    // The panel stays a flex column so the viewport-fitted `max-block-size` that the
+    // anchored overlay writes onto it still bounds the list.
+    const css = await Bun.file(new URL('./command-menu.css', import.meta.url)).text();
+    const declarations = (selector: string): Map<string, string> => {
+      const found = new Map<string, string>();
+      parse(css).walkRules((rule) => {
+        if (rule.selector.trim() !== selector) return;
+        rule.each((node) => {
+          if (node.type === 'decl') found.set(node.prop.toLowerCase(), node.value);
+        });
+      });
+      return found;
+    };
+    const listbox = declarations('.cinder-command-menu__listbox');
+    expect(listbox.get('overflow-y')).toBe('auto');
+    expect(listbox.get('min-block-size')).toBe('0');
+    expect(listbox.get('flex')).toBe('1 1 auto');
+    const panel = declarations('.cinder-command-menu');
+    expect(panel.get('display')).toBe('flex');
+    expect(panel.get('flex-direction')).toBe('column');
+    expect(panel.get('max-block-size')).toContain('20rem');
+  });
+
+  test('arrow keys scroll the active item into view past a disabled item', async () => {
+    const scrolled: Array<{ text: string | null | undefined; options: unknown }> = [];
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement, options?: unknown) {
+      scrolled.push({ text: this.textContent?.trim(), options });
+    };
+    try {
+      render(CommandMenuFixture, {
+        items: [
+          { value: 'alpha', label: 'Alpha' },
+          { value: 'locked', label: 'Locked', disabled: true },
+          { value: 'gamma', label: 'Gamma' },
+        ],
+      });
+      await waitFor(() => expect(queryMenu()).not.toBeNull());
+      const anchor = requiredInstance(
+        document.querySelector('[data-testid="anchor"]'),
+        HTMLTextAreaElement,
+      );
+      scrolled.length = 0;
+
+      await fireEvent.keyDown(anchor, { key: 'ArrowDown' });
+      await settleCommandMenu();
+
+      expect(queryMenu()?.querySelector('[aria-selected="true"]')?.textContent).toContain('Gamma');
+      expect(scrolled.at(-1)).toEqual({ text: 'Gamma', options: { block: 'nearest' } });
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
   test('renders a portaled listbox while open', async () => {
     render(CommandMenuFixture);
     await waitFor(() => expect(queryMenu()).not.toBeNull());
