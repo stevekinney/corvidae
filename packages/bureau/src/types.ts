@@ -569,10 +569,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `allowedSkills`
    * draws on. Discovery and the trust decision stay the host's (COR-752), so this is a read, called
-   * when a file agent's run starts, each time the run uses a skill, and when a write grants a skill;
-   * a host whose discovery finishes after `createBureau` answers `undefined` until then. A run of
-   * an agent whose file grants no skill reads nothing and has no skills. Omitted, no skill can be
-   * granted. Used only with {@link BureauOptions.agentSource}.
+   * when a file agent's run starts, each time the run uses a skill, and when a write grants a skill.
+   * Bureau recovers durable runs before `createBureau` returns, so answer from the first read: a
+   * run recovered while this answers `undefined` has no skills, and one that held a skill active
+   * is offered no tool, because its policy cannot be verified. A run of an agent whose file grants
+   * no skill reads nothing and has no skills. Omitted, no skill can be granted. Used only with
+   * {@link BureauOptions.agentSource}.
    */
   agentSkillCatalog?: () => SkillCatalogRevision | undefined;
   /**

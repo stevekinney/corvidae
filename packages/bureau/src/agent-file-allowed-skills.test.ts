@@ -29,7 +29,21 @@ import {
   serve,
 } from './http/management/agent-definitions-fixtures.test-support.ts';
 import { discoverSkills, type SkillCatalogRevision } from './skills';
-import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
+import {
+  pollUntil,
+  createScheduleFireHarness,
+  durableStatus,
+} from './schedule-fire-fixtures.test-support';
+import {
+  letStepsCommit,
+  pollForTime,
+  removeSkillRoots,
+  skillCatalogOnDisk,
+  skillsRecorded,
+} from './skill-policy-fixtures.test-support';
+import { agentFileDirectory } from './sources/agent-file-directory';
+import { OWNER } from './http/management/management-fixtures.test-support.ts';
+import { agentFileText, KNOWN_MODEL, lookupTool } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import type { BureauOptions } from './types';
 import type { AgentDefinitions } from './agent-catalog';
@@ -489,6 +503,80 @@ describe('a write that grants a skill', () => {
     );
     const [latest] = await harness.bureau.agents.versions.list('helper');
     expect(latest?.changedKeys).toEqual(['allowedSkills']);
+  });
+});
+
+describe('a run of a file agent reattached after its process died', () => {
+  const crashes = createScheduleFireHarness();
+  afterEach(() => crashes.dispose());
+  afterAll(removeSkillRoots);
+
+  /**
+   * Step 0 activates `lock`. Step 1 hangs in the first life, the process that dies there, and in the
+   * second records the tools it was offered.
+   */
+  function dyingInStepOne(life: { current: string }, offered: string[]): GenerateFunction {
+    return async (context) => {
+      if (context.step === 0) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'lock-1', name: 'activate_skill', arguments: { name: 'lock' } }],
+        };
+      }
+      if (context.step === 1 && life.current === 'first') {
+        return new Promise((_resolve, reject) => {
+          context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+            once: true,
+          });
+        });
+      }
+      offered.push(...context.toolbox.tools().map((tool) => tool.name));
+      return { content: 'done', toolCalls: [] };
+    };
+  }
+
+  it('resumes with the skill it had activated, so the skill still narrows the run’s tools', async () => {
+    const onDisk = await skillCatalogOnDisk();
+    const catalog = await onDisk.discover();
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-allowed-skills-agents-'));
+    roots.push(directory);
+    await writeFile(
+      join(directory, 'helper.md'),
+      agentFileText({ model: KNOWN_MODEL, tools: '[lookup-order]', allowedSkills: '[lock]' }),
+    );
+    const path = crashes.nextDatabasePath();
+    const life = { current: 'first' };
+    const offered: string[] = [];
+    const open = () =>
+      crashes.open({
+        storage: crashes.sqliteHandle(path),
+        agents: {},
+        agentSource: agentFileDirectory(directory, {
+          tools: { 'lookup-order': lookupTool },
+          watch: false,
+        }),
+        models: { generate: () => dyingInStepOne(life, offered) },
+        agentSkillCatalog: () => catalog,
+      });
+
+    const first = await open();
+    await first.agents.refresh();
+    const run = await first.tasks.start('helper', 'lock', { principal: OWNER.alice });
+    await pollForTime(
+      async () => ((await skillsRecorded(first, run.contextId)) ? true : undefined),
+      'the active skill to be recorded',
+    );
+    await letStepsCommit();
+
+    life.current = 'second';
+    const restarted = await open();
+    await pollUntil(
+      async () => ((await durableStatus(restarted, run.id)) === 'completed' ? true : undefined),
+      'the reattached run to complete',
+    );
+
+    expect(offered).toContain('deactivate_skill');
+    expect(offered).not.toContain('lookup-order');
   });
 });
 

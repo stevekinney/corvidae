@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
-import { SkillInputError } from './skill-manager.ts';
+import { discoverFirstSkills, SkillInputError } from './skill-manager.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -235,6 +235,48 @@ describe('skills in configuration.json', () => {
     expect(granted.error).toBeUndefined();
     const refused = await create('refused', ['deploy']);
     expect(refused.error?.message).toContain('source-untrusted');
+  });
+
+  test('discovers the configured skills and the plugins’ before the Bureau exists (COR-1975)', async () => {
+    const { home, userSkills, projectSkills } = await layout();
+    const pluginSkills = await scratch('interborough-skills-plugin-');
+    await writeSkill(pluginSkills, 'plugged');
+    const bungalow = {
+      mode: 'local' as const,
+      configurationLocation: join(home, 'configuration.json'),
+      readConfiguration: async () =>
+        JSON.stringify({
+          skills: {
+            sources: [
+              { id: 'home', kind: 'user', path: userSkills },
+              { id: 'workspace', kind: 'project', path: projectSkills },
+            ],
+            trusted: ['home'],
+          },
+        }),
+      writeConfiguration: async () => {},
+    };
+    const catalog = await discoverFirstSkills({
+      bungalow,
+      pluginSources: () => [
+        { id: 'plugin:p', kind: 'plugin', location: pluginSkills, precedence: 35, plugin: 'p' },
+      ],
+    });
+    expect(catalog.records.map((record) => [record.name, record.available]).toSorted()).toEqual([
+      ['deploy', false],
+      ['plugged', true],
+      ['summarize', true],
+    ]);
+
+    const failure = await failureOf(
+      discoverFirstSkills({
+        bungalow: {
+          ...bungalow,
+          readConfiguration: () => Promise.reject(new Error('down')),
+        },
+      }),
+    );
+    expect(failure).toBeInstanceOf(ProviderConfigurationError);
   });
 
   test('loads a configuration written before the key existed, and lists no skills', async () => {
