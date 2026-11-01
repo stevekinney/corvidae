@@ -1,4 +1,6 @@
 import { DynamicWorkflowSourceUnavailableError } from '../../core/engine/dynamic-source-errors.ts';
+import { ScheduleOccurrenceNotNextError } from '../../core/engine/schedule-occurrence-not-next-error.ts';
+import { ScheduleStaleRevisionError } from '../../core/engine/schedule-stale-revision-error.ts';
 import {
   isValidScheduleOverlapPolicy,
   isValidScheduleRevisionPolicy,
@@ -148,6 +150,22 @@ function mapDynamicSourceUnavailableToFault(error: unknown): OperationFault | un
 }
 
 export function mapScheduleErrorToFault(scheduleId: string, error: unknown): OperationFault {
+  if (error instanceof ScheduleStaleRevisionError) {
+    return {
+      code: 'StaleRevision',
+      message: error.message,
+      data: { expectedRevision: error.expectedRevision, currentRevision: error.currentRevision },
+    };
+  }
+  if (error instanceof ScheduleOccurrenceNotNextError) {
+    // `weftCode` is how a REST client tells this refusal from a paused or cancelled schedule: REST
+    // never discloses `Conflict.data.reason` (see `REST_FAULT_DATA_EXTRACTORS`).
+    return {
+      code: 'Conflict',
+      message: error.message,
+      data: { reason: 'occurrence-not-next', weftCode: error.code },
+    };
+  }
   const revisionFault = mapRevisionUnavailableToFault(error);
   if (revisionFault !== undefined) {
     return revisionFault;

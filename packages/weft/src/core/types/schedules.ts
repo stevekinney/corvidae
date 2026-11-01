@@ -450,7 +450,9 @@ export interface ScheduleMetadata {
    * occurrence that would actually have started a run, which is not always {@link nextFireAt}: in
    * a time zone, `nextFireAt` can be the end of a daylight-saving gap that fires nothing. It is
    * absent when nothing is skipped, and is cleared as soon as the schedule moves past it, by a
-   * cadence change, a pause, or a cancel. A stored schedule that predates the field reads as absent.
+   * pause, a cancel, or an update after which it is no longer the next occurrence. An update that
+   * leaves it the next occurrence (a new description or overlap policy, say) keeps it. A stored
+   * schedule that predates the field reads as absent.
    */
   skipUntil?: number;
   currentWorkflowId?: string;

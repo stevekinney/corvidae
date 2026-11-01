@@ -6,6 +6,7 @@ import { decode, encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import { ScheduleMissedFireEvent } from '../events/schedule-events.ts';
 import type { ScheduleSummary, WorkflowServicesResolverScheduleInfo } from '../types.ts';
+import { ScheduleOccurrenceNotNextError } from './schedule-occurrence-not-next-error.ts';
 import {
   drainEngine,
   registerWorkflow,
@@ -162,6 +163,155 @@ describe('skipping the next occurrence', () => {
     expect(isoOf(summary.skipUntil)).toBe('2026-01-01T09:00:00.000Z');
   });
 
+  it('refuses a skip naming an occurrence a fire has passed, writing nothing', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock, runs } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+    const occurrence = await fieldOf(engine, 'daily', 'nextFireAt');
+    await tickEngine(engine, clock, at('2026-01-01T09:00:00.000Z'));
+    expect(runs).toEqual(['2026-01-01T09:00:00.000Z']);
+    const before = await summaryOf(engine, 'daily');
+
+    const failure = await engine
+      .skipNextScheduleOccurrence('daily', { occurrence: occurrence! })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(ScheduleOccurrenceNotNextError);
+    expect((failure as ScheduleOccurrenceNotNextError).occurrence).toBe(occurrence!);
+    expect((failure as ScheduleOccurrenceNotNextError).nextOccurrence).toBe(
+      at('2026-01-02T09:00:00.000Z'),
+    );
+    const after = await summaryOf(engine, 'daily');
+    expect(after.skipUntil).toBeUndefined();
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  it('skips the occurrence it names when that is the next real one', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock, runs } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+    const occurrence = (await fieldOf(engine, 'daily', 'nextFireAt'))!;
+
+    await engine.skipNextScheduleOccurrence('daily', { occurrence });
+    await tickEngine(engine, clock, occurrence);
+    await tickEngine(engine, clock, occurrence + 24 * 60 * 60_000);
+
+    expect(runs).toEqual(['2026-01-02T09:00:00.000Z']);
+  });
+
+  it('refuses an occurrence that is later than the next one', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+
+    const failure = await engine
+      .skipNextScheduleOccurrence('daily', { occurrence: at('2026-01-02T09:00:00.000Z') })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(ScheduleOccurrenceNotNextError);
+    expect(await fieldOf(engine, 'daily', 'skipUntil')).toBeUndefined();
+  });
+
+  it('refuses nextFireAt when it is the end of a gap that fires nothing, and accepts the real run', async () => {
+    opened = open('2026-03-07T11:00:00.000Z');
+    const { engine } = opened;
+    await engine.schedule('report', null, '30 2 * * *', { id: 'daily', timeZone: LOS_ANGELES });
+    const gapEnd = (await fieldOf(engine, 'daily', 'nextFireAt'))!;
+    expect(isoOf(gapEnd)).toBe('2026-03-08T10:00:00.000Z');
+
+    const failure = await engine.skipNextScheduleOccurrence('daily', { occurrence: gapEnd }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ScheduleOccurrenceNotNextError);
+    expect(await fieldOf(engine, 'daily', 'skipUntil')).toBeUndefined();
+
+    await engine.skipNextScheduleOccurrence('daily', {
+      occurrence: at('2026-03-09T09:30:00.000Z'),
+    });
+    expect(isoOf(await fieldOf(engine, 'daily', 'skipUntil'))).toBe('2026-03-09T09:30:00.000Z');
+  });
+
+  it('refuses an overdue nextFireAt that a late tick counts missed, and names the one after now', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+    const overdue = (await fieldOf(engine, 'daily', 'nextFireAt'))!;
+    clock.now = at('2026-01-03T12:00:00.000Z');
+
+    const failure = await engine.skipNextScheduleOccurrence('daily', { occurrence: overdue }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ScheduleOccurrenceNotNextError);
+
+    await engine.skipNextScheduleOccurrence('daily', {
+      occurrence: at('2026-01-04T09:00:00.000Z'),
+    });
+    expect(isoOf(await fieldOf(engine, 'daily', 'skipUntil'))).toBe('2026-01-04T09:00:00.000Z');
+  });
+
+  it('changes nothing when it names the occurrence already skipped, and refuses the run after it', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+    const first = at('2026-01-01T09:00:00.000Z');
+    await engine.skipNextScheduleOccurrence('daily', { occurrence: first });
+    clock.now += 60_000;
+
+    await engine.skipNextScheduleOccurrence('daily', { occurrence: first });
+    const failure = await engine
+      .skipNextScheduleOccurrence('daily', { occurrence: first + 24 * 60 * 60_000 })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(ScheduleOccurrenceNotNextError);
+    const summary = await summaryOf(engine, 'daily');
+    expect(isoOf(summary.updatedAt)).toBe('2026-01-01T00:00:00.000Z');
+    expect(summary.skipUntil).toBe(first);
+  });
+
+  it('checks expectedRevision before the occurrence', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+
+    const failure = await engine
+      .skipNextScheduleOccurrence('daily', {
+        expectedRevision: 7,
+        occurrence: at('2026-01-05T09:00:00.000Z'),
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect((failure as Error).name).toBe('ScheduleStaleRevisionError');
+  });
+
+  it('rejects an occurrence that is not a non-negative integer', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+
+    for (const occurrence of [-1, 1.5, Number.NaN, '1' as unknown as number]) {
+      const failure = await engine.skipNextScheduleOccurrence('daily', { occurrence }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect((failure as Error).message).toContain('options.occurrence must be');
+    }
+    expect(await fieldOf(engine, 'daily', 'skipUntil')).toBeUndefined();
+  });
+
   it('is refused for a stale expectedRevision, writing nothing', async () => {
     opened = open('2026-01-01T00:00:00.000Z');
     const { engine } = opened;
@@ -211,6 +361,168 @@ describe('skipping the next occurrence', () => {
 
     expect(await fieldOf(engine, 'paused', 'skipUntil')).toBeUndefined();
     expect(await fieldOf(engine, 'updated', 'skipUntil')).toBeUndefined();
+  });
+
+  it('survives an update that leaves the next run where it was', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock, runs } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+    await engine.schedule('report', null, '0 9 * * *', { id: 'weekdays' });
+    await engine.skipNextScheduleOccurrence('daily');
+    await engine.skipNextScheduleOccurrence('weekdays');
+
+    // Only a description and a policy change; and an expression whose next run is the same one.
+    await engine.updateSchedule('daily', '0 9 * * *', { description: 'edited', overlap: 'queue' });
+    await engine.updateSchedule('weekdays', '0 9 * * 1-5');
+
+    for (const id of ['daily', 'weekdays']) {
+      expect(isoOf(await fieldOf(engine, id, 'skipUntil'))).toBe('2026-01-01T09:00:00.000Z');
+      expect(await fieldOf(engine, id, 'revision')).toBe(2);
+    }
+    await tickEngine(engine, clock, at('2026-01-01T09:00:00.000Z'));
+    expect(runs).toEqual([]);
+  });
+
+  it('survives an update when the next wake-up is the end of a gap that fires nothing', async () => {
+    opened = open('2026-03-07T11:00:00.000Z');
+    const { engine } = opened;
+    await engine.schedule('report', null, '30 2 * * *', { id: 'daily', timeZone: LOS_ANGELES });
+    await engine.skipNextScheduleOccurrence('daily');
+
+    await engine.updateSchedule('daily', '30 2 * * *', { description: 'edited' });
+
+    expect(isoOf(await fieldOf(engine, 'daily', 'skipUntil'))).toBe('2026-03-09T09:30:00.000Z');
+  });
+
+  it('ends when an update moves the next run, or the time zone', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'zone' });
+    await engine.skipNextScheduleOccurrence('zone');
+
+    await engine.updateSchedule('zone', '0 9 * * *', { timeZone: LOS_ANGELES });
+
+    expect(await fieldOf(engine, 'zone', 'skipUntil')).toBeUndefined();
+  });
+
+  it('ends when an update switches between a cron cadence and an interval', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'switched' });
+    await engine.skipNextScheduleOccurrence('switched');
+
+    await engine.updateSchedule('switched', { every: '1h' });
+
+    expect(await fieldOf(engine, 'switched', 'skipUntil')).toBeUndefined();
+  });
+
+  it('keeps the anchor and the skip of an interval schedule updated without changing the interval', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock, runs } = opened;
+    await engine.schedule('report', null, { every: '1h' }, { id: 'hourly' });
+    clock.now = at('2026-01-01T00:20:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+
+    await engine.updateSchedule('hourly', { every: '1h' }, { description: 'edited' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T01:00:00.000Z');
+    expect(isoOf(summary.skipUntil)).toBe('2026-01-01T01:00:00.000Z');
+    expect(isoOf(summary.createdAt)).toBe('2026-01-01T00:00:00.000Z');
+    await tickEngine(engine, clock, at('2026-01-01T01:00:00.000Z'));
+    await tickEngine(engine, clock, at('2026-01-01T02:00:00.000Z'));
+    expect(runs).toEqual(['2026-01-01T02:00:00.000Z']);
+  });
+
+  it('keeps the skip of an overdue interval schedule, which names the run after now, not nextFireAt', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock, runs } = opened;
+    await engine.schedule('report', null, { every: '1h' }, { id: 'hourly' });
+    // Nothing ticked, so the schedule still waits for 01:00; a tick now would count the hours up
+    // to 03:30 missed, and the next run is 04:00.
+    clock.now = at('2026-01-01T03:30:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+    expect(isoOf(await fieldOf(engine, 'hourly', 'skipUntil'))).toBe('2026-01-01T04:00:00.000Z');
+
+    await engine.updateSchedule('hourly', { every: '1h' }, { description: 'edited' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T01:00:00.000Z');
+    expect(isoOf(summary.skipUntil)).toBe('2026-01-01T04:00:00.000Z');
+    await tickEngine(engine, clock, at('2026-01-01T04:00:00.000Z'));
+    await tickEngine(engine, clock, at('2026-01-01T05:00:00.000Z'));
+    expect(runs).toEqual(['2026-01-01T05:00:00.000Z']);
+  });
+
+  it('keeps the skip of a backfilled interval schedule that is catching up, which names the run after lastFireAt', async () => {
+    const storage = new MemoryStorage();
+    opened = open('2026-01-01T00:00:00.000Z', { storage });
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, { every: '1h' }, { id: 'hourly', backfill: true });
+    // A catch-up that has started the 01:00 and 02:00 runs and not yet moved nextFireAt.
+    const stored = decodeScheduleState((await storage.get(KEYS.schedule('hourly')))!);
+    await storage.put(
+      KEYS.schedule('hourly'),
+      encode({ ...stored, lastFireAt: at('2026-01-01T02:00:00.000Z') }),
+    );
+    clock.now = at('2026-01-01T02:30:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+    expect(isoOf(await fieldOf(engine, 'hourly', 'skipUntil'))).toBe('2026-01-01T03:00:00.000Z');
+
+    await engine.updateSchedule('hourly', { every: '1h' }, { description: 'edited' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T01:00:00.000Z');
+    expect(isoOf(summary.skipUntil)).toBe('2026-01-01T03:00:00.000Z');
+  });
+
+  it('keeps the skip of an overdue cron schedule, which names the run after now', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, '0 9 * * *', { id: 'daily' });
+    clock.now = at('2026-01-03T12:00:00.000Z');
+    await engine.skipNextScheduleOccurrence('daily');
+    expect(isoOf(await fieldOf(engine, 'daily', 'skipUntil'))).toBe('2026-01-04T09:00:00.000Z');
+
+    await engine.updateSchedule('daily', '0 9 * * *', { description: 'edited' });
+
+    expect(isoOf(await fieldOf(engine, 'daily', 'skipUntil'))).toBe('2026-01-04T09:00:00.000Z');
+  });
+
+  it('keeps the skip of a backfilled cron schedule that is catching up when an update leaves the same run next', async () => {
+    const storage = new MemoryStorage();
+    opened = open('2026-01-01T00:00:00.000Z', { storage });
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, '0 * * * *', { id: 'hourly', backfill: true });
+    const stored = decodeScheduleState((await storage.get(KEYS.schedule('hourly')))!);
+    await storage.put(
+      KEYS.schedule('hourly'),
+      encode({ ...stored, lastFireAt: at('2026-01-01T02:00:00.000Z') }),
+    );
+    clock.now = at('2026-01-01T02:30:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+    expect(isoOf(await fieldOf(engine, 'hourly', 'skipUntil'))).toBe('2026-01-01T03:00:00.000Z');
+
+    // A cron update computes its next run from now, which ends the catch-up the skip belonged to.
+    await engine.updateSchedule('hourly', '0 * * * *', { description: 'edited' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T03:00:00.000Z');
+    expect(isoOf(summary.skipUntil)).toBe('2026-01-01T03:00:00.000Z');
+  });
+
+  it('re-anchors an interval schedule whose interval changes, and ends the skip', async () => {
+    opened = open('2026-01-01T00:00:00.000Z');
+    const { engine, clock } = opened;
+    await engine.schedule('report', null, { every: '1h' }, { id: 'hourly' });
+    clock.now = at('2026-01-01T00:20:00.000Z');
+    await engine.skipNextScheduleOccurrence('hourly');
+
+    await engine.updateSchedule('hourly', { every: '2h' });
+
+    const summary = await summaryOf(engine, 'hourly');
+    expect(isoOf(summary.nextFireAt)).toBe('2026-01-01T02:20:00.000Z');
+    expect(summary.skipUntil).toBeUndefined();
   });
 
   it('does not queue the skipped occurrence behind a running one', async () => {

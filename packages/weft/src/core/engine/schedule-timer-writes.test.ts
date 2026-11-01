@@ -28,7 +28,7 @@ function occurrencesOf(state: { queuedRuns: ReadonlyArray<{ occurrence?: number 
 }
 
 describe('a skip another engine records while a tick queues the occurrence it names', () => {
-  it('moves to the next occurrence when the tick queued the last one it had to account for', async () => {
+  it('drops the skip when the tick queued the last occurrence it had to account for', async () => {
     const errors = spyOn(console, 'error').mockImplementation(() => {});
     try {
       const { clock, shared, b, engineA, engineB } = await openEngines({ overlap: 'queue' });
@@ -46,25 +46,26 @@ describe('a skip another engine records while a tick queues the occurrence it na
       await ticking;
       await drainEngine();
 
-      // The occurrence was already decided: queued, not skipped. The skip is for the next one.
+      // The occurrence was already decided: queued, not skipped. The skip named it, so it is
+      // dropped rather than moved onto the next one, which nobody asked to skip.
       const carried = await stateOf(shared);
       expect(occurrencesOf(carried)).toEqual([first]);
-      expect(carried.skipUntil).toBe(first + MINUTE);
+      expect(carried.skipUntil).toBeUndefined();
       expect(carried.nextFireAt).toBe(first + MINUTE);
 
       await tickB(clock, engineB, shared);
       await drainEngine();
-      const honored = await stateOf(shared);
-      expect(occurrencesOf(honored)).toEqual([first]);
-      expect(honored.skipUntil).toBeUndefined();
-      expect(honored.nextFireAt).toBe(first + 2 * MINUTE);
+      const next = await stateOf(shared);
+      expect(occurrencesOf(next)).toEqual([first, first + MINUTE]);
+      expect(next.skipUntil).toBeUndefined();
+      expect(next.nextFireAt).toBe(first + 2 * MINUTE);
       expect(errors).not.toHaveBeenCalled();
     } finally {
       errors.mockRestore();
     }
   });
 
-  it('moves to the next occurrence when the tick has more of a catch-up to go', async () => {
+  it('drops the skip when the tick has more of a catch-up to go', async () => {
     const errors = spyOn(console, 'error').mockImplementation(() => {});
     try {
       const { clock, shared, b, engineA, engineB } = await openEngines({
@@ -86,9 +87,10 @@ describe('a skip another engine records while a tick queues the occurrence it na
       await ticking;
       await drainEngine();
 
-      // The first was queued before the skip was seen, so the skip took the second.
+      // The first was queued before the skip was seen, so the skip, which named it, is dropped
+      // and the later occurrences of the catch-up are not skipped.
       const state = await stateOf(shared);
-      expect(occurrencesOf(state)).toEqual([first, first + 2 * MINUTE]);
+      expect(occurrencesOf(state)).toEqual([first, first + MINUTE, first + 2 * MINUTE]);
       expect(state.skipUntil).toBeUndefined();
       expect(state.lastFireAt).toBe(first + 2 * MINUTE);
       expect(state.nextFireAt).toBe(first + 3 * MINUTE);

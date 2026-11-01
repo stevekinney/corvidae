@@ -123,6 +123,14 @@ export class AgentScheduleFormState {
     return Object.keys(this.errors).length === 0;
   }
 
+  /**
+   * Whether the cadence or its zone differs from the schedule as loaded. An update that leaves both
+   * as they are keeps a skipped run (COR-1985), and one that changes either ends it.
+   */
+  get cadenceDiffersFromLoaded(): boolean {
+    return this.spec !== this.initialSpec || this.timeZone !== this.initialTimeZone;
+  }
+
   /** Whether the draft differs from what it was made from. */
   get isDirty(): boolean {
     return (

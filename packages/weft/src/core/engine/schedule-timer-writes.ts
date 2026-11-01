@@ -9,7 +9,7 @@
 import type { BatchOperation } from '@lostgradient/storage';
 import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
-import { findFiringScheduleOccurrence, getNextScheduleOccurrence } from './schedule-occurrence.ts';
+import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import {
   type LoadedScheduleState,
   loadScheduleState,
@@ -119,8 +119,9 @@ export async function persistScheduleTimerState(
  *   ended) takes the run this tick started.
  * - The queue keeps their entries, without the ones this tick started, followed by the ones it added.
  * - The overlap counts add up.
- * - A skip they recorded for an occurrence this tick has already passed without honoring moves to
- *   the next occurrence that fires, so it still skips exactly one run.
+ * - A skip they recorded for an occurrence this tick has already passed without honoring is
+ *   dropped (COR-1985): it named that occurrence, which was not skipped, and carrying it onto the
+ *   next one would skip a run nobody chose.
  */
 export function carryConcurrentRecords(
   ours: ScheduleState,
@@ -184,7 +185,9 @@ function carriedQueue(
 /**
  * The skip another process recorded, as this tick's write carries it. The tick planned without it,
  * so an occurrence at or before it that the tick has already accounted for (fired it: `lastFireAt`;
- * or moved past it: `nextFireAt`) was not skipped, and the skip moves to the next one that fires.
+ * or moved past it: `nextFireAt`) was not skipped. The skip named that occurrence, so it is dropped
+ * rather than moved onto the next one (COR-1985): a person who chose to skip one run did not choose
+ * to skip the one after it.
  */
 function carriedSkip(
   ours: ScheduleState,
@@ -197,11 +200,9 @@ function carriedSkip(
     ours.nextFireAt !== base.nextFireAt &&
     skipUntil < ours.nextFireAt
   ) {
-    return findFiringScheduleOccurrence(ours, ours.nextFireAt);
+    return undefined;
   }
-  if (ours.lastFireAt !== undefined && skipUntil <= ours.lastFireAt) {
-    return findFiringScheduleOccurrence(ours, getNextScheduleOccurrence(ours, ours.lastFireAt));
-  }
+  if (ours.lastFireAt !== undefined && skipUntil <= ours.lastFireAt) return undefined;
   return skipUntil;
 }
 

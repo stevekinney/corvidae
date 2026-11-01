@@ -74,6 +74,7 @@ import {
   type ScheduleFilter,
   type ScheduleMissedFire,
   type ScheduleOptions,
+  type ScheduleSkipOptions,
   type ScheduleSpec,
   type ScheduleSummary,
   type ScheduleTransitionOptions,
@@ -462,6 +463,7 @@ export {
 } from './revision-errors.ts';
 export { getRevisionRealmDiagnostics } from './revision-realm-diagnostics.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
+export { ScheduleOccurrenceNotNextError } from './schedule-occurrence-not-next-error.ts';
 export { ScheduleReservedKeyError } from './schedule-reserved-key-error.ts';
 export { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
 export { DefinitionSchemaRequiredError } from './schema-policy.ts';
@@ -2533,6 +2535,15 @@ export class Engine<
    * before that occurrence passes changes nothing. A schedule that is not active has no next run to
    * skip and rejects.
    *
+   * A fire is not a revision, so `expectedRevision` cannot tell a person that the run they were
+   * looking at has started since. `options.occurrence` names the run to skip (milliseconds since
+   * the epoch, as {@link ScheduleSummary.nextFireAt} and {@link ScheduleSummary.skipUntil} are): it
+   * is compared inside the guarded write with the next real run, and a call naming any other
+   * occurrence (one a fire has passed, one later than the next, a wake-up that starts nothing)
+   * rejects with {@link ScheduleOccurrenceNotNextError} and writes nothing. Naming the run that is
+   * already skipped changes nothing. The revision is compared first. Omitted, the next run is
+   * skipped, whichever it is by the time the write lands.
+   *
    * @example
    * ```ts
    * import { Engine, workflow } from '@lostgradient/weft';
@@ -2546,7 +2557,7 @@ export class Engine<
    */
   async skipNextScheduleOccurrence(
     scheduleId: string,
-    options?: Pick<ScheduleTransitionOptions, 'expectedRevision'>,
+    options?: ScheduleSkipOptions,
   ): Promise<void> {
     const internals = getInternals(this);
     assertLeaseHeldForEngineWork(internals);

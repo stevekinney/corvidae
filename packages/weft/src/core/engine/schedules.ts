@@ -25,6 +25,7 @@ import type { OccurrenceCommit } from './schedule-occurrence-commit.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { runScheduleTransition } from './schedule-state-operations.ts';
+import { survivingSkip, updatedNextFireAt } from './schedule-update-cadence.ts';
 import { matchesScheduleFilter, paginateScheduleSummaries } from './state-utilities.ts';
 import { writeScheduleState } from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
@@ -393,7 +394,8 @@ export async function updateSchedule(
     async (state, readConditions) => {
       const now = internals.options.getNow();
       // Replace the cadence wholesale so switching kinds (cron <-> interval) never
-      // leaves a stale field behind. Interval cadence re-anchors at the update time.
+      // leaves a stale field behind. Interval cadence re-anchors at the update time, unless the
+      // interval is the one it already has (COR-1985): then the grid and the next run stay put.
       // Strip both cadence fields, and `pinnedRevision`, from the carried-over
       // state first, then attach only what the new spec/revision decision
       // selects (exactOptionalPropertyTypes forbids carrying an explicit
@@ -402,7 +404,7 @@ export async function updateSchedule(
         cronExpression: _droppedCron,
         intervalMs: _droppedInterval,
         pinnedRevision: _droppedPinnedRevision,
-        // A new cadence is a new grid: the occurrence a person skipped may not be on it.
+        // Kept below only when it is still the next occurrence on the updated cadence.
         skipUntil: _droppedSkip,
         ...stateWithoutCadenceOrPin
       } = state;
@@ -420,8 +422,15 @@ export async function updateSchedule(
       // to `now` (the update time) so the timer's subsequent `getNextScheduleOccurrence`
       // calls use the same origin as the `nextFireAt` computed here. Without this,
       // the first fire after the update is correct but later fires drift back to the
-      // original creation-time grid.
-      const anchorFields = normalizedSpec.kind === 'interval' ? { createdAt: now } : {};
+      // original creation-time grid. An update that leaves the interval as it is has no new grid
+      // to anchor: it keeps the anchor, and an active schedule keeps the run it was waiting for,
+      // so what a person skipped, and a run that is due, are not moved by an edit to the
+      // description.
+      const keepsIntervalGrid =
+        normalizedSpec.kind === 'interval' && state.intervalMs === normalizedSpec.intervalMs;
+      const anchor = keepsIntervalGrid ? state.createdAt : now;
+      const anchorFields =
+        normalizedSpec.kind === 'interval' && !keepsIntervalGrid ? { createdAt: now } : {};
       // Omitting `revisionPolicy` preserves the schedule's current policy AND
       // its captured pin unchanged. Passing `'pinned'` — even when already
       // pinned — always RE-resolves and re-captures against the revision
@@ -453,11 +462,12 @@ export async function updateSchedule(
         ...revisionFields,
         revision: state.revision + 1,
         updatedAt: now,
-        nextFireAt:
-          state.status === 'cancelled'
-            ? null
-            : getNextScheduleOccurrence({ ...cadenceFields, timeZone, createdAt: now }, now),
+        nextFireAt: updatedNextFireAt(state, keepsIntervalGrid, () =>
+          getNextScheduleOccurrence({ ...cadenceFields, timeZone, createdAt: anchor }, now),
+        ),
       };
+      const skipUntil = survivingSkip(internals, state, updatedState, now);
+      if (skipUntil !== undefined) updatedState.skipUntil = skipUntil;
       await writeScheduleState(internals, updatedState, {
         includeTimer: state.status === 'active',
         replaceTimerFrom: state,
