@@ -1202,6 +1202,9 @@ describe('a task record with a malformed field', () => {
     ['an origin that is not an object', { origin: 'chat' }],
     ['an origin without a kind', { origin: { principal: 'p' } }],
     ['an origin with an empty kind', { origin: { kind: '' } }],
+    ['a pending wakeup that is not an object', { pendingWakeup: 'soon' }],
+    ['a pending wakeup without a time', { pendingWakeup: {} }],
+    ['a pending wakeup with a time that is not a number', { pendingWakeup: { wakeAt: null } }],
   ];
 
   it.each(MALFORMED)(
@@ -1715,6 +1718,146 @@ describe('a context’s activity with a schedule fire in it (COR-1482)', () => {
     const activity = await registry.activityOf(['context-1']);
 
     expect(activity.get('context-1')).toBe('idle');
+  });
+});
+
+describe('a task’s pending wakeup (COR-1987)', () => {
+  async function wakeAtOf(
+    registry: ReturnType<typeof build>['registry'],
+    taskId: string,
+  ): Promise<string | null | undefined> {
+    const view = await registry.get(taskId);
+    return view?.wakeAt;
+  }
+  const WAKE_AT = Date.parse('2026-10-18T06:00:00.000Z');
+
+  it('reads null for a task that never scheduled one', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    expect(await wakeAtOf(registry, 'run-1')).toBeNull();
+  });
+
+  it('shows a recorded wakeup as an ISO 8601 time while the run is working and the time is ahead', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+
+    await registry.recordWakeup('run-1', WAKE_AT);
+
+    expect(await wakeAtOf(registry, 'run-1')).toBe('2026-10-18T06:00:00.000Z');
+    const listed = await registry.enumerate({ limit: 50, offset: 0 });
+    expect(listed.tasks.map((task) => task.wakeAt)).toEqual(['2026-10-18T06:00:00.000Z']);
+  });
+
+  it('shows it for a durable run this process holds no live run for', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordWakeup('run-1', WAKE_AT);
+
+    const view = await registry.get('run-1');
+    expect(view).toMatchObject({ status: 'working', wakeAt: '2026-10-18T06:00:00.000Z' });
+  });
+
+  it('survives a restart: a second registry over the same store reads it', async () => {
+    const first = build();
+    await admit(first.registry, 'run-1');
+    await first.registry.recordWakeup('run-1', WAKE_AT);
+
+    const second = build(undefined, { kv: first.kv });
+    expect(await wakeAtOf(second.registry, 'run-1')).toBe('2026-10-18T06:00:00.000Z');
+  });
+
+  it('replaces an earlier wakeup with a later one', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordWakeup('run-1', WAKE_AT);
+    await registry.recordWakeup('run-1', WAKE_AT + 3_600_000);
+
+    expect(await wakeAtOf(registry, 'run-1')).toBe('2026-10-18T07:00:00.000Z');
+  });
+
+  it('clears when a null time is recorded, as a human wait parking the run does', async () => {
+    const { registry, kv } = build();
+    await admit(registry, 'run-1');
+    await registry.recordWakeup('run-1', WAKE_AT);
+    await registry.recordWakeup('run-1', null);
+
+    expect(await wakeAtOf(registry, 'run-1')).toBeNull();
+    const raw = await kv.get(`${TASK_RECORD_KEY_PREFIX}run-1`);
+    expect(Object.hasOwn(JSON.parse(raw ?? '{}') as object, 'pendingWakeup')).toBe(false);
+  });
+
+  it('reads null once the time has passed on the registry clock', async () => {
+    const { registry, runtime } = build();
+    await admit(registry, 'run-1');
+    await registry.recordWakeup('run-1', Date.parse('2026-10-18T00:00:10.000Z'));
+    expect(await wakeAtOf(registry, 'run-1')).toBe('2026-10-18T00:00:10.000Z');
+
+    await runtime.advance(10_000);
+
+    expect(await wakeAtOf(registry, 'run-1')).toBeNull();
+  });
+
+  it('reads null for a task that has settled, whatever was recorded', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    await registry.recordWakeup('run-1', WAKE_AT);
+    await registry.recordSettled('run-1', {
+      at: '2026-10-18T01:00:00.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+
+    expect(await registry.get('run-1')).toMatchObject({ status: 'completed', wakeAt: null });
+  });
+
+  it('reads null while a human wait is open', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    await registry.recordWakeup('run-1', WAKE_AT);
+    held.reviews = [humanWait('run-1')];
+
+    expect(await registry.get('run-1')).toMatchObject({ status: 'input-required', wakeAt: null });
+  });
+
+  it('applies writes asked without waiting in the order they were asked, so a clear is not undone by an earlier set', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+
+    const writes = [
+      registry.recordWakeup('run-1', WAKE_AT),
+      registry.recordWakeup('run-1', null),
+      registry.recordWakeup('run-1', WAKE_AT + 3_600_000),
+      registry.recordWakeup('run-1', null),
+    ];
+    await Promise.all(writes);
+
+    expect(await wakeAtOf(registry, 'run-1')).toBeNull();
+    const record = await registry.record('run-1');
+    expect(record?.pendingWakeup).toBeUndefined();
+  });
+
+  it('does not count as a change of the record: its revision stays', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    const before = await registry.record('run-1');
+    await registry.recordWakeup('run-1', WAKE_AT);
+    const after = await registry.record('run-1');
+
+    expect(after?.revision).toBe(before?.revision);
+    expect(after?.pendingWakeup).toEqual({ wakeAt: WAKE_AT });
+  });
+
+  it('resolves without writing for a task with no record', async () => {
+    const { registry, kv } = build();
+
+    await registry.recordWakeup('run-missing', WAKE_AT);
+
+    expect(await kv.get(`${TASK_RECORD_KEY_PREFIX}run-missing`)).toBeNull();
   });
 });
 

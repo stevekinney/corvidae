@@ -275,6 +275,19 @@ export function taskOriginParentOf(stored: StoredTaskOrigin | null | undefined):
   return null;
 }
 
+/**
+ * The session a child run's parent ran in (COR-1987): an `agent` origin's `parentContextId`. `null`
+ * for every other kind, for an `agent` origin recorded without one, for an absent origin, and for a
+ * stored origin this release cannot read, so a filter on a parent context never matches what it
+ * cannot attribute.
+ */
+export function taskOriginParentContextOf(
+  stored: StoredTaskOrigin | null | undefined,
+): string | null {
+  if (stored === undefined || stored === null || !isTaskOrigin(stored)) return null;
+  return stored.kind === 'agent' ? (stored.parentContextId ?? null) : null;
+}
+
 /** The kinds a person or a peer can start a task from: every kind but the subordinate ones. */
 const TOP_LEVEL_ORIGIN_KINDS: readonly string[] = ['chat', 'person', 'schedule', 'api'];
 

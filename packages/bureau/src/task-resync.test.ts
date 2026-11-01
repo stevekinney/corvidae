@@ -36,6 +36,7 @@ const view: TaskView = {
   updatedAt: '2026-10-18T00:00:05.000Z',
   cleanup: null,
   openWaits: [],
+  wakeAt: null,
 };
 
 /** A repair over one settled record whose history holds `kinds`; resolves what it appended. */

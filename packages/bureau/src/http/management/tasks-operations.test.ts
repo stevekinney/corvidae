@@ -407,6 +407,136 @@ describe('bureau.tasks.get', () => {
   });
 });
 
+describe('bureau.tasks wakeAt and parentContextId (COR-1987)', () => {
+  type Listed = Task & { wakeAt: string | null };
+  const listedOf = (body: Awaited<ReturnType<typeof rpc>>) => tasksOf(body) as Listed[];
+
+  it('carries wakeAt on get and list: null by default, and the time a recorded wakeup is due', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startRun(opened, OWNER.alice);
+
+      const idle = await rpc(opened.handler, 'bureau.tasks.get', { taskId: run.id }, 'alice-key');
+      expect(idle.result?.['wakeAt']).toBeNull();
+
+      const due = Date.now() + 3_600_000;
+      await opened.bureau.internals.taskRegistry.recordWakeup(run.id, due);
+
+      const got = await rpc(opened.handler, 'bureau.tasks.get', { taskId: run.id }, 'alice-key');
+      const list = await rpc(opened.handler, 'bureau.tasks.list', {}, 'alice-key');
+      expect(got.result?.['wakeAt']).toBe(new Date(due).toISOString());
+      expect(listedOf(list).map((task) => [task.id, task.wakeAt])).toEqual([
+        [run.id, new Date(due).toISOString()],
+      ]);
+      // The note the run left for itself is not part of a task view.
+      expect(Object.keys(got.result ?? {})).not.toContain('note');
+    });
+  });
+
+  it('lists the child runs started from any run in a context, across pages, and nothing else', async () => {
+    await withBureau(
+      { agents: { asker: createAgent({ generate: parkingUntilAborted }) } },
+      async (opened) => {
+        const registry = opened.bureau.internals.taskRegistry;
+        let at = Date.parse('2026-10-22T00:00:00.000Z');
+        const admit = async (
+          taskId: string,
+          origin: Parameters<typeof registry.recordAdmission>[0]['origin'],
+          owner: string = OWNER.alice,
+        ) => {
+          at += 1;
+          await registry.recordAdmission({
+            taskId,
+            contextId: `context-${taskId}`,
+            incarnation: '',
+            agentName: 'asker',
+            owner,
+            origin,
+            message: undefined,
+            createdAt: new Date(at).toISOString(),
+          });
+        };
+        const child = (parentRunId: string, parentContextId?: string) =>
+          ({
+            kind: 'agent',
+            parentRunId,
+            ...(parentContextId === undefined ? {} : { parentContextId }),
+            agentName: 'asker',
+          }) as const;
+        await admit('child-a1', child('run-a', 'thread-1'));
+        await admit('child-a2', child('run-a', 'thread-1'));
+        await admit('child-b1', child('run-b', 'thread-1'));
+        await admit('child-c1', child('run-c', 'thread-2'));
+        await admit('child-d1', child('run-d'));
+        await admit('child-bob', child('run-e', 'thread-1'), OWNER.bob);
+        await admit('step-1', { kind: 'parent', parentRunId: 'run-a' });
+        await admit('top-api', { kind: 'api' });
+
+        const pages: string[][] = [];
+        let pageToken: string | undefined;
+        do {
+          const body = await rpc(
+            opened.handler,
+            'bureau.tasks.list',
+            {
+              parentContextId: 'thread-1',
+              limit: 2,
+              ...(pageToken === undefined ? {} : { pageToken }),
+            },
+            'alice-key',
+          );
+          expect(body.error).toBeUndefined();
+          pages.push(tasksOf(body).map((task) => task.id));
+          pageToken = (body.result?.['nextPageToken'] as string | undefined) ?? undefined;
+        } while (pageToken !== undefined);
+        const narrowed = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { parentContextId: 'thread-1', parentRunId: 'run-a' },
+          'alice-key',
+        );
+        const none = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { parentContextId: 'no-such-thread' },
+          'alice-key',
+        );
+
+        expect(pages.flat().toSorted()).toEqual(['child-a1', 'child-a2', 'child-b1']);
+        expect(pages.length).toBeGreaterThan(1);
+        expect(
+          tasksOf(narrowed)
+            .map((task) => task.id)
+            .toSorted(),
+        ).toEqual(['child-a1', 'child-a2']);
+        expect(tasksOf(none)).toEqual([]);
+      },
+    );
+  });
+
+  it('refuses a page token under another parentContextId', async () => {
+    await withBureau(
+      { agents: { asker: createAgent({ generate: parkingUntilAborted }) } },
+      async (opened) => {
+        const records = createTaskRecords(opened);
+        for (let index = 0; index < 3; index += 1)
+          await records.admit(`alice-${index}`, OWNER.alice);
+        const firstPage = await rpc(opened.handler, 'bureau.tasks.list', { limit: 1 }, 'alice-key');
+        const pageToken = firstPage.result?.['nextPageToken'];
+
+        const otherFilter = await rpc(
+          opened.handler,
+          'bureau.tasks.list',
+          { pageToken, parentContextId: 'thread-1' },
+          'alice-key',
+        );
+
+        expect(otherFilter.error?.data?.httpStatus).toBe(400);
+        expect(JSON.stringify(otherFilter.error)).toContain('page-token-filters');
+      },
+    );
+  });
+});
+
 describe('bureau.tasks.cancel', () => {
   it('requires bureau.tasks:write for another owner’s task, and answers anyone else as a missing task', async () => {
     await withBureau({}, async (opened) => {

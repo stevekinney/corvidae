@@ -756,6 +756,47 @@ describe('TaskRegistry.list of subordinate tasks (COR-1868)', () => {
     );
   });
 
+  it('lists the child runs started from any run in a context across pages, and no other kind of task (COR-1987)', async () => {
+    const harness = build();
+    const child = (parentRunId: string, parentContextId?: string) =>
+      ({
+        kind: 'agent',
+        parentRunId,
+        ...(parentContextId === undefined ? {} : { parentContextId }),
+        agentName: 'assistant',
+      }) as const;
+    await admitOne(harness, 'a-1', child('run-a', 'thread-1'));
+    await admitOne(harness, 'a-2', child('run-a', 'thread-1'));
+    await admitOne(harness, 'b-1', child('run-b', 'thread-1'));
+    await admitOne(harness, 'c-1', child('run-c', 'thread-2'));
+    await admitOne(harness, 'no-context', child('run-d'));
+    await admitOne(harness, 'step', { kind: 'parent', parentRunId: 'run-a' });
+    await admitOne(harness, 'top-api', { kind: 'api' });
+    await admitOne(harness, 'broken', { kind: 'agent', parentRunId: 'run-a', parentContextId: '' });
+    await admitOne(harness, 'future', { kind: 'teleport', parentContextId: 'thread-1' });
+
+    const thread = await listAll(harness.registry, {
+      principal: ALICE,
+      parentContextId: 'thread-1',
+      limit: 2,
+    });
+    const one = await listAll(harness.registry, {
+      principal: ALICE,
+      parentContextId: 'thread-1',
+      parentRunId: 'run-b',
+      limit: 2,
+    });
+    const nothing = await listAll(harness.registry, {
+      principal: ALICE,
+      parentContextId: 'missing',
+      limit: 2,
+    });
+
+    expect(idsOf(thread)).toEqual(['b-1', 'a-2', 'a-1']);
+    expect(idsOf(one)).toEqual(['b-1']);
+    expect(nothing).toEqual([]);
+  });
+
   it('lists the siblings of a task across pages, the task itself excluded', async () => {
     const harness = build();
     await admitFamilies(harness);
@@ -986,9 +1027,9 @@ describe('TaskRegistry.expireListings', () => {
     expect(left[0]).toContain(encodeURIComponent(BOB));
   });
 
-  it('pins the key version to the task view’s shape, so a snapshot saved without `kind` is never read', () => {
+  it('pins the key version to the task view’s shape, so a snapshot saved without `wakeAt` is never read', () => {
     // Bump this with the view: a stored view is parsed as the current shape by the next page.
-    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v4:');
+    expect(TASK_LISTING_KEY_PREFIX).toBe('bureau-task-listing:v5:');
   });
 
   it('stores under a prefix disjoint from the task records and the context index', () => {

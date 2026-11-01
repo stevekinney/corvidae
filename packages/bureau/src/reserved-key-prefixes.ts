@@ -149,7 +149,7 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'the index from a context to its task ids, which every purge pass reads to find a run admitted after the delete began',
   ),
   kept(
-    'bureau-task-listing:v4:',
+    'bureau-task-listing:v5:',
     'a listing’s page snapshot of task views (ids, statuses, origins, and a failed task’s status message), which its page token outlives by fifteen minutes at most (TASK_LISTING_LIFETIME_MILLISECONDS) and the sweep then deletes',
   ),
   kept(

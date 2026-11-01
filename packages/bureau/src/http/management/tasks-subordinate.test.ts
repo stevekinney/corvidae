@@ -138,3 +138,59 @@ describe('a goal attempt’s task over the management plane', () => {
     }
   });
 });
+
+describe('the children of a run and of its thread over the management plane (COR-1987)', () => {
+  it('lists a dispatched child by its parent run and by its parent’s context, the task id being the child run id', async () => {
+    const opened = await openBureau({
+      durableHistory: true,
+      agents: { worker: createAgent({ generate: parkingUntilAborted }) },
+    });
+    try {
+      const parent = await opened.bureau.tasks.start('default', 'plan', {
+        principal: OWNER.alice,
+      });
+      const dispatched = await opened.bureau.children.dispatch({
+        parentRunId: parent.id,
+        agentName: 'worker',
+        input: 'work',
+        principal: OWNER.alice,
+        childRunId: 'thread-child',
+      });
+      if (dispatched.outcome !== 'started') throw new Error('expected a started child');
+      await waitUntil(async () => (await opened.bureau.tasks.get('thread-child')) !== undefined, {
+        message: 'the child task exists',
+      });
+
+      const byParent = await rpc(
+        opened.handler,
+        'bureau.tasks.list',
+        { parentRunId: parent.id },
+        'alice-key',
+      );
+      const byContext = await rpc(
+        opened.handler,
+        'bureau.tasks.list',
+        { parentContextId: parent.contextId },
+        'alice-key',
+      );
+
+      type Child = {
+        id: string;
+        agentName: string | null;
+        origin: { kind: string; parentRunId?: string; parentContextId?: string } | null;
+      };
+      for (const body of [byParent, byContext]) {
+        const children = (body.result?.['tasks'] ?? []) as Child[];
+        expect(children.map((child) => child.id)).toEqual(['thread-child']);
+        expect(children[0]).toMatchObject({
+          // The task id is the child run's own id: a chat joins its card to the live announcement on it.
+          id: dispatched.child.childRunId,
+          agentName: 'worker',
+          origin: { kind: 'agent', parentRunId: parent.id, parentContextId: parent.contextId },
+        });
+      }
+    } finally {
+      await opened.dispose();
+    }
+  });
+});
