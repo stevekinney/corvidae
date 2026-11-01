@@ -88,6 +88,32 @@ describe('the MCP apps the host serves', () => {
     });
   });
 
+  it('lists each built app with its plugin, its declared tools, and its page, for the panel routes', async () => {
+    const { apps, resources } = await mcpAppMounts(
+      contributed(
+        await app('one', { allowedTools: ['a.first', 'a.second'], opensFromTool: 'a.second' }),
+      ),
+    );
+    expect(apps).toEqual([
+      {
+        plugin: 'test',
+        name: 'one',
+        title: 'The one page',
+        uri: 'ui://test/one/v1',
+        opensFromTool: 'a.second',
+        allowedTools: ['a.first', 'a.second'],
+        html: expect.any(String),
+      },
+    ]);
+    expect(apps[0]?.html).toBe(resources[0]?.text);
+  });
+
+  it('lists no app whose page did not build', async () => {
+    const missing = await app('one', { entry: pathToFileURL(resolve('does-not-exist.ts')) });
+    const { apps } = await mcpAppMounts(contributed(missing));
+    expect(apps).toEqual([]);
+  });
+
   it('keeps a title from opening a tag and a style from ending its element', async () => {
     const { resources } = await mcpAppMounts(
       contributed(
@@ -103,6 +129,7 @@ describe('the MCP apps the host serves', () => {
       resources: [],
       toolMeta: {},
       failures: [],
+      apps: [],
     });
   });
 

@@ -96,6 +96,8 @@ export const RUN_PAGE_COPY = {
   inputPayload: 'Input payload',
   resultPayload: 'Result payload',
   activityHeading: 'Activity',
+  /** Names the plugin a panel on the run page comes from. */
+  panelFromPlugin: (plugin: string) => `From the ${plugin} plugin`,
   timelineHeading: 'Timeline',
   eventsHeading: 'Events',
   checkpointsHeading: 'Checkpoints',

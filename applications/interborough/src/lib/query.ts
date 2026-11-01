@@ -233,6 +233,8 @@ export const queryKeys = {
   hostProviders: () => ['host', 'providers'] as const,
   /** The plugins the host loaded, what they add, and their secrets (`/host/plugins`). */
   hostPlugins: () => ['host', 'plugins'] as const,
+  /** The plugin panels the host serves, which the run page mounts (`/host/mcp-apps`). */
+  hostMcpApps: () => ['host', 'mcp-apps'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
   /** `weft.system.lease` (COR-124), read only by the Health page's Health tab. */
