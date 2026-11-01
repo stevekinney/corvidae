@@ -344,6 +344,25 @@ export class MediaAdmissionError extends AgentRunError {
   }
 }
 
+/**
+ * The base of an error that is a policy verdict about a step and no fault of the provider (COR-1996).
+ * A step that throws one ends the run with it: a run hook's `onError` cannot `skip` or `retry` it,
+ * the built-in `retry` option never repeats it, and it is classified as a `policy` error, so the
+ * run stops with the verdict and not with `MAXIMUM_STEPS` or a string of refused steps.
+ *
+ * It is the extension point for a host whose own rule can refuse a step before the provider is
+ * called. It deliberately is not an {@link AgentRunError}: the subclass keeps its own `code`, and
+ * the run's error code stays the open one a thrown value gets. Bureau's `ModelPolicyDeniedError`
+ * is the one in this repository.
+ */
+export class NonRecoverablePolicyError extends Error {
+  /** @param message What was refused and why. */
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message, options);
+    this.name = 'NonRecoverablePolicyError';
+  }
+}
+
 /** Why a generated media part could not become a managed asset. */
 export type GeneratedMediaNotAdmittedReason = 'no-admitter' | 'admission-failed';
 

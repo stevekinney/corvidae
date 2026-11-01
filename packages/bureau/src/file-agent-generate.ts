@@ -26,6 +26,7 @@ import {
   BudgetExceededError,
   type GenerateContext,
   type GenerateFunction,
+  NonRecoverablePolicyError,
   readBackendDescriptors,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -70,9 +71,11 @@ export class ModelOverrideUnusableError extends Error {
 
 /**
  * A step was told to use a model the model policy forbids (COR-1980). It names the model and the
- * layer that denied it, and no provider was called.
+ * layer that denied it, and no provider was called. It is a {@link NonRecoverablePolicyError}
+ * (COR-1996), so a run hook's `onError` cannot `skip` or `retry` it and the run ends with this
+ * error rather than with `MAXIMUM_STEPS`.
  */
-export class ModelPolicyDeniedError extends Error {
+export class ModelPolicyDeniedError extends NonRecoverablePolicyError {
   /** The stable code for this failure, the same as the `AgentFileError` a write is refused with. */
   readonly code = 'model-policy-denied';
   /** The provider of the forbidden catalog row. */

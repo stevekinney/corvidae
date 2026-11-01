@@ -4,7 +4,11 @@ import type {
   RuntimeServices,
 } from '@lostgradient/lifecycle';
 
-import { GeneratedMediaNotAdmittedError, ResponsePartsMismatchError } from './errors';
+import {
+  GeneratedMediaNotAdmittedError,
+  NonRecoverablePolicyError,
+  ResponsePartsMismatchError,
+} from './errors';
 import { GenerateRetryEvent, RunGuardrailEvent } from './events';
 import { isProviderContractError } from './providers/errors';
 import { addJitter } from './retry/jitter';
@@ -167,15 +171,17 @@ export async function evaluateStopConditions(
 }
 
 /**
- * Errors that name a defect in the response or the run's media policy, not a transient fault: a
- * provider block the adapter has no mapping for, a refused generated-media admission, and a
- * response whose parts disagree with its content. A retry would reproduce each.
+ * Errors that name a defect in the response or a policy verdict on the step, not a transient fault:
+ * a provider block the adapter has no mapping for, a refused generated-media admission, a response
+ * whose parts disagree with its content, and a {@link NonRecoverablePolicyError} (COR-1996). A
+ * retry would reproduce each.
  */
 export function isNonRetryableGenerateError(error: unknown): boolean {
   return (
     isProviderContractError(error) ||
     error instanceof GeneratedMediaNotAdmittedError ||
-    error instanceof ResponsePartsMismatchError
+    error instanceof ResponsePartsMismatchError ||
+    error instanceof NonRecoverablePolicyError
   );
 }
 
