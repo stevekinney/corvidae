@@ -39,6 +39,7 @@ import {
   createChatRunWiring,
   withAnnouncements,
   type ChatRunWiring,
+  type GrantNotLoosened,
   type HumanRequest,
   type Refusal,
   type RunUsage,
@@ -69,6 +70,8 @@ export type ChatSessionOptions = {
    * caller who cannot change the chat is given, so the page reads the chat again to learn which.
    */
   readonly onNotFound?: () => void;
+  /** Told when a grant the person asked for did not loosen the tool (see the run wiring). */
+  readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
 };
 
 /** Whether `error` is the Bureau, or the AG-UI door, saying it has no such thread. */
@@ -178,6 +181,9 @@ export class ChatSessionState {
       onTerminal: () => {
         this.#attachedRun = false;
       },
+      ...(options.onGrantNotLoosened === undefined
+        ? {}
+        : { onGrantNotLoosened: options.onGrantNotLoosened }),
       onUsage: (runId, usage) => {
         this.usage = new Map(this.usage).set(runId, usage);
       },

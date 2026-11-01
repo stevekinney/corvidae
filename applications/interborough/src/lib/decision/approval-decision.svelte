@@ -23,11 +23,9 @@
     onDecide: (decision: 'approve' | 'deny') => void;
     /**
      * Approves and allows the tool for the rest of the chat. Omitted by a host that cannot, and the
-     * button is not drawn then; `canAllowForChat` holds it while the host is still finding out how.
+     * button is not drawn then.
      */
     onAllowForChat?: (() => void) | undefined;
-    /** Whether the grant can be sent yet. Its button is shown but held until it can. */
-    canAllowForChat?: boolean;
     /** What the call was given, as name and value pairs. With none, there is no Show input button. */
     input?: readonly (readonly [string, string])[] | undefined;
     id: string;
@@ -39,7 +37,6 @@
     deciding,
     onDecide,
     onAllowForChat,
-    canAllowForChat = true,
     input = [],
     id,
   }: ApprovalDecisionProps = $props();
@@ -72,7 +69,7 @@
           data-changes
           variant="ghost"
           size="sm"
-          disabled={deciding || !canAllowForChat}
+          disabled={deciding}
           onclick={() => onAllowForChat()}>{REVIEWS_COPY.allowForChat}</Button
         >
       {/if}

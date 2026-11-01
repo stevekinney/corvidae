@@ -34,6 +34,8 @@ export const MEMORY_WRITTEN_EVENT_NAME = 'bureau.memory-written';
 export const WAKEUP_SCHEDULED_EVENT_NAME = 'bureau.wakeup-scheduled';
 export const CHILD_RUN_STARTED_EVENT_NAME = 'bureau.child-run-started';
 export const CHILD_RUN_SETTLED_EVENT_NAME = 'bureau.child-run-settled';
+/** What the Bureau says of a grant that came with an approval (COR-1990); not a note. */
+export const TOOL_GRANT_SETTLED_EVENT_NAME = 'bureau.tool-grant-settled';
 /** The name the Bureau's memory tool answers to in a thread's tool calls. */
 export const MEMORY_STORE_TOOL_NAME = 'memory_store';
 

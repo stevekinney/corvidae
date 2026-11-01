@@ -3546,6 +3546,12 @@ export const REVIEWS_COPY = {
     title: 'Approved, but not remembered',
     message: 'The tool will ask again in this chat.',
   },
+  /** Said in the chat when the approval went through but the grant will not stop the next ask. */
+  notLoosened: {
+    title: 'Approved, but it will ask again',
+    message: (toolName: string): string =>
+      `The permission was saved, but this agent will still ask before using ${toolName} again.`,
+  },
   /** Said under a question that is picked from choices: the number keys. */
   pickHint: 'Press 1 to 9 to pick a choice.',
   /** What the open approval would run, and what it was given. */
