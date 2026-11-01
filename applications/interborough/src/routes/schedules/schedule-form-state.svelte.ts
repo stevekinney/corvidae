@@ -206,6 +206,14 @@ export class ScheduleFormState {
     return this.revisionPolicy === this.initialRevisionPolicy ? undefined : this.revisionPolicy;
   }
 
+  /**
+   * Whether the cadence or its zone differs from the schedule as loaded. An engine update that
+   * leaves both as they are keeps a skipped run (COR-1985), and one that changes either ends it.
+   */
+  get cadenceDiffersFromLoaded(): boolean {
+    return this.cadenceKey !== this.initialCadenceSpec;
+  }
+
   /** Whether any editable field differs from what the draft was constructed with. Lets the edit page keep an operator's unsaved changes when a background refetch delivers newer server data (COR-15). */
   get isDirty(): boolean {
     return (

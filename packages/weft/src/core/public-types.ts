@@ -117,6 +117,7 @@ export type {
   ScheduleOverlapPolicy,
   ScheduleQueuedRun,
   ScheduleRevisionPolicy,
+  ScheduleSkipOptions,
   ScheduleSpec,
   ScheduleState,
   ScheduleStatus,

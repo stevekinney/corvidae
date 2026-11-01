@@ -263,8 +263,8 @@
         {/key}
       {/if}
     </div>
-    {#if detail.data?.skipUntil !== undefined}
-      <!-- The engine drops a pending skip when the schedule is updated, so a save restores that run. -->
+    {#if detail.data?.skipUntil !== undefined && draft?.cadenceDiffersFromLoaded === true}
+      <!-- The engine keeps a pending skip across an update that leaves the next run where it was, and drops it when the cadence or zone changes. -->
       <Alert variant="info" data-testid="schedule-edit-skip-pending">{copy.skipPending}</Alert>
     {/if}
     {#if invalidCadence}

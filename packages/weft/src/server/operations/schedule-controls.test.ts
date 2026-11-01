@@ -26,6 +26,17 @@ const bindings = [
   listScheduleMissedFiresRestBinding,
 ];
 
+async function summaryOf(engine: Engine, id: string) {
+  const summary = await engine.getSchedule(id);
+  if (summary === null) throw new Error(`Schedule "${id}" does not exist`);
+  return summary;
+}
+
+async function skipUntilOf(engine: Engine): Promise<number | undefined> {
+  const { skipUntil } = await summaryOf(engine, 'hourly');
+  return skipUntil;
+}
+
 function createEngine(): Engine {
   const engine = new Engine({ storage: new MemoryStorage() });
   engine.register(
@@ -41,8 +52,12 @@ async function statusOf(response: Promise<Response>): Promise<number> {
   return settled.status;
 }
 
-function post(engine: Engine, path: string): Promise<Response> {
-  return handleRequest(new Request(`http://localhost${path}`, { method: 'POST' }), engine, {
+function post(engine: Engine, path: string, body?: string): Promise<Response> {
+  const init: RequestInit =
+    body === undefined
+      ? { method: 'POST' }
+      : { method: 'POST', body, headers: { 'content-type': 'application/json' } };
+  return handleRequest(new Request(`http://localhost${path}`, init), engine, {
     operationRegistry: registry,
     restBindings: bindings,
   });
@@ -75,6 +90,75 @@ describe('the schedule control operations', () => {
     const conflict = await post(engine, '/v1/schedules/hourly/skip-next');
     expect(conflict.status).toBe(409);
     expect(await statusOf(post(engine, '/v1/schedules/nope/skip-next'))).toBe(404);
+  });
+
+  it('skips the run its body names, and refuses one that is not the next real run, writing nothing', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', null, '0 * * * *', { id: 'hourly' });
+    const { nextFireAt: next } = await summaryOf(engine, 'hourly');
+    if (next === null) throw new Error('The schedule has no next run.');
+    const hour = 60 * 60_000;
+
+    for (const occurrence of [next - hour, next + hour, next + 1]) {
+      const refused = await post(
+        engine,
+        '/v1/schedules/hourly/skip-next',
+        JSON.stringify({ occurrence }),
+      );
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toMatchObject({
+        error: expect.stringContaining(`has its next run at ${next}`),
+      });
+      expect(await skipUntilOf(engine)).toBeUndefined();
+    }
+
+    const named = await post(
+      engine,
+      '/v1/schedules/hourly/skip-next',
+      JSON.stringify({ occurrence: next }),
+    );
+    expect(named.status).toBe(204);
+    expect(await skipUntilOf(engine)).toBe(next);
+  });
+
+  it('refuses a skip whose expectedRevision is stale with a StaleRevision fault, before the occurrence', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', null, '0 * * * *', { id: 'hourly' });
+
+    const stale = await post(
+      engine,
+      '/v1/schedules/hourly/skip-next',
+      JSON.stringify({ expectedRevision: 7, occurrence: 1 }),
+    );
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      data: { expectedRevision: 7, currentRevision: 1 },
+    });
+    expect(await skipUntilOf(engine)).toBeUndefined();
+
+    const current = await post(
+      engine,
+      '/v1/schedules/hourly/skip-next',
+      JSON.stringify({ expectedRevision: 1 }),
+    );
+    expect(current.status).toBe(204);
+  });
+
+  it('answers 400 for an occurrence that is not a non-negative integer or a body that is not an object', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', null, '0 * * * *', { id: 'hourly' });
+
+    for (const body of [
+      JSON.stringify({ occurrence: 'soon' }),
+      JSON.stringify({ occurrence: -1 }),
+      JSON.stringify({ occurrence: 1.5 }),
+      JSON.stringify({ expectedRevision: -1 }),
+      JSON.stringify([]),
+      '{not json',
+    ]) {
+      expect(await statusOf(post(engine, '/v1/schedules/hourly/skip-next', body))).toBe(400);
+    }
+    expect(await skipUntilOf(engine)).toBeUndefined();
   });
 
   it('runs a schedule now and answers what the overlap policy did', async () => {

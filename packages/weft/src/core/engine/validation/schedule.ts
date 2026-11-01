@@ -94,6 +94,18 @@ export function coerceExpectedScheduleRevision(expectedRevision: unknown): numbe
 }
 
 /**
+ * The `occurrence` a caller named in the options of a skip (COR-1985): a non-negative safe integer
+ * of milliseconds since the epoch, or `undefined` when the caller left the run to be the next one.
+ */
+export function coerceScheduleOccurrence(occurrence: unknown): number | undefined {
+  if (occurrence === undefined) return undefined;
+  if (typeof occurrence !== 'number' || !Number.isSafeInteger(occurrence) || occurrence < 0) {
+    throw new Error('options.occurrence must be a non-negative integer when provided');
+  }
+  return occurrence;
+}
+
+/**
  * The keys a caller named in the options of a schedule transition (COR-1594): each condition in
  * `extraConditions` and each operation in `additionalOperations` must name a key of the caller's
  * own. A key under one of Weft's reserved prefixes is refused with {@link ScheduleReservedKeyError},

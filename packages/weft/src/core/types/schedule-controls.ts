@@ -5,6 +5,8 @@
  * @module types/schedule-controls
  */
 
+import type { ScheduleTransitionOptions } from './schedules.ts';
+
 /**
  * One persisted record of occurrences a schedule missed (`engine.listScheduleMissedFires`). The
  * schedule keeps the most recent {@link SCHEDULE_MISSED_FIRE_LIMIT} of them, so
@@ -72,3 +74,36 @@ export type ScheduleTriggerResult =
   | { outcome: 'started'; workflowId: string }
   | { outcome: 'queued'; workflowId: string }
   | { outcome: 'skipped'; blockingWorkflowId?: string };
+
+/**
+ * Options for {@link Engine.skipNextScheduleOccurrence} (COR-1985).
+ *
+ * @example
+ * ```ts
+ * import { Engine, workflow, type ScheduleSkipOptions } from '@lostgradient/weft';
+ *
+ * const engine = new Engine();
+ * engine.register(workflow({ name: 'report' }).execute(async function* () { return 'ok'; }));
+ * await engine.schedule('report', null, '0 9 * * *', { id: 'daily-report' });
+ * const summary = await engine.getSchedule('daily-report');
+ * const options: ScheduleSkipOptions = {
+ *   expectedRevision: summary?.revision ?? 0,
+ *   occurrence: summary?.nextFireAt ?? 0,
+ * };
+ * await engine.skipNextScheduleOccurrence('daily-report', options);
+ * engine[Symbol.dispose]();
+ * ```
+ */
+export type ScheduleSkipOptions = Pick<ScheduleTransitionOptions, 'expectedRevision'> & {
+  /**
+   * The occurrence, as milliseconds since the epoch, that the caller means to skip. A skip names
+   * the schedule's next run, which can change between the moment a person reads it and the moment
+   * the skip is written: a fire in between would otherwise make the skip take a different run than
+   * the one chosen. The occurrence is compared inside the schedule's guarded write with the next
+   * real run (the one {@link ScheduleSummary.skipUntil} reports once skipped), and when it is
+   * neither that run nor the one already skipped, the call rejects with
+   * {@link ScheduleOccurrenceNotNextError} and writes nothing. Omitted, the skip takes whichever
+   * run is next.
+   */
+  occurrence?: number;
+};

@@ -1158,7 +1158,7 @@ export const SCHEDULE_COPY = {
     startOver: 'Start over from the current schedule',
     invalidCadence: 'The cadence is not valid. Fix the highlighted field, then save.',
     skipPending:
-      'The next run is skipped. Saving any change to this schedule restores that run, and it starts as usual.',
+      'The next run is skipped. Saving this change to the cadence or time zone restores that run, and it starts as usual.',
     saveFailed: 'The schedule was not saved',
   },
   /** One line that says what happens when a fire is due while a run is still going. */

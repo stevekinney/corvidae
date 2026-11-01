@@ -15,6 +15,7 @@ import {
   stateOf,
   tickB,
 } from './schedule-across-engines.test-support.ts';
+import { ScheduleOccurrenceNotNextError } from './schedule-occurrence-not-next-error.ts';
 import { drainEngine, listRunningWorkflowIds, MINUTE } from './schedule.test-support.ts';
 
 afterEach(closeOpenedEngines);
@@ -52,6 +53,29 @@ describe('skipping the next run while another engine changes the schedule', () =
     expect(state.skipUntil).toBe(state.nextFireAt ?? undefined);
     // The update's change; a skip is bookkeeping and leaves the revision alone.
     expect(state.revision).toBe(2);
+  });
+});
+
+describe('skipping a named occurrence while another engine fires it', () => {
+  it('reads the schedule again and refuses the occurrence the other engine has fired, writing no skip', async () => {
+    const { clock, shared, a, engineA, engineB } = await openEngines();
+    const { nextFireAt } = await stateOf(shared);
+    const occurrence = nextFireAt!;
+    const hold = a.holdScheduleWrite();
+
+    const skipped = engineA.skipNextScheduleOccurrence(SCHEDULE_ID, { occurrence });
+    const rejection = rejectionOf(skipped);
+    await hold.reached;
+    await tickB(clock, engineB, shared);
+    await drainEngine();
+    hold.release();
+
+    const failure = await rejection;
+    expect(failure).toBeInstanceOf(ScheduleOccurrenceNotNextError);
+    expect((failure as ScheduleOccurrenceNotNextError).nextOccurrence).toBe(occurrence + MINUTE);
+    const state = await stateOf(shared);
+    expect(state.lastFireAt).toBe(occurrence);
+    expect(state.skipUntil).toBeUndefined();
   });
 });
 

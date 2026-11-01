@@ -433,7 +433,7 @@ describe('ScheduleEdit', () => {
     await waitFor(() => expect(getByText(SCHEDULE_COPY.detail.loadFailed)).not.toBeNull());
     expect(getByRole('button', { name: 'Try again' })).not.toBeNull();
   });
-  test('says a save restores the run that was skipped, because the engine drops the skip on any update', async () => {
+  test('keeps a skipped run across a save that leaves the cadence alone, and says nothing about one (COR-1985)', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -449,19 +449,61 @@ describe('ScheduleEdit', () => {
 
     let closed = false;
     try {
-      const { getByRole, getByTestId } = render(ScheduleEditHarness, {
+      const { getByRole, queryByTestId } = render(ScheduleEditHarness, {
         props: { client, scheduleId: 'skip-then-edit', onClose: () => (closed = true) },
       });
 
       await waitFor(() => getByRole('radio', { name: 'Pinned' }));
-      expect(getByTestId('schedule-edit-skip-pending').textContent).toContain(
-        SCHEDULE_COPY.edit.skipPending,
-      );
       await fireEvent.click(getByRole('radio', { name: 'Pinned' }));
+      expect(queryByTestId('schedule-edit-skip-pending')).toBeNull();
       await fireEvent.click(getByRole('button', { name: 'Save changes' }));
       await waitFor(() => expect(closed).toBe(true));
-      // The warning is true: the save dropped the skip.
+      // The skip names a run the save leaves next, so the save does not restore it.
       const saved = await server.engine.getSchedule('skip-then-edit');
+      expect(saved?.revisionPolicy).toBe('pinned');
+      expect(saved?.skipUntil).toBe(skipped?.skipUntil);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('says a save restores the run that was skipped when the cadence changes, because the skip ends with it (COR-1985)', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'skip-then-move',
+      cron: '0 2 * * *',
+      timeZone: 'UTC',
+      input: { warehouseId: 'wh-main' },
+    });
+    await server.engine.skipNextScheduleOccurrence('skip-then-move');
+    const skipped = await server.engine.getSchedule('skip-then-move');
+    expect(skipped?.skipUntil).toBeDefined();
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    let closed = false;
+    try {
+      const { container, getByRole, getByTestId, queryByTestId } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'skip-then-move', onClose: () => (closed = true) },
+      });
+
+      const at = await waitFor(() => {
+        const field = container.querySelector('input[type="time"]');
+        if (!(field instanceof HTMLInputElement)) throw new Error('At field not rendered');
+        return field;
+      });
+      expect(queryByTestId('schedule-edit-skip-pending')).toBeNull();
+      await fireEvent.change(at, { target: { value: '05:00' } });
+      await waitFor(() =>
+        expect(getByTestId('schedule-edit-skip-pending').textContent).toContain(
+          SCHEDULE_COPY.edit.skipPending,
+        ),
+      );
+      await fireEvent.click(getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(closed).toBe(true));
+      // The warning is true: a new cadence ends the skip.
+      const saved = await server.engine.getSchedule('skip-then-move');
+      expect(saved?.cronExpression).toBe('0 5 * * *');
       expect(saved?.skipUntil).toBeUndefined();
     } finally {
       await server.stop();

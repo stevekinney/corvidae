@@ -1,4 +1,6 @@
 import { DynamicWorkflowSourceUnavailableError } from '../../core/engine/dynamic-source-errors.ts';
+import { ScheduleOccurrenceNotNextError } from '../../core/engine/schedule-occurrence-not-next-error.ts';
+import { ScheduleStaleRevisionError } from '../../core/engine/schedule-stale-revision-error.ts';
 import {
   isValidScheduleOverlapPolicy,
   isValidScheduleRevisionPolicy,
@@ -148,6 +150,16 @@ function mapDynamicSourceUnavailableToFault(error: unknown): OperationFault | un
 }
 
 export function mapScheduleErrorToFault(scheduleId: string, error: unknown): OperationFault {
+  if (error instanceof ScheduleStaleRevisionError) {
+    return {
+      code: 'StaleRevision',
+      message: error.message,
+      data: { expectedRevision: error.expectedRevision, currentRevision: error.currentRevision },
+    };
+  }
+  if (error instanceof ScheduleOccurrenceNotNextError) {
+    return { code: 'Conflict', message: error.message, data: { reason: 'occurrence-not-next' } };
+  }
   const revisionFault = mapRevisionUnavailableToFault(error);
   if (revisionFault !== undefined) {
     return revisionFault;

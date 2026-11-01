@@ -5,10 +5,11 @@
 
 import { encode } from '../codec.ts';
 import { ScheduleAttemptedEvent, ScheduleSkippedEvent } from '../events.ts';
-import type { ScheduleState, ScheduleTransitionOptions, ScheduleTriggerResult } from '../types.ts';
+import type { ScheduleSkipOptions, ScheduleState, ScheduleTriggerResult } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import { startUnderScheduleRead } from './schedule-conditioned-start.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
+import { ScheduleOccurrenceNotNextError } from './schedule-occurrence-not-next-error.ts';
 import { findFiringScheduleOccurrence, getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import {
@@ -25,7 +26,11 @@ import { scheduleLateAfterMilliseconds } from './schedule-timer.ts';
 import type { ScheduleCallbacks } from './schedules.ts';
 import { clearScheduleCurrentWorkflow } from './state-utilities.ts';
 import { writeScheduleState } from './storage-io.ts';
-import { coerceExpectedScheduleRevision, coerceScheduleId } from './validation/schedule.ts';
+import {
+  coerceExpectedScheduleRevision,
+  coerceScheduleId,
+  coerceScheduleOccurrence,
+} from './validation/schedule.ts';
 
 /** `state` without the skip a person asked for, which a change of cadence or status ends. */
 export function withoutSkip(state: ScheduleState): ScheduleState {
@@ -38,14 +43,22 @@ export function withoutSkip(state: ScheduleState): ScheduleState {
  * `revision`, `nextFireAt` and the timer stay as they are, so a timer tick in flight goes on and
  * honors the skip instead of being stopped by it. Skipping again before that occurrence has passed
  * changes nothing.
+ *
+ * `options.occurrence` (COR-1985) names the run the caller means. A fire moves neither `revision` nor
+ * `status`, so `expectedRevision` cannot catch one between the caller's read and this write; the
+ * occurrence is compared here, against the next real run of the schedule as the guarded write reads
+ * it, and refused with {@link ScheduleOccurrenceNotNextError} unless it is that run or the one
+ * already skipped. A write that loses its conditions reads the schedule again, so the comparison is
+ * always made against the bytes the skip lands on.
  */
 export async function skipNextScheduleOccurrence(
   internals: EngineInternals,
   scheduleId: string,
-  options?: Pick<ScheduleTransitionOptions, 'expectedRevision'>,
+  options?: ScheduleSkipOptions,
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  const occurrence = coerceScheduleOccurrence(options?.occurrence);
   await runScheduleTransition(
     internals,
     normalizedScheduleId,
@@ -61,6 +74,13 @@ export async function skipNextScheduleOccurrence(
         state,
         firstOccurrenceStillToFire(internals, { ...state, nextFireAt: state.nextFireAt }, now),
       );
+      if (
+        occurrence !== undefined &&
+        (occurrence !== skipUntil ||
+          (state.skipUntil !== undefined && state.skipUntil > occurrence))
+      ) {
+        throw new ScheduleOccurrenceNotNextError(normalizedScheduleId, occurrence, skipUntil);
+      }
       if (state.skipUntil !== undefined && state.skipUntil >= skipUntil) return;
       await writeScheduleState(
         internals,
