@@ -7,8 +7,10 @@
  */
 import { z } from 'zod';
 
+import { CAPABILITIES_COPY } from '../app/copy.ts';
 import type { Fetcher } from './bureau-client.ts';
 import { SETTING_LOCK_REASONS } from './bureau-settings.ts';
+import { faultTreatment, type FaultTreatment } from './faults.ts';
 
 /** The route that lists the saved tool sources. */
 export const HOST_TOOL_SOURCES_ROUTE = '/host/tool-sources';
@@ -44,6 +46,7 @@ const sourceSchema = z.object({
   settingsPending: z.literal(true).optional(),
   credentials: z.array(z.string()),
   authorized: z.boolean().optional(),
+  tokensRejected: z.literal(true).optional(),
 });
 
 const snapshotSchema = z.object({
@@ -70,6 +73,8 @@ const removalPreviewSchema = z.object({
   affectedAgents: z.array(affectedAgentSchema),
 });
 
+const removedSchema = changeSchema.extend({ affectedAgents: z.array(affectedAgentSchema) });
+
 const authorizationSchema = z.union([
   z.object({ authorized: z.literal(true) }),
   z.object({ authorized: z.literal(false), authorizationUrl: z.string() }),
@@ -89,6 +94,9 @@ export type ToolSourceAgent = z.infer<typeof affectedAgentSchema>;
 
 /** What a removal would break, or did. */
 export type ToolSourceRemoval = z.infer<typeof removalPreviewSchema>;
+
+/** What a removal did: the agent files that name the removed source's tools, as the host read them when it removed it. */
+export type ToolSourceRemoved = z.infer<typeof removedSchema>;
 
 /** What starting a sign-in reports: the address to open, or that the stored tokens already work. */
 export type ToolSourceAuthorization = z.infer<typeof authorizationSchema>;
@@ -238,12 +246,40 @@ export async function previewToolSourceRemoval(
 }
 
 /**
- * Removes `id` and clears its credentials. No agent file is edited; the ones that name its tools
- * read invalid when the host starts again.
+ * Removes `id` and clears its credentials, and answers with the agent files that named its tools.
+ * No agent file is edited; the ones that name its tools read invalid when the host starts again.
  *
- * @throws {HostToolSourceError} When the host refuses the removal.
+ * @throws {HostToolSourceError} When the host refuses the removal. `partial` means the source is
+ * already gone and only part of the cleanup is left.
  */
-export async function removeToolSource(id: string, options: Options = {}): Promise<void> {
+export async function removeToolSource(
+  id: string,
+  options: Options = {},
+): Promise<ToolSourceRemoved> {
   const response = await send(sourcePath(id), { method: 'DELETE' }, options);
-  if (!response.ok) throw await faultOf(response);
+  return readJson(response, removedSchema);
+}
+
+/**
+ * How a failed change to a tool source is shown. The host's own refusal is worded by the host and
+ * names a field, never a value, so it is shown as it came; only an error that is not the host's
+ * (a connection that failed) gets the generic treatment.
+ */
+export function toolSourceFaultTreatment(error: unknown): FaultTreatment {
+  if (!(error instanceof HostToolSourceError)) return faultTreatment(error);
+  const fallback = CAPABILITIES_COPY.source.refusal;
+  const message = error.message === '' ? fallback[error.kind] : error.message;
+  switch (error.kind) {
+    case 'locked':
+      return { kind: 'not-supported', message };
+    case 'owner-only':
+      return { kind: 'unauthorized', message, mode: 'forbidden' };
+    case 'not-found':
+      return { kind: 'not-found', message };
+    case 'invalid':
+      return { kind: 'invalid', message, fieldErrors: [] };
+    case 'partial':
+    case 'failed':
+      return { kind: 'internal', message, maskedByRest: false, tryViaJsonRpc: false };
+  }
 }

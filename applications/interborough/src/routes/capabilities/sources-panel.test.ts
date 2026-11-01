@@ -177,8 +177,43 @@ describe('the Sources tab', () => {
     );
     // The refusal is a toast in the host's words, not a line on the page.
     await findByText(new RegExp(copy.source.tools.saveFailed));
+    // The host's own words, not "check your connection".
+    await findByText(/expected true or false\./);
     await waitFor(() => expect(wipe()?.hasAttribute('disabled')).toBe(false));
     expect(wipe()?.getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('keeps the switch on when the host refuses to turn it off', async () => {
+    const on = source('notes', {
+      tools: [
+        sourceTool('notes', 'wipe', {
+          tier: 'dangerous',
+          acceptsSecrets: true,
+          savedAcceptsSecrets: true,
+        }),
+      ],
+    });
+    const host = serve({ sources: [on] });
+    landAt('/capabilities?tab=sources&source=notes');
+    const { container, findByText } = mount();
+    const wipe = () =>
+      container.querySelector<HTMLElement>('[data-source-tool="notes__wipe"] [role="switch"]');
+    await waitFor(() => expect(wipe()).not.toBeNull());
+    expect(wipe()?.getAttribute('aria-checked')).toBe('true');
+
+    host.refuseNext = Response.json(
+      { error: 'locked', reason: 'deployment', message: 'Change it in the deployment.' },
+      { status: 403 },
+    );
+    await fireEvent.click(wipe()!);
+    await waitFor(() =>
+      expect(host.requests.filter((request) => request.method === 'PUT')).toHaveLength(1),
+    );
+    await findByText(/Change it in the deployment\./);
+    await waitFor(() => expect(wipe()?.hasAttribute('disabled')).toBe(false));
+    // The host kept it on, so the page shows it on.
+    expect(wipe()?.getAttribute('aria-checked')).toBe('true');
+    expect(host.sources[0]?.tools[0]?.savedAcceptsSecrets).toBe(true);
   });
 
   test('holds every switch, Sign in and Remove still when the host keeps its configuration in its deployment', async () => {
@@ -194,6 +229,42 @@ describe('the Sources tab', () => {
       (button) => button.textContent?.trim() === copy.source.remove.action,
     );
     expect(remove?.hasAttribute('disabled')).toBe(true);
+  });
+
+  test('holds Sign in still and says why when a locked source has no tools to list', async () => {
+    serve({
+      sources: [source('ledger', { state: 'needs-authorization', authorized: false })],
+      lockReason: 'deployment',
+    });
+    landAt('/capabilities?tab=sources&source=ledger');
+    const { container, findByText, getByRole } = mount();
+
+    await findByText(copy.source.tools.locked);
+    expect(getByRole('button', { name: copy.source.signIn.action }).hasAttribute('disabled')).toBe(
+      true,
+    );
+    expect(container.querySelectorAll('[data-source-tool]')).toHaveLength(0);
+  });
+
+  test('tells a source whose stored sign-in stopped working to sign in again, not to restart', async () => {
+    serve({
+      sources: [
+        source('ledger', { state: 'needs-authorization', authorized: true, tokensRejected: true }),
+      ],
+      authorization: { authorized: true },
+    });
+    landAt('/capabilities?tab=sources&source=ledger');
+    const { container, findByTestId, getByRole } = mount();
+    const words = () =>
+      container.querySelector('[data-testid="source-state-description"]')?.textContent;
+    await findByTestId('source-detail');
+    expect(words()).toBe(copy.source.signIn.rejected);
+    expect(getByRole('button', { name: copy.source.signIn.action }).hasAttribute('disabled')).toBe(
+      false,
+    );
+    // Stored tokens that the host reports as working end the question.
+    await fireEvent.click(getByRole('button', { name: copy.source.signIn.action }));
+    await waitFor(() => expect(words()).toBe(copy.source.signIn.signedIn));
   });
 
   test('signs in by opening the address the host hands out, and says so when the tab was blocked', async () => {
@@ -303,6 +374,60 @@ describe('the Sources tab', () => {
     ]);
     expect(container.querySelector('[data-source-row="petstore"]')).not.toBeNull();
     expect(queryByTestId('source-removal')).toBeNull();
+  });
+
+  test('names the agents the host found as it removed the source, not the ones listed when the question opened', async () => {
+    const host = serve({
+      sources: [NOTES],
+      agents: {
+        notes: [{ id: 'writer', name: 'Writer', tools: ['notes__lookup'], toolApproval: [] }],
+      },
+    });
+    landAt('/capabilities?tab=sources&source=notes');
+    const { container, findByTestId, findByText, queryByText } = mount();
+    await findByTestId('source-detail');
+    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await findByText('Writer');
+    await fireEvent.click(buttonLabelled(document.body, copy.source.remove.cancel));
+
+    // An agent file changed while the question was closed: opening it again reads the list again.
+    host.agents['notes'] = [
+      { id: 'editor', name: 'Editor', tools: ['notes__wipe'], toolApproval: [] },
+    ];
+    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await findByText('Editor');
+    expect(queryByText('Writer')).toBeNull();
+
+    await fireEvent.click(buttonLabelled(document.body, copy.source.remove.confirm));
+    await findByText(copy.source.remove.removed('notes', ['Editor']));
+  });
+
+  test('says the source is gone after a partial removal, reads the list again, and closes the question', async () => {
+    const host = serve({ sources: [NOTES, source('petstore', { kind: 'openapi' })] });
+    landAt('/capabilities?tab=sources&source=notes');
+    const { container, findByTestId, findByText, queryByTestId } = mount();
+    await findByTestId('source-detail');
+    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await findByTestId('source-removal-none');
+
+    host.removeThenAnswer = Response.json(
+      {
+        error: 'partial',
+        stage: 'credentials-not-cleared',
+        message: 'Its credentials stay stored.',
+      },
+      { status: 500 },
+    );
+    await fireEvent.click(buttonLabelled(document.body, copy.source.remove.confirm));
+
+    await findByText(new RegExp(copy.source.remove.partial));
+    await findByText(/Its credentials stay stored\./);
+    await waitFor(() =>
+      expect(container.querySelector('[data-source-row="notes"]') === null).toBe(true),
+    );
+    expect(queryByTestId('source-removal')).toBeNull();
+    // No second try is offered: it would only find the source gone.
+    expect(host.requests.filter((request) => request.method === 'DELETE')).toHaveLength(1);
   });
 
   test('says no agent names the tools when none does, and changes nothing on Keep it', async () => {

@@ -16,10 +16,10 @@
 
   import { CAPABILITIES_COPY } from '../../app/copy.ts';
   import { showFault } from '../../app/toast-host.svelte';
-  import { faultTreatment } from '../../lib/faults.ts';
   import {
     authorizeToolSource,
     setAcceptsSecrets,
+    toolSourceFaultTreatment,
     type ToolSourceStanding,
   } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -69,7 +69,7 @@
       saving = new Set([...saving, change.tool]);
     },
     onError: (error: unknown) => {
-      const treatment = faultTreatment(error);
+      const treatment = toolSourceFaultTreatment(error);
       showFault({ ...treatment, message: `${copy.tools.saveFailed}. ${treatment.message}` });
     },
     onSettled: async (_data, _error, change) => {
@@ -95,17 +95,25 @@
       else opened.opener = null;
     },
     onError: (error: unknown) => {
-      const treatment = faultTreatment(error);
+      const treatment = toolSourceFaultTreatment(error);
       showFault({ ...treatment, message: `${copy.signIn.failed}. ${treatment.message}` });
     },
   }));
 
   let removing = $state(false);
-  const signedIn = $derived(source.authorized === true || signedInNow);
+  // Stored tokens are not tokens that work: when the server refused them at load, a restart lists
+  // nothing until the person signs in again.
+  const signedIn = $derived(
+    signedInNow || (source.authorized === true && source.tokensRejected !== true),
+  );
   const stateWords = $derived(
-    source.state === 'needs-authorization' && signedIn
-      ? copy.signIn.signedIn
-      : sourceStateDescription(source.state),
+    source.state !== 'needs-authorization'
+      ? sourceStateDescription(source.state)
+      : signedIn
+        ? copy.signIn.signedIn
+        : source.tokensRejected === true
+          ? copy.signIn.rejected
+          : sourceStateDescription(source.state),
   );
 </script>
 
@@ -135,12 +143,17 @@
     <p class="ib-capability__prose" data-testid="source-state-description">{stateWords}</p>
   {/if}
 
+  {#if locked}
+    <p class="ib-source__help" data-testid="source-locked">{copy.tools.locked}</p>
+  {/if}
+
   {#if source.state === 'needs-authorization'}
     <div class="ib-source__sign-in">
       <Button
         data-changes
         variant="primary"
         size="sm"
+        disabled={locked}
         loading={signIn.isPending}
         onclick={() => signIn.mutate()}>{copy.signIn.action}</Button
       >
@@ -187,9 +200,6 @@
       />
     {:else}
       <p class="ib-source__help">{copy.tools.acceptsSecretsHelp}</p>
-      {#if locked}
-        <p class="ib-source__help">{copy.tools.locked}</p>
-      {/if}
       <ul class="ib-source__tools" bind:this={toolList}>
         {#each source.tools as tool (tool.name)}
           {@const tier = sourceToolTier(tool)}
@@ -221,8 +231,10 @@
                 disabled={locked || saving.has(tool.tool)}
                 onValueChangeRequest={(next) => {
                   acceptsSecrets.mutate({ tool: tool.tool, next });
-                  // The switch follows the host once it has been read again, not the click.
-                  return false;
+                  // The switch follows the host once it has been read again, not the click. Cinder
+                  // takes the returned boolean as the value to show, so hand back the saved one: a
+                  // refused turn-off must keep reading on.
+                  return tool.savedAcceptsSecrets;
                 }}
               />
               <span aria-hidden="true">{copy.tools.acceptsSecrets}</span>

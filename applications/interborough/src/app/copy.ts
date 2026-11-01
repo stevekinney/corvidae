@@ -3725,6 +3725,8 @@ export const CAPABILITIES_COPY = {
         'Finish signing in in the tab that opened, then restart Interborough to list the tools.',
       already: 'Already signed in. Restart Interborough to list the tools.',
       signedIn: 'Signed in. Restart Interborough to list the tools.',
+      rejected:
+        'The sign-in this source had stored no longer works, so restarting will not list its tools. Sign in again.',
       failed: 'Signing in could not be started',
       blocked: 'The sign-in tab was blocked. Allow pop-ups for this page and try again.',
     },
@@ -3745,6 +3747,15 @@ export const CAPABILITIES_COPY = {
       saveFailed: 'The setting could not be saved',
       locked: 'This host keeps its configuration in its deployment, so it cannot be changed here.',
     },
+    /** What a refusal says when the host sent no words of its own. */
+    refusal: {
+      locked: 'This host keeps its configuration in its deployment, so it cannot be changed here.',
+      'owner-only': 'Only the owner can do this.',
+      'not-found': 'The host has no such source.',
+      invalid: 'The host did not accept the value.',
+      partial: 'The host made only part of the change.',
+      failed: 'The host could not make the change.',
+    },
     skipped: {
       heading: 'Tools the host does not list',
       reason: (tool: string, reason: string): string => `${tool}: ${reason}`,
@@ -3758,7 +3769,7 @@ export const CAPABILITIES_COPY = {
       action: 'Remove source',
       title: (id: string): string => `Remove ${id}?`,
       intro:
-        'Its credentials are cleared and its tools leave Capabilities when Interborough starts again.',
+        'Its credentials are cleared and it leaves the list at once. Its tools stop running now, and leave Capabilities when Interborough starts again.',
       agentsHeading: 'Agents that name its tools',
       agentsIntro:
         'These agent files are not edited. Each reads invalid until the tool is taken out of it.',
@@ -3766,8 +3777,11 @@ export const CAPABILITIES_COPY = {
       previewFailed: 'Which agents use its tools could not be read.',
       confirm: 'Remove',
       cancel: 'Keep it',
-      removed: (id: string): string =>
-        `Removed ${id}. It leaves the list when Interborough starts again.`,
+      removed: (id: string, agents: readonly string[]): string =>
+        agents.length === 0
+          ? `Removed ${id}. It is gone from the list, and its tools stop running now.`
+          : `Removed ${id}. It is gone from the list, and its tools stop running now. Agents that still name them (${agents.join(', ')}) read invalid until you take them out.`,
+      partial: 'The source was removed, but its cleanup was not finished',
       failed: 'The source could not be removed',
       agentTools: (tools: readonly string[]): string => tools.join(', '),
     },

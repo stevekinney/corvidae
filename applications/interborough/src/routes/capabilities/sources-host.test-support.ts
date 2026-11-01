@@ -25,6 +25,8 @@ export type FakeToolSources = {
   agents: Record<string, ToolSourceAgent[]>;
   /** Makes the next write answer with this response instead of making the change. */
   refuseNext?: Response | undefined;
+  /** Makes the next removal take the source out and then answer with this response, as a `partial` one does. */
+  removeThenAnswer?: Response | undefined;
   readonly requests: SourceRequest[];
 };
 
@@ -67,7 +69,8 @@ export function fakeToolSources(initial: {
   agents?: Record<string, ToolSourceAgent[]>;
 }): { host: FakeToolSources; other: (url: string, init?: RequestInit) => Response | undefined } {
   const host: FakeToolSources = {
-    sources: initial.sources,
+    // A copy, so a write one test makes never reaches the shared fixture the next test starts from.
+    sources: structuredClone(initial.sources),
     authorization: initial.authorization ?? { authorized: true },
     agents: initial.agents ?? {},
     ...(initial.lockReason === undefined ? {} : { lockReason: initial.lockReason }),
@@ -115,7 +118,17 @@ export function fakeToolSources(initial: {
     }
     if (method === 'DELETE') {
       host.sources = host.sources.filter((entry) => entry !== found);
-      return Response.json({ id, changed: true, restartRequired: true, affectedAgents: [] });
+      if (host.removeThenAnswer !== undefined) {
+        const answer = host.removeThenAnswer;
+        host.removeThenAnswer = undefined;
+        return answer;
+      }
+      return Response.json({
+        id,
+        changed: true,
+        restartRequired: true,
+        affectedAgents: host.agents[id] ?? [],
+      });
     }
     return Response.json({ error: 'failed' }, { status: 500 });
   };

@@ -10,8 +10,12 @@
 
   import { CAPABILITIES_COPY } from '../../app/copy.ts';
   import { showFault, showToast } from '../../app/toast-host.svelte';
-  import { faultTreatment } from '../../lib/faults.ts';
-  import { previewToolSourceRemoval, removeToolSource } from '../../lib/host-tool-sources.ts';
+  import {
+    HostToolSourceError,
+    previewToolSourceRemoval,
+    removeToolSource,
+    toolSourceFaultTreatment,
+  } from '../../lib/host-tool-sources.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -45,14 +49,32 @@
 
   const removal = createMutation(() => ({
     mutationFn: () => removeToolSource(id),
-    onSuccess: async () => {
-      showToast(copy.removed(id));
+    onSuccess: async (removed) => {
+      // The agents the host read as it removed the source, which may differ from the ones listed
+      // when the question opened.
+      showToast(
+        copy.removed(
+          id,
+          removed.affectedAgents.map((agent) => agent.name),
+        ),
+      );
       await queryClient.invalidateQueries({ queryKey: queryKeys.toolSources.list() });
       onRemoved();
     },
-    onError: (error: unknown) => {
-      const treatment = faultTreatment(error);
-      showFault({ ...treatment, message: `${copy.failed}. ${treatment.message}` });
+    onError: async (error: unknown) => {
+      const treatment = toolSourceFaultTreatment(error);
+      // A `partial` answer means the source is already gone from the configuration and only its
+      // cleanup is left, and `not-found` that an earlier try took it: another try gets a 404, so
+      // the list is read again and the question closes instead of offering it.
+      const kind = error instanceof HostToolSourceError ? error.kind : undefined;
+      const gone = kind === 'partial' || kind === 'not-found';
+      showFault({
+        ...treatment,
+        message: `${kind === 'partial' ? copy.partial : copy.failed}. ${treatment.message}`,
+      });
+      if (!gone) return;
+      await queryClient.invalidateQueries({ queryKey: queryKeys.toolSources.list() });
+      onRemoved();
     },
   }));
 </script>
@@ -62,7 +84,7 @@
     {#snippet children()}
       <div class="ib-source-removal" data-testid="source-removal">
         <p class="ib-source-removal__lead">{copy.intro}</p>
-        {#if preview.isPending}
+        {#if preview.isPending || preview.isFetching}
           <div role="status" aria-busy="true" aria-label={copy.agentsHeading}>
             <Skeleton height="3rem" />
           </div>
@@ -101,7 +123,7 @@
         data-changes
         variant="danger"
         loading={removal.isPending}
-        disabled={preview.isPending}
+        disabled={preview.isPending || preview.isFetching}
         onclick={() => removal.mutate()}>{copy.confirm}</Button
       >
     {/snippet}
