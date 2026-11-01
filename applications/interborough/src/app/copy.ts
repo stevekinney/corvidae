@@ -1120,6 +1120,81 @@ export const SCHEDULE_COPY = {
     'cancel-running': 'Cancels the previous run if it is still going when a fire is due',
     allow: 'Starts a fire even if the previous run is still going',
   },
+  /** The answer to making a schedule was lost, so it may exist. */
+  lost: {
+    title: 'The schedule may have been created',
+    description:
+      'The answer did not come back, so the schedule may exist. Check the list before you create it again.',
+    check: 'Check the schedules',
+  },
+  /** The page that makes a schedule (`/schedules/new`). */
+  create: {
+    title: 'New schedule',
+    description:
+      'A schedule runs a workflow on a timer. Choose the workflow, give it its input, then say when.',
+    workflowHeading: 'Workflow',
+    workflowLabel: 'Workflow',
+    workflowPlaceholder: 'Search workflows',
+    groups: { builtIn: 'Built in', recent: 'Recent', all: 'All workflows' },
+    chat: {
+      label: 'Chat with an agent',
+      description: 'Sends a message to one of your agents on every run.',
+    },
+    /** The reason an agent-authored workflow is listed but cannot be chosen. */
+    inFile: 'Its schedule is the trigger in its file. Change it in the workflow.',
+    noMatch: 'No workflow matches.',
+    createOne: 'Create a workflow',
+    catalogFailed: {
+      title: 'The workflows could not be listed',
+      description: 'Only the built-in choice is available until they can. Try again.',
+    },
+    checking: 'Reading the workflow',
+    workflowFailed: 'The workflow’s input could not be read',
+    workflowGone:
+      'This workflow no longer exists, or cannot be scheduled from here. Choose another.',
+    inputHeading: 'Input',
+    noInput: 'Takes no input.',
+    chatLabel: 'Continue one chat',
+    chatDescription:
+      'Optional. Every run continues this chat. Without one, each run starts a chat.',
+    chatPlaceholder: 'A new chat for each run',
+    chatClear: 'Start a new chat each run',
+    chatUnavailable: 'Chats could not be listed, so each run starts a new chat.',
+    chatUntitled: 'Untitled chat',
+    chatAgent: (agent: string): string => `Agent: ${agent}`,
+    chatFixesAgent: (agent: string): string => `This chat is with ${agent}, so every run is too.`,
+    whenHeading: 'When',
+    whenLabel: 'Schedule',
+    optionsHeading: 'Options',
+    descriptionLabel: 'Description',
+    descriptionDescription: 'Optional. It names the schedule in the list.',
+    overlapLabel: 'If a run is still going when the next one is due',
+    catchUpLabel: 'Run the fires it missed while the host was down',
+    startPausedLabel: 'Start turned off',
+    startPausedDescription: 'Nothing runs until you turn it on.',
+    jitterLabel: 'Jitter',
+    jitterDescription: 'A random delay added to each run.',
+    jitterPlaceholder: '30s',
+    revisionLabel: 'Which version of the workflow each run uses',
+    /** An interval counts elapsed time, so it names no zone. */
+    summaryChat: (agent: string, cadence: string, timeZone: string | undefined): string => {
+      const who = agent === '' ? 'an agent' : agent;
+      return timeZone === undefined
+        ? `Chats with ${who}: ${cadence}.`
+        : `Chats with ${who}: ${cadence}, in ${timeZone}.`;
+    },
+    summaryNothing: 'Choose a workflow to schedule.',
+    submit: 'Create schedule',
+    cancel: 'Cancel',
+    pauseFailed: 'The schedule was created, but it could not be turned off. It is on.',
+    invalidCadence: 'The repeat is not valid. Fix the highlighted field, then create the schedule.',
+    noAgents: {
+      title: 'No agents to chat with',
+      description: 'A scheduled chat runs one of your agents. Make an agent first.',
+      action: 'New agent',
+    },
+    workflowRequired: 'Choose a workflow.',
+  },
   form: {
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
@@ -1128,14 +1203,8 @@ export const SCHEDULE_COPY = {
     noAgents: 'This installation lists no agents.',
     inputLabel: 'What to send',
     inputDescription: 'The text each fire sends to the agent.',
-    sessionLabel: 'Session',
-    sessionDescription:
-      'Optional. Each fire continues this session. Without one, every fire is a new session.',
     sessionWithAllow: 'A schedule that continues a session cannot allow its fires to overlap.',
-    overlapLabel: 'If a run is still going when the next fire is due',
     skipOverlapLabel: 'Skip a fire if the previous run is still going',
-    advancedLabel: 'Advanced',
-    advancedWorkflowLabel: 'Advanced: start a code-defined workflow',
     descriptionLabel: 'Description',
     descriptionDescription:
       'Optional. It names the schedule; without one the schedule is named by its agent.',
@@ -1148,17 +1217,6 @@ export const SCHEDULE_COPY = {
       `The description is too long: it can be at most ${String(most)} characters.`,
     inputRequired: 'Enter the text to send.',
     inputTooLong: 'The input is too long.',
-    reservedAgentRun:
-      'Agent runs are scheduled by choosing an agent, which checks the agent and its owner.',
-    reservedBureauWorkflow:
-      'Interborough starts this workflow itself, with checks a schedule made here would skip.',
-    reservedAgentAuthored:
-      'This workflow is agent-authored. Its schedule is the trigger in its file, so change it in the workflow.',
-    allTypesReserved:
-      'Every registered workflow type here is started from its own screen or by Interborough itself, so none is offered. Enter the name of another workflow type.',
-    registryNote:
-      'Only workflows defined in code are listed. An agent-authored workflow is scheduled by the trigger in its file.',
-    overlayLoading: 'Checking which workflows are agent-authored.',
     notEditable: 'This schedule cannot be edited here',
   },
 } as const;
@@ -2266,6 +2324,8 @@ export const CHAT_COPY = {
     running: 'Running',
     waitingForApproval: 'Waiting for your approval',
     resultPrefix: 'Result:',
+    /** A call the person refused reads Denied: it did not fail. */
+    denied: 'Denied',
   },
   /** The chat's header and its strip of runs. */
   strip: {
@@ -2296,6 +2356,9 @@ export const CHAT_COPY = {
   stopping: 'Stopping…',
   approve: 'Approve',
   deny: 'Deny',
+  /** The icon button that opens what the call would be given, on an approval. */
+  showInput: 'Show input',
+  hideInput: 'Hide input',
   failureTitle: 'The agent did not answer',
   dismiss: 'Dismiss',
   /** The accessible name of the transcript and composer region. */
@@ -3652,7 +3715,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     empty: {
       title: 'No schedules yet',
       description: 'Create a schedule to start a workflow on a timetable.',
-      action: { label: 'Create a schedule', href: '/schedules?create=1' },
+      action: { label: 'Create a schedule', href: '/schedules/new' },
     },
     error: {
       title: 'Schedules are unavailable',

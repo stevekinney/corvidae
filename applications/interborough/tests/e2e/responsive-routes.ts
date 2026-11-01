@@ -40,6 +40,8 @@ export interface ResponsiveSeed {
   readonly hook: string;
   /** The key of a waiting review whose chat has a 300-character unbroken title. */
   readonly review: string;
+  /** That chat, whose transcript ends on the review's approval row. */
+  readonly reviewChat: string;
   /** The key of a decided review, shown under Done. */
   readonly decidedReview: string;
 }
@@ -75,6 +77,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/runs': '/runs',
     '/runs/:run': `/runs/${run}`,
     '/schedules': '/schedules',
+    '/schedules/new': '/schedules/new',
     '/schedules/:schedule': `/schedules/${encodeURIComponent(seed.schedule)}`,
     '/schedules/:schedule/edit': `/schedules/${encodeURIComponent(seed.schedule)}/edit`,
     '/reviews': '/reviews',
@@ -129,6 +132,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // builder's Repeats, At and Time zone), and the picker that leads to it from Runs.
     '/workflows/:workflow/run (code, on a schedule)': `/workflows/${encodeURIComponent(seed.workflow)}/run`,
     '/runs (start picker)': '/runs?view=start',
+    // The page that makes a schedule with the built-in chat chosen (its agent, message and the chat to continue, whose title is the seeded 300-character word), and with a workflow chosen (its input, and the engine's options).
+    '/schedules/new (chat)': '/schedules/new',
+    '/schedules/new (workflow)': '/schedules/new',
     // The steps list with the long-named step beside the open step, which holds the 300-character
     // logged value, and the whole log under Details, opened.
     '/runs/:run (steps and logs)': `/runs/${encodeURIComponent(seed.stepsRun)}?step=${String(seed.stepsRunStep)}`,
@@ -143,6 +149,9 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     '/capabilities (skill open)': `/capabilities?tab=skills&skill=${encodeURIComponent(skillAddressKey(E2E_SKILLS.long))}`,
     // A waiting review open (one pane at a time below 900px, so at 375 and 768 the detail replaces
     // the list), and the Done tab with a decided review open.
+    // The chat that waits on an approval: its row holds the question, Show input, Allow for the
+    // rest of this chat, Deny and Approve, under a header with the 300-character title.
+    '/chats/:chat (approval waiting)': `/chats/${encodeURIComponent(seed.reviewChat)}`,
     '/reviews (review open)': `/reviews?review=${encodeURIComponent(seed.review)}`,
     '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(seed.decidedReview)}`,
     // Each group of the API reference beside the first, which is the route's own address, and each

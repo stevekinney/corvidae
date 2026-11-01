@@ -120,7 +120,6 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     density: 'comfortable',
     scopes: ['schedules:read'],
     canBeEmpty: true,
-    creating: (search) => search.get('create') === '1',
   },
   // What is waiting on the caller. It holds no console scope: the console drops the Bureau's, and
   // the Bureau answers the caller its own reviews. The page shows its own empty state, because

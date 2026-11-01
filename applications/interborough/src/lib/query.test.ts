@@ -16,6 +16,10 @@ import { keepPreviousData } from '@tanstack/svelte-query';
 import { createQueryClient, queryKeys } from './query.ts';
 
 describe('queryKeys — plan §4 list, verbatim', () => {
+  test('contexts.picker is one key for the newest chats', () => {
+    expect(queryKeys.contexts.picker()).toEqual(['contexts', 'picker']);
+  });
+
   test('contexts.detail is keyed by the session', () => {
     expect(queryKeys.contexts.detail('session-1')).toEqual(['contexts', 'detail', 'session-1']);
   });

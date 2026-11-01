@@ -43,6 +43,8 @@ export const queryKeys = {
   contexts: {
     /** One chat session, as `bureau.contexts.get` shows it. */
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
+    /** The newest chats, for a picker that continues one (`bureau.contexts.list`). */
+    picker: () => ['contexts', 'picker'] as const,
     /** How full one chat's context window is, and what fills it (`bureau.contexts.window`). */
     window: (contextId: string) => ['contexts', 'window', contextId] as const,
     /** One chat as a row of the chat list, read apart from the chat's own page. */
@@ -342,9 +344,9 @@ function shouldRetryQuery(failureCount: number, error: unknown): boolean {
  *   - list queries (`LIST_QUERY_KEY_PREFIXES`) keep the previous page's data
  *     visible while refetching, instead of flashing to a loading state.
  *   - any mutation error is reported as a toast via the fault mapping
- *     (`showFault`) — call sites needing a different/additional treatment
- *     pass their own `onError` to `createMutation`, which runs alongside
- *     this default (TanStack Query calls both).
+ *     (`showFault`) — call sites needing a different treatment pass their
+ *     own `onError` to `createMutation`, which replaces this default
+ *     (TanStack Query merges the two option objects; it does not run both).
  *   - `notifyOnChangeProps: 'all'` disables TanStack Query's default
  *     "tracked properties" optimization, which only notifies subscribers
  *     when a result property that was actually READ on the previous render

@@ -12,88 +12,14 @@ import { SCHEDULE_COPY } from '../../app/copy.ts';
 import ScheduleFormFields from './schedule-form-fields.svelte';
 import { ScheduleFormState } from './schedule-form-state.svelte.ts';
 
-describe('ScheduleFormFields — create mode', () => {
+describe('ScheduleFormFields — cadence, overlap and backfill', () => {
   test('renders an editable Description field (COR-15)', () => {
     const form = new ScheduleFormState();
     const { getByRole } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: undefined },
+      props: { form },
     });
     expect(
       requireElement(getByRole('textbox', { name: 'Description' }), HTMLInputElement).disabled,
-    ).toBe(false);
-  });
-
-  test('renders a workflow-type Select when registry options are available', async () => {
-    const form = new ScheduleFormState();
-
-    const { getByRole, queryByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: ['report-gen', 'cache-warm'] },
-    });
-
-    expect(getByRole('combobox', { name: 'Workflow type' })).not.toBeNull();
-    expect(
-      queryByText('No registered workflow types found — enter the workflow type name.'),
-    ).toBeNull();
-  });
-
-  test('degrades to a free-text field with an "unavailable" message when registry options are undefined (still loading, errored, or unauthorized)', async () => {
-    // `undefined` must read as "the lookup hasn't told us anything yet",
-    // never as "the server has no workflows" (WFT-6) — an authorized
-    // schedule creator seeing the latter while the query is merely still in
-    // flight would be actively misled about server state.
-    const form = new ScheduleFormState();
-
-    const { getByText, queryByRole, queryByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: undefined },
-    });
-
-    expect(getByText('Registry lookup unavailable — enter the workflow type name.')).not.toBeNull();
-    expect(
-      queryByText('No registered workflow types found — enter the workflow type name.'),
-    ).toBeNull();
-    expect(queryByRole('combobox', { name: 'Workflow type' })).toBeNull();
-  });
-
-  test('degrades to a free-text field with a "no registered types" message when the registry resolves with zero registered workflow types', async () => {
-    // A resolved-but-empty registry (WFT-6) is a distinct state from
-    // still-loading/errored (both collapse to `undefined` upstream in
-    // `schedule-form-drawer.svelte`) — an empty array is `!== undefined`, so
-    // this must be handled explicitly rather than falling out of the same
-    // check, or a genuinely empty registry renders an unusable zero-option
-    // Select instead of the free-text fallback, and it must show a distinct
-    // message from the `undefined` case above rather than the misleading
-    // "unavailable" copy.
-    const form = new ScheduleFormState();
-
-    const { getByText, queryByRole, queryByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: [] },
-    });
-
-    expect(
-      getByText('No registered workflow types found — enter the workflow type name.'),
-    ).not.toBeNull();
-    expect(queryByText('Registry lookup unavailable — enter the workflow type name.')).toBeNull();
-    expect(queryByRole('combobox', { name: 'Workflow type' })).toBeNull();
-  });
-
-  test('says why nothing is offered when the registry holds only types that are started elsewhere, and keeps the free-text field', async () => {
-    // The registry is not empty: every type in it is the Bureau's, or has a screen of its own. The
-    // field stays free text, which a host whose own types are not registered relies on, but it must
-    // not claim that nothing is registered.
-    const form = new ScheduleFormState();
-
-    const { getByRole, getByText, queryByRole, queryByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: [], registeredTypeCount: 3 },
-    });
-
-    expect(getByText(SCHEDULE_COPY.form.allTypesReserved)).not.toBeNull();
-    expect(
-      queryByText('No registered workflow types found — enter the workflow type name.'),
-    ).toBeNull();
-    expect(queryByText('Registry lookup unavailable — enter the workflow type name.')).toBeNull();
-    expect(queryByRole('combobox', { name: 'Workflow type' })).toBeNull();
-    expect(
-      requireElement(getByRole('textbox', { name: 'Workflow type' }), HTMLInputElement).disabled,
     ).toBe(false);
   });
 
@@ -104,7 +30,7 @@ describe('ScheduleFormFields — create mode', () => {
     });
 
     const { getByRole, queryByRole } = render(ScheduleFormFields, {
-      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form },
     });
 
     expect(requireElement(getByRole('textbox', { name: 'Cadence' }), HTMLInputElement).value).toBe(
@@ -117,22 +43,11 @@ describe('ScheduleFormFields — create mode', () => {
     expect(queryByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction })).toBeNull();
   });
 
-  test('shows the schedule id, input JSON, and cadence fields', async () => {
-    const form = new ScheduleFormState();
-
-    const { getByRole } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: [] },
-    });
-
-    expect(getByRole('textbox', { name: 'Schedule ID' })).not.toBeNull();
-    expect(getByRole('textbox', { name: 'Input (JSON)' })).not.toBeNull();
-  });
-
   test('selecting an overlap policy updates the form and shows its consequence', async () => {
     const form = new ScheduleFormState();
 
     const { getByRole, getByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: [] },
+      props: { form },
     });
 
     expect(
@@ -150,7 +65,7 @@ describe('ScheduleFormFields — create mode', () => {
     const form = new ScheduleFormState();
 
     const { getByRole, queryByText, getByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: [] },
+      props: { form },
     });
 
     expect(queryByText(/missed occurrences fire/)).toBeNull();
@@ -169,7 +84,7 @@ describe('ScheduleFormFields — create mode', () => {
     const form = new ScheduleFormState({ backfill: true });
 
     const { getByRole, queryByText, getByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: [] },
+      props: { form },
     });
 
     expect(getByText(/missed occurrences fire/)).not.toBeNull();
@@ -178,35 +93,26 @@ describe('ScheduleFormFields — create mode', () => {
     expect(form.backfill).toBe(false);
     expect(queryByText(/missed occurrences fire/)).toBeNull();
   });
-
-  test('shows a field-level error message for invalid JSON input', async () => {
-    const form = new ScheduleFormState({ inputText: '{not json' });
-
-    const { getByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: [] },
-    });
-
-    expect(getByText('Must be valid JSON.')).not.toBeNull();
-  });
 });
 
-describe('ScheduleFormFields — edit mode', () => {
-  test('disables only workflow type and input; overlap, jitter, backfill, and description are editable (COR-15)', async () => {
+describe('ScheduleFormFields — what an edit can change', () => {
+  test('shows the workflow type fixed; overlap, jitter, backfill, and description are editable (COR-15)', async () => {
     const form = new ScheduleFormState({
-      id: 'nightly-rollup',
       workflowType: 'report-gen',
       overlap: 'queue',
     });
 
-    const { getByRole, getByText, queryByRole } = render(ScheduleFormFields, {
-      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+    const { getByRole, queryByRole } = render(ScheduleFormFields, {
+      props: { form },
     });
 
     expect(
       requireElement(getByRole('textbox', { name: 'Workflow type' }), HTMLInputElement).disabled,
     ).toBe(true);
+    // What a schedule starts with is fixed when it is made, and is not a field here.
     expect(queryByRole('textbox', { name: 'Input (JSON)' })).toBeNull();
     expect(queryByRole('textbox', { name: 'Schedule ID' })).toBeNull();
+    expect(queryByRole('switch', { name: 'Start paused' })).toBeNull();
     expect(requireElement(getByRole('radio', { name: 'Skip' }), HTMLInputElement).disabled).toBe(
       false,
     );
@@ -222,15 +128,12 @@ describe('ScheduleFormFields — edit mode', () => {
     expect(
       requireElement(getByRole('textbox', { name: 'Description' }), HTMLInputElement).disabled,
     ).toBe(false);
-    expect(
-      getByText('Workflow type, input payload, and start-paused can only be set at creation.'),
-    ).not.toBeNull();
   });
 
   test('editing the description writes through to the form', async () => {
     const form = new ScheduleFormState({ workflowType: 'report-gen', description: 'Old' });
     const { getByRole } = render(ScheduleFormFields, {
-      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form },
     });
     const field = requireElement(getByRole('textbox', { name: 'Description' }), HTMLInputElement);
     expect(field.value).toBe('Old');
@@ -240,13 +143,12 @@ describe('ScheduleFormFields — edit mode', () => {
 
   test('does NOT disable the revision-policy radio group in edit mode', async () => {
     const form = new ScheduleFormState({
-      id: 'nightly-rollup',
       workflowType: 'report-gen',
       revisionPolicy: 'active-at-fire',
     });
 
     const { getByRole } = render(ScheduleFormFields, {
-      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form },
     });
 
     expect(
@@ -262,13 +164,12 @@ describe('ScheduleFormFields — edit mode', () => {
     // baseline; the click below is a real transition, not a same-value
     // re-render, so `toUpdateRevisionPolicy()` would actually submit it.
     const form = new ScheduleFormState({
-      id: 'nightly-rollup',
       workflowType: 'report-gen',
       revisionPolicy: 'active-at-fire',
     });
 
     const { getByRole, getByText, getAllByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form },
     });
 
     await fireEvent.click(getByRole('radio', { name: 'Pinned' }));
@@ -293,13 +194,12 @@ describe('ScheduleFormFields — edit mode', () => {
 
   test('does NOT show the pinned warning when active-at-fire is selected in edit mode', async () => {
     const form = new ScheduleFormState({
-      id: 'nightly-rollup',
       workflowType: 'report-gen',
       revisionPolicy: 'active-at-fire',
     });
 
     const { queryByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form },
     });
 
     expect(queryByText(/captures whichever revision is active right now/)).toBeNull();
@@ -307,27 +207,25 @@ describe('ScheduleFormFields — edit mode', () => {
 
   test('does NOT show the pinned warning for an already-pinned schedule left unchanged — toUpdateRevisionPolicy() sends nothing, so the prior "never a no-op" framing was misleading (Codex review, PR #978)', async () => {
     const form = new ScheduleFormState({
-      id: 'nightly-rollup',
       workflowType: 'report-gen',
       revisionPolicy: 'pinned',
     });
 
     const { queryByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form },
     });
 
     expect(form.toUpdateRevisionPolicy()).toBeUndefined();
     expect(queryByText(/captures whichever revision is active right now/)).toBeNull();
   });
 
-  test("a fresh mount always captures its OWN form instance's revisionPolicy — the one-shot draft is safe precisely because the parent guarantees a fresh mount per form instance (Codex review, PR #978, round 2; see schedule-form-drawer.svelte's `{#key form}` and drawer test for the swap-while-mounted case this documents)", async () => {
+  test("a fresh mount always captures its OWN form instance's revisionPolicy — the one-shot draft is safe precisely because the parent guarantees a fresh mount per form instance (Codex review, PR #978, round 2; see schedule-edit.svelte's `{#key form}` and its test for the swap-while-mounted case this documents)", async () => {
     const firstForm = new ScheduleFormState({
-      id: 'nightly-rollup',
       workflowType: 'report-gen',
       revisionPolicy: 'active-at-fire',
     });
     const { getByRole: getByRoleFirst, unmount } = render(ScheduleFormFields, {
-      props: { form: firstForm, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form: firstForm },
     });
     expect(
       requireElement(getByRoleFirst('radio', { name: 'Active at fire' }), HTMLInputElement).checked,
@@ -335,12 +233,11 @@ describe('ScheduleFormFields — edit mode', () => {
     unmount();
 
     const secondForm = new ScheduleFormState({
-      id: 'nightly-rollup',
       workflowType: 'report-gen',
       revisionPolicy: 'pinned',
     });
     const { getByRole: getByRoleSecond } = render(ScheduleFormFields, {
-      props: { form: secondForm, mode: 'edit', workflowTypeOptions: undefined },
+      props: { form: secondForm },
     });
     expect(
       requireElement(getByRoleSecond('radio', { name: 'Pinned' }), HTMLInputElement).checked,
@@ -348,12 +245,12 @@ describe('ScheduleFormFields — edit mode', () => {
   });
 });
 
-describe('ScheduleFormFields — revision policy (create mode)', () => {
+describe('ScheduleFormFields — revision policy', () => {
   test('renders both REVISION_POLICIES options with their labels and consequences', async () => {
     const form = new ScheduleFormState();
 
     const { getByText } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: undefined },
+      props: { form },
     });
 
     expect(getByText('Active at fire')).not.toBeNull();
@@ -366,7 +263,7 @@ describe('ScheduleFormFields — revision policy (create mode)', () => {
     const form = new ScheduleFormState();
 
     const { getByRole } = render(ScheduleFormFields, {
-      props: { form, mode: 'create', workflowTypeOptions: undefined },
+      props: { form },
     });
 
     await fireEvent.click(getByRole('radio', { name: 'Pinned' }));

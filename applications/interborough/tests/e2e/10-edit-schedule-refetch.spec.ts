@@ -11,7 +11,7 @@
  * query, including the drawer's schedule detail query. A payload identical
  * to the cached one structurally shares to the same reference, so the
  * changed-server-data variant (another operator editing mid-way) is covered
- * at component level in `schedule-form-drawer.test.ts`; this spec proves the
+ * at component level in `schedule-edit.test.ts`; this spec proves the
  * whole flow in a real browser.
  *
  * The second test reuses the schedule the first one creates (the suite runs
@@ -26,25 +26,22 @@ const SCHEDULE_ID = 'e2e-edit-refetch-schedule';
 
 test('operator edits a schedule across a background refetch and the unsaved changes persist on save', async ({
   page,
+  request,
   checkA11y,
 }) => {
-  await page.goto('/schedules');
-  await expect(page.getByRole('button', { name: 'New schedule' })).toBeVisible();
-
-  // Create the schedule under a fixed id, active-at-fire, no jitter. A code-defined workflow is
-  // under "Advanced", because a new schedule runs an agent.
-  await page.getByRole('button', { name: 'New schedule' }).click();
-  const createDrawer = page.getByRole('dialog', { name: 'Create schedule' });
-  await expect(createDrawer).toBeVisible();
-  await createDrawer
-    .getByRole('button', { name: 'Advanced: start a code-defined workflow' })
-    .click();
-  await createDrawer.getByLabel('Schedule ID').fill(SCHEDULE_ID);
-  await createDrawer
-    .getByRole('combobox', { name: 'Workflow type' })
-    .selectOption('order-processing');
-  await createDrawer.getByRole('button', { name: 'Create schedule' }).click();
-  await expect(createDrawer).not.toBeVisible();
+  // The schedule is made under a fixed id, active-at-fire, no jitter: the new schedule page mints
+  // the identifier, so this spec makes it through the host's REST API, as `schedules.spec.ts` does.
+  const created = await request.post('/v1/schedules', {
+    data: {
+      type: 'order-processing',
+      id: SCHEDULE_ID,
+      cronExpression: '0 9 * * *',
+      timeZone: 'UTC',
+      input: {},
+    },
+  });
+  expect(created.status(), 'creating the schedule').toBe(201);
+  await page.goto(`/schedules/${SCHEDULE_ID}`);
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
 
   await page.getByRole('button', { name: 'Edit' }).click();

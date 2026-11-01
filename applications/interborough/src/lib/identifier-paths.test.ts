@@ -8,7 +8,7 @@ import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import { chatSessionPath, identifierPath } from './identifier-paths.ts';
+import { chatSessionPath, identifierPath, withEscapedIdentifier } from './identifier-paths.ts';
 
 describe('identifierPath', () => {
   test('escapes only what its route cannot carry, and keeps the rest of the query', () => {
@@ -21,6 +21,23 @@ describe('identifierPath', () => {
     expect(identifierPath('anything', '/unlisted/:id', '..', new URLSearchParams())).toBe(
       '/anything/..',
     );
+  });
+
+  test('puts a schedule named new back on the edit page it was carried to', () => {
+    const search = new URLSearchParams({ __weft_schedule_id: 'new' });
+    for (const pattern of ['/schedules/:schedule', '/schedules/:schedule/edit']) {
+      expect(
+        withEscapedIdentifier({ definition: { pattern }, params: { schedule: '_' } }, search),
+        pattern,
+      ).toEqual({ schedule: 'new' });
+    }
+    // An identifier the route can carry is never taken from the query.
+    expect(
+      withEscapedIdentifier(
+        { definition: { pattern: '/schedules/:schedule' }, params: { schedule: '_' } },
+        new URLSearchParams({ __weft_schedule_id: 'plain' }),
+      ),
+    ).toEqual({ schedule: '_' });
   });
 
   test('builds the chat path the router reads back', () => {

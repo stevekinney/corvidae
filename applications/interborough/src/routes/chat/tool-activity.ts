@@ -13,7 +13,7 @@ import {
 import { resultSummary } from '../../lib/tool-text.ts';
 
 /** Where one call stands. */
-export type ToolCallState = 'running' | 'needs-you' | 'done' | 'failed';
+export type ToolCallState = 'running' | 'needs-you' | 'done' | 'failed' | 'denied';
 
 export type ToolCallEntry = {
   /** The tool call's identifier, which an approval names. */
@@ -33,12 +33,40 @@ export type ToolGroup = {
   readonly messageIds: readonly string[];
 };
 
-/** Where a call stands, from its result: none yet is still running, and a parked one needs a person. */
+/** The code this page writes on a call the person denied (`run-wiring.ts`). */
+export const DENIED_CODE = 'approval-denied';
+
+/** The message this page writes on a denial that carries no reason (`run-wiring.ts`). */
+export const DEFAULT_DENIAL = 'The approval was denied.';
+
+/** What the Bureau writes into the conversation for a denied or rejected call, with the reason after a colon. */
+const BUREAU_REFUSAL = /^Tool call (?:denied|rejected)(?::\s*([\s\S]*))?$/;
+
+/** The reason a person gave when they refused the call, empty when they gave none or it was not a refusal. */
+function refusalReason(pair: ToolCallPair): string | undefined {
+  const result = pair.result;
+  if (result?.outcome !== 'error') return undefined;
+  if (result.error?.code === DENIED_CODE) {
+    // The page's own wording stands in for a refusal with no reason.
+    const message = result.error.message;
+    return message === DEFAULT_DENIAL ? '' : message;
+  }
+  const content = result.content;
+  if (typeof content !== 'string') return undefined;
+  const refused = BUREAU_REFUSAL.exec(content);
+  return refused === null ? undefined : (refused[1] ?? '').trim();
+}
+
+/**
+ * Where a call stands, from its result: none yet is still running, and a parked one needs a
+ * person. A call the person refused is denied and not failed: it did what was asked of it.
+ */
 export function toolCallState(pair: ToolCallPair): ToolCallState {
   const outcome = pair.result?.outcome;
   if (outcome === undefined) return 'running';
   if (outcome === 'action_required') return 'needs-you';
-  return outcome === 'error' ? 'failed' : 'done';
+  if (outcome !== 'error') return 'done';
+  return refusalReason(pair) === undefined ? 'failed' : 'denied';
 }
 
 function entryOf(pair: ToolCallPair): ToolCallEntry {
@@ -52,21 +80,27 @@ function entryOf(pair: ToolCallPair): ToolCallEntry {
     summary:
       state === 'needs-you' || state === 'running'
         ? ''
-        : state === 'failed'
-          ? (failure ?? resultSummary(pair.result?.content))
-          : resultSummary(pair.result?.content),
+        : state === 'denied'
+          ? (refusalReason(pair) ?? '')
+          : state === 'failed'
+            ? (failure ?? resultSummary(pair.result?.content))
+            : resultSummary(pair.result?.content),
     result: pair.result?.content,
   };
 }
 
-/** What a group's line says: how many tools, and how many of them need a decision or failed. */
+/** What a group's line says: how many tools, and how many of them need a decision, failed or were denied. */
 export function groupSummary(entries: readonly ToolCallEntry[]): string {
   const needing = entries.filter((entry) => entry.state === 'needs-you').length;
   const failed = entries.filter((entry) => entry.state === 'failed').length;
   const used = `Used ${String(entries.length)} ${entries.length === 1 ? 'tool' : 'tools'}`;
   if (needing > 0) return `${used} · ${String(needing)} ${needing === 1 ? 'needs' : 'need'} you`;
-  if (failed > 0) return `${used} · ${String(failed)} failed`;
-  return used;
+  const denied = entries.filter((entry) => entry.state === 'denied').length;
+  return [
+    used,
+    ...(failed > 0 ? [`${String(failed)} failed`] : []),
+    ...(denied > 0 ? [`${String(denied)} denied`] : []),
+  ].join(' · ');
 }
 
 /**

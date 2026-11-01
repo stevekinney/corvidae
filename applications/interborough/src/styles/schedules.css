@@ -153,3 +153,78 @@
   white-space: nowrap;
   max-width: 28rem;
 }
+
+/* The page that makes a schedule: sections of fields, and a footer that holds the one-line summary and the action. */
+.ib-schedule-new {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-width: 0;
+}
+
+.ib-schedule-new__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-schedule-new__heading {
+  margin: 0;
+  font-size: var(--cinder-text-lg);
+  font-weight: 600;
+}
+
+.ib-schedule-new__note {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.ib-schedule-new__alert-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ib-schedule-new__alert-message {
+  margin: var(--cinder-space-1) 0 var(--cinder-space-2);
+  overflow-wrap: anywhere;
+}
+
+/* A workflow named by a word no line can break at wraps instead of widening the page. */
+.ib-schedule-new__section :where(p, label, legend, span) {
+  overflow-wrap: anywhere;
+}
+
+/* It stays at the foot of the outlet while the form scrolls under it, so the action is always in reach. */
+.ib-schedule-new__footer {
+  position: sticky;
+  /* The outlet pads its own bottom edge; reach through it so nothing scrolls under the bar. */
+  bottom: calc(-1 * var(--cinder-space-6));
+  z-index: 1;
+  margin-block-end: calc(-1 * var(--cinder-space-6));
+  padding-block: var(--cinder-space-3);
+  background: var(--cinder-surface-canvas);
+  border-block-start: 1px solid var(--cinder-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-3) var(--cinder-space-4);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ib-schedule-new__summary {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 16rem;
+  color: var(--cinder-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.ib-schedule-new__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  margin-inline-start: auto;
+}

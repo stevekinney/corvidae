@@ -6,8 +6,8 @@
  * links to the workflow. The seeded schedule is paused and resumed from the list, its cadence is
  * edited on the page an agent run has, which holds the cadence, the description, and whether to
  * skip a fire while a run is going, and the next fire time changes. A workflow file's schedule is
- * paused and resumed too, and is edited in the workflow. A schedule is made for an agent from the
- * create drawer, without choosing a kind.
+ * paused and resumed too, and is edited in the workflow. A schedule is made on its own page, from a
+ * searchable picker of workflows whose built-in choice is a chat with an agent.
  */
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 
@@ -245,27 +245,35 @@ test.describe('a workflow file’s schedule', () => {
 });
 
 test.describe('creating a schedule', () => {
-  test('starts an agent from the create drawer, and opens the new schedule', async ({
+  const CREATE = SCHEDULE_COPY.create;
+
+  /** Types into the workflow picker and chooses the option with that text, as a person does. */
+  async function chooseWorkflow(page: Page, query: string, option: string): Promise<void> {
+    await page.getByRole('combobox', { name: /^Workflow/ }).fill(query);
+    await page
+      .getByRole('option', { name: new RegExp(option) })
+      .first()
+      .click();
+  }
+
+  test('starts an agent from the new schedule page, and opens the new schedule', async ({
     page,
     request,
     checkA11y,
   }) => {
-    await page.goto('/schedules?create=1');
-    const drawer = page.getByRole('dialog', { name: 'Create schedule' });
-    await expect(drawer).toBeVisible();
+    await page.goto('/schedules/new');
+    await expect(page.getByRole('heading', { level: 1, name: CREATE.title })).toBeVisible();
 
-    // There is no kind to choose: the first thing asked is the agent.
-    await expect(drawer.getByRole('radio')).toHaveCount(0);
-    await drawer
+    // The built-in choice is a chat with an agent; nothing asks for an agent until it is chosen.
+    await expect(page.getByLabel(SCHEDULE_COPY.form.agentLabel)).toHaveCount(0);
+    await chooseWorkflow(page, 'chat', CREATE.chat.label);
+    await page
       .getByRole('combobox', { name: SCHEDULE_COPY.form.agentLabel })
       .selectOption('demo:assistant');
-    await drawer
-      .getByLabel(SCHEDULE_COPY.form.inputLabel)
-      .fill('Summarize what happened this week.');
-    await drawer.getByLabel(SCHEDULE_COPY.form.descriptionLabel).fill('Weekly summary');
+    await page.getByLabel(SCHEDULE_COPY.form.inputLabel).fill('Summarize what happened this week.');
+    await page.getByLabel(CREATE.descriptionLabel).fill('Weekly summary');
     await checkA11y('schedules — creating an agent run');
-    await drawer.getByRole('button', { name: 'Create schedule' }).click();
-    await expect(drawer).not.toBeVisible();
+    await page.getByRole('button', { name: CREATE.submit }).click();
 
     await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Weekly summary');
@@ -293,69 +301,68 @@ test.describe('creating a schedule', () => {
     ).toBe(true);
   });
 
-  /** The workflow types the create drawer offers. */
-  async function offeredTypes(page: Page): Promise<string[]> {
-    await page.goto('/schedules?create=1');
-    const drawer = page.getByRole('dialog', { name: 'Create schedule' });
-    await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
-    const type = drawer.getByRole('combobox', { name: 'Workflow type' });
-    await expect(type).toBeVisible();
-    return type
-      .locator('option')
-      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
+  /** The options the picker lists, with whether each can be chosen. */
+  async function offered(page: Page): Promise<Array<{ text: string; disabled: boolean }>> {
+    await page.goto('/schedules/new');
+    const picker = page.getByRole('combobox', { name: /^Workflow/ });
+    await picker.click();
+    const listbox = page.getByRole('listbox');
+    await expect(listbox.getByRole('option').first()).toBeVisible();
+    return listbox.getByRole('option').evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        text: node.textContent ?? '',
+        disabled: node.getAttribute('aria-disabled') === 'true',
+      })),
+    );
   }
 
-  test('offers none of the types the Bureau owns, so there is no workflow type to pick on its own engine', async ({
+  test('offers none of the types the Bureau owns, so there is no workflow of its own engine to pick', async ({
     page,
     request,
   }) => {
-    // The engine's registry holds every type the Bureau's run engine registers. It does not hold the
-    // file's type as active, because the engine loads a file's source lazily, so a typed name is
-    // what refuses the file's type.
-    const heldTypes = async (): Promise<string[]> => {
-      const registry = await request.post('/jsonrpc', {
-        data: { jsonrpc: '2.0', id: 1, method: 'weft.system.registry', params: {} },
-      });
-      const body = (await registry.json()) as {
-        result: { activeRevisions: Record<string, unknown> };
-      };
-      return Object.keys(body.result.activeRevisions);
+    // The engine's registry holds every type the Bureau's run engine registers. The picker leaves
+    // them out, and lists a workflow file only to say its schedule is the trigger in its file.
+    const registry = await request.post('/jsonrpc', {
+      data: { jsonrpc: '2.0', id: 1, method: 'weft.system.registry', params: {} },
+    });
+    const body = (await registry.json()) as {
+      result: { activeRevisions: Record<string, unknown> };
     };
-    const held = await heldTypes();
+    const held = Object.keys(body.result.activeRevisions);
     for (const reserved of RUN_ENGINE_WORKFLOW_TYPES) expect(held, reserved).toContain(reserved);
 
-    await page.goto('/schedules?create=1');
-    const drawer = page.getByRole('dialog', { name: 'Create schedule' });
-    await drawer.getByRole('button', { name: 'Advanced: start a code-defined workflow' }).click();
-    // Nothing is left to pick, so the type is typed, and every type the Bureau owns is refused.
-    const type = drawer.getByRole('textbox', { name: 'Workflow type' });
-    await expect(type).toBeVisible();
-    await expect(drawer.getByRole('combobox', { name: 'Workflow type' })).toHaveCount(0);
-    for (const reserved of [...RUN_ENGINE_WORKFLOW_TYPES, 'e2e-digest']) {
-      await type.fill(reserved);
-      await expect(
-        drawer.getByRole('button', { name: 'Create schedule' }),
+    const options = await offered(page);
+    expect(options[0]?.text).toContain(CREATE.chat.label);
+    // A type is named in words in the picker ("Agent Run"), so compare with the separators gone.
+    const plain = (text: string): string => text.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    for (const reserved of RUN_ENGINE_WORKFLOW_TYPES) {
+      expect(
+        options.some((option) => plain(option.text).includes(plain(reserved))),
         reserved,
-      ).toBeDisabled();
+      ).toBe(false);
     }
+    const file = options.find((option) => option.text.includes('E2e Digest'));
+    expect(file?.disabled).toBe(true);
+    expect(file?.text).toContain(CREATE.inFile);
   });
 
   test.describe('on the host whose console is the fixtures’ engine', () => {
     test.use({ baseURL: E2E_BASE_URL });
 
-    test('offers the code-defined workflow types, and not an agent-authored one', async ({
+    test('offers the code-defined workflow types, and an agent-authored one only to say why it cannot be chosen', async ({
       page,
     }) => {
       await expect
         .poll(async () => {
-          const offered = await offeredTypes(page);
-          return offered.length;
+          const listed = await offered(page);
+          return listed.length;
         })
-        .toBeGreaterThan(1);
-      const options = await offeredTypes(page);
-      expect(options).toContain('order-processing');
-      expect(options).not.toContain('e2e-digest');
-      expect(options).not.toContain('e2e-approval');
+        .toBeGreaterThan(2);
+      const options = await offered(page);
+      expect(options.find((option) => option.text.includes('Order Processing'))?.disabled).toBe(
+        false,
+      );
+      expect(options.find((option) => option.text.includes('E2e Digest'))?.disabled).toBe(true);
     });
   });
 });

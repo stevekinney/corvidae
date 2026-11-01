@@ -29,7 +29,7 @@
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import AgentScheduleFields from './agent-schedule-fields.svelte';
   import { AgentScheduleFormState } from './agent-schedule-form-state.svelte.ts';
-  import { cadenceOf, cadenceToScheduleValue } from './cadence.ts';
+  import { cadenceOf, cadenceToScheduleValue, shownCadenceIsInvalid } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
@@ -93,7 +93,6 @@
     builtFrom = { id: schedule.id, updatedAt: schedule.updatedAt, revision: schedule.revision };
     if (owner.kind === 'agent-run') {
       agentForm = new AgentScheduleFormState({
-        mode: 'edit',
         cadence: cadenceToScheduleValue(schedule),
         originalCadence: cadenceOf(schedule),
         description: schedule.description ?? '',
@@ -103,7 +102,6 @@
       return;
     }
     form = new ScheduleFormState({
-      id: schedule.id,
       workflowType: schedule.workflowType,
       ...(schedule.description !== undefined ? { description: schedule.description } : {}),
       cadence: cadenceToScheduleValue(schedule),
@@ -188,7 +186,7 @@
     if (!canSave) return;
     // The builder keeps the last cadence it emitted while a field is out of range, so the draft is
     // not the cadence on screen: refuse until what is shown is valid.
-    invalidCadence = region?.querySelector('[aria-invalid="true"]') != null;
+    invalidCadence = shownCadenceIsInvalid(region);
     if (invalidCadence) return;
     active.mutate();
   }
@@ -251,7 +249,7 @@
         <!-- A new draft is a fresh mount, as the fields need. -->
         {#key agentForm}
           {#if agentForm}
-            <AgentScheduleFields form={agentForm} agents={undefined} />
+            <AgentScheduleFields form={agentForm} />
           {/if}
         {/key}
       {:else if form}
@@ -261,12 +259,7 @@
           mount, which is correct only if a new draft always gets a fresh mount.
         -->
         {#key form}
-          <ScheduleFormFields
-            {form}
-            mode="edit"
-            workflowTypeOptions={undefined}
-            registeredTypeCount={0}
-          />
+          <ScheduleFormFields {form} />
         {/key}
       {/if}
     </div>
