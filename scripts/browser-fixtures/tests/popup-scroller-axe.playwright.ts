@@ -32,8 +32,6 @@ type Scenario = {
   reachLastRow?: (page: Page) => Promise<Locator>;
   /** A viewport that still overflows but is tall enough to show one whole row. */
   keyboardViewport?: { width: number; height: number };
-  /** Why axe's rule cannot be satisfied for this scenario without a tab stop, when it cannot. */
-  axeExemption?: string;
 };
 
 async function focusedMenuItemThenEnd(page: Page): Promise<Locator> {
@@ -104,7 +102,7 @@ const scenarios: Scenario[] = [
     scroller: '.cinder-speed-dial__actions',
   },
   {
-    name: 'CommandMenu (textarea host)',
+    name: 'CommandMenu',
     slug: 'command-menu',
     open: async (page) => page.getByLabel('Notes').fill('/'),
     scroller: '.cinder-command-menu__listbox',
@@ -115,9 +113,6 @@ const scenarios: Scenario[] = [
       await expect(active).toHaveText(/Code/);
       return active;
     },
-    axeExemption:
-      'The host is a native <textarea>: ARIA gives it no combobox role, so axe cannot treat the ' +
-      'listbox as a combobox popup, and the arrow keys never move focus into it.',
   },
 ];
 
@@ -136,33 +131,25 @@ async function openPopup(
 
 for (const scenario of scenarios) {
   test.describe(`${scenario.name} popup scroller`, () => {
-    // A popup with an `axeExemption` has no axe test: no assertion can pass for it
-    // without a tab stop that competes with the field the focus stays on.
-    if (scenario.axeExemption === undefined) {
-      test('passes scrollable-region-focusable once it overflows', async ({ page }) => {
-        const scroller = await openPopup(
-          page,
-          scenario,
-          scenario.viewport ?? forcedOverflowViewport,
-        );
-        const { clientHeight, scrollHeight } = await scroller.evaluate((element) => ({
-          clientHeight: element.clientHeight,
-          scrollHeight: element.scrollHeight,
-        }));
-        // Without this the rule could pass because nothing scrolls.
-        expect(scrollHeight - AXE_SCROLL_BUFFER).toBeGreaterThan(clientHeight);
+    test('passes scrollable-region-focusable once it overflows', async ({ page }) => {
+      const scroller = await openPopup(page, scenario, scenario.viewport ?? forcedOverflowViewport);
+      const { clientHeight, scrollHeight } = await scroller.evaluate((element) => ({
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+      }));
+      // Without this the rule could pass because nothing scrolls.
+      expect(scrollHeight - AXE_SCROLL_BUFFER).toBeGreaterThan(clientHeight);
 
-        const buckets = await runAxe(
-          page,
-          { slug: scenario.slug, theme: 'light', viewport: 'desktop', fixture: 'popup-scroller' },
-          { include: scenario.scroller },
-        );
-        const violations = Object.values(buckets)
-          .flat()
-          .filter((violation) => violation.id === 'scrollable-region-focusable');
-        expect(violations.map((violation) => violation.nodes.map((node) => node.html))).toEqual([]);
-      });
-    }
+      const buckets = await runAxe(
+        page,
+        { slug: scenario.slug, theme: 'light', viewport: 'desktop', fixture: 'popup-scroller' },
+        { include: scenario.scroller },
+      );
+      const violations = Object.values(buckets)
+        .flat()
+        .filter((violation) => violation.id === 'scrollable-region-focusable');
+      expect(violations.map((violation) => violation.nodes.map((node) => node.html))).toEqual([]);
+    });
 
     const reachLastRow = scenario.reachLastRow;
     if (reachLastRow === undefined) return;

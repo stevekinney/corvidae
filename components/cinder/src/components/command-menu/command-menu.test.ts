@@ -212,6 +212,100 @@ describe('CommandMenu', () => {
     }
   });
 
+  describe('host combobox semantics (COR-1999)', () => {
+    function fixtureHost() {
+      return requiredInstance(
+        document.querySelector('[data-testid="anchor"]'),
+        HTMLTextAreaElement,
+      );
+    }
+
+    test('while open the host is the combobox that controls the listbox', async () => {
+      render(CommandMenuFixture);
+      await waitFor(() => expect(queryMenu()).not.toBeNull());
+      const host = fixtureHost();
+      await settleCommandMenu();
+
+      expect(host.getAttribute('role')).toBe('combobox');
+      expect(host.getAttribute('aria-expanded')).toBe('true');
+      expect(host.getAttribute('aria-controls')).toBe(queryListbox()?.id ?? null);
+      expect(host.getAttribute('aria-autocomplete')).toBe('list');
+      const active = queryMenu()?.querySelector('[aria-selected="true"]');
+      expect(host.getAttribute('aria-activedescendant')).toBe(active?.id ?? null);
+      expect(active?.id).toBeTruthy();
+    });
+
+    test('aria-activedescendant follows the arrow keys', async () => {
+      render(CommandMenuFixture);
+      await waitFor(() => expect(queryMenu()).not.toBeNull());
+      const host = fixtureHost();
+
+      await fireEvent.keyDown(host, { key: 'ArrowDown' });
+      await settleCommandMenu();
+
+      const active = queryMenu()?.querySelector('[aria-selected="true"]');
+      expect(active?.textContent).toContain('Beta');
+      expect(host.getAttribute('aria-activedescendant')).toBe(active?.id ?? null);
+    });
+
+    test('a host with no such attributes has none again once the menu closes and unmounts', async () => {
+      const { getByTestId, unmount } = render(CommandMenuFixture);
+      await waitFor(() => expect(queryMenu()).not.toBeNull());
+      const host = fixtureHost();
+      const names = [
+        'role',
+        'aria-expanded',
+        'aria-controls',
+        'aria-autocomplete',
+        'aria-activedescendant',
+      ];
+
+      await fireEvent.click(getByTestId('close'));
+      await waitFor(() => expect(queryMenu()?.outerHTML ?? null).toBeNull());
+      for (const name of names) expect(host.hasAttribute(name)).toBe(false);
+
+      await fireEvent.click(getByTestId('reopen'));
+      await waitFor(() => expect(host.getAttribute('role')).toBe('combobox'));
+
+      unmount();
+      for (const name of names) expect(host.hasAttribute(name)).toBe(false);
+    });
+
+    test('a host that already had a role, aria-controls or aria-autocomplete gets them back', async () => {
+      const { getByTestId } = render(CommandMenuFixture);
+      await waitFor(() => expect(queryMenu()).not.toBeNull());
+      const host = fixtureHost();
+      await fireEvent.click(getByTestId('close'));
+      await waitFor(() => expect(queryMenu()?.outerHTML ?? null).toBeNull());
+      host.setAttribute('role', 'searchbox');
+      host.setAttribute('aria-controls', 'host-list');
+      host.setAttribute('aria-autocomplete', 'both');
+
+      await fireEvent.click(getByTestId('reopen'));
+      await waitFor(() => expect(host.getAttribute('role')).toBe('combobox'));
+      expect(host.getAttribute('aria-controls')).toBe(queryListbox()?.id ?? null);
+      // Ghost-text hosts say `both`; the menu does not downgrade it to `list`.
+      expect(host.getAttribute('aria-autocomplete')).toBe('both');
+
+      await fireEvent.click(getByTestId('close'));
+      await waitFor(() => expect(queryMenu()?.outerHTML ?? null).toBeNull());
+      expect(host.getAttribute('role')).toBe('searchbox');
+      expect(host.getAttribute('aria-controls')).toBe('host-list');
+      expect(host.getAttribute('aria-autocomplete')).toBe('both');
+      expect(host.hasAttribute('aria-expanded')).toBe(false);
+    });
+
+    test('swapping the anchor takes the semantics off the old host', async () => {
+      const { getByTestId } = render(CommandMenuFixture);
+      await waitFor(() => expect(queryMenu()).not.toBeNull());
+      const host = fixtureHost();
+      expect(host.getAttribute('role')).toBe('combobox');
+
+      await fireEvent.click(getByTestId('clear-anchor'));
+      await waitFor(() => expect(host.hasAttribute('role')).toBe(false));
+    });
+  });
+
   test('renders a portaled listbox while open', async () => {
     render(CommandMenuFixture);
     await waitFor(() => expect(queryMenu()).not.toBeNull());
