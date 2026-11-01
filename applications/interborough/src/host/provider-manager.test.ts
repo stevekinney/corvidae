@@ -168,6 +168,84 @@ describe('a remote home', () => {
   });
 });
 
+describe('disconnecting a provider', () => {
+  test('a remote home refuses it for the reason `deployment`, writing nothing', async () => {
+    const home = fakeHome('remote');
+    const { manager, revisions } = await managerFor(home);
+
+    const failure = await failureOf(manager.disconnect('anthropic'));
+
+    expect(failure).toBeInstanceOf(ProviderWriteLockedError);
+    expect(home.writes).toEqual([]);
+    expect(revisions).toEqual([]);
+    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
+  });
+
+  test('empties the key, leaves the configuration alone, and stops serving the provider', async () => {
+    const home = fakeHome('local');
+    const { manager, revisions } = await managerFor(home);
+    const before = home.configuration;
+
+    await manager.disconnect('anthropic');
+
+    expect(home.writes).toEqual(['secret anthropic-api-key']);
+    expect(home.secrets.get('anthropic-api-key')).toBe('');
+    expect(home.configuration).toBe(before);
+    expect(manager.current().apiKeys.has('anthropic')).toBe(false);
+    expect(manager.current().rows).toEqual([]);
+    expect(revisions).toHaveLength(1);
+  });
+
+  test('a key that cannot be removed is a plain failure: the host keeps serving the provider', async () => {
+    const home = fakeHome('local', { failEverySecret: true });
+    const { manager, revisions } = await managerFor(home);
+
+    const failure = await failureOf(manager.disconnect('anthropic'));
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).not.toBeInstanceOf(ProviderPartialChangeError);
+    expect(home.secrets.get('anthropic-api-key')).toBe('fixture-existing-key');
+    expect(manager.current().apiKeys.get('anthropic')).toBe('fixture-existing-key');
+    expect(revisions).toHaveLength(1);
+  });
+
+  test('a write that throws after replacing the file is judged by the disk: the key is gone', async () => {
+    const home = fakeHome('local', { throwAfterStoring: true });
+    const { manager } = await managerFor(home);
+
+    await manager.disconnect('anthropic');
+
+    expect(home.secrets.get('anthropic-api-key')).toBe('');
+    expect(manager.current().apiKeys.has('anthropic')).toBe(false);
+  });
+
+  test('refuses a provider no plugin contributes, writing nothing', async () => {
+    const home = fakeHome('local');
+    const { manager } = await managerFor(home);
+
+    const failure = await failureOf(manager.disconnect('voyage'));
+
+    expect(failure).toMatchObject({ field: 'provider' });
+    expect(home.writes).toEqual([]);
+  });
+
+  test('answers DELETE with 403 and the reason for a remote home', async () => {
+    const { manager } = await managerFor(fakeHome('remote'));
+    using server = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      routes: providerRoutes(manager, () => undefined),
+    });
+
+    const response = await fetch(new URL('/host/providers/anthropic', server.url), {
+      method: 'DELETE',
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: 'locked', reason: 'deployment' });
+  });
+});
+
 describe('a stored catalog edit for a provider no loaded plugin contributes', () => {
   const dormant = { provider: 'voyage', model: 'voyage-3', off: true };
 

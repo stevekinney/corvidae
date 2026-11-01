@@ -15,7 +15,7 @@ import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
-import { ProviderInputError } from './provider-manager.ts';
+import { ProviderConflictError, ProviderInputError } from './provider-manager.ts';
 
 const KEY_A = 'fixture-key-a-1f3c9d';
 const KEY_B = 'fixture-key-b-8e27a4';
@@ -650,6 +650,232 @@ describe('reloading', () => {
 
     expect(failure).toBeInstanceOf(ProviderConfigurationError);
     expect(pairsOf(host)).toEqual(['anthropic/claude-sonnet-5']);
+  });
+});
+
+describe('a catalog save that names the edits it started from', () => {
+  const haikuOff = { provider: 'anthropic', model: 'claude-haiku-4-5', off: true };
+  const sonnetOff = { provider: 'anthropic', model: 'claude-sonnet-5', off: true };
+
+  async function startWithAnthropic(catalog: unknown[] = []) {
+    const directory = await home();
+    await writeFile(
+      join(directory, 'configuration.json'),
+      JSON.stringify({ plugins: { anthropic: {} }, ...(catalog.length === 0 ? {} : { catalog }) }),
+    );
+    await storeKey(directory, 'anthropic-api-key', KEY_A);
+    return { directory, host: await startAt(directory) };
+  }
+
+  const stored = async (directory: string): Promise<unknown> =>
+    JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8')).catalog;
+
+  test('saves when the stored edits are the ones it started from, however their keys are ordered', async () => {
+    const { directory, host } = await startWithAnthropic([
+      { off: true, model: 'claude-haiku-4-5', provider: 'anthropic' },
+    ]);
+
+    await host.providers.editCatalog([sonnetOff], [haikuOff]);
+
+    expect(await stored(directory)).toEqual([sonnetOff]);
+    expect(rowOf(host, 'claude-sonnet-5')?.availability).toBe('unavailable');
+  });
+
+  test('refuses, writes nothing, and reports what is stored when a hand edit was read after the page did', async () => {
+    const { directory, host } = await startWithAnthropic();
+    const { catalog: base } = await host.providers.snapshot();
+    // A hand edit, then Reload from files.
+    await writeFile(
+      join(directory, 'configuration.json'),
+      JSON.stringify({ plugins: { anthropic: {} }, catalog: [sonnetOff] }),
+    );
+    await host.providers.reload();
+    const revision = host.bureau.models.catalog().revision;
+    const before = await readFile(join(directory, 'configuration.json'), 'utf8');
+
+    const failure = await failureOf(host.providers.editCatalog([haikuOff], base));
+
+    expect(failure).toBeInstanceOf(ProviderConflictError);
+    expect((failure as ProviderConflictError).catalog).toEqual([sonnetOff]);
+    expect(await readFile(join(directory, 'configuration.json'), 'utf8')).toBe(before);
+    expect(host.bureau.models.catalog().revision).toBe(revision);
+    // The model the other writer turned off stays off.
+    expect(rowOf(host, 'claude-sonnet-5')?.availability).toBe('unavailable');
+  });
+
+  test('lets exactly one of two saves from the same base through, whichever is first in the queue', async () => {
+    const { directory, host } = await startWithAnthropic();
+    const { catalog: base } = await host.providers.snapshot();
+
+    const outcomes = await Promise.all([
+      failureOf(host.providers.editCatalog([haikuOff], base)),
+      failureOf(host.providers.editCatalog([sonnetOff], base)),
+    ]);
+
+    expect(outcomes[0]).toBeUndefined();
+    expect(outcomes[1]).toBeInstanceOf(ProviderConflictError);
+    expect(await stored(directory)).toEqual([haikuOff]);
+  });
+
+  test('compares only the providers it loaded: a dormant edit is not part of the base', async () => {
+    const dormant = { provider: 'voyage', model: 'voyage-3', off: true };
+    const { directory, host } = await startWithAnthropic([haikuOff, dormant]);
+    const { catalog: base } = await host.providers.snapshot();
+    expect(base).toEqual([haikuOff]);
+
+    await host.providers.editCatalog([sonnetOff], base);
+
+    expect(await stored(directory)).toEqual([sonnetOff, dormant]);
+  });
+
+  test('replaces whatever is stored when no base is given', async () => {
+    const { directory, host } = await startWithAnthropic([haikuOff]);
+
+    await host.providers.editCatalog([sonnetOff]);
+
+    expect(await stored(directory)).toEqual([sonnetOff]);
+  });
+
+  test('refuses a base that is not a list of edits, naming the field', async () => {
+    const { directory, host } = await startWithAnthropic();
+    const before = await readFile(join(directory, 'configuration.json'), 'utf8');
+
+    const failure = await failureOf(host.providers.editCatalog([], { model: 'x' }));
+
+    expect(failure).toBeInstanceOf(ProviderInputError);
+    expect((failure as ProviderInputError).field).toBe('base');
+    expect(await readFile(join(directory, 'configuration.json'), 'utf8')).toBe(before);
+  });
+
+  test('answers 409 with the stored edits over HTTP, and 200 when the base matches', async () => {
+    const { directory, host } = await startWithAnthropic([sonnetOff]);
+    const put = (body: unknown) =>
+      fetch(new URL('/host/catalog', host.url), {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    const stale = await put({ edits: [haikuOff], base: [] });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: 'conflict', catalog: [sonnetOff] });
+    expect(await stored(directory)).toEqual([sonnetOff]);
+
+    const fresh = await put({ edits: [haikuOff], base: [sonnetOff] });
+    expect(fresh.status).toBe(200);
+    expect(await stored(directory)).toEqual([haikuOff]);
+
+    const malformed = await put({ edits: [], base: 'nothing' });
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toMatchObject({ error: 'invalid', field: 'base' });
+  });
+});
+
+describe('disconnecting a provider', () => {
+  async function startConnected() {
+    const directory = await home();
+    await writeFile(
+      join(directory, 'configuration.json'),
+      JSON.stringify({
+        plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
+        catalog: [{ provider: 'anthropic', model: 'sonnet', off: true }],
+      }),
+    );
+    await storeKey(directory, 'anthropic-api-key', KEY_A);
+    await storeKey(directory, 'openai-api-key', KEY_B);
+    return { directory, host: await startAt(directory) };
+  }
+
+  test('removes the key, takes the models out at once, keeps the rest of the configuration, and survives a restart', async () => {
+    const { directory, host } = await startConnected();
+    expect(pairsOf(host).some((pair) => pair.startsWith('anthropic/'))).toBe(true);
+    const before = host.bureau.models.catalog().revision;
+    const configuration = await readFile(join(directory, 'configuration.json'), 'utf8');
+
+    const change = await host.providers.disconnect('anthropic');
+
+    expect(change.catalogRevision).toBe(before + 1);
+    expect(pairsOf(host).some((pair) => pair.startsWith('anthropic/'))).toBe(false);
+    expect(pairsOf(host).some((pair) => pair.startsWith('openai/'))).toBe(true);
+    expect(() => host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toThrow();
+    expect(await readFile(join(directory, 'secrets', 'anthropic-api-key'), 'utf8')).toBe('');
+    expect(await readFile(join(directory, 'secrets', 'openai-api-key'), 'utf8')).toBe(KEY_B);
+    // The allowlist and the catalog edit wait for a later connect.
+    expect(await readFile(join(directory, 'configuration.json'), 'utf8')).toBe(configuration);
+    const snapshot = await host.providers.snapshot();
+    expect(snapshot.providers.find((entry) => entry.name === 'anthropic')).toMatchObject({
+      hasKey: false,
+      models: ['sonnet'],
+    });
+
+    await host.close();
+    const restarted = await startAt(directory);
+    expect(pairsOf(restarted).some((pair) => pair.startsWith('anthropic/'))).toBe(false);
+  });
+
+  test('connecting again brings the models back with the edits that were kept', async () => {
+    const { host } = await startConnected();
+    await host.providers.disconnect('anthropic');
+
+    await host.providers.connect({ provider: 'anthropic', apiKey: KEY_B });
+
+    expect(pairsOf(host)).toContain('anthropic/claude-sonnet-5');
+    expect(rowOf(host, 'claude-sonnet-5')?.availability).toBe('unavailable');
+  });
+
+  test('is harmless for a provider that has no key, and refuses a name that is not a provider', async () => {
+    const { host } = await startConnected();
+    await host.providers.disconnect('gemini');
+
+    const failure = await failureOf(host.providers.disconnect('voyage'));
+
+    expect(failure).toBeInstanceOf(ProviderInputError);
+    expect((failure as ProviderInputError).field).toBe('provider');
+  });
+
+  test('keeps a run that began earlier on the key it began with', async () => {
+    const { host } = await startConnected();
+    const model = host.bureau.models
+      .catalog()
+      .descriptors.find((row) => row.provider === 'openai')?.model;
+    expect(model).toBeDefined();
+    const selection = { provider: 'openai', model: model ?? '' };
+    const generate = host.generateFor(selection);
+
+    await host.providers.disconnect('openai');
+
+    // A generate already resolved keeps its key; a run that begins now is refused.
+    expect(generate).toBeFunction();
+    expect(() => host.generateFor(selection)).toThrow();
+  });
+
+  test('answers DELETE over HTTP with the providers now offered and no key, and 400 for an unknown name', async () => {
+    const { host } = await startConnected();
+    const removed = await fetch(new URL('/host/providers/anthropic', host.url), {
+      method: 'DELETE',
+    });
+    const text = await removed.text();
+
+    expect(removed.status).toBe(200);
+    expect(text.includes(KEY_A)).toBe(false);
+    expect(JSON.parse(text).providers.map((entry: { name: string }) => entry.name)).not.toContain(
+      'anthropic',
+    );
+    const unknown = await fetch(new URL('/host/providers/voyage', host.url), { method: 'DELETE' });
+    expect(unknown.status).toBe(400);
+    expect(await unknown.json()).toMatchObject({ error: 'invalid', field: 'provider' });
+  });
+
+  test('is refused from another origin before anything is removed', async () => {
+    const { directory, host } = await startConnected();
+
+    const response = await fetch(new URL('/host/providers/anthropic', host.url), {
+      method: 'DELETE',
+      headers: { origin: 'http://evil.example' },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await readFile(join(directory, 'secrets', 'anthropic-api-key'), 'utf8')).toBe(KEY_A);
   });
 });
 

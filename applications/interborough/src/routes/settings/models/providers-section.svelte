@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The Providers part of Settings › Models: each provider the host can call, with a Connected dot
-   * and Manage once it has a key, or only Connect while it does not, and a way to read the
+   * and Manage and Disconnect once it has a key, or only Connect while it does not, and a way to read the
    * configuration file again for a person who edited it by hand. A host that keeps its
    * configuration in its deployment cannot save a key, and says so.
    */
@@ -15,6 +15,7 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import ConnectDialog from './connect-dialog.svelte';
+  import DisconnectDialog from './disconnect-dialog.svelte';
   import { providerDisplayName } from './format-model.ts';
 
   interface Props {
@@ -29,6 +30,8 @@
   const queryClient = useQueryClient();
 
   let reloading = $state(false);
+  /** The provider whose Disconnect dialog is open. */
+  let disconnecting = $state<string | null>(null);
 
   // A provider is a plugin too (`plugins/anthropic`, `openai`, `gemini`): one that is waiting for
   // its key is `needs-setup` there. A page that cannot read the plugins says nothing about them.
@@ -120,6 +123,13 @@
             aria-label={copy.manageLabel(nameOf(provider.name))}
             onclick={() => (connecting = provider.name)}>{copy.manage}</Button
           >
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={locked}
+            aria-label={copy.disconnectLabel(nameOf(provider.name))}
+            onclick={() => (disconnecting = provider.name)}>{copy.disconnect}</Button
+          >
         {:else}
           {#if needingSetup.has(provider.name)}
             <StatusDot status="warning" label={copy.needsSetup} labelVisible />
@@ -144,6 +154,7 @@
 </section>
 
 <ConnectDialog bind:provider={connecting} connected={connectingStatus?.hasKey === true} />
+<DisconnectDialog bind:provider={disconnecting} />
 
 <style>
   .ib-providers {

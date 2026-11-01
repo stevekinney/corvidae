@@ -373,7 +373,10 @@ export type Host = {
    * read the configuration again. A remote host refuses a change with
    * {@link ProviderWriteLockedError}, reason `deployment`. See {@link ProviderManager}.
    */
-  readonly providers: Pick<ProviderManager, 'connect' | 'editCatalog' | 'reload' | 'snapshot'>;
+  readonly providers: Pick<
+    ProviderManager,
+    'connect' | 'disconnect' | 'editCatalog' | 'reload' | 'snapshot'
+  >;
   /**
    * The plugins the host loads: report each with the owner's choices and its secrets, store the
    * choices (`plugins.<name>` in `configuration.json`, applied on the next start), and store a
@@ -1034,7 +1037,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       },
       providers: {
         connect: (connection) => providers.connect(connection),
-        editCatalog: (edits) => providers.editCatalog(edits),
+        disconnect: (provider) => providers.disconnect(provider),
+        editCatalog: (edits, base) => providers.editCatalog(edits, base),
         reload: () => providers.reload(),
         snapshot: () => providers.snapshot(),
       },

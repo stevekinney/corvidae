@@ -55,10 +55,51 @@ function open(
     plugins?: PluginFixture[];
     /** The address the page is opened at; `/settings/models` unless given. */
     at?: string;
+    /** The file agents the Bureau lists, by identifier, with the model each names. */
+    agents?: Record<string, string>;
+    /** Extra models an agent may be switched to, by identifier. */
+    listedModels?: Record<string, string[]>;
+    /** Makes the Bureau refuse to describe an agent, as when it does not answer. */
+    agentsUnreadable?: boolean;
   } = {},
 ) {
+  const agents = options.agents ?? {};
   stub = installSettingsBureau(options.served ?? servedSettings(), {
     'bureau.agents.catalog': () => ({ models: [], tools: [] }),
+    'bureau.agents.list': () => ({
+      agents: Object.keys(agents).map((name) => ({
+        name,
+        displayName: name,
+        description: null,
+        definitionRevision: 1,
+        kind: 'file',
+        a2a: false,
+      })),
+    }),
+    'bureau.agents.definitions.get': (params) => {
+      if (options.agentsUnreadable === true) throw new Error('The Bureau did not answer.');
+      const id = String(params['id']);
+      return {
+        id,
+        source: 'file',
+        state: 'ready',
+        name: id,
+        description: null,
+        a2a: false,
+        hash: null,
+        problem: null,
+        definition: {
+          name: id,
+          description: null,
+          a2a: false,
+          model: agents[id] ?? '',
+          models: options.listedModels?.[id] ?? null,
+          tools: [],
+          skillDescriptors: [],
+          instructions: '',
+        },
+      };
+    },
   });
   host = installFakeHost({
     keys: options.keys ?? { anthropic: true, openai: false, gemini: false },
@@ -310,6 +351,273 @@ describe('connecting a provider', () => {
   });
 });
 
+describe('disconnecting a provider', () => {
+  async function ask(container: HTMLElement, name = 'anthropic') {
+    await fireEvent.click(
+      within(providerOf(container, name)!).getByRole('button', { name: /^Disconnect/ }),
+    );
+    return within(container.ownerDocument.body).findByRole('dialog');
+  }
+  const confirm = (dialog: HTMLElement) =>
+    within(dialog).getByRole('button', { name: MODELS_COPY.disconnectDialog.confirm });
+
+  test('is offered for a provider with a key, and not for one without', async () => {
+    const { container } = open();
+    await loaded(container);
+
+    expect(
+      within(providerOf(container, 'anthropic')!).getByRole('button', { name: /^Disconnect/ }),
+    ).toBeDefined();
+    expect(
+      within(providerOf(container, 'openai')!).queryByRole('button', { name: /^Disconnect/ }),
+    ).toBeNull();
+  });
+
+  test('names the agents that use the provider’s models, then removes the key and the models with it', async () => {
+    const { container } = open({
+      agents: { writer: 'anthropic/claude-sonnet-5', helper: 'openai/gpt-5' },
+    });
+    await loaded(container);
+    await waitFor(() => expect(rowOf(container, 'anthropic/claude-sonnet-5')).not.toBeNull());
+
+    const dialog = await ask(container);
+    const named = await within(dialog).findByTestId('provider-disconnect-agents');
+    expect(named.textContent).toContain('writer');
+    expect(named.textContent).not.toContain('helper');
+    expect(named.textContent).toContain(
+      MODELS_COPY.disconnectDialog.invalidHeading('Anthropic', 1),
+    );
+    expect(writes()).toEqual([]);
+
+    await fireEvent.click(confirm(dialog));
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]).toEqual({
+      method: 'DELETE',
+      path: '/host/providers/anthropic',
+      body: undefined,
+    });
+    await waitFor(() =>
+      expect(rowOf(container, 'anthropic/claude-sonnet-5')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(providerOf(container, 'anthropic')?.textContent).not.toContain(
+      MODELS_COPY.providers.connected,
+    );
+    expect(
+      within(providerOf(container, 'anthropic')!).getByRole('button', { name: /^Connect/ }),
+    ).toBeDefined();
+    expect(container.ownerDocument.body.textContent).toContain(
+      MODELS_COPY.disconnectDialog.toast('Anthropic'),
+    );
+    expect(everything(container)).not.toContain(KEY);
+  });
+
+  test('says so when no agent names one of the provider’s models', async () => {
+    const { container } = open({ agents: { helper: 'openai/gpt-5' } });
+    await loaded(container);
+
+    const dialog = await ask(container);
+
+    const none = await within(dialog).findByTestId('provider-disconnect-none');
+    expect(none.textContent).toContain(MODELS_COPY.disconnectDialog.noAgents('Anthropic'));
+    expect(within(dialog).queryByTestId('provider-disconnect-agents')).toBeNull();
+  });
+
+  test('separates agents that become invalid from agents that only lose listed models, and flags the embedder', async () => {
+    const { container } = open({
+      agents: { writer: 'anthropic/sonnet', switcher: 'openai/gpt-5' },
+      listedModels: { switcher: ['anthropic/haiku'] },
+    });
+    await loaded(container);
+
+    const dialog = await ask(container);
+
+    const invalid = await within(dialog).findByTestId('provider-disconnect-invalid');
+    expect(invalid.textContent).toContain('writer');
+    expect(invalid.textContent).not.toContain('switcher');
+    expect(invalid.textContent).toContain(MODELS_COPY.disconnectDialog.invalidConsequence);
+    const trimmed = within(dialog).getByTestId('provider-disconnect-trimmed');
+    expect(trimmed.textContent).toContain('switcher');
+    expect(trimmed.textContent).toContain(MODELS_COPY.disconnectDialog.trimmedConsequence);
+    expect(within(dialog).queryByTestId('provider-disconnect-embedder')).toBeNull();
+  });
+
+  test('says which agents are unknown when they cannot be read, and still lets the person disconnect', async () => {
+    const { container } = open({ agents: { writer: 'anthropic/sonnet' }, agentsUnreadable: true });
+    await loaded(container);
+
+    const dialog = await ask(container);
+
+    const unknown = await within(dialog).findByTestId('provider-disconnect-unknown');
+    expect(unknown.textContent).toContain(MODELS_COPY.disconnectDialog.agentsUnknown('Anthropic'));
+    await waitFor(() => expect((confirm(dialog) as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(confirm(dialog));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+  });
+
+  test('holds the confirm button until the agents have been read, and sends nothing on Cancel', async () => {
+    const { container } = open({ agents: { writer: 'anthropic/sonnet' } });
+    await loaded(container);
+
+    const dialog = await ask(container);
+    expect((confirm(dialog) as HTMLButtonElement).disabled).toBe(true);
+    await within(dialog).findByTestId('provider-disconnect-agents');
+    expect((confirm(dialog) as HTMLButtonElement).disabled).toBe(false);
+    expect(confirm(dialog).hasAttribute('data-changes')).toBe(true);
+
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MODELS_COPY.disconnectDialog.cancel }),
+    );
+
+    expect(writes()).toEqual([]);
+    expect(providerOf(container, 'anthropic')?.textContent).toContain(
+      MODELS_COPY.providers.connected,
+    );
+  });
+
+  test('keeps the dialog open and says the key was not removed when the host refuses', async () => {
+    const { container } = open();
+    await loaded(container);
+    const dialog = await ask(container);
+    await within(dialog).findByTestId('provider-disconnect-none');
+    host!.refuseNext = Response.json({ error: 'failed', message: '' }, { status: 500 });
+
+    await fireEvent.click(confirm(dialog));
+
+    const failure = await within(dialog).findByTestId('provider-disconnect-failure');
+    expect(failure.textContent).toContain(MODELS_COPY.disconnectDialog.failed);
+    expect(providerOf(container, 'anthropic')?.textContent).toContain(
+      MODELS_COPY.providers.connected,
+    );
+  });
+
+  test('is held when the host keeps its keys in its deployment', async () => {
+    const { container } = open({ lockReason: 'deployment' });
+    await loaded(container);
+
+    const button = within(providerOf(container, 'anthropic')!).getByRole('button', {
+      name: /^Disconnect/,
+    });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(writes()).toEqual([]);
+  });
+});
+
+describe('a catalog that changed while it was being edited', () => {
+  const save = (getByRole: ReturnType<typeof render>['getByRole']) =>
+    getByRole('button', { name: MODELS_COPY.models.save }) as HTMLButtonElement;
+  const haiku = (container: HTMLElement) => rowOf(container, 'anthropic/claude-haiku-4-5')!;
+  const sonnetOff = { provider: 'anthropic', model: 'claude-sonnet-5', off: true };
+
+  async function startEditing(container: HTMLElement) {
+    await loaded(container);
+    await waitFor(() => expect(rowOf(container, 'anthropic/claude-sonnet-5')).not.toBeNull());
+    await fireEvent.click(within(haiku(container)).getByRole('switch'));
+  }
+
+  test('is found when the files are read again, and holds Save with the working copy kept', async () => {
+    const { container, getByRole, findByTestId } = open();
+    await startEditing(container);
+    // A hand edit that the person then asks the host to read.
+    host!.catalog = [sonnetOff];
+    await fireEvent.click(getByRole('button', { name: MODELS_COPY.providers.reload }));
+
+    const prompt = await findByTestId('models-changed-elsewhere');
+    expect(prompt.textContent).toContain(MODELS_COPY.models.changedElsewhere.title);
+    expect(save(getByRole).disabled).toBe(true);
+    // The person's edit is still on the table.
+    expect(haiku(container).dataset['off']).toBe('true');
+    expect(writes().map((write) => write.path)).toEqual(['/host/providers/reload']);
+  });
+
+  test('is found by the host when Save is pressed first, which writes nothing and keeps the edit', async () => {
+    const { container, getByRole, findByTestId } = open();
+    await startEditing(container);
+    // Another tab saved. This page has not read it yet.
+    host!.catalog = [sonnetOff];
+
+    await fireEvent.click(save(getByRole));
+
+    await findByTestId('models-changed-elsewhere');
+    expect(writes()).toEqual([
+      {
+        method: 'PUT',
+        path: '/host/catalog',
+        body: {
+          edits: [{ provider: 'anthropic', model: 'claude-haiku-4-5', off: true }],
+          base: [],
+        },
+      },
+    ]);
+    // The other tab's edit stands, and the person's is still being held.
+    expect(host!.catalog).toEqual([sonnetOff]);
+    expect(haiku(container).dataset['off']).toBe('true');
+    expect(save(getByRole).disabled).toBe(true);
+    expect(container.querySelector('[data-testid="models-failure"]')).toBeNull();
+  });
+
+  test('is cleared by Reload, which takes what the host holds and drops the working copy', async () => {
+    const { container, getByRole, findByTestId, queryByTestId } = open();
+    await startEditing(container);
+    host!.catalog = [sonnetOff];
+    await fireEvent.click(save(getByRole));
+    await findByTestId('models-changed-elsewhere');
+
+    await fireEvent.click(
+      getByRole('button', { name: MODELS_COPY.models.changedElsewhere.action }),
+    );
+
+    await waitFor(() =>
+      expect(queryByTestId('models-changed-elsewhere')?.outerHTML ?? null).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(rowOf(container, 'anthropic/claude-sonnet-5')?.dataset['off']).toBe('true'),
+    );
+    expect(haiku(container).dataset['off']).toBe('false');
+    expect(save(getByRole).disabled).toBe(true);
+    expect(host!.catalog).toEqual([sonnetOff]);
+  });
+
+  test('is cleared by Discard too, and a new edit then starts from what the host holds', async () => {
+    const { container, getByRole, findByTestId, queryByTestId } = open();
+    await startEditing(container);
+    host!.catalog = [sonnetOff];
+    await fireEvent.click(save(getByRole));
+    await findByTestId('models-changed-elsewhere');
+
+    await fireEvent.click(getByRole('button', { name: MODELS_COPY.models.discard }));
+    await waitFor(() =>
+      expect(queryByTestId('models-changed-elsewhere')?.outerHTML ?? null).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(rowOf(container, 'anthropic/claude-sonnet-5')?.dataset['off']).toBe('true'),
+    );
+    await fireEvent.click(within(haiku(container)).getByRole('switch'));
+    await fireEvent.click(save(getByRole));
+
+    await waitFor(() => expect(writes().filter((write) => write.method === 'PUT')).toHaveLength(2));
+    const second = writes().filter((write) => write.method === 'PUT')[1];
+    expect(second?.body).toMatchObject({ base: [sonnetOff] });
+    await waitFor(() =>
+      expect(host!.catalog).toEqual([
+        sonnetOff,
+        { provider: 'anthropic', model: 'claude-haiku-4-5', off: true },
+      ]),
+    );
+  });
+
+  test('is not claimed after the person’s own save, which changes what the host holds', async () => {
+    const { container, getByRole, queryByTestId } = open();
+    await startEditing(container);
+
+    await fireEvent.click(save(getByRole));
+
+    await waitFor(() => expect(save(getByRole).disabled).toBe(true));
+    await waitFor(() => expect(host!.catalog).toHaveLength(1));
+    expect(queryByTestId('models-changed-elsewhere')?.outerHTML ?? null).toBeNull();
+  });
+});
+
 describe('the models', () => {
   const save = (getByRole: ReturnType<typeof render>['getByRole']) =>
     getByRole('button', { name: MODELS_COPY.models.save }) as HTMLButtonElement;
@@ -345,7 +653,7 @@ describe('the models', () => {
     expect(writes()[0]).toEqual({
       method: 'PUT',
       path: '/host/catalog',
-      body: { edits: [{ provider: 'anthropic', model: 'claude-haiku-4-5', off: true }] },
+      body: { edits: [{ provider: 'anthropic', model: 'claude-haiku-4-5', off: true }], base: [] },
     });
     await waitFor(() => expect(save(getByRole).disabled).toBe(true));
     expect(rowOf(container, 'anthropic/claude-haiku-4-5')?.dataset['off']).toBe('true');
@@ -365,7 +673,11 @@ describe('the models', () => {
     await fireEvent.click(save(getByRole));
 
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0]?.body).toEqual({ edits: [] });
+    // The save names the edits it started from, which the host compares.
+    expect(writes()[0]?.body).toEqual({
+      edits: [],
+      base: [{ provider: 'anthropic', model: 'haiku', off: true }],
+    });
   });
 
   test('puts the edits back on Discard, and when a switch is flipped twice', async () => {
@@ -413,6 +725,7 @@ describe('the models', () => {
           pricing: { inputPerMillionTokens: 3, outputPerMillionTokens: 20, currency: 'USD' },
         },
       ],
+      base: [],
     });
   });
 

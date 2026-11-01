@@ -249,6 +249,8 @@ export const queryKeys = {
   hostStorage: () => ['host', 'storage'] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */
   hostProviders: () => ['host', 'providers'] as const,
+  /** The agents that name a model of one provider, read before the provider is disconnected. */
+  hostProviderAgents: (provider: string) => ['host', 'providers', 'agents', provider] as const,
   /** The plugins the host loaded, what they add, and their secrets (`/host/plugins`). */
   hostPlugins: () => ['host', 'plugins'] as const,
   /** The plugin panels the host serves, which the run page mounts (`/host/mcp-apps`). */

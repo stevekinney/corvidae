@@ -1444,6 +1444,8 @@ export const MODELS_COPY = {
     manage: 'Manage',
     connectLabel: (name: string): string => `Connect ${name}`,
     manageLabel: (name: string): string => `Manage ${name}`,
+    disconnect: 'Disconnect',
+    disconnectLabel: (name: string): string => `Disconnect ${name}`,
     reload: 'Reload from files',
     reloaded: 'Providers read again from the configuration file',
     reloadFailed: 'The configuration could not be read again',
@@ -1465,6 +1467,30 @@ export const MODELS_COPY = {
     failed: 'The key could not be saved.',
     locked: 'This host keeps its keys in its deployment, so it cannot save one.',
     partial: 'The key was stored, but the configuration could not be written.',
+  },
+  disconnectDialog: {
+    title: (name: string): string => `Disconnect ${name}`,
+    description: (name: string): string =>
+      `Disconnecting removes the saved ${name} key from this machine and takes its models out of the catalog. Connect it again with a key to bring them back.`,
+    checking: (name: string): string => `Looking for agents that use ${name} models`,
+    invalidHeading: (name: string, count: number): string =>
+      `${String(count)} ${count === 1 ? 'agent has' : 'agents have'} a ${name} model as ${count === 1 ? 'its' : 'their'} default`,
+    invalidConsequence:
+      'Without the provider, they become invalid and move to the Invalid list on the Agents page until you connect it again or give them another default model.',
+    trimmedHeading: (name: string, count: number): string =>
+      `${String(count)} ${count === 1 ? 'agent lists' : 'agents list'} ${name} models to switch to`,
+    trimmedConsequence:
+      'They stay ready and lose those models from the ones they can be switched to.',
+    embedderNote:
+      'If a memory embedder from this provider is selected, memory needs setup again until you connect it or choose another.',
+    noAgents: (name: string): string => `No agent names a ${name} model.`,
+    agentsUnknown: (name: string): string =>
+      `The agents could not be read, so which ones use ${name} models is not known.`,
+    confirm: 'Disconnect',
+    cancel: 'Cancel',
+    toast: (name: string): string => `${name} disconnected`,
+    failed: 'The key could not be removed.',
+    locked: 'This host keeps its keys in its deployment, so it cannot remove one.',
   },
   models: {
     heading: 'Models',
@@ -1498,6 +1524,13 @@ export const MODELS_COPY = {
     saved: 'Models saved',
     unsaved: 'You have unsaved changes to the models.',
     saveFailed: 'The models were not saved',
+    /** The catalog changed under a working copy: another tab saved, or the files were edited and read again. */
+    changedElsewhere: {
+      title: 'The models changed while you were editing',
+      description:
+        'Another tab, or a change to the configuration file, changed them. Reload to see what they are now. Reloading discards your changes, and saving them would overwrite the change, so Save is held until you reload.',
+      action: 'Reload models',
+    },
     empty: {
       title: 'No models yet',
       description: 'Connect a provider and the models it offers appear here.',

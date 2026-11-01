@@ -14,6 +14,10 @@
  *   `deployment` ({@link ProviderWriteLockedError}).
  * - **No secret leaves.** An error names the field, never the value, and nothing here returns,
  *   logs, or audits a key.
+ * - **A catalog save names what it started from.** {@link ProviderManager.editCatalog} may be given
+ *   the edits the caller read before it changed them. Under the configuration queue they are
+ *   compared with the edits stored now, and a mismatch is a {@link ProviderConflictError} that
+ *   writes nothing, so a save never overwrites an edit made elsewhere since.
  * - **In-flight runs keep what they started with.** A generate captures the key it was resolved
  *   with, so a run that began before a change finishes with the provider it began with, and a run
  *   that begins after it resolves the new one.
@@ -87,6 +91,22 @@ export class ProviderPartialChangeError extends Error {
     this.name = 'ProviderPartialChangeError';
     this.provider = provider;
     this.inUse = inUse;
+  }
+}
+
+/**
+ * A catalog save whose base is not what is stored now: another save, or a hand edit read by a
+ * reload, changed the edits after the caller read them. Nothing was written. `catalog` is what is
+ * stored now, so the caller can show it.
+ */
+export class ProviderConflictError extends Error {
+  /** The catalog edits stored now, for the providers the host loaded. */
+  readonly catalog: readonly CatalogEdit[];
+
+  constructor(catalog: readonly CatalogEdit[]) {
+    super('The model catalog changed after it was read, so nothing was saved.');
+    this.name = 'ProviderConflictError';
+    this.catalog = catalog;
   }
 }
 
@@ -196,8 +216,19 @@ export type ProviderManager = {
   snapshot(): Promise<ProviderSnapshot>;
   /** Store a provider's key, list it in the configuration, and apply both. */
   connect(connection: ProviderConnection): Promise<ProviderChange>;
-  /** Replace the catalog edits in the configuration and apply them. */
-  editCatalog(edits: unknown): Promise<ProviderChange>;
+  /**
+   * Replace the catalog edits in the configuration and apply them. `base` is the list of edits the
+   * caller started from, as {@link ProviderManager.snapshot} reported it. When it is given, the
+   * edits stored now must equal it, or nothing is written and the change is a
+   * {@link ProviderConflictError}. Left out, the edits are replaced whatever is stored.
+   */
+  editCatalog(edits: unknown, base?: unknown): Promise<ProviderChange>;
+  /**
+   * Remove a provider's key and apply it, so its models leave the catalog and a run that begins
+   * after it cannot call the provider. The provider's allowlist and the catalog edits stay in the
+   * configuration for a later connect. Connecting again restores it.
+   */
+  disconnect(provider: unknown): Promise<ProviderChange>;
   /** Read the configuration and the keys again and apply them. */
   reload(): Promise<ProviderChange>;
   /**
@@ -311,6 +342,23 @@ function checkedKey(value: unknown): string {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** `value` as JSON whose object keys are in order, so two lists of edits that say the same thing compare equal. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (isPlainObject(value)) {
+    const members = Object.entries(value)
+      .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, member]) => `${JSON.stringify(key)}:${canonicalJson(member)}`);
+    return `{${members.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** Whether two lists of catalog edits are the same edits in the same order. */
+function sameEdits(left: readonly CatalogEdit[], right: readonly CatalogEdit[]): boolean {
+  return canonicalJson(left) === canonicalJson(right);
 }
 
 /**
@@ -535,27 +583,76 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         return apply();
       });
     },
-    async editCatalog(edits) {
+    async editCatalog(edits, base) {
       assertWritable();
       const parsed = parseCatalogEdits(
         edits,
         location,
         loaded.providers.map((provider) => provider.name),
       );
+      // The base is read before the first `await`, like the edits: the caller owns it.
+      let expected: readonly CatalogEdit[] | undefined;
+      if (base !== undefined) {
+        try {
+          expected = parseCatalogEdits(base, location);
+        } catch (error) {
+          if (!(error instanceof ProviderConfigurationError)) throw error;
+          throw new ProviderInputError(
+            'base',
+            'expected the list of catalog edits it started from.',
+          );
+        }
+      }
       return serialized(async () => {
         const { catalog: stored, ...rest } = await readDocument();
         // An edit for a provider no loaded plugin contributes is not the caller's to replace: it
         // waits in the file for its plugin, after the edits that replace the others.
         const names = new Set(loaded.providers.map((provider) => provider.name));
-        const dormant = parseCatalogEdits(stored ?? [], location).filter(
-          (edit) => !names.has(edit.provider),
-        );
+        const storedEdits = parseCatalogEdits(stored ?? [], location);
+        // The comparison and the write share one turn of the queue, so no save lands between them.
+        // It sees what the snapshot shows: the edits of the providers that are loaded.
+        const current = storedEdits.filter((edit) => names.has(edit.provider));
+        if (expected !== undefined && !sameEdits(expected, current)) {
+          throw new ProviderConflictError(current);
+        }
+        const dormant = storedEdits.filter((edit) => !names.has(edit.provider));
         const next = [...parsed, ...dormant];
         const text = validated(
           next.length === 0 ? rest : { ...rest, catalog: next },
           new Set(loaded.apiKeys.keys()),
         );
         bungalow.writeConfiguration(text);
+        return apply();
+      });
+    },
+    async disconnect(provider) {
+      assertWritable();
+      const contributed = checkedProvider(provider, loaded.providers);
+      const secretKey = contributed.secretKey;
+      if (secretKey === undefined) {
+        throw new ProviderInputError('provider', 'its plugin declares no secret to hold a key.');
+      }
+      return serialized(async () => {
+        try {
+          // An empty value reads as no key, as the restore of a failed connect relies on.
+          bungalow.writeSecret(secretKey, '');
+        } catch (error) {
+          // A write that throws may still have replaced the file, so the disk decides.
+          let removed = false;
+          try {
+            const onDisk = bungalow.readSecret(secretKey);
+            removed = onDisk === undefined || onDisk === '';
+          } catch {
+            removed = false;
+          }
+          if (!removed) {
+            // Whatever is on the disk is what the host should serve.
+            await apply().catch(() => undefined);
+            throw error;
+          }
+        }
+        // The plugin manager reports whether the provider's plugin still has its secret.
+        await options.afterConfigurationWrite?.().catch(() => undefined);
         return apply();
       });
     },
