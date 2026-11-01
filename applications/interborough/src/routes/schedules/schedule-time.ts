@@ -5,8 +5,9 @@
  * elapsed time and has no zone of its own, so its runs are shown in the zone the browser is in,
  * named the same way.
  */
-import { computeNextFires } from '../../lib/format/cron-preview.ts';
-import { browserTimeZone, cadenceToScheduleValue } from './cadence.ts';
+import { CronExpressionParser } from 'cron-parser';
+
+import { browserTimeZone } from './cadence.ts';
 
 /** The fields of a schedule that say when it fires. */
 export type ScheduleTiming = {
@@ -16,6 +17,8 @@ export type ScheduleTiming = {
   readonly timeZone?: string | undefined;
   /** When the engine will wake for it next, in milliseconds. */
   readonly nextFireAt?: number | null | undefined;
+  /** The most recent occurrence that started a run, in milliseconds. */
+  readonly lastFireAt?: number | undefined;
   /** The fire a person asked to skip, in milliseconds. */
   readonly skipUntil?: number | undefined;
 };
@@ -65,11 +68,86 @@ export function formatInZone(at: number, zone: string): string {
   }
 }
 
+const MINUTE_MS = 60_000;
+
+/** The wall clock of an instant in a zone, read as UTC, so a cron can be matched against it. */
+function wallClockAsUtc(at: number, zone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+  }).formatToParts(at);
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((candidate) => candidate.type === type)?.value);
+  return Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'));
+}
+
 /**
- * The next `count` runs of an active schedule, soonest first. A cron's are the expression read in
- * its zone from `now`; an interval's are `nextFireAt` and each interval after it. A run at or before
- * the one a person asked to skip is marked skipped. A paused or cancelled schedule has none, and an
- * expression that cannot be read has none either.
+ * Whether the expression matches the wall clock the zone shows at `at`. The engine fires an
+ * instant only when it does (`ScheduleTick.fires`): the instant a daylight-saving gap ends is a
+ * tick that fires nothing when the expression named a time inside the gap, though a cron reader
+ * that shifts such a time forward lands on it.
+ */
+function firesAt(expression: string, zone: string, at: number): boolean {
+  const local = wallClockAsUtc(at, zone);
+  const next = CronExpressionParser.parse(expression, {
+    currentDate: new Date(local - MINUTE_MS),
+    tz: 'UTC',
+  }).next();
+  return next.toDate().getTime() === local;
+}
+
+/** The instants a cron fires at from `from` on (`from` itself too when `inclusive`), soonest first. */
+function cronFires(
+  timing: ScheduleTiming,
+  from: number,
+  inclusive: boolean,
+  count: number,
+): number[] {
+  const expression = timing.cronExpression ?? '';
+  const zone = timing.timeZone ?? 'UTC';
+  const times: number[] = [];
+  if (inclusive && firesAt(expression, zone, from)) times.push(from);
+  const parser = CronExpressionParser.parse(expression, { currentDate: new Date(from), tz: zone });
+  // A gap leaves out one match at a time, so a bounded walk finds `count` fires and ends on an
+  // expression that stops matching.
+  for (let walked = 0; times.length < count && walked < count * 4 + 16; walked += 1) {
+    if (!parser.hasNext()) break;
+    const at = parser.next().toDate().getTime();
+    if (firesAt(expression, zone, at)) times.push(at);
+  }
+  return times.slice(0, count);
+}
+
+/**
+ * Where the engine's next occurrence is, from the schedule alone and never the clock of the page.
+ * A run that is due but waits out its jitter keeps its `nextFireAt` until it starts, and that is
+ * the run "Skip the next one" skips; the page's own clock would have moved past it. While a
+ * backfill is catching up, `lastFireAt` is at or past `nextFireAt` and the next is strictly after
+ * `lastFireAt`.
+ */
+function occurrenceAnchor(
+  timing: ScheduleTiming,
+): { readonly from: number; readonly inclusive: boolean } | null {
+  const next = timing.nextFireAt;
+  if (next == null) return null;
+  const last = timing.lastFireAt;
+  return last !== undefined && last >= next
+    ? { from: last, inclusive: false }
+    : { from: next, inclusive: true };
+}
+
+/**
+ * The next `count` runs of an active schedule, soonest first, counted from the engine's
+ * `nextFireAt` (a cron's are the expression read in its zone after it, an interval's are each
+ * interval after it) so the list changes only when the schedule does. A time the engine does not
+ * fire at, such as one inside a daylight-saving gap, is left out. Only the run at `skipUntil` is
+ * marked skipped. A paused or cancelled schedule has none, and an expression that cannot be read
+ * has none either. `now` stands in for `nextFireAt` only when the schedule carries none.
  */
 export function upcomingFires(
   timing: ScheduleTiming,
@@ -77,24 +155,25 @@ export function upcomingFires(
   now: number = Date.now(),
 ): readonly UpcomingFire[] {
   if (timing.status !== 'active') return [];
+  const anchor = occurrenceAnchor(timing);
   let times: number[] = [];
   if (timing.cronExpression !== undefined) {
     try {
-      times = computeNextFires(
-        cadenceToScheduleValue({
-          cronExpression: timing.cronExpression,
-          ...(timing.timeZone !== undefined ? { timeZone: timing.timeZone } : {}),
-        }),
-        count,
-        new Date(now),
-      ).map((fire) => Date.parse(fire.id));
+      times = anchor
+        ? cronFires(timing, anchor.from, anchor.inclusive, count)
+        : cronFires(timing, now, false, count);
     } catch {
       return [];
     }
-  } else if (timing.intervalMs !== undefined && timing.nextFireAt != null) {
+  } else if (timing.intervalMs !== undefined && anchor !== null) {
     const step = timing.intervalMs;
-    times = Array.from({ length: count }, (_, index) => (timing.nextFireAt ?? 0) + index * step);
+    // An interval ticks on a grid through `nextFireAt`, so the one after `lastFireAt` is on it.
+    const first = anchor.inclusive
+      ? anchor.from
+      : (timing.nextFireAt ?? 0) +
+        (Math.floor((anchor.from - (timing.nextFireAt ?? 0)) / step) + 1) * step;
+    times = Array.from({ length: count }, (_, index) => first + index * step);
   }
   const skipUntil = timing.skipUntil;
-  return times.map((at) => ({ at, skipped: skipUntil !== undefined && at <= skipUntil }));
+  return times.map((at) => ({ at, skipped: skipUntil !== undefined && at === skipUntil }));
 }

@@ -41,7 +41,7 @@ const FILE: WorkflowFileListing = {
 const target = (
   kind: ScheduleKind,
   status: 'active' | 'paused' | 'cancelled' = 'active',
-): ScheduleTarget => ({ schedule: { id: 's-1', revision: 3, status }, kind });
+): ScheduleTarget => ({ schedule: { id: 's-1', revision: 3, status, nextFireAt: 1000 }, kind });
 
 const client = new HttpClient({ baseUrl: 'http://localhost/api' });
 
@@ -144,10 +144,16 @@ describe('the controls that skip and run', () => {
 
 describe('a write to an engine schedule that moved on after it was read', () => {
   /** An engine whose `getSchedule` answers with the schedule as it is now. */
-  function engineAt(now: { revision: number; status: 'active' | 'paused' | 'cancelled' } | null) {
+  function engineAt(
+    now: {
+      revision: number;
+      status: 'active' | 'paused' | 'cancelled';
+      nextFireAt?: number | null;
+    } | null,
+  ) {
     const calls: string[] = [];
     const fake = {
-      getSchedule: () => Promise.resolve(now),
+      getSchedule: () => Promise.resolve(now === null ? null : { nextFireAt: 1000, ...now }),
       pauseSchedule: (id: string) => Promise.resolve(void calls.push(`pause ${id}`)),
       resumeSchedule: (id: string) => Promise.resolve(void calls.push(`resume ${id}`)),
       cancelSchedule: (id: string) => Promise.resolve(void calls.push(`cancel ${id}`)),
@@ -173,6 +179,18 @@ describe('a write to an engine schedule that moved on after it was read', () => 
       );
       expect(moved.calls).toEqual([]);
     }
+  });
+
+  test('refuses a skip once a fire moved nextFireAt, though the revision did not move', async () => {
+    // A fire moves `nextFireAt` and leaves the revision, so the run the person chose is gone.
+    const fired = engineAt({ revision: 3, status: 'active', nextFireAt: 2000 });
+    expect(
+      await rejectionOf(skipNextTarget(fired.client, target({ kind: 'code' }))),
+    ).toBeInstanceOf(StaleScheduleError);
+    expect(fired.calls).toEqual([]);
+    // The same fire does not stop a pause, which names no run.
+    await pauseTarget(fired.client, target({ kind: 'code' }));
+    expect(fired.calls).toEqual(['pause s-1']);
   });
 
   test('is written when the schedule is the one that was read', async () => {

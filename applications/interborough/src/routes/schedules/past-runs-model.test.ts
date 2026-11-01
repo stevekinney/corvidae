@@ -45,4 +45,33 @@ describe('the rows of the past runs', () => {
   test('are empty when nothing ran and nothing was missed', () => {
     expect(pastRows([], [])).toEqual([]);
   });
+
+  test('show only the span both lists cover when the runs stopped at their page', () => {
+    // The newest 3 runs end at 700; the missed fires reach back to 100. Rows older than 700 would
+    // show missed fires with the runs between them absent, so they are left out.
+    const rows = pastRows(
+      [run('a', 900), run('b', 800), run('c', 700)],
+      [missed(850), missed(650), missed(100)],
+      { runs: true },
+    );
+    expect(rows.map((row) => `${row.kind}@${String(row.at)}`)).toEqual([
+      'run@900',
+      'missed@850',
+      'run@800',
+      'run@700',
+    ]);
+  });
+
+  test('leave out runs older than the oldest missed fire when the missed fires stopped at their page', () => {
+    // 100 missed fires since 1000; the runs are older. The table is the newest rows, all missed,
+    // and no run older than the oldest missed fire is shown beside them.
+    const manyMissed = Array.from({ length: 3 }, (_, index) => missed(1000 + index));
+    const rows = pastRows([run('old', 500)], manyMissed, { missed: true });
+    expect(rows.map((row) => row.kind)).toEqual(['missed', 'missed', 'missed']);
+  });
+
+  test('keep every row when neither list stopped at its page', () => {
+    const rows = pastRows([run('a', 900)], [missed(100)], { runs: false, missed: false });
+    expect(rows).toHaveLength(2);
+  });
 });

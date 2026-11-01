@@ -8,6 +8,9 @@ import type { WorkflowSummary } from '@lostgradient/weft';
 
 import type { MissedFire } from '../../lib/bureau-schedules.ts';
 
+/** How many missed fires one read returns at most: the engine's own page (`SCHEDULE_MISSED_FIRE_LIMIT`). */
+export const SCHEDULE_MISSED_FIRE_LIMIT = 100;
+
 /** One row of the table. */
 export type PastRow =
   | {
@@ -23,14 +26,26 @@ export type PastRow =
       readonly missed: MissedFire;
     };
 
+/** Which of the two lists stopped at its page, so older rows of that kind exist and were not read. */
+export type PastRowsTruncation = {
+  readonly runs?: boolean;
+  readonly missed?: boolean;
+};
+
 /**
  * The runs and the missed fires as rows, newest first. Two missed fires of one occurrence and
  * reason are two rows only when the schedule recorded them twice, so each is keyed by its
  * occurrence, reason and recording time.
+ *
+ * Each list is a page of the newest, so a list that stopped at its page says nothing about the
+ * time before its oldest row. The table shows only the span both lists cover: a row older than the
+ * oldest row of a truncated list is left out, so a long history reads as a table of the newest rows
+ * of both kinds and never as one kind with the other missing.
  */
 export function pastRows(
   runs: readonly WorkflowSummary[],
   missed: readonly MissedFire[],
+  truncated: PastRowsTruncation = {},
 ): readonly PastRow[] {
   const rows: PastRow[] = [
     ...runs.map((run) => ({ kind: 'run' as const, at: run.createdAt, key: `run:${run.id}`, run })),
@@ -41,5 +56,14 @@ export function pastRows(
       missed: row,
     })),
   ];
-  return rows.toSorted((first, second) => second.at - first.at);
+  const sorted = rows.toSorted((first, second) => second.at - first.at);
+  const oldest = (kind: PastRow['kind']): number =>
+    Math.min(...sorted.filter((row) => row.kind === kind).map((row) => row.at));
+  const floors = [
+    ...(truncated.runs === true && runs.length > 0 ? [oldest('run')] : []),
+    ...(truncated.missed === true && missed.length > 0 ? [oldest('missed')] : []),
+  ];
+  if (floors.length === 0) return sorted;
+  const floor = Math.max(...floors);
+  return sorted.filter((row) => row.at >= floor);
 }

@@ -44,6 +44,7 @@ export function scheduleMissedQueryKey(id: string): QueryKey {
   return ['schedules', 'missed', id] as const;
 }
 
+/** How many runs the table reads: the newest. */
 const SCHEDULE_RUN_HISTORY_LIMIT = 10;
 
 /**

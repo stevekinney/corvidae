@@ -31,7 +31,7 @@ import {
 
 /** A schedule as the page read it, and what owns it. */
 export type ScheduleTarget = {
-  readonly schedule: Pick<ScheduleSummary, 'id' | 'revision' | 'status'>;
+  readonly schedule: Pick<ScheduleSummary, 'id' | 'revision' | 'status' | 'nextFireAt'>;
   readonly kind: ScheduleKind;
 };
 
@@ -171,16 +171,22 @@ export class StaleScheduleError extends Error {
   }
 }
 
-/** Refuses a write to an engine schedule that moved on after the page read it. */
+/**
+ * Refuses a write to an engine schedule that moved on after the page read it. A fire moves
+ * `nextFireAt` and not the revision, so a write that names the run it means (a skip) also compares
+ * `nextFireAt`: the person chose the run the page showed, not the one that is next by now.
+ */
 async function assertUnchanged(
   client: Pick<HttpClient, 'getSchedule'>,
   target: ScheduleTarget,
+  options: { readonly nextFireAt?: boolean } = {},
 ): Promise<void> {
   const now = await client.getSchedule(target.schedule.id);
   if (
     now === null ||
     now.revision !== target.schedule.revision ||
-    now.status !== target.schedule.status
+    now.status !== target.schedule.status ||
+    (options.nextFireAt === true && now.nextFireAt !== target.schedule.nextFireAt)
   ) {
     throw new StaleScheduleError(target.schedule.id);
   }
@@ -193,7 +199,7 @@ export async function skipNextTarget(client: HttpClient, target: ScheduleTarget)
       await skipNextAgentSchedule(target.schedule.id, target.schedule.revision);
       return;
     case 'code':
-      await assertUnchanged(client, target);
+      await assertUnchanged(client, target, { nextFireAt: true });
       await skipNextSchedule(client, target.schedule.id);
       return;
     case 'workflow-file':

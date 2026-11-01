@@ -17,7 +17,7 @@
   import { workflowRunStatusWord } from '../../lib/status.ts';
   import StatusLabel from '../../lib/status-label.svelte';
   import FaultBanner from './fault-banner.svelte';
-  import { pastRows } from './past-runs-model.ts';
+  import { pastRows, SCHEDULE_MISSED_FIRE_LIMIT } from './past-runs-model.ts';
   import {
     fetchScheduleRunHistory,
     scheduleMissedQueryKey,
@@ -46,7 +46,14 @@
     queryFn: () => missedOf(client, schedule),
   }));
 
-  const rows = $derived(pastRows(runs.data?.items ?? [], missed.data ?? []));
+  // The engine keeps at most this many missed fires per read, and a page of runs says how many more
+  // there are, so the table can tell a list that stopped at its page from one that is whole.
+  const rows = $derived(
+    pastRows(runs.data?.items ?? [], missed.data ?? [], {
+      runs: runs.data !== undefined && runs.data.total > runs.data.items.length,
+      missed: (missed.data?.length ?? 0) >= SCHEDULE_MISSED_FIRE_LIMIT,
+    }),
+  );
   const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'timed-out']);
 
   function go(event: MouseEvent, path: string): void {

@@ -72,7 +72,7 @@ describe('the next runs of a schedule', () => {
     expect(fires.map((fire) => fire.at)).toEqual([NOW + 1_000, NOW + 3_601_000, NOW + 7_201_000]);
   });
 
-  test('mark the run a person asked to skip, and only that one and any before it', () => {
+  test('mark the run a person asked to skip', () => {
     const fires = upcomingFires(
       {
         status: 'active',
@@ -95,5 +95,114 @@ describe('the next runs of a schedule', () => {
 
   test('are none for an expression that cannot be read', () => {
     expect(upcomingFires({ status: 'active', cronExpression: 'not a cron' }, 3, NOW)).toEqual([]);
+  });
+});
+
+describe('the next runs of a schedule that has fired since the page read it', () => {
+  const NINE = Date.UTC(2026, 10, 3, 9, 0);
+
+  test('start at the schedule’s nextFireAt, not at a time read from the clock', () => {
+    // The page's clock is two days past the fire the schedule reports.
+    const fires = upcomingFires(
+      { status: 'active', cronExpression: '0 9 * * *', timeZone: 'UTC', nextFireAt: NINE },
+      2,
+      NINE + 2 * 86_400_000,
+    );
+    expect(fires.map((fire) => fire.at)).toEqual([NINE, NINE + 86_400_000]);
+  });
+
+  test('change when the schedule does: the run that fired is gone from the list', () => {
+    const before = upcomingFires(
+      { status: 'active', cronExpression: '0 9 * * *', timeZone: 'UTC', nextFireAt: NINE },
+      2,
+      NOW,
+    );
+    const after = upcomingFires(
+      {
+        status: 'active',
+        cronExpression: '0 9 * * *',
+        timeZone: 'UTC',
+        nextFireAt: NINE + 86_400_000,
+        lastFireAt: NINE,
+      },
+      2,
+      NOW,
+    );
+    expect(before[0]?.at).toBe(NINE);
+    expect(after.map((fire) => fire.at)).toEqual([NINE + 86_400_000, NINE + 2 * 86_400_000]);
+  });
+
+  test('mark only the run at skipUntil, never one that is before it', () => {
+    const fires = upcomingFires(
+      {
+        status: 'active',
+        cronExpression: '0 9 * * *',
+        timeZone: 'UTC',
+        nextFireAt: NINE,
+        // A skip recorded for a later run: the earlier one still starts.
+        skipUntil: NINE + 86_400_000,
+      },
+      3,
+      NOW,
+    );
+    expect(fires.map((fire) => fire.skipped)).toEqual([false, true, false]);
+  });
+
+  test('list a due run whose fire time has passed, so a jittered run is offered, not tomorrow’s', () => {
+    const fires = upcomingFires(
+      { status: 'active', cronExpression: '0 9 * * *', timeZone: 'UTC', nextFireAt: NINE },
+      2,
+      NINE + 60_000,
+    );
+    expect(fires[0]?.at).toBe(NINE);
+  });
+
+  test('skip a daylight-saving gap: 02:30 in New York on 2027-03-14 does not exist', () => {
+    const fires = upcomingFires(
+      {
+        status: 'active',
+        cronExpression: '30 2 * * *',
+        timeZone: 'America/New_York',
+        // The tick at the end of the gap, where the engine fires nothing.
+        nextFireAt: Date.UTC(2027, 2, 14, 7, 0),
+      },
+      2,
+      NOW,
+    );
+    expect(fires.map((fire) => new Date(fire.at).toISOString())).toEqual([
+      '2027-03-15T06:30:00.000Z',
+      '2027-03-16T06:30:00.000Z',
+    ]);
+  });
+
+  test('keep an hourly time that follows the gap: 03:00 fires', () => {
+    const fires = upcomingFires(
+      {
+        status: 'active',
+        cronExpression: '0 * * * *',
+        timeZone: 'America/New_York',
+        nextFireAt: Date.UTC(2027, 2, 14, 7, 0),
+      },
+      2,
+      NOW,
+    );
+    expect(fires.map((fire) => new Date(fire.at).toISOString())).toEqual([
+      '2027-03-14T07:00:00.000Z',
+      '2027-03-14T08:00:00.000Z',
+    ]);
+  });
+
+  test('count an interval on from the occurrence after lastFireAt while a backfill catches up', () => {
+    const fires = upcomingFires(
+      {
+        status: 'active',
+        intervalMs: 60_000,
+        nextFireAt: NOW,
+        lastFireAt: NOW + 120_000,
+      },
+      2,
+      NOW,
+    );
+    expect(fires.map((fire) => fire.at)).toEqual([NOW + 180_000, NOW + 240_000]);
   });
 });

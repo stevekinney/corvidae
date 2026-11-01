@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * A schedule's next runs, soonest first, each in the zone the schedule is read in with the zone
-   * named. "Skip the next one" makes the next run that would start start nothing, and the one after
+   * named, counted from the schedule's own `nextFireAt`. "Skip the next one" makes the next run that would start start nothing, and the one after
    * it run as usual; the run it skipped stays in the list, marked, until its time has passed, and
    * skipping again meanwhile would change nothing, so the button goes while one is skipped. A
    * schedule that is paused or cancelled has no next runs, and says so.
@@ -27,14 +27,16 @@
     /** A write is in flight. */
     busy: boolean;
     onSkip: () => void;
-    /** The moment the list counts from, so a test can fix it. */
+    /** Where the list counts from only when the schedule carries no `nextFireAt`; a test can fix it. */
     now?: number;
   }
 
-  let { schedule, count = 5, canSkip, busy, onSkip, now = Date.now() }: Props = $props();
+  let { schedule, count = 5, canSkip, busy, onSkip, now }: Props = $props();
 
   const copy = SCHEDULE_COPY.detail;
   const zone = $derived(scheduleZone(schedule));
+  // The list follows the schedule the engine reports, so it is read again whenever that changes: a
+  // fire moves `nextFireAt`, and a clock frozen at mount would keep offering a time that has passed.
   const fires = $derived(upcomingFires(schedule, count, now));
   const anySkipped = $derived(fires.some((fire) => fire.skipped));
   /** The first run that will start one: the one "Skip the next one" would skip. */

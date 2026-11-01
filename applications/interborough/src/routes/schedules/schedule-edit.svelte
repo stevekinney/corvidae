@@ -270,6 +270,10 @@
         {/key}
       {/if}
     </div>
+    {#if detail.data?.skipUntil !== undefined}
+      <!-- The engine drops a pending skip when the schedule is updated, so a save restores that run. -->
+      <Alert variant="info" data-testid="schedule-edit-skip-pending">{copy.skipPending}</Alert>
+    {/if}
     {#if invalidCadence}
       <Alert variant="danger" dismissible onDismiss={() => (invalidCadence = false)}>
         {copy.invalidCadence}

@@ -454,4 +454,60 @@ describe('ScheduleEdit', () => {
     await waitFor(() => expect(getByText(SCHEDULE_COPY.detail.loadFailed)).not.toBeNull());
     expect(getByRole('button', { name: 'Try again' })).not.toBeNull();
   });
+  test('says a save restores the run that was skipped, because the engine drops the skip on any update', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'skip-then-edit',
+      cron: '0 2 * * *',
+      timeZone: 'UTC',
+      input: { warehouseId: 'wh-main' },
+    });
+    await server.engine.skipNextScheduleOccurrence('skip-then-edit');
+    const skipped = await server.engine.getSchedule('skip-then-edit');
+    expect(skipped?.skipUntil).toBeDefined();
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    let closed = false;
+    try {
+      const { getByRole, getByTestId } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'skip-then-edit', onClose: () => (closed = true) },
+      });
+
+      await waitFor(() => getByRole('radio', { name: 'Pinned' }));
+      expect(getByTestId('schedule-edit-skip-pending').textContent).toContain(
+        SCHEDULE_COPY.edit.skipPending,
+      );
+      await fireEvent.click(getByRole('radio', { name: 'Pinned' }));
+      await fireEvent.click(getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(closed).toBe(true));
+      // The warning is true: the save dropped the skip.
+      const saved = await server.engine.getSchedule('skip-then-edit');
+      expect(saved?.skipUntil).toBeUndefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('says nothing about a skip when none is pending', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'no-skip-edit',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { getByRole, queryByTestId } = render(ScheduleEditHarness, {
+        props: { client, scheduleId: 'no-skip-edit', onClose: () => {} },
+      });
+
+      await waitFor(() => getByRole('radio', { name: 'Pinned' }));
+      expect(queryByTestId('schedule-edit-skip-pending')).toBeNull();
+    } finally {
+      await server.stop();
+    }
+  });
 });
