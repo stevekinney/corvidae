@@ -11,6 +11,8 @@ import { isStandardSchema, isZodSchema } from 'armorer';
 import { z } from 'zod';
 
 import { canonicalJson } from '../command-ledger.ts';
+import { ModelPolicyDeniedError } from '../file-agent-generate.ts';
+import { type BureauModelPolicyOptions, modelPolicyDenialOf } from '../model-policy.ts';
 import type { Models, ModelsOptions } from '../models/create-models.ts';
 import type { SettingsValues } from '../settings/settings-schema.ts';
 import type {
@@ -45,6 +47,12 @@ export type DecisionsDependencies = {
   >;
   /** The catalog the fallback row is chosen from and the `generate` it runs with. */
   readonly models: Pick<Models, 'catalog' | 'generate'>;
+  /**
+   * The model policy in force, read for every decision (COR-1996): the language-model fallback
+   * never uses a row the deployment or Bureau layer forbids. A model registered in
+   * {@link DecisionsOptions.models} is host code with no catalog row, so the policy cannot judge it.
+   */
+  readonly modelPolicy?: (() => BureauModelPolicyOptions | undefined) | undefined;
   /** The `models` option, whose `generate` the fallback needs. */
   readonly modelsOptions: ModelsOptions | undefined;
   /** Builds the `NOT_CONFIGURED` error a decision that no model can answer is refused with. */
@@ -237,8 +245,20 @@ export function createDecisions(dependencies: DecisionsDependencies): DecisionsC
     dependencies.settings()['decisions.maximumPerTask'] ?? DEFAULT_DECISIONS_PER_TASK;
 
   function fallback(): DecisionModel {
-    const row = chooseFallbackRow(dependencies.models.catalog().descriptors, fallbackModelNow());
+    const descriptors = dependencies.models.catalog().descriptors;
+    const policy = dependencies.modelPolicy?.();
+    // A forbidden row is skipped when choosing, so the policy narrows the fallback and does not
+    // end it while another row can answer. Only when it leaves none is the decision refused.
+    const row = chooseFallbackRow(
+      descriptors.filter((candidate) => modelPolicyDenialOf(candidate, policy) === undefined),
+      fallbackModelNow(),
+    );
     if (row === undefined) {
+      const forbidden = chooseFallbackRow(descriptors, fallbackModelNow());
+      const denial = forbidden === undefined ? undefined : modelPolicyDenialOf(forbidden, policy);
+      if (forbidden !== undefined && denial !== undefined) {
+        throw new ModelPolicyDeniedError(forbidden, denial);
+      }
       throw dependencies.notConfigured(
         'No model can answer this decision: the model catalog has no available row with structured output and a price',
       );

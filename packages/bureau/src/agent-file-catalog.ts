@@ -108,7 +108,7 @@ import {
 } from './agent-reference-documents';
 import { createFileAgentCompactor } from './file-agent-compaction';
 import { isNamespacedIdentifier } from './namespaced-identifier';
-import { createFileAgentGenerate } from './file-agent-generate';
+import { createFileAgentGenerate, ModelPolicyDeniedError } from './file-agent-generate';
 import { costBudgetOptions, toolboxBudgetOf, usdPricingOfRow } from './file-agent-cost-budget';
 import {
   type AgentContributions,
@@ -741,19 +741,34 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       { path: 'model', model: definition.model },
       ...(definition.models ?? []).map((model, index) => ({ path: `models.${index}`, model })),
     ];
-    const issues = entries.flatMap(({ path, model }) => {
-      const resolved = resolveModelDescriptor(model, descriptors);
-      if (isProblem(resolved)) return [];
-      const denial = modelPolicyDenialOf(resolved, policy);
-      if (denial === undefined) return [];
-      return [
-        {
-          path,
-          message: `"${model}" is forbidden by the ${denial.layer} model policy (${denial.reason})`,
-          reference: model,
-        },
-      ];
-    });
+    const issues: Array<{ path: string; message: string; reference: string }> =
+      entries.flatMap(({ path, model }) => {
+        const resolved = resolveModelDescriptor(model, descriptors);
+        if (isProblem(resolved)) return [];
+        const denial = modelPolicyDenialOf(resolved, policy);
+        if (denial === undefined) return [];
+        return [
+          {
+            path,
+            message: `"${model}" is forbidden by the ${denial.layer} model policy (${denial.reason})`,
+            reference: model,
+          },
+        ];
+      });
+    // COR-1996: a file that compacts summarizes with the deployment's summarizer, so a summarizer
+    // the policy forbids would fail its first compaction. No summarizer is the scan's own check.
+    if (definition.compaction?.enabled === true) {
+      const summarizer = options.models.summarizer();
+      const denial = summarizer === undefined ? undefined : modelPolicyDenialOf(summarizer, policy);
+      if (summarizer !== undefined && denial !== undefined) {
+        const name = `${summarizer.provider}/${summarizer.model}`;
+        issues.push({
+          path: 'compaction',
+          message: `Compaction needs the summarizer model "${name}", which the ${denial.layer} model policy forbids (${denial.reason}). Set the context.summarizerModel setting to another model, or turn compaction off.`,
+          reference: name,
+        });
+      }
+    }
     if (issues.length === 0) return undefined;
     return {
       code: 'model-policy-denied',
@@ -903,7 +918,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           diagnose: options.diagnose,
           summarizer: () => {
             const row = options.models.summarizer();
-            return row === undefined ? undefined : options.resolveGenerate(row);
+            if (row === undefined) return undefined;
+            // COR-1996: read at each compaction, like the model policy at each step. It fails the
+            // step, as any failed compaction does, and never skips: a skipped compaction would
+            // hide that the summarizer is forbidden.
+            const denial = modelPolicyDenialOf(row, options.modelPolicy?.());
+            if (denial !== undefined) throw new ModelPolicyDeniedError(row, denial);
+            return options.resolveGenerate(row);
           },
         }),
       },
