@@ -505,7 +505,7 @@
   }
 
   .ib-connect__error {
-    color: var(--cinder-text-danger);
+    color: var(--cinder-status-danger-text);
   }
 
   .ib-connect__file {

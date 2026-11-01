@@ -92,6 +92,6 @@
 
   .ib-restart__refusal {
     margin: 0;
-    color: var(--cinder-text-danger);
+    color: var(--cinder-status-danger-text);
   }
 </style>
