@@ -186,10 +186,10 @@ describe('refusalWords', () => {
 });
 
 describe('addRefusalWords', () => {
-  test('says what happened to a memory the page tells apart', () => {
-    for (const kind of ['not-admitted', 'quarantined'] as const) {
-      expect(addRefusalWords({ kind })).toEqual(MEMORY_COPY.add.refusal[kind]);
-    }
+  test('says what happened to a memory that was not admitted', () => {
+    expect(addRefusalWords({ kind: 'not-admitted' })).toEqual(
+      MEMORY_COPY.add.refusal['not-admitted'],
+    );
     expect(addRefusalWords({ kind: 'forbidden' })).toEqual(MEMORY_COPY.correct.refusal.forbidden);
   });
 

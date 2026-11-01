@@ -1011,9 +1011,14 @@ describe('adding a memory', () => {
   };
 
   /** The page with the form open from its header and `content` typed into it. */
-  async function formWith(answer: BureauHandler, content = TEXT) {
+  async function formWith(
+    answer: BureauHandler,
+    content = TEXT,
+    extra: Record<string, BureauHandler> = {},
+  ) {
     const served = bureau({
       'bureau.memory.remember': answer,
+      ...extra,
       'bureau.memory.get': () => ({ memory: ADDED, lineage: NO_LINEAGE }),
     });
     const view = open();
@@ -1029,7 +1034,7 @@ describe('adding a memory', () => {
   }
 
   test('saves what was typed, says so, closes, and opens the new memory', async () => {
-    const { served, view, submit } = await formWith(() => ({ memory: ADDED }));
+    const { served, view, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }));
 
     await fireEvent.click(submit);
 
@@ -1044,7 +1049,7 @@ describe('adding a memory', () => {
   });
 
   test('starts empty the next time, once a memory was saved', async () => {
-    const { view, submit } = await formWith(() => ({ memory: ADDED }));
+    const { view, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }));
     await fireEvent.click(submit);
     await view.findByText(MEMORY_COPY.add.saved.title);
 
@@ -1060,7 +1065,7 @@ describe('adding a memory', () => {
     let refuse = true;
     const { served, view, dialog, field, submit } = await formWith(() => {
       if (refuse) refusing('memory-not-admitted')();
-      return { memory: ADDED };
+      return { outcome: 'added', memory: ADDED };
     });
 
     await fireEvent.click(submit);
@@ -1078,15 +1083,115 @@ describe('adding a memory', () => {
     expect(served.callsTo('bureau.memory.remember')).toHaveLength(2);
   });
 
-  test('says text was set aside, which is not the same as refused', async () => {
-    const { dialog, field, submit } = await formWith(refusing('memory-quarantined'));
+  describe('text the content rules hold back', () => {
+    const HELD_ID = 'memory-held';
+    const held = () => ({ outcome: 'held', id: HELD_ID });
+    const forgotten = (deletion = 'completed') => ({
+      id: HELD_ID,
+      deletion,
+      receipt: RECEIPT,
+    });
 
-    await fireEvent.click(submit);
+    test('says the text was held back, keeps it, and offers to remove the stored copy', async () => {
+      const { view, dialog, field, submit } = await formWith(held);
 
-    expect(
-      await within(dialog).findByText(MEMORY_COPY.add.refusal.quarantined.title),
-    ).not.toBeNull();
-    expect(field.value).toBe(TEXT);
+      await fireEvent.click(submit);
+
+      expect(await within(dialog).findByText(MEMORY_COPY.add.held.title)).not.toBeNull();
+      expect(within(dialog).getByText(MEMORY_COPY.add.held.description)).not.toBeNull();
+      expect(
+        within(dialog).getByRole('button', { name: MEMORY_COPY.add.held.remove }),
+      ).not.toBeNull();
+      expect(field.value).toBe(TEXT);
+      expect(view.queryByText(MEMORY_COPY.add.saved.title)).toBeNull();
+    });
+
+    test('forgets the held record by its identifier when the person removes it', async () => {
+      const { served, dialog, field, submit } = await formWith(held, TEXT, {
+        'bureau.memory.forget': () => forgotten(),
+      });
+      await fireEvent.click(submit);
+      await fireEvent.click(
+        await within(dialog).findByRole('button', { name: MEMORY_COPY.add.held.remove }),
+      );
+      await waitFor(() => expect(served.callsTo('bureau.memory.forget')).toHaveLength(1));
+
+      await waitFor(() =>
+        expect(
+          within(dialog).queryByText(MEMORY_COPY.add.held.title)?.outerHTML ?? null,
+        ).toBeNull(),
+      );
+      expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
+      expect(served.callsTo('bureau.memory.forget')[0]?.params).toEqual({
+        agentId: 'assistant',
+        id: HELD_ID,
+      });
+      expect(field.value).toBe(TEXT);
+    });
+
+    test('forgets the held record when the person cancels', async () => {
+      const { served, view, dialog, submit } = await formWith(held, TEXT, {
+        'bureau.memory.forget': () => forgotten(),
+      });
+      await fireEvent.click(submit);
+      await within(dialog).findByText(MEMORY_COPY.add.held.title);
+
+      await fireEvent.click(
+        within(dialog).getByRole('button', { name: MEMORY_COPY.add.dialog.cancel }),
+      );
+
+      await waitFor(() => expect(served.callsTo('bureau.memory.forget')).toHaveLength(1));
+      expect(served.callsTo('bureau.memory.forget')[0]?.params).toEqual({
+        agentId: 'assistant',
+        id: HELD_ID,
+      });
+      await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
+    });
+
+    test('removes the held copy before saving a reworded text, so a retry leaves one', async () => {
+      let first = true;
+      const { served, view, field, submit } = await formWith(
+        () => {
+          if (first) {
+            first = false;
+            return held();
+          }
+          return { outcome: 'added', memory: ADDED };
+        },
+        TEXT,
+        { 'bureau.memory.forget': () => forgotten() },
+      );
+      await fireEvent.click(submit);
+      await view.findByText(MEMORY_COPY.add.held.title);
+      await fireEvent.input(field, { target: { value: 'The user flies out of San Jose.' } });
+
+      await fireEvent.click(submit);
+
+      expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
+      expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
+      expect(served.callsTo('bureau.memory.remember')).toHaveLength(2);
+    });
+
+    test('says so, and stays open, when the held copy could not be removed', async () => {
+      const { served, dialog, submit } = await formWith(held, TEXT, {
+        'bureau.memory.forget': () => forgotten('failed'),
+      });
+      await fireEvent.click(submit);
+
+      await fireEvent.click(
+        await within(dialog).findByRole('button', { name: MEMORY_COPY.add.held.remove }),
+      );
+
+      expect(await within(dialog).findByText(MEMORY_COPY.add.held.notRemoved.title)).not.toBeNull();
+      expect(within(dialog).getByText(MEMORY_COPY.add.held.title)).not.toBeNull();
+      expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
+
+      await fireEvent.click(within(dialog).getByRole('button', { name: /dismiss/i }));
+
+      expect(
+        within(dialog).queryByText(MEMORY_COPY.add.held.notRemoved.title)?.outerHTML ?? null,
+      ).toBeNull();
+    });
   });
 
   test('names the scope when the server refuses it, and the agent when it is gone', async () => {
@@ -1180,7 +1285,7 @@ describe('adding a memory', () => {
   });
 
   test('has nothing to save while the text is blank', async () => {
-    const { served, submit } = await formWith(() => ({ memory: ADDED }), '   ');
+    const { served, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }), '   ');
 
     expect(submit.disabled).toBe(true);
     await fireEvent.submit(submit.closest('form')!);
@@ -1194,7 +1299,7 @@ describe('adding a memory', () => {
       'bureau.memory.list': () => ({ memories, nextOffset: null }),
       'bureau.memory.remember': () => {
         memories = [ADDED];
-        return { memory: ADDED };
+        return { outcome: 'added', memory: ADDED };
       },
       'bureau.memory.get': () => ({ memory: ADDED, lineage: NO_LINEAGE }),
     });

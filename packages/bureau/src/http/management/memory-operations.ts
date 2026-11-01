@@ -462,10 +462,21 @@ const rememberInput = z.object({
     'The text of the memory, in the caller’s own words.',
   ),
 });
-const rememberOutput = z.object({
-  /** The new memory, as listed now. */
-  memory: memoryViewSchema,
-});
+const rememberOutput = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('added'),
+    /** The new memory, as listed now. */
+    memory: memoryViewSchema,
+  }),
+  z.object({
+    outcome: z.literal('held'),
+    /**
+     * The quarantined record. No list, search, read or export shows it, so this is the only name
+     * the caller has for it; `bureau.memory.forget` removes it.
+     */
+    id: z.string(),
+  }),
+]);
 
 /** `bureau.memory.remember`: adds a memory from scratch, where `correct` needs one to replace. */
 export const memoryRememberOperation = defineOperation<
@@ -477,7 +488,7 @@ export const memoryRememberOperation = defineOperation<
   mcpExposable: false,
   summary: 'Add a memory',
   description:
-    'Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers it as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as a `semantic` memory, kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is `Unprocessable` with `data.reason` `memory-quarantined`: it is stored quarantined for an inspector, and never listed, searched, read or recalled. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+    'Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as a `semantic` memory, kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and no other operation reaches it), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: rememberInput,
@@ -516,12 +527,13 @@ export const memoryRememberOperation = defineOperation<
       source: 'operator',
       memoryClass: OPERATOR_MEMORY_CLASS,
     });
+    // Not a fault: a fault's data carries only its reason on the wire, and the caller needs the
+    // record's identifier to remove what was stored.
     if (receipt.status === 'quarantined') {
-      throw {
-        code: 'Unprocessable',
-        message: 'The memory was set aside for inspection, so the agent will not recall it',
-        data: { reason: 'memory-quarantined' },
-      } satisfies OperationFault;
+      if (receipt.recordId === undefined) {
+        throw new Error('Governed memory quarantined a write with no record.');
+      }
+      return { outcome: 'held', id: receipt.recordId };
     }
     if (receipt.status === 'rejected') {
       throw {
@@ -537,7 +549,7 @@ export const memoryRememberOperation = defineOperation<
     if (record === undefined) {
       throw new Error('Governed memory answered an admitted write with no readable record.');
     }
-    return { memory: viewOf(record) };
+    return { outcome: 'added', memory: viewOf(record) };
   },
 });
 

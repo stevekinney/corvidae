@@ -3057,7 +3057,7 @@ export const MEMORY_COPY = {
     dialog: {
       title: 'Add a memory',
       description:
-        'Your words are kept until you correct or forget them, and the agent recalls them in its chats with you.',
+        'Your words are kept until you correct or forget them, and the agent recalls them in its chats with you. Text the content rules flag is held back instead, and you can remove it here.',
       label: 'What the agent should remember',
       submit: 'Save memory',
       cancel: 'Cancel',
@@ -3068,16 +3068,24 @@ export const MEMORY_COPY = {
     },
     /** The title of a refusal the Bureau gave its own words for. */
     notSaved: 'The memory was not saved',
+    /** Text the content rules flagged: stored for inspection, in no list, and the agent never recalls it. */
+    held: {
+      title: 'The text was held back',
+      description:
+        'Interborough’s content rules flagged it, so the agent will not recall it. A copy is still stored for inspection until you remove it. Remove it, or reword the text and save again: saving again removes the held copy first.',
+      remove: 'Remove the held copy',
+      removing: 'Removing…',
+      notRemoved: {
+        title: 'The held copy was not removed',
+        description:
+          'The server did not confirm the removal, so the copy is still stored. Try removing it again.',
+      },
+    },
     refusal: {
       'not-admitted': {
         title: 'The memory was not accepted',
         description:
           'Interborough’s content rules or this agent’s memory limit refused it, so nothing was saved. Reword it and try again.',
-      },
-      quarantined: {
-        title: 'The memory was set aside',
-        description:
-          'Interborough’s content rules flagged it, so it is kept for inspection and the agent will not recall it. Reword it to save it.',
       },
       'not-found': {
         title: 'This agent was not found',

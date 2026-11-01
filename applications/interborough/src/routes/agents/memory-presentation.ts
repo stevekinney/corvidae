@@ -216,7 +216,6 @@ export function refusalWords(fault: MemoryFault): { title: string; description: 
     case 'not-found':
       return words[fault.kind];
     case 'not-admitted':
-    case 'quarantined':
       return MEMORY_COPY.add.refusal[fault.kind];
     case 'invalid-grantee':
       return MEMORY_COPY.govern.refusal['invalid-grantee'];
