@@ -590,6 +590,57 @@ describe('the sections a caller sees', () => {
   });
 });
 
+describe('the lines a run logged', () => {
+  function routeLoggedRun(id: string): void {
+    fetchScript.routeJsonRpcMethod('weft.workflows.activities.pending.list', { items: [] });
+    fetchScript.routeUrl(
+      `/workflows/${id}/timeline`,
+      [0, 1].map((step) => ({
+        step,
+        stepIndex: step,
+        operationType: 'activity',
+        operationLabel: `step${String(step)}`,
+        inputSummary: '{}',
+        timestamp: 1_000 + step,
+        status: 'completed',
+      })),
+    );
+    const line = (sequence: number, step: number, message: string) => ({
+      sequence,
+      step,
+      level: 'info',
+      message,
+      timestamp: 1_000 + sequence,
+      workflowType: 'order-fulfillment',
+      truncated: false,
+    });
+    fetchScript.routeJsonRpcMethod('weft.workflows.logs.list', {
+      lines: [line(0, 0, 'charging'), line(1, 1, 'shipping')],
+      dropped: 0,
+    });
+    routeRun(id, { id });
+  }
+
+  test('are listed whole in the Details rail and under the step they were logged in front of', async () => {
+    const id = 'wf-sections-logs-1';
+    routeLoggedRun(id);
+
+    const view = mount(id);
+
+    await fireEvent.click(await view.findByRole('button', { name: /^Logs · 2 lines/ }));
+    const rail = await view.findByRole('list', { name: 'Log lines' });
+    expect(within(rail).getAllByRole('listitem')).toHaveLength(2);
+
+    await openStepNumber(view.container, 1);
+    const step = await view.findByRole('list', { name: 'Log lines of this step' });
+    expect(
+      within(step)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual([expect.stringContaining('shipping')]);
+  });
+});
+
 describe('the revision against the active one (WFT-117)', () => {
   test('is said in the Details rail once the active pointer is read', async () => {
     const id = 'wf-detail-active-rev-1';
