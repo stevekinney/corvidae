@@ -159,7 +159,7 @@ describe('the task operations', () => {
 
   test('inspect answers nothing for a step the run did not record', async () => {
     const stub = answering({ steps: [] });
-    expect(await withFetch(stub.fetch, () => inspectTaskStep('run-1', 4))).toBeUndefined();
+    expect(await withFetch(stub.fetch, () => inspectTaskStep('run-1', 4))).toBeNull();
   });
 
   test('inspect refuses a plan reason code it does not know', async () => {

@@ -99,7 +99,19 @@ describe('usageOfTerminal', () => {
         type: 'RUN_FINISHED',
         usage: [{ inputTokens: 0, outputTokens: Number.POSITIVE_INFINITY }],
       }),
-    ).toEqual({ inputTokens: 0 });
+    ).toBeUndefined();
+  });
+
+  test('treats counts that are all zero as no usage, as the Bureau sends for a run that reported none', () => {
+    expect(
+      usageOfTerminal({
+        type: 'RUN_FINISHED',
+        usage: [{ inputTokens: 0, outputTokens: 0, totalTokens: 0 }],
+      }),
+    ).toBeUndefined();
+    expect(
+      usageOfTerminal({ type: 'RUN_FINISHED', usage: [{ inputTokens: 0, outputTokens: 4 }] }),
+    ).toEqual({ inputTokens: 0, outputTokens: 4 });
   });
 
   test('merges the entries in order, the later count winning', () => {

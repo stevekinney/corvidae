@@ -64,10 +64,10 @@ export function usageEntries(
 
 /**
  * The details to print for a step and its run's usage. `step` is `undefined` while the Bureau has
- * not answered or recorded none; the plan and the context are each left out when the step has none.
+ * not answered and `null` when it answered that the run recorded none; the plan and the context are each left out when the step has none.
  */
 export function replyDetailsOf(
-  step: TaskStep | undefined,
+  step: TaskStep | null | undefined,
   usage: RunUsage | undefined,
 ): ReplyDetails {
   const plan = step?.planReason ?? null;

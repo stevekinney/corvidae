@@ -266,18 +266,19 @@ const inspectStepAnswerSchema = z.object({ steps: z.array(taskStepSchema) });
 
 /**
  * The reply details of one step of a task (`bureau.tasks.inspect` with `step`): why the step ran on
- * its model and what that model saw. `undefined` when the run recorded no such step. A task the
- * caller may not see is answered as a missing one: a not-found fault.
+ * its model and what that model saw. `null` when the run recorded no such step, which is an answer
+ * and not a fault: a step whose tool phase failed returns before it is recorded. A task the caller
+ * may not see is answered as a missing one: a not-found fault.
  */
 export async function inspectTaskStep(
   taskId: string,
   step: number,
   options?: Options,
-): Promise<TaskStep | undefined> {
+): Promise<TaskStep | null> {
   const answer = inspectStepAnswerSchema.parse(
     await callBureau('bureau.tasks.inspect', { taskId, step }, options),
   );
-  return answer.steps.find((entry) => entry.step === step);
+  return answer.steps.find((entry) => entry.step === step) ?? null;
 }
 
 const cancelAnswerSchema = z.object({

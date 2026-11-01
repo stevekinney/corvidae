@@ -170,6 +170,25 @@ describe('the reply details popover', () => {
     await waitFor(() => expect(panel.textContent).toContain(COPY.empty.title));
   });
 
+  test('says nothing was recorded, and not that the host failed, for a step the run has no record of', async () => {
+    const { container, findByTestId } = mount({ steps: [] });
+    await fireEvent.click(trigger(container));
+    const panel = await findByTestId('reply-details');
+    await waitFor(() => expect(panel.textContent).toContain(COPY.empty.title));
+    expect(panel.textContent).not.toContain(COPY.failed.title);
+  });
+
+  test('prints the run’s usage beside a step the run has no record of', async () => {
+    const { container, findByTestId } = mount({ steps: [] }, { totalTokens: 42 });
+    await fireEvent.click(trigger(container));
+    const panel = await findByTestId('reply-details');
+    await waitFor(() => expect(panel.querySelector('[data-part="usage"]')).not.toBeNull());
+    expect(panel.querySelector('[data-part="usage"]')?.textContent).toContain('42');
+    expect(panel.querySelector('[data-part="why"]')).toBeNull();
+    expect(panel.querySelector('[data-part="saw"]')).toBeNull();
+    expect(panel.textContent).not.toContain(COPY.failed.title);
+  });
+
   test('says the details are unavailable when the Bureau cannot answer, and reads again on Try again', async () => {
     const { container, findByTestId } = mount(
       new StubFault('NotFound', 404, 'No task', { resource: 'task', identifier: 'run-9' }),

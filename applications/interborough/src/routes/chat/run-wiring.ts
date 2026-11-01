@@ -303,6 +303,8 @@ function onRoundOf(interrupt: Interrupt, entry: ResumeEntry): ResumeEntry {
 /**
  * The token counts a `RUN_FINISHED` event carries, or `undefined` for any other event and for one
  * that carries none. Only a count that is a finite number is kept; the entries are merged in order.
+ * A run that reported nothing arrives as counts of zero (the Bureau fills them in), and a run that
+ * called a model used at least one token, so counts that are all zero are no usage, not "0" tokens.
  */
 export function usageOfTerminal(event: unknown): RunUsage | undefined {
   if (!isRecord(event) || event['type'] !== 'RUN_FINISHED' || !Array.isArray(event['usage'])) {
@@ -316,7 +318,7 @@ export function usageOfTerminal(event: unknown): RunUsage | undefined {
       if (typeof value === 'number' && Number.isFinite(value) && value >= 0) counts[key] = value;
     }
   }
-  return Object.keys(counts).length === 0 ? undefined : counts;
+  return Object.values(counts).some((count) => count > 0) ? counts : undefined;
 }
 
 /** The Bureau's own identifier for the run an event belongs to, which the cancel route takes. */
