@@ -2051,9 +2051,14 @@ export const CHAT_COPY = {
     failedOne: 'Run failed',
     canceledOne: 'Run canceled',
   },
-  humanRequestTitle: 'The agent is asking',
   humanRequestFallback: 'The agent is waiting for your answer.',
-  humanRequestHint: 'Your next message answers it.',
+  /** The label of a question that declares no schema, which takes free text. */
+  questionAnswerLabel: 'Answer',
+  /** Said under a question that is picked from choices: the number keys. */
+  pickHint: 'Press 1 to 9 to pick a choice.',
+  /** The shortcuts the `?` map lists for this page. */
+  shortcutGroup: 'Chat',
+  pickShortcut: (position: number): string => `Pick choice ${String(position)}`,
   /** Said while a message waits for the answers sent before it to be applied. */
   answersNotApplied:
     'Your earlier answers have not been applied yet. Your message was not sent; send it again in a moment.',

@@ -122,6 +122,12 @@ export type HumanRequest = {
   readonly interruptId: string;
   /** What the agent asked, or nothing when it said no more than that it is waiting. */
   readonly message: string;
+  /**
+   * The JSON Schema the answer must satisfy, which says how the question is drawn (`ChatQuestion`).
+   * Absent when the interrupt carries none: the generic resume schema takes any answer, so the
+   * question is free text.
+   */
+  readonly schema?: Readonly<Record<string, unknown>>;
 };
 
 export type ChatRunWiringOptions = {
@@ -183,6 +189,12 @@ export type ChatRunWiring = {
    * for the resume that answers every interrupt. Answers the question as `false` when none waits.
    */
   holdAnswer(text: string, rowId: string): boolean;
+  /**
+   * Holds `value`, an answer to the question of `interruptId` that was given in the control the
+   * question's schema drew, for the same resume. No row of the conversation holds it. Answers
+   * `false` when that question is not waiting on an answer.
+   */
+  holdValue(interruptId: string, value: unknown): boolean;
   /**
    * What the last turn was refused with, once: the one-event `RUN_ERROR` a mount answers a request
    * with that it did not admit, which carries no run's identifier. Nothing for a turn that was not
@@ -351,11 +363,32 @@ function onlyRow(
   return { ...conversation, ids: [message.id], messages: { [message.id]: message } };
 }
 
+/**
+ * The schema a question's answer must satisfy: the `answer` property of the interrupt's response
+ * schema (`responseSchemaFor` in the mount). The generic resume schema leaves `answer` as `{}`,
+ * which says nothing about the answer, so it is no schema.
+ */
+function answerSchemaOf(interrupt: Interrupt): Record<string, unknown> | undefined {
+  const properties: unknown = isRecord(interrupt.responseSchema)
+    ? interrupt.responseSchema['properties']
+    : undefined;
+  const answer =
+    isRecord(properties) && Object.hasOwn(properties, 'answer') ? properties['answer'] : undefined;
+  return isRecord(answer) && Object.keys(answer).length > 0 ? answer : undefined;
+}
+
 /** The questions among `interrupts`, as the page shows them. */
 function humanRequestsOf(interrupts: readonly Interrupt[]): HumanRequest[] {
   return interrupts
     .filter((interrupt) => interrupt.reason === 'human-wait')
-    .map((interrupt) => ({ interruptId: interrupt.id, message: interrupt.message ?? '' }));
+    .map((interrupt) => {
+      const schema = answerSchemaOf(interrupt);
+      return {
+        interruptId: interrupt.id,
+        message: interrupt.message ?? '',
+        ...(schema === undefined ? {} : { schema }),
+      };
+    });
 }
 
 /** The text of a message, which is what a question is answered with. */
@@ -635,7 +668,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   /** The decisions on approvals, by interrupt, that no request the mount answered has carried. */
   const decisions = new Map<string, ResumeEntry>();
   /** The text typed to answer each question, by interrupt, with the row it was typed in. */
-  const answers = new Map<string, { readonly entry: ResumeEntry; readonly rowId: string }>();
+  const answers = new Map<
+    string,
+    { readonly entry: ResumeEntry; readonly rowId: string | undefined }
+  >();
   /** The start the mount has not answered, so a retry of the same request is the same run. */
   let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined;
   let attached: AsyncGenerator<unknown> | undefined;
@@ -675,10 +711,34 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     for (const [id, answer] of answers) {
       if (pending.has(id)) continue;
       answers.delete(id);
-      settledAnswerRows.push(answer.rowId);
+      settleAnswerRow(answer.rowId);
     }
     if (decisions.size === 0 && answers.size === 0) refusedResume = false;
     options.onHumanRequests?.(unansweredRequests());
+  }
+
+  /** Notes that the row an answer was typed in is settled, when the answer was typed in one. */
+  function settleAnswerRow(rowId: string | undefined): void {
+    if (rowId !== undefined) settledAnswerRows.push(rowId);
+  }
+
+  /**
+   * Holds `value`, the answer `ChatQuestion` drew a control for, as the answer to the question of
+   * `interruptId`. Nothing was typed, so no row holds it. False when that question is not one the
+   * run waits on without an answer.
+   */
+  function holdValue(interruptId: string, value: unknown): boolean {
+    if (!unansweredRequests().some((request) => request.interruptId === interruptId)) return false;
+    answers.set(interruptId, {
+      entry: {
+        interruptId,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: value },
+      },
+      rowId: undefined,
+    });
+    options.onHumanRequests?.(unansweredRequests());
+    return true;
   }
 
   /** Holds `text`, typed in the row `rowId`, as the answer to the first question without one. */
@@ -822,7 +882,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
    */
   function resumeFor(conversation: ConversationHistory): Resume {
     const last = conversation.messages[conversation.ids.at(-1) ?? ''];
-    const held = new Set([...answers.values()].map((answer) => answer.rowId));
+    const held = new Set(
+      [...answers.values()].flatMap((answer) => (answer.rowId === undefined ? [] : [answer.rowId])),
+    );
     if (last?.role === 'user' && !isFollowUp(last) && !held.has(last.id)) {
       if (holdAnswer(textOf(last), last.id)) held.add(last.id);
     }
@@ -913,7 +975,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       const answer = answers.get(entry.interruptId);
       if (answer?.entry === entry) {
         answers.delete(entry.interruptId);
-        settledAnswerRows.push(answer.rowId);
+        settleAnswerRow(answer.rowId);
       }
     }
     refusedResume = false;
@@ -935,7 +997,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       const answer = answers.get(entry.interruptId);
       if (answer?.entry !== entry) continue;
       answers.delete(entry.interruptId);
-      settledAnswerRows.push(answer.rowId);
+      settleAnswerRow(answer.rowId);
     }
     if (decisions.size === 0 && answers.size === 0) refusedResume = false;
     options.onHumanRequests?.(unansweredRequests());
@@ -1166,6 +1228,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       detached = true;
     },
     holdAnswer,
+    holdValue,
     owesResume: () => refusedResume && (decisions.size > 0 || answers.size > 0),
     owedResumeIncomplete: () => refusedResume && entriesOwed().incomplete,
     takeSettledAnswerRows() {

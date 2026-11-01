@@ -275,6 +275,36 @@ export class ChatSessionState {
   }
 
   /**
+   * Answers the question of `interruptId` with `value`, an answer given in the control its schema
+   * drew (a choice, a number, a file's asset). It is held with the rest of what the run waits on,
+   * like a typed answer, and when it is the last thing the run waits on the resume goes: it is a
+   * turn of its own over a hidden row, as the attach is, since no row of the person's carries it.
+   * Resolves `false` when the question is not waiting for an answer, or the answers owed from a
+   * refused resume could not be sent first.
+   */
+  async answerQuestion(interruptId: string, value: unknown): Promise<boolean> {
+    if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
+    // The caller owns `value`, and this reads it after the awaits below.
+    const answer = structuredClone(value);
+    await this.#attachment;
+    try {
+      await this.#repeatOwedResume();
+    } catch (error) {
+      // The answer is not held on top of a resume that is still refused.
+      this.failure = error instanceof Error ? error.message : String(error);
+      return false;
+    }
+    // A turn that began while those finished would take the answer as a follow-up.
+    if (this.streaming || this.#abort.signal.aborted) return false;
+    if (!this.#wiring.holdValue(interruptId, answer)) return false;
+    if (this.humanRequests.length === 0 && this.approvals.length === 0) {
+      this.#activeTurn = this.#sendHiddenTurn().catch(() => undefined);
+      await this.#activeTurn;
+    }
+    return true;
+  }
+
+  /**
    * Holds `message` as the answer to the next question when it cannot be the last thing a resume
    * waits for: another question still waits, or a tool approval does. The row is put in the
    * conversation as a sent one would be, and nothing is sent. Otherwise the controller sends it,

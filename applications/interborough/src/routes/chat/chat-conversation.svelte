@@ -33,7 +33,7 @@
   import { onMount, untrack } from 'svelte';
 
   import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
-  import { Chat } from '@lostgradient/chat';
+  import { Chat, ChatQuestion } from '@lostgradient/chat';
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -58,6 +58,7 @@
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { uploadAsset } from '../../lib/bureau-assets.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -67,9 +68,11 @@
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { shortcuts } from '../../lib/shortcuts.ts';
   import BranchOrigin from './branch-origin.svelte';
   import { branchPointIds } from './branch-points.ts';
   import { agentModel } from './agent-model.ts';
+  import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
   import ChatAssets from './chat-assets.svelte';
   import ContextWindowRing from './context-window-ring.svelte';
   import SettingSelect from './setting-select.svelte';
@@ -341,6 +344,22 @@
 
   let deciding = $state(false);
 
+  /** What a question that declares no schema takes: free text, answered in the composer. */
+  const FREE_TEXT_SCHEMA = { type: 'string', title: CHAT_COPY.questionAnswerLabel } as const;
+  let questionElement = $state<HTMLElement | undefined>();
+  // Whether the open question draws choices to pick, which the drawn buttons say. It is read again
+  // for each question, because the page stays mounted while the open question changes.
+  let pickable = $state(false);
+  $effect(() => {
+    void session.humanRequests[0]?.interruptId;
+    pickable = choiceButtons(questionElement).length > 0;
+  });
+
+  async function uploadQuestionFile(file: File, signal: AbortSignal): Promise<string> {
+    const asset = await uploadAsset(file, { signal });
+    return asset.assetId;
+  }
+
   /** Each approval the conversation waits on, as the question it asks and the call it belongs to. */
   const approvals = $derived(
     session.approvals.map(({ message, result }) => {
@@ -468,9 +487,25 @@
   }
 
   onMount(() => {
+    // 1 to 9 pick the open question's choices. A key does nothing while the question is held (its
+    // buttons are disabled) or when none is open.
+    const removals = Array.from({ length: 9 }, (_, index) =>
+      shortcuts.register({
+        keys: [String(index + 1)],
+        label: CHAT_COPY.pickShortcut(index + 1),
+        group: CHAT_COPY.shortcutGroup,
+        scope: { route: '/chats/:chat' },
+        handler: () => {
+          if (session.humanRequests.length > 0) pickChoice(questionElement, index + 1);
+        },
+      }),
+    );
     // A new chat has no thread yet, so there is nothing to attach to or to read back.
     if (!untrack(() => isNew)) void session.attach();
-    return () => session.dispose();
+    return () => {
+      for (const remove of removals) remove();
+      session.dispose();
+    };
   });
 </script>
 
@@ -535,13 +570,25 @@
   <!-- The run reports a question as it parks, a moment before the turn that carried it is over; a
        message sent in between would be a follow-up, so the question waits for the turn's end. -->
   {#each session.streaming ? [] : session.humanRequests.slice(0, 1) as request (request.interruptId)}
-    <Alert variant="info" class="weft-chat-approval" data-interrupt={request.interruptId}>
-      <p class="weft-chat-approval__title">{CHAT_COPY.humanRequestTitle}</p>
-      <p class="weft-chat-approval__message">
+    <div class="weft-chat-question" data-interrupt={request.interruptId}>
+      <p class="weft-chat-question__prompt">
         {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
       </p>
-      <p class="weft-chat-approval__message">{CHAT_COPY.humanRequestHint}</p>
-    </Alert>
+      <div bind:this={questionElement} data-question-answer-region>
+        <ChatQuestion
+          {...{ 'data-changes': true }}
+          id={`chat-question-${request.interruptId}`}
+          schema={request.schema ?? FREE_TEXT_SCHEMA}
+          answerInComposer
+          busy={session.attaching}
+          uploadFile={uploadQuestionFile}
+          onSubmit={(value) => void session.answerQuestion(request.interruptId, value)}
+        />
+      </div>
+      {#if pickable}
+        <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
+      {/if}
+    </div>
   {/each}
 
   {#if session.failure !== undefined}
