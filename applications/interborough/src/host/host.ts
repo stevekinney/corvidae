@@ -72,6 +72,8 @@
  * - `/host/plugins`, `/host/plugins/<name>`, and `/host/plugins/<name>/secrets/<key>`: the plugins the
  *   host loads, the owner's choices for them in `configuration.json` (`plugins`), and the secrets they
  *   declare (`plugin-routes.ts`). A remote host refuses a change with the reason `deployment`.
+ *   `/host/mcp-apps` and `/host/plugins/<name>/apps/<app>[/tool-calls]` serve a plugin's MCP-app
+ *   panels (`mcp-app-routes.ts`).
  * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/affected-agents`,
  *   `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
  *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
@@ -161,6 +163,7 @@ import {
   type HostDatabase,
 } from './locations.ts';
 import { mcpAppMounts } from './mcp-app-mounts.ts';
+import { mcpAppRoutes } from './mcp-app-routes.ts';
 import { createHostMemory } from './memory.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
@@ -887,6 +890,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // a workflow's.
         ...providerRoutes(providers, refuse),
         ...pluginRoutes(pluginManager, refuse),
+        // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
+        ...mcpAppRoutes(
+          mcpMounts.apps,
+          refuse,
+          async (request) =>
+            (await bureauHandler?.(request)) ??
+            new Response('The Bureau is not serving yet.', { status: 503 }),
+        ),
         ...skillRoutes(skills, refuse),
         ...toolSourceRoutes(toolSources, refuse, { principal: () => ANONYMOUS_LOCAL_OWNER }),
         // The key prefixes the Bureau writes, which the storage explorer refuses to edit.

@@ -38,6 +38,24 @@ function failureMessage(error: unknown): string {
   return [error.message, ...details].join(': ');
 }
 
+/** One app the host built and serves: what the routes answer from, fixed at startup. */
+export type ServedMcpApp = {
+  /** The contributing plugin's name. */
+  readonly plugin: string;
+  /** The app's name within the plugin. */
+  readonly name: string;
+  /** The app's title. */
+  readonly title: string;
+  /** The app's `ui://` resource URI. */
+  readonly uri: string;
+  /** The Bureau tool a client runs to open the page. */
+  readonly opensFromTool: string;
+  /** The Bureau MCP tool names the panel may call, and no others. */
+  readonly allowedTools: readonly string[];
+  /** The built, self-contained page. */
+  readonly html: string;
+};
+
 /** An app whose page could not be built: the plugin, the app's name, and why. */
 export type McpAppFailure = {
   /** The contributing plugin's name. */
@@ -73,12 +91,13 @@ export async function mcpAppMounts(contributed: ContributedMcpApps) {
   const toolMeta: Record<string, Readonly<Record<string, unknown>>> = {};
   const resources: (OperationMcpResource & { readonly text: string })[] = [];
   const failures: McpAppFailure[] = [];
+  const apps: ServedMcpApp[] = [];
   for (const entry of built) {
     if ('failure' in entry) {
       failures.push(entry.failure);
       continue;
     }
-    const { app, page } = entry;
+    const { plugin, app, page } = entry;
     resources.push({
       uri: app.uri,
       name: app.name,
@@ -88,9 +107,18 @@ export async function mcpAppMounts(contributed: ContributedMcpApps) {
       text: page.html,
       _meta: { ui: MCP_APP_UI_META, contentDigest: page.contentDigest },
     });
+    apps.push({
+      plugin,
+      name: app.name,
+      title: app.title,
+      uri: app.uri,
+      opensFromTool: app.opensFromTool,
+      allowedTools: [...app.allowedTools],
+      html: page.html,
+    });
     toolMeta[app.opensFromTool] = {
       ui: { resourceUri: app.uri, visibility: ['model', 'app'] },
     };
   }
-  return { resources, toolMeta, failures };
+  return { resources, toolMeta, failures, apps };
 }

@@ -36,7 +36,7 @@ const HOST_PLUGIN_SECRET_ROUTE = `${HOST_PLUGINS_ROUTE}/:name/secrets/:key`;
 type Refuse = (request: Request) => Response | undefined;
 
 /** The route parameter, decoded; a malformed escape is the name no plugin has. */
-function decoded(parameter: string): string {
+export function decoded(parameter: string): string {
   try {
     return decodeURIComponent(parameter);
   } catch {
