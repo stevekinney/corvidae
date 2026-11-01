@@ -144,7 +144,7 @@
           {
             key: 'status',
             value: statusFilter,
-            label: `${SCHEDULE_COPY.statusLabel}: ${scheduleStatusWord(statusFilter)}`,
+            label: SCHEDULE_COPY.statusLabel,
           },
         ]),
     ...(agentFilter === undefined
@@ -153,7 +153,7 @@
           {
             key: 'agent',
             value: agentFilter,
-            label: `${SCHEDULE_COPY.agentLabel}: ${agentFilter}`,
+            label: SCHEDULE_COPY.agentLabel,
           },
         ]),
   ]);

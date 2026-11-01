@@ -110,7 +110,7 @@
           {
             key: 'status',
             value: statusFilter,
-            label: `${copy.list.statusLabel}: ${statusFilter}`,
+            label: copy.list.statusLabel,
           },
         ],
   );

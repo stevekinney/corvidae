@@ -90,7 +90,7 @@
           {
             key: 'event',
             value: eventFilter,
-            label: `${HOOKS_COPY.eventFilter}: ${eventWords(eventFilter)}`,
+            label: HOOKS_COPY.eventFilter,
           },
         ]),
     ...(agentFilter === undefined
@@ -99,7 +99,7 @@
           {
             key: 'agent',
             value: agentFilter,
-            label: `${HOOKS_COPY.agentFilter}: ${agentFilter}`,
+            label: HOOKS_COPY.agentFilter,
           },
         ]),
   ]);

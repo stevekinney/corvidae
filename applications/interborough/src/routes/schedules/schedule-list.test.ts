@@ -616,7 +616,7 @@ describe('ScheduleList', () => {
 
       await waitFor(() => expect(getByText('Weekly digest')).not.toBeNull());
       expect(queryByText('Nightly rollup')).toBeNull();
-      expect(getByRole('button', { name: /Status: Paused/ })).not.toBeNull();
+      expect(getByRole('button', { name: /^.*Status: Paused(?!: Paused)/ })).not.toBeNull();
     } finally {
       await server.stop();
     }
@@ -634,7 +634,7 @@ describe('ScheduleList', () => {
       await fireEvent.change(status, { target: { value: 'paused' } });
       await waitFor(() => expect(window.location.search).toBe('?status=paused'));
 
-      await fireEvent.click(getByRole('button', { name: /Remove.*Status: Paused|Status: Paused/ }));
+      await fireEvent.click(getByRole('button', { name: /Status: Paused(?!: Paused)/ }));
       await waitFor(() => expect(window.location.search).toBe(''));
     } finally {
       await server.stop();

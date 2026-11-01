@@ -126,12 +126,12 @@
           {
             key: 'status',
             value: statusFilter,
-            label: `${GOALS_COPY.statusColumn}: ${statusFilter}`,
+            label: GOALS_COPY.statusColumn,
           },
         ]),
     ...(agentFilter === undefined
       ? []
-      : [{ key: 'agent', value: agentFilter, label: `${GOALS_COPY.agentColumn}: ${agentFilter}` }]),
+      : [{ key: 'agent', value: agentFilter, label: GOALS_COPY.agentColumn }]),
   ]);
 
   function changeFilter(key: string, value: string): void {
