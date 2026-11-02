@@ -9,6 +9,7 @@ Decide the target by asking, in order, which is the lowest layer whose change fi
 | a color, spacing step, radius, type size, shadow, motion or contrast value that is wrong wherever it appears | Cinder token | the token and its file under `components/cinder/src/tokens/` or `components/cinder/src/styles/tokens*.css` |
 | a component's default look, density, state (hover, focus, disabled, loading, empty, error), or behavior | Cinder component | the component directory under `components/cinder/src/components/` |
 | a missing variant, prop or slot that pages work around | Cinder component | the component, and the variant it needs |
+| the chat transcript's own rendering: message roles, notes, date separators, the composer's layout (`@lostgradient/chat`, built on Cinder) | Chat component | the file under `components/chat/src/lib/components/chat/`, and the Cinder component it should compose instead when one exists |
 | a pattern pages hand-build that no component provides (the same markup on two or more pages, or one page faking a component) | new Cinder component | the proposed component name and the pages it would replace |
 | shell, outlet padding, page width or density shared by every page | Cinder (shell styles, `components/cinder/src/styles/shell.css`) or Interborough's view table (`applications/interborough/src/app/views.ts`), whichever owns the value | the file |
 | what a page shows, its order, its grouping, its primary action, or which component it picked | Interborough page | the route file under `applications/interborough/src/routes/` |
