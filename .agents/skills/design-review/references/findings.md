@@ -40,7 +40,25 @@ One Markdown report per area:
 - Questions: places where the right answer turns on a product decision, with a recommendation.
 - Coverage: the screens reviewed, and anything you were asked to review but could not judge (missing state, pathological data only, no design reference).
 
-## The sign-off verdict
+## The design critique
+
+The first line is exactly one of:
+
+- `VERDICT: ready to build`
+- `VERDICT: ready with changes`
+- `VERDICT: rethink`
+
+Then:
+
+- What the design gets right, and what it improves over the current screens.
+- Findings against the design, in the finding format above, with **Where** naming the board or screen image. Judge every state the design shows and name every state it omits (loading, empty, error, forbidden, offline, streaming, a long value, the phone width, dark mode): an omitted state is a finding, because it will otherwise be invented during implementation.
+- Consistency: where the design departs from patterns the rest of the application uses, and whether the departure should spread to the rest or be dropped.
+- The Cinder inventory: the existing components the design uses (by directory), the variants, defaults and tokens it changes, and the new components it implies, each with the pages that would use it. Flag anything that would become a bespoke Interborough component.
+- Questions for the owner, each with a recommendation.
+
+`rethink` means the design does not serve its task (the information architecture or the primary flow is wrong), not that it needs polish.
+
+## The implementation-review verdict
 
 The first line is exactly one of:
 
@@ -48,6 +66,6 @@ The first line is exactly one of:
 - `VERDICT: approve with notes`
 - `VERDICT: changes required`
 
-Then, for `changes required`, the blocking items, each a finding as above. A blocking item is a concrete user-facing defect the change introduced or left in the screens it touched: a regression against the before captures, a state that is broken or missing, an accessibility failure, a contradiction of the design reference or a recorded owner decision, or a fix applied in Interborough that belongs in Cinder. Taste, pre-existing problems in untouched screens, and improvements beyond the change's scope never block; list them as notes, marking pre-existing ones as such.
+Then, for `changes required`, the blocking items, each a finding as above. A blocking item is a concrete user-facing defect the change introduced or left in the screens it touched: a regression against the before captures, a state that is broken or missing, an accessibility failure, a departure from the agreed design (name the board and the difference) or from a recorded owner decision, or a fix applied in Interborough that belongs in Cinder. Taste, pre-existing problems in untouched screens, and improvements beyond the change's scope never block; list them as notes, marking pre-existing ones as such.
 
 On a re-review, check each previous blocking item first (fixed or not, with the screenshot), then review only what changed since. Never re-raise a note the author answered.

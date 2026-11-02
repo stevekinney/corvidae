@@ -1,6 +1,6 @@
 # Design references
 
-A design reference is optional. When one exists, the reviewer checks the screens against it, so the coordinator turns it into local images before dispatch: the reviewer cannot open URLs.
+A design is the subject of a design critique and the standard of an implementation review; a sweep uses one when it exists. The reviewer cannot open URLs, so the coordinator turns the design into local images and text before every dispatch.
 
 ## A Claude Design canvas artifact
 

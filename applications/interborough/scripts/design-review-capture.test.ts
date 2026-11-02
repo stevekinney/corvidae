@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { parseArguments } from './design-review-capture.ts';
+import { parseArguments, portIsFree } from './design-review-capture.ts';
 
 const NOW = new Date('2026-11-02T08:30:00.000Z');
 
@@ -40,5 +40,18 @@ describe('parseArguments', () => {
     expect(parseArguments(['--color', 'dark'], NOW)).toBe('unknown flag --color');
     expect(parseArguments(['--grep'], NOW)).toBe('--grep needs a value');
     expect(parseArguments(['--out', '--scheme', 'dark'], NOW)).toBe('--out needs a value');
+  });
+});
+
+describe('portIsFree', () => {
+  test('answers false for a port something already listens on, and true once it is released', () => {
+    const holder = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } });
+    const port = holder.port;
+    try {
+      expect(portIsFree(port)).toBe(false);
+    } finally {
+      holder.stop(true);
+    }
+    expect(portIsFree(port)).toBe(true);
   });
 });

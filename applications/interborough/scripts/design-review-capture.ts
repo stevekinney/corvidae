@@ -16,11 +16,18 @@
  *
  * `--grep` narrows to the tests whose titles match, for example `--grep '/agents'` for a sign-off on
  * the agent pages. The default output directory is `<repository>/tmp/design-review/<time stamp>`,
- * which Git ignores. Exit 0 when at least one capture was written, 1 when none was, 2 on bad usage.
+ * which Git ignores. Exit 0 when at least one capture was written, 1 when none was, 2 on bad usage
+ * or when the end-to-end port is already taken.
+ *
+ * Playwright reuses a server already listening on the end-to-end port outside CI, which on a shared
+ * host can be another checkout's build, so the capture refuses to start when that port is taken
+ * and asks for a free `INTERBOROUGH_E2E_PORT` instead of screenshotting someone else's tree.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { endToEndPort } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryDirectory = resolve(applicationDirectory, '..', '..');
@@ -81,6 +88,17 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   return { out, schemes, specifications, grep };
 }
 
+/** Whether nothing listens on `port` on the loopback address, so Playwright will start its own server. */
+export function portIsFree(port: number): boolean {
+  try {
+    const probe = Bun.listen({ hostname: '127.0.0.1', port, socket: { data() {} } });
+    probe.stop(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Counts the lines of the manifest, which is one capture each. */
 async function captureCount(out: string): Promise<number> {
   try {
@@ -95,6 +113,14 @@ async function main(): Promise<void> {
   const options = parseArguments(process.argv.slice(2));
   if (typeof options === 'string') {
     process.stderr.write(`${options}\n`);
+    process.exitCode = 2;
+    return;
+  }
+  const port = endToEndPort();
+  if (!portIsFree(port)) {
+    process.stderr.write(
+      `design review: port ${port} is already in use, and Playwright would capture whatever server holds it. Set INTERBOROUGH_E2E_PORT to a free port (it uses that one and the five after it) and run again.\n`,
+    );
     process.exitCode = 2;
     return;
   }
