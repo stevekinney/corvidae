@@ -1928,6 +1928,16 @@ export const HEALTH_OVERVIEW_COPY = {
     'Health could not be fully read. Nothing was reported, but that is not all clear.',
   /** The note beside the chips when one of the line's reads failed. */
   lineReadFailed: 'Some checks could not be read',
+  /** The chip for each alert rule that is firing now: what crossed its warning level, and the reading. */
+  firingAlert: {
+    storage: (size: string): string => `Storage is over its warning level · ${size}`,
+    failureRate: (rate: string): string =>
+      `Workflow failure rate is over its warning level · ${rate}`,
+    activityDuration: (duration: string): string =>
+      `Slowest steps are over their warning level · ${duration}`,
+    /** A rule this app has no sentence for yet: the metric's own name, which is still true. */
+    other: (metric: string): string => `${metric} is over its warning level`,
+  },
   /** The health line when something does: how many things, and each one below it. */
   needsAttention: (count: number): string =>
     count === 1 ? '1 thing needs attention' : `${String(count)} things need attention`,
@@ -3533,8 +3543,10 @@ export const REVIEWS_COPY = {
   answerLabel: 'Your answer',
   /** Said once under an answer field: what the agent does with the answer. */
   answerHint: 'The agent continues with your answer.',
-  /** The optional note sent with a denial, which the agent reads. */
-  noteLabel: 'Note to the agent (optional)',
+  /** The optional note saved with any decision; on a denial the agent reads it. */
+  noteLabel: 'Note (optional)',
+  /** Said under the note field: where the note goes. */
+  noteDescription: 'Saved with your decision. If you deny, the agent reads it as the reason.',
   toolLabel: 'Tool',
   argumentsLabel: 'Arguments',
   /** The labels on the parts of what an approval would run. */

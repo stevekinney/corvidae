@@ -198,6 +198,48 @@ describe('deciding a Bureau tool approval', () => {
     });
   });
 
+  test('sends the note typed before Approve as the reason, trimmed', async () => {
+    const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+      target: { value: '  Go ahead, but only this once.  ' },
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
+    expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
+      id: APPROVAL.id,
+      decision: 'approve',
+      reason: 'Go ahead, but only this once.',
+      round: APPROVAL.round,
+    });
+  });
+
+  test('sends the note typed before Allow for the rest of the chat as the reason', async () => {
+    const { container, findByRole, getByLabelText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+      target: { value: 'Fine for this chat.' },
+    });
+    await fireEvent.click(await findByRole('button', { name: REVIEWS_COPY.allowForChat }));
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1));
+    expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
+      id: APPROVAL.id,
+      decision: 'approve',
+      reason: 'Fine for this chat.',
+      round: APPROVAL.round,
+      remember: true,
+    });
+  });
+
+  test('says what the note is for, under the field', async () => {
+    const { container, findByText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    await findByText(REVIEWS_COPY.noteDescription);
+  });
+
   test('says the approval was not remembered when the Bureau could not store the grant', async () => {
     const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));

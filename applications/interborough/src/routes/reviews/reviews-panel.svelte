@@ -167,7 +167,7 @@
       onResolve({
         review,
         decision: 'approve',
-        reason: undefined,
+        reason: note === '' ? undefined : note,
         remember: action === 'remember',
         onDone,
       });

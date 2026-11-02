@@ -185,7 +185,7 @@ describe('AlertsTab — session activity log', () => {
     expect(router.pathname).toBe('/runs/wf_1');
   });
 
-  test('renders an operational warning as a Warning row', async () => {
+  test('renders the periodic storage size report as a neutral row, not a warning', async () => {
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethod('weft.alerts.list', { items: [] });
     scripted.routeSseStream('/v1/events/sse', [
@@ -194,12 +194,31 @@ describe('AlertsTab — session activity log', () => {
         sequence: 1,
         cursor: 'c1',
         emittedAtMs: 1000,
-        payload: { message: 'Storage crossed 80% of budget.' },
+        payload: { sizeBytes: 1024 * 1024 },
+      }),
+    ]);
+
+    const { findByText, queryByText } = await renderAlertsTab();
+    expect(await findByText('Storage size')).not.toBeNull();
+    expect(await findByText('Storage holds 1.0 MB.')).not.toBeNull();
+    expect(queryByText('Warning')).toBeNull();
+  });
+
+  test('renders an operational warning as a Warning row', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod('weft.alerts.list', { items: [] });
+    scripted.routeSseStream('/v1/events/sse', [
+      sseFrame({
+        kind: 'checkpoint:size-warning',
+        sequence: 1,
+        cursor: 'c1',
+        emittedAtMs: 1000,
+        payload: { message: 'Checkpoint crossed 80% of its limit.' },
       }),
     ]);
 
     const { findByText } = await renderAlertsTab();
-    expect(await findByText('Storage size warning')).not.toBeNull();
+    expect(await findByText('Checkpoint size warning')).not.toBeNull();
     expect(await findByText('Warning')).not.toBeNull();
   });
 });

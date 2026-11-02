@@ -1,3 +1,4 @@
+import { formatBytes } from '../lib/format/index.ts';
 import type { FleetEventFrame } from '../lib/live-source/fleet-event-source.svelte.ts';
 import { numberField, stringField, workflowBody, workflowHref } from './fleet-event-format.ts';
 
@@ -7,7 +8,16 @@ type FleetEventRule = {
   readonly title: (frame: FleetEventFrame) => string;
   readonly body: (frame: FleetEventFrame) => string;
   readonly href: (frame: FleetEventFrame) => string;
+  /** `true` for a periodic report that says nothing is wrong, which the activity feed leaves out. */
+  readonly routine?: true;
 };
+
+/** The sentence a periodic storage size report reads as, or its plain subject when the frame carries no size. */
+function storageHolds(sizeBytes: number | undefined): string {
+  return sizeBytes === undefined
+    ? 'Storage size reported'
+    : `Storage holds ${formatBytes(sizeBytes)}`;
+}
 
 /** Every client-visible fleet event kind mapped to how the Engine view's activity feed shows it. */
 export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
@@ -235,13 +245,15 @@ export const FLEET_EVENT_RULES: Readonly<Record<string, FleetEventRule>> = {
       stringField(frame.payload, 'message') ?? 'A retention cleanup pass reported a warning',
     href: () => '/health',
   },
+  // A periodic size report, dispatched on an interval whatever the size: a reading, not a warning.
+  // A size that is a problem arrives as `alert:fired` for the `storage.size` rule.
   'storage:size-reported': {
-    tier: 'warning',
+    tier: 'info',
     icon: 'hard-drive',
-    title: () => 'Storage size warning',
-    body: (frame) =>
-      stringField(frame.payload, 'message') ?? 'Storage usage crossed a reporting threshold',
+    title: () => 'Storage size',
+    body: (frame) => storageHolds(numberField(frame.payload, 'sizeBytes')),
     href: () => '/health/storage',
+    routine: true,
   },
   'human-review:completed': {
     tier: 'info',

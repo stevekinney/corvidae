@@ -69,6 +69,7 @@
         id={`review-${review.id}-note`}
         label={REVIEWS_COPY.noteLabel}
         labelVisible={false}
+        description={REVIEWS_COPY.noteDescription}
         placeholder={REVIEWS_COPY.noteLabel}
         bind:value={note}
         disabled={deciding}

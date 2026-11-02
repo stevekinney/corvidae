@@ -43,6 +43,7 @@
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import { getClient } from '../../lib/client.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
   import { formatBytes, formatDuration } from '../../lib/format/index.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
@@ -77,7 +78,7 @@
   const source = getFleetEventSource();
   const store = new AlertsStore();
 
-  const ACTIVE_ALERTS_KEY = ['system', 'alerts', 'active'] as const;
+  const ACTIVE_ALERTS_KEY = queryKeys.activeAlerts();
 
   const activeAlertsQuery = createQuery(() => ({
     queryKey: ACTIVE_ALERTS_KEY,
@@ -141,12 +142,14 @@
     firing: { variant: 'danger', label: 'Firing' },
     resolved: { variant: 'neutral', label: 'Resolved' },
     warning: { variant: 'warning', label: 'Warning' },
+    info: { variant: 'neutral', label: 'Reported' },
   };
 
   const EDGE_COLOR: Readonly<Record<AlertRowState, string>> = {
     firing: 'var(--cinder-status-danger-solid)',
     resolved: 'var(--cinder-border)',
     warning: 'var(--cinder-status-warning-solid)',
+    info: 'var(--cinder-border)',
   };
 
   function detailsHref(row: AlertRow): string {

@@ -21,9 +21,11 @@
  * same alert `name`, so a resolved alert reads as resolved wherever it
  * appears in the log.
  */
+import { formatBytes } from '../../lib/format/index.ts';
 import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
 
-export type AlertRowState = 'firing' | 'resolved' | 'warning';
+/** `info` is a routine report that says nothing is wrong, such as the periodic storage size. */
+export type AlertRowState = 'firing' | 'resolved' | 'warning' | 'info';
 
 export interface AlertRow {
   readonly id: string;
@@ -105,11 +107,17 @@ const ALERT_RULES: Readonly<Record<string, AlertRule>> = {
     body: (frame) =>
       stringField(frame.payload, 'message') ?? 'A retention cleanup pass reported a warning.',
   },
+  // A periodic reading, dispatched on an interval whatever the size. A size that is a problem
+  // arrives as `alert:fired` for the `storage.size` rule.
   'storage:size-reported': {
-    state: 'warning',
-    title: () => 'Storage size warning',
-    body: (frame) =>
-      stringField(frame.payload, 'message') ?? 'Storage usage crossed a reporting threshold.',
+    state: 'info',
+    title: () => 'Storage size',
+    body: (frame) => {
+      const sizeBytes = isRecord(frame.payload) ? frame.payload['sizeBytes'] : undefined;
+      return typeof sizeBytes === 'number' && Number.isFinite(sizeBytes)
+        ? `Storage holds ${formatBytes(sizeBytes)}.`
+        : 'Storage size was reported.';
+    },
   },
 };
 

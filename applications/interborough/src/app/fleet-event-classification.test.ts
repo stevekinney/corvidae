@@ -51,7 +51,7 @@ const EXPECTED_TIERS: Readonly<Record<string, FleetEventTier>> = {
   'schedule:fired': 'info',
   'development:warning': 'warning',
   'cleanup:warning': 'warning',
-  'storage:size-reported': 'warning',
+  'storage:size-reported': 'info',
   'human-review:completed': 'info',
 };
 
@@ -95,6 +95,23 @@ describe('classifyFleetEvent', () => {
       frame('alert:fired', { payload: { name: 'dead-letter-threshold' } }),
     );
     expect(classified?.body).toBe('dead-letter-threshold');
+  });
+
+  test('a periodic storage size report is information that holds the size, not a warning', () => {
+    const classified = classifyFleetEvent(
+      frame('storage:size-reported', { payload: { sizeBytes: 3 * 1024 * 1024 } }),
+    );
+    expect(classified?.tier).toBe('info');
+    expect(classified?.title).toBe('Storage size');
+    expect(classified?.body).toBe('Storage holds 3.0 MB');
+    expect(`${classified?.title} ${classified?.body}`).not.toMatch(/warning|threshold/i);
+    expect(classified?.routine).toBe(true);
+  });
+
+  test('only the periodic report is routine', () => {
+    for (const kind of Object.keys(EXPECTED_TIERS)) {
+      expect(classifyFleetEvent(frame(kind))?.routine).toBe(kind === 'storage:size-reported');
+    }
   });
 
   test('non-workflow kinds route to their owning domain list', () => {

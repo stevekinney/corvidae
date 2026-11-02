@@ -52,7 +52,10 @@ function alertClient(options: {
   diagnostics: unknown;
   reviews: unknown;
   diagnosticsInputs?: unknown[];
+  /** What `weft.alerts.list` answers; no alert is firing unless a test says so. */
+  alerts?: unknown;
 }): HttpClient {
+  const alerts = options.alerts ?? { items: [] };
   const client = new HttpClient({ baseUrl: 'http://weft.test/api' });
   Object.defineProperty(client, 'operations', {
     value: {
@@ -62,6 +65,8 @@ function alertClient(options: {
           ? Promise.reject(options.diagnostics)
           : Promise.resolve(options.diagnostics);
       },
+      'weft.alerts.list': () =>
+        alerts instanceof HttpClientError ? Promise.reject(alerts) : Promise.resolve(alerts),
     },
   });
   Object.defineProperty(client, 'listReviews', {
@@ -89,6 +94,68 @@ describe('HealthLine', () => {
     expect(queryByLabelText('Loading the health line')).toBeNull();
     expect(getByText('All clear. Nothing needs attention.')).not.toBeNull();
     expect(container.querySelectorAll('a')).toHaveLength(0);
+  });
+
+  test('is not all clear while a storage alert is firing, and names it in words', async () => {
+    const client = alertClient({
+      diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
+      reviews: [],
+      alerts: {
+        items: [
+          {
+            metric: 'storage.size',
+            currentValue: 5 * 1024 * 1024 * 1024,
+            threshold: 4 * 1024 * 1024 * 1024,
+            window: null,
+            firedAt: 1_000,
+          },
+        ],
+      },
+    });
+
+    const { getByText, queryByText } = render(HealthLineHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText('Storage is over its warning level · 5.0 GB')).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+    const link = getByText('Storage is over its warning level · 5.0 GB').closest('a');
+    expect(link?.getAttribute('href')).toBe('/health/storage');
+    expect(link?.closest('.weft-health-line')?.getAttribute('data-tone')).toBe('warning');
+    expect(getByText('1 thing needs attention')).not.toBeNull();
+    expect(queryByText(HEALTH_OVERVIEW_COPY.allClear)).toBeNull();
+  });
+
+  test('stays all clear when no alert is firing', async () => {
+    const client = alertClient({
+      diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
+      reviews: [],
+      alerts: { items: [] },
+    });
+
+    let queryClient!: QueryClient;
+    const { getByText } = render(HealthLineHarness, {
+      props: { client, onQueryClientReady: (value) => (queryClient = value) },
+    });
+
+    await waitForSettledQueries(queryClient);
+    expect(getByText(HEALTH_OVERVIEW_COPY.allClear)).not.toBeNull();
+  });
+
+  test('does not say all is clear when the alerts read failed', async () => {
+    const client = alertClient({
+      diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
+      reviews: [],
+      alerts: new HttpClientError(500, 'Internal Server Error'),
+    });
+
+    const { getByText, queryByText } = render(HealthLineHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText(HEALTH_OVERVIEW_COPY.lineUnavailable)).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+    expect(queryByText(HEALTH_OVERVIEW_COPY.allClear)).toBeNull();
   });
 
   test('asks for stale heartbeats at the Workers route threshold', async () => {
@@ -417,7 +484,10 @@ describe('HealthLine', () => {
     let diagnostics: unknown = { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 };
     const client = new HttpClient({ baseUrl: 'http://weft.test/api' });
     Object.defineProperty(client, 'operations', {
-      value: { 'weft.tasks.diagnostics': () => Promise.resolve(diagnostics) },
+      value: {
+        'weft.tasks.diagnostics': () => Promise.resolve(diagnostics),
+        'weft.alerts.list': () => Promise.resolve({ items: [] }),
+      },
     });
     Object.defineProperty(client, 'listReviews', { value: () => Promise.resolve([]) });
 
