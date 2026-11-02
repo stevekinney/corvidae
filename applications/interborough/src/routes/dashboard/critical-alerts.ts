@@ -22,6 +22,8 @@
  */
 import type { PendingReviewEntry } from '@lostgradient/weft';
 
+import { HEALTH_OVERVIEW_COPY } from '../../app/copy.ts';
+import { formatBytes, formatDuration } from '../../lib/format/index.ts';
 import { workflowDetailPath } from '../../lib/router.svelte.ts';
 import type { TaskDiagnosticItem } from '../workers/worker-catalog-types.ts';
 
@@ -203,4 +205,53 @@ export function buildReviewsNearTimeoutChip(
     label: `${count} ${pluralize(count, 'review', 'reviews')} near timeout`,
     href: '/reviews',
   };
+}
+
+/** One alert rule firing now, as `weft.alerts.list` reports it (`ActiveAlert`, which the client subpath does not export). */
+export interface FiringAlert {
+  readonly metric: string;
+  readonly currentValue: number;
+  readonly threshold: number;
+}
+
+/** Builds one warning chip per alert rule that is firing now, named in words with its reading. */
+export function buildFiringAlertChips(alerts: readonly FiringAlert[]): AlertChip[] {
+  const copy = HEALTH_OVERVIEW_COPY.firingAlert;
+  return alerts.map((alert): AlertChip => {
+    const id = `alert:${alert.metric}`;
+    switch (alert.metric) {
+      case 'storage.size':
+        return {
+          id,
+          icon: 'hard-drive',
+          tone: 'warning',
+          label: copy.storage(formatBytes(alert.currentValue)),
+          href: '/health/storage',
+        };
+      case 'workflow.failure_rate':
+        return {
+          id,
+          icon: 'siren',
+          tone: 'warning',
+          label: copy.failureRate(`${(alert.currentValue * 100).toFixed(1)}%`),
+          href: '/health',
+        };
+      case 'activity.p99_duration':
+        return {
+          id,
+          icon: 'siren',
+          tone: 'warning',
+          label: copy.activityDuration(formatDuration(alert.currentValue)),
+          href: '/health',
+        };
+      default:
+        return {
+          id,
+          icon: 'siren',
+          tone: 'warning',
+          label: copy.other(alert.metric),
+          href: '/health',
+        };
+    }
+  });
 }

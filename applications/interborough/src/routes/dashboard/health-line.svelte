@@ -3,7 +3,8 @@
    * The Health overview's one health line: a dot and a sentence that say whether anything needs
    * attention, and below it the things that do, as chips that each deep-link: task diagnostics
    * (`GET /api/v1/tasks/diagnostics`, scope `system:read`) and reviews near their
-   * timeout (`listReviews`, scope `reviews:read`). See
+   * timeout (`listReviews`, scope `reviews:read`), and the alert rules firing now
+   * (`weft.alerts.list`, scope `system:read`). See
    * `./critical-alerts.ts`'s module doc for why a "lease contested" chip is
    * intentionally omitted (COR-124 admits only worker-diagnostics and
    * task-detail lease fields; engine lease health is on System → Health).
@@ -19,16 +20,19 @@
 
   import { Skeleton, StatusDot } from '@lostgradient/cinder';
   import { Lock } from '@lucide/svelte';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { HEALTH_OVERVIEW_COPY } from '../../app/copy.ts';
   import { useFleetEventsLive } from '../../app/live-polling.svelte.ts';
+  import { getFleetEventSource, hasFleetEventSource } from '../../app/engine-status.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import { getPrincipalStore, isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import {
     buildDiagnosticChips,
+    buildFiringAlertChips,
+    type FiringAlert,
     buildReviewsNearTimeoutChip,
     type AlertChip,
   } from './critical-alerts.ts';
@@ -70,6 +74,11 @@
     return entry.status === 'pending';
   }
 
+  /** Local shape for `weft.alerts.list`'s output, which the client subpath does not export (as in `alerts-tab.svelte`). */
+  interface ListAlertsOutputLike {
+    readonly items: readonly FiringAlert[];
+  }
+
   const canReadSystem = $derived(principal.hasScope('system:read'));
   const canReadReviews = $derived(principal.hasScope('reviews:read'));
 
@@ -84,9 +93,31 @@
     refetchInterval: DIAGNOSTICS_POLL_INTERVAL_MS,
   }));
 
+  const fleetLive = useFleetEventsLive();
+  // An alert rule firing or resolving changes the answer at once; the timer runs only while the
+  // fleet feed is not live.
+  const alertsQuery = createQuery(() => {
+    const polling = !fleetLive();
+    return {
+      queryKey: queryKeys.activeAlerts(),
+      queryFn: () => client.operations['weft.alerts.list']({}) as Promise<ListAlertsOutputLike>,
+      enabled: canReadSystem,
+      // poll-reason: fallback
+      refetchInterval: polling ? DIAGNOSTICS_POLL_INTERVAL_MS : false,
+    };
+  });
+  const queryClient = useQueryClient();
+  $effect(() => {
+    if (!hasFleetEventSource()) return;
+    return getFleetEventSource().subscribe((frame) => {
+      if (frame.kind === 'alert:fired' || frame.kind === 'alert:resolved') {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.activeAlerts() });
+      }
+    });
+  });
+
   // `human-review:requested` and `human-review:completed`, and a run that ends with reviews open,
   // ask for the pending reviews again; the timer runs only while the fleet feed is not live.
-  const fleetLive = useFleetEventsLive();
   const reviewsQuery = createQuery(() => {
     // Read here, not in the interval, which TanStack Query reads untracked.
     const polling = !fleetLive();
@@ -124,6 +155,12 @@
   });
 
   $effect(() => {
+    if (canReadSystem && alertsQuery.error && isForbidden(alertsQuery.error)) {
+      principal.denyScope('system:read');
+    }
+  });
+
+  $effect(() => {
     if (canReadReviews && reviewsQuery.error && isForbidden(reviewsQuery.error)) {
       principal.denyScope('reviews:read');
     }
@@ -135,6 +172,7 @@
       list.push(
         ...buildDiagnosticChips(diagnosticsQuery.data.summary, diagnosticsQuery.data.items),
       );
+    if (alertsQuery.data) list.push(...buildFiringAlertChips(alertsQuery.data.items));
     if (reviewsQuery.data) {
       const pending = reviewsQuery.data.filter(isPendingReview);
       const reviewsChip = buildReviewsNearTimeoutChip(pending, Date.now());
@@ -148,8 +186,9 @@
   // pending, leaving it out of this derived value's dependency set.
   const isLoading = $derived.by(() => {
     const diagnosticsPending = canReadSystem && diagnosticsQuery.isPending;
+    const alertsPending = canReadSystem && alertsQuery.isPending;
     const reviewsPending = canReadReviews && reviewsQuery.isPending;
-    return diagnosticsPending || reviewsPending;
+    return diagnosticsPending || alertsPending || reviewsPending;
   });
 
   const bothScopesDenied = $derived(!canReadSystem && !canReadReviews);
@@ -169,9 +208,10 @@
   const readFailed = $derived.by(() => {
     const diagnosticsFailed =
       canReadSystem && diagnosticsQuery.isError && !isForbidden(diagnosticsQuery.error);
+    const alertsFailed = canReadSystem && alertsQuery.isError && !isForbidden(alertsQuery.error);
     const reviewsFailed =
       canReadReviews && reviewsQuery.isError && !isForbidden(reviewsQuery.error);
-    return diagnosticsFailed || reviewsFailed;
+    return diagnosticsFailed || alertsFailed || reviewsFailed;
   });
 
   /** Danger when any chip is, warning for any other thing that needs attention or a failed read, and success for none. */

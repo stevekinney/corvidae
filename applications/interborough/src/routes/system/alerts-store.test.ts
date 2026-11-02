@@ -102,15 +102,21 @@ describe('AlertsStore', () => {
 
   test('operational warning kinds are state "warning", never firing/resolved', () => {
     const store = new AlertsStore();
-    for (const kind of [
-      'checkpoint:size-warning',
-      'development:warning',
-      'cleanup:warning',
-      'storage:size-reported',
-    ]) {
+    for (const kind of ['checkpoint:size-warning', 'development:warning', 'cleanup:warning']) {
       store.ingest(frame(kind, { cursor: `c-${kind}` }));
     }
     expect(store.rows.every((row) => row.state === 'warning')).toBe(true);
+  });
+
+  test('a periodic storage size report is information holding the size, never a warning', () => {
+    const store = new AlertsStore();
+    const row = store.ingest(
+      frame('storage:size-reported', { payload: { sizeBytes: 2 * 1024 * 1024 } }),
+    );
+    expect(row?.state).toBe('info');
+    expect(row?.title).toBe('Storage size');
+    expect(row?.body).toBe('Storage holds 2.0 MB.');
+    expect(`${row?.title} ${row?.body}`).not.toMatch(/warning|threshold/i);
   });
 
   test('newest-first ordering', () => {

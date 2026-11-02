@@ -57,6 +57,20 @@ describe('the recent-activity window', () => {
     source.close();
   });
 
+  test('leaves out the periodic storage size report, which says nothing is wrong', () => {
+    const source = new SeenSource([
+      frame(1, 'storage:size-reported'),
+      frame(2, 'workflow:failed'),
+      frame(3, 'storage:size-reported'),
+    ]);
+    const { container, getByText, queryByText } = render(Harness, { props: { source } });
+
+    expect(getByText('Workflow failed')).not.toBeNull();
+    expect(queryByText('Storage size')).toBeNull();
+    expect(container.querySelectorAll('.weft-activity-feed__row')).toHaveLength(1);
+    source.close();
+  });
+
   test('holds six lines, the latest first', () => {
     const kinds = [
       'alert:fired',

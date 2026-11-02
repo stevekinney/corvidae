@@ -186,6 +186,8 @@ export const queryKeys = {
     list: () => ['queues', 'list'] as const,
   },
   diagnostics: () => ['diagnostics'] as const,
+  /** `weft.alerts.list`: the alert rules firing now, read by the Alerts tab and the Health line. */
+  activeAlerts: () => ['system', 'alerts', 'active'] as const,
   conformance: {
     /** `weft.conformance.targets` (COR-160): the worker commands the server can run. */
     targets: () => ['conformance', 'targets'] as const,

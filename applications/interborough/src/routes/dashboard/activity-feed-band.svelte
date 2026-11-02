@@ -76,7 +76,9 @@
 
   function rowOf(frame: FleetEventFrame): ActivityFeedRow | null {
     const classified = classifyFleetEvent(frame);
-    return classified === null ? null : { id: frame.cursor, ...classified };
+    // A periodic report that says nothing is wrong would fill the window every interval.
+    if (classified === null || classified.routine) return null;
+    return { id: frame.cursor, ...classified };
   }
 
   $effect(() => {

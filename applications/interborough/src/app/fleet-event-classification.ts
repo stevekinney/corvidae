@@ -38,6 +38,8 @@ export interface ClassifiedFleetEvent {
   /** Deep link path (router-relative). */
   readonly href: string;
   readonly emittedAtMs: number;
+  /** `true` for a periodic report that says nothing is wrong, which the activity feed leaves out. */
+  readonly routine: boolean;
 }
 
 /** Classifies one fleet frame, or `null` for a kind this module doesn't track (none today: every `EVENTS_READ_EVENT_TYPES` kind has a rule). */
@@ -51,5 +53,6 @@ export function classifyFleetEvent(frame: FleetEventFrame): ClassifiedFleetEvent
     body: rule.body(frame),
     href: rule.href(frame),
     emittedAtMs: frame.emittedAtMs,
+    routine: rule.routine === true,
   };
 }
