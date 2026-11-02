@@ -6,7 +6,8 @@
 // would have shown it before delivery.
 //
 // Usage:
-//   bun scripts/chef/design-ledger.ts --index <file> --canvas <artifact id> [--json]
+//   bun scripts/chef/design-ledger.ts --index <file> --canvas <artifact id>
+//                                     [--rows-out <file> [--board-map <file>]] [--json]
 //
 // `--index` is the canvas's index board saved locally (its `Main.dc.html`, read with the Artifact
 // tool's read action), or a Markdown list of `- <id> | <area> | <text> | <status>` lines.
@@ -17,13 +18,20 @@
 //   - context-only: the row appears in an issue only outside its criteria (a "Design source" list);
 //   - unassigned: no issue names the row;
 //   - rule: a ticketing-rule row, which governs scoping and is never built.
-// Context-only and unassigned rows are gaps.
+// Context-only and unassigned rows are gaps. Dated revision sections apply in order (`brief.ts`
+// `rowCarriage`): a revision clause naming a row carries it unless it says the row moved, was
+// dropped or was removed.
+//
+// `--rows-out` also writes the design-review skill's rows file for a drift audit: every index row,
+// `row-id | board | requirement text [Status]`. `--board-map` names each row's board, from
+// `row-id | board` lines or a drift report's `## Board (index rows: …)` headings; unmapped rows
+// go to `Main`.
 //
 // Exit codes: 0 every row is a criterion, deferred or a rule; 1 gaps, or a Linear failure;
 // 2 invalid CLI usage.
 
-import { readFileSync } from 'node:fs';
-import { sectionOf } from './brief.ts';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { mentionsRow, rowCarriage } from './brief.ts';
 import { createClient, type LinearClient, type LinearDependencies, LinearError } from './linear.ts';
 import { emitResult, parseOptions, UsageError } from './process-runner.ts';
 
@@ -85,30 +93,22 @@ export function parseCanvasRows(text: string): CanvasRow[] {
   return rows;
 }
 
-function mentions(text: string, id: string): boolean {
-  return new RegExp(`(?<![\\w-])${id}(?![\\w-])`).test(text);
-}
-
-function defers(text: string, id: string): boolean {
-  return text.split('\n').some((line) => /\bdeferred\b/i.test(line) && mentions(line, id));
-}
-
 /** Classifies every canvas row by where the issues carry it. Pure. */
 export function buildLedger(rows: CanvasRow[], issues: LedgerIssue[]): Ledger {
+  const ids = rows.map((row) => row.id);
+  const carried = issues.map((issue) => ({
+    issue,
+    description: issue.description ?? '',
+    carriage: rowCarriage(issue.description ?? '', ids),
+  }));
   const ledgerRows = rows.map((row): LedgerRow => {
     const criterionIssues: string[] = [];
     const deferredIssues: string[] = [];
     const contextIssues: string[] = [];
-    for (const issue of issues) {
-      const description = issue.description ?? '';
-      // A line that defers a row sits in the criteria section too, but it is not a criterion.
-      const criteria = (sectionOf(description, /acceptance\s+criteria/i) ?? '')
-        .split('\n')
-        .filter((line) => !/\bdeferred\b/i.test(line))
-        .join('\n');
-      if (mentions(criteria, row.id)) criterionIssues.push(issue.identifier);
-      else if (defers(description, row.id)) deferredIssues.push(issue.identifier);
-      else if (mentions(description, row.id)) contextIssues.push(issue.identifier);
+    for (const { issue, description, carriage } of carried) {
+      if (carriage.criteria.has(row.id)) criterionIssues.push(issue.identifier);
+      else if (carriage.deferred.has(row.id)) deferredIssues.push(issue.identifier);
+      else if (mentionsRow(description, row.id)) contextIssues.push(issue.identifier);
     }
     const coverage: Coverage = /ticketing rule/i.test(row.area)
       ? 'rule'
@@ -144,6 +144,45 @@ export function renderLedger(ledger: Ledger): string {
   ].join('\n');
 }
 
+/**
+ * Which board each row belongs to, from a map file: `row-id | board` lines, or the drift audit's
+ * Markdown headings (`## ChatSession (index rows: 12a, 12c)`), where a board named `…Before` yields
+ * to any other board that names the row. A row the map does not name is drawn on the index board
+ * itself, `Main`.
+ */
+export function parseBoardMap(text: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const line of text.split('\n')) {
+    const pair = /^\s*(\d{2}[a-z])\s*\|\s*([\w.-]+)\s*$/.exec(line);
+    if (pair !== null) {
+      map.set(pair[1] ?? '', (pair[2] ?? '').replace(/\.dc\.html$/, ''));
+      continue;
+    }
+    const heading = /^#{1,6}\s+([\w.-]+)\s+\(index rows?:\s*([^)]*)\)/.exec(line);
+    if (heading === null) continue;
+    for (const id of (heading[2] ?? '').match(/\b\d{2}[a-z]\b/g) ?? [])
+      // The first board that names a row wins, except that a "before" board yields to any other.
+      if (!map.has(id) || /before$/i.test(map.get(id) ?? ''))
+        map.set(id, (heading[1] ?? '').replace(/\.dc\.html$/, ''));
+  }
+  return map;
+}
+
+/**
+ * The design-review rows file for a drift audit: every index row, in index order, as
+ * `row-id | board | requirement text [Status]`, with any `|` in the text written as `/`.
+ */
+export function renderRowsFile(rows: CanvasRow[], boards: Map<string, string>): string {
+  return rows
+    .map((row) => {
+      const status = row.status === '' ? 'Prototyped' : row.status;
+      const text = `${row.text} [${status}]`.replaceAll('|', '/');
+      return `${row.id} | ${boards.get(row.id) ?? 'Main'} | ${text}`;
+    })
+    .join('\n')
+    .concat('\n');
+}
+
 /** Pages of 100 issues read before `searchIssues` gives up rather than return a partial list. */
 export const issuePageLimit = 50;
 
@@ -174,13 +213,27 @@ export async function run(
   argv: string[],
   dependencies: LinearDependencies = {},
 ): Promise<{ code: number; output: string }> {
-  const parsed = parseOptions(argv, { values: ['index', 'canvas'], flags: ['json'] });
+  const parsed = parseOptions(argv, {
+    values: ['index', 'canvas', 'rows-out', 'board-map'],
+    flags: ['json'],
+  });
   const indexPath = parsed.values['index'];
   const canvas = parsed.values['canvas'];
   if (indexPath === undefined || canvas === undefined || parsed.positionals.length > 0)
-    throw new UsageError('Usage: design-ledger.ts --index <file> --canvas <artifact id> [--json]');
+    throw new UsageError(
+      'Usage: design-ledger.ts --index <file> --canvas <artifact id> [--rows-out <file> [--board-map <file>]] [--json]',
+    );
   const rows = parseCanvasRows(readFileSync(indexPath, 'utf8'));
   if (rows.length === 0) throw new UsageError(`No design rows found in ${indexPath}.`);
+  const rowsOut = parsed.values['rows-out'];
+  if (rowsOut !== undefined) {
+    const mapPath = parsed.values['board-map'];
+    const boards =
+      mapPath === undefined
+        ? new Map<string, string>()
+        : parseBoardMap(readFileSync(mapPath, 'utf8'));
+    writeFileSync(rowsOut, renderRowsFile(rows, boards));
+  }
   try {
     const ledger = buildLedger(rows, await searchIssues(createClient(dependencies), canvas));
     const code = ledger.gaps.length === 0 ? 0 : 1;

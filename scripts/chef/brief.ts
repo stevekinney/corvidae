@@ -129,18 +129,79 @@ export function designLinks(text: string): string[] {
  * criteria leave out, and tells the worker to build against the boards and to get a design-review
  * verdict for every row before the pull request is ready.
  */
-function designLines(
-  identifier: string,
-  description: string,
-  criteria: string | undefined,
-  descriptionIncluded: boolean,
-) {
+/** Whether `text` names design row `id` as a whole token (`11a`, not `211a` or `11ab`). */
+export function mentionsRow(text: string, id: string): boolean {
+  return new RegExp(`(?<![\\w-])${id}(?![\\w-])`).test(text);
+}
+
+/** Every heading-delimited section of a description, in order, with nested headings folded in. */
+function sectionsOf(description: string): { heading: string; body: string }[] {
+  const lines = description.split('\n');
+  const sections: { heading: string; body: string }[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(lines[index] ?? '');
+    if (match === null) continue;
+    const level = (match[1] ?? '').length;
+    const body: string[] = [];
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const following = /^(#{1,6})\s/.exec(lines[next] ?? '');
+      if (following !== null && (following[1] ?? '').length <= level) break;
+      body.push(lines[next] ?? '');
+    }
+    sections.push({ heading: match[2] ?? '', body: body.join('\n') });
+  }
+  return sections;
+}
+
+export interface RowCarriage {
+  /** Rows the issue carries as acceptance criteria, after its dated revisions. */
+  criteria: Set<string>;
+  /** Rows the issue defers, each with the line that records the deferral and its reason. */
+  deferred: Map<string, string>;
+}
+
+/**
+ * Which of `rows` an issue carries as criteria and which it defers. A row counts as a criterion
+ * when an "Acceptance criteria" section names it, and a line that says a row is deferred records
+ * a deferral wherever it sits. Appended revision sections ("## Revision 2026-10-31 …") apply in
+ * order, clause by clause: a clause naming a row carries it, unless the clause says the row moved,
+ * was dropped or was removed, and then the issue no longer carries it.
+ */
+export function rowCarriage(description: string, rows: string[]): RowCarriage {
+  const criteria = new Set<string>();
+  const deferred = new Map<string, string>();
+  const sections = sectionsOf(description);
+  for (const line of description.split('\n'))
+    if (/\bdeferred\b/i.test(line))
+      for (const row of rows) if (mentionsRow(line, row)) deferred.set(row, line.trim());
+  for (const section of sections.filter((entry) => /acceptance\s+criteria/i.test(entry.heading)))
+    for (const line of section.body.split('\n'))
+      if (!/\bdeferred\b/i.test(line))
+        for (const row of rows) if (mentionsRow(line, row)) criteria.add(row);
+  // A revision line can name several rows ("now rows 11a and 19b; 12a moved"), so each clause is
+  // judged on its own.
+  for (const section of sections.filter((entry) => /\brevision\b/i.test(entry.heading)))
+    for (const line of section.body.split(/\n|(?<=[.;])\s+/))
+      for (const row of rows) {
+        if (!mentionsRow(line, row) || /\bdeferred\b/i.test(line)) continue;
+        if (/\b(?:moved|dropped|removed)\b/i.test(line)) {
+          criteria.delete(row);
+          deferred.delete(row);
+        } else criteria.add(row);
+      }
+  for (const row of deferred.keys()) criteria.delete(row);
+  return { criteria, deferred };
+}
+
+function designLines(identifier: string, description: string, descriptionIncluded: boolean) {
   const source = sectionOf(description, /design\s+(?:source|rows?)/i);
   const links = designLinks(description);
   const rows = designRowIds(source ?? '');
   if (source === undefined && links.length === 0) return [];
-  const criteriaRows = new Set(designRowIds(criteria ?? ''));
-  const uncovered = rows.filter((row) => !criteriaRows.has(row));
+  const carriage = rowCarriage(description, rows);
+  const uncovered = rows.filter(
+    (row) => !carriage.criteria.has(row) && !carriage.deferred.has(row),
+  );
   return [
     '## Design',
     '',
@@ -148,6 +209,10 @@ function designLines(
     '',
     ...(links.length > 0 ? [`Canvas: ${links.join(', ')}`, ''] : []),
     ...(source !== undefined && !descriptionIncluded ? [source, ''] : []),
+    ...[...carriage.deferred].flatMap(([row, line]) => [
+      `Deferred on this issue, do not build: ${row} (${line})`,
+      '',
+    ]),
     ...(uncovered.length > 0
       ? [
           `Rows not named in the acceptance criteria: ${uncovered.join(', ')}. Treat each as a criterion; if one should not be built, stop and return needs-decision.`,
@@ -155,7 +220,7 @@ function designLines(
         ]
       : []),
     `- Before changing code, read every board these rows name with the Artifact tool's read action (the board's \`project/<Board>.dc.html\` path) and save it under \`tmp/chef/briefs/${identifier}/boards/\` in the main checkout. Build to the boards.`,
-    '- Before the pull request is ready, capture the screens you changed (`bun scripts/design-review-capture.ts` in `applications/interborough`) and get an implementation review from the `design-reviewer` agent, following the `design-review` skill: write these rows as its rows file (`row-id | board | requirement text`), and check its `row-verdicts.txt` with `bun scripts/design-review-rows.ts` in `applications/interborough`. Put the verdict lines (`row-id | verdict | evidence`) in the pull request body and your report. Only `matches`, or `deferred` with the reason recorded on the issue, passes; `drifted`, `partial`, `missing` and `unverified` block the pull request.',
+    '- Before the pull request is ready, capture the screens you changed (`bun scripts/design-review-capture.ts` in `applications/interborough`) and get an implementation review from the `design-reviewer` agent, following the `design-review` skill: write these rows as its rows file (`row-id | board | requirement text`, where `board` is the file stem you saved under `boards/`, the name without `.dc.html`), and check its `row-verdicts.txt` with `bun scripts/design-review-rows.ts` in `applications/interborough`. Put the verdict lines (`row-id | verdict | evidence`) in the pull request body and your report. Only `matches`, or `deferred` with the reason recorded on the issue, passes; `drifted`, `partial`, `missing` and `unverified` block the pull request.',
     '',
   ];
 }
@@ -207,7 +272,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       '',
     );
   }
-  lines.push(...designLines(issue.identifier, description, criteria, execution === undefined));
+  lines.push(...designLines(issue.identifier, description, execution === undefined));
   lines.push('## Files', '');
   lines.push(
     ...(paths.length > 0

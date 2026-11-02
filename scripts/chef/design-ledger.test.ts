@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { throwingRejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
-import { buildLedger, parseCanvasRows, renderLedger, run, searchIssues } from './design-ledger.ts';
+import {
+  buildLedger,
+  parseBoardMap,
+  parseCanvasRows,
+  renderLedger,
+  renderRowsFile,
+  run,
+  searchIssues,
+} from './design-ledger.ts';
 import type { FetchLike } from './linear.ts';
 
 const canvasIndex = `class Component extends DCLogic {
@@ -77,6 +85,46 @@ describe('buildLedger', () => {
     ]);
     expect(ledger.rows.find((row) => row.id === '12a')?.coverage).toBe('criterion');
     expect(ledger.gaps.map((row) => row.id)).toEqual(['11a', '19b', '24c']);
+  });
+});
+
+describe('revisions, board maps and the rows file', () => {
+  const rows = parseCanvasRows(canvasIndex);
+
+  test('a revision that replaces a criterion moves the row it names', () => {
+    const ledger = buildLedger(rows, [
+      issue(
+        'COR-4',
+        '## Acceptance criteria\n\n- [ ] 11a: built.\n\n## Revision 2026-11-01\n\nRow 11a moved to COR-5; this issue now carries 12a.',
+      ),
+    ]);
+    const byId = new Map(ledger.rows.map((row) => [row.id, row.coverage]));
+    expect(byId.get('11a')).toBe('context-only');
+    expect(byId.get('12a')).toBe('criterion');
+  });
+
+  test('reads a board map from pairs or drift headings, and writes every row in order', () => {
+    const boards = parseBoardMap(
+      '11a | NewChat.dc.html\n## ChatSession (index rows: 12a, 11a)\n## SidebarBefore (index rows: 19b)\n## ListPagePattern (index rows: 19b)',
+    );
+    expect(boards.get('11a')).toBe('NewChat');
+    expect(boards.get('12a')).toBe('ChatSession');
+    expect(renderRowsFile(rows, boards)).toBe(
+      [
+        '00a | Main | Cinder first: it’s the rule [Decided]',
+        '11a | NewChat | Rebuild New chat around the composer [Prototyped]',
+        '12a | ChatSession | Composer bar shows model, effort and permission mode [Prototyped]',
+        '19b | ListPagePattern | Adopt ListDetail [Prototyped]',
+        '24c | Main | Status is a dot and a word [Decided]',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  test('replaces a literal pipe in the text', () => {
+    expect(renderRowsFile([{ id: '01a', area: 'A', text: 'a | b', status: '' }], new Map())).toBe(
+      '01a | Main | a / b [Prototyped]\n',
+    );
   });
 });
 

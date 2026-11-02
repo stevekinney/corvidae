@@ -9,6 +9,7 @@ import {
   designRowIds,
   pathsIn,
   renderBrief,
+  rowCarriage,
   run,
   sectionOf,
   verificationCommands,
@@ -66,6 +67,27 @@ describe('designRowIds and designLinks', () => {
     const text =
       'See [canvas](https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw) and <https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw>.';
     expect(designLinks(text)).toEqual(['https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw']);
+  });
+});
+
+describe('rowCarriage', () => {
+  test('a dated revision moves rows in and out, in order', () => {
+    const body = [
+      '## Acceptance criteria',
+      '- [ ] 11a: built.',
+      '- [ ] 12a: built.',
+      '',
+      '## Revision 2026-10-31 (chef, split at readiness)',
+      '',
+      'This issue is now rows 11a and 19b. Row 12a moved to COR-1967.',
+      '',
+      '## Revision 2026-11-01',
+      '',
+      '- Dropped 19b: owner decision.',
+    ].join('\n');
+    const carriage = rowCarriage(body, ['11a', '12a', '19b']);
+    expect([...carriage.criteria]).toEqual(['11a']);
+    expect(carriage.deferred.size).toBe(0);
   });
 });
 
@@ -169,6 +191,33 @@ describe('renderBrief', () => {
     const text = renderBrief(issue(body), options);
     expect(text.split('**12a** (Chat): two')).toHaveLength(2);
     expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
+  });
+
+  test('carries a recorded deferral and does not ask the worker to build that row', () => {
+    const body = [
+      '## Execution brief',
+      'Build the chat list.',
+      '',
+      '## Acceptance criteria',
+      '- [ ] 11a: built.',
+      '',
+      '## Design source',
+      '',
+      '* **11a** (Chat): one',
+      '* **19b** (Every list page): two',
+      '',
+      '## Scope notes',
+      '',
+      'Deferred: 19b, because the list pages are redone in COR-2001.',
+    ].join('\n');
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain('Deferred on this issue, do not build: 19b (Deferred: 19b, because');
+    expect(text).not.toContain('Rows not named in the acceptance criteria');
+  });
+
+  test('tells the worker that a rows-file board is the saved file stem', () => {
+    const body = '## Design source\n\n* **11a** (Chat): one';
+    expect(renderBrief(issue(body), options)).toContain('the file stem you saved under `boards/`');
   });
 
   test('an issue with no design gets no design section', () => {
