@@ -260,6 +260,26 @@ describe('internal workspace architecture', () => {
     expect(scripts['test:slow']).toBe(
       "bun scripts/run-exclusively.ts 'turbo run test:slow test:self:slow --concurrency=1'",
     );
+    // COR-2008: the batch validate is `validate` plus the root Playwright suite's Chromium project,
+    // under one lock so the batch keeps its place from lint to the browser specs. `validate` itself
+    // stays unchanged, so a per-pull-request exception validate does not grow by the suite's length.
+    // The Chromium step also holds the lock on its own, so it is safe to run alone. Firefox and
+    // WebKit projects stay out: those browsers are not installed on the host. The `&&` chain is
+    // what makes a failing spec fail the batch, and the Playwright runner exits non-zero for one.
+    expect(scripts['validate:batch']).toBe(
+      "bun scripts/run-exclusively.ts 'bun run validate && bun run test:browser:chromium'",
+    );
+    expect(scripts['test:browser:chromium']).toBe(
+      "bun scripts/run-exclusively.ts 'bun scripts/browser-fixtures/scripts/prepare-manifest.ts && bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts --project=chromium'",
+    );
+    expect(scripts['validate']).not.toContain('playwright');
+    expect(scripts['validate']).not.toContain('test:browser:chromium');
+    // `batch-validate.ts` and `gate-run.ts run` record the configuration's `batchCommand` in main
+    // health, so it must name the script that carries the browser gate.
+    const repositoryConfiguration = (await Bun.file(
+      join(root, 'scripts/chef/repository.json'),
+    ).json()) as { batchCommand?: string };
+    expect(repositoryConfiguration.batchCommand).toBe('bun run validate:batch');
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
     expect(scripts['audit']).toBe('bun scripts/check-audit-exceptions.ts');
