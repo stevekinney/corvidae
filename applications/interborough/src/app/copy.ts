@@ -2602,6 +2602,8 @@ export const CHAT_COPY = {
     modelNotAllowed: 'This agent does not allow that model. The chat keeps its current model.',
     /** The label added to a model the agent's cost budget cannot count, which the picker shows disabled. */
     unpriced: 'no price',
+    /** The label added to a model the deployment's model policy forbids, which the picker shows disabled. */
+    policyDenied: 'not allowed',
     /** The chat is over, so it takes no other model. */
     sessionTerminal: 'This chat has ended, so its model cannot be changed.',
     /** The agent cannot be switched to another model. */

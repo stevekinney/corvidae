@@ -38,6 +38,8 @@ const modelChoiceSchema = z.object({
   displayName: z.string(),
   /** Present when the agent has a `costBudget` and the catalog has no US-dollar price for the model. */
   unpriced: z.literal(true).optional(),
+  /** Present when the deployment’s or the Bureau’s model policy forbids the model (COR-1996). */
+  denied: z.literal(true).optional(),
 });
 
 const agentsModelsInput = z.object({
@@ -61,7 +63,7 @@ export const agentsModelsOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models an agent allows',
   description:
-    'Returns the models a session of `agentName` can be switched to through `bureau.contexts.steer`: `selectable`, `models` (each with `provider`, `model` and `displayName`, the provider-native model name, since the deployment’s catalog holds no label of its own; and `unpriced: true` on a model that an agent with a `costBudget` cannot be switched to because the catalog has no US-dollar price for it, which `bureau.contexts.steer` refuses) and `default`, the catalog row the agent’s next step would use with no override, or `null` when that is not known. A persisted agent (an agent file) is selectable: its frontmatter `model` is the default, its `models` list, filtered to the models the deployment’s catalog holds, says what is allowed, and without a list the whole catalog is. A code-defined agent with `allowedCandidates` (or a selectable profile naming none, which allows the whole catalog) is selectable the same way. A fixed agent is not selectable and lists its one model; a routed or opaque agent is not selectable and lists none. Any authenticated caller may ask about an agent `bureau.agents.list` lists to it (every ready agent with `bureau.agents:read`, only the ones that opt into A2A without it); any other name answers `NotFound`.',
+    'Returns the models a session of `agentName` can be switched to through `bureau.contexts.steer`: `selectable`, `models` (each with `provider`, `model` and `displayName`, the provider-native model name, since the deployment’s catalog holds no label of its own; and `unpriced: true` on a model that an agent with a `costBudget` cannot be switched to because the catalog has no US-dollar price for it, which `bureau.contexts.steer` refuses; and `denied: true` on a model the deployment’s or the Bureau’s model policy forbids, which `bureau.contexts.steer` refuses as `policy-denied` and which an agent file cannot be saved with) and `default`, the catalog row the agent’s next step would use with no override, or `null` when that is not known. A persisted agent (an agent file) is selectable: its frontmatter `model` is the default, its `models` list, filtered to the models the deployment’s catalog holds, says what is allowed, and without a list the whole catalog is. A code-defined agent with `allowedCandidates` (or a selectable profile naming none, which allows the whole catalog) is selectable the same way. A fixed agent is not selectable and lists its one model; a routed or opaque agent is not selectable and lists none. Any authenticated caller may ask about an agent `bureau.agents.list` lists to it (every ready agent with `bureau.agents:read`, only the ones that opt into A2A without it); any other name answers `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: agentsModelsInput,

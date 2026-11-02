@@ -53,7 +53,7 @@ function agents() {
 
 type ModelsResult = {
   selectable: boolean;
-  models: Array<{ provider: string; model: string; displayName: string }>;
+  models: Array<{ provider: string; model: string; displayName: string; denied?: true }>;
   default: { provider: string; model: string } | null;
 };
 
@@ -194,6 +194,37 @@ describe('bureau.agents.models for a file agent', () => {
       model: 'claude-opus-4-8',
       displayName: 'claude-opus-4-8',
     });
+  });
+});
+
+describe('bureau.agents.models under the model policy (COR-1996)', () => {
+  const policy = { deployment: { deniedModels: ['gpt-4.1'] }, policyRevision: 2 };
+
+  it('marks a file agent’s forbidden models denied and leaves the others unmarked', async () => {
+    const served = await serve({ overrides: { modelPolicy: policy } });
+    await served.put(
+      'picker.md',
+      agentFileText({ model: KNOWN_MODEL, models: `[${KNOWN_MODEL}, openai/gpt-4.1]` }),
+    );
+    await served.bureau.agents.refresh();
+
+    const { result } = await modelsOf(served, 'picker');
+
+    expect(result.models).toEqual([
+      { provider: 'anthropic', model: 'claude-opus-5-5', displayName: 'claude-opus-5-5' },
+      { provider: 'openai', model: 'gpt-4.1', displayName: 'gpt-4.1', denied: true },
+    ]);
+  });
+
+  it('marks a code agent’s forbidden candidate denied, and marks none when no policy is set', async () => {
+    const governed = await serve({ agents: agents(), overrides: { modelPolicy: policy } });
+    const open = await serve({ agents: agents() });
+
+    const marked = await modelsOf(governed, 'choosy');
+    const plain = await modelsOf(open, 'choosy');
+
+    expect(marked.result.models.map((choice) => choice.denied)).toEqual([undefined, true]);
+    expect(plain.result.models.some((choice) => 'denied' in choice)).toBe(false);
   });
 });
 

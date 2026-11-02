@@ -36,7 +36,9 @@ afterEach(() => {
 });
 
 type Overrides = {
-  readonly models?: readonly (typeof SONNET | (typeof SONNET & { unpriced: true }))[];
+  readonly models?: readonly (
+    typeof SONNET | (typeof SONNET & { unpriced?: true; denied?: true })
+  )[];
   readonly selectable?: boolean;
   readonly defaultModel?: { provider: string; model: string } | null;
   readonly steer?: (params: Record<string, unknown>) => unknown;
@@ -168,6 +170,30 @@ describe('which models the picker offers', () => {
       `claude-haiku-4-5 (${COPY.unpriced})`,
     ]);
     expect(options.map((option) => option.disabled)).toEqual([false, true]);
+  });
+
+  test('shows a model the model policy forbids as disabled, and says why', async () => {
+    serve({ models: [SONNET, { ...HAIKU, denied: true }] });
+    const { container } = mount({ current: null });
+
+    await modelsListed();
+    const options = [...picker(container).options];
+    expect(options.map((option) => option.textContent)).toEqual([
+      'claude-sonnet-5',
+      `claude-haiku-4-5 (${COPY.policyDenied})`,
+    ]);
+    expect(options.map((option) => option.disabled)).toEqual([false, true]);
+  });
+
+  test('names the policy, not the price, for a model that is both forbidden and unpriced', async () => {
+    serve({ models: [SONNET, { ...HAIKU, unpriced: true, denied: true }] });
+    const { container } = mount({ current: null });
+
+    await modelsListed();
+    expect([...picker(container).options].map((option) => option.textContent)).toEqual([
+      'claude-sonnet-5',
+      `claude-haiku-4-5 (${COPY.policyDenied})`,
+    ]);
   });
 
   test('shows the model the session was switched to, over the agent’s default', async () => {
