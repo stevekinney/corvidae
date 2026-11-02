@@ -1,4 +1,4 @@
 interface:
   display_name: 'Design review'
-  short_description: 'Sweep Interborough, critique proposed designs, and review UI changes, Cinder first'
-  default_prompt: 'Use $design-review to sweep Interborough for UI issues, critique a proposed design, or review a UI change against the agreed design with the design-reviewer agent, routing every finding to Cinder first.'
+  short_description: 'Sweep Interborough, critique designs, review UI changes row by row, and audit canvas drift'
+  default_prompt: 'Use $design-review to sweep Interborough for UI issues, critique a proposed design, review a UI change against the agreed design row by row, or audit a canvas for drift with the design-reviewer agent, routing every finding to Cinder first.'

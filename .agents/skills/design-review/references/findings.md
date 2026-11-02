@@ -40,6 +40,29 @@ One Markdown report per area:
 - Questions: places where the right answer turns on a product decision, with a recommendation.
 - Coverage: the screens reviewed, and anything you were asked to review but could not judge (missing state, pathological data only, no design reference).
 
+## Row verdicts
+
+Implementation review and drift audit judge agreed design rows one at a time. Both read a rows file and write a verdicts file, each pipe-separated with one row per line and no header; a literal `|` inside text becomes `/`.
+
+```text
+rows file:      row-id | board | requirement text
+verdicts file:  row-id | verdict | evidence
+```
+
+- **row-id**: the canvas index id, such as `11a`. The verdicts name every input row exactly once, in input order.
+- **board**: the board's file stem under `boards/` (`chat-header` for `boards/chat-header.png`, or `chat-header-2.png` for a second image of it).
+- **verdict**: one of the following.
+  - `matches`: the screens and the code do what the row says, in every state and width the row covers.
+  - `drifted`: it is built, but differently from the row (another component, order, copy, or treatment).
+  - `partial`: some of the row is built, and some is not, or it is built in some states or widths only.
+  - `missing`: nothing in the screens or the code does it.
+  - `superseded` (drift audit only): a later decision replaced the row. The evidence cites that decision (a row id or a COR issue).
+  - `deferred` (implementation review only): the issue records, with a reason, that this change does not carry the row. The evidence names where.
+  - `unverified`: no capture shows the row (the state was not captured, or the flow cannot run on the host), so it cannot be judged. It is never a pass, and the evidence says what would make it checkable.
+- **evidence**: semicolon-separated, at most 300 characters, never a `|`: the screenshot path or paths relative to the capture directory, then the source `file:line` where it helps, then, for anything but `matches`, the difference in a short sentence. A `matches` line may leave it empty.
+
+The implementation review's overall verdict follows from its rows: `changes required` when any row is `drifted`, `partial`, `missing` or `unverified`; otherwise `approve`, or `approve with notes` when the report has notes. `bun scripts/design-review-rows.ts` checks the file and prints that verdict. A departure from an agreed row is a defect, not taste, and it blocks.
+
 ## The design critique
 
 The first line is exactly one of:
@@ -60,7 +83,7 @@ Then:
 
 ## The implementation-review verdict
 
-The first line is exactly one of:
+When the dispatch gave rows, return the row lines first, under a line reading exactly `ROWS`, then the verdict and the report. The first line of the report is exactly one of:
 
 - `VERDICT: approve`
 - `VERDICT: approve with notes`
