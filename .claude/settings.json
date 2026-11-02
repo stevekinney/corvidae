@@ -47,7 +47,7 @@
       "Bash(*LEFTHOOK=0*)",
       "Bash(*LEFTHOOK_EXCLUDE=*)",
       "Bash(*CI=1*)",
-      "Bash(git * --no-verify:*)",
+      "Bash(git * --no-verify*)",
       "Bash(git commit --no-verify:*)",
       "Bash(git push --no-verify:*)",
       "Bash(git commit -n:*)",
@@ -57,9 +57,9 @@
       "Bash(git clean -d:*)",
       "Bash(git clean -fd:*)",
       "Bash(git clean -xdf:*)",
-      "Bash(git push * --force :*)",
-      "Bash(git push * --force=*:*)",
-      "Bash(git push * -f:*)"
+      "Bash(git push * --force*)",
+      "Bash(git push * --force=*)",
+      "Bash(git push * -f*)"
     ]
   },
   "attribution": {
