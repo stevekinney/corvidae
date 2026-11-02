@@ -164,7 +164,7 @@ test('operator reads a run’s update history, then sends an update that outlast
   await expect(page.locator('.weft-workflow-detail__fault')).toHaveCount(0);
 
   // The handler finishes on its own; the history asks again and the result shows.
-  await expect(slow).toContainText('slow-done:x', { timeout: 15_000 });
+  await expect(slow).toContainText('slow-done:x');
   await expect(slow).not.toContainText('awaiting result');
 
   // One send is one update: the history holds a single `slow` row.

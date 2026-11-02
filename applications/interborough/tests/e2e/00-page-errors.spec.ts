@@ -8,7 +8,7 @@ import { EventEmitter } from 'node:events';
 
 import type { BrowserContext, Page } from '@playwright/test';
 
-import { expect, loggedFailedResponse, PageErrorLog, test } from './fixtures.ts';
+import { expect, goOffline, loggedFailedResponse, PageErrorLog, test } from './fixtures.ts';
 
 test.describe('a page that reports an error fails its test', () => {
   test('for a console error', async ({ page }) => {
@@ -33,6 +33,17 @@ test.describe('a page that reports an error fails its test', () => {
     await page.goto('/chats');
     // Nothing listens on port 1: the connection is refused, which is not an abort.
     await page.evaluate(() => fetch('http://127.0.0.1:1/').catch(() => undefined));
+  });
+
+  test('for a request that starts while the test holds the context offline', async ({
+    context,
+    page,
+  }) => {
+    test.fail(true, 'an offline window the test did not declare fails a request that lands in it');
+    await page.goto('/chats');
+    await context.setOffline(true);
+    await page.evaluate(() => fetch('/bureau/v1/health').catch(() => undefined));
+    await context.setOffline(false);
   });
 
   test('for a response with an error status the test did not declare', async ({ page }) => {
@@ -76,6 +87,40 @@ test.describe('a declaration covers only what it says', () => {
       await fetch('/bureau/missing');
       await fetch('/bureau/missing');
     });
+  });
+});
+
+test.describe('an offline window the test opens on purpose', () => {
+  test('covers every request that lands in it, however many', async ({
+    context,
+    page,
+    pageErrors,
+  }) => {
+    await page.goto('/chats');
+    await goOffline(context, pageErrors);
+    await page.evaluate(async () => {
+      await fetch('/bureau/v1/health').catch(() => undefined);
+      await fetch('/bureau/v1/health').catch(() => undefined);
+    });
+    await context.setOffline(false);
+  });
+
+  test('requires no request to have landed in it', async ({ context, page, pageErrors }) => {
+    await page.goto('/chats');
+    await goOffline(context, pageErrors);
+    await context.setOffline(false);
+  });
+
+  test('does not cover a failure that is not the offline window', async ({
+    context,
+    page,
+    pageErrors,
+  }) => {
+    test.fail(true, 'a refused connection is not the offline window, so it is still a failure');
+    await page.goto('/chats');
+    await goOffline(context, pageErrors);
+    await context.setOffline(false);
+    await page.evaluate(() => fetch('http://127.0.0.1:1/').catch(() => undefined));
   });
 });
 

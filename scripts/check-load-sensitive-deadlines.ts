@@ -130,9 +130,17 @@
  *
  * Scanned: every `*.test.ts` and `*.test-support.ts`, and every `.ts` module under a directory named
  * `test`, `tests`, `testing`, `__tests__` or `fixtures`, in every workspace and the root `scripts/`.
- * Not scanned: the Playwright specs (`*.playwright.ts`, `*.spec.ts`, `e2e/`, and the helpers in
- * `scripts/browser-fixtures/tests/`), which `test:browser` runs outside `check` and `validate`, and
- * the real-browser smoke tests that read `WEFT_BROWSER_SMOKE` (they skip unless that opt-in flag is
+ * Not scanned by the rules above: the Playwright specs (`*.playwright.ts`, `*.spec.ts`, `e2e/`, and
+ * the helpers in `scripts/browser-fixtures/tests/`), which `test:browser` runs outside `check` and
+ * `validate`. Interborough's own (`applications/interborough/tests/e2e` and `tests/mcp-apps`) follow
+ * the hang guard all the same, and two rules read them: `playwright-configuration` (the lane's
+ * `playwright.config.ts`, Interborough's and `scripts/browser-fixtures`', names
+ * `timeout: TEST_TIMEOUT_MILLISECONDS` and `expect: { timeout: HANG_GUARD_MILLISECONDS }`) and
+ * `playwright-timeout` (a spec names a shorter `timeout` on a matcher, poll, `toPass`, `waitFor*`,
+ * action, `test.setTimeout`, `describe.configure` or `expect.configure`, or one it cannot resolve;
+ * the exemptions are the two comments above, and a short per-attempt bound inside a `toPass` block
+ * is the usual `// load-proof:` case). The specs of `scripts/browser-fixtures/tests` still name their
+ * own timeouts and are not read by `playwright-timeout`. Also not scanned: the real-browser smoke tests that read `WEFT_BROWSER_SMOKE` (they skip unless that opt-in flag is
  * set, and no gate sets it). `test:browser-fixtures` is NOT a Playwright lane: it runs the Bun tests
  * in `scripts/browser-fixtures/scripts` and a build verification, so those are scanned like any
  * other test, including a file that imports Playwright for its types or version.
@@ -155,7 +163,9 @@
  *     different times, and I/O ordering: nothing syntactic distinguishes a deterministic order from
  *     a lucky one;
  *   - the number of microtask turns a promise chain needs, which is deterministic by construction;
- *   - Playwright's own timeouts, which the browser lanes configure in their configuration files.
+ *   - Playwright timeouts in a spec outside Interborough's, and a short deadline written some way
+ *     `playwright-timeout` does not read (a `timeout` passed through a helper's parameter, an
+ *     `AbortSignal.timeout`, a `setTimeout` inside `page.evaluate`).
  *
  * `*.bench.ts` files are outside the default gate and outside the scan, as they are for
  * `check-wall-clock-assertions.ts`. A directory of benchmarks earns no exemption: a `.test.ts`
@@ -205,7 +215,9 @@ export type DeadlineRule =
   | 'single-turn-settle'
   | 'real-timer-double'
   | 'fixed-count-yield-loop'
-  | 'direct-bun-spawn';
+  | 'direct-bun-spawn'
+  | 'playwright-timeout'
+  | 'playwright-configuration';
 export type DeadlineViolation = {
   rule: DeadlineRule;
   line: number;
@@ -1996,6 +2008,225 @@ function isTestFile(name: string, directory: string): boolean {
   );
 }
 
+// Calls a Playwright spec makes that take a `timeout` option: every web-first matcher, a poll, a
+// retry block, a `waitFor*`, and the actions. A short one is a deadline the host can overrun.
+const PLAYWRIGHT_WAITING_CALLEES = /^(to[A-Z]\w*|waitFor\w*|poll|expect)$/;
+const PLAYWRIGHT_ACTION_CALLEES = new Set([
+  'click',
+  'dblclick',
+  'tap',
+  'fill',
+  'clear',
+  'press',
+  'pressSequentially',
+  'type',
+  'check',
+  'uncheck',
+  'setChecked',
+  'hover',
+  'focus',
+  'blur',
+  'selectOption',
+  'setInputFiles',
+  'dragTo',
+  'goto',
+  'reload',
+  'goBack',
+  'goForward',
+  'screenshot',
+]);
+const PLAYWRIGHT_WAIT_OPTIONS = new Set(['timeout', 'actionTimeout', 'navigationTimeout']);
+const PLAYWRIGHT_TEST_ROOTS = new Set(['test', 'describe', 'testInfo']);
+
+/** The option objects a call passes, resolving an identifier to a `const` object literal of the file. */
+function optionObjects(
+  call: ts.CallExpression,
+  constants: ReadonlyMap<string, ts.Expression>,
+): ts.ObjectLiteralExpression[] {
+  const objects: ts.ObjectLiteralExpression[] = [];
+  for (const argument of call.arguments) {
+    const value = unwrap(argument);
+    if (ts.isObjectLiteralExpression(value)) objects.push(value);
+    else if (ts.isIdentifier(value)) {
+      const initializer = constants.get(value.text);
+      const resolved = initializer === undefined ? undefined : unwrap(initializer);
+      if (resolved !== undefined && ts.isObjectLiteralExpression(resolved)) objects.push(resolved);
+    }
+  }
+  return objects;
+}
+
+/**
+ * A Playwright spec's deadline below the hang guard (`playwright-timeout`). `test:browser` follows
+ * the same rule as the Bun lanes: its `expect` timeout is the hang guard and its per-test timeout
+ * twice that (`playwright.config.ts`), so a spec that names a shorter one, on a matcher, a poll, a
+ * `toPass`, a `waitFor*`, an action, `test.setTimeout`, `describe.configure({ timeout })` or
+ * `expect.configure({ timeout })`, lowers it for one statement and flakes when the host is busy
+ * (COR-2001). A `timeout` the guard cannot resolve is reported too, and `timeout: 0` (none) is not.
+ * A short per-attempt bound inside a `toPass` block, which exists to make the block retry, carries
+ * `// load-proof: <reason>` or `// hang-guard-self-test: <reason>` above its statement.
+ */
+export function findPlaywrightDeadlineViolations(sourceFile: ts.SourceFile): DeadlineViolation[] {
+  const constants = collectConstants(sourceFile);
+  const violations: DeadlineViolation[] = [];
+  const report = (node: ts.Node, text: string, callee: string): void => {
+    const reasons = [SELF_TEST_MARKER, LOAD_PROOF_MARKER].map((marker) =>
+      selfTestReason(sourceFile, node, marker),
+    );
+    if (reasons.some((reason) => (reason?.length ?? 0) >= MINIMUM_SELF_TEST_REASON)) return;
+    violations.push({
+      rule: 'playwright-timeout',
+      line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+      text,
+      callee,
+    });
+  };
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const name = calleeName(node);
+    if (name === null) return;
+    const receiver = chainRoot(node.expression);
+    const rootName = ts.isIdentifier(receiver) ? receiver.text : '';
+    const isTestLevel =
+      PLAYWRIGHT_TEST_ROOTS.has(rootName) && (name === 'setTimeout' || name === 'configure');
+    const isWaiting =
+      PLAYWRIGHT_WAITING_CALLEES.test(name) ||
+      PLAYWRIGHT_ACTION_CALLEES.has(name) ||
+      (name === 'configure' && rootName === 'expect') ||
+      (name === 'use' && rootName === 'test');
+    if (!isTestLevel && !isWaiting) return;
+    const limit =
+      isTestLevel || name === 'use' ? TEST_TIMEOUT_MILLISECONDS : HANG_GUARD_MILLISECONDS;
+    if (name === 'setTimeout' && isTestLevel) {
+      const [argument] = node.arguments;
+      const value = argument === undefined ? null : resolveNumber(argument, constants);
+      if (value === null || (value > 0 && value < limit)) {
+        report(node, node.getText(sourceFile), name);
+      }
+      return;
+    }
+    for (const object of optionObjects(node, constants)) {
+      for (const property of object.properties) {
+        if (
+          !ts.isPropertyAssignment(property) ||
+          !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) ||
+          !PLAYWRIGHT_WAIT_OPTIONS.has(property.name.text)
+        ) {
+          continue;
+        }
+        const value = resolveNumber(property.initializer, constants);
+        if (value === null || (value > 0 && value < limit)) {
+          report(node, node.getText(sourceFile).split('\n')[0] ?? name, name);
+          return;
+        }
+      }
+    }
+  });
+  return violations;
+}
+
+/**
+ * The Playwright configuration of a lane that follows the hang guard (`playwright-configuration`):
+ * the object `defineConfig` receives names `timeout: TEST_TIMEOUT_MILLISECONDS` and
+ * `expect: { timeout: HANG_GUARD_MILLISECONDS }`, so the number lives in one place.
+ */
+export function findPlaywrightConfigurationViolations(
+  sourceFile: ts.SourceFile,
+): DeadlineViolation[] {
+  const violations: DeadlineViolation[] = [];
+  let found = false;
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node) || calleeName(node) !== 'defineConfig') return;
+    const [argument] = node.arguments;
+    const configuration = argument === undefined ? undefined : unwrap(argument);
+    if (configuration === undefined || !ts.isObjectLiteralExpression(configuration)) return;
+    found = true;
+    const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+    const timeout = propertyNamed(configuration, new Set(['timeout']));
+    const expectOptions = propertyNamed(configuration, new Set(['expect']));
+    const expectValue = expectOptions === undefined ? undefined : unwrap(expectOptions.initializer);
+    const expectTimeout =
+      expectValue !== undefined && ts.isObjectLiteralExpression(expectValue)
+        ? propertyNamed(expectValue, new Set(['timeout']))
+        : undefined;
+    const named = (property: ts.PropertyAssignment | undefined, identifier: string): boolean => {
+      const value = property === undefined ? undefined : unwrap(property.initializer);
+      return value !== undefined && ts.isIdentifier(value) && value.text === identifier;
+    };
+    if (!named(timeout, 'TEST_TIMEOUT_MILLISECONDS')) {
+      violations.push({
+        rule: 'playwright-configuration',
+        line,
+        text: 'timeout must be TEST_TIMEOUT_MILLISECONDS (scripts/test-deadlines.ts)',
+      });
+    }
+    if (!named(expectTimeout, 'HANG_GUARD_MILLISECONDS')) {
+      violations.push({
+        rule: 'playwright-configuration',
+        line,
+        text: 'expect.timeout must be HANG_GUARD_MILLISECONDS (testing/testing/src/hang-guard.ts)',
+      });
+    }
+  });
+  if (!found) {
+    violations.push({
+      rule: 'playwright-configuration',
+      line: 1,
+      text: 'no defineConfig({ ... }) call to read',
+    });
+  }
+  return violations;
+}
+
+// The Playwright lanes that follow the hang guard. `test:browser` runs them outside `check` and
+// `validate`, but the deadline is the same, and so is the rule.
+const PLAYWRIGHT_CONFIGURATIONS = [
+  join('applications', 'interborough', 'playwright.config.ts'),
+  join('scripts', 'browser-fixtures', 'playwright.config.ts'),
+];
+const PLAYWRIGHT_SPEC_DIRECTORIES = [
+  join('applications', 'interborough', 'tests', 'e2e'),
+  join('applications', 'interborough', 'tests', 'mcp-apps'),
+];
+
+function playwrightSources(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return playwrightSources(path);
+    return entry.isFile() && entry.name.endsWith('.ts') ? [path] : [];
+  });
+}
+
+async function scanPlaywright(): Promise<string[]> {
+  const findings: string[] = [];
+  for (const configuration of PLAYWRIGHT_CONFIGURATIONS) {
+    const path = join(root, configuration);
+    const sourceFile = ts.createSourceFile(
+      path,
+      await Bun.file(path).text(),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    for (const found of findPlaywrightConfigurationViolations(sourceFile)) {
+      findings.push(`${configuration}:${found.line} — ${found.rule} — ${found.text}`);
+    }
+  }
+  for (const directory of PLAYWRIGHT_SPEC_DIRECTORIES) {
+    for (const path of playwrightSources(join(root, directory)).toSorted()) {
+      const sourceFile = ts.createSourceFile(
+        path,
+        await Bun.file(path).text(),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      for (const found of findPlaywrightDeadlineViolations(sourceFile)) {
+        findings.push(`${relative(root, path)}:${found.line} — ${found.rule} — ${found.text}`);
+      }
+    }
+  }
+  return findings;
+}
+
 export function collectFiles(directory: string, tests: string[], runners: string[]): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
@@ -2160,6 +2391,8 @@ async function scan(): Promise<string[]> {
       }
     }
   }
+
+  findings.push(...(await scanPlaywright()));
 
   return findings;
 }

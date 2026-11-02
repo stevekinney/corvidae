@@ -7,7 +7,7 @@ import {
   releaseBarrier,
   startRun,
 } from './chat-support.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, goOffline, holdBureauFeed, test } from './fixtures.ts';
 
 async function makeInspectable(page: Page): Promise<void> {
   await page.addInitScript(() => {
@@ -126,8 +126,10 @@ async function makeInspectable(page: Page): Promise<void> {
 /**
  * Waits until the page has finished reading from the Bureau. The chat page lists the chats beside
  * the open one and reads each of them in turn, so a case that cuts the network right after the
- * chat is ready would cut those reads off in the middle, and the failed requests are not what it
- * is about.
+ * chat is ready would cut those reads off in the middle. This only narrows what the cut lands on:
+ * the cases declare the cut itself (`goOffline`), because a request that starts in the window
+ * fails whatever was waited for, and hold the Bureau's feed (`holdBureauFeed`), which this does
+ * not see, since it is a stream, not a read, and connects on its own schedule.
  */
 async function untilBureauQuiet(page: Page): Promise<void> {
   await expect
@@ -151,11 +153,13 @@ test('recovers a host-preserving drop from the real emitted cursor exactly once'
   page,
   context,
   request,
+  pageErrors,
 }) => {
   const threadId = newThreadId('cor-1728-live');
   const run = await startRun('barrier', threadId, 'Start the work');
   try {
     await expectWaiting(request, 1);
+    await holdBureauFeed(page);
     await makeInspectable(page);
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
@@ -163,7 +167,7 @@ test('recovers a host-preserving drop from the real emitted cursor exactly once'
     await expect.poll(() => lastCursor(page)).toMatch(/^agui-live-v1\./);
     const consumed = await lastCursor(page);
     await untilBureauQuiet(page);
-    await context.setOffline(true);
+    await goOffline(context, pageErrors);
     await page.evaluate(() =>
       (window as unknown as { __severChatStreams: () => void }).__severChatStreams(),
     );
@@ -193,11 +197,13 @@ test('reconnects with an invalid cursor through the authoritative snapshot exact
   page,
   context,
   request,
+  pageErrors,
 }) => {
   const threadId = newThreadId('cor-1728-snapshot');
   const run = await startRun('barrier', threadId, 'Start the work');
   try {
     await expectWaiting(request, 1);
+    await holdBureauFeed(page);
     await makeInspectable(page);
     await page.goto(`/chats/${threadId}`);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
@@ -207,7 +213,7 @@ test('reconnects with an invalid cursor through the authoritative snapshot exact
       () => ((window as unknown as { __forceSnapshot: boolean }).__forceSnapshot = true),
     );
     await untilBureauQuiet(page);
-    await context.setOffline(true);
+    await goOffline(context, pageErrors);
     await page.evaluate(() =>
       (window as unknown as { __severChatStreams: () => void }).__severChatStreams(),
     );

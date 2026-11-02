@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { resolve } from 'node:path';
+import { HANG_GUARD_MILLISECONDS } from '../../testing/testing/src/hang-guard.ts';
+import { TEST_TIMEOUT_MILLISECONDS } from '../test-deadlines.ts';
 import { environmentConfiguration } from './environment-configuration.ts';
 import { FIXTURE_ORIGIN, FIXTURE_PORT } from './scripts/fixture-port.ts';
 
@@ -19,7 +21,9 @@ export default defineConfig({
   testDir: './tests',
   snapshotPathTemplate: '{testDir}/../snapshots/{projectName}/{platform}/{arg}{ext}',
   testMatch: '**/*.{spec,playwright}.ts',
-  timeout: 30_000,
+  // The one deadline every blocking test shares (`scripts/test-deadlines.ts`), as the Bun lanes use.
+  timeout: TEST_TIMEOUT_MILLISECONDS,
+  expect: { timeout: HANG_GUARD_MILLISECONDS },
   use: { baseURL: FIXTURE_ORIGIN, trace: 'retain-on-failure' },
   webServer: {
     command: isPreview

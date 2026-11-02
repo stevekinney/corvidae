@@ -165,7 +165,7 @@ test.describe('the pending-review MCP App', () => {
       return made.length;
     };
     const before = await listCalls();
-    await expect.poll(listCalls, { timeout: 10_000 }).toBeGreaterThan(before);
+    await expect.poll(listCalls).toBeGreaterThan(before);
     await expect(reason).toHaveValue('draft');
     await expect(reason).toBeFocused();
   });
@@ -283,7 +283,7 @@ test.describe('the pending-review MCP App', () => {
         window as unknown as { queueState: { queue: { status: string }[] } }
       ).queueState.queue[0]!.status = 'canceled';
     });
-    await expect(app.getByRole('status')).toHaveText('1 no longer pending.', { timeout: 10_000 });
+    await expect(app.getByRole('status')).toHaveText('1 no longer pending.');
     await expect(app.getByRole('heading', { level: 1 })).toHaveText('Pending reviews (1)');
   });
 
@@ -295,16 +295,14 @@ test.describe('the pending-review MCP App', () => {
         throw new Error('down');
       };
     });
-    await expect(app.getByRole('status')).toHaveText('Connection lost. Retrying.', {
-      timeout: 10_000,
-    });
+    await expect(app.getByRole('status')).toHaveText('Connection lost. Retrying.');
     await expect(app.getByRole('heading', { level: 2 })).toBeVisible();
     await page.evaluate(() => {
       window.referenceHost.handlers['bureau.reviews.list'] = () => ({
         reviews: (window as unknown as { queueState: { queue: unknown[] } }).queueState.queue,
       });
     });
-    await expect(app.getByRole('status')).toHaveText('Reconnected.', { timeout: 10_000 });
+    await expect(app.getByRole('status')).toHaveText('Reconnected.');
   });
 
   test('has no axe violations and honors reduced motion', async ({ page }) => {

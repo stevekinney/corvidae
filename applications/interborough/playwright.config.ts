@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { TEST_TIMEOUT_MILLISECONDS } from '../../scripts/test-deadlines.ts';
+import { HANG_GUARD_MILLISECONDS } from '../../testing/testing/src/hang-guard.ts';
 import { isContinuousIntegration } from './scripts/environment-configuration.ts';
 import { E2E_BASE_URL } from './tests/e2e/e2e-constants.ts';
 
@@ -8,6 +10,11 @@ const continuousIntegration = isContinuousIntegration();
 export default defineConfig({
   testDir: './tests',
   testMatch: ['e2e/**/*.spec.ts', 'mcp-apps/**/*.spec.ts'],
+  // The one deadline every blocking test shares (`scripts/test-deadlines.ts`): the hang guard for a
+  // wait and twice that for a test, never a performance bound a busy host can overrun. A spec that
+  // names a shorter one fails `scripts/check-load-sensitive-deadlines.ts`.
+  timeout: TEST_TIMEOUT_MILLISECONDS,
+  expect: { timeout: HANG_GUARD_MILLISECONDS },
   fullyParallel: false,
   workers: 1,
   reporter: continuousIntegration ? [['line'], ['html', { open: 'never' }]] : 'list',

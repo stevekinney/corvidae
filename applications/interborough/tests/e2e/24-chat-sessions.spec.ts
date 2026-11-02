@@ -160,21 +160,18 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     });
     try {
       await expect
-        .poll(
-          async () => {
-            const { tasks } = await bureau<{ tasks: Fire[] }>(request, 'bureau.tasks.list', {});
-            const fire = tasks.find(
-              (task) =>
-                task.contextId.startsWith(`sched-${created.id}-`) && task.status === 'completed',
-            );
-            if (fire !== undefined) {
-              fireRunId = fire.id;
-              fireContextId = fire.contextId;
-            }
-            return fire !== undefined;
-          },
-          { timeout: 30_000 },
-        )
+        .poll(async () => {
+          const { tasks } = await bureau<{ tasks: Fire[] }>(request, 'bureau.tasks.list', {});
+          const fire = tasks.find(
+            (task) =>
+              task.contextId.startsWith(`sched-${created.id}-`) && task.status === 'completed',
+          );
+          if (fire !== undefined) {
+            fireRunId = fire.id;
+            fireContextId = fire.contextId;
+          }
+          return fire !== undefined;
+        })
         .toBe(true);
     } finally {
       await bureau(request, 'bureau.schedules.cancel', { scheduleId: created.id });
@@ -336,6 +333,7 @@ test.describe('the list of sessions', () => {
     await expect(async () => {
       const more = list.getByRole('button', { name: 'Load more' });
       if (await more.isVisible()) await more.click();
+      // load-proof: a miss only presses Load more again and tries again, so a slow host adds attempts, never a failure.
       await expect(oldest).toBeVisible({ timeout: 1_000 });
     }).toPass();
     expect(await rows.count()).toBeGreaterThan(20);

@@ -58,8 +58,6 @@ const banner = (page: Page) => page.getByRole('region', { name: 'Connection prob
 
 const HOST_REQUESTS = /\/(v1|bureau|api)\//;
 const REFUSED = 'net::ERR_CONNECTION_REFUSED';
-/** The probe backs off to eight seconds, and the page needs a request to find out in the first place. */
-const NOTICE = { timeout: 30_000 };
 
 /** The host stops: every request to it is refused, while the page's own code still loads. */
 const stopHost = (page: Page) =>
@@ -72,9 +70,6 @@ const startHost = (page: Page) => page.unroute(HOST_REQUESTS);
  */
 const refocus = (page: Page) =>
   page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
-
-// A request that gets no answer is retried three times before the page believes it.
-test.describe.configure({ timeout: 90_000 });
 
 /** The JSON-RPC operations the page sends from now on, by name. */
 function recordOperations(page: Page): string[] {
@@ -106,7 +101,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     await stopHost(page);
     await refocus(page);
 
-    await expect(banner(page)).toBeVisible(NOTICE);
+    await expect(banner(page)).toBeVisible();
     await expect(banner(page)).toContainText(CONNECTION_COPY.banner);
     await expect(banner(page)).toContainText('Showing data from');
     await expect(frame).toHaveAttribute('data-stale', 'true');
@@ -118,7 +113,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await startHost(page);
 
-    await expect(banner(page)).toHaveCount(0, NOTICE);
+    await expect(banner(page)).toHaveCount(0);
     await expect(frame).not.toHaveAttribute('data-stale', 'true');
     await expect(content).toHaveCSS('opacity', '1');
     await expect(row).toBeVisible();
@@ -139,7 +134,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     await stopHost(page);
     await refocus(page);
 
-    await expect(banner(page)).toBeVisible(NOTICE);
+    await expect(banner(page)).toBeVisible();
     await expect(save).toHaveAttribute('aria-disabled', 'true');
     await expect(save).toHaveAttribute('title', CONNECTION_COPY.changesOff);
     // Held, not disabled: the page's own state is the one it had, and the control is still focusable.
@@ -151,7 +146,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await startHost(page);
 
-    await expect(banner(page)).toHaveCount(0, NOTICE);
+    await expect(banner(page)).toHaveCount(0);
     await expect(save).not.toHaveAttribute('aria-disabled', 'true');
     await expect(save).not.toHaveAttribute('title', CONNECTION_COPY.changesOff);
 
@@ -177,7 +172,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     await stopHost(page);
     await refocus(page);
 
-    await expect(banner(page)).toBeVisible(NOTICE);
+    await expect(banner(page)).toBeVisible();
     await expect(approve).toHaveAttribute('aria-disabled', 'true');
     await expect(pane.getByRole('button', { name: 'Deny' })).toHaveAttribute(
       'aria-disabled',
@@ -190,7 +185,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await startHost(page);
 
-    await expect(banner(page)).toHaveCount(0, NOTICE);
+    await expect(banner(page)).toHaveCount(0);
     await expect(approve).not.toHaveAttribute('aria-disabled', 'true');
     await approve.click();
     await expect(row).toHaveCount(0);
@@ -225,7 +220,7 @@ test.describe('the server stops answering while a page with data is open', () =>
       });
       await page.evaluate(() => window.dispatchEvent(new Event('online')));
 
-      await expect(banner(page)).toBeVisible(NOTICE);
+      await expect(banner(page)).toBeVisible();
       await expect(cancel).toHaveAttribute('aria-disabled', 'true');
       // Playwright refuses to click what is `aria-disabled`; a person can, and nothing opens.
       await cancel.click({ force: true });
@@ -234,7 +229,7 @@ test.describe('the server stops answering while a page with data is open', () =>
 
       await startHost(page);
 
-      await expect(banner(page)).toHaveCount(0, NOTICE);
+      await expect(banner(page)).toHaveCount(0);
       await expect(cancel).not.toHaveAttribute('aria-disabled', 'true');
       await cancel.click();
       await page.getByRole('dialog').getByRole('button', { name: TASK_COPY.cancelAction }).click();
@@ -265,16 +260,16 @@ test.describe('the server stops answering while a page with data is open', () =>
 
     await stopHost(page);
     await refocus(page);
-    await expect(banner(page)).toBeVisible(NOTICE);
+    await expect(banner(page)).toBeVisible();
 
     // The composer stops while the host is down, and nothing leaves.
-    await expect(composer).not.toBeEditable(NOTICE);
+    await expect(composer).not.toBeEditable();
     expect(starts).toEqual([]);
 
     await startHost(page);
 
-    await expect(banner(page)).toHaveCount(0, NOTICE);
-    await expect(composer).toBeEditable(NOTICE);
+    await expect(banner(page)).toHaveCount(0);
+    await expect(composer).toBeEditable();
     await composer.fill('Sent after the host is back');
     await composer.press('Enter');
     await expect(page.getByText('Sent after the host is back').first()).toBeVisible();
@@ -313,8 +308,8 @@ test.describe('requests that get no answer from the host', () => {
 
     // The host is back, and the probe finds it. Try again would only ask the view's own question.
     await startHost(page);
-    await expect(banner(page)).toHaveCount(0, NOTICE);
-    await expect(frame).toHaveAttribute('data-state', /^(ready|empty)$/, NOTICE);
+    await expect(banner(page)).toHaveCount(0);
+    await expect(frame).toHaveAttribute('data-state', /^(ready|empty)$/);
 
     declareOutage(pageErrors, outage, REFUSED);
   });
@@ -346,8 +341,9 @@ test.describe('a chat that cannot reach its thread', () => {
     // Seven retries follow the first try, and only after the last is the chat disconnected.
     await expect(async () => {
       await page.clock.runFor(11_000);
+      // load-proof: a miss only runs the fake clock further and tries again, so a slow host adds attempts, never a failure.
       await expect(reconnect).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 60_000 });
+    }).toPass();
     expect(attempts).toBe(8);
     await expect(page.getByText(CHAT_COPY.disconnected.title, { exact: true })).toBeVisible();
 

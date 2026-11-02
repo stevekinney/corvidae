@@ -229,9 +229,7 @@ test.describe('the run inspector MCP App', () => {
     await page.evaluate(() => {
       delete window.referenceHost.handlers['bureau.tasks.inspect'];
     });
-    await expect(app.getByRole('status')).toHaveText('Connection lost. Retrying.', {
-      timeout: 10_000,
-    });
+    await expect(app.getByRole('status')).toHaveText('Connection lost. Retrying.');
     await expect(app.getByRole('heading', { level: 1 })).toBeVisible();
     await page.evaluate(() => {
       window.referenceHost.handlers['bureau.tasks.inspect'] = () => ({
@@ -258,7 +256,7 @@ test.describe('the run inspector MCP App', () => {
         children: [],
       });
     });
-    await expect(app.getByRole('status')).toHaveText('Reconnected.', { timeout: 10_000 });
+    await expect(app.getByRole('status')).toHaveText('Reconnected.');
   });
 
   test('ignores a snapshot older than the one it shows', async ({ page }) => {
@@ -300,7 +298,7 @@ test.describe('the run inspector MCP App', () => {
     await abort.focus();
     const before = await page.evaluate(() => window.referenceHost.calls.length);
     await expect
-      .poll(() => page.evaluate(() => window.referenceHost.calls.length), { timeout: 10_000 })
+      .poll(() => page.evaluate(() => window.referenceHost.calls.length))
       .toBeGreaterThan(before + 1);
     await expect(abort).toBeFocused();
   });

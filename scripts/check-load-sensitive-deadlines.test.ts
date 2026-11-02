@@ -10,6 +10,8 @@ import {
   collectPositionalBudgets,
   findDeadlineViolations,
   findPackageScriptViolations,
+  findPlaywrightConfigurationViolations,
+  findPlaywrightDeadlineViolations,
   findTestRunnerSpawnViolations,
 } from './check-load-sensitive-deadlines.ts';
 
@@ -1121,5 +1123,123 @@ describe('test file discovery', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+function inspectPlaywright(source: string): string[] {
+  const parsed = ts.createSourceFile('fixture.spec.ts', source, ts.ScriptTarget.Latest, true);
+  return findPlaywrightDeadlineViolations(parsed).map((violation) => violation.rule);
+}
+
+describe('a Playwright spec deadline below the hang guard', () => {
+  test.each([
+    ['a matcher', 'await expect(page.getByText("a")).toBeVisible({ timeout: 5_000 });'],
+    ['a count matcher', 'await expect(rows).toHaveCount(0, { timeout: 5_000 });'],
+    ['a poll', 'await expect.poll(read, { timeout: 15_000 }).toBe(1);'],
+    ['a toPass block', 'await expect(async () => {}).toPass({ timeout: 60_000 });'],
+    ['a waitFor', 'await page.waitForSelector("#app", { state: "visible", timeout: 20_000 });'],
+    ['a locator waitFor', 'await harness.waitFor({ state: "visible", timeout: 20_000 });'],
+    ['an action', 'await page.getByRole("button").click({ timeout: 2_000 });'],
+    ['an expect message and options', 'await expect(locator, { timeout: 3_000 }).toBeVisible();'],
+    ['test.setTimeout', 'test.setTimeout(30_000);'],
+    ['a describe timeout', 'test.describe.configure({ timeout: 90_000 });'],
+    ['expect.configure', 'expect.configure({ timeout: 10_000 });'],
+    ['test.use', 'test.use({ actionTimeout: 5_000 });'],
+    [
+      'a file-level options object',
+      'const NOTICE = { timeout: 30_000 };\nawait expect(a).toBeVisible(NOTICE);',
+    ],
+    [
+      'a file-level constant',
+      'const BUDGET = 8_000;\nawait expect(a).toBeVisible({ timeout: BUDGET });',
+    ],
+    ['a timeout it cannot resolve', 'await expect(a).toBeVisible({ timeout: failure.timeout });'],
+  ])('reports %s', (_name, source) => {
+    expect(inspectPlaywright(source)).toEqual(['playwright-timeout']);
+  });
+
+  test.each([
+    ['no timeout', 'await expect(a).toBeVisible();\nawait expect.poll(read).toBe(1);'],
+    ['the hang guard', `await expect(a).toBeVisible({ timeout: ${HANG_GUARD_MILLISECONDS} });`],
+    [
+      'the hang guard constant',
+      'await expect(a).toBeVisible({ timeout: HANG_GUARD_MILLISECONDS });',
+    ],
+    ['no timeout at all (zero)', 'await expect(a).toPass({ timeout: 0 });'],
+    ['a test timeout of twice the guard', 'test.setTimeout(2 * HANG_GUARD_MILLISECONDS);'],
+    [
+      'a timeout in data that is not a Playwright call',
+      'JSON.stringify({ payload: "x", timeout: 1_000 });',
+    ],
+    ['a number passed to a matcher', 'expect(count).toBe(5_000);'],
+    ['a serial describe', 'test.describe.configure({ mode: "serial" });'],
+  ])('accepts %s', (_name, source) => {
+    expect(inspectPlaywright(source)).toEqual([]);
+  });
+
+  test.each([
+    [
+      'load-proof',
+      '// load-proof: a miss only runs the fake clock again, so a slow host adds attempts.\nawait expect(a).toBeVisible({ timeout: 1_000 });',
+    ],
+    [
+      'hang-guard-self-test',
+      '// hang-guard-self-test: proves the matcher fails when nothing ever appears.\nawait expect(a).toBeVisible({ timeout: 1_000 });',
+    ],
+  ])('accepts a %s comment with a reason', (_name, source) => {
+    expect(inspectPlaywright(source)).toEqual([]);
+  });
+
+  test('rejects a comment whose reason is too short to say anything', () => {
+    expect(
+      inspectPlaywright('// load-proof: fast\nawait expect(a).toBeVisible({ timeout: 1_000 });'),
+    ).toEqual(['playwright-timeout']);
+  });
+
+  test('covers only the statement the comment sits above', () => {
+    const source =
+      '// load-proof: a miss only runs the fake clock again, so a slow host adds attempts.\nawait expect(a).toBeVisible({ timeout: 1_000 });\nawait expect(b).toBeVisible({ timeout: 1_000 });';
+    expect(inspectPlaywright(source)).toEqual(['playwright-timeout']);
+  });
+});
+
+describe('a Playwright configuration that follows the hang guard', () => {
+  function inspectConfiguration(source: string): string[] {
+    const parsed = ts.createSourceFile(
+      'playwright.config.ts',
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    return findPlaywrightConfigurationViolations(parsed).map((violation) => violation.text);
+  }
+
+  test('accepts the two shared constants', () => {
+    expect(
+      inspectConfiguration(
+        'export default defineConfig({ timeout: TEST_TIMEOUT_MILLISECONDS, expect: { timeout: HANG_GUARD_MILLISECONDS } });',
+      ),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a literal test timeout',
+      'defineConfig({ timeout: 30_000, expect: { timeout: HANG_GUARD_MILLISECONDS } })',
+    ],
+    [
+      'a literal expect timeout',
+      'defineConfig({ timeout: TEST_TIMEOUT_MILLISECONDS, expect: { timeout: 10_000 } })',
+    ],
+    ['no expect timeout', 'defineConfig({ timeout: TEST_TIMEOUT_MILLISECONDS })'],
+    ['neither', 'defineConfig({ testDir: "./tests" })'],
+  ])('reports %s', (_name, source) => {
+    expect(inspectConfiguration(source).length).toBeGreaterThan(0);
+  });
+
+  test('reports a file with no configuration to read', () => {
+    expect(inspectConfiguration('export const nothing = 1;')).toEqual([
+      'no defineConfig({ ... }) call to read',
+    ]);
   });
 });

@@ -189,6 +189,22 @@ export async function holdBureauFeed(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Takes the context offline on purpose, for a test about what the page does when its network is cut.
+ * Every request the page starts while the context is offline fails with `ERR_INTERNET_DISCONNECTED`,
+ * and which requests those are follows the page's own schedule (its health probe, a feed that
+ * reconnects, a list that refetches), not the test's. The failures are the cause the test
+ * declared, so they are covered however many there are, and none is required; any other failure is
+ * still the test's to explain. The test restores the network itself, with `context.setOffline(false)`.
+ */
+export async function goOffline(context: BrowserContext, pageErrors: PageErrorLog): Promise<void> {
+  pageErrors.expectEvery({
+    pattern: /net::ERR_INTERNET_DISCONNECTED/,
+    reason: 'the test holds the context offline, so a request the page starts in that window fails',
+  });
+  await context.setOffline(true);
+}
+
 /** A declaration the test made through `pageErrors.expect(...)`. */
 type DeclaredAllowance = { readonly allowance: PageErrorAllowance };
 

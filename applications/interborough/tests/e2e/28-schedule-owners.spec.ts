@@ -208,7 +208,7 @@ test.describe('the seeded agent run', () => {
       await editor.getByRole('button', { name: 'Save changes' }).click();
       await expect(page).toHaveURL(new RegExp(`/schedules/${id}$`));
 
-      await expect.poll(async () => nextFireAt(request, id), { timeout: 15_000 }).not.toBe(before);
+      await expect.poll(async () => nextFireAt(request, id)).not.toBe(before);
       await expect(nextFire).toContainText('every 2 hours');
       // The sentence names the new cadence in place of the daily one, so the page says so.
       await expect(nextFire).not.toHaveText(shownBefore);
@@ -352,17 +352,19 @@ test.describe('creating a schedule', () => {
     test('offers the code-defined workflow types, and an agent-authored one only to say why it cannot be chosen', async ({
       page,
     }) => {
+      // The picker fills in as the engine's registry arrives, and each read is a fresh page load, so
+      // wait on the state this case is about instead of reading a second time after a first.
       await expect
         .poll(async () => {
-          const listed = await offered(page);
-          return listed.length;
+          const options = await offered(page);
+          return {
+            orderProcessingDisabled: options.find((option) =>
+              option.text.includes('Order Processing'),
+            )?.disabled,
+            digestDisabled: options.find((option) => option.text.includes('E2e Digest'))?.disabled,
+          };
         })
-        .toBeGreaterThan(2);
-      const options = await offered(page);
-      expect(options.find((option) => option.text.includes('Order Processing'))?.disabled).toBe(
-        false,
-      );
-      expect(options.find((option) => option.text.includes('E2e Digest'))?.disabled).toBe(true);
+        .toEqual({ orderProcessingDisabled: false, digestDisabled: true });
     });
   });
 });

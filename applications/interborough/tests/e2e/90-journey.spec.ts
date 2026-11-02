@@ -316,7 +316,7 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
   await detail.getByRole('link', { name: WORKFLOW_COPY.runsAction, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/runs$`));
   const runs = page.locator('tbody tr');
-  await expect(runs.first()).toBeVisible({ timeout: 30_000 });
+  await expect(runs.first()).toBeVisible();
   for (const text of await runs.allTextContents()) expect(text).toContain(JOURNEY_WORKFLOW_ID);
 
   await runs.first().getByRole('link').first().click();

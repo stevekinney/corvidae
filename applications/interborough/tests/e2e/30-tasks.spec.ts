@@ -12,7 +12,7 @@ import type { BrowserContext, Page } from '@playwright/test';
 import { TASK_COPY } from '../../src/app/copy.ts';
 import { taskCursorKey } from '../../src/routes/workflows/runs/task-follower.svelte.ts';
 import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
-import { expect, test } from './fixtures.ts';
+import { expect, goOffline, test, type PageErrorLog } from './fixtures.ts';
 import { bureauCall, expectEngineMissesForRuns, taskOfSession } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -84,8 +84,12 @@ async function makeStreamsSeverable(page: Page): Promise<void> {
 }
 
 /** Drops the network: the open streams fail, and nothing can connect until it is restored. */
-async function dropNetwork(page: Page, context: BrowserContext): Promise<void> {
-  await context.setOffline(true);
+async function dropNetwork(
+  page: Page,
+  context: BrowserContext,
+  pageErrors: PageErrorLog,
+): Promise<void> {
+  await goOffline(context, pageErrors);
   await page.evaluate(() => {
     (window as unknown as { __severTaskStreams: () => void }).__severTaskStreams();
   });
@@ -252,6 +256,7 @@ test.describe('following a task', () => {
     page,
     context,
     request,
+    pageErrors,
   }) => {
     await makeStreamsSeverable(page);
     // A run parked on a question has made one durable change, so the stream has a position to keep.
@@ -273,7 +278,7 @@ test.describe('following a task', () => {
     const before = await keptCursor(page, taskId);
 
     // The connection drops, and the answer arrives while the page cannot hear it.
-    await dropNetwork(page, context);
+    await dropNetwork(page, context, pageErrors);
     await expect(page.getByText(TASK_COPY.followReconnecting)).toBeVisible();
     await bureauCall(request, 'bureau.tasks.respond', {
       taskId,
