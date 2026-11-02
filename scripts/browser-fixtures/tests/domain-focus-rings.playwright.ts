@@ -36,9 +36,9 @@ async function openChatHarness(
     ] as const);
     const page = await context.newPage();
     await page.goto(FIXTURE_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     const harness = page.locator(HARNESS);
-    await harness.waitFor({ state: 'visible', timeout: 20_000 });
+    await harness.waitFor({ state: 'visible' });
     return { page, harness, dispose: () => context.close() };
   } catch (error) {
     await context.close();
@@ -115,7 +115,6 @@ async function focusPaint(target: Locator): Promise<{
 }
 
 type FocusPaint = Awaited<ReturnType<typeof focusPaint>>;
-const FOCUS_RING_SETTLE_TIMEOUT_MS = 500;
 const FOCUS_RING_SETTLE_POLL_INTERVALS_MS = [10, 25, 50, 100];
 
 async function waitForSettledFocusPaint(target: Locator, label: string): Promise<FocusPaint> {
@@ -127,7 +126,7 @@ async function waitForSettledFocusPaint(target: Locator, label: string): Promise
           paint = await focusPaint(target);
           return paint.outlineColorAlpha;
         },
-        { timeout: FOCUS_RING_SETTLE_TIMEOUT_MS, intervals: FOCUS_RING_SETTLE_POLL_INTERVALS_MS },
+        { intervals: FOCUS_RING_SETTLE_POLL_INTERVALS_MS },
       )
       .toBe(0);
   } catch (error) {
@@ -176,14 +175,14 @@ async function assertInsetRing(target: Locator, label: string): Promise<void> {
 
 async function seedDenseChatSurface(harness: Locator): Promise<void> {
   await harness.locator('[data-testid="seed-thread"]').click();
-  await expect(harness.locator('[data-role="assistant"]').first()).toBeVisible({ timeout: 5_000 });
+  await expect(harness.locator('[data-role="assistant"]').first()).toBeVisible();
   const timeline = harness.locator('.chat-timeline');
   await timeline.evaluate((element) => {
     element.scrollTop = 0;
     element.dispatchEvent(new Event('scroll', { bubbles: true }));
   });
   await expect.poll(async () => timeline.evaluate((element) => element.scrollTop)).toBe(0);
-  await expect(harness.locator('.chat-jump-button')).toBeVisible({ timeout: 5_000 });
+  await expect(harness.locator('.chat-jump-button')).toBeVisible();
   const composer = harness.locator('textarea.chat-input-editor').first();
   await composer.fill('Keyboard focus ring check');
   await expect(harness.locator('.chat-input-send')).toBeEnabled();

@@ -43,9 +43,7 @@ async function openExample(page: Page): Promise<{ page: Page; mount: Locator }> 
   await page.goto(ROUTE, { waitUntil: 'load' });
   const mount = page.locator(MOUNT_SELECTOR);
   await expect(mount).toBeVisible();
-  await expect(mount.locator('.markdown-editor-wrapper[data-ready="true"]')).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(mount.locator('.markdown-editor-wrapper[data-ready="true"]')).toBeVisible();
   return { page, mount };
 }
 

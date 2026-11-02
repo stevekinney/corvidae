@@ -113,12 +113,8 @@ function getEditorSurface(mount: import('@playwright/test').Locator) {
 }
 
 async function waitForReviewEditorReady(mount: import('@playwright/test').Locator) {
-  // Default assertion budget (this package's playwright.config.ts sets no
-  // `expect.timeout`, so 5s) — a review finding correctly flagged the
-  // earlier 20s override as exactly the kind of timeout increase this
-  // repo's policy blocks. Local runs settle this well under 5s; if CI ever
-  // needs longer, that's a real startup-race fact to investigate, not a
-  // threshold to pre-pad.
+  // The shared hang guard (`expect.timeout` in this package's playwright.config.ts) is the only
+  // deadline. A slow start is a startup race to investigate, not a threshold to pad per call.
   await expect(mount.locator('[data-testid="review-editor"]')).toHaveAttribute(
     'data-ready',
     'true',
@@ -130,7 +126,7 @@ test.describe('ReviewEditor comment-anchor accessibility (cinder#1304)', () => {
     page,
   }) => {
     await page.goto(ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator(EXAMPLE_MOUNT);
     await expect(mount.locator('[data-testid="review-editor"]')).toHaveAttribute(
@@ -170,7 +166,7 @@ test.describe('ReviewEditor comment-anchor accessibility (cinder#1304)', () => {
     page,
   }) => {
     await page.goto(ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator(EXAMPLE_MOUNT);
     await waitForReviewEditorReady(mount);
@@ -200,7 +196,7 @@ test.describe('ReviewEditor comment-anchor accessibility (cinder#1304)', () => {
     // dismissed), so checking it after the transient announcement above is
     // safe.
     const popover = page.locator('.thread-popover');
-    await expect(popover).toBeVisible({ timeout: 5_000 });
+    await expect(popover).toBeVisible();
     await expect(popover.getByText('This title is clear. I would keep it.')).toBeVisible();
 
     // The caret genuinely moved onto the anchor's text, not just "a popover
@@ -225,7 +221,7 @@ test.describe('ReviewEditor comment-anchor accessibility (cinder#1304)', () => {
     page,
   }) => {
     await page.goto(ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator(EXAMPLE_MOUNT);
     await waitForReviewEditorReady(mount);
@@ -267,7 +263,7 @@ test.describe('ReviewEditor comment-anchor accessibility, readonly mode (cinder#
     page,
   }) => {
     await page.goto(READONLY_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator(READONLY_EXAMPLE_MOUNT);
     await waitForReviewEditorReady(mount);
@@ -321,7 +317,7 @@ test.describe('ReviewEditor comment-anchor accessibility, readonly mode (cinder#
     // editor dom or its descendants.
     await pressCommentNavigationChordAndExpectAnnouncement(page, mount, 1);
     const popover = page.locator('.thread-popover');
-    await expect(popover).toBeVisible({ timeout: 5_000 });
+    await expect(popover).toBeVisible();
     await expect(popover.getByText('This title is clear. I would keep it.')).toBeVisible();
   });
 
@@ -329,7 +325,7 @@ test.describe('ReviewEditor comment-anchor accessibility, readonly mode (cinder#
     page,
   }) => {
     await page.goto(READONLY_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator(READONLY_EXAMPLE_MOUNT);
     await waitForReviewEditorReady(mount);

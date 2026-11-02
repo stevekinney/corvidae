@@ -139,9 +139,9 @@
  * `playwright-timeout` (a spec names a shorter `timeout` on a matcher, poll, `toPass`, `waitFor*`,
  * action, `test.setTimeout`, `describe.configure` or `expect.configure`, or one it cannot resolve;
  * the exemptions are the two comments above, and a short per-attempt bound inside a `toPass` block
- * is the usual `// load-proof:` case). The specs of `scripts/browser-fixtures/tests` still name their
- * own timeouts and are not read by `playwright-timeout`. Also not scanned: the real-browser smoke tests that read `WEFT_BROWSER_SMOKE` (they skip unless that opt-in flag is
- * set, and no gate sets it). `test:browser-fixtures` is NOT a Playwright lane: it runs the Bun tests
+ * is the usual `// load-proof:` case). The specs and helpers of `scripts/browser-fixtures/tests`
+ * are read by `playwright-timeout` too (COR-2006). Also not scanned: the real-browser smoke tests
+ * that read `WEFT_BROWSER_SMOKE` (they skip unless that opt-in flag is set, and no gate sets it). `test:browser-fixtures` is NOT a Playwright lane: it runs the Bun tests
  * in `scripts/browser-fixtures/scripts` and a build verification, so those are scanned like any
  * other test, including a file that imports Playwright for its types or version.
  *
@@ -163,7 +163,7 @@
  *     different times, and I/O ordering: nothing syntactic distinguishes a deterministic order from
  *     a lucky one;
  *   - the number of microtask turns a promise chain needs, which is deterministic by construction;
- *   - Playwright timeouts in a spec outside Interborough's, and a short deadline written some way
+ *   - a short Playwright deadline written some way
  *     `playwright-timeout` does not read (a `timeout` passed through a helper's parameter, an
  *     `AbortSignal.timeout`, a `setTimeout` inside `page.evaluate`).
  *
@@ -2184,9 +2184,11 @@ const PLAYWRIGHT_CONFIGURATIONS = [
   join('applications', 'interborough', 'playwright.config.ts'),
   join('scripts', 'browser-fixtures', 'playwright.config.ts'),
 ];
-const PLAYWRIGHT_SPEC_DIRECTORIES = [
+/** The directories whose Playwright specs and helpers `playwright-timeout` reads. */
+export const PLAYWRIGHT_SPEC_DIRECTORIES = [
   join('applications', 'interborough', 'tests', 'e2e'),
   join('applications', 'interborough', 'tests', 'mcp-apps'),
+  join('scripts', 'browser-fixtures', 'tests'),
 ];
 
 function playwrightSources(directory: string): string[] {

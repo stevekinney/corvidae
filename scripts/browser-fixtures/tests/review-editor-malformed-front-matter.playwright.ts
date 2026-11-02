@@ -36,7 +36,6 @@ test.describe('ReviewEditor malformed front matter recovery', () => {
     });
     await page.waitForSelector('#example-mount-malformed-front-matter', {
       state: 'visible',
-      timeout: 20_000,
     });
   });
 

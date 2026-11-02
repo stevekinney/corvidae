@@ -82,7 +82,7 @@ test.describe('markdown link popover', () => {
     // away from the trigger to stay on-screen, which is exercised implicitly by
     // the viewport-containment checks below.
     await page.goto(MARKDOWN_EDITOR_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const linkButton = await revealLinkTrigger(page);
     const triggerBox = await linkButton.boundingBox();
@@ -92,7 +92,7 @@ test.describe('markdown link popover', () => {
     await linkButton.click();
 
     const linkPopover = page.locator('.link-popover').first();
-    await expect(linkPopover).toBeVisible({ timeout: 5_000 });
+    await expect(linkPopover).toBeVisible();
     const popoverBox = await linkPopover.boundingBox();
     expect(popoverBox).not.toBeNull();
     const popover = popoverBox!;
@@ -132,7 +132,7 @@ test.describe('markdown link popover', () => {
       await linkButton.click();
 
       const linkPopover = page.locator('.link-popover').first();
-      await expect(linkPopover).toBeVisible({ timeout: 5_000 });
+      await expect(linkPopover).toBeVisible();
 
       // Pin the pointer type: the 44px floor only describes a coarse pointer.
       expect(await primaryPointerIsCoarse(page)).toBe(true);

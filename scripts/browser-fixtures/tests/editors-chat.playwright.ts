@@ -22,7 +22,7 @@ test.describe('chat action buttons', () => {
   test('narrow hover layouts do not reserve space for hidden actions', async ({ page }) => {
     await page.setViewportSize({ width: 414, height: 896 });
     await page.goto(CHAT_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     expect(await page.evaluate(() => window.matchMedia('(hover: hover)').matches)).toBe(true);
 
@@ -153,7 +153,7 @@ test.describe('chat input shortcut', () => {
     // A11y wiring is viewport-independent; use the default desktop context so
     // the send button and editor surface are always rendered.
     await page.goto(CHAT_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const composer = page.locator('textarea.chat-input-editor').first();
     await expect(composer).toBeVisible();

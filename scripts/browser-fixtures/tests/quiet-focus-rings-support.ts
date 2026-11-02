@@ -44,7 +44,7 @@ export async function openThemedFixture(
     const fixtureOptions =
       options.fixtureName === undefined ? {} : { fixtureName: options.fixtureName };
     await page.goto(fixtureRoute(slug, fixtureOptions), { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     return { page, dispose: () => context.close() };
   } catch (error) {
     await context.close();

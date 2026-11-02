@@ -3,7 +3,7 @@ import { expect } from '@playwright/test';
 
 export async function openFirstEditor(page: Page) {
   await page.goto('/page/json-schema-editor?snapshot=1', { waitUntil: 'load' });
-  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForSelector('#app > *', { state: 'visible' });
   const editor = page.locator('.cinder-jse').first();
   await expect(editor).toBeVisible();
   return editor;

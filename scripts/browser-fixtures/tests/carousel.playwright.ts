@@ -181,6 +181,6 @@ test.describe('Carousel interaction and layout', () => {
     // the EXPLICIT restart, not merely the absence of hover.
     await page.mouse.move(0, 0);
 
-    await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true', { timeout: 5_000 });
+    await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
   });
 });

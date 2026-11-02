@@ -67,7 +67,7 @@ async function openReviewCommentsFixture(page: import('@playwright/test').Page, 
     localStorage.setItem('browser-fixture-theme', selectedTheme);
   }, theme);
   await page.goto('/page/review-editor-comments?snapshot=1', { waitUntil: 'load' });
-  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForSelector('#app > *', { state: 'visible' });
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll('.markdown-editor-wrapper[data-mode="wysiwyg"]')).every(
       (editor) => editor.getAttribute('data-ready') === 'true',
@@ -80,7 +80,7 @@ async function openReviewEditorFixture(page: import('@playwright/test').Page, th
     localStorage.setItem('browser-fixture-theme', selectedTheme);
   }, theme);
   await page.goto('/page/review-editor?snapshot=1', { waitUntil: 'load' });
-  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForSelector('#app > *', { state: 'visible' });
   await page.waitForFunction(() =>
     Array.from(document.querySelectorAll('.markdown-editor-wrapper[data-mode="wysiwyg"]')).every(
       (editor) => editor.getAttribute('data-ready') === 'true',
@@ -95,7 +95,6 @@ async function openDiffViewerFixture(page: import('@playwright/test').Page, them
   await page.goto('/page/diff-viewer?snapshot=1', { waitUntil: 'load' });
   await page.waitForSelector('.diff-viewer[data-ready="true"]', {
     state: 'visible',
-    timeout: 20_000,
   });
 }
 
@@ -464,7 +463,7 @@ test.describe('review comments toggle', () => {
     page,
   }) => {
     await page.goto('/page/review-editor-comments?snapshot=1', { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     // Locate the comments toggle button via its aria-controls attribute.
     // The button controls the sidebar panel whose id ends with "-sidebar".

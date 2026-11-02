@@ -67,7 +67,7 @@ export const test = base.extend<Fixtures>({
           await page.goto(buildRoute(entry, fixtureName, fixtureContentHash), {
             waitUntil: 'load',
           });
-          await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+          await page.waitForSelector('#app > *', { state: 'visible' });
           const markdownEditors = page.locator('.markdown-editor-wrapper[data-mode="wysiwyg"]');
           if ((await markdownEditors.count()) > 0) {
             await page.waitForFunction(() =>

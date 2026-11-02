@@ -14,7 +14,7 @@ test.describe('checkbox-group disabled-fieldset label dimming', () => {
     page,
   }) => {
     await page.goto(fixtureRoute('checkbox-group'), { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator('#example-mount-disabled-fieldset');
     await expect(mount).toBeVisible();

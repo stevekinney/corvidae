@@ -23,7 +23,7 @@ const RADIO_GROUP_ROUTE = fixtureRoute('radio-group');
 test.describe('RadioGroup option row direction', () => {
   test('a basic option row computes to row-direction flex layout', async ({ page }) => {
     await page.goto(RADIO_GROUP_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const row = page.locator('.cinder-radio-row').first();
     await expect(row).toBeVisible();
@@ -62,7 +62,7 @@ test.describe('RadioGroup option row direction', () => {
 
   test('every basic option row in the group shares the same row layout', async ({ page }) => {
     await page.goto(RADIO_GROUP_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const rows = page.locator('.cinder-radio-row');
     const count = await rows.count();

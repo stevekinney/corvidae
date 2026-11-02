@@ -40,7 +40,7 @@ test.describe('MarkdownEditor placeholder (cinder#1306)', () => {
     page,
   }) => {
     await page.goto(ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator(EXAMPLE_MOUNT);
     const paragraph = mount.locator('.ProseMirror p').first();
@@ -65,7 +65,7 @@ test.describe('MarkdownEditor placeholder (cinder#1306)', () => {
 
   test('typing clears the decoration and the placeholder stops painting', async ({ page }) => {
     await page.goto(ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
 
     const mount = page.locator(EXAMPLE_MOUNT);
     const editable = mount.getByRole('textbox').first();

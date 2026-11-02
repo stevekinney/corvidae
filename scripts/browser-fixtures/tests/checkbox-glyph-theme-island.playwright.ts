@@ -29,7 +29,7 @@ test('a light island on a dark page gets the light checkmark', async ({ page }) 
       'dark',
     ] as const);
   await page.goto(fixtureRoute('checkbox'), { waitUntil: 'load' });
-  await page.waitForSelector('.cinder-checkbox', { state: 'attached', timeout: 20_000 });
+  await page.waitForSelector('.cinder-checkbox', { state: 'attached' });
 
   const glyphs = await page.evaluate(() => {
     const source = document.querySelector('.cinder-checkbox')!.closest('.cinder-checkbox-field')!;

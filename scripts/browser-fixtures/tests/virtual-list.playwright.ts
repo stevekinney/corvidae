@@ -392,9 +392,7 @@ test.describe('Virtual list - adaptive overscan under scroll velocity', () => {
     // and a small tolerance band, per the "design for margins" note on this
     // ticket — this must not be timing-flaky.
     await expect
-      .poll(() => renderedIndices(page, ADAPTIVE_MOUNT).then((indices) => indices.length), {
-        timeout: 3_000,
-      })
+      .poll(() => renderedIndices(page, ADAPTIVE_MOUNT).then((indices) => indices.length))
       .toBeLessThanOrEqual(restingCount + 2);
   });
 
@@ -645,7 +643,7 @@ test.describe('Virtual list - COR-374 coalesces held keyboard navigation during 
     // is far past row `presses`), so no header-skip arithmetic complicates
     // the expected value.
     await expect
-      .poll(async () => list.evaluate((element) => element.scrollTop), { timeout: 3_000 })
+      .poll(async () => list.evaluate((element) => element.scrollTop))
       .toBe(presses * itemHeight);
 
     // And steady — not a snapshot mid-way through a correction that would
@@ -678,7 +676,7 @@ test.describe('Virtual list - COR-374 coalesces held keyboard navigation during 
     for (let index = 0; index < 3; index += 1) {
       await page.keyboard.press('ArrowDown');
       await expect
-        .poll(async () => list.evaluate((element) => element.scrollTop), { timeout: 3_000 })
+        .poll(async () => list.evaluate((element) => element.scrollTop))
         .toBe((index + 1) * itemHeight);
       await page.waitForTimeout(150);
     }
@@ -730,7 +728,7 @@ test.describe('Virtual list - COR-1523 window-scrolled sticky headers keep keybo
 
     // Row 11 under the 40px header, past the point where header 0 has pinned.
     await expect
-      .poll(() => page.evaluate(() => Math.round(window.scrollY)), { timeout: 3_000 })
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)))
       .toBe(Math.round(listTop + presses * itemHeight));
     await page.waitForTimeout(250);
     expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(
