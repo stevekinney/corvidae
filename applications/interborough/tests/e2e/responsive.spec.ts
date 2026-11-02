@@ -33,6 +33,7 @@ import { SCHEDULE_COPY, STORAGE_COPY, WORKFLOW_COPY } from '../../src/app/copy.t
 import { routes } from '../../src/app/routes.ts';
 import { createAgentFile, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import {
@@ -383,6 +384,8 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
  */
 async function problemsAt(page: Page, pattern: string, width: number): Promise<string[]> {
   await settle(page, pattern, width);
+  const state = EXPECTED_STATE[pattern] ?? 'ready';
+  await captureForDesignReview(page, { route: pattern, state, source: 'responsive.spec.ts' });
   const findings = problemsOf(await overflowOf(page));
   const outlet = page.locator('main.weft-shell-outlet');
   const visited = new Set<string>();
@@ -406,6 +409,12 @@ async function problemsAt(page: Page, pattern: string, width: number): Promise<s
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-selected', 'true');
     await untilQuiet(page);
+    await captureForDesignReview(page, {
+      route: pattern,
+      state,
+      tab: next.name,
+      source: 'responsive.spec.ts',
+    });
     for (const problem of problemsOf(await overflowOf(page))) {
       findings.push(`[tab ${next.name}] ${problem}`);
     }

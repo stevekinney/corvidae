@@ -14,6 +14,8 @@ Apply AGENTS.md "Review guidelines" to every review, including specialist review
 
 A reviewer reviews by defect class, reading [the defect classes](defect-classes.md) first, and for any wrapper, adapter, or delegation change enumerates every property the wrapped object carries (approval policy, idempotency, gating, identity, context binding) and checks that each survives. The #595 approval bypass, which Codex found and the primary review missed, was such a change. Read the worker's defect-class report against [the defect classes](defect-classes.md) first: a class the worker marked as applying is where review starts. An omitted class is a prompt to inspect the changed behavior, not a finding by itself; report only a concrete defect that meets the policy above.
 
+A pull request that changes Interborough's interface or Cinder also needs the design sign-off AGENTS.md "Workflow" requires. The worker captures and dispatches `design-reviewer` itself, as the `design-review` skill describes, and its submission carries the verdict line and the capture directory; the coordinator does not accept a UI submission without one. The design verdict sits beside the `chef-reviewer` correctness review and replaces none of it.
+
 Keep review cheaper than the work it checks.
 
 - **Verification passes:** brief a verifier with the open findings and the correction diff, under the same resume-or-fresh rule as any agent. Keep the primary-review tier for logic, concurrency, and security corrections. A mechanical correction (a rename, a test fix, a documentation change) can be verified at the economical coding tier.

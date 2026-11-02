@@ -1,0 +1,112 @@
+/**
+ * Screenshots for the design review (`.agents/skills/design-review`). The responsive specification
+ * and the view-states specification already open every route, on every tab, and every view in every
+ * state, and wait until each page holds its content; when `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` names
+ * a directory (`scripts/design-review-capture.ts` sets it), they call `captureForDesignReview` at
+ * that moment, before their own assertions, so a page that fails a check is still captured. In an
+ * ordinary run the directory is unset and the call does nothing.
+ *
+ * Each capture writes the viewport as the person first sees it and, when the shell's outlet scrolls,
+ * the whole page with the viewport stretched to the outlet's height. Each appends one line to
+ * `manifest.jsonl` in the directory. The suite runs one worker (`playwright.config.ts`), so the
+ * appends never interleave.
+ */
+import type { Page } from '@playwright/test';
+import { appendFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import {
+  designReviewCaptureDirectory,
+  designReviewColorScheme,
+} from '../../scripts/environment-configuration.ts';
+
+/** The tallest the viewport is stretched to for a whole-page capture, so a runaway list stays readable. */
+const MAXIMUM_FULL_HEIGHT = 8000;
+
+/** What a capture shows: the route, the state its frame is in, and the tab that is open, if any. */
+export interface DesignReviewCapture {
+  /** The route pattern from `src/app/routes.ts`, or a variant name such as `/runs (start picker)`. */
+  readonly route: string;
+  /** The frame's state: `ready`, `loading`, `empty`, `error`, `forbidden`, or a named case. */
+  readonly state: string;
+  /** The tab open in the outlet, when the capture is of one tab of the page. */
+  readonly tab?: string;
+  /** The specification the capture came from, so a reader can find the seed behind it. */
+  readonly source: string;
+}
+
+/** One line of `manifest.jsonl`. */
+export interface DesignReviewManifestEntry extends DesignReviewCapture {
+  readonly address: string;
+  readonly width: number;
+  readonly height: number;
+  readonly colorScheme: 'light' | 'dark';
+  /** The viewport capture, relative to the capture directory. */
+  readonly viewport: string;
+  /** The whole-page capture, relative to the capture directory, when the outlet scrolls. */
+  readonly full?: string;
+}
+
+/** A file-name-safe slug of a capture's route, state, tab, width and scheme. */
+export function designReviewSlug(
+  capture: DesignReviewCapture,
+  width: number,
+  colorScheme: 'light' | 'dark',
+): string {
+  const parts = [capture.route, capture.tab ?? '', capture.state, `${width}`, colorScheme];
+  return parts
+    .filter((part) => part !== '')
+    .map((part) =>
+      part
+        .toLowerCase()
+        .replaceAll(/[^a-z0-9]+/g, '-')
+        .replaceAll(/^-|-$/g, ''),
+    )
+    .map((part) => (part === '' ? 'root' : part))
+    .join('--');
+}
+
+/** Screenshots the page for the design review when a capture directory is set; otherwise nothing. */
+export async function captureForDesignReview(
+  page: Page,
+  capture: DesignReviewCapture,
+): Promise<void> {
+  const directory = designReviewCaptureDirectory();
+  if (directory === undefined) return;
+  const colorScheme = designReviewColorScheme() ?? 'light';
+  const viewportSize = page.viewportSize();
+  if (viewportSize === null) throw new Error('A design-review capture needs a fixed viewport.');
+  const slug = designReviewSlug(capture, viewportSize.width, colorScheme);
+  await mkdir(join(directory, 'screens'), { recursive: true });
+
+  const viewport = `screens/${slug}.png`;
+  await page.screenshot({
+    path: join(directory, viewport),
+    animations: 'disabled',
+    caret: 'hide',
+  });
+
+  // The shell clips the document, so the outlet is what scrolls: stretch the viewport to hold it.
+  const overflow = await page
+    .locator('main.weft-shell-outlet')
+    .evaluate((outlet) => outlet.scrollHeight - outlet.clientHeight);
+  let full: string | undefined;
+  if (overflow > 0) {
+    full = `screens/${slug}.full.png`;
+    const height = Math.min(viewportSize.height + overflow, MAXIMUM_FULL_HEIGHT);
+    await page.setViewportSize({ width: viewportSize.width, height });
+    await page.screenshot({ path: join(directory, full), animations: 'disabled', caret: 'hide' });
+    await page.setViewportSize(viewportSize);
+  }
+
+  const entry: DesignReviewManifestEntry = {
+    ...capture,
+    address: new URL(page.url()).pathname + new URL(page.url()).search,
+    width: viewportSize.width,
+    height: viewportSize.height,
+    colorScheme,
+    viewport,
+    ...(full === undefined ? {} : { full }),
+  };
+  await appendFile(join(directory, 'manifest.jsonl'), `${JSON.stringify(entry)}\n`);
+}

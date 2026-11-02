@@ -17,6 +17,7 @@ import type { Page, Route } from '@playwright/test';
 import { HEALTH_OVERVIEW_COPY, NOT_FOUND_ROUTE_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import {
   expect,
@@ -297,6 +298,11 @@ for (const view of VIEW_NAMES) {
           const title = outcome === 'empty' ? copy.empty?.title : copy[outcome]?.title;
           await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
         }
+        await captureForDesignReview(page, {
+          route: PATHS[view],
+          state: outcome,
+          source: '15-view-states.spec.ts',
+        });
         await checkA11y(`${view} — ${outcome} at ${width}px`);
         // No view scrolls the page sideways at the phone width, in any state: a table scrolls
         // inside its own wrapper, and nothing hidden is positioned outside it (COR-1647).
@@ -379,6 +385,11 @@ for (const width of WIDTHS) {
     await expect(healthCount(page, HEALTH_OVERVIEW_COPY.schedules)).toHaveText(/\d/);
     await expect(frame.getByText(HEALTH_OVERVIEW_COPY.lineUnavailable)).toBeVisible();
     await expect(frame.getByText(HEALTH_OVERVIEW_COPY.allClear)).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'refused-reads',
+      source: '15-view-states.spec.ts',
+    });
     await checkA11y(`health with refused reads at ${width}px`);
   });
 
@@ -401,6 +412,11 @@ for (const width of WIDTHS) {
       HEALTH_OVERVIEW_COPY.unavailable,
     );
     await expect(frame).toContainText('Requires system:read');
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'locked-reads',
+      source: '15-view-states.spec.ts',
+    });
     await checkA11y(`health with locked reads at ${width}px`);
   });
 
@@ -419,6 +435,11 @@ for (const width of WIDTHS) {
     await expect(
       frame.getByRole('navigation', { name: HEALTH_OVERVIEW_COPY.countsLabel }),
     ).toHaveCount(0);
+    await captureForDesignReview(page, {
+      route: '/health',
+      state: 'waiting-on-engine',
+      source: '15-view-states.spec.ts',
+    });
     await checkA11y(`health waiting on the engine at ${width}px`);
   });
 }
@@ -441,6 +462,11 @@ for (const width of WIDTHS) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
+    await captureForDesignReview(page, {
+      route: '/nonsense/route',
+      state: 'not-found',
+      source: '15-view-states.spec.ts',
+    });
     await checkA11y(`not-found route at ${width}px`);
 
     await frame.getByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label }).click();

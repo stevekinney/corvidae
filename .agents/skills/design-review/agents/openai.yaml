@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Design review'
+  short_description: 'Screenshot Interborough and get a Cinder-first design critique or sign-off'
+  default_prompt: 'Use $design-review to capture the affected Interborough screens and get a sign-off from the design-reviewer agent, routing every finding to Cinder first.'

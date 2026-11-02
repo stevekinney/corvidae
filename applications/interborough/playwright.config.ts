@@ -2,10 +2,15 @@ import { defineConfig, devices } from '@playwright/test';
 
 import { TEST_TIMEOUT_MILLISECONDS } from '../../scripts/test-deadlines.ts';
 import { HANG_GUARD_MILLISECONDS } from '../../testing/testing/src/hang-guard.ts';
-import { isContinuousIntegration } from './scripts/environment-configuration.ts';
+import {
+  designReviewColorScheme,
+  isContinuousIntegration,
+} from './scripts/environment-configuration.ts';
 import { E2E_BASE_URL } from './tests/e2e/e2e-constants.ts';
 
 const continuousIntegration = isContinuousIntegration();
+// Unset outside a design-review capture (`scripts/design-review-capture.ts`), which leaves Playwright's light default.
+const colorScheme = designReviewColorScheme();
 
 export default defineConfig({
   testDir: './tests',
@@ -18,7 +23,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: continuousIntegration ? [['line'], ['html', { open: 'never' }]] : 'list',
-  use: { baseURL: E2E_BASE_URL, reducedMotion: 'reduce' },
+  use: {
+    baseURL: E2E_BASE_URL,
+    reducedMotion: 'reduce',
+    ...(colorScheme === undefined ? {} : { colorScheme }),
+  },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: `bun ${new URL('./tests/e2e/e2e-server.ts', import.meta.url).pathname}`,
