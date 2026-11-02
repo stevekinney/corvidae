@@ -220,6 +220,13 @@ describe('renderBrief', () => {
     expect(renderBrief(issue(body), options)).toContain('the file stem you saved under `boards/`');
   });
 
+  test('a canvas link with no design section takes its rows from the whole description', () => {
+    const body =
+      'Build it per https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw.\n\n## Acceptance criteria\n\n- [ ] 11a: built.\n\n## Notes\n\n- 12a: also on the board.';
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
+  });
+
   test('an issue with no design gets no design section', () => {
     expect(renderBrief(issue(description), options)).not.toContain('## Design');
   });

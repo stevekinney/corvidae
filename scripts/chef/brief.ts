@@ -196,7 +196,8 @@ export function rowCarriage(description: string, rows: string[]): RowCarriage {
 function designLines(identifier: string, description: string, descriptionIncluded: boolean) {
   const source = sectionOf(description, /design\s+(?:source|rows?)/i);
   const links = designLinks(description);
-  const rows = designRowIds(source ?? '');
+  // Without a design section, a canvas-linked issue's rows are the IDs it names anywhere.
+  const rows = designRowIds(source ?? description);
   if (source === undefined && links.length === 0) return [];
   const carriage = rowCarriage(description, rows);
   const uncovered = rows.filter(
