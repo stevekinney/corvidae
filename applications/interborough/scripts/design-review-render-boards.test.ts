@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  layoutProblem,
   parseArguments,
   previewSize,
   SLICE_HEIGHT,
@@ -47,5 +48,27 @@ describe('parseArguments', () => {
     expect(parseArguments(['--boards', 'b', '--size', '2'])).toBe('unknown flag --size');
     expect(parseArguments(['--boards', 'b', 'notes.md'])).toBe('notes.md is not a .dc.html board');
     expect(parseArguments(['--boards'])).toBe('--boards needs a value');
+  });
+});
+
+describe('layoutProblem', () => {
+  test('passes a board drawn inside its bounds', () => {
+    expect(layoutProblem({ clipped: [], rightmostEdge: 1440, width: 1440 })).toBeUndefined();
+  });
+
+  test('fails a board whose root still hides content below an earlier height', () => {
+    expect(
+      layoutProblem({
+        clipped: [{ clientHeight: 6521, scrollHeight: 10057 }],
+        rightmostEdge: 1440,
+        width: 1440,
+      }),
+    ).toBe('clips its content: a container 6521px tall holds 10057px');
+  });
+
+  test('fails a board with content past its width', () => {
+    expect(layoutProblem({ clipped: [], rightmostEdge: 1492.4, width: 1440 })).toBe(
+      'draws past its width: content reaches 1492px of 1440px',
+    );
   });
 });

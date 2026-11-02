@@ -15,8 +15,13 @@
  * With no board names it renders every `.dc.html` in the directory. `--out` defaults to the boards
  * directory, so each render sits beside its source under the same stem, as the review expects.
  *
- * Exit 0 when every board rendered, 1 when one logged a page error or never mounted (each named),
- * 2 on bad usage or a missing `support.js`.
+ * A board fails when it clips its own content: a container at least {@link CLIP_MINIMUM_HEIGHT}
+ * pixels tall that hides content below its bottom edge (a root left at an earlier, shorter height
+ * with `overflow: hidden` hides every frame added since), or anything drawn past the board's width.
+ * The renders are still written, so the clipping can be seen.
+ *
+ * Exit 0 when every board rendered, 1 when one logged a page error, never mounted or clipped its
+ * content (each named), 2 on bad usage or a missing `support.js`.
  */
 import { chromium, type Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
@@ -33,6 +38,31 @@ export const SLICE_THRESHOLD = 1400;
 export const SLICE_HEIGHT = 1200;
 
 const DEFAULT_PREVIEW = { width: 1440, height: 1000 } as const;
+
+/** A container this tall or taller that hides content is a clipped board, not a clamped line of text. */
+export const CLIP_MINIMUM_HEIGHT = 200;
+
+/** What the browser measured about a board's layout. */
+export interface BoardLayout {
+  /** Containers at least {@link CLIP_MINIMUM_HEIGHT} tall that hide content below their bottom edge. */
+  readonly clipped: readonly { readonly clientHeight: number; readonly scrollHeight: number }[];
+  /** The rightmost edge of anything drawn on the board. */
+  readonly rightmostEdge: number;
+  /** The board's width. */
+  readonly width: number;
+}
+
+/** The layout problem a board has, or `undefined` when it draws inside its own bounds. */
+export function layoutProblem(layout: BoardLayout): string | undefined {
+  const [first] = layout.clipped;
+  if (first !== undefined) {
+    return `clips its content: a container ${first.clientHeight}px tall holds ${first.scrollHeight}px`;
+  }
+  if (layout.rightmostEdge > layout.width + 1) {
+    return `draws past its width: content reaches ${Math.round(layout.rightmostEdge)}px of ${layout.width}px`;
+  }
+  return undefined;
+}
 
 /** The size a board asks to be previewed at, from its `$preview` declaration. */
 export function previewSize(source: string): { width: number; height: number } {
@@ -115,11 +145,35 @@ async function renderBoard(page: Page, origin: string, name: string, out: string
       clip: { x: 0, y: slice.top, width, height: slice.height },
     });
   }
+  const layout = await page.evaluate(
+    ({ minimum, boardWidth }) => {
+      const elements = [...document.body.querySelectorAll<HTMLElement>('*')];
+      const clipped = elements
+        .filter((element) => {
+          const overflow = getComputedStyle(element).overflowY;
+          return (
+            (overflow === 'hidden' || overflow === 'clip') &&
+            element.clientHeight >= minimum &&
+            element.scrollHeight > element.clientHeight + 4
+          );
+        })
+        .map((element) => ({
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+        }));
+      const rightmostEdge = Math.max(
+        0,
+        ...elements.map((element) => element.getBoundingClientRect().right),
+      );
+      return { clipped, rightmostEdge, width: boardWidth };
+    },
+    { minimum: CLIP_MINIMUM_HEIGHT, boardWidth: width },
+  );
   const problem = !mounted
     ? 'never mounted (an x-dc element remained, or the board held no text)'
     : errors.length > 0
       ? `logged ${errors.length} error(s): ${errors[0]?.slice(0, 160) ?? ''}`
-      : undefined;
+      : layoutProblem(layout);
   return { stem, height, slices: slices.length, problem };
 }
 
