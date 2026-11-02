@@ -2091,7 +2091,12 @@ export async function monitorRecoveredCatalogRun(
   }
   // The run's end is known, and what follows is storage work (the durable run's state, then every
   // listener's reads and writes). A shutdown waits for it however long the database takes.
-  const commit = tracker?.commit ?? ((work: () => Promise<void>) => work());
+  const commit =
+    tracker?.commit ??
+    (async (work: () => Promise<void>) => {
+      await work();
+      return true;
+    });
   await commit(async () => {
     if ('result' in ended) {
       const { result } = ended;
@@ -5322,7 +5327,8 @@ async function constructBureau<const D extends AgentDefinitions>(
    * after its run's result is known, which for a run ended by disposing the engine is after
    * `shutdown()` has moved on. `shutdown()` waits for them before it closes storage: a bounded
    * number of event-loop turns for a run to end, and then, for a run whose end is known, until
-   * the storage work that records it has finished.
+   * the storage work that records it has finished. It then closes the tracker, so a run whose end
+   * is known later records nothing; the next process settles it from the durable state at boot.
    */
   const catalogSettlements = createCatalogSettlementTracker();
   /**
@@ -20330,12 +20336,16 @@ async function constructBureau<const D extends AgentDefinitions>(
           // COR-1481 — disposing the engine is what ends a durable run that was still in flight,
           // and each run's `closed()` acknowledgement lands as it does. The cleanup the registry
           // follows is awaited, with the writes it starts, before the backend closes under them.
+          // A run whose end is known after this records nothing (COR-2005): the tracker is closed.
           await catalogSettlements.settled();
           await tasks.idle();
           // COR-1631 — those settlements freeze their tasks' surfaces too; the freezes land
           // before the backend closes under them.
           await surfaces?.flush();
         } finally {
+          // COR-2005 — `settled()` closed the tracker when it ran; this covers a drain that threw
+          // before it did. A run that ends from here on records nothing: the storage is going away.
+          catalogSettlements.close();
           // A run that ended in the drain without a save leaves no one to settle its record.
           for (const runId of terminalSessionRecordSettlers.keys()) {
             abandonTerminalSessionRecord(runId);

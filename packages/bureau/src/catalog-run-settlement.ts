@@ -34,6 +34,12 @@
  *   does: it writes the same settlement, and a record is written once.)
  * - It publishes for every end, however the record fared: a fresh dispatch whose task record
  *   could not be written still publishes.
+ * - It publishes nothing once the shutdown that closes this process's storage has finished
+ *   waiting (see {@link CatalogSettlementTracker.settled}). A run whose end is known after that,
+ *   or whose start committed after it, is not published by the process that is going away; the
+ *   next process settles it from the durable state at boot, or as a recovered run. Starts are
+ *   refused at shutdown's admission (`getShutdownPromise` in the dispatcher), so a run that
+ *   reaches this point late is one that started before it.
  * - It publishes only an end the durable run actually reached. A handle whose `result()` rejects
  *   is read against the durable run (see {@link DurableEndReader}): a run the durable engine
  *   holds `failed` publishes `failed`, and one it holds `completed` or `canceled` publishes
@@ -113,21 +119,34 @@ export const SETTLEMENT_TRACKER_MAXIMUM_TURNS = 50;
  * would otherwise land on storage the shutdown has already closed.
  */
 export interface CatalogSettlementTracker {
-  /** Follows a publish (a promise that never rejects, or whose rejection is ignored) until it ends. */
+  /**
+   * Follows a publish (a promise that never rejects, or whose rejection is ignored) until it
+   * ends. A publish followed after {@link CatalogSettlementTracker.settled} is not waited for;
+   * its rejection is still ignored.
+   */
   follow(publishing: Promise<void>): void;
   /**
    * Marks the part of a followed publish that starts once its run's end is known: `work` is
    * called at once, and {@link CatalogSettlementTracker.settled} waits for it however long it
-   * takes. Returns what `work` returns.
+   * takes. Resolves `true` once `work` has finished, and `false` without calling it when the
+   * tracker has closed, because the storage it would write to may already be gone.
    */
-  commit<T>(work: () => Promise<T>): Promise<T>;
+  commit(work: () => Promise<void>): Promise<boolean>;
   /**
    * Waits up to `maximumTurns` event-loop turns for every followed publish to see its run end,
    * then stops waiting for the ones whose runs have not ended. A publish whose run has ended (see
    * {@link CatalogSettlementTracker.commit}) is waited for until it finishes: that is a bound on
    * waiting for a run, not on the storage work that records how it ended.
+   *
+   * It then closes the tracker, in the same step that finds no committed work left: from then on
+   * {@link CatalogSettlementTracker.commit} refuses, so a run whose end is known later (it
+   * ignored its abort, or its start committed after the shutdown looked) records nothing in a
+   * process that is closing its storage. The next process settles that run from the durable
+   * state at boot.
    */
   settled(maximumTurns?: number): Promise<void>;
+  /** Closes the tracker without waiting, for a shutdown that never reached {@link CatalogSettlementTracker.settled}. */
+  close(): void;
 }
 
 /**
@@ -139,25 +158,36 @@ export interface CatalogSettlementTracker {
 export function createCatalogSettlementTracker(): CatalogSettlementTracker {
   const inFlight = new Set<Promise<void>>();
   const committing = new Set<Promise<unknown>>();
+  let closed = false;
   return {
     follow(publishing) {
+      if (closed) {
+        publishing.catch(() => undefined);
+        return;
+      }
       const followed: Promise<void> = publishing
         .catch(() => undefined)
         .finally(() => void inFlight.delete(followed));
       inFlight.add(followed);
     },
-    commit(work) {
+    async commit(work) {
+      if (closed) return false;
       const committed = work();
       const forgotten = (): void => void committing.delete(committed);
       committing.add(committed);
       committed.then(forgotten, forgotten);
-      return committed;
+      await committed;
+      return true;
     },
     async settled(maximumTurns = SETTLEMENT_TRACKER_MAXIMUM_TURNS) {
       for (let turn = 0; turn < maximumTurns && inFlight.size > 0; turn += 1) {
         await yieldToPortableEventLoop();
       }
       while (committing.size > 0) await Promise.allSettled(committing);
+      closed = true;
+    },
+    close() {
+      closed = true;
     },
   };
 }
@@ -269,7 +299,7 @@ export async function publishFreshCatalogRun(options: {
 }): Promise<void> {
   const { handle, agentName, hook, diagnose, tracker } = options;
   const commit = tracker.commit;
-  await commit(async () => {
+  const admitted = await commit(async () => {
     try {
       await options.admit();
     } catch (error) {
@@ -281,6 +311,8 @@ export async function publishFreshCatalogRun(options: {
       });
     }
   });
+  // A shutdown that has stopped waiting leaves the run to the next process.
+  if (!admitted) return;
   let ended:
     | { readonly result: Awaited<ReturnType<FreshCatalogRunHandle['result']>> }
     | { readonly error: unknown };

@@ -6001,6 +6001,27 @@ describe('monitorRecoveredCatalogRun (AB-240)', () => {
     expect(recorded).toEqual(['completed']);
   });
 
+  it('records nothing for a run that ends after the shutdown stopped waiting for run ends', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const ending = Promise.withResolvers<{ finishReason: string }>();
+    const recorded: string[] = [];
+    const monitoring = monitorRecoveredCatalogRun(
+      { id: 'agent-run-catalog-8', result: () => ending.promise },
+      'echo',
+      () => undefined,
+      async (settlement) => void recorded.push(settlement.status),
+      undefined,
+      tracker,
+    );
+    tracker.follow(monitoring);
+
+    await tracker.settled(0);
+    ending.resolve({ finishReason: 'stop-condition' });
+    await monitoring;
+
+    expect(recorded).toEqual([]);
+  });
+
   it('defaults to the shared diagnostic sink when none is supplied', async () => {
     const originalError = console.error;
     const messages: string[] = [];
