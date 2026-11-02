@@ -384,6 +384,7 @@ import {
   type DurableEnd,
   type DurableEndReader,
   createCatalogSettlementTracker,
+  type CatalogSettlementTracker,
   publishFreshCatalogRun,
   settlementForRejection,
 } from './catalog-run-settlement';
@@ -2080,43 +2081,56 @@ export async function monitorRecoveredCatalogRun(
   diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
   settled?: (settlement: CatalogRunSettlement) => Promise<void>,
   durableEnd?: DurableEndReader,
+  tracker?: Pick<CatalogSettlementTracker, 'commit'>,
 ): Promise<void> {
+  let ended: { readonly result: unknown } | { readonly error: unknown };
   try {
-    const result = await handle.result();
-    if (
-      typeof result === 'object' &&
-      result !== null &&
-      'finishReason' in result &&
-      isFailureFinishReason(result.finishReason)
-    ) {
-      const errorMessage =
-        'errorMessage' in result && typeof result.errorMessage === 'string'
-          ? `: ${result.errorMessage}`
-          : '';
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") finished with ${String(result.finishReason)}${errorMessage}`,
-      });
-    }
-    const fields =
-      typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {};
-    const finishReason =
-      typeof fields['finishReason'] === 'string' ? fields['finishReason'] : undefined;
-    await settled?.({
-      runId: handle.id,
-      agentName,
-      status: settledTaskState('completed', finishReason),
-      finishReason: finishReason ?? null,
-      message:
-        typeof fields['errorMessage'] === 'string' ? fields['errorMessage'].slice(0, 1000) : null,
-      content: typeof fields['content'] === 'string' ? fields['content'] : null,
-      recovered: true,
-    });
+    ended = { result: await handle.result() };
   } catch (error) {
+    ended = { error };
+  }
+  // The run's end is known, and what follows is storage work (the durable run's state, then every
+  // listener's reads and writes). A shutdown waits for it however long the database takes.
+  const commit = tracker?.commit ?? ((work: () => Promise<void>) => work());
+  await commit(async () => {
+    if ('result' in ended) {
+      const { result } = ended;
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        'finishReason' in result &&
+        isFailureFinishReason(result.finishReason)
+      ) {
+        const errorMessage =
+          'errorMessage' in result && typeof result.errorMessage === 'string'
+            ? `: ${result.errorMessage}`
+            : '';
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") finished with ${String(result.finishReason)}${errorMessage}`,
+        });
+      }
+      const fields =
+        typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {};
+      const finishReason =
+        typeof fields['finishReason'] === 'string' ? fields['finishReason'] : undefined;
+      await settled?.({
+        runId: handle.id,
+        agentName,
+        status: settledTaskState('completed', finishReason),
+        finishReason: finishReason ?? null,
+        message:
+          typeof fields['errorMessage'] === 'string' ? fields['errorMessage'].slice(0, 1000) : null,
+        content: typeof fields['content'] === 'string' ? fields['content'] : null,
+        recovered: true,
+      });
+      return;
+    }
     // A rejection is not an end: disposing the engine rejects the handle of a run that is still
     // running, and the next boot resumes it. Only a terminal state the durable run reached is
     // published (see `settlementForRejection`).
+    const { error } = ended;
     const settlement = await settlementForRejection({
       runId: handle.id,
       agentName,
@@ -2134,7 +2148,7 @@ export async function monitorRecoveredCatalogRun(
           : `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") failed: ${serializeUnknownError(error)}`,
     });
     if (settlement !== undefined) await settled?.(settlement);
-  }
+  });
 }
 
 /**
@@ -5306,8 +5320,9 @@ async function constructBureau<const D extends AgentDefinitions>(
    * The settlements being published: a fresh dispatch following its handle, and a recovered run
    * being monitored. Each starts the writes that settle a task and a snapshot reference only
    * after its run's result is known, which for a run ended by disposing the engine is after
-   * `shutdown()` has moved on. `shutdown()` waits for them (a bound of event-loop turns, not a
-   * barrier) before it closes storage.
+   * `shutdown()` has moved on. `shutdown()` waits for them before it closes storage: a bounded
+   * number of event-loop turns for a run to end, and then, for a run whose end is known, until
+   * the storage work that records it has finished.
    */
   const catalogSettlements = createCatalogSettlementTracker();
   /**
@@ -10157,6 +10172,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           diagnose,
           (settlement) => catalogRunSettlements.publish(settlement),
           catalogDurableEnd,
+          catalogSettlements,
         ),
       );
       return;
@@ -21195,6 +21211,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               followCleanup: (closed) => void tasks.watchCleanup(run.runId, closed),
               diagnose,
               durableEnd: catalogDurableEnd,
+              tracker: catalogSettlements,
             }),
           );
           return undefined;

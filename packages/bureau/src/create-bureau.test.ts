@@ -113,6 +113,7 @@ import {
   ScheduleLocatorUnavailableError,
 } from './create-bureau';
 import { createAgentSkills } from './agent-skills';
+import { createCatalogSettlementTracker, type DurableEnd } from './catalog-run-settlement';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import {
@@ -5958,6 +5959,46 @@ describe('monitorRecoveredCatalogRun (AB-240)', () => {
       expect(published).toEqual(expected === undefined ? [] : [expected]);
       expect(messages).toHaveLength(1);
     }
+  });
+
+  it('is waited for by a shutdown while the durable run is read and the settlement is recorded, however long storage takes', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const storageRead = Promise.withResolvers<DurableEnd>();
+    const recording = Promise.withResolvers<void>();
+    const recorded: string[] = [];
+    tracker.follow(
+      monitorRecoveredCatalogRun(
+        {
+          id: 'agent-run-catalog-7',
+          result: async () => {
+            throw new Error('Engine was disposed before the workflow completed');
+          },
+        },
+        'echo',
+        () => undefined,
+        async (settlement) => {
+          await recording.promise;
+          recorded.push(settlement.status);
+        },
+        () => storageRead.promise,
+        tracker,
+      ),
+    );
+
+    let returned = false;
+    const waiting = tracker.settled().then(() => void (returned = true));
+    // load-proof: a count of event-loop turns past the tracker's own bound; the database answers when the test says so, not when a clock does
+    for (let turn = 0; turn < 120; turn += 1) await yieldToPortableEventLoop();
+    expect(returned).toBe(false);
+    storageRead.resolve('completed');
+    // load-proof: a count of event-loop turns past the tracker's own bound; the write finishes when the test says so
+    for (let turn = 0; turn < 120; turn += 1) await yieldToPortableEventLoop();
+    expect(returned).toBe(false);
+    expect(recorded).toEqual([]);
+
+    recording.resolve();
+    await waiting;
+    expect(recorded).toEqual(['completed']);
   });
 
   it('defaults to the shared diagnostic sink when none is supplied', async () => {

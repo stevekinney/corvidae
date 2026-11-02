@@ -99,16 +99,33 @@ export interface CatalogRunSettlementHook {
   publish(settlement: CatalogRunSettlement): Promise<void>;
 }
 
-/** How many event-loop turns a shutdown waits, by default, for the settlements still being published. */
+/** How many event-loop turns a shutdown waits, by default, for the runs still to end that settlements are following. */
 export const SETTLEMENT_TRACKER_MAXIMUM_TURNS = 50;
 
-/** The settlements being published, so a shutdown can wait for the writes they start. */
+/**
+ * The settlements being published, so a shutdown can wait for the writes they start.
+ *
+ * A publish has two parts. It first waits for its run to end, which has no bound of its own (a
+ * run that never ends never publishes), and then, once the end is known, it reads the durable
+ * run and runs every listener: a finite amount of storage work, but real I/O, whose duration
+ * depends on the database and on the load the host is under, not on a count of event-loop turns.
+ * The first part is bounded by a shutdown; the second is waited for, because the writes it starts
+ * would otherwise land on storage the shutdown has already closed.
+ */
 export interface CatalogSettlementTracker {
   /** Follows a publish (a promise that never rejects, or whose rejection is ignored) until it ends. */
   follow(publishing: Promise<void>): void;
   /**
-   * A bound, not a barrier: waits up to `maximumTurns` event-loop turns for every followed
-   * publish to end, then stops waiting. A publish still running after that is not waited for.
+   * Marks the part of a followed publish that starts once its run's end is known: `work` is
+   * called at once, and {@link CatalogSettlementTracker.settled} waits for it however long it
+   * takes. Returns what `work` returns.
+   */
+  commit<T>(work: () => Promise<T>): Promise<T>;
+  /**
+   * Waits up to `maximumTurns` event-loop turns for every followed publish to see its run end,
+   * then stops waiting for the ones whose runs have not ended. A publish whose run has ended (see
+   * {@link CatalogSettlementTracker.commit}) is waited for until it finishes: that is a bound on
+   * waiting for a run, not on the storage work that records how it ended.
    */
   settled(maximumTurns?: number): Promise<void>;
 }
@@ -121,6 +138,7 @@ export interface CatalogSettlementTracker {
  */
 export function createCatalogSettlementTracker(): CatalogSettlementTracker {
   const inFlight = new Set<Promise<void>>();
+  const committing = new Set<Promise<unknown>>();
   return {
     follow(publishing) {
       const followed: Promise<void> = publishing
@@ -128,10 +146,18 @@ export function createCatalogSettlementTracker(): CatalogSettlementTracker {
         .finally(() => void inFlight.delete(followed));
       inFlight.add(followed);
     },
+    commit(work) {
+      const committed = work();
+      const forgotten = (): void => void committing.delete(committed);
+      committing.add(committed);
+      committed.then(forgotten, forgotten);
+      return committed;
+    },
     async settled(maximumTurns = SETTLEMENT_TRACKER_MAXIMUM_TURNS) {
       for (let turn = 0; turn < maximumTurns && inFlight.size > 0; turn += 1) {
         await yieldToPortableEventLoop();
       }
+      while (committing.size > 0) await Promise.allSettled(committing);
     },
   };
 }
@@ -235,43 +261,63 @@ export async function publishFreshCatalogRun(options: {
   readonly diagnose: DiagnosticSink;
   /** Reads the durable run when the handle rejects. Omit for a Bureau without a durable engine. */
   readonly durableEnd?: DurableEndReader | undefined;
+  /**
+   * What a shutdown waits on: the admission and the publish are committed to it. Required, so a
+   * caller cannot follow a run whose settlement a shutdown would not wait for.
+   */
+  readonly tracker: Pick<CatalogSettlementTracker, 'commit'>;
 }): Promise<void> {
-  const { handle, agentName, hook, diagnose } = options;
+  const { handle, agentName, hook, diagnose, tracker } = options;
+  const commit = tracker.commit;
+  await commit(async () => {
+    try {
+      await options.admit();
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not record catalog task "${handle.id}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  });
+  let ended:
+    | { readonly result: Awaited<ReturnType<FreshCatalogRunHandle['result']>> }
+    | { readonly error: unknown };
   try {
-    await options.admit();
+    ended = { result: await handle.result() };
   } catch (error) {
-    diagnose({
-      level: 'error',
-      scope: 'task-registry',
-      message: `[bureau] Could not record catalog task "${handle.id}": ${serializeUnknownError(error)}`,
-      cause: error,
-    });
+    ended = { error };
   }
-  let settlement: CatalogRunSettlement | undefined;
-  try {
-    const result = await handle.result();
-    settlement = {
-      runId: handle.id,
-      agentName,
-      status: settledTaskState('completed', result.finishReason),
-      finishReason: result.finishReason ?? null,
-      message:
-        result.error === undefined || result.error === null
-          ? null
-          : serializeUnknownError(result.error).slice(0, 1000),
-      content: result.content,
-      recovered: false,
-    };
-  } catch (error) {
-    settlement = await settlementForRejection({
-      runId: handle.id,
-      agentName,
-      error,
-      recovered: false,
-      durableEnd: options.durableEnd,
-    });
-  }
-  if (settlement === undefined) return;
-  if (settlement.status === 'canceled') options.followCleanup(handle.closed());
-  await hook.publish(settlement);
+  // The run's end is known, and what follows is storage work (the durable run's state, then every
+  // listener's reads and writes). A shutdown waits for it however long the database takes.
+  await commit(async () => {
+    let settlement: CatalogRunSettlement | undefined;
+    if ('result' in ended) {
+      const { result } = ended;
+      settlement = {
+        runId: handle.id,
+        agentName,
+        status: settledTaskState('completed', result.finishReason),
+        finishReason: result.finishReason ?? null,
+        message:
+          result.error === undefined || result.error === null
+            ? null
+            : serializeUnknownError(result.error).slice(0, 1000),
+        content: result.content,
+        recovered: false,
+      };
+    } else {
+      settlement = await settlementForRejection({
+        runId: handle.id,
+        agentName,
+        error: ended.error,
+        recovered: false,
+        durableEnd: options.durableEnd,
+      });
+    }
+    if (settlement === undefined) return;
+    if (settlement.status === 'canceled') options.followCleanup(handle.closed());
+    await hook.publish(settlement);
+  });
 }
