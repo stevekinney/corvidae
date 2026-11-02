@@ -50,7 +50,7 @@ verdicts file:  row-id | verdict | evidence
 ```
 
 - **row-id**: the canvas index id, such as `11a`. The verdicts name every input row exactly once, in input order.
-- **board**: the board's file stem under `boards/` (`chat-header` for `boards/chat-header.png`, or `chat-header-2.png` for a second image of it).
+- **board**: the board's file stem under `boards/`, the same stem for both of its files: `<board>.dc.html`, the board's source as the Artifact tool's read returns it (exact copy, structure, and component names), and `<board>.png`, a render of it (`<board>-2.png` for a second image). A chef brief saves the `.dc.html`; the review renders the `.png` when it is missing ([design references](design-references.md)).
 - **verdict**: one of the following.
   - `matches`: the screens and the code do what the row says, in every state and width the row covers.
   - `drifted`: it is built, but differently from the row (another component, order, copy, or treatment).
