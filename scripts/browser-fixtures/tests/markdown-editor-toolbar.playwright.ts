@@ -267,10 +267,12 @@ const linkPopoverViewports = [
   { name: 'desktop' as const, width: 1280, height: 720 },
 ];
 
-// 6px block padding either side of a small-Button-high row (32px), plus the band's 1px rule.
+// 6px block padding either side of a small-Button-high row (28px), plus the band's 1px rule.
 const HEADER_FOOTER_MAX_HEIGHT = 45;
 const CONTENT_SPACING_MAX = 13; // --cinder-space-3 (12px) + 1px sub-pixel rounding allowance
-const CLOSE_BUTTON_FINE_POINTER_SIZE = 32; // --cinder-button-height-sm
+// The close button is a small Button, so it takes the small step of the shared control height
+// scale (28px since COR-1814). The test reads the token rather than restating the pixels.
+const CLOSE_BUTTON_SIZE_TOKEN = '--cinder-button-height-sm';
 const TITLE_ICON_SIZE = 16;
 
 type PopoverDensity = {
@@ -281,13 +283,14 @@ type PopoverDensity = {
   footerHeight: number | null;
   closeWidth: number | null;
   closeHeight: number | null;
+  closeSizeToken: number;
   titleIconWidth: number | null;
   contentPaddingTop: number | null;
   contentGap: number | null;
 };
 
 async function measureLinkPopoverDensity(page: Page): Promise<PopoverDensity> {
-  return page.locator('.link-popover').evaluate((element) => {
+  return page.locator('.link-popover').evaluate((element, closeSizeToken) => {
     const header = element.querySelector('.link-popover-header');
     const footer = element.querySelector('.link-popover-footer');
     const content = element.querySelector('.link-popover-content');
@@ -295,6 +298,12 @@ async function measureLinkPopoverDensity(page: Page): Promise<PopoverDensity> {
     const titleIcon = element.querySelector('.link-popover-title svg');
     const rect = element.getBoundingClientRect();
     const contentStyle = content ? getComputedStyle(content) : null;
+    // Resolve the token's length (a rem value) to pixels with a probe sized by it.
+    const probe = document.createElement('span');
+    probe.style.cssText = `position:absolute;visibility:hidden;inline-size:var(${closeSizeToken})`;
+    element.append(probe);
+    const closeSizeTokenPixels = probe.getBoundingClientRect().width;
+    probe.remove();
     return {
       hasFloatingSurfaceClass: element.classList.contains('cinder-_floating-surface'),
       popoverX: rect.x,
@@ -303,11 +312,12 @@ async function measureLinkPopoverDensity(page: Page): Promise<PopoverDensity> {
       footerHeight: footer?.getBoundingClientRect().height ?? null,
       closeWidth: close?.getBoundingClientRect().width ?? null,
       closeHeight: close?.getBoundingClientRect().height ?? null,
+      closeSizeToken: closeSizeTokenPixels,
       titleIconWidth: titleIcon?.getBoundingClientRect().width ?? null,
       contentPaddingTop: contentStyle ? parseFloat(contentStyle.paddingTop) : null,
       contentGap: contentStyle ? parseFloat(contentStyle.rowGap || contentStyle.gap) : null,
     };
-  });
+  }, CLOSE_BUTTON_SIZE_TOKEN);
 }
 
 async function assertLinkPopoverBoundsAndDensity(
@@ -352,14 +362,17 @@ async function assertLinkPopoverBoundsAndDensity(
   expect(density.footerHeight!, `${label}: footer <= 44px`).toBeLessThanOrEqual(
     HEADER_FOOTER_MAX_HEIGHT,
   );
-  expect(density.closeWidth!, `${label}: close button width is 32px`).toBeCloseTo(
-    CLOSE_BUTTON_FINE_POINTER_SIZE,
+  expect(density.closeSizeToken, `${label}: ${CLOSE_BUTTON_SIZE_TOKEN} resolves`).toBeGreaterThan(
     0,
   );
-  expect(density.closeHeight!, `${label}: close button height is 32px`).toBeCloseTo(
-    CLOSE_BUTTON_FINE_POINTER_SIZE,
-    0,
-  );
+  expect(
+    density.closeWidth!,
+    `${label}: close button width is ${CLOSE_BUTTON_SIZE_TOKEN}`,
+  ).toBeCloseTo(density.closeSizeToken, 0);
+  expect(
+    density.closeHeight!,
+    `${label}: close button height is ${CLOSE_BUTTON_SIZE_TOKEN}`,
+  ).toBeCloseTo(density.closeSizeToken, 0);
   expect(density.titleIconWidth!, `${label}: title icon is 16px`).toBeCloseTo(TITLE_ICON_SIZE, 0);
   expect(density.contentPaddingTop!, `${label}: content padding <= 12px`).toBeLessThanOrEqual(
     CONTENT_SPACING_MAX,

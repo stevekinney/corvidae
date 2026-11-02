@@ -76,9 +76,13 @@
     margin: 0;
   }
 
+  /* The label column asks for 8rem but never more than 40% of its own row, and the value column
+   * may shrink to nothing. A nested field sits inside its parent's value column, so a fixed 8rem
+   * minimum compounded with each level and pushed the nested row past the panel's edge, which
+   * turned the scrolling panel into an unfocusable scroll region. */
   .cinder-payload-inspector__field {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 3fr;
+    grid-template-columns: minmax(min(8rem, 40%), 1fr) minmax(0, 3fr);
     align-items: baseline;
     gap: var(--cinder-space-3);
   }

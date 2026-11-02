@@ -8,9 +8,10 @@
  * `light-dark(light-color, dark-color)`: both arms are black, and the dark
  * arm is denser (0.35-0.45) so the elevation still reads.
  *
- * The test opens the basic card example, confirms the document advertises
+ * The test opens the token fixture, confirms the document advertises
  * the correct `color-scheme` (the prerequisite for `light-dark()` to
- * branch at all), and asserts that `.cinder-card`:
+ * branch at all), and asserts that the shadow-edge card (a card draws a border
+ * or a shadow, never both, since COR-1821, and the default edge is the border):
  *   1. Has a non-`none` resolved `box-shadow` in both themes.
  *   2. Resolves to different `box-shadow` strings between light and dark.
  *
@@ -31,7 +32,7 @@ async function loadCard(themedPage: import('@playwright/test').Page, theme: 'lig
       theme,
     ] as const);
   await themedPage.goto(tokenFixtureRoute, { waitUntil: 'load' });
-  const card = themedPage.locator('.cinder-card').first();
+  const card = themedPage.getByTestId('token-shadow-card');
   await expect(card).toBeVisible();
   return card;
 }

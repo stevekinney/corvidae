@@ -23,6 +23,7 @@
     <Input id="theme-input" label="Theme input" value="Theme border" />
   </section>
   <Surface data-testid="surface">Surface content</Surface>
+  <Surface tone="inset" data-testid="surface-inset">Inset surface content</Surface>
   <Alert variant="danger">Danger alert</Alert>
   <Alert variant="success">Success alert</Alert>
   <Callout variant="danger" title="Danger callout">Danger content</Callout>

@@ -17,7 +17,8 @@ test.describe('Card padding', () => {
     await expect(header).toHaveCSS('padding-right', '16px');
     await expect(header).toHaveCSS('padding-bottom', '12px');
     await expect(header).toHaveCSS('padding-left', '16px');
-    await expect(header).toHaveCSS('border-bottom-width', '1px');
+    // The divider under the header is opt-in (`headerDivider`, COR-1821); this card does not opt in.
+    await expect(header).toHaveCSS('border-bottom-width', '0px');
     await expect(body).toHaveCSS('padding-top', '0px');
     await expect(body).toHaveCSS('padding-right', '0px');
     await expect(body).toHaveCSS('padding-bottom', '0px');

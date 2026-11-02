@@ -53,6 +53,26 @@ export async function openThemedFixture(
 }
 
 /**
+ * Wait for the render frame after focus lands, then for every CSS transition the focus change
+ * started to finish, so computed style reads the settled ring and not a transition's start.
+ *
+ * Under `prefers-reduced-motion` Cinder collapses transitions to a ~0.00001s duration, but a
+ * transition still starts on the first frame and `getComputedStyle` returns its start value (the
+ * user agent's 3px `auto` outline, for one) until the next frame ticks the animation clock. A
+ * single `requestAnimationFrame` therefore races the transition, and a loaded host loses the race.
+ * Waiting on the transitions' own `finished` promises is an event wait, not a timer; only
+ * transitions are awaited, because an infinite animation (a spinner) never finishes.
+ */
+export async function waitForFocusRingToSettle(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const transitions = document.getAnimations().filter((a) => a instanceof CSSTransition);
+    // A transition the page cancels has settled too, but its `finished` promise rejects.
+    await Promise.all(transitions.map((transition) => transition.finished.catch(() => undefined)));
+  });
+}
+
+/**
  * Walk Tab from `document.body` until `target` is focused, then wait one frame
  * so the focus cascade has painted. A keyboard walk is what engages
  * `:focus-visible`; a programmatic `.focus()` would not.

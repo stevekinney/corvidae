@@ -39,6 +39,8 @@ const reviewEditorEntry = fixtureEntry('review-editor');
 // Match Playwright's bounding box / padding numerics within a sub-pixel
 // tolerance. Browsers can return fractional pixel values for box metrics.
 const PIXEL_TOLERANCE = 0.5;
+/** An attached control frames its options with a 1px border and 1px padding on each side. */
+const ATTACHED_FRAME_PX = 4;
 
 async function resolvedRootTokenPx(page: Page, token: string): Promise<number> {
   const raw = await page.evaluate(
@@ -349,10 +351,12 @@ test.describe('SegmentedControl — sizing and density', () => {
     // Compare the same enabled, non-focused option index (the first, "Source")
     // across the structurally identical sm / toolbar / toolbar-md / toolbar-lg
     // controls. Font size, block padding, and inline padding all inherit from
-    // the `sm` rule. Bounding height does NOT match sm — toolbar density
-    // pins min-block-size to `--cinder-control-height-sm` so the option
-    // aligns with sibling toolbar controls (Chip, DiffStatistics, Button
-    // size="sm"), which is the contract `density="toolbar"` advertises.
+    // the `sm` rule. The control's outer box is the shared
+    // `--cinder-control-height-sm` step, so it aligns with sibling toolbar
+    // controls (Chip, DiffStatistics, Button size="sm"), which is the contract
+    // `density="toolbar"` advertises. An attached control wraps its options in a
+    // 1px border and 1px padding, so each option is 4px shorter than the step
+    // (COR-1814).
     const referenceSelector = '#segmented-sizing-sm .cinder-segmented-control-option:nth-child(1)';
     const referenceMetrics = await optionMetrics(page, referenceSelector);
     const controlHeightSmPx = await resolvedRootTokenPx(page, '--cinder-control-height-sm');
@@ -386,12 +390,19 @@ test.describe('SegmentedControl — sizing and density', () => {
         referenceMetrics.paddingInlineEnd,
         1,
       );
-      // Toolbar height pins to --cinder-control-height-sm (32px), not to
-      // sm's 24px. Use precision 1 (±0.05px) to match the rest of the block.
+      // The control's outer box is the --cinder-control-height-sm step; its attached option is the
+      // step less the 4px of border and padding around it. Use precision 1 (±0.05px) to match the
+      // rest of the block.
+      const controlBox = await page.locator(`#${id}`).boundingBox();
+      expect(controlBox, `${id}: control is laid out`).not.toBeNull();
+      expect(
+        controlBox!.height,
+        `${id}: control height matches --cinder-control-height-sm`,
+      ).toBeCloseTo(controlHeightSmPx, 1);
       expect(
         candidate.height,
-        `${id}: bounding height matches --cinder-control-height-sm`,
-      ).toBeCloseTo(controlHeightSmPx, 1);
+        `${id}: attached option height is --cinder-control-height-sm less its frame`,
+      ).toBeCloseTo(controlHeightSmPx - ATTACHED_FRAME_PX, 1);
     }
 
     // ── 12px divider breathing on attached horizontal sm/md options ───────
