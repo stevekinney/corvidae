@@ -3,10 +3,11 @@
  * `bureau.agents.models` operation: it describes what one agent allows a session to be switched
  * to, against the deployment's model catalog as it is when the call is made.
  */
-import { createAgent, createMockGenerate } from '@lostgradient/operative';
+import { createAgent, createMockGenerate, createModelCatalog } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { type AgentDefinitions } from './agent-catalog';
+import { type AgentDefinitions, createAgentCatalog } from './agent-catalog';
+import type { BureauModelPolicyOptions } from './model-policy';
 import { createBureau } from './create-bureau';
 import { OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import type { Bureau } from './types';
@@ -81,5 +82,35 @@ describe('agents.models', () => {
     expect(bureau.agents.models('switchable')?.models).toEqual([
       { provider: OPUS_5_5.provider, model: OPUS_5_5.model, displayName: OPUS_5_5.model },
     ]);
+  });
+});
+
+describe('agents.models under the model policy (COR-1996)', () => {
+  it('reads the policy at the call: a model is marked denied once the policy forbids it, and unmarked when it lifts', () => {
+    const agent = createAgent({
+      generate: createMockGenerate([]),
+      name: 'switchable',
+      allowedCandidates: [OPUS_5_5, OPUS_5],
+    });
+    let policy: BureauModelPolicyOptions | undefined;
+    const catalog = createAgentCatalog(
+      { switchable: agent },
+      { descriptors: () => createModelCatalog().descriptors, modelPolicy: () => policy },
+    );
+    const deniedOf = () =>
+      Object.fromEntries(
+        (catalog.models('switchable')?.models ?? []).map((choice) => [
+          choice.model,
+          choice.denied === true,
+        ]),
+      );
+
+    expect(deniedOf()).toEqual({ [OPUS_5_5.model]: false, [OPUS_5.model]: false });
+
+    policy = { bureau: { deniedModels: [OPUS_5.model] }, policyRevision: 2 };
+    expect(deniedOf()).toEqual({ [OPUS_5_5.model]: false, [OPUS_5.model]: true });
+
+    policy = undefined;
+    expect(deniedOf()).toEqual({ [OPUS_5_5.model]: false, [OPUS_5.model]: false });
   });
 });

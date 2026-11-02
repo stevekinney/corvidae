@@ -12,6 +12,11 @@
  *   when it named none. `fixed` offers its one attached model and cannot be switched. `routed` and
  *   `opaque` offer nothing: Bureau cannot know what such a generate would honor.
  *
+ * Each choice is also judged against the deployment's model policy (COR-1996): a model the policy
+ * forbids stays in the list, marked `denied`, so a client can show it disabled instead of offering
+ * a switch that steering admission would refuse. The list is still what the agent allows; the
+ * policy stays enforced at steering admission, at a save and at every run step.
+ *
  * @module agent-models
  */
 
@@ -19,6 +24,7 @@ import { type BackendDescriptor, readGenerationProfile } from '@lostgradient/ope
 
 import type { AgentFileProblem } from './agent-file';
 import { usdPricingOfRow } from './file-agent-cost-budget';
+import { type BureauModelPolicyOptions, modelPolicyDenialOf } from './model-policy';
 import {
   allowedDescriptorsOfFileAgent,
   readFileAgentBinding,
@@ -40,6 +46,12 @@ export interface AgentModelChoice {
    * counted against the budget. Absent for every other choice.
    */
   readonly unpriced?: true;
+  /**
+   * Present, as `true`, when the deployment's or the Bureau's model policy forbids this model
+   * (COR-1996): a steer to it is refused as `policy-denied`, and a save or a run step that names it
+   * fails. Absent for every other choice, and for every choice when no policy binds.
+   */
+  readonly denied?: true;
 }
 
 /** The models an agent allows, and which of them it uses when nothing overrides it. */
@@ -58,12 +70,17 @@ export interface AgentModels {
   readonly default: AgentModelChoice | null;
 }
 
-function choiceOf(descriptor: BackendDescriptor, budgeted = false): AgentModelChoice {
+function choiceOf(
+  descriptor: BackendDescriptor,
+  policy: BureauModelPolicyOptions | undefined,
+  budgeted = false,
+): AgentModelChoice {
   return {
     provider: descriptor.provider,
     model: descriptor.model,
     displayName: descriptor.model,
     ...(budgeted && usdPricingOfRow(descriptor) === undefined ? { unpriced: true as const } : {}),
+    ...(modelPolicyDenialOf(descriptor, policy) === undefined ? {} : { denied: true as const }),
   };
 }
 
@@ -82,11 +99,13 @@ function distinct(choices: readonly AgentModelChoice[]): AgentModelChoice[] {
 }
 
 /**
- * What `agent` allows against `descriptors`, the deployment's catalog as it is now.
+ * What `agent` allows against `descriptors`, the deployment's catalog as it is now, with the
+ * choices that `policy`, the model policy as it is now, forbids marked `denied`.
  */
 export function describeAgentModels(
   agent: object,
   descriptors: readonly BackendDescriptor[],
+  policy?: BureauModelPolicyOptions,
 ): AgentModels {
   const binding = readFileAgentBinding(agent);
   if (binding !== undefined) {
@@ -96,15 +115,16 @@ export function describeAgentModels(
       selectable: true,
       models: distinct(
         allowedDescriptorsOfFileAgent(binding.definition.models, descriptors).map((row) =>
-          choiceOf(row, binding.definition.costBudget !== undefined),
+          choiceOf(row, policy, binding.definition.costBudget !== undefined),
         ),
       ),
-      default: isDescriptor(resolved) ? choiceOf(resolved) : null,
+      default: isDescriptor(resolved) ? choiceOf(resolved, policy) : null,
     };
   }
   const profile = readGenerationProfile(agent);
   const [only] = profile.descriptors;
-  const attached = profile.descriptors.length === 1 && only !== undefined ? choiceOf(only) : null;
+  const attached =
+    profile.descriptors.length === 1 && only !== undefined ? choiceOf(only, policy) : null;
   if (profile.mode === 'selectable') {
     const allowed = profile.allowedCandidates;
     const rows =
@@ -118,7 +138,7 @@ export function describeAgentModels(
     return {
       kind: 'selectable',
       selectable: true,
-      models: distinct(rows.map((row) => choiceOf(row))),
+      models: distinct(rows.map((row) => choiceOf(row, policy))),
       default: attached,
     };
   }

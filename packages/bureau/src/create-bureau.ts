@@ -3293,6 +3293,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       files: fileAgents?.files,
       snapshots: fileAgents?.snapshots,
       descriptors: () => models.catalog().descriptors,
+      modelPolicy: () => modelPolicyOf(currentSettings()),
     });
     // COR-1721 — after the first scan, so the files present at boot are not reported as added.
     stopForwarding.push(

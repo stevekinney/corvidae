@@ -213,11 +213,14 @@ const agentModelChoiceSchema = z.object({
   displayName: z.string(),
   /** Present when the agent has a cost budget and the catalog has no price for the model, so a switch to it is refused. */
   unpriced: z.literal(true).optional(),
+  /** Present when the deployment's or the Bureau's model policy forbids the model, so a switch to it is refused. */
+  denied: z.literal(true).optional(),
 });
 
 /**
  * One model an agent allows a session to be switched to: its provider, model name, and display
- * name; `unpriced` when the agent's cost budget cannot count the model.
+ * name; `unpriced` when the agent's cost budget cannot count the model, `denied` when the model
+ * policy forbids it.
  */
 export type AgentModelChoice = z.infer<typeof agentModelChoiceSchema>;
 

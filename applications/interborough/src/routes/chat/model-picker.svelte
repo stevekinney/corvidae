@@ -3,7 +3,8 @@
    * The model picker in a session's composer: the models the session's agent allows
    * (`bureau.agents.models`), with the one the session runs on selected. The session's own model
    * (`bureau.contexts.get`'s `model`) wins; a session never switched runs on the agent's default.
-   * The model is always shown: an agent that allows one model, or none, gets the picker disabled on
+   * A model the model policy forbids, or the agent's cost budget cannot count, is listed disabled
+   * with the reason. The model is always shown: an agent that allows one model, or none, gets the picker disabled on
    * that model (or on "Agent default"), because a single model is no choice but is still the answer
    * to which model this chat runs on.
    *
@@ -110,13 +111,17 @@
     ...(known !== null && listed(known) === undefined
       ? [{ value: keyOf(known), label: known.model, disabled: true }]
       : []),
-    // A model the agent's cost budget cannot count is shown, so the person sees why it is missing.
-    ...choices.map((choice) => ({
-      value: keyOf(choice),
-      label:
-        choice.unpriced === true ? `${choice.displayName} (${COPY.unpriced})` : choice.displayName,
-      ...(choice.unpriced === true ? { disabled: true } : {}),
-    })),
+    // A model the model policy forbids, or the agent's cost budget cannot count, is shown disabled,
+    // so the person sees why it cannot be chosen. The policy's reason is the one named when both hold.
+    ...choices.map((choice) => {
+      const reason =
+        choice.denied === true ? COPY.policyDenied : choice.unpriced === true ? COPY.unpriced : '';
+      return {
+        value: keyOf(choice),
+        label: reason === '' ? choice.displayName : `${choice.displayName} (${reason})`,
+        ...(reason === '' ? {} : { disabled: true }),
+      };
+    }),
   ]);
 
   /** The picker's refusals, in the words of a model. */

@@ -23,6 +23,7 @@ import { projectDescriptor, readGenerationProfile } from '@lostgradient/operativ
 import { AgentFileError } from './agent-file';
 import { agentSkillNames } from './agent-skills';
 import { type AgentModels, describeAgentModels } from './agent-models';
+import type { BureauModelPolicyOptions } from './model-policy';
 import type {
   AgentCatalogChange,
   AgentCodeDefinition,
@@ -283,6 +284,11 @@ export interface CreateAgentCatalogOptions {
    * call because the catalog can be replaced. Defaults to an empty catalog.
    */
   readonly descriptors?: (() => readonly BackendDescriptor[]) | undefined;
+  /**
+   * The model policy as it is now, read on every {@link BureauAgentCatalog.models} call because
+   * settings can change it. The models it forbids are marked `denied` (COR-1996). Defaults to none.
+   */
+  readonly modelPolicy?: (() => BureauModelPolicyOptions | undefined) | undefined;
 }
 
 /**
@@ -310,6 +316,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
   const files = options?.files;
   const snapshots = options?.snapshots;
   const descriptors = options?.descriptors ?? (() => []);
+  const modelPolicy = options?.modelPolicy ?? (() => undefined);
   // A file agent is rebuilt whenever its file changes, so its profile is cached by the object.
   const fileAgentProfiles = new WeakMap<object, AgentGenerationProfile>();
   const requireFiles = (): AgentFileCatalog => {
@@ -412,14 +419,16 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           ...codeListing(code),
           text: null,
           definition: null,
-          codeDefinition: describeCodeAgent(code.agent, descriptors()),
+          codeDefinition: describeCodeAgent(code.agent, descriptors(), modelPolicy()),
         };
       }
       return files?.detail(id);
     },
     models(name) {
       const agent = byName.get(name)?.agent ?? files?.find(name);
-      return agent === undefined ? undefined : describeAgentModels(agent, descriptors());
+      return agent === undefined
+        ? undefined
+        : describeAgentModels(agent, descriptors(), modelPolicy());
     },
     tools() {
       // A code-defined agent that names a catalog tool uses it too. Its `toolNames` come from
@@ -465,8 +474,9 @@ export function createAgentCatalog<D extends AgentDefinitions>(
 function describeCodeAgent(
   agent: AnyRunnableAgent,
   descriptors: readonly BackendDescriptor[],
+  policy: BureauModelPolicyOptions | undefined,
 ): AgentCodeDefinition {
-  const models = describeAgentModels(agent, descriptors);
+  const models = describeAgentModels(agent, descriptors, policy);
   const named = (choice: { readonly provider: string; readonly model: string }) =>
     `${choice.provider}/${choice.model}`;
   const stated = agent as {

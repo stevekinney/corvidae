@@ -223,6 +223,25 @@ describe('switching a session’s model and branching it', () => {
     });
   });
 
+  test('getAgentModels keeps the denied and unpriced marks the Bureau put on a model', async () => {
+    const forbidden = { ...SONNET, model: 'claude-opus-5', displayName: 'claude-opus-5' };
+    const stub = answering(
+      result({
+        selectable: true,
+        models: [SONNET, { ...forbidden, denied: true }, { ...SONNET, unpriced: true }],
+        default: null,
+      }),
+    );
+
+    const models = await withStub(stub.fetch, () => getAgentModels('model-switcher'));
+
+    expect(models.models.map((choice) => [choice.denied, choice.unpriced])).toEqual([
+      [undefined, undefined],
+      [true, undefined],
+      [undefined, true],
+    ]);
+  });
+
   test('steerContext sends the override with the revision it read, and returns the outcome as data', async () => {
     const stub = answering(
       result({
