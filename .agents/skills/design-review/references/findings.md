@@ -50,7 +50,7 @@ verdicts file:  row-id | verdict | evidence
 ```
 
 - **row-id**: the canvas index id, such as `11a`. The verdicts name every input row exactly once, in input order.
-- **board**: the board's file stem under `boards/`, the same stem for both of its files: `<board>.dc.html`, the board's source as the Artifact tool's read returns it (exact copy, structure, and component names), and `<board>.png`, a render of it (`<board>-2.png` for a second image). A chef brief saves the `.dc.html`; the review renders the `.png` when it is missing ([design references](design-references.md)). A row on `Main` (the canvas index, which `design-ledger.ts` uses when no board was mapped) has only its requirement text as the standard: judge it from the text, and mark it `unverified` when the text alone cannot settle how it should look.
+- **board**: the board's file stem under `boards/`, the same stem for both of its files: `<board>.dc.html`, the board's source as the Artifact tool's read returns it (exact copy, structure, and component names), and `<board>.png`, a render of it, with `<board>--part<n>.png` slices when the board is taller than 1,400 pixels. A chef brief saves the `.dc.html`; the review renders the `.png` when it is missing ([design references](design-references.md)). A row on `Main` (the canvas index, which `design-ledger.ts` uses when no board was mapped) has only its requirement text as the standard: judge it from the text, and mark it `unverified` when the text alone cannot settle how it should look.
 - **verdict**: one of the following.
   - `matches`: the screens and the code do what the row says, in every state and width the row covers.
   - `drifted`: it is built, but differently from the row (another component, order, copy, or treatment).
@@ -65,17 +65,22 @@ The implementation review's overall verdict follows from its rows: `changes requ
 
 ## The design critique
 
-The first line is exactly one of:
+A critique judges each board on its own, so sign-off can be tracked per board. It has one section per board, in the order given, each headed by a line reading exactly `BOARD: <board>` (the board's file stem), whose next line is exactly one of:
 
 - `VERDICT: ready to build`
 - `VERDICT: ready with changes`
 - `VERDICT: rethink`
 
-Then:
+A critique of a single board has one section. After the board sections comes one shared section, headed `SHARED`, holding the Cinder inventory and the questions, because a component or token a design implies usually serves several boards.
+
+Each board section holds:
 
 - What the design gets right, and what it improves over the current screens.
-- Findings against the design, in the finding format above, with **Where** naming the board or screen image. Judge every state the design shows and name every state it omits (loading, empty, error, forbidden, offline, streaming, a long value, the phone width, dark mode): an omitted state is a finding, because it will otherwise be invented during implementation.
+- Findings against the design, in the finding format above, with **Where** naming the board or screen image. Judge every state the design shows and name every state it omits (loading, empty, error, forbidden, offline, streaming, a long value): an omitted state is a finding, because it will otherwise be invented during implementation. Phone width and dark mode are the exception when the canvas has a shared rules board ([design references](design-references.md) "Shared rules boards"): a page board inherits them, and an omission is a finding only when the board needs behavior those rules cannot give it, such as a table that must become cards or a chart whose colors carry meaning.
 - Consistency: where the design departs from patterns the rest of the application uses, and whether the departure should spread to the rest or be dropped.
+
+The shared section holds:
+
 - The Cinder inventory: the existing components the design uses (by directory), the variants, defaults and tokens it changes, and the new components it implies, each with the pages that would use it. Flag anything that would become a bespoke Interborough component.
 - Questions for the owner, each with a recommendation.
 
