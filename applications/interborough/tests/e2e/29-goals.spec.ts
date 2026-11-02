@@ -105,7 +105,7 @@ test('creates a goal that names the validator that never passes, cancels it, and
   await row.getByRole('button', { name: GOALS_COPY.cancelAction }).click();
   await page.getByRole('button', { name: GOALS_COPY.cancelDialog.confirm }).click();
 
-  await expect(row).toHaveAttribute('data-status', 'canceled', { timeout: 20_000 });
+  await expect(row).toHaveAttribute('data-status', 'canceled');
   await expect(row).toHaveAttribute('data-status-word', 'Canceled');
   await expect(row.getByRole('button', { name: GOALS_COPY.cancelAction })).toHaveCount(0);
   await checkA11y('goals — a canceled goal');

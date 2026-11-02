@@ -254,8 +254,8 @@ test.describe('a tool approval', () => {
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
     // The page that was already open reads the decision within five seconds.
-    await expect(page.locator('.ib-decision')).toHaveCount(0, { timeout: 5_000 });
-    await expect(page.getByText('1 run is waiting on you')).toHaveCount(0, { timeout: 5_000 });
+    await expect(page.locator('.ib-decision')).toHaveCount(0);
+    await expect(page.getByText('1 run is waiting on you')).toHaveCount(0);
   });
 
   test('is listed under Done once it is decided, with who decided it, and cannot be decided again', async ({
@@ -297,7 +297,7 @@ test.describe('a decision made in the inbox', () => {
     await paneOf(inbox).getByRole('button', { name: 'Approve' }).click();
     await expect(rowOf(inbox, review)).toHaveCount(0);
 
-    await expect(page.locator('.ib-decision')).toHaveCount(0, { timeout: 5_000 });
+    await expect(page.locator('.ib-decision')).toHaveCount(0);
   });
 
   test('settles a question in a chat that never reloaded: it is gone, the next message is a normal turn, and a second question is settled the same way', async ({
@@ -321,7 +321,7 @@ test.describe('a decision made in the inbox', () => {
       await expect(rowOf(inbox, review)).toHaveCount(0);
     };
     await answer('staging');
-    await expect(asked).toHaveCount(0, { timeout: 5_000 });
+    await expect(asked).toHaveCount(0);
 
     // The question is settled, so this is a message and not its answer: no resume, no refusal.
     await send(page, 'Another one');
@@ -333,7 +333,7 @@ test.describe('a decision made in the inbox', () => {
 
     // The second question is settled elsewhere too, and the chat reads it again.
     await answer('production');
-    await expect(asked).toHaveCount(0, { timeout: 5_000 });
+    await expect(asked).toHaveCount(0);
   });
 });
 
@@ -514,7 +514,7 @@ test.describe('the count in the navigation', () => {
     await runToEnd(request, 'demo:tool-runner', newThreadId('reviews-count'), 'Refund order-1001');
 
     // The page asks again every five seconds, so a new approval shows without a reload.
-    await expect(link).toHaveText(showsCount(before + 1), { timeout: 15_000 });
+    await expect(link).toHaveText(showsCount(before + 1));
   });
 });
 

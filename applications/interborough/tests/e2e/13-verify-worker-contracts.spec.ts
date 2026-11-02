@@ -168,9 +168,6 @@ const FAILURES = [
     name: 'malformed response',
     result: { worker: 'not-a-worker-record' },
     title: 'Malformed server response',
-    // An unclassified error is retried (three times, with backoff) before
-    // the panel leaves its loading state.
-    timeout: 20_000,
   },
 ] as const;
 
@@ -205,9 +202,9 @@ for (const failure of FAILURES) {
     await page.goto('/health/workers?worker=e2e-fleet-worker-1');
 
     const verification = page.getByRole('region', { name: 'Contract verification' });
-    await expect(verification.getByText(failure.title, { exact: true })).toBeVisible(
-      'timeout' in failure ? { timeout: failure.timeout } : {},
-    );
+    // An unclassified error is retried (three times, with backoff) before the panel leaves its
+    // loading state, so the title can take longer than a plain fault's: the wait is the hang guard.
+    await expect(verification.getByText(failure.title, { exact: true })).toBeVisible();
     await expect(verification.getByText('Verified · manifest matches registry')).toHaveCount(0);
 
     await checkA11y(`workers — contract verification ${failure.name}`);

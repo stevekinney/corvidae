@@ -269,7 +269,7 @@ async function untilQuiet(page: Page): Promise<void> {
         previous = signature;
         return streak;
       },
-      { intervals: [150], timeout: 30_000 },
+      { intervals: [150] },
     )
     .toBeGreaterThanOrEqual(3);
 }
