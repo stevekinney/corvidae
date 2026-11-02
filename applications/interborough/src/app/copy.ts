@@ -1934,7 +1934,7 @@ export const HEALTH_OVERVIEW_COPY = {
     failureRate: (rate: string): string =>
       `Workflow failure rate is over its warning level · ${rate}`,
     activityDuration: (duration: string): string =>
-      `Activity p99 duration is over its warning level · ${duration}`,
+      `Slowest steps are over their warning level · ${duration}`,
     /** A rule this app has no sentence for yet: the metric's own name, which is still true. */
     other: (metric: string): string => `${metric} is over its warning level`,
   },

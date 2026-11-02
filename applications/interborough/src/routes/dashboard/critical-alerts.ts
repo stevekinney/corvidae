@@ -218,7 +218,7 @@ export interface FiringAlert {
 export function buildFiringAlertChips(alerts: readonly FiringAlert[]): AlertChip[] {
   const copy = HEALTH_OVERVIEW_COPY.firingAlert;
   return alerts.map((alert): AlertChip => {
-    const id = `alert:${alert.metric}`;
+    const id = `alert:${alert.metric}:${String(alert.threshold)}`;
     switch (alert.metric) {
       case 'storage.size':
         return {
