@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
   charterRules,
+  designLinks,
+  designRowIds,
   pathsIn,
   renderBrief,
   run,
@@ -51,6 +53,20 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(sandbox, { recursive: true, force: true });
+});
+
+describe('designRowIds and designLinks', () => {
+  test('finds bold row IDs and leading row IDs, once each, in order', () => {
+    expect(
+      designRowIds('* **11a** (Chat): x\n* **12a** (Chat): y\n- 04f: z\n* **11a** again'),
+    ).toEqual(['11a', '12a', '04f']);
+  });
+
+  test('finds claude.ai artifact links once each', () => {
+    const text =
+      'See [canvas](https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw) and <https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw>.';
+    expect(designLinks(text)).toEqual(['https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw']);
+  });
 });
 
 describe('sectionOf and pathsIn', () => {
@@ -120,6 +136,43 @@ describe('renderBrief', () => {
     expect(text).toContain('- It is gone.');
     expect(text).toContain('`bun test a`');
     expect(text).not.toContain('no description');
+  });
+
+  test('carries the design rows even when an execution brief would hide them', () => {
+    const body = [
+      '## Execution brief',
+      'Build the chat header.',
+      '',
+      '## Acceptance criteria',
+      '- [ ] 11a: New chat is built around the composer (board NewChat).',
+      '',
+      '## Design source',
+      '',
+      'Prototypes: [canvas](https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw). Index rows:',
+      '* **11a** (Chat): Rebuild New chat around the composer',
+      '* **12a** (Chat): Composer bar shows model, effort and permission mode',
+    ].join('\n');
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain('## Design');
+    expect(text).toContain('**12a** (Chat): Composer bar');
+    expect(text).toContain('https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw');
+    expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
+    expect(text).not.toContain('Rows not named in the acceptance criteria: 11a');
+    expect(text).toContain('bun scripts/design-review-rows.ts');
+    expect(text).toContain('`unverified` block the pull request');
+    expect(text).toContain('tmp/chef/briefs/COR-7/boards/');
+  });
+
+  test('does not repeat the rows when the whole description is already the brief', () => {
+    const body =
+      '## Acceptance criteria\n\n- [ ] 11a: done\n\n## Design source\n\n* **11a** (Chat): one\n* **12a** (Chat): two';
+    const text = renderBrief(issue(body), options);
+    expect(text.split('**12a** (Chat): two')).toHaveLength(2);
+    expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
+  });
+
+  test('an issue with no design gets no design section', () => {
+    expect(renderBrief(issue(description), options)).not.toContain('## Design');
   });
 
   test('cuts a very long description and says so', () => {

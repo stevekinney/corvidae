@@ -12,6 +12,9 @@
 // (gitignored; `--out-dir` replaces the directory) holding:
 //   - the issue's execution brief and acceptance criteria: the description sections under those
 //     headings, or the whole description when it has neither;
+//   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
+//     design rows, the rows its acceptance criteria leave out, and the instruction to build against
+//     the saved boards and return a design-review verdict per row;
 //   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
 //     description;
 //   - the verification commands: each `--verify`, else the focused checks for what the worker changed;
@@ -103,6 +106,60 @@ export function pathsIn(text: string): string[] {
   return [...found];
 }
 
+/**
+ * The design index rows a description names, in first-seen order: bold IDs such as `**11a**`
+ * and IDs that lead a list item or criterion (`- 04f:`, `- [ ] 11a:`).
+ */
+export function designRowIds(text: string): string[] {
+  const found = new Set<string>();
+  const pattern = /\*\*(\d{2}[a-z])\*\*|^\s*[-*]\s+(?:\[[ xX]\]\s+)?(\d{2}[a-z])\b/gm;
+  for (const match of text.matchAll(pattern)) found.add(match[1] ?? match[2] ?? '');
+  found.delete('');
+  return [...found];
+}
+
+/** The claude.ai artifact links (design canvases) a description names, once each. */
+export function designLinks(text: string): string[] {
+  return [...new Set(text.match(/https:\/\/claude\.ai\/artifact\/[A-Za-z0-9_-]+/g) ?? [])];
+}
+
+/**
+ * The design section of a brief, or nothing when the issue names no design. It carries the rows
+ * even when an execution-brief heading would otherwise hide them, names the rows the acceptance
+ * criteria leave out, and tells the worker to build against the boards and to get a design-review
+ * verdict for every row before the pull request is ready.
+ */
+function designLines(
+  identifier: string,
+  description: string,
+  criteria: string | undefined,
+  descriptionIncluded: boolean,
+) {
+  const source = sectionOf(description, /design\s+(?:source|rows?)/i);
+  const links = designLinks(description);
+  const rows = designRowIds(source ?? '');
+  if (source === undefined && links.length === 0) return [];
+  const criteriaRows = new Set(designRowIds(criteria ?? ''));
+  const uncovered = rows.filter((row) => !criteriaRows.has(row));
+  return [
+    '## Design',
+    '',
+    'This issue implements an agreed design. Its rows are requirements, not context: a departure from a board is a defect.',
+    '',
+    ...(links.length > 0 ? [`Canvas: ${links.join(', ')}`, ''] : []),
+    ...(source !== undefined && !descriptionIncluded ? [source, ''] : []),
+    ...(uncovered.length > 0
+      ? [
+          `Rows not named in the acceptance criteria: ${uncovered.join(', ')}. Treat each as a criterion; if one should not be built, stop and return needs-decision.`,
+          '',
+        ]
+      : []),
+    `- Before changing code, read every board these rows name with the Artifact tool's read action (the board's \`project/<Board>.dc.html\` path) and save it under \`tmp/chef/briefs/${identifier}/boards/\` in the main checkout. Build to the boards.`,
+    '- Before the pull request is ready, capture the screens you changed (`bun scripts/design-review-capture.ts` in `applications/interborough`) and get an implementation review from the `design-reviewer` agent, following the `design-review` skill: write these rows as its rows file (`row-id | board | requirement text`), and check its `row-verdicts.txt` with `bun scripts/design-review-rows.ts` in `applications/interborough`. Put the verdict lines (`row-id | verdict | evidence`) in the pull request body and your report. Only `matches`, or `deferred` with the reason recorded on the issue, passes; `drifted`, `partial`, `missing` and `unverified` block the pull request.',
+    '',
+  ];
+}
+
 const descriptionLimit = 16_000;
 const pathLimit = 40;
 
@@ -150,6 +207,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       '',
     );
   }
+  lines.push(...designLines(issue.identifier, description, criteria, execution === undefined));
   lines.push('## Files', '');
   lines.push(
     ...(paths.length > 0
