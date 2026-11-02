@@ -12,6 +12,9 @@
 // (gitignored; `--out-dir` replaces the directory) holding:
 //   - the issue's execution brief and acceptance criteria: the description sections under those
 //     headings, or the whole description when it has neither;
+//   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
+//     design rows, the rows its acceptance criteria leave out, and the instruction to build against
+//     the saved boards and return a design-review verdict per row;
 //   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
 //     description;
 //   - the verification commands: each `--verify`, else the focused checks for what the worker changed;
@@ -103,6 +106,137 @@ export function pathsIn(text: string): string[] {
   return [...found];
 }
 
+/**
+ * The design index rows a description names, in first-seen order: bold IDs such as `**11a**`
+ * and IDs that lead a list item or criterion (`- 04f:`, `- [ ] 11a:`).
+ */
+export function designRowIds(text: string): string[] {
+  const found = new Set<string>();
+  const pattern = /\*\*(\d{2}[a-z])\*\*|^\s*[-*]\s+(?:\[[ xX]\]\s+)?(\d{2}[a-z])\b/gm;
+  for (const match of text.matchAll(pattern)) found.add(match[1] ?? match[2] ?? '');
+  found.delete('');
+  return [...found];
+}
+
+/** The claude.ai artifact links (design canvases) a description names, once each. */
+export function designLinks(text: string): string[] {
+  return [...new Set(text.match(/https:\/\/claude\.ai\/artifact\/[A-Za-z0-9_-]+/g) ?? [])];
+}
+
+/**
+ * The design section of a brief, or nothing when the issue names no design. It carries the rows
+ * even when an execution-brief heading would otherwise hide them, names the rows the acceptance
+ * criteria leave out, and tells the worker to build against the boards and to get a design-review
+ * verdict for every row before the pull request is ready.
+ */
+/** Whether `text` names design row `id` as a whole token (`11a`, not `211a` or `11ab`). */
+export function mentionsRow(text: string, id: string): boolean {
+  return new RegExp(`(?<![\\w-])${id}(?![\\w-])`).test(text);
+}
+
+/** Every heading-delimited section of a description, in order, with nested headings folded in. */
+function sectionsOf(description: string): { heading: string; body: string }[] {
+  const lines = description.split('\n');
+  const sections: { heading: string; body: string }[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(lines[index] ?? '');
+    if (match === null) continue;
+    const level = (match[1] ?? '').length;
+    const body: string[] = [];
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const following = /^(#{1,6})\s/.exec(lines[next] ?? '');
+      if (following !== null && (following[1] ?? '').length <= level) break;
+      body.push(lines[next] ?? '');
+    }
+    sections.push({ heading: match[2] ?? '', body: body.join('\n') });
+  }
+  return sections;
+}
+
+export interface RowCarriage {
+  /** Rows the issue carries as acceptance criteria, after its dated revisions. */
+  criteria: Set<string>;
+  /** Rows the issue defers, each with the line that records the deferral and its reason. */
+  deferred: Map<string, string>;
+  /** Rows a dated revision moved off the issue or dropped, each with the clause that says so. */
+  moved: Map<string, string>;
+}
+
+/**
+ * Which of `rows` an issue carries as criteria and which it defers. A row counts as a criterion
+ * when an "Acceptance criteria" section names it, and a line that says a row is deferred records
+ * a deferral wherever it sits. Appended revision sections ("## Revision 2026-10-31 …") apply in
+ * order, clause by clause: a clause naming a row carries it, unless the clause says the row moved,
+ * was dropped or was removed, and then the issue no longer carries it.
+ */
+export function rowCarriage(description: string, rows: string[]): RowCarriage {
+  const criteria = new Set<string>();
+  const deferred = new Map<string, string>();
+  const moved = new Map<string, string>();
+  const sections = sectionsOf(description);
+  for (const line of description.split('\n'))
+    if (/\bdeferred\b/i.test(line))
+      for (const row of rows) if (mentionsRow(line, row)) deferred.set(row, line.trim());
+  for (const section of sections.filter((entry) => /acceptance\s+criteria/i.test(entry.heading)))
+    for (const line of section.body.split('\n'))
+      if (!/\bdeferred\b/i.test(line))
+        for (const row of rows) if (mentionsRow(line, row)) criteria.add(row);
+  // A revision line can name several rows ("now rows 11a and 19b; 12a moved"), so each clause is
+  // judged on its own.
+  for (const section of sections.filter((entry) => /\brevision\b/i.test(entry.heading)))
+    for (const line of section.body.split(/\n|(?<=[.;])\s+/))
+      for (const row of rows) {
+        if (!mentionsRow(line, row) || /\bdeferred\b/i.test(line)) continue;
+        if (/\b(?:moved|dropped|removed)\b/i.test(line)) {
+          criteria.delete(row);
+          deferred.delete(row);
+          moved.set(row, line.trim());
+        } else {
+          criteria.add(row);
+          moved.delete(row);
+        }
+      }
+  for (const row of deferred.keys()) criteria.delete(row);
+  return { criteria, deferred, moved };
+}
+
+function designLines(identifier: string, description: string, descriptionIncluded: boolean) {
+  const source = sectionOf(description, /design\s+(?:source|rows?)/i);
+  const links = designLinks(description);
+  // Without a design section, a canvas-linked issue's rows are the IDs it names anywhere.
+  const rows = designRowIds(source ?? description);
+  if (source === undefined && links.length === 0) return [];
+  const carriage = rowCarriage(description, rows);
+  const uncovered = rows.filter(
+    (row) => !carriage.criteria.has(row) && !carriage.deferred.has(row) && !carriage.moved.has(row),
+  );
+  return [
+    '## Design',
+    '',
+    'This issue implements an agreed design. Its rows are requirements, not context: a departure from a board is a defect.',
+    '',
+    ...(links.length > 0 ? [`Canvas: ${links.join(', ')}`, ''] : []),
+    ...(source !== undefined && !descriptionIncluded ? [source, ''] : []),
+    ...[...carriage.deferred].flatMap(([row, line]) => [
+      `Deferred on this issue, do not build: ${row} (${line})`,
+      '',
+    ]),
+    ...[...carriage.moved].flatMap(([row, line]) => [
+      `Moved off this issue by a revision, do not build: ${row} (${line})`,
+      '',
+    ]),
+    ...(uncovered.length > 0
+      ? [
+          `Rows not named in the acceptance criteria: ${uncovered.join(', ')}. Treat each as a criterion; if one should not be built, stop and return needs-decision.`,
+          '',
+        ]
+      : []),
+    `- Before changing code, read every board these rows name with the Artifact tool's read action (the board's \`project/<Board>.dc.html\` path) and save it under \`tmp/chef/briefs/${identifier}/boards/\` in the main checkout. Build to the boards.`,
+    '- Before the pull request is ready, capture the screens you changed (`bun scripts/design-review-capture.ts` in `applications/interborough`) and get an implementation review from the `design-reviewer` agent, following the `design-review` skill: write these rows as its rows file (`row-id | board | requirement text`, where `board` is the file stem you saved under `boards/`, the name without `.dc.html`), and check its `row-verdicts.txt` with `bun scripts/design-review-rows.ts` in `applications/interborough`. Put the verdict lines (`row-id | verdict | evidence`) in the pull request body and your report. Only `matches`, or `deferred` with the reason recorded on the issue, passes; `drifted`, `partial`, `missing` and `unverified` block the pull request.',
+    '',
+  ];
+}
+
 const descriptionLimit = 16_000;
 const pathLimit = 40;
 
@@ -150,6 +284,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       '',
     );
   }
+  lines.push(...designLines(issue.identifier, description, execution === undefined));
   lines.push('## Files', '');
   lines.push(
     ...(paths.length > 0

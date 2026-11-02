@@ -26,6 +26,15 @@ Give each batch its own binary acceptance criteria, required verification, integ
 
 For Linear work, maintain native blocker relations. When the `scope-work`, `linear-create-issue`, or `linear-create-project` skills are installed, use them for required new execution boundaries; otherwise write the issue yourself with `scripts/chef/linear.ts create`, which refuses a duplicate title and reads the issue back, after checking the draft against the Definition of Ready in [the Linear policy](linear-policy.md). Reuse existing issues rather than cloning them into worker tickets. Run required intake gates for new or materially revised Linear payloads before writing. Coordinator approval within the user's authorized scope does not require asking the user again.
 
+## Design programmes
+
+Work built from an agreed design (a Claude Design canvas, its boards, and its index rows) treats each row as a requirement. On the Oct 29 Interborough canvas, 137 of 155 rows reached the issues only as a "Design source" list, 4 reached no issue, and a Nov 2 audit found 309 misses.
+
+- Save the canvas index board (`project/Main.dc.html`, read with the Artifact tool) under `tmp/chef/design/<canvas id>/` and run `design-ledger.ts --index <that file> --canvas <id>` before dispatch. Every row must be a criterion in exactly the issue that builds it, or deferred on an issue with a reason (`Deferred: 19b, because …`). Exit 1 blocks dispatch; fix the issues, not the ledger.
+- Run it again after every readiness split or revision that moves rows: a split that drops a row shows as a gap.
+- `brief.ts` carries the rows and tells the worker to save the named boards under `tmp/chef/briefs/<ID>/boards/` and to return a design-review verdict per row. A design issue's charter names its boards.
+- Close the programme only after `design-ledger.ts` exits 0 and a full drift audit of the canvas against the shipped interface (the `design-review` skill) leaves no unexplained miss. A spot-check that records rows it did not reach keeps the programme open.
+
 ## Zero-worker plans
 
 A zero-worker plan records why direct coordinator execution costs less without compromising review, plus the coordinator's settings and gates. If delegation is unavailable and direct execution can satisfy the request, record that limitation and proceed; if a required independent review or explicit team requirement cannot be met, report it as blocked. Do not change global agent configuration to force a preferred routing choice.

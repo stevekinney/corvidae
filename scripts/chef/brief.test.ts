@@ -5,8 +5,11 @@ import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
   charterRules,
+  designLinks,
+  designRowIds,
   pathsIn,
   renderBrief,
+  rowCarriage,
   run,
   sectionOf,
   verificationCommands,
@@ -51,6 +54,41 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(sandbox, { recursive: true, force: true });
+});
+
+describe('designRowIds and designLinks', () => {
+  test('finds bold row IDs and leading row IDs, once each, in order', () => {
+    expect(
+      designRowIds('* **11a** (Chat): x\n* **12a** (Chat): y\n- 04f: z\n* **11a** again'),
+    ).toEqual(['11a', '12a', '04f']);
+  });
+
+  test('finds claude.ai artifact links once each', () => {
+    const text =
+      'See [canvas](https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw) and <https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw>.';
+    expect(designLinks(text)).toEqual(['https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw']);
+  });
+});
+
+describe('rowCarriage', () => {
+  test('a dated revision moves rows in and out, in order', () => {
+    const body = [
+      '## Acceptance criteria',
+      '- [ ] 11a: built.',
+      '- [ ] 12a: built.',
+      '',
+      '## Revision 2026-10-31 (chef, split at readiness)',
+      '',
+      'This issue is now rows 11a and 19b. Row 12a moved to COR-1967.',
+      '',
+      '## Revision 2026-11-01',
+      '',
+      '- Dropped 19b: owner decision.',
+    ].join('\n');
+    const carriage = rowCarriage(body, ['11a', '12a', '19b']);
+    expect([...carriage.criteria]).toEqual(['11a']);
+    expect(carriage.deferred.size).toBe(0);
+  });
 });
 
 describe('sectionOf and pathsIn', () => {
@@ -120,6 +158,101 @@ describe('renderBrief', () => {
     expect(text).toContain('- It is gone.');
     expect(text).toContain('`bun test a`');
     expect(text).not.toContain('no description');
+  });
+
+  test('carries the design rows even when an execution brief would hide them', () => {
+    const body = [
+      '## Execution brief',
+      'Build the chat header.',
+      '',
+      '## Acceptance criteria',
+      '- [ ] 11a: New chat is built around the composer (board NewChat).',
+      '',
+      '## Design source',
+      '',
+      'Prototypes: [canvas](https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw). Index rows:',
+      '* **11a** (Chat): Rebuild New chat around the composer',
+      '* **12a** (Chat): Composer bar shows model, effort and permission mode',
+    ].join('\n');
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain('## Design');
+    expect(text).toContain('**12a** (Chat): Composer bar');
+    expect(text).toContain('https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw');
+    expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
+    expect(text).not.toContain('Rows not named in the acceptance criteria: 11a');
+    expect(text).toContain('bun scripts/design-review-rows.ts');
+    expect(text).toContain('`unverified` block the pull request');
+    expect(text).toContain('tmp/chef/briefs/COR-7/boards/');
+  });
+
+  test('does not repeat the rows when the whole description is already the brief', () => {
+    const body =
+      '## Acceptance criteria\n\n- [ ] 11a: done\n\n## Design source\n\n* **11a** (Chat): one\n* **12a** (Chat): two';
+    const text = renderBrief(issue(body), options);
+    expect(text.split('**12a** (Chat): two')).toHaveLength(2);
+    expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
+  });
+
+  test('carries a recorded deferral and does not ask the worker to build that row', () => {
+    const body = [
+      '## Execution brief',
+      'Build the chat list.',
+      '',
+      '## Acceptance criteria',
+      '- [ ] 11a: built.',
+      '',
+      '## Design source',
+      '',
+      '* **11a** (Chat): one',
+      '* **19b** (Every list page): two',
+      '',
+      '## Scope notes',
+      '',
+      'Deferred: 19b, because the list pages are redone in COR-2001.',
+    ].join('\n');
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain('Deferred on this issue, do not build: 19b (Deferred: 19b, because');
+    expect(text).not.toContain('Rows not named in the acceptance criteria');
+  });
+
+  test('tells the worker that a rows-file board is the saved file stem', () => {
+    const body = '## Design source\n\n* **11a** (Chat): one';
+    expect(renderBrief(issue(body), options)).toContain('the file stem you saved under `boards/`');
+  });
+
+  test('a canvas link with no design section takes its rows from the whole description', () => {
+    const body =
+      'Build it per https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw.\n\n## Acceptance criteria\n\n- [ ] 11a: built.\n\n## Notes\n\n- 12a: also on the board.';
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
+  });
+
+  test('a row a revision moved elsewhere is reported as moved, not as a missing criterion', () => {
+    const body = [
+      '## Execution brief',
+      'Build the chat list.',
+      '',
+      '## Acceptance criteria',
+      '- [ ] 11b: built.',
+      '',
+      '## Design source',
+      '',
+      '* **11a** (Chat): one',
+      '* **11b** (Chat): two',
+      '',
+      '## Revision 2026-11-01',
+      '',
+      'Row 11a moved to COR-8.',
+    ].join('\n');
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain(
+      'Moved off this issue by a revision, do not build: 11a (Row 11a moved to COR-8.)',
+    );
+    expect(text).not.toContain('Rows not named in the acceptance criteria');
+  });
+
+  test('an issue with no design gets no design section', () => {
+    expect(renderBrief(issue(description), options)).not.toContain('## Design');
   });
 
   test('cuts a very long description and says so', () => {
