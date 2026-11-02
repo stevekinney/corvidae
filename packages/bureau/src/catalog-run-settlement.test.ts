@@ -62,6 +62,7 @@ describe('publishing a fresh catalog dispatch', () => {
     handle: Partial<FreshCatalogRunHandle>,
     admit: () => Promise<void>,
     durableEnd?: () => Promise<DurableEnd>,
+    tracker = createCatalogSettlementTracker(),
   ) {
     const hook = createCatalogRunSettlementHook(() => undefined);
     const published: CatalogRunSettlement[] = [];
@@ -70,7 +71,6 @@ describe('publishing a fresh catalog dispatch', () => {
     hook.subscribe((event) => void second.push(event));
     const followed: unknown[] = [];
     const diagnostics: string[] = [];
-    const tracker = createCatalogSettlementTracker();
     const run = publishFreshCatalogRun({
       handle: {
         id: 'agent-run-1',
@@ -204,6 +204,48 @@ describe('publishing a fresh catalog dispatch', () => {
     }
   });
 
+  it('writes nothing for a run that ends after the shutdown stopped waiting, and nothing is published', async () => {
+    // A run followed before the shutdown, still running when the shutdown stopped waiting for run
+    // ends, whose end then arrives: the storage behind its listeners may already be closed.
+    const ending = Promise.withResolvers<{ finishReason: string; content: string }>();
+    const admitted: string[] = [];
+    const { run, published, second, tracker } = observed(
+      { result: () => ending.promise },
+      async () => void admitted.push('admitted'),
+    );
+    tracker.follow(run);
+
+    await tracker.settled(0);
+    expect(admitted).toEqual(['admitted']);
+
+    ending.resolve({ finishReason: 'stop-condition', content: 'answer' });
+    await run;
+
+    expect(published).toEqual([]);
+    expect(second).toEqual([]);
+  });
+
+  it('records nothing for a run whose start committed after the shutdown stopped waiting', async () => {
+    // The first publish is registered only once the run's start has committed, which can be after
+    // the shutdown found nothing followed and moved on.
+    const tracker = createCatalogSettlementTracker();
+    await tracker.settled();
+    const admitted: string[] = [];
+    const { run, published, diagnostics } = observed(
+      { result: async () => ({ finishReason: 'stop-condition', content: 'answer' }) },
+      async () => void admitted.push('admitted'),
+      undefined,
+      tracker,
+    );
+    tracker.follow(run);
+
+    await run;
+
+    expect(admitted).toEqual([]);
+    expect(published).toEqual([]);
+    expect(diagnostics).toEqual([]);
+  });
+
   it('follows the cleanup of a canceled run before publishing it', async () => {
     const { run, published, followed } = observed(
       { result: async () => ({ finishReason: 'aborted', content: '' }) },
@@ -252,10 +294,12 @@ describe('the settlement tracker a shutdown waits on', () => {
     const storage = Promise.withResolvers<void>();
     let written = false;
     tracker.follow(
-      tracker.commit(async () => {
-        await storage.promise;
-        written = true;
-      }),
+      tracker
+        .commit(async () => {
+          await storage.promise;
+          written = true;
+        })
+        .then(() => undefined),
     );
 
     let returned = false;
@@ -295,6 +339,44 @@ describe('the settlement tracker a shutdown waits on', () => {
     storage.resolve();
     await waiting;
     expect(finished).toEqual(['recorded']);
+  });
+
+  it('refuses storage work committed after it settled, and says so', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const ran: string[] = [];
+    expect(await tracker.commit(async () => void ran.push('before'))).toBe(true);
+
+    await tracker.settled();
+
+    expect(await tracker.commit(async () => void ran.push('after'))).toBe(false);
+    expect(ran).toEqual(['before']);
+  });
+
+  it('waits for the work it admitted before it closed, and closes once that work is done', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const storage = Promise.withResolvers<void>();
+    const ran: string[] = [];
+    const committing = tracker.commit(async () => {
+      await storage.promise;
+      ran.push('first');
+    });
+
+    const waiting = tracker.settled(0);
+    storage.resolve();
+    await waiting;
+
+    expect(await committing).toBe(true);
+    expect(await tracker.commit(async () => void ran.push('second'))).toBe(false);
+    expect(ran).toEqual(['first']);
+  });
+
+  it('follows nothing after it settled, and does not leave the publish it was handed unhandled', async () => {
+    const tracker = createCatalogSettlementTracker();
+    await tracker.settled();
+
+    tracker.follow(Promise.reject(new Error('published too late')));
+
+    await tracker.settled();
   });
 
   it('ignores a publish that rejects', async () => {

@@ -154,6 +154,36 @@ describe('createCatalogDispatcher — startChildRun', () => {
   });
 });
 
+/**
+ * COR-2005 — once shutdown has closed admission, no kind of subordinate run starts, so none is
+ * followed to a settlement the shutdown could miss. These hold on `main` already: the refusal is
+ * why a late settlement can only come from a run that started before the shutdown.
+ */
+describe('createCatalogDispatcher — starts after shutdown began', () => {
+  it('refuses a goal attempt', () => {
+    expect(() =>
+      createDispatcher(true).startGoalAttemptRun({
+        agentName: 'worker',
+        input: 'work',
+        runId: 'goal-g1-a0',
+        goalRunId: 'g1',
+        attemptIndex: 0,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'CONFLICT' }));
+  });
+
+  it('refuses a workflow step', () => {
+    expect(() =>
+      createDispatcher(true).startWorkflowStepRun({
+        agentName: 'worker',
+        input: 'work',
+        runId: 'workflow-w1-s0',
+        workflowStep: { workflowId: 'w1', step: 0 },
+      }),
+    ).toThrow(expect.objectContaining({ code: 'CONFLICT' }));
+  });
+});
+
 const realRuntime = createDefaultRuntimeServices();
 
 const settle = (started: { durablyStarted: Promise<void> }) =>
