@@ -227,6 +227,30 @@ describe('renderBrief', () => {
     expect(text).toContain('Rows not named in the acceptance criteria: 12a.');
   });
 
+  test('a row a revision moved elsewhere is reported as moved, not as a missing criterion', () => {
+    const body = [
+      '## Execution brief',
+      'Build the chat list.',
+      '',
+      '## Acceptance criteria',
+      '- [ ] 11b: built.',
+      '',
+      '## Design source',
+      '',
+      '* **11a** (Chat): one',
+      '* **11b** (Chat): two',
+      '',
+      '## Revision 2026-11-01',
+      '',
+      'Row 11a moved to COR-8.',
+    ].join('\n');
+    const text = renderBrief(issue(body), options);
+    expect(text).toContain(
+      'Moved off this issue by a revision, do not build: 11a (Row 11a moved to COR-8.)',
+    );
+    expect(text).not.toContain('Rows not named in the acceptance criteria');
+  });
+
   test('an issue with no design gets no design section', () => {
     expect(renderBrief(issue(description), options)).not.toContain('## Design');
   });

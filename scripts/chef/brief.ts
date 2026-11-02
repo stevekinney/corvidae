@@ -158,6 +158,8 @@ export interface RowCarriage {
   criteria: Set<string>;
   /** Rows the issue defers, each with the line that records the deferral and its reason. */
   deferred: Map<string, string>;
+  /** Rows a dated revision moved off the issue or dropped, each with the clause that says so. */
+  moved: Map<string, string>;
 }
 
 /**
@@ -170,6 +172,7 @@ export interface RowCarriage {
 export function rowCarriage(description: string, rows: string[]): RowCarriage {
   const criteria = new Set<string>();
   const deferred = new Map<string, string>();
+  const moved = new Map<string, string>();
   const sections = sectionsOf(description);
   for (const line of description.split('\n'))
     if (/\bdeferred\b/i.test(line))
@@ -187,10 +190,14 @@ export function rowCarriage(description: string, rows: string[]): RowCarriage {
         if (/\b(?:moved|dropped|removed)\b/i.test(line)) {
           criteria.delete(row);
           deferred.delete(row);
-        } else criteria.add(row);
+          moved.set(row, line.trim());
+        } else {
+          criteria.add(row);
+          moved.delete(row);
+        }
       }
   for (const row of deferred.keys()) criteria.delete(row);
-  return { criteria, deferred };
+  return { criteria, deferred, moved };
 }
 
 function designLines(identifier: string, description: string, descriptionIncluded: boolean) {
@@ -201,7 +208,7 @@ function designLines(identifier: string, description: string, descriptionInclude
   if (source === undefined && links.length === 0) return [];
   const carriage = rowCarriage(description, rows);
   const uncovered = rows.filter(
-    (row) => !carriage.criteria.has(row) && !carriage.deferred.has(row),
+    (row) => !carriage.criteria.has(row) && !carriage.deferred.has(row) && !carriage.moved.has(row),
   );
   return [
     '## Design',
@@ -212,6 +219,10 @@ function designLines(identifier: string, description: string, descriptionInclude
     ...(source !== undefined && !descriptionIncluded ? [source, ''] : []),
     ...[...carriage.deferred].flatMap(([row, line]) => [
       `Deferred on this issue, do not build: ${row} (${line})`,
+      '',
+    ]),
+    ...[...carriage.moved].flatMap(([row, line]) => [
+      `Moved off this issue by a revision, do not build: ${row} (${line})`,
       '',
     ]),
     ...(uncovered.length > 0
