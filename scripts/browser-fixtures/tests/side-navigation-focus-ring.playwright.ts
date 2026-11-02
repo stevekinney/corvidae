@@ -23,8 +23,8 @@
  *   2. The inset ring does not cross the trigger's bottom edge into the active
  *      "Phoenix" row directly below it.
  *   3. The focused active "Phoenix" item shows the inset ring AND its active
- *      affordances simultaneously — the surface-inset background fill and the
- *      inline-start accent bar — proving focus and selection read distinctly.
+ *      tint (the surface-inset background fill) simultaneously, with no accent
+ *      stripe on its edge (COR-1821) — proving focus and selection read distinctly.
  *
  * Color comparisons round-trip through the browser (resolve the authored token
  * on a probe, read the computed value) so both sides are normalized rgb()/oklch
@@ -234,7 +234,7 @@ test.describe('SideNavigation — grouped focus ring is inset and unclipped', ()
     expect(activeTop).toBeGreaterThanOrEqual(measurement.bottom - PIXEL_TOLERANCE);
   });
 
-  test('active item: keyboard focus shows the inset ring AND the active background + accent bar together', async ({
+  test('active item: keyboard focus shows the inset ring AND the active tint together, with no accent stripe', async ({
     componentPage,
   }) => {
     const page = await openSideNavigation(componentPage);
@@ -249,7 +249,6 @@ test.describe('SideNavigation — grouped focus ring is inset and unclipped', ()
     await expect(active).toBeFocused();
 
     const ringColor = await resolveTokenColor(page, '--cinder-ring-color');
-    const accentColor = await resolveTokenColor(page, '--cinder-accent-solid');
 
     const measurement = await active.evaluate((element) => {
       if (!(element instanceof HTMLElement)) throw new Error('Expected an HTMLElement item.');
@@ -258,7 +257,8 @@ test.describe('SideNavigation — grouped focus ring is inset and unclipped', ()
         matchesFocusVisible: element.matches(':focus-visible'),
         boxShadow: styles.boxShadow,
         backgroundColor: styles.backgroundColor,
-        borderInlineStartColor: styles.borderInlineStartColor,
+        borderInlineStartWidth: styles.borderInlineStartWidth,
+        borderBottomWidth: styles.borderBottomWidth,
       };
     });
 
@@ -279,9 +279,10 @@ test.describe('SideNavigation — grouped focus ring is inset and unclipped', ()
       'active item keeps its surface-inset background while focused',
     ).toBeGreaterThan(0);
 
-    // Selection signal #2: the inline-start accent bar is the resolved accent
-    // color — a different channel from the ring, so focus and selection are
-    // simultaneously present and distinct.
-    expect(measurement.borderInlineStartColor).toBe(accentColor);
+    // The active row is a tint, never an accent stripe (COR-1821), so selection adds no border on
+    // the inline-start edge (or the bottom edge the horizontal variant uses), and toggling it
+    // cannot shift the label.
+    expect(measurement.borderInlineStartWidth).toBe('0px');
+    expect(measurement.borderBottomWidth).toBe('0px');
   });
 });

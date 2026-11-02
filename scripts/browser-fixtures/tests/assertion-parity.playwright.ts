@@ -94,19 +94,33 @@ test.describe('table scroll recipe', () => {
 
     const header = wrapper.locator('.cinder-table__header');
     await expect(header).toHaveCSS('position', 'sticky');
+    // The caption names the table for assistive technology but occupies no height (COR-1823), so
+    // the header starts flush with the top of the scroll area. Scrolling therefore moves the body
+    // rows and leaves the sticky header where it was, instead of moving the header up as it did
+    // when a visible caption sat above it.
+    const firstRow = wrapper.locator('.cinder-table__body .cinder-table__row').first();
     const wrapperBox = await wrapper.boundingBox();
     const before = await header.boundingBox();
+    const rowBefore = await firstRow.boundingBox();
     await wrapper.evaluate((element) => {
       element.scrollTop = 80;
       element.scrollLeft = 120;
     });
-    await page.waitForTimeout(50);
+    await expect
+      .poll(
+        async () => {
+          const box = await firstRow.boundingBox();
+          return box?.y ?? 0;
+        },
+        { message: 'scrolling moves the body rows up' },
+      )
+      .toBeLessThan(rowBefore?.y ?? 0);
     const after = await header.boundingBox();
 
     expect(wrapperBox).not.toBeNull();
     expect(before).not.toBeNull();
     expect(after).not.toBeNull();
-    expect(after?.y ?? 0).toBeLessThan(before?.y ?? 0);
+    expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(2);
     expect(Math.abs((after?.y ?? 0) - (wrapperBox?.y ?? 0))).toBeLessThan(2);
   });
 });

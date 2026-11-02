@@ -60,7 +60,7 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
       expect(bgL, 'the light-mode page background must read as white').toBeGreaterThanOrEqual(0.97);
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
       const surfaceL = await paintedL(page, '.cinder-table', 'backgroundColor');
-      const insetL = await paintedL(page, '.cinder-table__header', 'backgroundColor');
+      const insetL = await paintedL(page, "[data-testid='surface-inset']", 'backgroundColor');
       expect(
         surfaceL - insetL,
         'surface must sit above surface-inset so sunken regions read',
@@ -135,17 +135,21 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
       await context.close();
     }
   });
-  test('table header reads as a distinct band from the body in light mode', async ({ browser }) => {
+  test('table header is a quiet band on the body surface, set apart by a hairline', async ({
+    browser,
+  }) => {
+    // COR-1823 replaced the filled surface-inset header with a header on the same surface as the
+    // body (a sticky header needs an opaque background), separated by a hairline under its cells.
     const context = await browser.newContext({ colorScheme: 'light', reducedMotion: 'reduce' });
     try {
       const page = await context.newPage();
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
       const bodyL = await paintedL(page, '.cinder-table', 'backgroundColor');
       const headerL = await paintedL(page, '.cinder-table__header', 'backgroundColor');
-      expect(
-        Math.abs(bodyL - headerL),
-        'table header (surface-inset) must separate from the body (surface)',
-      ).toBeGreaterThanOrEqual(0.025);
+      expect(headerL, 'the header sits on the table surface').toBeCloseTo(bodyL, 3);
+      const headerCell = page.locator('.cinder-table__header-cell').first();
+      await expect(headerCell).toHaveCSS('border-bottom-width', '1px');
+      await expect(headerCell).toHaveCSS('border-bottom-style', 'solid');
     } finally {
       await context.close();
     }

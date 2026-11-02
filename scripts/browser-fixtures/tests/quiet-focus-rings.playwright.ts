@@ -29,6 +29,7 @@ import {
   outerBands,
   parseBoxShadow,
   readRing,
+  waitForFocusRingToSettle,
   type RingExpectation,
 } from './quiet-focus-rings-support.ts';
 
@@ -302,7 +303,7 @@ async function measureCase(page: Page, ringCase: RingCase): Promise<void> {
     expect(await target.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
   }
   await ringCase.afterFocus?.(page);
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await waitForFocusRingToSettle(page);
   expectRing(await readRing(target), ringCase.expected, ringCase.label);
 }
 
@@ -388,7 +389,7 @@ async function openPaletteByKeyboard(page: Page): Promise<Locator> {
   await page.keyboard.press('Enter');
   const input = page.locator('.cinder-command-palette__input');
   await expect(input).toBeFocused();
-  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await waitForFocusRingToSettle(page);
   expect(
     await input.evaluate((element) => element.matches(':focus-visible')),
     'palette input is keyboard-focused',

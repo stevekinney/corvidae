@@ -3,6 +3,10 @@
 
   import { Table, type TableSort } from './index.ts';
 
+  type FixtureProps = { stackBelow?: string | false };
+
+  let { stackBelow }: FixtureProps = $props();
+
   type Person = {
     id: string;
     name: string;
@@ -53,7 +57,12 @@
 </script>
 
 <div class="table-fixture">
-  <Table caption="Recent contributors" selectable bind:sort>
+  <Table
+    caption="Recent contributors"
+    selectable
+    {...stackBelow === undefined ? {} : { stackBelow }}
+    bind:sort
+  >
     <Table.Header
       {allSelected}
       {someSelected}

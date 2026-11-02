@@ -44,6 +44,7 @@
   </section>
 
   <Card title="Token card">Card content</Card>
+  <Card title="Token shadow card" edge="shadow" data-testid="token-shadow-card">Card content</Card>
   <Input id="token-input" label="Token input" value="Uses border token" />
   <Textarea id="token-textarea" label="Token textarea" value="Uses the control frame" />
 
