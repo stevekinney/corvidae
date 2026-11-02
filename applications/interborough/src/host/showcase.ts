@@ -3,8 +3,9 @@
  * believable content, so a design review or a person can look at every page with data in it.
  *
  * With `--showcase` the host runs on a home of its own (`tmp/interborough-showcase` in the
- * repository, unless `INTERBOROUGH_HOME` names another), so a person's real `~/.interborough` is
- * never touched. The demo plugin is on, so the scripted agents (`demo:assistant` and the rest) are
+ * repository, or the directory `INTERBOROUGH_SHOWCASE_HOME` names). It ignores `INTERBOROUGH_HOME`,
+ * because preparing the showcase home replaces its `configuration.json`, and a home set for everyday
+ * use must never be rewritten by a flag. The demo plugin is on, so the scripted agents (`demo:assistant` and the rest) are
  * there to chat with. The model catalog holds the stub provider's models (`stub-provider.ts`), whose
  * client answers every model call with a fixed reply and whose key is a fixture, so no real provider
  * key is ever used or read. Once the host listens, `fixtures/showcase-seed.ts` fills it over HTTP,
@@ -46,19 +47,21 @@ export function splitShowcaseFlag(argv: readonly string[]): {
 }
 
 /**
- * `environment` with `INTERBOROUGH_HOME` set to the showcase home under `repositoryDirectory`
- * unless it already names one (an empty value counts as unset).
+ * `environment` with `INTERBOROUGH_HOME` replaced by the showcase home: the directory
+ * `INTERBOROUGH_SHOWCASE_HOME` names, or `tmp/interborough-showcase` under `repositoryDirectory`
+ * (an empty value counts as unset). An `INTERBOROUGH_HOME` already in the environment is ignored on
+ * purpose, so the showcase never rewrites a person's real home.
  */
 export function showcaseEnvironment(
   environment: BungalowEnvironment,
   repositoryDirectory: string,
 ): BungalowEnvironment {
-  const named = environment['INTERBOROUGH_HOME'];
-  if (named !== undefined && named !== '') return environment;
-  return {
-    ...environment,
-    INTERBOROUGH_HOME: join(repositoryDirectory, ...SHOWCASE_HOME_SEGMENTS),
-  };
+  const named = environment['INTERBOROUGH_SHOWCASE_HOME'];
+  const home =
+    named !== undefined && named !== ''
+      ? named
+      : join(repositoryDirectory, ...SHOWCASE_HOME_SEGMENTS);
+  return { ...environment, INTERBOROUGH_HOME: home };
 }
 
 /**

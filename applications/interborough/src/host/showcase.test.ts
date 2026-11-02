@@ -38,9 +38,23 @@ describe('showcaseEnvironment', () => {
     );
   });
 
-  test('keeps a home that is already set, so a person chooses where the content goes', () => {
-    const environment = { INTERBOROUGH_HOME: '/somewhere/else' };
-    expect(showcaseEnvironment(environment, '/repository')).toBe(environment);
+  test('ignores a set INTERBOROUGH_HOME, so a real home is never rewritten', () => {
+    const environment = showcaseEnvironment(
+      { INTERBOROUGH_HOME: '/Users/me/.interborough' },
+      '/repository',
+    );
+    expect(environment['INTERBOROUGH_HOME']).toBe('/repository/tmp/interborough-showcase');
+  });
+
+  test('uses INTERBOROUGH_SHOWCASE_HOME when it names a directory', () => {
+    const environment = showcaseEnvironment(
+      {
+        INTERBOROUGH_HOME: '/Users/me/.interborough',
+        INTERBOROUGH_SHOWCASE_HOME: '/scratch/showcase',
+      },
+      '/repository',
+    );
+    expect(environment['INTERBOROUGH_HOME']).toBe('/scratch/showcase');
   });
 });
 
