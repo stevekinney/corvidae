@@ -4,6 +4,7 @@ import {
   type PostgresKeyValueStorageOptions,
   type PostgresPool,
 } from '@lostgradient/storage/sql';
+import type pg from 'pg';
 
 /**
  * Configuration for connecting to a standard Postgres database over the ordinary
@@ -24,6 +25,39 @@ import {
 export type PostgresStorageOptions = PostgresKeyValueStorageOptions;
 
 /**
+ * Wrap a `pg` pool so `end()` resolves only after every connection it opened has closed.
+ *
+ * `pg.Pool#end()` resolves as soon as the pool has called `client.end()` on each idle client,
+ * which only sends the terminate message: the sockets close afterwards. A caller that stops the
+ * database right after a disposed storage (a test cluster, a rolling deploy) would then race the
+ * backends' own shutdown, and a client the server terminated first (57P01, "terminating
+ * connection due to administrator command") reaches the pool's idle-client error listener,
+ * which re-emits it as an unhandled `error` event on the pool (COR-2004).
+ */
+function endAfterClientsClose(pool: pg.Pool): PostgresPool {
+  const closing = new Map<pg.PoolClient, Promise<void>>();
+  pool.on('connect', (client) => {
+    closing.set(
+      client,
+      new Promise<void>((resolve) => {
+        client.once('end', () => {
+          closing.delete(client);
+          resolve();
+        });
+      }),
+    );
+  });
+  return {
+    query: (sql, parameters) => pool.query(sql, parameters),
+    connect: () => pool.connect(),
+    end: async () => {
+      await pool.end();
+      await Promise.all(closing.values());
+    },
+  };
+}
+
+/**
  * Construct the `pg` default pool for `url`, deferring the `pg` import until the
  * pool is first used, so the injected-pool path (tests, a shared application pool)
  * needs zero `pg` install. The lazy-import memoization, dispose guards, and
@@ -42,7 +76,7 @@ function postgresPoolFactory(url: string): PostgresPool {
     storageName: 'PostgresStorage',
     loadPool: async (connectionString) => {
       const { default: pg } = await import('pg');
-      return new pg.Pool({ connectionString });
+      return endAfterClientsClose(new pg.Pool({ connectionString }));
     },
   });
 }

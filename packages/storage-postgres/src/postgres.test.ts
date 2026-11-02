@@ -2,7 +2,9 @@ import {
   openPostgresTestDatabase,
   requireOpenedPostgresTestDatabase,
 } from '@lostgradient/testing/postgres-server';
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it, spyOn } from 'bun:test';
+import { EventEmitter } from 'node:events';
+import { Pool, type PoolClient } from 'pg';
 
 import { type PostgresPool } from '@lostgradient/storage/sql';
 import {
@@ -214,5 +216,39 @@ describe.skipIf(database === null)('PostgresStorage (live pg)', () => {
     expect(await storage.get('batch:kept')).toEqual(encode('value'));
     expect(await storage.get('batch:gone')).toBeNull();
     await storage.deletePrefix('batch:');
+  });
+
+  /**
+   * COR-2004: `Pool#end()` resolves as soon as the pool has handed every idle client to
+   * `client.end()`, which only sends the terminate message. The sockets close later, so a
+   * database stopped right after a disposed storage still had live backends to terminate, and
+   * the client that the server killed first (57P01) surfaced as an unhandled pool error.
+   */
+  describe('disposing an owned pool', () => {
+    it('resolves only after every pooled client has closed its connection', async () => {
+      const connected: PoolClient[] = [];
+      const ended = new Set<PoolClient>();
+      const emit = spyOn(Pool.prototype, 'emit');
+      const storage = new PostgresStorage({ url: live().url, table: LIVE_TABLE });
+      emit.mockImplementation(function (this: Pool, event: string | symbol, ...rest: unknown[]) {
+        if (event === 'connect') {
+          const client = rest[0] as PoolClient;
+          connected.push(client);
+          client.once('end', () => ended.add(client));
+        }
+        return EventEmitter.prototype.emit.call(this, event, ...rest);
+      });
+      try {
+        // Concurrent first uses open more than one pooled connection.
+        await Promise.all(Array.from({ length: 4 }, (_, index) => storage.get(`dispose:${index}`)));
+        expect(connected.length).toBeGreaterThan(0);
+
+        await storage[Symbol.asyncDispose]();
+
+        expect(ended.size).toBe(connected.length);
+      } finally {
+        emit.mockRestore();
+      }
+    });
   });
 });
