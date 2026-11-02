@@ -84,7 +84,7 @@ test.describe('chart SVG focus rings', () => {
       page,
     }) => {
       await page.goto(routeFor(chart), { waitUntil: 'load' });
-      await page.waitForSelector('#example-mount-loading', { state: 'visible', timeout: 20_000 });
+      await page.waitForSelector('#example-mount-loading', { state: 'visible' });
       await page.waitForLoadState('networkidle');
 
       const loadingRoot = page.locator(`#example-mount-loading .${chart.rootClass}`).first();

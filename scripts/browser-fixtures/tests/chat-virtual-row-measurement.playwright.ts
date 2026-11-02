@@ -79,9 +79,9 @@ async function openHarness(
     await page.goto(fixtureRoute('chat', { fixtureName: 'private-harness', snapshot: false }), {
       waitUntil: 'load',
     });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     const harness = page.locator(HARNESS);
-    await harness.waitFor({ state: 'visible', timeout: 20_000 });
+    await harness.waitFor({ state: 'visible' });
     await expect
       .poll(() =>
         page.evaluate(() => ({
@@ -178,9 +178,7 @@ test.describe('chat virtual row measurement — content-visibility scoping', () 
       await timeline.evaluate((element) => {
         element.scrollTop = 0;
       });
-      await expect
-        .poll(async () => timeline.evaluate((element) => element.scrollTop), { timeout: 10_000 })
-        .toBe(0);
+      await expect.poll(async () => timeline.evaluate((element) => element.scrollTop)).toBe(0);
       await expect(timeline).not.toHaveAttribute('data-cinder-force-visible');
 
       const virtualMessage = timeline.locator('.chat-virtual-row .chat-message').first();
@@ -247,7 +245,7 @@ test.describe('chat virtual row measurement — geometry', () => {
       // which treats a raw `scrollTop` assignment on this long a virtualized
       // list as unintentional and corrects it back — not something this
       // measurement needs to fight.)
-      await expect(timeline.getByText('Answer 150:').first()).toBeVisible({ timeout: 10_000 });
+      await expect(timeline.getByText('Answer 150:').first()).toBeVisible();
       await expect(timeline).not.toHaveAttribute('data-cinder-force-visible');
       await waitForAnimationFrames(page);
 

@@ -53,7 +53,7 @@ function boxShadowLayerCount(boxShadow: string): number {
 test.describe('avatar-group focus rings', () => {
   test('avatar-group keyboard focus paints the trigger ring', async ({ page }) => {
     await page.goto(AVATAR_GROUP_ROUTE, { waitUntil: 'load' });
-    await page.waitForSelector(BASIC_EXAMPLE, { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector(BASIC_EXAMPLE, { state: 'visible' });
     await page.waitForLoadState('networkidle');
 
     const trigger = page.locator(

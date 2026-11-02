@@ -90,7 +90,7 @@ async function open(
     );
     const page = await context.newPage();
     await page.goto(route('button'), { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     return { context, page };
   } catch (error) {
     await context.close();

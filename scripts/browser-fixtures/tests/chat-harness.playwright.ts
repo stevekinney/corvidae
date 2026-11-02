@@ -93,9 +93,9 @@ async function openHarness(
     await page.goto(fixtureRoute('chat', { fixtureName: 'private-harness' }), {
       waitUntil: 'load',
     });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     const harness = page.locator(HARNESS);
-    await harness.waitFor({ state: 'visible', timeout: 20_000 });
+    await harness.waitFor({ state: 'visible' });
     await expect
       .poll(() =>
         page.evaluate(() => ({
@@ -275,7 +275,7 @@ async function openChatFixture(
       }
     });
     await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     await expect
       .poll(() =>
         page.evaluate(() => ({
@@ -908,7 +908,7 @@ test.describe('chat harness — mounts cleanly', () => {
 
         async function openApprovalFixture(): Promise<Locator> {
           await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
-          await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+          await page.waitForSelector('#app > *', { state: 'visible' });
           const approvalChat = page.locator('#fixture-tool-approval-chat');
           await expect(approvalChat).toBeVisible();
           return approvalChat;
@@ -990,7 +990,7 @@ test.describe('chat harness — mounts cleanly', () => {
         }
       });
       await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
-      await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+      await page.waitForSelector('#app > *', { state: 'visible' });
       const inputChat = page.locator('#fixture-tool-input-chat');
       await expect(inputChat).toBeVisible();
 
@@ -1046,7 +1046,7 @@ test.describe('chat harness — submit and reply', () => {
       await expect(harness.locator('[data-role="user"]')).toContainText('What is alpha?');
       await expectLoggedEvent(harness, 'onSubmit');
       // Auto-reply (default on) eventually lands an assistant message.
-      await expect(harness.locator('[data-role="assistant"]')).toBeVisible({ timeout: 5_000 });
+      await expect(harness.locator('[data-role="assistant"]')).toBeVisible();
     } finally {
       await dispose();
     }
@@ -1075,7 +1075,7 @@ test.describe('chat harness — typing indicator', () => {
       await expect(indicator).toBeAttached();
       await expect(indicator).toHaveAttribute('aria-label', 'Assistant is typing…');
       // Then it clears and a new assistant message lands.
-      await expect(indicator).toHaveCount(0, { timeout: 5_000 });
+      await expect(indicator).toHaveCount(0);
     } finally {
       await dispose();
     }
@@ -1159,7 +1159,7 @@ for (const mechanism of ['imperative', 'content-mutation'] as const) {
         // The assistant message text grows across the deterministic cadence:
         // observe an intermediate partial that is non-empty but not yet final.
         const assistant = harness.locator('[data-role="assistant"]').last();
-        await expect.poll(() => messageBodyText(assistant), { timeout: 3_000 }).not.toBe('');
+        await expect.poll(() => messageBodyText(assistant)).not.toBe('');
         await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
         await expect(assistant.locator('.chat-message')).toHaveAttribute('aria-busy', 'true');
         await expect(assistant.locator('.chat-message-streaming-progress')).toBeVisible();
@@ -1210,7 +1210,7 @@ test.describe('chat harness — streaming presentation', () => {
       await expect(progress).toHaveCount(0);
       await captureHarnessScreenshot(page, testInfo, 'held-first-token-before');
 
-      await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
+      await expect.poll(() => trimmedLength(assistant)).toBeGreaterThan(0);
       await expect(externalTyping).toHaveCount(0);
       await expect(message).toHaveAttribute('aria-busy', 'true');
       await expect(progress).toBeVisible();
@@ -1241,7 +1241,7 @@ test.describe('chat harness — streaming presentation', () => {
 
         const assistant = harness.locator('[data-role="assistant"]').last();
         const message = assistant.locator('.chat-message');
-        await expect.poll(() => trimmedLength(assistant), { timeout: 3_000 }).toBeGreaterThan(0);
+        await expect.poll(() => trimmedLength(assistant)).toBeGreaterThan(0);
         await expect(harness.locator('.chat-typing-indicator')).toHaveCount(0);
         await expect(message).toHaveAttribute('aria-busy', 'true');
         const progress = assistant.locator('.chat-message-streaming-progress');
@@ -1251,9 +1251,7 @@ test.describe('chat harness — streaming presentation', () => {
         const partialBox = await renderedBox(message, 'streaming assistant message');
         const partialWidth = partialBox.width;
 
-        await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0, {
-          timeout: 5_000,
-        });
+        await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0);
         await expect(progress).toHaveCount(0);
         await expect(message).not.toHaveAttribute('aria-busy', 'true');
         const finalBox = await renderedBox(message, 'final assistant message');
@@ -1716,7 +1714,7 @@ test.describe('chat harness — feature toggles', () => {
     const { harness, dispose } = await openHarness(browser);
     try {
       await harness.locator('[data-testid="send-reply"]').click();
-      await expect(harness.locator('.chat-message-copy').first()).toBeVisible({ timeout: 5_000 });
+      await expect(harness.locator('.chat-message-copy').first()).toBeVisible();
       await harness.locator('#t-copy').click();
       await expect(harness.locator('.chat-message-copy')).toHaveCount(0);
     } finally {
@@ -1765,9 +1763,7 @@ test.describe('chat harness — snippets', () => {
     try {
       await expect(harness.locator('[data-testid="harness-header"]')).toBeVisible();
       await harness.locator('[data-testid="send-reply"]').click();
-      await expect(harness.locator('[data-testid="harness-message-action"]').first()).toBeVisible({
-        timeout: 5_000,
-      });
+      await expect(harness.locator('[data-testid="harness-message-action"]').first()).toBeVisible();
       await expect(harness.locator('[data-testid="harness-message-status"]').first()).toBeVisible();
     } finally {
       await dispose();
@@ -1957,7 +1953,7 @@ test.describe('chat harness — scroll, unread, jump', () => {
         element.scrollTop = 0;
       });
       await expect.poll(async () => timeline.evaluate((element) => element.scrollTop)).toBe(0);
-      await expect(harness.locator('.chat-jump-button')).toBeVisible({ timeout: 5_000 });
+      await expect(harness.locator('.chat-jump-button')).toBeVisible();
       await expectLoggedEvent(harness, 'onScrollStateChange');
     } finally {
       await dispose();
@@ -1975,7 +1971,7 @@ test.describe('chat harness — scroll, unread, jump', () => {
         element.scrollTop = 0;
       });
       const jump = harness.locator('.chat-jump-button');
-      await expect(jump).toBeVisible({ timeout: 5_000 });
+      await expect(jump).toBeVisible();
       await jump.click();
       await expectLoggedEvent(harness, 'onJumpToLatest');
     } finally {
@@ -2615,33 +2611,29 @@ test.describe('chat harness — imperative scroll + focus controls', () => {
       await page.goto(fixtureRoute('chat', { fixtureName: 'private-harness', snapshot: false }), {
         waitUntil: 'load',
       });
-      await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+      await page.waitForSelector('#app > *', { state: 'visible' });
       const harness = page.locator(HARNESS);
-      await harness.waitFor({ state: 'visible', timeout: 20_000 });
+      await harness.waitFor({ state: 'visible' });
 
       await harness.locator('#t-virtualized').click();
       await harness.locator('[data-testid="seed-long"]').click();
       const timeline = harness.locator('.chat-timeline');
       // The transcript starts pinned to the bottom with the last rows rendered.
-      await expect(timeline.getByText('Answer 150:').first()).toBeVisible({ timeout: 10_000 });
+      await expect(timeline.getByText('Answer 150:').first()).toBeVisible();
       await expect
         .poll(async () => timeline.evaluate((element) => element.scrollTop))
         .toBeGreaterThan(0);
 
       await harness.locator('[data-testid="scroll-top"]').click();
-      await expect
-        .poll(async () => timeline.evaluate((element) => element.scrollTop), { timeout: 10_000 })
-        .toBe(0);
+      await expect.poll(async () => timeline.evaluate((element) => element.scrollTop)).toBe(0);
       await expect(timeline.getByText('Question 1: tell me about alpha.').first()).toBeVisible();
 
       await harness.locator('[data-testid="scroll-bottom"]').click();
       await expect
-        .poll(
-          async () =>
-            timeline.evaluate(
-              (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
-            ),
-          { timeout: 10_000 },
+        .poll(async () =>
+          timeline.evaluate(
+            (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
+          ),
         )
         .toBeLessThan(50);
       await expect(timeline.getByText('Answer 150:').first()).toBeVisible();
@@ -3355,7 +3347,7 @@ test.describe('chat conversation list — accessibility', () => {
         const page = await context.newPage();
         await page.goto(fixtureRoute('chat-conversation-list'), { waitUntil: 'load' });
         const list = page.locator('nav.cinder-chat-conversation-list');
-        await list.waitFor({ state: 'visible', timeout: 20_000 });
+        await list.waitFor({ state: 'visible' });
 
         // The fixture exercises the new surface: an agent label per row, both
         // non-idle activity values (idle renders nothing), and LoadMore after
@@ -3424,7 +3416,6 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
   test('adapter prepend never presents an uncompensated anchor to the compositor', async ({
     browser,
   }) => {
-    test.setTimeout(120_000);
     const context = await browser.newContext({
       baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
@@ -3454,7 +3445,7 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
         waitUntil: 'load',
       });
       const mount = page.locator(STRESS);
-      await mount.waitFor({ state: 'visible', timeout: 20_000 });
+      await mount.waitFor({ state: 'visible' });
       await mount.scrollIntoViewIfNeeded();
       const timeline = mount.locator('.chat-timeline');
 
@@ -3589,7 +3580,6 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
   test('adapter prepends at scrollTop=0 hold the anchor at every animation-frame checkpoint', async ({
     browser,
   }) => {
-    test.setTimeout(120_000);
     const context = await browser.newContext({
       baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
       colorScheme: 'dark',
@@ -3606,9 +3596,9 @@ test.describe('chat harness — history prepend stress (#1237)', () => {
       await page.goto(fixtureRoute('chat', { fixtureName: 'private-history-prepend-stress' }), {
         waitUntil: 'load',
       });
-      await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+      await page.waitForSelector('#app > *', { state: 'visible' });
       const mount = page.locator(STRESS);
-      await mount.waitFor({ state: 'visible', timeout: 20_000 });
+      await mount.waitFor({ state: 'visible' });
       await mount.scrollIntoViewIfNeeded();
       const timeline = mount.locator('.chat-timeline');
 

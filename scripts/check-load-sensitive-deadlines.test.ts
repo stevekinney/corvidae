@@ -13,6 +13,7 @@ import {
   findPlaywrightConfigurationViolations,
   findPlaywrightDeadlineViolations,
   findTestRunnerSpawnViolations,
+  PLAYWRIGHT_SPEC_DIRECTORIES,
 } from './check-load-sensitive-deadlines.ts';
 
 function inspect(source: string): string[] {
@@ -1200,6 +1201,17 @@ describe('a Playwright spec deadline below the hang guard', () => {
     const source =
       '// load-proof: a miss only runs the fake clock again, so a slow host adds attempts.\nawait expect(a).toBeVisible({ timeout: 1_000 });\nawait expect(b).toBeVisible({ timeout: 1_000 });';
     expect(inspectPlaywright(source)).toEqual(['playwright-timeout']);
+  });
+});
+
+describe('the Playwright specs that playwright-timeout reads', () => {
+  test.each([
+    join('applications', 'interborough', 'tests', 'e2e'),
+    join('applications', 'interborough', 'tests', 'mcp-apps'),
+    join('scripts', 'browser-fixtures', 'tests'),
+  ])('includes %s, and the directory exists', (directory) => {
+    expect(PLAYWRIGHT_SPEC_DIRECTORIES).toContain(directory);
+    expect(existsSync(join(import.meta.dir, '..', directory))).toBe(true);
   });
 });
 

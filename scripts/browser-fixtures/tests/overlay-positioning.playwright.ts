@@ -19,7 +19,7 @@ async function openOverlayFixture(
       theme,
     ] as const);
   await page.goto(fixtureRoute(slug, { fixtureName }), { waitUntil: 'load' });
-  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForSelector('#app > *', { state: 'visible' });
 }
 
 async function scrollFixtureTo(

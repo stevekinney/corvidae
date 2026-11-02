@@ -10,7 +10,7 @@ const route = (slug: string) => {
 test.describe('SelectableRow native interaction contract', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(route('selectable-row'), { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
   });
   test('pointer and native keyboard activation target only the primary action', async ({
     page,

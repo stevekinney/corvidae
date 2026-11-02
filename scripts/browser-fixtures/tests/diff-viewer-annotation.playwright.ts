@@ -19,7 +19,7 @@ function control(page: Page, mountId: string, side: 'old' | 'new', line: number)
 test.describe('Diff review — DiffViewer annotation hooks', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(fixtureRoute('diff-viewer'), { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
   });
 
   test('clicking an added-side control commits a new-side selection', async ({ page }) => {
@@ -195,7 +195,6 @@ test.describe('Diff review — DiffViewer stale-diff annotation gating', () => {
     await page.goto(`${fixtureRoute('diff-viewer')}&stale=1`, { waitUntil: 'load' });
     await page.waitForSelector('#example-mount-stale-annotation .diff-viewer', {
       state: 'visible',
-      timeout: 20_000,
     });
   });
 
@@ -228,7 +227,7 @@ test.describe('Diff review — DiffViewer stale-diff annotation gating', () => {
     // Recompute (the toolbar's manual-tier "Compute Diff" trigger) clears
     // staleness and re-enables creation on the (newly recomputed) rows.
     await page.getByRole('button', { name: 'Compute Diff' }).click();
-    await expect(surface).toHaveAttribute('data-ready', 'true', { timeout: 10_000 });
+    await expect(surface).toHaveAttribute('data-ready', 'true');
 
     const resultBefore = await page.locator('#stale-annotation-result').textContent();
     expect(resultBefore).toBe('null');

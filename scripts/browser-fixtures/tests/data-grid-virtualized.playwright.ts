@@ -73,11 +73,8 @@ test.describe('DataGrid row virtualization', () => {
       )
       .toEqual({ position: 'sticky', insetInlineStart: '0px' });
 
-    await page.waitForFunction(
-      () => Object.hasOwn(window, '__cinderDataGridVirtualizedFirstRenderMs'),
-      {
-        timeout: 5_000,
-      },
+    await page.waitForFunction(() =>
+      Object.hasOwn(window, '__cinderDataGridVirtualizedFirstRenderMs'),
     );
     await page.evaluate(
       ({ selector, offset }) =>

@@ -69,7 +69,7 @@ async function openOverlayPage(
   ] as const);
   const page = await context.newPage();
   await page.goto(fixtureRoute(slug), { waitUntil: 'load' });
-  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForSelector('#app > *', { state: 'visible' });
   return page;
 }
 

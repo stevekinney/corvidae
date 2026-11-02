@@ -12,7 +12,7 @@ function fixtureRoute(slug: string, extra: string): string {
 
 async function goto(page: Page): Promise<void> {
   await page.goto(fixtureRoute('diff-review', 'states=1'), { waitUntil: 'load' });
-  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForSelector('#app > *', { state: 'visible' });
 }
 
 /**
@@ -163,7 +163,7 @@ test.describe('Diff review — mid-session staleness', () => {
     await expect(mount.getByText('Copy review')).toBeVisible();
 
     await mount.getByRole('button', { name: 'Compute Diff' }).click();
-    await expect(control).toBeEnabled({ timeout: 10_000 });
+    await expect(control).toBeEnabled();
   });
 });
 

@@ -33,17 +33,14 @@ test.beforeAll(async ({ browser }) => {
     stderr: 'inherit',
   });
   await expect
-    .poll(
-      async () => {
-        try {
-          const response = await fetch(`${playgroundOrigin}/ping`);
-          return response.status;
-        } catch {
-          return 0;
-        }
-      },
-      { timeout: 60_000 },
-    )
+    .poll(async () => {
+      try {
+        const response = await fetch(`${playgroundOrigin}/ping`);
+        return response.status;
+      } catch {
+        return 0;
+      }
+    })
     .toBe(200);
   const warmed = await fetch(`${playgroundOrigin}/page/combobox`);
   expect(warmed.status).toBe(200);
@@ -51,7 +48,7 @@ test.beforeAll(async ({ browser }) => {
   // Fetching the HTML only builds the server-rendered page. The client bundle,
   // the scenario loaders and the hydration path build on the first request
   // from a browser, which would otherwise land inside whichever test runs
-  // first and be charged against its 5 s assertion. Visit each page the way a
+  // first and be charged against its assertion. Visit each page the way a
   // test does and wait until its preview is interactive.
   const warmContext = await browser.newContext({ baseURL: playgroundOrigin });
   try {
@@ -61,7 +58,6 @@ test.beforeAll(async ({ browser }) => {
       await expect(warmPage.locator(`#overview-mount-${component.scenario}`)).toHaveAttribute(
         'data-example-preview-ready',
         '',
-        { timeout: 60_000 },
       );
       await warmPage.close();
     }

@@ -12,7 +12,7 @@ function fixtureRoute(slug: string, extra: string): string {
 
 async function goto(page: Page): Promise<void> {
   await page.goto(fixtureRoute('diff-review', 'states=1'), { waitUntil: 'load' });
-  await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+  await page.waitForSelector('#app > *', { state: 'visible' });
 }
 
 /**

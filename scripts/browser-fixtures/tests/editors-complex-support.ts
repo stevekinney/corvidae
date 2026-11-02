@@ -63,7 +63,7 @@ export async function openTouchPage(
     );
     const page = await context.newPage();
     await page.goto(route, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     return { page, dispose: () => context.close() };
   } catch (error) {
     await context.close();

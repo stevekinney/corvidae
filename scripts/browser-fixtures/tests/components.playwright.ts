@@ -354,7 +354,7 @@ async function openDiffViewerFixturePage(
   await page.setViewportSize({ width: 1280, height: 720 });
   if (editable) {
     await page.goto(`${diffViewerEntry!.route}?snapshot=1&editable=1`, { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
     await page.evaluate(
       'const active = document.activeElement; if (active && typeof active.blur === "function") active.blur();',
     );

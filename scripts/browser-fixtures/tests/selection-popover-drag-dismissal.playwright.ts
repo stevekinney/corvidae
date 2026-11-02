@@ -167,9 +167,7 @@ test('a real drag-select that autoscrolls the viewport does not dismiss the popo
   // autoscroll to kick in, or needlessly long once it has). Failing this
   // wait (rather than a silently-vacuous pass) means the test isn't
   // exercising the real mechanism at all.
-  await page.waitForFunction((before) => window.scrollY > before, scrollYBeforeHold, {
-    timeout: 5_000,
-  });
+  await page.waitForFunction((before) => window.scrollY > before, scrollYBeforeHold);
   const scrollYAfterHold = await page.evaluate(() => window.scrollY);
 
   expect(

@@ -20,7 +20,7 @@ function control(page: Page, mountId: string, side: 'old' | 'new', line: number)
 test.describe('Diff review — SourceDiffViewer annotation hooks', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(fixtureRoute('source-diff-viewer'), { waitUntil: 'load' });
-    await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+    await page.waitForSelector('#app > *', { state: 'visible' });
   });
 
   test('clicking an addition control commits a new-side selection', async ({ page }) => {
