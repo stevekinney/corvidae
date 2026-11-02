@@ -70,6 +70,7 @@ describe('publishing a fresh catalog dispatch', () => {
     hook.subscribe((event) => void second.push(event));
     const followed: unknown[] = [];
     const diagnostics: string[] = [];
+    const tracker = createCatalogSettlementTracker();
     const run = publishFreshCatalogRun({
       handle: {
         id: 'agent-run-1',
@@ -82,9 +83,10 @@ describe('publishing a fresh catalog dispatch', () => {
       hook,
       followCleanup: (closed) => void followed.push(closed),
       durableEnd,
+      tracker,
       diagnose: (diagnostic) => diagnostics.push(diagnostic.message),
     });
-    return { run, published, second, followed, diagnostics };
+    return { run, published, second, followed, diagnostics, tracker, hook };
   }
 
   it('publishes the end of a run whose task record could not be written, and says so', async () => {
@@ -113,6 +115,41 @@ describe('publishing a fresh catalog dispatch', () => {
       { status: 'failed', finishReason: 'error', recovered: false, content: null },
     ]);
     expect(published[0]?.message).toContain('the engine fell over');
+  });
+
+  it('is waited for by a shutdown while the durable run is read and every listener writes, however long storage takes', async () => {
+    const storageRead = Promise.withResolvers<DurableEnd>();
+    const listenerWrite = Promise.withResolvers<void>();
+    const { run, published, tracker, hook } = observed(
+      {
+        result: () =>
+          Promise.reject(new Error('Engine was disposed before the workflow completed')),
+      },
+      async () => undefined,
+      () => storageRead.promise,
+    );
+    const wrote: string[] = [];
+    hook.subscribe(async (settlement) => {
+      await listenerWrite.promise;
+      wrote.push(settlement.status);
+    });
+    tracker.follow(run);
+
+    let returned = false;
+    const waiting = tracker.settled().then(() => void (returned = true));
+    // load-proof: a count of event-loop turns past the tracker's own bound; the database answers when the test says so, not when a clock does
+    for (let turn = 0; turn < 120; turn += 1) await yieldToPortableEventLoop();
+    expect(returned).toBe(false);
+    storageRead.resolve('completed');
+    // load-proof: a count of event-loop turns past the tracker's own bound; the listener's write finishes when the test says so
+    for (let turn = 0; turn < 120; turn += 1) await yieldToPortableEventLoop();
+    expect(returned).toBe(false);
+    expect(wrote).toEqual([]);
+
+    listenerWrite.resolve();
+    await waiting;
+    expect(wrote).toEqual(['completed']);
+    expect(published).toMatchObject([{ status: 'completed' }]);
   });
 
   it('publishes nothing when the handle rejects while the durable run is still running, as it does when the engine is disposed', async () => {
@@ -198,7 +235,7 @@ describe('the settlement tracker a shutdown waits on', () => {
     expect(ended).toEqual(['after 5']);
   });
 
-  it('is a bound, not a barrier: a limit of zero waits for nothing, and a publish that outlasts the limit is left', async () => {
+  it('bounds the wait for a run to end: a limit of zero waits for nothing, and a publish whose run has not ended outlasts the limit', async () => {
     const tracker = createCatalogSettlementTracker();
     const ended: string[] = [];
     tracker.follow(endsAfter(5, ended));
@@ -208,6 +245,56 @@ describe('the settlement tracker a shutdown waits on', () => {
     expect(ended).toEqual([]);
     await tracker.settled(20);
     expect(ended).toEqual(['after 5']);
+  });
+
+  it('is a barrier for the storage work of a run that has ended, however many turns it takes', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const storage = Promise.withResolvers<void>();
+    let written = false;
+    tracker.follow(
+      tracker.commit(async () => {
+        await storage.promise;
+        written = true;
+      }),
+    );
+
+    let returned = false;
+    const waiting = tracker.settled(5).then(() => void (returned = true));
+    // load-proof: a count of event-loop turns, like the bound under test, far past that bound; the storage work is released by the test, not by a clock
+    for (let turn = 0; turn < 200; turn += 1) await yieldToPortableEventLoop();
+    expect(returned).toBe(false);
+
+    storage.resolve();
+    await waiting;
+    expect(written).toBe(true);
+  });
+
+  it('waits for the work of a run that ends while it is waiting, and still leaves the run that never does', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const runEnds = Promise.withResolvers<void>();
+    const storage = Promise.withResolvers<void>();
+    const finished: string[] = [];
+    tracker.follow(
+      (async () => {
+        await runEnds.promise;
+        await tracker.commit(async () => {
+          await storage.promise;
+          finished.push('recorded');
+        });
+      })(),
+    );
+    tracker.follow(new Promise<void>(() => undefined));
+
+    let returned = false;
+    const waiting = tracker.settled(5).then(() => void (returned = true));
+    runEnds.resolve();
+    // load-proof: a count of event-loop turns, like the bound under test; both gates are released by the test, not by a clock
+    for (let turn = 0; turn < 50; turn += 1) await yieldToPortableEventLoop();
+    expect(returned).toBe(false);
+
+    storage.resolve();
+    await waiting;
+    expect(finished).toEqual(['recorded']);
   });
 
   it('ignores a publish that rejects', async () => {
