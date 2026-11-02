@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { openBungalow } from '@lostgradient/bungalow';
 
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
 
 const homes: string[] = [];

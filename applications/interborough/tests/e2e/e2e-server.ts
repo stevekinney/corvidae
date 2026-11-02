@@ -28,9 +28,10 @@ import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
-import { enableDemoPlugin } from '../../src/host/demo-plugin.test-support.ts';
-import { fakeProvider, writeProviderHome } from '../../src/host/fake-provider.test-support.ts';
+import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost } from '../../src/host/host.ts';
+import { prepareShowcaseHome, showcaseProviderResolver } from '../../src/host/showcase.ts';
+import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
 import { startConnectHost } from './connect-host.ts';
@@ -49,6 +50,7 @@ import {
   E2E_LONG_POLL_QUEUE,
   E2E_PORT,
   E2E_RECONNECT_GRACE_PERIOD_MS,
+  E2E_SHOWCASE_PORT,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
 import { createEchoAgents } from './echo-agent.ts';
@@ -315,6 +317,20 @@ const connectHost = await startConnectHost({
   port: E2E_CONNECT_PORT,
 });
 
+// The seventh host, which only the showcase specification opens (`showcase.spec.ts`): the shape of
+// `bun run dev -- --showcase`, so the Bureau's own engine runs its console, the stub provider
+// gives the agents their models, and the demo plugin is on. It starts empty; the specification
+// seeds it and removes what it seeded.
+const showcaseHome = join(scratch, 'showcase-home');
+await prepareShowcaseHome(showcaseHome);
+const showcaseHost = await startHost({
+  environment: { INTERBOROUGH_HOME: showcaseHome },
+  resolveProviderGenerate: showcaseProviderResolver(),
+  port: E2E_SHOWCASE_PORT,
+  buildDirectory,
+});
+await showcaseHost.bureau.plugins.ready();
+
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
 // host holds its runs on a barrier of its own, under `/journey`.
@@ -347,6 +363,7 @@ process.stdout.write(
     `Interborough E2E Bureau host listening on ${bureauHost.url}`,
     `Interborough E2E journey host listening on ${journeyHost.url}`,
     `Interborough E2E first-run host listening on ${firstRunHost.url}`,
+    `Interborough E2E showcase host listening on ${showcaseHost.url}`,
     `Interborough E2E connect host listening on http://127.0.0.1:${E2E_CONNECT_PORT}/`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
@@ -364,6 +381,7 @@ async function shutDown(): Promise<void> {
   await longPollWorker.stop();
   await fleetWorker.disconnect();
   await connectHost.stop();
+  await showcaseHost.close();
   await firstRunHost.close();
   await journeyHost.close();
   await bureauHost.close();

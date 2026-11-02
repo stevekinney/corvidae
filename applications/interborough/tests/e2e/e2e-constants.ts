@@ -11,9 +11,9 @@ import { endToEndPort } from '../../scripts/environment-configuration.ts';
 
 /**
  * Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the
- * interactive host's default of 7234. The suite holds five consecutive ports (this one, the
- * barrier's, the second host's, the journey's, and the first-run host's), so two runs on one machine set
- * `INTERBOROUGH_E2E_PORT` at least five apart.
+ * interactive host's default of 7234. The suite holds seven consecutive ports (this one, the
+ * barrier's, the second host's, the journey's, the first-run host's, the connect host's, and the
+ * showcase host's), so two runs on one machine set `INTERBOROUGH_E2E_PORT` at least seven apart.
  */
 export const E2E_PORT = endToEndPort();
 
@@ -71,6 +71,18 @@ export const E2E_FIRST_RUN_URL = `http://127.0.0.1:${E2E_FIRST_RUN_PORT}`;
  */
 export const E2E_CONNECT_PORT = E2E_PORT + 5;
 export const E2E_CONNECT_URL = `http://127.0.0.1:${E2E_CONNECT_PORT}`;
+
+/**
+ * The seventh host, on the port after the connect host's, which only the showcase specification
+ * (`showcase.spec.ts`) opens. It is the shape of a development host started with `--showcase`
+ * (`src/host/showcase.ts`): its console is the Bureau's own engine, so the runs, schedules and
+ * goals the Bureau holds are the ones its pages list (the main host's console runs fixtures on an
+ * engine of its own, which holds none of them), its home has the stub model provider the agents'
+ * models need, and the demo plugin is on. It starts empty, and the specification seeds it
+ * (`fixtures/showcase-seed.ts`) and removes what it seeded.
+ */
+export const E2E_SHOWCASE_PORT = E2E_PORT + 6;
+export const E2E_SHOWCASE_URL = `http://127.0.0.1:${E2E_SHOWCASE_PORT}`;
 
 /** The bearer token the connect host's MCP server accepts. It is made up, and printed nowhere. */
 export const E2E_CONNECT_TOKEN = 'e2e-connect-token-4f81c2a9d6';

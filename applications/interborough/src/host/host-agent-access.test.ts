@@ -23,9 +23,10 @@ import {
 } from '../lib/agent-definitions.ts';
 import type { Fetcher } from '../lib/bureau-client.ts';
 import { urlOf } from '../lib/bureau-stub.test-support.ts';
-import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
-import { writeProviderHome } from './fake-provider.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
+import { pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { writeProviderHome } from './stub-provider.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];

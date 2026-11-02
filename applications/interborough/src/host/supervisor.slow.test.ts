@@ -16,7 +16,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
 

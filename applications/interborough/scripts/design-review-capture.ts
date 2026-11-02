@@ -1,10 +1,13 @@
 /**
  * Captures every page of Interborough for the design review (`.agents/skills/design-review`): every
- * route on every tab with seeded data (`tests/e2e/responsive.spec.ts`, at 375, 768 and 1280 pixels),
- * and every view loading, empty, failed, forbidden and ready, plus Health's band states and the
- * not-found page (`tests/e2e/15-view-states.spec.ts`, at 375 and 1280 pixels), in light and dark.
+ * route holding believable content (`tests/e2e/showcase.spec.ts`, at 375, 768 and 1280 pixels, the
+ * data for layout, hierarchy and density), every route on every tab holding the stress seed's
+ * 300-character words (`tests/e2e/responsive.spec.ts`, the same widths, the data for overflow and
+ * truncation), and every view loading, empty, failed, forbidden and ready, plus Health's band
+ * states and the not-found page (`tests/e2e/15-view-states.spec.ts`, at 375 and 1280 pixels), in
+ * light and dark.
  *
- * It runs those two Playwright specifications with `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` set, so they
+ * It runs those three Playwright specifications with `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` set, so they
  * screenshot each page once it holds its content (`tests/e2e/design-review-capture.ts`), and writes
  * `manifest.jsonl` (one line per capture) and `summary.json` (what ran and how it exited) beside
  * the screenshots. A specification's own assertion failing does not lose its captures, which are
@@ -12,7 +15,12 @@
  * not clean.
  *
  *   bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both]
- *     [--specs all|responsive|states] [--grep <pattern>]
+ *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
+ *
+ * `--data` chooses the content: `showcase` runs only the showcase specification, `stress` runs the
+ * responsive and view-states specifications, and `both` (the default) runs all three. `--specs`
+ * narrows the stress data to one of its two specifications, so it means `--data stress` when
+ * `--data` is not given, and is refused with `--data showcase`.
  *
  * `--grep` narrows to the tests whose titles match, for example `--grep '/agents'` for a sign-off on
  * the agent pages. The default output directory is `<repository>/tmp/design-review/<time stamp>`,
@@ -37,6 +45,9 @@ const SPECIFICATIONS = {
   states: 'tests/e2e/15-view-states.spec.ts',
 } as const;
 
+/** The specification that holds believable content, which `--data showcase` runs alone. */
+const SHOWCASE_SPECIFICATION = 'tests/e2e/showcase.spec.ts';
+
 type Scheme = 'light' | 'dark';
 
 /** The parsed command line. */
@@ -56,7 +67,9 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
     now.toISOString().replaceAll(/[:.]/g, '-'),
   );
   let schemes: Scheme[] = ['light', 'dark'];
-  let specifications: string[] = Object.values(SPECIFICATIONS);
+  let stress: string[] = Object.values(SPECIFICATIONS);
+  let data: 'showcase' | 'stress' | 'both' | undefined;
+  let specsGiven = false;
   let grep: string | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -72,11 +85,15 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
         else if (value === 'light' || value === 'dark') schemes = [value];
         else return `--scheme must be light, dark or both, not "${value}"`;
         break;
+      case '--data':
+        if (value === 'showcase' || value === 'stress' || value === 'both') data = value;
+        else return `--data must be showcase, stress or both, not "${value}"`;
+        break;
       case '--specs':
-        if (value === 'all') specifications = Object.values(SPECIFICATIONS);
-        else if (value === 'responsive' || value === 'states')
-          specifications = [SPECIFICATIONS[value]];
+        if (value === 'all') stress = Object.values(SPECIFICATIONS);
+        else if (value === 'responsive' || value === 'states') stress = [SPECIFICATIONS[value]];
         else return `--specs must be all, responsive or states, not "${value}"`;
+        specsGiven = true;
         break;
       case '--grep':
         grep = value;
@@ -85,6 +102,14 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
         return `unknown flag ${flag ?? ''}`;
     }
   }
+  if (specsGiven && data === undefined) data = 'stress';
+  if (specsGiven && data === 'showcase') {
+    return '--specs narrows the stress data, so it cannot be used with --data showcase';
+  }
+  const specifications = [
+    ...(data === 'stress' ? [] : [SHOWCASE_SPECIFICATION]),
+    ...(data === 'showcase' ? [] : stress),
+  ];
   return { out, schemes, specifications, grep };
 }
 
@@ -119,7 +144,7 @@ async function main(): Promise<void> {
   const port = endToEndPort();
   if (!portIsFree(port)) {
     process.stderr.write(
-      `design review: port ${port} is already in use, and Playwright would capture whatever server holds it. Set INTERBOROUGH_E2E_PORT to a free port (it uses that one and the five after it) and run again.\n`,
+      `design review: port ${port} is already in use, and Playwright would capture whatever server holds it. Set INTERBOROUGH_E2E_PORT to a free port (it uses that one and the six after it) and run again.\n`,
     );
     process.exitCode = 2;
     return;

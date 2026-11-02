@@ -154,6 +154,8 @@ Folder plugins (COR-1881) load after the workspace's, from each folder of `<bung
 
 `bun run dev --plugin <path>` (repeatable) loads that folder as well and lists it with the problem `development-source`. An edit to its `plugin.ts` restarts the host in place under `bun --watch`.
 
+`bun run dev -- --showcase` runs a development host that holds believable content (`src/host/showcase.ts`). Its state lives in `tmp/interborough-showcase` in the repository unless `INTERBOROUGH_HOME` is set, so the real `~/.interborough` is never touched; the demo plugin is on; and a stub model provider (`src/host/stub-provider.ts`) gives the catalog `anthropic/claude-sonnet-5` and `anthropic/claude-haiku-4-5` and answers every model call with one fixed reply, so no provider key is read. Once the host listens it applies `fixtures/showcase-seed.ts` over HTTP and logs one line saying what it created; a second start against the same home creates nothing. The end-to-end showcase specification (`tests/e2e/showcase.spec.ts`) applies the same seed.
+
 The plugins' embedders and memory detectors reach governed memory through `BureauOptions.memory`'s factory (`src/host/memory.ts`), and `/host/paths` reports the secret file of each provider a plugin contributes.
 
 **Catalog edits.** A `catalog` list in `configuration.json` turns a model off, corrects its price or limits, or adds a row the built-in list lacks:
@@ -317,7 +319,7 @@ The host serves every ready agent to chat. An agent's `a2a` opt-in decides wheth
 - **The identifier `new`** is refused, because `/agents/new` is the page that creates an agent and an agent called `new` could never be opened.
 - **After a write** a save lands on `/agents/:agent`, and a delete lands on `/agents`.
 
-The Playwright suite gives its host a provider configuration and a fixture key in the temporary home, and a fake provider client, so its catalog holds `anthropic/claude-sonnet-5` and `anthropic/claude-haiku-4-5`, and saving, conflicts, history, and deletion run against the real Bureau (`tests/e2e/e2e-server.ts`, `src/host/fake-provider.test-support.ts`).
+The Playwright suite gives its host a provider configuration and a fixture key in the temporary home, and a fake provider client, so its catalog holds `anthropic/claude-sonnet-5` and `anthropic/claude-haiku-4-5`, and saving, conflicts, history, and deletion run against the real Bureau (`tests/e2e/e2e-server.ts`, `src/host/stub-provider.ts`).
 
 ## A2A
 

@@ -19,7 +19,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
 import { MEMORY_DELETION_PROPAGATION } from './memory.ts';
 

@@ -12,7 +12,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 import { runTask } from './run-task.test-support.ts';
 

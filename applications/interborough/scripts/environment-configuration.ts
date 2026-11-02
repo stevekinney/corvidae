@@ -9,11 +9,11 @@ export function isContinuousIntegration(): boolean {
 }
 
 /**
- * The port the end-to-end host listens on, and the five after it: one for the barrier's control,
+ * The port the end-to-end host listens on, and the six after it: one for the barrier's control,
  * one for the host whose console runs on the Bureau's own engine, one for the journey's host, one
- * for the first-run host, and one for the connect host that restarts. It is fixed (7399) because the
- * config, the server, and the specs must agree on it, but a checkout that runs the suite beside
- * another can set `INTERBOROUGH_E2E_PORT` for all six at once. A value
+ * for the first-run host, one for the connect host that restarts, and one for the showcase host. It
+ * is fixed (7399) because the config, the server, and the specs must agree on it, but a checkout
+ * that runs the suite beside another can set `INTERBOROUGH_E2E_PORT` for all seven at once. A value
  * that is not a port is refused rather than replaced.
  */
 export function endToEndPort(): number {

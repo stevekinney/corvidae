@@ -17,8 +17,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { writeProviderHome } from './stub-provider.ts';
 
 const noop = createTool({
   name: 'noop',

@@ -13,7 +13,7 @@ import {
 } from '@lostgradient/plugin-demo';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
 import { runTask } from './run-task.test-support.ts';
 

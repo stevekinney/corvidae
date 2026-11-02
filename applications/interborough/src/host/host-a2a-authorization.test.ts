@@ -16,8 +16,8 @@ import { join } from 'node:path';
 import { openBungalow } from '@lostgradient/bungalow';
 import { rejectionOf } from '@lostgradient/testing';
 
-import { fakeProvider, writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host } from './host.ts';
+import { fakeProvider, writeProviderHome } from './stub-provider.ts';
 
 /** The operator's A2A key. The secret file ends in a newline, as one written by `echo` does. */
 const A2A_KEY = 'host-a2a-key-0123456789';

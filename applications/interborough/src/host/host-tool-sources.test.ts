@@ -11,7 +11,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
+import { pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { filesUnder } from './files-under.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';

@@ -14,9 +14,9 @@ import { join } from 'node:path';
 import { rejectionOf } from '@lostgradient/testing';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
-import { fakeProvider, writeProviderHome } from './fake-provider.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { fakeProvider, writeProviderHome } from './stub-provider.ts';
 
 const REPLY = 'Answered over A2A.';
 const directories: string[] = [];

@@ -19,8 +19,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { writeProviderHome } from './stub-provider.ts';
 import {
   startPetsServer,
   startRenamingMcpServer,

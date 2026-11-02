@@ -5,7 +5,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { enableDemoPlugin, pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
+import { pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { startHost, type Host } from './host.ts';
 
 const homes: string[] = [];

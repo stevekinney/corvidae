@@ -113,6 +113,8 @@ for (const argumentsList of [
   ['dev', '--plugin'],
   ['dev', '--plugin', ''],
   ['serve', '--plugin', '/somewhere'],
+  ['serve', '--showcase'],
+  ['dev', '--showcase', '--showcase'],
   ['dev', '--entry', '/a', '--entry', '/b'],
 ]) {
   badArguments.set(
@@ -203,6 +205,23 @@ describe('hostCommand', () => {
       join(import.meta.dir, 'serve.ts'),
     ]);
   });
+
+  test('dev passes --showcase to the entry after the plugin folders, and serve takes none', () => {
+    expect(hostCommand('dev', undefined, ['/one'], true)).toEqual([
+      process.execPath,
+      '--no-install',
+      '--watch',
+      join(import.meta.dir, 'dev.ts'),
+      '--plugin',
+      '/one',
+      '--showcase',
+    ]);
+    expect(hostCommand('serve', undefined, [], true)).toEqual([
+      process.execPath,
+      '--no-install',
+      join(import.meta.dir, 'serve.ts'),
+    ]);
+  });
 });
 
 describe('the supervisor command', () => {
@@ -221,6 +240,8 @@ describe('the supervisor command', () => {
     [['dev', '--plugin']],
     [['dev', '--plugin', '']],
     [['serve', '--plugin', '/somewhere']],
+    [['serve', '--showcase']],
+    [['dev', '--showcase', '--showcase']],
     [['dev', '--entry', '/a', '--entry', '/b']],
   ])('refuses the arguments %j with a usage line and exit code 2', (argumentsList) => {
     const result = badArguments.get(JSON.stringify(argumentsList));

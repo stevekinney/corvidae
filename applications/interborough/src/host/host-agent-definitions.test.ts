@@ -41,10 +41,10 @@ import type { Fetcher } from '../lib/bureau-client.ts';
 import { callBureau } from '../lib/bureau-client.ts';
 import { urlOf } from '../lib/bureau-stub.test-support.ts';
 import { getHostPaths } from '../lib/host-paths.ts';
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
-import { fakeProvider, writeProviderHome } from './fake-provider.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 import { runTask } from './run-task.test-support.ts';
+import { fakeProvider, writeProviderHome } from './stub-provider.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];

@@ -10,11 +10,12 @@ import { parseArguments, portIsFree } from './design-review-capture.ts';
 const NOW = new Date('2026-11-02T08:30:00.000Z');
 
 describe('parseArguments', () => {
-  test('captures both specifications in both schemes into a time-stamped directory by default', () => {
+  test('captures all three specifications in both schemes into a time-stamped directory by default', () => {
     const options = parseArguments([], NOW);
     if (typeof options === 'string') throw new Error(options);
     expect(options.schemes).toEqual(['light', 'dark']);
     expect(options.specifications).toEqual([
+      'tests/e2e/showcase.spec.ts',
       'tests/e2e/responsive.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
     ]);
@@ -32,6 +33,42 @@ describe('parseArguments', () => {
     expect(options.specifications).toEqual(['tests/e2e/15-view-states.spec.ts']);
     expect(options.grep).toBe('schedules is');
     expect(options.out).toEndWith('/here');
+  });
+
+  test('chooses the content with --data: showcase alone, the stress seed alone, or both', () => {
+    const specificationsOf = (argv: string[]) => {
+      const options = parseArguments(argv, NOW);
+      if (typeof options === 'string') throw new Error(options);
+      return options.specifications;
+    };
+    expect(specificationsOf(['--data', 'showcase'])).toEqual(['tests/e2e/showcase.spec.ts']);
+    expect(specificationsOf(['--data', 'stress'])).toEqual([
+      'tests/e2e/responsive.spec.ts',
+      'tests/e2e/15-view-states.spec.ts',
+    ]);
+    expect(specificationsOf(['--data', 'both'])).toEqual(specificationsOf([]));
+    expect(specificationsOf(['--data', 'stress', '--specs', 'states'])).toEqual([
+      'tests/e2e/15-view-states.spec.ts',
+    ]);
+    expect(specificationsOf(['--specs', 'responsive', '--data', 'both'])).toEqual([
+      'tests/e2e/showcase.spec.ts',
+      'tests/e2e/responsive.spec.ts',
+    ]);
+    // `--specs` alone keeps meaning what it always meant: one of the stress specifications.
+    expect(specificationsOf(['--specs', 'responsive'])).toEqual(['tests/e2e/responsive.spec.ts']);
+  });
+
+  test('refuses an unknown --data, and --specs with showcase data, which it would silently ignore', () => {
+    expect(parseArguments(['--data', 'realistic'], NOW)).toBe(
+      '--data must be showcase, stress or both, not "realistic"',
+    );
+    expect(parseArguments(['--data'], NOW)).toBe('--data needs a value');
+    expect(parseArguments(['--data', 'showcase', '--specs', 'states'], NOW)).toContain(
+      'cannot be used with --data showcase',
+    );
+    expect(parseArguments(['--specs', 'states', '--data', 'showcase'], NOW)).toContain(
+      'cannot be used with --data showcase',
+    );
   });
 
   test('refuses an unknown scheme, an unknown specification, an unknown flag and a missing value', () => {

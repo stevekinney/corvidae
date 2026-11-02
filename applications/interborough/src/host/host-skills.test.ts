@@ -14,10 +14,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { writeProviderHome } from './fake-provider.test-support.ts';
 import { startHost, type Host } from './host.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { discoverFirstSkills, SkillInputError } from './skill-manager.ts';
+import { writeProviderHome } from './stub-provider.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];

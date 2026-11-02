@@ -9,9 +9,9 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { enableDemoPlugin } from './demo-plugin.test-support.ts';
-import { writeProviderHome } from './fake-provider.test-support.ts';
+import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host } from './host.ts';
+import { writeProviderHome } from './stub-provider.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];

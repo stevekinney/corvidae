@@ -8,6 +8,7 @@
  * bun src/host/supervisor.ts serve   # bun --no-install src/host/serve.ts   (`start`)
  * bun src/host/supervisor.ts dev     # bun --no-install --watch src/host/dev.ts   (`dev`)
  * bun src/host/supervisor.ts dev --plugin ./my-plugin   # the same, loading that plugin folder (COR-1881)
+ * bun src/host/supervisor.ts dev --showcase   # the same, on the showcase home with believable content
  * ```
  *
  * `serve` refuses to start without `build/index.html` (or the directory
@@ -29,6 +30,7 @@ import { join, resolve as resolvePath } from 'node:path';
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
+import { SHOWCASE_FLAG } from './showcase.ts';
 
 /** The two ways to run the host: `serve` for production, `dev` for the watching development host. */
 export type SupervisorMode = 'serve' | 'dev';
@@ -41,12 +43,13 @@ const PACKAGE_DIRECTORY = join(HOST_DIRECTORY, '..', '..');
  * The command that runs the host in `mode`: Bun on the mode's entry (`serve.ts` or `dev.ts`, or
  * `entry` instead). `--no-install` keeps Bun from installing anything at start, so an import that
  * nothing provides fails instead of reaching a registry, and `dev` adds `--watch` and passes each
- * of `pluginPaths` to the entry as `--plugin <path>`.
+ * of `pluginPaths` to the entry as `--plugin <path>`, and `showcase` as `--showcase`.
  */
 export function hostCommand(
   mode: SupervisorMode,
   entry?: string,
   pluginPaths: readonly string[] = [],
+  showcase = false,
 ): string[] {
   const script = entry ?? join(HOST_DIRECTORY, mode === 'dev' ? 'dev.ts' : 'serve.ts');
   return mode === 'dev'
@@ -56,6 +59,7 @@ export function hostCommand(
         '--watch',
         script,
         ...pluginPaths.flatMap((path) => [DEVELOPMENT_PLUGIN_FLAG, path]),
+        ...(showcase ? [SHOWCASE_FLAG] : []),
       ]
     : [process.execPath, '--no-install', script];
 }
@@ -145,24 +149,30 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
 }
 
 const USAGE =
-  'Usage: bun src/host/supervisor.ts <serve|dev> [--entry <path>] [--plugin <path>]… (--plugin is for dev only)';
+  'Usage: bun src/host/supervisor.ts <serve|dev> [--entry <path>] [--plugin <path>]… [--showcase] (--plugin and --showcase are for dev only)';
 
 /**
  * Run the supervisor for the command line `bun src/host/supervisor.ts <serve|dev> [--entry
- * <path>] [--plugin <path>]…` and resolve with its exit code. `--entry` runs another module in
+ * <path>] [--plugin <path>]… [--showcase]` and resolve with its exit code. `--entry` runs another module in
  * place of the mode's own entry, which is how the tests run a host of their own under the real
  * supervisor. `--plugin` (dev only, repeatable) names a plugin folder the development host loads
  * as a development source; a relative path is taken from the directory the command ran in.
+ * `--showcase` (dev only) runs the showcase host (`showcase.ts`).
  */
 export async function runSupervisor(argumentsList: readonly string[]): Promise<number> {
   const [mode, ...rest] = argumentsList;
   let entry: string | undefined;
   const pluginPaths: string[] = [];
+  let showcase = false;
   let understood = mode === 'serve' || mode === 'dev';
   for (let index = 0; understood && index < rest.length; index += 2) {
     const flag = rest[index];
     const value = rest[index + 1];
-    if (value === undefined) understood = false;
+    // The one flag that takes no value: it leaves the next argument to be read as a flag.
+    if (flag === SHOWCASE_FLAG && mode === 'dev' && !showcase) {
+      showcase = true;
+      index -= 1;
+    } else if (value === undefined) understood = false;
     else if (flag === '--entry' && entry === undefined) entry = value;
     else if (flag === DEVELOPMENT_PLUGIN_FLAG && mode === 'dev' && value !== '') {
       pluginPaths.push(resolvePath(value));
@@ -173,7 +183,7 @@ export async function runSupervisor(argumentsList: readonly string[]): Promise<n
     return 2;
   }
   const environment = processEnvironment();
-  const command = hostCommand(mode, entry, pluginPaths);
+  const command = hostCommand(mode, entry, pluginPaths, showcase);
   if (mode === 'dev') return supervise({ command });
   return supervise({
     command,
