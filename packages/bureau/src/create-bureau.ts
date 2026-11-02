@@ -2842,6 +2842,12 @@ async function constructBureau<const D extends AgentDefinitions>(
           }),
       decideToolFor: (owner, offered) => lateDecisions.toolWiringFor(true, owner, offered),
       permissionModeOfRun,
+      // COR-1996: read at every step, so a policy change applies to a code agent's next step.
+      modelPolicy: {
+        current: () => modelPolicyOf(currentSettings()),
+        // `models` is assigned later in this function; a step reads it only once the Bureau runs.
+        catalog: () => models.catalog().descriptors,
+      },
       toolGrantFor: async (taskId) =>
         (await taskRegistryHolder.current?.recordToolGrant(taskId, toolGrantNow())) ??
         toolGrantNow(),
@@ -3412,6 +3418,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         options: resolvedOptions,
         definitionRevision: readGenerationProfile(agent).revision,
         agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+        generationMode: readGenerationProfile(agent).mode,
         recoveredChild: childContext !== undefined,
         ...(agentBinding === undefined ? {} : { agentBinding }),
       };

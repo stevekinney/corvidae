@@ -963,6 +963,7 @@ describe('Bureau hook tier composition (COR-1265)', () => {
       });
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
         status: 'resolved',
+        generationMode: 'selectable',
         options,
         definitionRevision: 1,
       }));
@@ -4717,7 +4718,12 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       const resolverCalls: Array<{ agentName: string; input: unknown; runId: string }> = [];
       runtime.setCatalogAgentRunOptionsResolver(async (agentName, input, _context, runId) => {
         resolverCalls.push({ agentName, input, runId });
-        return { status: 'resolved', options: catalogOptions, definitionRevision: 1 };
+        return {
+          status: 'resolved',
+          generationMode: 'selectable',
+          options: catalogOptions,
+          definitionRevision: 1,
+        };
       });
 
       await runtime.persistCatalogRunRecoveryRecord('catalog-run-1', {
@@ -4769,6 +4775,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       try {
         runtime.setCatalogAgentRunOptionsResolver(async () => ({
           status: 'resolved',
+          generationMode: 'selectable',
           options: fakeRunOptions(),
           definitionRevision: 1,
           ...(agentResolvesGuardrails === undefined ? {} : { agentResolvesGuardrails }),
@@ -4813,6 +4820,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
         const catalogOptions = fakeRunOptions();
         runtime.setCatalogAgentRunOptionsResolver(async () => ({
           status: 'resolved',
+          generationMode: 'selectable',
           options: catalogOptions,
           definitionRevision: 1,
         }));
@@ -4925,7 +4933,12 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       let resolvedInput: unknown;
       runtime.setCatalogAgentRunOptionsResolver(async (_agentName, input) => {
         resolvedInput = input;
-        return { status: 'resolved', options: catalogOptions, definitionRevision: 1 };
+        return {
+          status: 'resolved',
+          generationMode: 'selectable',
+          options: catalogOptions,
+          definitionRevision: 1,
+        };
       });
 
       const conversationInput = {
@@ -5036,6 +5049,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       const catalogOptions = fakeRunOptions();
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
         status: 'resolved',
+        generationMode: 'selectable',
         options: catalogOptions,
         definitionRevision: 2,
       }));

@@ -26,6 +26,7 @@ describe('a recovered catalog run with part input (COR-716)', () => {
     try {
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
         status: 'resolved',
+        generationMode: 'selectable',
         options: {
           generate: async () => ({ content: 'ok', toolCalls: [] }),
           toolbox: createToolbox([], { context: {} }),

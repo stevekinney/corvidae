@@ -629,7 +629,12 @@ export function createCatalogDispatcher({
         ? decideToolFor?.(ownerOrLocal(principal), grant?.decide ?? true)
         : undefined;
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
-      const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
+      // COR-1996: the agent's generate is held to the model policy, as every path that starts a
+      // catalog agent's run holds it (`holdToModelPolicy`).
+      const withRuntime: RunOptions = {
+        runtime: runtimeServices,
+        ...runtime.holdToModelPolicy(resolved, readGenerationProfile(agent).mode),
+      };
       // COR-1947: held as every run's toolbox is. A run that belongs to no chat, as a child and a
       // workflow step do not, has no mode, and is left to its toolbox.
       const toolbox = runtime.withChatPermission(withRuntime.toolbox, runId);
@@ -1378,7 +1383,11 @@ export function createCatalogDispatcher({
     // `buildRunOptions` always populates `runtime`, so for an ordinary agent
     // the spread below leaves the agent's value in place, and this only bites
     // for a hand-written resolver that omits it.
-    resolvedOptions = { runtime: runtimeServices, ...resolvedOptions };
+    // COR-1996: and the agent's generate is held to the model policy, as the durable branch holds it.
+    resolvedOptions = {
+      runtime: runtimeServices,
+      ...runtime.holdToModelPolicy(resolvedOptions, readGenerationProfile(agent).mode),
+    };
 
     // COR-1524 — the snapshot is stored before the run starts.
     await fileReference;

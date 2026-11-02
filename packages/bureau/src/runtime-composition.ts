@@ -27,6 +27,7 @@ import type {
   GeneratedMediaAdmitter,
   DurableRunDeps,
   GenerateFunction,
+  GenerationMode,
   GuardrailHooks,
   GuardrailsOptions,
   JSONValue,
@@ -186,6 +187,7 @@ import type {
   SkillRuntimeConfiguration,
 } from './types';
 import { ownEntry } from './own-entry';
+import { holdGenerateToModelPolicy, type ModelPolicySource } from './code-agent-model-policy';
 
 export type BureauToolbox = AnyToolbox;
 
@@ -1083,6 +1085,12 @@ export type CatalogAgentRunOptionsResolution =
        */
       agentResolvesGuardrails?: boolean;
       /**
+       * COR-1996 — the agent's generation mode (`readGenerationProfile`), which the model policy
+       * reads to tell a fixed agent, whose provider ignores a steered model, from a selectable
+       * one. Required, so a resolver cannot leave an agent out of the policy by omitting it.
+       */
+      generationMode: GenerationMode;
+      /**
        * COR-1577 — the run is a recovered child of another run (its resolver found a topology
        * record), which is never offered `requestHumanInput`.
        */
@@ -1140,6 +1148,8 @@ export interface SessionAgentRun {
   /** COR-1524 — the file definition the run is built from, when the agent is file-based. */
   readonly agentBinding?: FileAgentBinding;
   readonly agentResolvesGuardrails: boolean;
+  /** COR-1996 — the agent's generation mode, which the model policy judges its steps by. */
+  readonly generationMode: GenerationMode;
   /** The agent's own system prompt, or `undefined` when its definition declares none. */
   readonly instructions: string | undefined;
 }
@@ -1623,6 +1633,13 @@ export type RuntimeCompositionDependencies = {
    * steering.
    */
   permissionModeOfRun?: (runId: string) => Promise<ChatPermissionReading | undefined>;
+  /**
+   * COR-1996 — the model policy now in force and the model catalog, read at every step of a
+   * catalog agent's run so that a plugin code agent's generate is held to the policy as a file
+   * agent's is. `createBureau` supplies it from its settings and catalog. Without it no code
+   * agent's model is judged.
+   */
+  modelPolicy?: ModelPolicySource;
   /**
    * COR-1710 — the tools task `taskId` was granted when it started, from its admission record;
    * for a task recorded before grants were, the settings now, recorded on it once. Without this,
@@ -2165,6 +2182,17 @@ export interface RuntimeComposition {
    * to. Every toolbox a run calls goes through this once, whatever kind of agent built it.
    */
   withChatPermission(toolbox: BureauToolbox, runId: string): BureauToolbox;
+  /**
+   * COR-1996 — `options` with its `generate` held to the model policy: a step whose catalog rows
+   * the policy forbids fails with a `ModelPolicyDeniedError` before the provider is called. Every
+   * `RunOptions` a catalog agent resolves goes through this once, whatever path starts the run.
+   * `generationMode` is the agent's own (`readGenerationProfile`): a fixed agent is judged by its
+   * one row whatever model a session carries as a steer, a selectable one by the model it names.
+   */
+  holdToModelPolicy<Options extends Pick<RunOptions, 'generate'>>(
+    options: Options,
+    generationMode: GenerationMode,
+  ): Options;
   setRequestAuthorityValidator(
     validator: ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined,
   ): void;
@@ -3157,6 +3185,26 @@ async function buildRuntimeComposition(
   const configuredGenerate: GenerateFunction | undefined =
     options.generate === undefined ? undefined : applyCache(options.generate, options.cache, kv);
 
+  /** {@link RuntimeComposition.holdToModelPolicy}. */
+  function holdToModelPolicy<Options extends Pick<RunOptions, 'generate'>>(
+    resolved: Options,
+    generationMode: GenerationMode,
+  ): Options {
+    const generate = holdGenerateOfAgent(resolved.generate, generationMode);
+    return generate === resolved.generate ? resolved : { ...resolved, generate };
+  }
+
+  /** A catalog agent's `generate`, held to the model policy when this composition reads one. */
+  function holdGenerateOfAgent(
+    generate: GenerateFunction,
+    generationMode: GenerationMode,
+  ): GenerateFunction {
+    const policy = dependencies.modelPolicy;
+    return policy === undefined
+      ? generate
+      : holdGenerateToModelPolicy(generate, policy, generationMode);
+  }
+
   /** {@link RuntimeComposition.withChatPermission}. */
   function governedByChat(toolbox: BureauToolbox, runId: string): BureauToolbox {
     const read = dependencies.permissionModeOfRun;
@@ -3313,8 +3361,12 @@ async function buildRuntimeComposition(
   ) {
     const sessionAgent = runtimeOptions?.sessionAgent;
     const requestContext = request.requestContext;
+    // COR-1996: a catalog agent's generate is held to the model policy; the Bureau-wide one is the
+    // deployment's own and no agent's choice.
     const generate =
-      sessionAgent !== undefined ? sessionAgent.options.generate : configuredGenerate;
+      sessionAgent !== undefined
+        ? holdGenerateOfAgent(sessionAgent.options.generate, sessionAgent.generationMode)
+        : configuredGenerate;
 
     if (!generate) {
       throw new Error('No generate function configured');
@@ -3748,6 +3800,7 @@ async function buildRuntimeComposition(
         definitionRevision: resolution.definitionRevision,
         ...(resolution.agentBinding === undefined ? {} : { agentBinding: resolution.agentBinding }),
         agentResolvesGuardrails: resolution.agentResolvesGuardrails === true,
+        generationMode: resolution.generationMode,
         instructions: agentInstructionsFromRunOptions(resolution.options),
       },
     };
@@ -4528,7 +4581,8 @@ async function buildRuntimeComposition(
         : chatToolbox;
     const services: DurableRunDeps = {
       options: {
-        ...resolution.options,
+        // COR-1996: held to the model policy as a fresh dispatch's generate is.
+        ...holdToModelPolicy(resolution.options, resolution.generationMode),
         // The run's owner of record resolves its assets and holds the same
         // unverified-asset policy as on a fresh dispatch, unless the agent set its own.
         ...unsetMediaOptions(
@@ -5353,6 +5407,7 @@ async function buildRuntimeComposition(
     // resume a signed pending approval, not only the specific per-run clone.
     baseToolbox,
     withChatPermission: governedByChat,
+    holdToModelPolicy,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
     },

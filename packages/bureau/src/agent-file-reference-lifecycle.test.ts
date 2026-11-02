@@ -121,6 +121,7 @@ function claimRuntime(options: {
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
+    holdToModelPolicy: (options: unknown) => options,
     claimCatalogRunRecoveryRecord: options.claim,
     persistCatalogRunRecoveryRecord: options.persist ?? (async () => {}),
     loadCatalogRunRecoveryRecord: options.load ?? (async () => ({ status: 'missing' })),
@@ -146,6 +147,7 @@ async function engineRuntime(
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
+    holdToModelPolicy: (options: unknown) => options,
     claimCatalogRunRecoveryRecord: async () => true,
     persistCatalogRunRecoveryRecord: async () => {},
     ...overrides,
@@ -456,6 +458,7 @@ describe('a run that is not durable', () => {
     createBureauInvariantHooks: () => undefined,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
+    holdToModelPolicy: (options: unknown) => options,
   } as unknown as RuntimeComposition;
 
   it('settles its reference when it is aborted while it is still resolving', async () => {
