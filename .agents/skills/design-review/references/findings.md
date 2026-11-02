@@ -50,7 +50,7 @@ verdicts file:  row-id | verdict | evidence
 ```
 
 - **row-id**: the canvas index id, such as `11a`. The verdicts name every input row exactly once, in input order.
-- **board**: the board's file stem under `boards/`, the same stem for both of its files: `<board>.dc.html`, the board's source as the Artifact tool's read returns it (exact copy, structure, and component names), and `<board>.png`, a render of it (`<board>-2.png` for a second image). A chef brief saves the `.dc.html`; the review renders the `.png` when it is missing ([design references](design-references.md)).
+- **board**: the board's file stem under `boards/`, the same stem for both of its files: `<board>.dc.html`, the board's source as the Artifact tool's read returns it (exact copy, structure, and component names), and `<board>.png`, a render of it (`<board>-2.png` for a second image). A chef brief saves the `.dc.html`; the review renders the `.png` when it is missing ([design references](design-references.md)). A row on `Main` (the canvas index, which `design-ledger.ts` uses when no board was mapped) has only its requirement text as the standard: judge it from the text, and mark it `unverified` when the text alone cannot settle how it should look.
 - **verdict**: one of the following.
   - `matches`: the screens and the code do what the row says, in every state and width the row covers.
   - `drifted`: it is built, but differently from the row (another component, order, copy, or treatment).
