@@ -3,13 +3,13 @@
   /* ========================================
  * CONNECTION INDICATOR
  *
- * Small standalone status pill for a live connection. Color is driven
- * exclusively from the `data-cinder-status` attribute via the existing
- * semantic status tokens (`--cinder-status-success-solid`, `--cinder-status-warning-solid`,
- * `--cinder-text-muted`) — never hard-code hex values when consuming this
- * component. `polling` is deliberately quieter than `live`: it carries no
- * motion and a lighter font-weight so it can never be mistaken for push,
- * even under grayscale or forced-colors rendering where the color
+ * Quiet inline status for a live connection: a dot (or an icon) and a word, with no pill around
+ * them. The word is always muted; the glyph beside it carries the tone, taken from the semantic
+ * status tokens (`--cinder-status-success-solid`, `--cinder-status-warning-text`,
+ * `--cinder-border-control`) and never from hard-coded values. `live` is a green dot,
+ * `out-of-date` a hollow ring in the pending colour, so neither reads as the other. `polling` is
+ * deliberately quieter than `live`: it carries no motion and a lighter font-weight so it can never
+ * be mistaken for push, even under grayscale or forced-colors rendering where the color
  * difference disappears.
  * ======================================== */
 
@@ -17,23 +17,34 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1-5);
-    padding: var(--cinder-space-0-5) var(--cinder-space-2-5);
-    border-radius: var(--cinder-radius-full);
-    background: var(--cinder-surface-inset);
     color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-medium);
     line-height: 1.25;
+    white-space: nowrap;
     vertical-align: middle;
   }
 
   .cinder-connection-indicator__dot {
     display: inline-block;
     flex-shrink: 0;
-    inline-size: 0.375rem;
-    block-size: 0.375rem;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
     border-radius: var(--cinder-radius-full);
-    background: currentColor;
+    background: var(--cinder-status-success-solid);
+  }
+
+  /* The pending ring: the same hollow neutral ring a status dot draws for Waiting, so "Out of
+     date" reads as unconfirmed rather than as a green or failed state. */
+  .cinder-connection-indicator__ring {
+    display: inline-block;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border: 0.09375rem solid var(--cinder-border-control); /* 1.5px */
+    border-radius: var(--cinder-radius-full);
+    background: transparent;
   }
 
   .cinder-connection-indicator[data-cinder-status='live'] .cinder-connection-indicator__dot {
@@ -108,34 +119,22 @@
   /* ----------------------------------------
  * Status → semantic token mapping
  *
- * `polling` reuses the same muted tone as `closed` but is disambiguated by
- * its icon, its lack of motion (see above), and its label text — color is
- * never the sole signal (WCAG 1.4.1).
+ * The word stays muted in every state; the dot or icon carries the tone. `polling` reuses the
+ * muted tone of `closed` but is disambiguated by its icon, its lack of motion (see above), and its
+ * label text. Colour is never the sole signal (WCAG 1.4.1).
  * ---------------------------------------- */
 
-  .cinder-connection-indicator[data-cinder-status='connecting'] {
-    color: var(--cinder-status-warning-text);
-  }
-
-  .cinder-connection-indicator[data-cinder-status='live'] {
-    /* -fg, not the fill — see the connecting/reconnecting rows, which already use it. */
-    color: var(--cinder-status-success-text);
-  }
-
-  .cinder-connection-indicator[data-cinder-status='reconnecting'] {
+  .cinder-connection-indicator[data-cinder-status='connecting'] .cinder-connection-indicator__icon,
+  .cinder-connection-indicator[data-cinder-status='reconnecting']
+    .cinder-connection-indicator__icon {
     color: var(--cinder-status-warning-text);
   }
 
   .cinder-connection-indicator[data-cinder-status='polling'] {
-    color: var(--cinder-text-muted);
     font-weight: var(--cinder-font-normal);
   }
 
-  .cinder-connection-indicator[data-cinder-status='stale'] {
+  .cinder-connection-indicator[data-cinder-status='stale'] .cinder-connection-indicator__icon {
     color: var(--cinder-status-info-text);
-  }
-
-  .cinder-connection-indicator[data-cinder-status='closed'] {
-    color: var(--cinder-text-muted);
   }
 }

@@ -86,6 +86,18 @@
     font-size: var(--cinder-text-xs);
   }
 
+  /* A count of things in the tab that want attention. A tab keeps its height whether or not it
+ * carries one: the pill is 18px and the tab's padding already clears it. It does not shrink when
+ * the strip is tight, so a "1" is never squeezed into an oval. */
+  .cinder-tab__count {
+    flex: none;
+    min-inline-size: 1.125rem;
+    box-sizing: border-box;
+    justify-content: center;
+    border-radius: 9999px;
+    font-weight: var(--cinder-font-semibold);
+  }
+
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
  * "stick" after tap on touch devices that emulate :hover. */
   @media (hover: hover) {

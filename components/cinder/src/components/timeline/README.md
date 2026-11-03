@@ -36,6 +36,56 @@ See the [chronological display boundary decision](https://github.com/stevekinney
 </Timeline>
 ```
 
+### Upcoming and past runs, around Now
+
+`variant="list"` draws the same entries as compact rows: no connector, a hairline between rows, the time first. The `pending` tone is a hollow neutral ring for something that has not happened yet. `kind: 'now'` is the marker for the current moment (an accent pill from `title`, a rule, and `timestamp` at the right), and `kind: 'separator'` is a quiet labelled rule, such as the day daylight saving time ended. Neither draws a marker, a connector, a body or actions. The `actions` snippet draws controls at the end of an event's row; unlike `marker`, they are interactive.
+
+```svelte
+<script lang="ts">
+  import { Button, Timeline } from '@lostgradient/cinder';
+  import type { TimelineEntry } from '@lostgradient/cinder';
+
+  const entries: TimelineEntry[] = [
+    {
+      id: 'nov-3',
+      datetime: '2026-11-03T09:00:00Z',
+      timestamp: 'Tue Nov 3, 3:00 AM',
+      title: 'in 16 hours',
+      tone: 'pending',
+    },
+    {
+      id: 'now',
+      kind: 'now',
+      datetime: '2026-11-02T16:46:00Z',
+      timestamp: 'Mon Nov 2, 10:46 AM',
+      title: 'Now',
+    },
+    {
+      id: 'dst',
+      kind: 'separator',
+      datetime: '2026-11-01T06:00:00Z',
+      timestamp: 'Nov 1',
+      title: 'Daylight saving time ended Nov 1',
+    },
+    {
+      id: 'oct-29',
+      datetime: '2026-10-29T09:00:00Z',
+      timestamp: 'Thu Oct 29, 4:00 AM',
+      title: 'Done',
+      tone: 'success',
+    },
+  ];
+</script>
+
+<Timeline {entries} variant="list" label="Runs">
+  {#snippet actions(entry)}
+    {#if entry.tone === 'pending'}
+      <Button variant="secondary" size="sm">Skip</Button>
+    {/if}
+  {/snippet}
+</Timeline>
+```
+
 Marker snippets are decorative. Do not place focusable or interactive content inside `marker`; the marker wrapper is hidden from assistive technology and marked inert.
 
 ## Props
@@ -45,13 +95,15 @@ Marker snippets are decorative. Do not place focusable or interactive content in
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-timeline`. |
-| `entries` | ({ datetime: `string`; groupLabel?: `string`; id: `string`; timestamp: `string`; title: `string`; tone?: `"info"` \| `"success"` \| `"warning"` \| `"error"` })[] | yes | — | Timeline entries rendered in source order. |
+| `entries` | ({ datetime: `string`; groupLabel?: `string`; id: `string`; kind?: `"event"` \| `"now"` \| `"separator"`; timestamp: `string`; title: `string`; tone?: `"info"` \| `"success"` \| `"warning"` \| `"error"` \| `"pending"` })[] | yes | — | Timeline entries rendered in source order. |
 | `gapThresholdMinutes` | `number` | no | — | Hide the following connector when adjacent valid timestamps exceed this gap (in minutes). |
 | `groupBy` | `"none"` \| `"day"` \| `"week"` | no | `"none"` | Optional adjacent UTC day/week grouping mode. |
 | `groupHeaderLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level applied to rendered group headers. |
 | `label` | `string` | no | — | Fallback accessible label used only when aria-label and aria-labelledby are absent. |
 | `orientation` | `"vertical"` \| `"horizontal"` | no | `"vertical"` | Layout orientation. |
+| `variant` | `"rail"` \| `"list"` | no | `"rail"` | Rail with connectors, or compact rows with none. |
 | `weekStartsOn` | `"sunday"` \| `"monday"` | no | `"monday"` | Week start used for UTC week grouping. |
+| `actions` | `(opaque)` | no | — | Optional per-entry controls, drawn at the inline end of the entry's row (a "Skip" button on an upcoming run). Unlike `marker`, they are interactive and in the tab order. Not drawn for a `now` or `separator` entry. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Optional per-entry body content. Not expressible in JSON Schema; see the component types for the signature. |
 | `marker` | `(opaque)` | no | — | Decorative per-entry marker content. Must not contain interactive descendants. Not expressible in JSON Schema; see the component types for the signature. |
 

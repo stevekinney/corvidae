@@ -26,9 +26,16 @@ const schema = {
             description: 'Visible event title.',
           },
           tone: {
-            enum: ['info', 'success', 'warning', 'error'],
-            description: 'Semantic marker tone.',
+            enum: ['info', 'success', 'warning', 'error', 'pending'],
+            description:
+              'Semantic marker tone. `pending` is a hollow neutral ring for something that has not happened\nyet (an upcoming run), the same ring a status dot draws for Waiting.',
             default: 'info',
+          },
+          kind: {
+            enum: ['event', 'now', 'separator'],
+            description:
+              'What the entry is. For `now`, `title` is the pill\'s text ("Now") and `timestamp` the time at\nthe right. For `separator`, `title` is the label and `timestamp` and `datetime` say what moment\nit marks. Neither draws a marker, a connector, a body or actions.',
+            default: 'event',
           },
           groupLabel: {
             type: 'string',
@@ -44,6 +51,11 @@ const schema = {
       enum: ['vertical', 'horizontal'],
       description: 'Layout orientation.',
       default: 'vertical',
+    },
+    variant: {
+      enum: ['rail', 'list'],
+      description: 'Rail with connectors, or compact rows with none.',
+      default: 'rail',
     },
     groupBy: {
       enum: ['none', 'day', 'week'],
@@ -79,6 +91,12 @@ const schema = {
   required: ['entries'],
   metadata: {
     unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description:
+          'Optional per-entry controls, drawn at the inline end of the entry\'s row (a "Skip" button on an\nupcoming run). Unlike `marker`, they are interactive and in the tab order. Not drawn for a\n`now` or `separator` entry.',
+      },
       {
         name: 'children',
         reason: 'function-or-snippet',

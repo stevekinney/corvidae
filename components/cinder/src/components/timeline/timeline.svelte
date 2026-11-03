@@ -8,6 +8,7 @@
    * @tag history
    * @tag events
    * @useWhen Showing dated workflow, audit, or run-history events on a temporal rail.
+   * @useWhen Listing upcoming and past runs as compact rows split by a Now marker, with a labelled break where the clock changed.
    * @avoidWhen Surfacing a real-time social or activity stream — feed is the higher-affordance composition.
    * @avoidWhen Guiding users through a numbered procedural flow. | steps
    * @avoidWhen Showing async execution state with retries, branches, or progress. | run-step-timeline
@@ -16,11 +17,13 @@
    */
   export type {
     TimelineEntry,
+    TimelineEntryKind,
     TimelineGroupBy,
     TimelineHeadingLevel,
     TimelineOrientation,
     TimelineProps,
     TimelineTone,
+    TimelineVariant,
     TimelineWeekStartsOn,
   } from './timeline.types.ts';
 
@@ -41,6 +44,7 @@
   let {
     entries,
     orientation = 'vertical',
+    variant = 'rail',
     groupBy = 'none',
     weekStartsOn = 'monday',
     groupHeaderLevel = 3,
@@ -49,6 +53,7 @@
     class: className,
     children,
     marker: customMarker,
+    actions: entryActions,
     role: _role,
     'aria-label': ariaLabel,
     'aria-labelledby': ariaLabelledby,
@@ -74,6 +79,7 @@
   {...rest}
   class={classNames('cinder-timeline', className)}
   data-cinder-orientation={orientation}
+  data-cinder-variant={variant}
   tabindex={orientation === 'horizontal' ? 0 : undefined}
   aria-label={resolvedAriaLabel}
   aria-labelledby={ariaLabelledby}
@@ -86,15 +92,22 @@
           {@render customMarker(entry)}
         {/if}
       {/snippet}
+      {#snippet actionsContent()}
+        {#if entryActions}
+          {@render entryActions(entry)}
+        {/if}
+      {/snippet}
       <TimelineItem
         datetime={entry.datetime}
         timestamp={entry.timestamp}
         title={entry.title}
         tone={entry.tone ?? 'info'}
+        kind={entry.kind ?? 'event'}
         connectorAfter={renderEntry.connectorAfter}
         groupHeader={renderEntry.index === group.entries[0]?.index ? group.label : undefined}
         {groupHeaderLevel}
         marker={customMarker ? markerContent : undefined}
+        actions={entryActions ? actionsContent : undefined}
       >
         {#if children}
           {@render children(entry)}

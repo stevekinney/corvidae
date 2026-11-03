@@ -5,9 +5,9 @@ const schema = {
   type: 'object',
   properties: {
     status: {
-      enum: ['connecting', 'live', 'reconnecting', 'polling', 'stale', 'closed'],
+      enum: ['connecting', 'live', 'reconnecting', 'polling', 'stale', 'out-of-date', 'closed'],
       description:
-        'Current connection lifecycle state. Drives icon, text, and color via `data-cinder-status`.',
+        'Current connection lifecycle state. Drives the glyph, text, and tone via `data-cinder-status`.',
     },
     label: {
       type: 'string',

@@ -87,6 +87,9 @@ function getConnectorAfter(
   gapThresholdMinutes: number | undefined,
 ): 'visible' | 'hidden' {
   if (next === undefined) return 'hidden';
+  // The Now marker and a separator sit between rows and own no rail, so nothing connects to them.
+  if (current.entry.kind === 'now' || current.entry.kind === 'separator') return 'hidden';
+  if (next.entry.kind === 'now' || next.entry.kind === 'separator') return 'hidden';
   if (next.groupKey !== current.groupKey) return 'hidden';
   if (gapThresholdMinutes === undefined) return 'visible';
   if (current.parsedTime === undefined || next.parsedTime === undefined) return 'visible';

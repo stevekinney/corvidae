@@ -32,6 +32,12 @@
       "title": "Vertical timeline",
       "description": "A timestamp-first event rail for workflow and audit history.",
       "code": "<script lang=\"ts\">\n  import { Timeline } from '@lostgradient/cinder';\n\n  const entries = [\n    {\n      id: 'created',\n      datetime: '2026-05-23T14:00:00Z',\n      timestamp: '9:00 AM',\n      title: 'Deployment created',\n      tone: 'info' as const,\n    },\n    {\n      id: 'validated',\n      datetime: '2026-05-23T14:04:00Z',\n      timestamp: '9:04 AM',\n      title: 'Configuration validated',\n      tone: 'success' as const,\n    },\n    {\n      id: 'queued',\n      datetime: '2026-05-23T14:10:00Z',\n      timestamp: '9:10 AM',\n      title: 'Rollout queued',\n      tone: 'warning' as const,\n    },\n  ];\n</script>\n\n<Timeline {entries} label=\"Deployment timeline\">\n  {#snippet children(entry)}\n    {entry.title === 'Rollout queued'\n      ? 'Waiting for the current production deploy to finish.'\n      : 'Completed by the release automation.'}\n  {/snippet}\n</Timeline>\n"
+    },
+    {
+      "id": "upcoming-and-past",
+      "title": "Upcoming and past runs",
+      "description": "The list variant with hollow pending rings, a Skip action on each upcoming run, the Now marker, and a separator where daylight saving time ended.",
+      "code": "<script lang=\"ts\">\n  import { Button, Timeline } from '@lostgradient/cinder';\n  import type { TimelineEntry } from '@lostgradient/cinder';\n\n  const entries: TimelineEntry[] = [\n    {\n      id: 'nov-3',\n      datetime: '2026-11-03T09:00:00Z',\n      timestamp: 'Tue Nov 3, 3:00 AM',\n      title: 'in 16 hours',\n      tone: 'pending',\n    },\n    {\n      id: 'now',\n      kind: 'now',\n      datetime: '2026-11-02T16:46:00Z',\n      timestamp: 'Mon Nov 2, 10:46 AM',\n      title: 'Now',\n    },\n    {\n      id: 'dst',\n      kind: 'separator',\n      datetime: '2026-11-01T06:00:00Z',\n      timestamp: 'Nov 1',\n      title: 'Daylight saving time ended Nov 1',\n    },\n    {\n      id: 'oct-29',\n      datetime: '2026-10-29T09:00:00Z',\n      timestamp: 'Thu Oct 29, 4:00 AM',\n      title: 'Done',\n      tone: 'success',\n    },\n  ];\n</script>\n\n<div style=\"max-width: 36rem;\">\n  <Timeline {entries} variant=\"list\" label=\"Runs\">\n    {#snippet actions(entry)}\n      {#if entry.tone === 'pending'}\n        <Button variant=\"secondary\" size=\"sm\">Skip</Button>\n      {/if}\n    {/snippet}\n  </Timeline>\n</div>\n"
     }
   ]
 }

@@ -24,6 +24,8 @@ Sparkbar is non-interactive and does not enter the tab order by default. Do not 
 
 Sparkbar renders `role="meter"` with `aria-valuemin`, `aria-valuemax`, `aria-valuenow`, and `aria-valuetext`. The accessible name defaults to the visible label plus percentage; pass `ariaLabel` when the surrounding context needs a more specific name.
 
+With `points`, Sparkbar renders a trend line instead. A trend has no bounded value, so it is `role="img"`, not a meter: its accessible name is `label` (or `ariaLabel`), which should be a full sentence naming the metric, the window and where it ended up, and everything drawn inside (the line, the dot, the axis labels) is `aria-hidden`. Keep the figure and the window in visible text next to the line, so the sentence repeats what sighted people read and adds the direction.
+
 Do not rely on fill color alone to communicate meaning. Use the visible label, trailing value, and surrounding copy to identify what is being measured.
 
 ## Verification

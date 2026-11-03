@@ -27,6 +27,21 @@ const schema = {
       type: 'string',
       description: 'Additional class names merged with `.cinder-tab`.',
     },
+    count: {
+      type: 'number',
+      description:
+        "A count of things in this tab that want attention, drawn as a small pill after the label. Zero,\na negative number and `undefined` show nothing, so a healthy tab carries no chip. The count is\npart of the tab's accessible name, so it never depends on colour.",
+    },
+    countLabel: {
+      type: 'string',
+      description:
+        'The words that follow the count in the pill\'s accessible name: "needs attention" gives\n"1 needs attention", so the tab reads "Workers 1 needs attention". Without it the pill\nreads as the bare number.',
+    },
+    countTone: {
+      enum: ['neutral', 'success', 'warning', 'danger', 'info', 'accent'],
+      description:
+        "Tone of the count pill. Defaults to `'warning'`, the amber of a count that needs attention.",
+    },
   },
   additionalProperties: false,
   required: ['value'],

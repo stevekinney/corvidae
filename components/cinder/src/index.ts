@@ -923,7 +923,13 @@ export type {
 } from './components/speed-dial-action/index.ts';
 
 export { default as Sparkbar } from './components/sparkbar/index.ts';
-export type { SparkbarProps, SparkbarSize, SparkbarVariant } from './components/sparkbar/index.ts';
+export type {
+  SparkbarBarProps,
+  SparkbarLineProps,
+  SparkbarProps,
+  SparkbarSize,
+  SparkbarVariant,
+} from './components/sparkbar/index.ts';
 
 export { default as Steps } from './components/steps/index.ts';
 export type {
@@ -1246,10 +1252,12 @@ export type { SliderRangeProps, SliderSingleProps } from './components/slider/in
 export type { SpeedDialSchemaProps } from './components/speed-dial/index.ts';
 export type {
   TimelineEntry,
+  TimelineEntryKind,
   TimelineGroupBy,
   TimelineHeadingLevel,
   TimelineOrientation,
   TimelineTone,
+  TimelineVariant,
   TimelineWeekStartsOn,
 } from './components/timeline/index.ts';
 export { ToolbarGroup, ToolbarSpacer } from './components/toolbar/index.ts';

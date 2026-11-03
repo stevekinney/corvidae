@@ -3,16 +3,16 @@
    * @cinder
    * @category feedback
    * @status beta
-   * @purpose Small standalone status pill for a live connection, distinguishing connecting, live, reconnecting, polling, stale, and closed states through icon and text rather than color alone.
+   * @purpose Quiet inline dot-and-word status for a live connection, telling connecting, live, reconnecting, polling, stale, out-of-date, and closed apart by shape and text, not color alone.
    * @tag connection
    * @tag status
    * @tag realtime
-   * @useWhen Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained pill.
+   * @useWhen Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained dot and word.
    * @useWhen Distinguishing push (`live`) from interval polling (`polling`) so operators don't mistake one for the other.
    * @avoidWhen Annotating a static entity's state (a row, a user, a deployment) rather than a live transport — use status-dot instead. | status-dot
    * @avoidWhen Rendering a full event log with per-event connection transitions — use feed's log arm instead. | feed
    * @a11yPattern role="status" live region
-   * @a11yNote Status is conveyed by icon and text together, never color alone (WCAG 1.4.1); the live pulsing dot collapses to a static dot under prefers-reduced-motion.
+   * @a11yNote Status is conveyed by shape and text together, never color alone (WCAG 1.4.1): live is a dot, out-of-date a hollow ring, the rest an icon. The live pulsing dot collapses to a static dot under prefers-reduced-motion.
    * @related status-dot, feed, badge
    */
   export type {
@@ -40,12 +40,17 @@
     reconnecting: 'Reconnecting',
     polling: 'Polling',
     stale: 'Stale',
+    'out-of-date': 'Out of date',
     closed: 'Closed',
   };
 
   // `live` has no icon: the pulsing dot is its whole glyph, and the "Live" label still names the
   // state, so the state is never carried by color alone (WCAG 1.4.1).
-  const statusIcons: Record<Exclude<ConnectionIndicatorStatus, 'live'>, typeof Loader> = {
+  // `out-of-date` is the same: its hollow ring is the glyph, so it is not in this table.
+  const statusIcons: Record<
+    Exclude<ConnectionIndicatorStatus, 'live' | 'out-of-date'>,
+    typeof Loader
+  > = {
     connecting: Loader,
     reconnecting: RefreshCw,
     polling: RefreshCcwDot,
@@ -77,7 +82,9 @@
       ? undefined
       : (normalizedAriaLabel ?? `Connection: ${resolvedLabel}`),
   );
-  const Icon = $derived(status === 'live' ? undefined : statusIcons[status]);
+  const Icon = $derived(
+    status === 'live' || status === 'out-of-date' ? undefined : statusIcons[status],
+  );
 </script>
 
 <div
@@ -90,7 +97,9 @@
   aria-label={resolvedAriaLabel}
   aria-labelledby={normalizedAriaLabelledby}
 >
-  {#if Icon === undefined}
+  {#if status === 'out-of-date'}
+    <span class="cinder-connection-indicator__ring" aria-hidden="true"></span>
+  {:else if Icon === undefined}
     <span class="cinder-connection-indicator__dot" aria-hidden="true"></span>
   {:else}
     <span class="cinder-connection-indicator__icon" aria-hidden="true">

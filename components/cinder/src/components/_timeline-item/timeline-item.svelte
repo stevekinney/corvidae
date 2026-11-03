@@ -7,7 +7,7 @@
    * @tag timeline
    * @tag event
    * @useWhen Rendering one event along a timeline rail with consistent marker, header, connector, and body structure.
-   * @useWhen Coloring decorative markers by tone (info, success, warning, error) while keeping the meaningful status in title or content.
+   * @useWhen Coloring decorative markers by tone (info, success, warning, error, or a hollow pending ring) while keeping the meaningful status in title or content.
    * @avoidWhen The entry lives in a social activity stream rather than a workflow rail — feed-event fits better.
    * @related timeline, feed-event
    */
@@ -24,12 +24,14 @@
     timestamp,
     title,
     tone = 'info',
+    kind = 'event',
     connectorAfter = 'visible',
     groupHeader,
     groupHeaderLevel = 3,
     class: className,
     children,
     marker,
+    actions,
     ...rest
   }: TimelineItemProps = $props();
 
@@ -50,6 +52,7 @@
   {...rest}
   class={classNames('cinder-timeline-item', className)}
   data-cinder-tone={tone}
+  data-cinder-kind={kind}
   data-cinder-connector-after={connectorAfter}
 >
   {#if groupHeader}
@@ -57,20 +60,39 @@
       {groupHeader}
     </svelte:element>
   {/if}
-  <div class="cinder-timeline-item__event">
-    <span class="cinder-timeline-item__marker" aria-hidden="true" inert>
-      {#if marker}
-        {@render marker()}
-      {/if}
-    </span>
-    <div class="cinder-timeline-item__content">
-      <header class="cinder-timeline-item__header">
-        <time class="cinder-timeline-item__time" {datetime}>{timestamp}</time>
-        <span class="cinder-timeline-item__title">{title}</span>
-      </header>
-      {#if children}
-        <div class="cinder-timeline-item__body">{@render children()}</div>
+  {#if kind === 'now'}
+    <!-- The current moment: a pill, a rule and the time. The rule is decoration. -->
+    <div class="cinder-timeline-item__now">
+      <span class="cinder-timeline-item__now-label">{title}</span>
+      <span class="cinder-timeline-item__rule" aria-hidden="true"></span>
+      <time class="cinder-timeline-item__time" {datetime}>{timestamp}</time>
+    </div>
+  {:else if kind === 'separator'}
+    <!-- A quiet labelled break. The rules are decoration; the label is the content. -->
+    <div class="cinder-timeline-item__separator">
+      <span class="cinder-timeline-item__rule" aria-hidden="true"></span>
+      <span class="cinder-timeline-item__separator-label">{title}</span>
+      <span class="cinder-timeline-item__rule" aria-hidden="true"></span>
+    </div>
+  {:else}
+    <div class="cinder-timeline-item__event" data-cinder-has-actions={actions ? '' : undefined}>
+      <span class="cinder-timeline-item__marker" aria-hidden="true" inert>
+        {#if marker}
+          {@render marker()}
+        {/if}
+      </span>
+      <div class="cinder-timeline-item__content">
+        <header class="cinder-timeline-item__header">
+          <time class="cinder-timeline-item__time" {datetime}>{timestamp}</time>
+          <span class="cinder-timeline-item__title">{title}</span>
+        </header>
+        {#if children}
+          <div class="cinder-timeline-item__body">{@render children()}</div>
+        {/if}
+      </div>
+      {#if actions}
+        <div class="cinder-timeline-item__actions">{@render actions()}</div>
       {/if}
     </div>
-  </div>
+  {/if}
 </li>

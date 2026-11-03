@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -23,7 +24,18 @@ function textSnippet(text: string) {
   }));
 }
 
-const ALL_STATUSES = ['connecting', 'live', 'reconnecting', 'polling', 'stale', 'closed'] as const;
+const ALL_STATUSES = [
+  'connecting',
+  'live',
+  'reconnecting',
+  'polling',
+  'stale',
+  'out-of-date',
+  'closed',
+] as const;
+
+/** The two states whose glyph is drawn by CSS (a dot, a ring) and not by an icon. */
+const SHAPE_STATUSES = ['live', 'out-of-date'] as const;
 
 describe('ConnectionIndicator', () => {
   afterEach(() => {
@@ -47,6 +59,7 @@ describe('ConnectionIndicator', () => {
     ['reconnecting', 'Reconnecting'],
     ['polling', 'Polling'],
     ['stale', 'Stale'],
+    ['out-of-date', 'Out of date'],
     ['closed', 'Closed'],
   ] as const)('status "%s" renders the label "%s"', (status, expectedLabel) => {
     const { container } = render(ConnectionIndicator, { status });
@@ -54,10 +67,12 @@ describe('ConnectionIndicator', () => {
     expect(label?.textContent?.trim()).toBe(expectedLabel);
   });
 
-  test('every non-live status renders a distinct icon, and live renders the dot and no icon', () => {
+  test('every icon status renders a distinct icon, and live renders the dot and no icon', () => {
     const seenIconMarkup = new Set<string>();
 
-    for (const status of ALL_STATUSES.filter((candidate) => candidate !== 'live')) {
+    for (const status of ALL_STATUSES.filter(
+      (candidate) => !(SHAPE_STATUSES as readonly string[]).includes(candidate),
+    )) {
       const { container } = render(ConnectionIndicator, { status });
       const icon = container.querySelector('.cinder-connection-indicator__icon svg');
       expect(icon, `${status} icon`).not.toBeNull();
@@ -146,10 +161,30 @@ describe('ConnectionIndicator', () => {
     expect(dot?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  test('non-live statuses do not render the pulsing dot', () => {
+  test('only live renders the dot', () => {
     for (const status of ALL_STATUSES.filter((value) => value !== 'live')) {
       const { container } = render(ConnectionIndicator, { status });
       expect(container.querySelector('.cinder-connection-indicator__dot')).toBeNull();
+      cleanup();
+    }
+  });
+
+  test('out-of-date renders a hollow ring, the word "Out of date", and neither a dot nor an icon', () => {
+    const { container } = render(ConnectionIndicator, { status: 'out-of-date' });
+    const root = container.querySelector('.cinder-connection-indicator');
+    const ring = container.querySelector('.cinder-connection-indicator__ring');
+    expect(root?.getAttribute('data-cinder-status')).toBe('out-of-date');
+    expect(ring).not.toBeNull();
+    expect(ring?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('.cinder-connection-indicator__dot')).toBeNull();
+    expect(container.querySelector('.cinder-connection-indicator__icon')).toBeNull();
+    expect(root?.getAttribute('aria-label')).toBe('Connection: Out of date');
+  });
+
+  test('no other status renders the ring', () => {
+    for (const status of ALL_STATUSES.filter((value) => value !== 'out-of-date')) {
+      const { container } = render(ConnectionIndicator, { status });
+      expect(container.querySelector('.cinder-connection-indicator__ring'), status).toBeNull();
       cleanup();
     }
   });
@@ -216,5 +251,35 @@ describe('ConnectionIndicator', () => {
       id: 'my-connection-indicator',
     });
     expect(container.querySelector('#my-connection-indicator')).not.toBeNull();
+  });
+
+  // COR-2010 (B02, rows 76c and 77j): a bare 8px dot and a muted word, with no pill around them.
+  describe('quiet style', () => {
+    const css = readFileSync(new URL('./connection-indicator.css', import.meta.url), 'utf8');
+    const block = (selector: string): string =>
+      new RegExp(`${selector.replaceAll('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+
+    test('the root has no pill: no background, padding or radius, and a muted word', () => {
+      const root = block('.cinder-connection-indicator');
+      expect(root).toContain('color: var(--cinder-text-muted)');
+      expect(root).not.toContain('background');
+      expect(root).not.toContain('padding');
+      expect(root).not.toContain('border-radius');
+    });
+
+    test('live is an 8px green dot', () => {
+      const dot = block('.cinder-connection-indicator__dot');
+      expect(dot).toContain('inline-size: 0.5rem');
+      expect(dot).toContain('block-size: 0.5rem');
+      expect(dot).toContain('background: var(--cinder-status-success-solid)');
+    });
+
+    test('out of date is an 8px hollow ring in the pending colour, never green', () => {
+      const ring = block('.cinder-connection-indicator__ring');
+      expect(ring).toContain('inline-size: 0.5rem');
+      expect(ring).toContain('border: 0.09375rem solid var(--cinder-border-control)');
+      expect(ring).toContain('background: transparent');
+      expect(ring).not.toContain('success');
+    });
   });
 });

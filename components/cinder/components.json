@@ -1424,10 +1424,10 @@
       "exportName": "ConnectionIndicator",
       "category": "feedback",
       "status": "beta",
-      "purpose": "Small standalone status pill for a live connection, distinguishing connecting, live, reconnecting, polling, stale, and closed states through icon and text rather than color alone.",
+      "purpose": "Quiet inline dot-and-word status for a live connection, telling connecting, live, reconnecting, polling, stale, out-of-date, and closed apart by shape and text, not color alone.",
       "tags": ["connection", "status", "realtime"],
       "useWhen": [
-        "Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained pill.",
+        "Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained dot and word.",
         "Distinguishing push (`live`) from interval polling (`polling`) so operators don't mistake one for the other."
       ],
       "avoidWhen": [
@@ -1451,7 +1451,7 @@
       "a11y": {
         "pattern": "role=\"status\" live region",
         "notes": [
-          "Status is conveyed by icon and text together, never color alone (WCAG 1.4.1); the live pulsing dot collapses to a static dot under prefers-reduced-motion."
+          "Status is conveyed by shape and text together, never color alone (WCAG 1.4.1): live is a dot, out-of-date a hollow ring, the rest an icon. The live pulsing dot collapses to a static dot under prefers-reduced-motion."
         ]
       }
     },
@@ -5048,10 +5048,11 @@
       "exportName": "Sparkbar",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Compact labeled meter with a thin horizontal fill bar for inline cost, token, budget, or quota breakdowns.",
-      "tags": ["sparkbar", "meter", "cost"],
+      "purpose": "Compact labeled meter with a thin fill bar for inline cost, token, or quota breakdowns, or, given points, a thin trend line with an end dot.",
+      "tags": ["sparkbar", "meter", "cost", "sparkline", "trend"],
       "useWhen": [
-        "Comparing several bounded values in dense rows, such as per-step spend, token usage, or budget consumption."
+        "Comparing several bounded values in dense rows, such as per-step spend, token usage, or budget consumption.",
+        "Showing the shape of one metric over a recent window inside a metric card, with its latest value marked and the window named at each end."
       ],
       "avoidWhen": [
         {
@@ -5060,7 +5061,7 @@
         },
         {
           "reason": "Rendering a full cartesian chart with axes, scales, or multiple series.",
-          "alternative": "bar-chart"
+          "alternative": "line-chart"
         }
       ],
       "related": ["meter", "progress", "bar-chart"],
@@ -5953,7 +5954,10 @@
       "status": "stable",
       "purpose": "Timestamp-first event rail with grouping, tone markers, and connector continuity.",
       "tags": ["timeline", "history", "events"],
-      "useWhen": ["Showing dated workflow, audit, or run-history events on a temporal rail."],
+      "useWhen": [
+        "Showing dated workflow, audit, or run-history events on a temporal rail.",
+        "Listing upcoming and past runs as compact rows split by a Now marker, with a labelled break where the clock changed."
+      ],
       "avoidWhen": [
         {
           "reason": "Surfacing a real-time social or activity stream — feed is the higher-affordance composition."

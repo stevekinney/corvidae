@@ -4,7 +4,19 @@ import type { HTMLAttributes } from 'svelte/elements';
 export type TimelineOrientation = 'vertical' | 'horizontal';
 export type TimelineGroupBy = 'none' | 'day' | 'week';
 export type TimelineWeekStartsOn = 'sunday' | 'monday';
-export type TimelineTone = 'info' | 'success' | 'warning' | 'error';
+export type TimelineTone = 'info' | 'success' | 'warning' | 'error' | 'pending';
+/**
+ * What an entry is. `event` is an ordinary marker row. `now` is the marker for the current moment
+ * (an accent pill, a rule, and the time at the right), placed between the upcoming and the past.
+ * `separator` is a quiet labelled rule between two rows, for a break the reader should not
+ * mistake for a gap, such as the day daylight saving time ended.
+ */
+export type TimelineEntryKind = 'event' | 'now' | 'separator';
+/**
+ * `rail` is the default: a vertical rail with a connector from marker to marker. `list` is the
+ * same entries as compact rows, with no connector, a hairline between rows and the time first.
+ */
+export type TimelineVariant = 'rail' | 'list';
 export type TimelineHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type TimelineEntry = {
@@ -16,8 +28,17 @@ export type TimelineEntry = {
   timestamp: string;
   /** Visible event title. */
   title: string;
-  /** Semantic marker tone. @default "info" */
+  /**
+   * Semantic marker tone. `pending` is a hollow neutral ring for something that has not happened
+   * yet (an upcoming run), the same ring a status dot draws for Waiting. @default "info"
+   */
   tone?: TimelineTone | undefined;
+  /**
+   * What the entry is. For `now`, `title` is the pill's text ("Now") and `timestamp` the time at
+   * the right. For `separator`, `title` is the label and `timestamp` and `datetime` say what moment
+   * it marks. Neither draws a marker, a connector, a body or actions. @default "event"
+   */
+  kind?: TimelineEntryKind | undefined;
   /** Optional day/week group label override. The first entry in a group wins. */
   groupLabel?: string | undefined;
 };
@@ -38,6 +59,8 @@ export type TimelineProps = Omit<
   entries: TimelineEntry[];
   /** Layout orientation. @default "vertical" */
   orientation?: TimelineOrientation | undefined;
+  /** Rail with connectors, or compact rows with none. @default "rail" */
+  variant?: TimelineVariant | undefined;
   /** Optional adjacent UTC day/week grouping mode. @default "none" */
   groupBy?: TimelineGroupBy | undefined;
   /** Week start used for UTC week grouping. @default "monday" */
@@ -52,6 +75,12 @@ export type TimelineProps = Omit<
   class?: string | undefined;
   /** Optional per-entry body content. */
   children?: Snippet<[TimelineEntry]> | undefined;
+  /**
+   * Optional per-entry controls, drawn at the inline end of the entry's row (a "Skip" button on an
+   * upcoming run). Unlike `marker`, they are interactive and in the tab order. Not drawn for a
+   * `now` or `separator` entry.
+   */
+  actions?: Snippet<[TimelineEntry]> | undefined;
   /** Decorative per-entry marker content. Must not contain interactive descendants. */
   marker?: Snippet<[TimelineEntry]> | undefined;
 };
@@ -65,6 +94,8 @@ export interface TimelineSchemaProps {
   entries: TimelineEntry[];
   /** Layout orientation. @default "vertical" */
   orientation?: TimelineOrientation | undefined;
+  /** Rail with connectors, or compact rows with none. @default "rail" */
+  variant?: TimelineVariant | undefined;
   /** Optional adjacent UTC day/week grouping mode. @default "none" */
   groupBy?: TimelineGroupBy | undefined;
   /** Week start used for UTC week grouping. @default "monday" */

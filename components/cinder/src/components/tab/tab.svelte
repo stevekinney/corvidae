@@ -28,6 +28,7 @@
   import { rovingTabIndex } from '../../_internal/collection.ts';
   import { getTabsContext } from '../tabs/tabs-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import Badge from '../badge/badge.svelte';
 
   let {
     value,
@@ -37,6 +38,9 @@
     class: className,
     children,
     trailing,
+    count,
+    countLabel,
+    countTone = 'warning',
     ...rest
   }: TabProps = $props();
 
@@ -59,6 +63,19 @@
     const controlsId = controls?.trim();
     return controlsId ? controlsId : `${tabs.baseId}-panel-${value}`;
   });
+
+  // Zero, a negative number and NaN all mean "nothing to report", so a healthy tab never reads "0".
+  const countValue = $derived(
+    count !== undefined && Number.isFinite(count) && count > 0 ? count : undefined,
+  );
+  const countWords = $derived(countLabel?.trim() ? countLabel.trim() : undefined);
+  const countPhrase = $derived(
+    countValue === undefined
+      ? undefined
+      : countWords === undefined
+        ? String(countValue)
+        : `${countValue} ${countWords}`,
+  );
 
   const isActive = $derived(tabs.isActive(value));
   const isFocusable = $derived(tabs.isFocusable(value));
@@ -147,6 +164,18 @@
   onkeydown={tabs.handleKeydown}
 >
   {@render children()}
+  {#if countValue !== undefined}
+    <!-- Not aria-hidden: the pill is part of the tab's name ("Workers 1 needs attention"). -->
+    <Badge
+      variant={countTone}
+      size="sm"
+      class="cinder-tab__count"
+      role={countWords === undefined ? undefined : 'img'}
+      aria-label={countWords === undefined ? undefined : countPhrase}
+    >
+      {countValue}
+    </Badge>
+  {/if}
   {#if trailing}
     <span class="cinder-tab__trailing" aria-hidden="true">
       {@render trailing()}
