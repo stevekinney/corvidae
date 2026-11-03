@@ -6,6 +6,7 @@ export { getSourceDiffFileLabel, getSourceDiffLineLabel } from './source-diff-vi
 export type {
   SourceDiffAnnotationSelection,
   SourceDiffAnnotationSide,
+  SourceDiffChangeCounts,
   SourceDiffFile,
   SourceDiffFileAnnotationContext,
   SourceDiffFileDescriptor,
@@ -17,6 +18,7 @@ export type {
   SourceDiffViewerFocusResult,
   SourceDiffViewerProps,
   SourceDiffViewerRef,
+  SourceDiffViewerVariant,
 } from './source-diff-viewer.types.ts';
-export { parseUnifiedPatch } from './source-diff-viewer.utilities.ts';
+export { countPatchChanges, parseUnifiedPatch } from './source-diff-viewer.utilities.ts';
 export { SourceDiffViewer };

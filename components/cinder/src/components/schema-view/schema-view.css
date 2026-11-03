@@ -5,53 +5,109 @@
 @layer cinder.components {
   /* ========================================
  * SCHEMA VIEW
- * Read-only schema: one line per field, nested objects indented.
+ * Read-only schema as one aligned grid: Field, Type and Description share three
+ * columns, one row per field, nested fields indented.
  * ======================================== */
 
   .cinder-schema-view {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);
+    container-type: inline-size;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-default);
   }
 
-  .cinder-schema-view__fields {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
-    margin: 0;
-    padding: 0;
-    list-style: none;
+  .cinder-schema-view__frame {
+    min-inline-size: 0;
+    overflow: hidden;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
   }
 
-  /* A nested list sits under its field's line, indented by one step with a
-   * hairline that connects the children to their parent. */
-  .cinder-schema-view__field > .cinder-schema-view__fields {
-    margin-block-start: var(--cinder-space-2);
-    margin-inline-start: var(--cinder-space-2);
-    padding-inline-start: var(--cinder-space-4);
+  /* Rows share the grid's three columns through subgrid, so every row's columns line up. The
+   * tracks are allowed to shrink to nothing: a long name truncates and an unbroken value breaks
+   * inside its cell instead of widening the grid past its frame. */
+  .cinder-schema-view__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 3fr);
+  }
+
+  .cinder-schema-view__group {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
+
+  .cinder-schema-view__row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: baseline;
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-schema-view__row--header {
+    border-block-start: 0;
+    border-block-end: 1px solid var(--cinder-border-muted);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* The one hairline between the required rows and the rest. It is a little stronger than the row
+   * dividers, and it has no heading. */
+  .cinder-schema-view__row[data-cinder-group-start] {
+    border-block-start-color: var(--cinder-border-strong);
+    border-block-start-width: 2px;
+  }
+
+  .cinder-schema-view__cell {
+    min-inline-size: 0;
+    padding: var(--cinder-space-2-5) var(--cinder-space-4);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-schema-view__row--header .cinder-schema-view__cell {
+    padding-block: var(--cinder-space-2);
+  }
+
+  /* The label truncates on one line, and the required dot stays after the truncated name. */
+  .cinder-schema-view__field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    padding-inline-start: calc(
+      var(--cinder-space-4) + var(--_cinder-schema-view-depth, 0) * 1.75rem
+    );
+  }
+
+  /* A nested row carries a hairline in its indent, so the children read as belonging to a parent. */
+  .cinder-schema-view__row:not([data-cinder-depth='0']) .cinder-schema-view__field::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(
+      var(--cinder-space-4) + (var(--_cinder-schema-view-depth, 1) - 1) * 1.75rem + 0.875rem
+    );
     border-inline-start: 1px solid var(--cinder-border-muted);
   }
 
-  /* One line per field: label, required dot, type, description. It wraps
-   * only when the description is longer than the room beside the type. */
-  .cinder-schema-view__line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    column-gap: var(--cinder-space-2);
-    row-gap: var(--cinder-space-0-5);
-  }
-
   .cinder-schema-view__label {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-default);
   }
 
-  /* The required marker is a small red dot beside the label, not an asterisk. */
+  .cinder-schema-view__row[data-cinder-depth='0'] .cinder-schema-view__label {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* The required marker is a small red dot after the label, never the word "required". */
   .cinder-schema-view__required {
-    align-self: center;
     flex: 0 0 auto;
     inline-size: 0.4375rem;
     block-size: 0.4375rem;
@@ -60,22 +116,58 @@
   }
 
   .cinder-schema-view__type {
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-schema-view__about {
     color: var(--cinder-text-muted);
   }
 
-  .cinder-schema-view__description {
-    flex: 1 1 12rem;
-    min-inline-size: 0;
-    color: var(--cinder-text-muted);
+  /* More and Less read as a link inside the description's own line. */
+  .cinder-schema-view__toggle {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    cursor: pointer;
   }
 
-  .cinder-schema-view__truncated,
-  .cinder-schema-view__empty {
+  @media (hover: hover) {
+    .cinder-schema-view__toggle:hover {
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
+    }
+  }
+
+  .cinder-schema-view__toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-schema-view__truncated {
     margin: 0;
     font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-schema-view__caption {
+    margin: 0;
+    padding: var(--cinder-space-2-5) var(--cinder-space-4);
+    border-block-start: 1px solid var(--cinder-border-muted);
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  /* A schema with no fields is one line in a bordered box, not an empty grid. */
+  .cinder-schema-view__empty {
+    margin: 0;
+    padding: var(--cinder-space-3) var(--cinder-space-4);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
   }
 
   .cinder-schema-view__document {
@@ -83,9 +175,50 @@
     user-select: text;
   }
 
+  /* Phone width, by the view's own width: the columns restack. The label with its dot and the type
+   * share the first line with the type at the end, and the description sits below. */
+  @container (max-inline-size: 30rem) {
+    .cinder-schema-view__row--header {
+      display: none;
+    }
+
+    .cinder-schema-view__row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'field kind'
+        'about about';
+      align-items: baseline;
+    }
+
+    .cinder-schema-view__field {
+      grid-area: field;
+      padding-block-end: 0;
+    }
+
+    .cinder-schema-view__kind {
+      grid-area: kind;
+      padding-block-end: 0;
+      padding-inline-start: 0;
+      text-align: end;
+    }
+
+    .cinder-schema-view__about {
+      grid-area: about;
+      padding-block-start: var(--cinder-space-1);
+      padding-inline-start: calc(
+        var(--cinder-space-4) + var(--_cinder-schema-view-depth, 0) * 1.75rem
+      );
+    }
+  }
+
   @media (forced-colors: active) {
     .cinder-schema-view__required {
       background: CanvasText;
+    }
+
+    .cinder-schema-view__toggle:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
     }
   }
 }

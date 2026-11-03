@@ -929,6 +929,7 @@ export type { SliderMode, SliderProps, SliderValue } from './components/slider/i
 
 export {
   default as SourceDiffViewer,
+  countPatchChanges,
   getSourceDiffFileLabel,
   getSourceDiffLineLabel,
   parseUnifiedPatch,
@@ -936,6 +937,7 @@ export {
 export type {
   SourceDiffAnnotationSelection,
   SourceDiffAnnotationSide,
+  SourceDiffChangeCounts,
   SourceDiffFile,
   SourceDiffFileAnnotationContext,
   SourceDiffFileDescriptor,
@@ -947,6 +949,7 @@ export type {
   SourceDiffViewerFocusResult,
   SourceDiffViewerProps,
   SourceDiffViewerRef,
+  SourceDiffViewerVariant,
 } from './components/source-diff-viewer/index.ts';
 
 export { default as StackedListItem } from './components/stacked-list-item/index.ts';

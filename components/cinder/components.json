@@ -4396,7 +4396,7 @@
       "exportName": "SchemaView",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Read-only view of a JSON Schema: one line per field with a label, a red dot when required, a monospace type and a description, nested objects indented, and a disclosure for the raw document.",
+      "purpose": "Read-only view of a JSON Schema as one aligned grid of Field, Type and Description: required fields first with a red dot, nested fields indented, plain-word types, a raw-document disclosure.",
       "tags": ["schema", "json-schema", "read-only", "data-display"],
       "useWhen": [
         "Showing the shape of a workflow input or output, a tool input, or a signal or update payload without a raw JSON dump.",

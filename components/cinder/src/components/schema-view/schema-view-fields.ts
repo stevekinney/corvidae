@@ -2,21 +2,70 @@ import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
 
 /** One field of a schema, ready to show: a formatted label, a type, and its nested fields. */
 export type SchemaViewField = {
-  /** The property name in the schema, or `item` for the shape of an array's entries. */
+  /** The property name in the schema. */
   key: string;
-  /** The label shown for the field, formatted from `key`. */
+  /**
+   * Where the field sits: the keys of its ancestors and its own key, joined with `/`. A field that
+   * belongs to one branch of a choice carries `<choice>:` before its key. Unique within a schema,
+   * so a view can remember which field it expanded.
+   */
+  path: string;
+  /**
+   * The label shown for the field, formatted from `key` in sentence case. A field that belongs to
+   * one branch of a choice reads `If <choice>: <field>`.
+   */
   label: string;
-  /** The type as one short string, for example `string`, `array of number` or `string | null`. */
+  /**
+   * The type in plain words, for example `text`, `yes or no`, `list of steps`, `one of: email,
+   * slack` or `JSON schema`.
+   */
   type: string;
-  /** The field's `description`, when the schema gives one. */
+  /** The field's `description`, when the schema gives one, whole. */
   description?: string;
+  /** The first paragraph of `description`: the line a person reads. */
+  summary?: string;
+  /** The rest of `description`, after its first paragraph: the text written for a model. */
+  detail?: string;
   /** True when the parent object lists the field in `required`. */
   required: boolean;
-  /** Fields of a nested object, or of the objects an array holds. */
+  /**
+   * Fields of a nested object, or of the objects an array holds, then the fields of each branch of
+   * a choice (a `oneOf` of objects).
+   */
   fields: SchemaViewField[];
   /** True when nested fields were left out because they are deeper than `maxDepth`. */
   truncated: boolean;
 };
+
+/**
+ * Splits a description into the line a person reads and the text written for a model. The first
+ * paragraph is the summary; whatever follows the first blank line is the detail. A description of
+ * one paragraph has no detail. Line breaks inside a paragraph read as spaces.
+ */
+export function splitDescription(description: string): { summary: string; detail?: string } {
+  const [first = '', ...rest] = description.trim().split(/\n[ \t]*\n+/);
+  const joinLines = (paragraph: string) => paragraph.replaceAll(/\s*\n\s*/g, ' ').trim();
+  const detail = rest
+    .map((paragraph) => joinLines(paragraph))
+    .filter((paragraph) => paragraph !== '')
+    .join(' ');
+  return detail === '' ? { summary: joinLines(first) } : { summary: joinLines(first), detail };
+}
+
+/**
+ * Orders the top-level fields of a schema for reading: the required ones first, then the rest,
+ * each group in the order the schema declares. Nested fields keep the schema's order, so only the
+ * top level is reordered.
+ */
+export function partitionRequiredFields(fields: readonly SchemaViewField[]): {
+  required: SchemaViewField[];
+  optional: SchemaViewField[];
+} {
+  return {
+    required: fields.filter((field) => field.required),
+    optional: fields.filter((field) => !field.required),
+  };
+}
 
 type SchemaRecord = Record<string, unknown>;
 
@@ -31,7 +80,7 @@ const TYPE_DEPTH_LIMIT = 4;
 const FIELD_BUDGET = 500;
 
 /** How many enum values a type string lists before it ends with an ellipsis. */
-const ENUM_VALUES_SHOWN = 4;
+const ENUM_VALUES_SHOWN = 8;
 
 function isRecord(value: unknown): value is SchemaRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -139,8 +188,122 @@ function referenceName(reference: string): string {
   return reference === '#' || name === '' || name === '#' ? 'schema' : name;
 }
 
-function literal(value: unknown): string {
-  return JSON.stringify(value);
+/** A value as plain text: a string as it is, anything else as JSON. */
+function plain(value: unknown): string {
+  return typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
+}
+
+/** The types a schema names, in plain words. */
+const TYPE_WORDS = new Map<string, string>([
+  ['string', 'text'],
+  ['number', 'number'],
+  ['integer', 'whole number'],
+  ['boolean', 'yes or no'],
+  ['null', 'none'],
+  ['object', 'object'],
+]);
+
+/** The formats that read better as a word than as `text (format)`. */
+const FORMAT_WORDS = new Map<string, string>([
+  ['date-time', 'date and time'],
+  ['date', 'date'],
+  ['time', 'time'],
+  ['email', 'email address'],
+  ['uri', 'link'],
+  ['url', 'link'],
+  ['uuid', 'ID'],
+]);
+
+/** The type a field reads as when it holds a JSON Schema document. */
+const JSON_SCHEMA_TYPE = 'JSON schema';
+
+/** A label as a noun in running text: `Steps` reads `steps`, `Order ID` reads `order ID`. */
+function lowerNoun(label: string): string {
+  return label
+    .split(' ')
+    .map((word) => (word === word.toUpperCase() && word.length > 1 ? word : word.toLowerCase()))
+    .join(' ');
+}
+
+/** One branch of a choice: the object a `oneOf` or `anyOf` member describes. */
+type Choice = {
+  /** What the branch is called: the value of the property that tells the branches apart. */
+  name: string;
+  schema: SchemaRecord;
+};
+
+/** The branches of a `oneOf` or `anyOf` whose members are all objects, and what tells them apart. */
+type Choices = {
+  members: Choice[];
+  /** The property whose constant value names each branch, when every branch has one. */
+  discriminator?: string;
+};
+
+/** The single value a property is fixed to by `const` or a one-value `enum`, if it is. */
+function fixedValue(root: SchemaRecord, definition: unknown): string | undefined {
+  if (!isRecord(definition)) return undefined;
+  const schema = flatten(root, definition, []);
+  if ('const' in schema) return plain(schema['const']);
+  const values = schema['enum'];
+  return Array.isArray(values) && values.length === 1 ? plain(values[0]) : undefined;
+}
+
+const COMMON_DISCRIMINATORS = ['kind', 'type', 'mode', 'variant'];
+
+/** The property that names each branch: a constant in every branch, with a different value in each. */
+function findDiscriminator(root: SchemaRecord, members: SchemaRecord[]): string | undefined {
+  const first = members[0]?.['properties'];
+  if (!isRecord(first)) return undefined;
+  const candidates = [
+    ...COMMON_DISCRIMINATORS.filter((key) => Object.hasOwn(first, key)),
+    ...Object.keys(first).filter((key) => !COMMON_DISCRIMINATORS.includes(key)),
+  ];
+  return candidates.find((key) => {
+    const values = members.map((member) => {
+      const properties = member['properties'];
+      return isRecord(properties) && Object.hasOwn(properties, key)
+        ? fixedValue(root, properties[key])
+        : undefined;
+    });
+    return values.every((value) => value !== undefined) && new Set(values).size === values.length;
+  });
+}
+
+/**
+ * Reads a `oneOf` or `anyOf` of objects as a choice. Returns `undefined` when the schema has no
+ * such keyword, when it has fewer than two members, or when a member is not an object.
+ */
+function readChoices(
+  root: SchemaRecord,
+  schema: SchemaRecord,
+  seen: readonly string[],
+): Choices | undefined {
+  const members = alternatives(root, schema, seen);
+  if (members.length < 2) return undefined;
+  const objects = members.every(
+    (member) => isRecord(member['properties']) || member['type'] === 'object',
+  );
+  if (!objects) return undefined;
+  const discriminator = findDiscriminator(root, members);
+  const names = members.map((member, index) => {
+    const properties = member['properties'];
+    if (
+      discriminator !== undefined &&
+      isRecord(properties) &&
+      Object.hasOwn(properties, discriminator)
+    ) {
+      return fixedValue(root, properties[discriminator]) ?? `option ${index + 1}`;
+    }
+    const title = member['title'];
+    return typeof title === 'string' && title !== '' ? title : `option ${index + 1}`;
+  });
+  return {
+    members: members.map((member, index) => ({
+      name: names[index] ?? `option ${index + 1}`,
+      schema: member,
+    })),
+    ...(discriminator === undefined ? {} : { discriminator }),
+  };
 }
 
 /** The members of a `oneOf` or `anyOf`, each flattened. */
@@ -158,20 +321,28 @@ function describeType(
   root: SchemaRecord,
   schema: SchemaRecord,
   seen: readonly string[],
+  label: string,
   depth = 0,
 ): string {
   if (depth >= TYPE_DEPTH_LIMIT) return '…';
   const reference = schema['$ref'];
-  if (typeof reference === 'string' && resolveReference(root, reference)) {
-    // Left unresolved only because it is already being expanded above.
-    return `${referenceName(reference)} (recursive)`;
+  if (typeof reference === 'string') {
+    if (resolveReference(root, reference)) {
+      // Left unresolved only because it is already being expanded above.
+      return `${referenceName(reference)} (recursive)`;
+    }
+    if (reference.includes('json-schema.org')) return JSON_SCHEMA_TYPE;
   }
+  if (schema['format'] === 'json-schema') return JSON_SCHEMA_TYPE;
   if (Array.isArray(schema['enum'])) {
-    const values = schema['enum'].map(literal);
-    const shown = values.slice(0, ENUM_VALUES_SHOWN).join(' | ');
-    return values.length > ENUM_VALUES_SHOWN ? `${shown} | …` : shown;
+    const values = schema['enum'].map(plain);
+    const shown = values.slice(0, ENUM_VALUES_SHOWN).join(', ');
+    return `one of: ${values.length > ENUM_VALUES_SHOWN ? `${shown}, …` : shown}`;
   }
-  if ('const' in schema) return literal(schema['const']);
+  if ('const' in schema) return `exactly ${plain(schema['const'])}`;
+
+  const choices = readChoices(root, schema, seen);
+  if (choices) return `one of: ${choices.members.map((member) => member.name).join(', ')}`;
 
   const declared = schema['type'];
   const types = typeof declared === 'string' ? [declared] : stringList(declared);
@@ -182,23 +353,29 @@ function describeType(
           const items = isRecord(schema['items'])
             ? flatten(root, schema['items'], seen)
             : undefined;
-          return items ? `array of ${describeType(root, items, seen, depth + 1)}` : 'array';
+          if (!items) return 'list';
+          if (isRecord(items['properties'])) {
+            const title = items['title'];
+            return `list of ${typeof title === 'string' && title !== '' ? title.toLowerCase() : lowerNoun(label)}`;
+          }
+          return `list of ${describeType(root, items, seen, label, depth + 1)}`;
         }
         if (type === 'string' && typeof schema['format'] === 'string') {
-          return `string (${schema['format']})`;
+          return FORMAT_WORDS.get(schema['format']) ?? 'text';
         }
-        return type;
+        if (type === 'object' && isRecord(schema['properties'])) return 'group of fields';
+        return TYPE_WORDS.get(type) ?? type;
       })
-      .join(' | ');
+      .join(' or ');
   }
 
   const members = alternatives(root, schema, seen);
   if (members.length > 0) {
-    return members.map((member) => describeType(root, member, seen, depth + 1)).join(' | ');
+    return members.map((member) => describeType(root, member, seen, label, depth + 1)).join(' or ');
   }
-  if (isRecord(schema['properties'])) return 'object';
-  if (isRecord(schema['items'])) return 'array';
-  return 'any';
+  if (isRecord(schema['properties'])) return 'group of fields';
+  if (isRecord(schema['items'])) return 'list';
+  return 'anything';
 }
 
 /** The object whose `properties` a field shows underneath it, if there is one. */
@@ -219,19 +396,47 @@ function nestedObject(
 /** What is left to spend on fields, shared by every level of one walk. */
 type FieldBudget = { remaining: number };
 
+/** Where in the schema a walk is, and how it reads fields there. */
+type FieldWalk = {
+  root: SchemaRecord;
+  maxDepth: number;
+  budget: FieldBudget;
+};
+
+/** How the fields of one object are named: under a parent, and inside one branch of a choice. */
+type FieldScope = {
+  /** The path of the field that holds them, `''` at the top. */
+  parentPath: string;
+  /** The branch they belong to, when they are the fields of one branch of a choice. */
+  branch?: string;
+};
+
+function describeField(field: SchemaViewField, schema: SchemaRecord): SchemaViewField {
+  const description = schema['description'];
+  if (typeof description === 'string' && description.trim() !== '') {
+    field.description = description;
+    const { summary, detail } = splitDescription(description);
+    field.summary = summary;
+    if (detail !== undefined) field.detail = detail;
+  }
+  return field;
+}
+
 function buildFields(
-  root: SchemaRecord,
+  walk: FieldWalk,
   parent: SchemaRecord,
   path: readonly string[],
   depth: number,
-  maxDepth: number,
-  budget: FieldBudget,
+  scope: FieldScope,
+  skip?: string,
 ): SchemaViewField[] {
+  const { root, maxDepth, budget } = walk;
   const properties = parent['properties'];
   if (!isRecord(properties)) return [];
   const required = new Set(stringList(parent['required']));
   const fields: SchemaViewField[] = [];
   for (const [key, definition] of Object.entries(properties)) {
+    if (key === skip) continue;
     // `path` holds the references being expanded above this field. A reference
     // on it is not followed again: the field shows the reference's name instead.
     const followed: string[] = [];
@@ -241,32 +446,77 @@ function buildFields(
     // below the field, not above it, so they do not make its type recursive.
     const typePath = [...path, ...followed];
     const nested = nestedObject(root, schema, path, followed);
+    const choices = readChoices(root, schema, typePath);
     const below = [...path, ...followed];
     budget.remaining -= 1;
-    const expand = nested !== undefined && depth < maxDepth && budget.remaining > 0;
-    const field: SchemaViewField = {
-      key,
-      label: humanizeIdentifier(key),
-      type: describeType(root, schema, typePath),
-      required: required.has(key),
-      fields: expand ? buildFields(root, nested, below, depth + 1, maxDepth, budget) : [],
-      truncated: nested !== undefined && !expand,
-    };
-    if (typeof schema['description'] === 'string' && schema['description'] !== '') {
-      field.description = schema['description'];
+    const label = humanizeIdentifier(key, { casing: 'sentence' });
+    const shownLabel = scope.branch === undefined ? label : `If ${scope.branch}: ${label}`;
+    const fieldPath = `${scope.parentPath}${scope.parentPath === '' ? '' : '/'}${
+      scope.branch === undefined ? '' : `${scope.branch}:`
+    }${key}`;
+    const hasChildren =
+      nested !== undefined ||
+      (choices !== undefined &&
+        choices.members.some((member) => isRecord(member.schema['properties'])));
+    const expand = hasChildren && depth < maxDepth && budget.remaining > 0;
+    const children: SchemaViewField[] = [];
+    if (expand) {
+      if (nested) {
+        children.push(...buildFields(walk, nested, below, depth + 1, { parentPath: fieldPath }));
+      }
+      if (choices) children.push(...buildBranchFields(walk, choices, below, depth + 1, fieldPath));
     }
-    fields.push(field);
+    fields.push(
+      describeField(
+        {
+          key,
+          path: fieldPath,
+          label: shownLabel,
+          type: describeType(root, schema, typePath, label),
+          required: required.has(key),
+          fields: children,
+          truncated: hasChildren && !expand,
+        },
+        schema,
+      ),
+    );
   }
   return fields;
 }
 
+/** The fields of every branch of a choice, each labelled `If <choice>: <field>`. */
+function buildBranchFields(
+  walk: FieldWalk,
+  choices: Choices,
+  path: readonly string[],
+  depth: number,
+  parentPath: string,
+): SchemaViewField[] {
+  return choices.members.flatMap((member) =>
+    buildFields(
+      walk,
+      member.schema,
+      path,
+      depth,
+      { parentPath, branch: member.name },
+      choices.discriminator,
+    ),
+  );
+}
+
 /**
  * Reads a JSON Schema into the fields a person scans: one entry per property,
- * with a formatted label, a short type, the description, whether it is
- * required, and the fields of a nested object. Local `$ref`s are followed and
- * `allOf` members are merged. A schema that is not an object with properties
- * yields one `Value` field, so the view still names the type; `true`, `{}`
- * and anything unreadable yield no fields.
+ * with a sentence-case label, a type in plain words, the description, whether
+ * it is required, and the fields of a nested object. Local `$ref`s are followed
+ * and `allOf` members are merged. A `oneOf` of objects that tell themselves
+ * apart by a constant property (`kind: { const: 'email' }`) lists each branch's
+ * fields under the choice, labelled `If email: Address`; the constant property
+ * itself is not a field. A schema that is not an object with properties yields
+ * one `Value` field, so the view still names the type; `true`, `{}` and
+ * anything unreadable yield no fields.
+ *
+ * Fields come in the order the schema declares them; use
+ * `partitionRequiredFields` to read the required ones first.
  *
  * `maxDepth` bounds how many levels of nested objects are expanded. A schema
  * that refers to itself shows the reference, for example `node (recursive)`,
@@ -283,18 +533,25 @@ export function readSchemaFields(schema: unknown, requestedDepth = 8): SchemaVie
   const nested = nestedObject(schema, root, [], followed);
   // `#` is the document itself, which is being expanded from the start.
   const path = ['#', ...followed];
-  if (nested) return buildFields(schema, nested, path, 0, maxDepth, { remaining: FIELD_BUDGET });
+  const walk: FieldWalk = { root: schema, maxDepth, budget: { remaining: FIELD_BUDGET } };
+  const choices = readChoices(schema, root, path);
+  const branchesHaveFields =
+    choices?.members.some((member) => isRecord(member.schema['properties'])) ?? false;
+  if (nested || branchesHaveFields) {
+    return [
+      ...(nested ? buildFields(walk, nested, path, 0, { parentPath: '' }) : []),
+      ...(choices && branchesHaveFields ? buildBranchFields(walk, choices, path, 0, '') : []),
+    ];
+  }
   if (Object.keys(root).length === 0) return [];
   const field: SchemaViewField = {
     key: 'value',
+    path: 'value',
     label: 'Value',
-    type: describeType(schema, root, path),
+    type: describeType(schema, root, path, 'Value'),
     required: false,
     fields: [],
     truncated: false,
   };
-  if (typeof root['description'] === 'string' && root['description'] !== '') {
-    field.description = root['description'];
-  }
-  return [field];
+  return [describeField(field, root)];
 }

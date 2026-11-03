@@ -81,8 +81,8 @@ ${Array.from({ length: 1500 }, (_, index) => `+line-${index + 1}`).join('\n')}
 
     test('shows the first rows with the viewer’s notice, and not the rest', () => {
       const { container, queryByRole } = mount({ kind: 'patch', diff: LONG });
-      expect(container.querySelector('.cinder-source-diff-viewer__notice')?.textContent).toContain(
-        'Showing first 1000 of 1500 diff lines.',
+      expect(container.querySelector('.cinder-source-diff-viewer__footer')?.textContent).toContain(
+        'Showing 1000 of 1500 changed lines',
       );
       expect(container.textContent).toContain('line-1000');
       expect(container.textContent).not.toContain('line-1001');
@@ -93,7 +93,6 @@ ${Array.from({ length: 1500 }, (_, index) => `+line-${index + 1}`).join('\n')}
       const { container, getByRole, queryByRole } = mount({ kind: 'patch', diff: LONG });
       await fireEvent.click(getByRole('button', { name: REVIEWS_COPY.operation.showWholeDiff }));
       expect(container.textContent).toContain('line-1500');
-      expect(container.querySelector('.cinder-source-diff-viewer__notice')).toBeNull();
       expect(queryByRole('button', { name: REVIEWS_COPY.operation.showWholeDiff })).toBeNull();
     });
 

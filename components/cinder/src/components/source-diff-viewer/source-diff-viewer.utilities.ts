@@ -6,6 +6,7 @@ import { createParsedGitFile } from './source-diff-viewer.git-header-parser.ts';
 import { getSourceDiffFileLabel } from './source-diff-viewer.labels.ts';
 import { parseGitFileSidePath } from './source-diff-viewer.path-normalization.ts';
 import type {
+  SourceDiffChangeCounts,
   SourceDiffFile,
   SourceDiffFileDescriptor,
   SourceDiffHunk,
@@ -657,4 +658,23 @@ export function parseUnifiedPatch(
     truncated: renderedLineCount < totalLineCount,
     descriptors,
   };
+}
+
+/**
+ * Counts the lines a unified patch adds and removes, for a summary such as "+3 −1". A patch the
+ * parser cannot read as a diff counts as none.
+ */
+export function countPatchChanges(patch: string): SourceDiffChangeCounts {
+  const parsed = parseUnifiedPatch(patch, { maxLines: Number.MAX_SAFE_INTEGER });
+  let added = 0;
+  let removed = 0;
+  for (const file of parsed.files) {
+    for (const hunk of file.hunks) {
+      for (const line of hunk.lines) {
+        if (line.kind === 'addition') added += 1;
+        else if (line.kind === 'removal') removed += 1;
+      }
+    }
+  }
+  return { added, removed };
 }

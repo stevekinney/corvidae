@@ -1,3 +1,5 @@
+import { parseUnifiedPatch } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
+
 /** One entry of an object or array, ready for the Fields view. */
 export type PayloadEntry = {
   /** The property name, or the 1-based position for an array entry. */
@@ -55,4 +57,14 @@ const IDENTIFIER_KEY =
 export function isIdentifierField(key: string, value: unknown): boolean {
   if (typeof value !== 'string' || value === '') return false;
   return UUID.test(value) || LONG_HEXADECIMAL.test(value) || IDENTIFIER_KEY.test(key);
+}
+
+/**
+ * True when a text value is a unified patch: it has a hunk header and at least one added or
+ * removed line. Text that only looks like a diff, such as a line starting with `-`, is not one.
+ */
+export function isUnifiedPatch(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.includes('\n')) return false;
+  const parsed = parseUnifiedPatch(value, { maxLines: 0 });
+  return parsed.descriptors.some((file) => file.hunkCount > 0 && file.changedLineCount > 0);
 }
