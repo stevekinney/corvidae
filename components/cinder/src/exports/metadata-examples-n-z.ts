@@ -70,6 +70,7 @@ import timeFieldExamplesJson from '../components/time-field/time-field.examples.
 import timelineExamplesJson from '../components/timeline/timeline.examples.json' with { type: 'json' };
 import toastRegionExamplesJson from '../components/toast-region/toast-region.examples.json' with { type: 'json' };
 import toggleExamplesJson from '../components/toggle/toggle.examples.json' with { type: 'json' };
+import toolPickerExamplesJson from '../components/tool-picker/tool-picker.examples.json' with { type: 'json' };
 import toolbarExamplesJson from '../components/toolbar/toolbar.examples.json' with { type: 'json' };
 import tooltipExamplesJson from '../components/tooltip/tooltip.examples.json' with { type: 'json' };
 import transferListExamplesJson from '../components/transfer-list/transfer-list.examples.json' with { type: 'json' };
@@ -219,6 +220,8 @@ export const timelineExamples = timelineExamplesJson;
 export const toastRegionExamples = toastRegionExamplesJson;
 /** Code examples for this component. */
 export const toggleExamples = toggleExamplesJson;
+/** Code examples for this component. */
+export const toolPickerExamples = toolPickerExamplesJson;
 /** Code examples for this component. */
 export const toolbarExamples = toolbarExamplesJson;
 /** Code examples for this component. */

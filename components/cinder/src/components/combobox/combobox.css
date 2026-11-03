@@ -86,7 +86,10 @@
     white-space: nowrap;
   }
 
-  .cinder-combobox__trigger-heading .cinder-combobox__trigger-value {
+  /* The name is the heading of a two-line field only when a description follows it; a name that
+     stands alone (a time zone) reads as the plain value of the field. */
+  .cinder-combobox__trigger-heading:has(+ .cinder-combobox__trigger-description)
+    .cinder-combobox__trigger-value {
     font-weight: var(--cinder-font-semibold);
   }
 

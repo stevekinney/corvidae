@@ -203,6 +203,7 @@ export { default as timeFieldVariables } from '../components/time-field/time-fie
 export { default as timelineVariables } from '../components/timeline/timeline.variables.ts';
 export { default as toastRegionVariables } from '../components/toast-region/toast-region.variables.ts';
 export { default as toggleVariables } from '../components/toggle/toggle.variables.ts';
+export { default as toolPickerVariables } from '../components/tool-picker/tool-picker.variables.ts';
 export { default as toolbarVariables } from '../components/toolbar/toolbar.variables.ts';
 export { default as tooltipVariables } from '../components/tooltip/tooltip.variables.ts';
 export { default as transferListVariables } from '../components/transfer-list/transfer-list.variables.ts';

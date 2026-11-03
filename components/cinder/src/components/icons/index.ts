@@ -1,5 +1,6 @@
 import type { LucideProps } from '@lucide/svelte';
 import type { Component } from 'svelte';
+export { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
 export { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
 export { default as Bold } from '@lucide/svelte/icons/bold';
 export { default as Brain } from '@lucide/svelte/icons/brain';

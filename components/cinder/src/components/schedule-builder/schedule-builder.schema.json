@@ -60,6 +60,29 @@
       "type": "string",
       "description": "Accessible label for the whole control. Defaults to \"Schedule\"."
     },
+    "variant": {
+      "enum": ["default", "compact"],
+      "description": "How the block is laid out: the full block with a Runs panel (`default`), or one row of fields\nand a plain Next runs list (`compact`).",
+      "default": "default"
+    },
+    "overlap": {
+      "type": "string",
+      "description": "The chosen overlap policy. The overlap select is drawn only when this is set."
+    },
+    "overlapLabel": {
+      "type": "string",
+      "description": "Label of the overlap select.",
+      "default": "If a run is still going"
+    },
+    "catchUp": {
+      "type": "boolean",
+      "description": "Whether to catch up on occurrences missed while the app was off. The select is drawn only when this is set."
+    },
+    "catchUpLabel": {
+      "type": "string",
+      "description": "Label of the catch-up select.",
+      "default": "If the app was off"
+    },
     "class": {
       "type": "string",
       "description": "Additional CSS classes applied to the root element."
@@ -69,14 +92,34 @@
   "metadata": {
     "unsupportedProps": [
       {
+        "name": "catchUpOptionLabels",
+        "reason": "unknown-shape",
+        "description": "The words of the catch-up select's two choices."
+      },
+      {
         "name": "computeNextFires",
         "reason": "function-or-snippet",
         "description": "Injected next-fires computation. The component passes the current value and\nthe requested count and renders whatever fires the consumer returns. When\nomitted, the preview list is hidden (the component ships no date logic)."
       },
       {
+        "name": "onCatchUpChange",
+        "reason": "function-or-snippet",
+        "description": "Called with `true` or `false` when the catch-up select changes."
+      },
+      {
+        "name": "onOverlapChange",
+        "reason": "function-or-snippet",
+        "description": "Called with the picked choice's `value` when the overlap select changes."
+      },
+      {
         "name": "onValueChange",
         "reason": "function-or-snippet",
         "description": "Called whenever the user edits the recurrence. Receives the next\n{@link ScheduleValue}; an invalid custom cron is not emitted. The consumer owns\npersistence."
+      },
+      {
+        "name": "overlapOptions",
+        "reason": "unknown-shape",
+        "description": "The choices of the overlap select. Defaults to skip and allow."
       }
     ]
   }

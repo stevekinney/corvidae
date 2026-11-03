@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Custom cron';
   export const description =
-    'Custom cron is the escape hatch for a schedule no other choice produces. Each of the five fields has a structured editor with an inline error, and an invalid expression is never emitted.';
+    'Custom cron is the escape hatch for a schedule no other choice produces. It is five plain fields, each with its range beneath. A field that needs fixing turns red, one message names it, and an invalid expression is never emitted.';
 </script>
 
 <script lang="ts">

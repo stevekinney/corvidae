@@ -932,7 +932,7 @@ export {
 export type { SidebarProps } from './components/sidebar/index.ts';
 
 export { default as SortableList } from './components/sortable-list/index.ts';
-export type { SortableListProps } from './components/sortable-list/index.ts';
+export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
 export type {
   SortableAnnouncements,
   SortableItemContext,
@@ -1163,6 +1163,13 @@ export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-swit
 
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';
+
+export { default as ToolPicker } from './components/tool-picker/index.ts';
+export type {
+  ToolPickerGroup,
+  ToolPickerItem,
+  ToolPickerProps,
+} from './components/tool-picker/index.ts';
 
 export { default as Toolbar } from './components/toolbar/index.ts';
 export type {

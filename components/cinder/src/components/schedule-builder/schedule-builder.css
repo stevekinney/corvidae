@@ -1,7 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../chip/chip.css';
 @import '../combobox/combobox.css';
-@import '../grid/grid.css';
+@import '../form-field/form-field.css';
 @import '../input/input.css';
 @import '../number-input/number-input.css';
 @import '../select/select.css';
@@ -11,7 +11,8 @@
   /* ========================================
    * SCHEDULE-BUILDER
    * Recurrence-definition control: Repeats, At and Time zone fields, with an
-   * always-visible read-back sentence and next-runs preview.
+   * always-visible read-back sentence and next-runs preview, and optional
+   * overlap and catch-up policy selects.
    * ======================================== */
 
   .cinder-schedule-builder {
@@ -31,72 +32,151 @@
     gap: var(--cinder-space-3);
   }
 
-  .cinder-schedule-builder__field-row > * {
-    flex: 1 1 10rem;
-    min-inline-size: 8rem;
+  /* Repeats takes the room its longest choice needs and At the width of a time, so they sit side
+     by side at a form's reading width and the weekday group, Time zone or Unit wrap beneath. */
+  .cinder-schedule-builder__repeats {
+    flex: 0 1 17.5rem;
+    min-inline-size: 10rem;
   }
 
+  /* With no At beside it (an interval, a cron), Repeats takes the whole row. */
+  .cinder-schedule-builder:not([data-cinder-variant='compact'])
+    .cinder-schedule-builder__field-row:not([data-cinder-time-of-day])
+    > .cinder-schedule-builder__repeats {
+    flex: 1 1 100%;
+  }
+
+  .cinder-schedule-builder__time {
+    flex: 0 0 8rem;
+  }
+
+  .cinder-schedule-builder__count {
+    flex: 0 1 8rem;
+  }
+
+  .cinder-schedule-builder__unit {
+    flex: 0 1 12.5rem;
+  }
+
+  .cinder-schedule-builder__day-of-month {
+    inline-size: 8rem;
+    max-inline-size: 100%;
+  }
+
+  .cinder-schedule-builder__zone {
+    min-inline-size: 0;
+  }
+
+  .cinder-schedule-builder[data-cinder-variant='compact'] .cinder-schedule-builder__zone {
+    flex: 1 1 10rem;
+  }
+
+  .cinder-schedule-builder[data-cinder-variant='compact'] .cinder-schedule-builder__repeats {
+    flex: 1 1 12rem;
+  }
+
+  .cinder-schedule-builder__help {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  /* The offset on a Time zone row sits at the trailing edge, in figures that line up. */
+  .cinder-schedule-builder__offset,
+  .cinder-schedule-builder__time-zone-footer {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ----------------------------------------
+   * Custom days: seven toggles joined into one group
+   * ---------------------------------------- */
+
   .cinder-schedule-builder__weekday-group {
+    display: inline-flex;
+    flex-wrap: nowrap;
+  }
+
+  .cinder-schedule-builder__weekday-group > .cinder-chip {
+    border-radius: 0;
+    justify-content: center;
+    min-inline-size: 3rem;
+    padding-inline: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-schedule-builder__weekday-group > .cinder-chip + .cinder-chip {
+    margin-inline-start: -1px;
+  }
+
+  .cinder-schedule-builder__weekday-group > .cinder-chip:first-child {
+    border-start-start-radius: var(--cinder-radius-md);
+    border-end-start-radius: var(--cinder-radius-md);
+  }
+
+  .cinder-schedule-builder__weekday-group > .cinder-chip:last-child {
+    border-start-end-radius: var(--cinder-radius-md);
+    border-end-end-radius: var(--cinder-radius-md);
+  }
+
+  /* A chosen day is filled in the accent tint, and paints over its neighbours' shared edge so
+     its accent edge is whole. */
+  .cinder-schedule-builder__weekday-group > .cinder-chip[aria-pressed='true'][data-cinder-variant] {
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+    border-color: var(--cinder-accent-solid);
+    position: relative;
+    z-index: 1;
+  }
+
+  .cinder-schedule-builder__weekday-group > .cinder-chip:focus-visible {
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ----------------------------------------
+   * Custom cron: five labelled fields in one row, each with its range beneath
+   * ---------------------------------------- */
+
+  .cinder-schedule-builder__cron {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: var(--cinder-space-2);
   }
 
   .cinder-schedule-builder__cron-fields {
-    min-inline-size: 0;
-  }
-
-  .cinder-schedule-builder__cron-field {
     display: grid;
-    gap: var(--cinder-space-2);
-    min-inline-size: 0;
-    padding: var(--cinder-space-2);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface-raised);
-  }
-
-  .cinder-schedule-builder__cron-range {
+    grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr));
+    gap: var(--cinder-space-3);
     min-inline-size: 0;
   }
 
-  .cinder-schedule-builder__cron-advanced > summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-2);
-    cursor: pointer;
-    list-style: none;
-  }
-
-  .cinder-schedule-builder__cron-advanced > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .cinder-schedule-builder__cron-advanced-chevron {
-    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
-  }
-
-  .cinder-schedule-builder__cron-advanced[open]
-    > summary
-    .cinder-schedule-builder__cron-advanced-chevron {
-    transform: rotate(180deg);
-  }
+  /* The error is the form field's own error line, so it reads the same as any other. With no
+     message the shared rule takes it out of the layout but keeps it mounted, so the live region
+     announces the message when it arrives. */
 
   /* ----------------------------------------
-   * Always-visible informational blocks: read-back and preview
+   * Runs panel and the plain Next runs list
    * ---------------------------------------- */
 
-  .cinder-schedule-builder__summary,
-  .cinder-schedule-builder__preview {
+  .cinder-schedule-builder__panel {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
+    gap: var(--cinder-space-2);
     margin: 0;
     padding: var(--cinder-space-3);
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-inset);
+  }
+
+  .cinder-schedule-builder__preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
   }
 
   .cinder-schedule-builder__section-label {
@@ -129,8 +209,23 @@
   }
 
   .cinder-schedule-builder__empty {
+    margin: 0;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
-    font-style: italic;
+  }
+
+  /* The compact block has no panel, so its Next runs list reads as quiet text. */
+  .cinder-schedule-builder[data-cinder-variant='compact'] .cinder-schedule-builder__section-label {
+    font-weight: var(--cinder-font-normal);
+  }
+
+  /* ----------------------------------------
+   * Policy selects: two plain selects sharing a row
+   * ---------------------------------------- */
+
+  .cinder-schedule-builder__policies {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--cinder-space-3);
   }
 }

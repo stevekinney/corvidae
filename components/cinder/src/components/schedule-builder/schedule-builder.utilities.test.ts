@@ -2,22 +2,28 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { ScheduleRepeats } from './schedule-builder.types.ts';
 import {
+  COMMON_TIME_ZONES,
   CRON_FIELDS,
   INTERVAL_UNITS,
   REPEATS_OPTIONS,
+  TIME_ZONE_VISIBLE_COUNT,
   WEEKDAYS,
   availableTimeZones,
   browserTimeZone,
   cronFieldsValid,
   cronForDraft,
   defaultScheduleValue,
+  describeCronFieldError,
   describeSchedule,
   draftFromValue,
   formatClockTime,
   joinCron,
+  orderTimeZones,
   parseTime,
   splitCron,
   timeZoneDisplayName,
+  timeZoneOffsetLabel,
+  timeZoneOptionLabel,
   validateCronField,
   valueFromDraft,
 } from './schedule-builder.utilities.ts';
@@ -276,18 +282,18 @@ describe('schedule-builder utilities', () => {
       cron: string;
       readBack: string;
     }[] = [
-      { repeats: 'daily', cron: '0 9 * * *', readBack: 'Every day at 9:00 AM Pacific Time' },
-      { repeats: 'weekdays', cron: '0 9 * * 1-5', readBack: 'Weekdays at 9:00 AM Pacific Time' },
-      { repeats: 'weekends', cron: '0 9 * * 0,6', readBack: 'Weekends at 9:00 AM Pacific Time' },
+      { repeats: 'daily', cron: '0 9 * * *', readBack: 'Every day at 9:00 AM Pacific time' },
+      { repeats: 'weekdays', cron: '0 9 * * 1-5', readBack: 'Weekdays at 9:00 AM Pacific time' },
+      { repeats: 'weekends', cron: '0 9 * * 0,6', readBack: 'Weekends at 9:00 AM Pacific time' },
       {
         repeats: 'custom-days',
         cron: '0 9 * * 1,3,5',
-        readBack: 'Mondays, Wednesdays and Fridays at 9:00 AM Pacific Time',
+        readBack: 'Monday, Wednesday and Friday at 9:00 AM Pacific time',
       },
       {
         repeats: 'monthly',
         cron: '0 9 1 * *',
-        readBack: 'Monthly on the 1st at 9:00 AM Pacific Time',
+        readBack: 'Monthly on the 1st at 9:00 AM Pacific time',
       },
     ];
 
@@ -409,7 +415,7 @@ describe('schedule-builder utilities', () => {
     });
 
     test('timeZoneDisplayName names a zone the way a person reads it', () => {
-      expect(timeZoneDisplayName('America/Los_Angeles')).toBe('Pacific Time');
+      expect(timeZoneDisplayName('America/Los_Angeles')).toBe('Pacific time');
       expect(timeZoneDisplayName('UTC')).toBe('UTC');
       expect(timeZoneDisplayName('Not/AZone')).toBe('Not/AZone');
     });
@@ -419,7 +425,7 @@ describe('schedule-builder utilities', () => {
         'Mondays at 9:00 AM UTC',
       );
       expect(describeSchedule({ cron: '0 9 * * 0,1', timeZone: 'UTC' })).toBe(
-        'Mondays and Sundays at 9:00 AM UTC',
+        'Monday and Sunday at 9:00 AM UTC',
       );
     });
 
@@ -444,8 +450,109 @@ describe('schedule-builder utilities', () => {
 
     test('a cron no choice produces reads back as the expression in its zone', () => {
       expect(describeSchedule({ cron: '0 */6 * * *', timeZone: 'America/Los_Angeles' })).toBe(
-        'Cron 0 */6 * * * in Pacific Time',
+        'Cron 0 */6 * * * in Pacific time',
       );
+    });
+  });
+
+  describe('time zone names', () => {
+    test('a zone reads as its sentence-case name, then its city', () => {
+      expect(timeZoneOptionLabel('America/Chicago')).toBe('Central time · Chicago');
+      expect(timeZoneOptionLabel('America/Mexico_City')).toBe('Central time · Mexico City');
+      expect(timeZoneOptionLabel('America/Los_Angeles')).toBe('Pacific time · Los Angeles');
+      expect(timeZoneOptionLabel('America/Denver')).toBe('Mountain time · Denver');
+    });
+
+    test('UTC reads as UTC and a zone the runtime cannot name reads as its id', () => {
+      expect(timeZoneOptionLabel('UTC')).toBe('UTC');
+      expect(timeZoneOptionLabel('Not/A_Zone')).toBe('Not/A Zone');
+    });
+
+    test('an offset uses a true minus sign, and zero reads as plus or minus nothing', () => {
+      const november = new Date('2026-11-02T12:00:00Z');
+      expect(timeZoneOffsetLabel('America/Chicago', november)).toBe('UTC\u22126');
+      expect(timeZoneOffsetLabel('America/Los_Angeles', november)).toBe('UTC\u22128');
+      expect(timeZoneOffsetLabel('America/Denver', november)).toBe('UTC\u22127');
+      expect(timeZoneOffsetLabel('UTC', november)).toBe('UTC±0');
+      expect(timeZoneOffsetLabel('Asia/Kolkata', november)).toBe('UTC+5:30');
+      expect(timeZoneOffsetLabel('Europe/Paris', november)).toBe('UTC+1');
+    });
+
+    test('an offset follows daylight time', () => {
+      expect(timeZoneOffsetLabel('America/Chicago', new Date('2026-07-01T12:00:00Z'))).toBe(
+        'UTC\u22125',
+      );
+    });
+
+    test('an unknown zone has no offset', () => {
+      expect(timeZoneOffsetLabel('Not/A_Zone')).toBe('');
+    });
+  });
+
+  describe('orderTimeZones', () => {
+    const zones = [
+      'Africa/Cairo',
+      'America/Denver',
+      'America/Chicago',
+      'UTC',
+      'America/Los_Angeles',
+      'America/Mexico_City',
+      'Asia/Tokyo',
+    ];
+
+    test('puts the chosen zone first, then the common zones in their set order, then the rest', () => {
+      expect(orderTimeZones(zones, 'America/Chicago').slice(0, TIME_ZONE_VISIBLE_COUNT)).toEqual([
+        'America/Chicago',
+        'America/Mexico_City',
+        'America/Los_Angeles',
+        'America/Denver',
+        'UTC',
+      ]);
+    });
+
+    test('a chosen zone outside the common set still leads, and nothing repeats', () => {
+      const ordered = orderTimeZones(zones, 'Asia/Tokyo');
+      expect(ordered[0]).toBe('Asia/Tokyo');
+      expect(new Set(ordered).size).toBe(ordered.length);
+      expect(ordered).toHaveLength(zones.length);
+    });
+
+    test('lists only zones it was given', () => {
+      expect(orderTimeZones(['Africa/Cairo'], 'Africa/Cairo')).toEqual(['Africa/Cairo']);
+      expect(COMMON_TIME_ZONES).toContain('UTC');
+    });
+  });
+
+  describe('describeCronFieldError', () => {
+    const tail = 'Cron uses minute, hour, day of month, month and day of week.';
+
+    test('names the field, its range and the Sunday rule for a value out of range', () => {
+      expect(describeCronFieldError('8', 4)).toBe(
+        `Day of week must be 0 to 6 (0 is Sunday). ${tail}`,
+      );
+      expect(describeCronFieldError('60', 0)).toBe(`Minute must be 0 to 59. ${tail}`);
+      expect(describeCronFieldError('24', 1)).toBe(`Hour must be 0 to 23. ${tail}`);
+      expect(describeCronFieldError('0', 2)).toBe(`Day of month must be 1 to 31. ${tail}`);
+      expect(describeCronFieldError('13', 3)).toBe(`Month must be 1 to 12. ${tail}`);
+    });
+
+    test('says what is wrong with each other kind of mistake', () => {
+      expect(describeCronFieldError('', 0)).toBe(`Minute can't be empty. ${tail}`);
+      expect(describeCronFieldError('1,,2', 0)).toBe(
+        `Minute has an empty item in its list. ${tail}`,
+      );
+      expect(describeCronFieldError('5-1', 0)).toBe(`Minute range starts after it ends. ${tail}`);
+      expect(describeCronFieldError('*/0', 0)).toBe(
+        `Minute step must be a whole number above zero. ${tail}`,
+      );
+      expect(describeCronFieldError('*/100', 0)).toBe(`Minute step must be 59 or less. ${tail}`);
+      expect(describeCronFieldError('mon', 4)).toContain("Day of week isn't a valid value.");
+    });
+
+    test('is undefined for an acceptable field and for an unknown field', () => {
+      expect(describeCronFieldError('*/15', 0)).toBeUndefined();
+      expect(describeCronFieldError('1-5', 4)).toBeUndefined();
+      expect(describeCronFieldError('1', 9)).toBeUndefined();
     });
   });
 

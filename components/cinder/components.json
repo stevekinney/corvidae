@@ -4406,7 +4406,7 @@
       "exportName": "ScheduleBuilder",
       "category": "form",
       "status": "beta",
-      "purpose": "Recurrence-definition control that reads a schedule as Repeats, At and Time zone, emits a cron or a counted interval with its IANA zone, and reads the schedule back as a sentence with its next runs.",
+      "purpose": "Recurrence control: Repeats, At and Time zone emit a cron or counted interval with its IANA zone, read back with its next runs, with optional overlap and catch-up selects.",
       "tags": ["schedule", "recurrence", "cron", "form"],
       "useWhen": [
         "Letting a user define when a job or notification recurs, supplying your own date/cron library to compute upcoming fire times.",
@@ -4414,7 +4414,7 @@
       ],
       "avoidWhen": [
         {
-          "reason": "You need overlap policy, jitter, or backfill controls — those belong to the consumer's surrounding form.",
+          "reason": "You need jitter or backfill-window controls — those belong to the consumer's surrounding form.",
           "alternative": "invocation-rule-builder"
         },
         {
@@ -4433,7 +4433,7 @@
       "a11y": {
         "pattern": "Form group",
         "notes": [
-          "Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable combobox; each custom cron field reports validity via aria-invalid and an associated hint or error."
+          "Repeats is a native select; At is hidden for interval repeats; the time zone is a searchable picker; each custom cron field reports validity via aria-invalid and one associated error."
         ]
       }
     },
@@ -6231,6 +6231,36 @@
         "schema": "src/components/toggle/toggle.schema.json",
         "variables": "src/components/toggle/toggle.variables.json",
         "examples": "src/components/toggle/toggle.examples.json"
+      }
+    },
+    {
+      "name": "ToolPicker",
+      "id": "tool-picker",
+      "import": "@lostgradient/cinder",
+      "exportName": "ToolPicker",
+      "category": "overlay",
+      "status": "beta",
+      "purpose": "Dialog for choosing tools and skills from a searchable list grouped by source, with each tool's risk and starting level, a counter, a loading state and collapsing groups for long lists.",
+      "tags": ["overlay", "dialog", "selection", "search"],
+      "useWhen": [
+        "Letting a person choose several items that carry a name, an identifier, a description and trailing facts, from grouped sources.",
+        "The list can be long enough to need search and collapsing groups, and some entries are shown but cannot be chosen."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Choosing one item from a short list — use select or combobox instead."
+        },
+        {
+          "reason": "Moving items between two lists the person keeps open — use transfer-list instead."
+        }
+      ],
+      "related": ["modal", "checkbox", "transfer-list", "combobox", "skeleton"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/tool-picker/tool-picker.schema.json",
+        "variables": "src/components/tool-picker/tool-picker.variables.json",
+        "examples": "src/components/tool-picker/tool-picker.examples.json"
       }
     },
     {

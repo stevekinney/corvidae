@@ -4,6 +4,12 @@ const schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   properties: {
+    reorderMode: {
+      enum: ['handle', 'buttons', 'both'],
+      description:
+        "How a row is reordered; see `SortableReorderMode`. With `buttons` or `both` the row's context\ncarries a `moveButtons` snippet, which the row content renders where the buttons belong.",
+      default: 'handle',
+    },
     label: {
       type: 'string',
       description: 'Accessible name for the list (applied as aria-label on the list root).',
@@ -32,6 +38,18 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           'Optional formatter for the drag handle\'s accessible name. Default: "Reorder {itemLabel}".',
+      },
+      {
+        name: 'formatMoveDownLabel',
+        reason: 'function-or-snippet',
+        description:
+          'Optional formatter for the Move down button\'s accessible name. Default: "Move {itemLabel} down".',
+      },
+      {
+        name: 'formatMoveUpLabel',
+        reason: 'function-or-snippet',
+        description:
+          'Optional formatter for the Move up button\'s accessible name. Default: "Move {itemLabel} up".',
       },
       {
         name: 'getItemLabel',

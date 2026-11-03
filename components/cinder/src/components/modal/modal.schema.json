@@ -71,6 +71,11 @@
         "reason": "function-or-snippet"
       },
       {
+        "name": "headerTrailing",
+        "reason": "function-or-snippet",
+        "description": "Content drawn at the trailing edge of the header, on the title's line (a count such as \"3 of 9\nchosen\"). It is not part of the dialog's accessible name. With the close button hidden it sits\nat the panel's own padding; with the close button shown it stays clear of it. Ignored by\n`chrome=\"none\"`, which draws no header."
+      },
+      {
         "name": "onDismiss",
         "reason": "function-or-snippet",
         "description": "Fired on user-initiated dismissal. Includes: Escape key (native dialog 'cancel' event),\nbackdrop click, and the close-X button. EXCLUDES: parent-driven open = false.\nCallbacks are not awaited and thrown callbacks do not block close."
