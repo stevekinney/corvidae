@@ -32,6 +32,10 @@ Groups related form fields under a heading with optional description and layout 
 </FormSection>
 ```
 
+## Heading note
+
+`meta` puts a short muted note beside the heading on its baseline ("Read with every chat", "3 of 9"). It is outside the heading element, so the heading's accessible name stays the heading text; in a `fieldset` the note sits inside the legend after the text. Use `description` for a sentence of guidance.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -44,6 +48,7 @@ Groups related form fields under a heading with optional description and layout 
 | `description` | `string` | no | — | Optional descriptive paragraph rendered under the heading/legend. |
 | `heading` | `string` | no | — | Heading text rendered as `<h{level}>`. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | — | Heading level. Default 2. |
+| `meta` | `string` | no | — | A short muted note beside the heading, on its baseline ("Read with every chat", "3 of 9"). It says what the section is for or how much is in it; a sentence of guidance is the `description`. |
 | `children` | `(opaque)` | yes | — | Children (FormField instances or arbitrary content). Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

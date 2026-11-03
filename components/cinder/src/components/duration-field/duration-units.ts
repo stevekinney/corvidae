@@ -59,3 +59,22 @@ export function toMilliseconds(
   const milliseconds = shown * millisecondsPer(unitValue, units);
   return integer ? Math.round(milliseconds) : Math.round(milliseconds * 1e6) / 1e6;
 }
+
+/**
+ * Writes a length of time in words ("1 second", "2 minutes", "1 hour 30 minutes"), for a message
+ * that names a bound such as the shortest a timeout may be. Reads the largest units first and
+ * leaves out the ones that are zero; under a second it falls back to milliseconds.
+ */
+export function describeDuration(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '0 seconds';
+  let remaining = Math.round(milliseconds);
+  const parts: string[] = [];
+  for (const unit of [...DURATION_UNITS].reverse()) {
+    const count = Math.floor(remaining / unit.milliseconds);
+    if (count === 0) continue;
+    remaining -= count * unit.milliseconds;
+    const name = unit.name ?? unit.label;
+    parts.push(`${count} ${count === 1 ? name.replace(/s$/, '') : name}`);
+  }
+  return parts.join(' ');
+}

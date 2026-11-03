@@ -167,7 +167,7 @@ function fieldFromJsonSchema(
  * True when a numeric property is a duration in milliseconds: it says so with `format:
  * "duration-ms"` or `unit: "milliseconds"`, or its name ends in `Ms`, `_ms` or `Milliseconds`.
  */
-function isMillisecondsField(schema: JsonSchemaObject, key: string): boolean {
+export function isMillisecondsField(schema: JsonSchemaObject, key: string): boolean {
   return (
     schema['format'] === 'duration-ms' ||
     schema['unit'] === 'milliseconds' ||

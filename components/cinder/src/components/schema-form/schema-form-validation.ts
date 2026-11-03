@@ -6,7 +6,13 @@ import {
   type InterpreterError,
   type InterpreterKnownDraft,
 } from '../../utilities/json-schema-interpreter.ts';
-import { isRecord, pathKey, type JsonSchemaObject } from './schema-form-model.ts';
+import { describeDuration } from '../duration-field/duration-units.ts';
+import {
+  isMillisecondsField,
+  isRecord,
+  pathKey,
+  type JsonSchemaObject,
+} from './schema-form-model.ts';
 
 export type SchemaFormValidationIssue = {
   path: string[];
@@ -60,7 +66,7 @@ async function validateJsonSchemaValue(
 
   const result = compiled.validate(value);
   if (result.valid) return { valid: true, value, issues: [] };
-  return { valid: false, value, issues: interpreterIssues(result.errors) };
+  return { valid: false, value, issues: interpreterIssues(result.errors, schema) };
 }
 
 function validationFailure(value: unknown, message: string): SchemaFormValidationResult {
@@ -123,30 +129,59 @@ function jsonSchemaDraft(schema: JsonSchemaObject): InterpreterKnownDraft {
   return '2020-12';
 }
 
-function interpreterIssues(errors: readonly InterpreterError[]): SchemaFormValidationIssue[] {
+function interpreterIssues(
+  errors: readonly InterpreterError[],
+  schema: JsonSchemaObject,
+): SchemaFormValidationIssue[] {
   return errors.map((error) => ({
     path: interpreterErrorPath(error),
-    message: readableInterpreterMessage(error),
+    message: readableInterpreterMessage(error, schema),
   }));
 }
 
-function readableInterpreterMessage(error: InterpreterError): string {
+/** True for a top-level property that holds a duration in milliseconds (the duration test). */
+function isDurationProperty(error: InterpreterError, schema: JsonSchemaObject): boolean {
+  const path = interpreterErrorPath(error);
+  const properties = schema['properties'];
+  const key = path[0];
+  if (path.length !== 1 || key === undefined) return false;
+  if (!isRecord(properties) || !Object.hasOwn(properties, key)) return false;
+  const property = properties[key];
+  return isRecord(property) && isMillisecondsField(property, key);
+}
+
+/**
+ * Words a bound for a top-level duration property as a length of time, so `timeoutMs` below its
+ * minimum reads "must be at least 1 second" and not "must be at least 1000". Only a top-level key
+ * is looked up: that is where a form's durations are, and the duration test needs the key.
+ */
+function boundValue(error: InterpreterError, schema: JsonSchemaObject, bound: unknown): string {
+  if (typeof bound !== 'number' || !isDurationProperty(error, schema)) return String(bound);
+  return describeDuration(bound);
+}
+
+function readableInterpreterMessage(error: InterpreterError, schema: JsonSchemaObject): string {
   const fieldName = interpreterErrorPath(error).at(-1) ?? 'Value';
-  const label = humanizeFieldName(fieldName);
+  // The unit is in the key ("timeoutMs"), not in what a person calls the field.
+  const label = humanizeFieldName(
+    isDurationProperty(error, schema) ? fieldName.replace(DURATION_KEY_SUFFIX, '') : fieldName,
+  );
 
   if (error.code === 'required-property-error') return `${label} is required.`;
   if (error.code === 'min-length-error') return `${label} is too short.`;
   if (error.code === 'max-length-error') return `${label} is too long.`;
   if (error.code === 'minimum-error') {
-    return `${label} must be at least ${String(error.data['minimum'])}.`;
+    return `${label} must be at least ${boundValue(error, schema, error.data['minimum'])}.`;
   }
   if (error.code === 'maximum-error') {
-    return `${label} must be at most ${String(error.data['maximum'])}.`;
+    return `${label} must be at most ${boundValue(error, schema, error.data['maximum'])}.`;
   }
   if (error.code === 'type-error') return `${label} must be ${String(error.data['expected'])}.`;
 
   return error.message || 'Invalid value';
 }
+
+const DURATION_KEY_SUFFIX = /(?:Ms|_ms|Milliseconds|_milliseconds)$/;
 
 function humanizeFieldName(name: string): string {
   return name

@@ -195,6 +195,7 @@ export type {
   ChoiceGridItemState,
   ChoiceGridProps,
   ChoiceGridSize,
+  ChoiceGridVariant,
 } from './components/choice-grid/index.ts';
 
 export { default as ChoiceGridItem } from './components/choice-grid-item/index.ts';
@@ -483,8 +484,10 @@ export { default as FileUpload } from './components/file-upload/index.ts';
 export type {
   FileUploadEntry,
   FileUploadProps,
+  FileUploadRejection,
   FileUploadRejectionReason,
   FileUploadStatus,
+  FileUploadVariant,
   RejectedFile,
 } from './components/file-upload/index.ts';
 

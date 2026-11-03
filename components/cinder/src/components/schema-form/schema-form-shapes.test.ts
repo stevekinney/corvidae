@@ -471,7 +471,7 @@ describe('SchemaForm shapes: milliseconds as a number plus unit', () => {
     await submit(container);
 
     expect(submitted).toEqual([]);
-    expect(screen.getByText('Timeout Ms must be integer.')).toBeTruthy();
+    expect(screen.getByText('Timeout must be integer.')).toBeTruthy();
   });
 
   test('does not submit a stale value when malformed duration text is committed on blur', async () => {

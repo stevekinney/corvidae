@@ -13,10 +13,12 @@ Selectable answer tile used inside a ChoiceGrid; carries selected, disabled, cor
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-choice-grid-item`. |
+| `description` | `string` | no | — | One sentence under the title that says what choosing this does. Drawn only when the grid is `variant="card"`, and linked to the item with `aria-describedby`. |
 | `disabled` | `boolean` | no | — | When true this item cannot be selected or focused. |
 | `state` | `"neutral"` \| `"correct"` \| `"incorrect"` \| `"pending"` | no | — | Feedback state for assessment / quiz usage. Defaults to `'neutral'`. Layout dimensions do NOT change across states (stable cell sizing guarantee). |
 | `value` | `string` | yes | — | The value this item represents. Used as the key for selection state, roving tabindex registration, and ARIA attributes. |
-| `children` | `(opaque)` | yes | — | Item content — label text, an icon, or richer markup. Not expressible in JSON Schema; see the component types for the signature. |
+| `children` | `(opaque)` | yes | — | Item content — label text, or richer markup. In a card grid this is the title. Not expressible in JSON Schema; see the component types for the signature. |
+| `icon` | `(opaque)` | no | — | A small icon drawn before the title. Drawn only when the grid is `variant="card"`; it is decorative, so the title still names the choice. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

@@ -304,3 +304,59 @@ describe('KeyValueEditor', () => {
     });
   });
 });
+
+describe('KeyValueEditor as a labelled group (row 33q)', () => {
+  test('a label makes the editor a named group and a description is linked to it', () => {
+    const { container, getByRole } = render(KeyValueEditor, {
+      entries: [{ id: 'token', key: 'GITHUB_TOKEN', value: 'private' }],
+      label: 'Environment',
+      description: 'Values are masked and stored on this machine like an API key.',
+      secret: () => true,
+    });
+    const group = getByRole('group', { name: 'Environment' });
+    const describedBy = group.getAttribute('aria-describedby');
+    expect(document.getElementById(describedBy ?? '')?.textContent?.trim()).toBe(
+      'Values are masked and stored on this machine like an API key.',
+    );
+    expect(container.querySelector('.cinder-key-value-editor__label')?.textContent).toBe(
+      'Environment',
+    );
+  });
+
+  test('without a label it stays a plain container', () => {
+    const { container } = render(KeyValueEditor, { entries: [] });
+    const root = requiredInstance(container.firstElementChild, HTMLElement);
+    expect(root.hasAttribute('role')).toBe(false);
+    expect(root.hasAttribute('aria-labelledby')).toBe(false);
+    expect(root.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  test('key and value names, the add label and the remove label follow the vocabulary', () => {
+    const { getByRole, getByLabelText } = render(KeyValueEditor, {
+      entries: [{ id: 'token', key: 'GITHUB_TOKEN', value: 'private' }],
+      keyLabel: 'Name',
+      valueLabel: 'Value',
+      addLabel: 'Add variable',
+      removeLabel: (key: string) => `Remove ${key}`,
+      secret: () => true,
+    });
+    expect((getByLabelText('Name') as HTMLInputElement).value).toBe('GITHUB_TOKEN');
+    expect((getByLabelText('Value') as HTMLInputElement).type).toBe('password');
+    expect(getByRole('button', { name: 'Add variable' })).toBeTruthy();
+    expect(getByRole('button', { name: 'Remove GITHUB_TOKEN' }).textContent?.trim()).toBe('Remove');
+  });
+
+  test('monospace draws both inputs in the code face', () => {
+    const { container } = render(KeyValueEditor, {
+      entries: [{ id: 'token', key: 'GITHUB_TOKEN', value: 'private' }],
+      monospace: true,
+    });
+    const inputs = container.querySelectorAll('input');
+    expect(inputs).toHaveLength(2);
+    for (const input of inputs) {
+      expect(input.closest('[data-cinder-variant]')?.getAttribute('data-cinder-variant')).toBe(
+        'code',
+      );
+    }
+  });
+});

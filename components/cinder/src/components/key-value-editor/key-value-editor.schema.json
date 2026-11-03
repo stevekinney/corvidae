@@ -7,6 +7,29 @@
       "description": "Label for the add-row action. Give it concrete wording when more than\none editor is on the page. Defaults to `'Add pair'`.",
       "default": "Add pair"
     },
+    "label": {
+      "type": "string",
+      "description": "Visible name for the whole list, shown above the rows (\"Environment\"). The editor becomes a\nlabelled group, so a screen reader announces it when focus enters the list."
+    },
+    "description": {
+      "type": "string",
+      "description": "Help under the Add button, linked to the group with `aria-describedby`. State what the values\nare, such as that they are masked and never shown again."
+    },
+    "keyLabel": {
+      "type": "string",
+      "description": "Accessible name of every row's key input (it has no visible label of its own). Give it the\nnoun the rows use, such as `'Name'` for environment variables.",
+      "default": "Key"
+    },
+    "valueLabel": {
+      "type": "string",
+      "description": "Accessible name of every row's value input.",
+      "default": "Value"
+    },
+    "monospace": {
+      "type": "boolean",
+      "description": "Draws the key and value inputs in the monospace face, for identifiers and secrets such as\nenvironment variable names.",
+      "default": false
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged with the component's root class."

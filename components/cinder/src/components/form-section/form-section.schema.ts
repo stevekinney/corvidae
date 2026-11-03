@@ -8,6 +8,11 @@ const schema = {
       type: 'string',
       description: 'Optional descriptive paragraph rendered under the heading/legend.',
     },
+    meta: {
+      type: 'string',
+      description:
+        'A short muted note beside the heading, on its baseline ("Read with every chat", "3 of 9").\nIt says what the section is for or how much is in it; a sentence of guidance is the\n`description`.',
+    },
     columns: {
       enum: [1, 2, 3, 4],
       description: 'Column ceiling. Container queries pick the actual rendered count. Default 2.',

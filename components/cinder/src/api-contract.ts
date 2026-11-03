@@ -288,6 +288,10 @@ export const CONTRACT: Record<string, ComponentContract> = {
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       name: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('dropzone') },
+      summary: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      rejectionMessage: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      cancelLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Cancel upload') },
       title: {
         optional: true,
         type_kind: 'TSStringKeyword',
@@ -301,6 +305,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       onFilesAccepted: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onFilesChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onReject: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      onFileCancel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onFileRetry: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
     },
     snippets: {

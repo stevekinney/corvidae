@@ -22,9 +22,21 @@ export type ChoiceGridItemProps = {
   /** When true this item cannot be selected or focused. */
   disabled?: boolean;
 
+  /**
+   * One sentence under the title that says what choosing this does. Drawn only when the grid is
+   * `variant="card"`, and linked to the item with `aria-describedby`.
+   */
+  description?: string;
+
+  /**
+   * A small icon drawn before the title. Drawn only when the grid is `variant="card"`; it is
+   * decorative, so the title still names the choice.
+   */
+  icon?: Snippet;
+
   /** Additional class names merged with `.cinder-choice-grid-item`. */
   class?: string;
 
-  /** Item content — label text, an icon, or richer markup. */
+  /** Item content — label text, or richer markup. In a card grid this is the title. */
   children: Snippet;
 };

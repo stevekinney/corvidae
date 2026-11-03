@@ -38,6 +38,12 @@
       "title": "Compact multi-select",
       "description": "The same `size=\"sm\"` compaction applies to multi-select — cells stay the same size whether checked, hovered, focused, or disabled.",
       "code": "<script lang=\"ts\">\n  import { ChoiceGrid } from '@lostgradient/cinder';\n\n  const strings = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];\n  let selected = $state<string[]>([]);\n</script>\n\n<div style=\"max-width: 20rem;\">\n  <ChoiceGrid multiple ariaLabel=\"Choose open strings\" size=\"sm\" bind:values={selected}>\n    {#each strings as string (string)}\n      <ChoiceGrid.Item value={string}>{string}</ChoiceGrid.Item>\n    {/each}\n  </ChoiceGrid>\n</div>\n"
+    },
+    {
+      "id": "cards",
+      "title": "Cards with a description",
+      "description": "variant=\"card\" draws each choice as a left-aligned card with a radio indicator, an icon, a title and a one-sentence description, for choosing a source type or similar. The selected card takes the accent border and tint.",
+      "code": "<script lang=\"ts\">\n  import { ChoiceGrid } from '@lostgradient/cinder';\n  import GlobeIcon from '@lucide/svelte/icons/globe';\n  import ServerIcon from '@lucide/svelte/icons/server';\n\n  let source = $state<string | null>('mcp');\n</script>\n\n<ChoiceGrid variant=\"card\" columns={2} ariaLabel=\"What are you connecting?\" bind:value={source}>\n  <ChoiceGrid.Item\n    value=\"mcp\"\n    description=\"A server that offers tools, such as GitHub or a database.\"\n  >\n    {#snippet icon()}<ServerIcon />{/snippet}\n    MCP server\n  </ChoiceGrid.Item>\n  <ChoiceGrid.Item value=\"openapi\" description=\"A web API described by an OpenAPI 3 file.\">\n    {#snippet icon()}<GlobeIcon />{/snippet}\n    OpenAPI spec\n  </ChoiceGrid.Item>\n</ChoiceGrid>\n"
     }
   ]
 }

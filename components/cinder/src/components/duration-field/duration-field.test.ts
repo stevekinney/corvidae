@@ -7,7 +7,7 @@ setupHappyDom();
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: DurationField } = await import('./duration-field.svelte');
-const { DURATION_UNITS, durationUnitFor, fromMilliseconds, toMilliseconds } =
+const { DURATION_UNITS, describeDuration, durationUnitFor, fromMilliseconds, toMilliseconds } =
   await import('./duration-units.ts');
 
 afterEach(() => {
@@ -125,5 +125,21 @@ describe('duration units', () => {
     expect(durationUnitFor(172_800_000, units)).toBe('d');
     expect(durationUnitFor(500, units)).toBe('s');
     expect(fromMilliseconds(172_800_000, 'd', units)).toBe(2);
+  });
+});
+
+describe('describeDuration', () => {
+  test.each([
+    [1000, '1 second'],
+    [30_000, '30 seconds'],
+    [120_000, '2 minutes'],
+    [90_000, '1 minute 30 seconds'],
+    [3_600_000, '1 hour'],
+    [5_400_000, '1 hour 30 minutes'],
+    [250, '250 milliseconds'],
+    [1, '1 millisecond'],
+    [0, '0 seconds'],
+  ])('%d ms reads %s', (milliseconds, words) => {
+    expect(describeDuration(milliseconds)).toBe(words);
   });
 });
