@@ -130,7 +130,7 @@
       "exportName": "AccessGate",
       "category": "feedback",
       "status": "alpha",
-      "purpose": "Authorization-scope gate that keeps unavailable actions visible with an accessible reason or replaces locked sections with a scope-required placeholder.",
+      "purpose": "Authorization-scope gate that keeps unavailable actions visible with a reason, or replaces a locked section or page with a neutral disc, title, reason, missing scope and actions.",
       "tags": ["feedback", "authorization", "permission"],
       "useWhen": [
         "Showing a mutating action that the current user cannot activate because an application authorization scope is missing.",
@@ -2157,11 +2157,12 @@
       "exportName": "ErrorState",
       "category": "feedback",
       "status": "stable",
-      "purpose": "Error placeholder, centered in an alert or flat on the surrounding surface, with a title, description, optional detail, and optional retry button for a region whose data failed to load.",
+      "purpose": "Centred error placeholder with a disc, title, description, progress line, retry, secondary action and details disclosure for a failed load, or a neutral not-found state.",
       "tags": ["feedback", "error"],
       "useWhen": [
         "Replacing a primary content region after its query or request failed, so the failure never looks like an empty result.",
-        "Offering the user a retry for a region that can be reloaded."
+        "Offering the user a retry for a region that can be reloaded, with the retry as the only primary action on the page.",
+        "Telling a person that the thing they asked for doesn't exist, using the neutral tone."
       ],
       "avoidWhen": [
         {

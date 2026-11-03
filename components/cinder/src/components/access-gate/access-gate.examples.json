@@ -14,6 +14,12 @@
       "title": "Locked section",
       "description": "Replaces a protected region with a scope-required placeholder.",
       "code": "<script lang=\"ts\">\n  import { AccessGate } from '@lostgradient/cinder';\n</script>\n\n<AccessGate\n  granted={false}\n  variant=\"section\"\n  reason=\"Requires scope: storage:admin\"\n  requirement=\"storage:admin\"\n/>\n"
+    },
+    {
+      "id": "page",
+      "title": "Forbidden page",
+      "description": "The full-page layout for a page with nothing readable: what is blocked, the missing scope on its own line, and where to look.",
+      "code": "<script lang=\"ts\">\n  import { AccessGate, Button } from '@lostgradient/cinder';\n</script>\n\n<AccessGate\n  granted={false}\n  variant=\"section\"\n  layout=\"page\"\n  headingLevel={1}\n  title=\"Your sign-in can’t open Hooks\"\n  reason=\"Settings › API reference › Your scopes shows what it can do.\"\n  requirement=\"hooks:read\"\n>\n  {#snippet actions()}\n    <Button variant=\"secondary\" label=\"See your scopes\" />\n    <Button variant=\"secondary\" label=\"Back to Home\" />\n  {/snippet}\n</AccessGate>\n"
     }
   ]
 }

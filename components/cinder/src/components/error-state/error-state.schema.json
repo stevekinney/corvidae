@@ -12,7 +12,21 @@
     },
     "detail": {
       "type": "string",
-      "description": "Optional technical detail, such as a fault code, rendered below the description."
+      "description": "Optional technical detail, such as a fault code. It sits behind a disclosure labelled\n`detailsLabel`, so the plain-words description stays the first thing a person reads."
+    },
+    "detailsLabel": {
+      "type": "string",
+      "description": "Label of the disclosure that holds `detail`.",
+      "default": "Show the error details"
+    },
+    "retryStatus": {
+      "type": "string",
+      "description": "A line of progress under the description, such as \"Retrying in 8 s (attempt 3 of 8)\". It\nrenders in tabular figures and is not a live region, so a countdown never announces itself\nevery second."
+    },
+    "tone": {
+      "enum": ["danger", "neutral"],
+      "description": "What kind of problem this reports. `'danger'` is a failure and is announced as an alert;\n`'neutral'` is a state where nothing failed, such as a missing page, and is a plain group.",
+      "default": "danger"
     },
     "retryLabel": {
       "type": "string",
@@ -26,7 +40,7 @@
     },
     "variant": {
       "enum": ["default", "flat"],
-      "description": "Visual treatment. `'default'` centres a boxed danger alert in padded space.\n`'flat'` renders the same content as a start-aligned block with no box and\nno padding of its own, for a page whose container already pads it. Either\nway the error is announced as an alert.",
+      "description": "Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title,\nthe description, the progress line, then the actions, centred in the region it fills.\n`'flat'` renders the same text as a start-aligned block with no disc and no padding of its\nown, for a card or tab whose container already pads it.",
       "default": "default"
     },
     "class": {
@@ -39,9 +53,19 @@
   "metadata": {
     "unsupportedProps": [
       {
+        "name": "icon",
+        "reason": "function-or-snippet",
+        "description": "Replaces the glyph in the disc. The default is a warning triangle for the `'danger'` tone and\na magnifying glass for `'neutral'`. Decorative, so it is hidden from assistive technology."
+      },
+      {
         "name": "onRetry",
         "reason": "function-or-snippet",
-        "description": "Called when the retry button is activated. The retry button renders only when this is given."
+        "description": "Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action."
+      },
+      {
+        "name": "secondaryAction",
+        "reason": "function-or-snippet",
+        "description": "A second action rendered after the retry button, such as an \"Open Health\" link or a\n\"Back to chats\" button. Give it the secondary or ghost button variant so the retry button\nstays the only primary on the page."
       }
     ]
   }

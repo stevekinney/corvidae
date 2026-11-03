@@ -24,9 +24,12 @@ for (const theme of themes) {
       fixtureContentHash: fixture.fixtureContentHash,
     });
 
-    // One state with a retry button, one without.
-    await expect(page.locator('[role="alert"]')).toHaveCount(2);
+    // Three failures (a retry, no retry, and a retry with a second action and a progress line)
+    // announce as alerts; the neutral not-found state is a plain group.
+    await expect(page.locator('[role="alert"]')).toHaveCount(3);
     await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Open Health' })).toHaveCount(1);
+    await expect(page.getByText('Show the error details')).toHaveCount(2);
 
     await page.getByRole('button', { name: 'Try again' }).click();
     await expect(page.getByTestId('error-state-retries')).toHaveText('Retried 1 times.');

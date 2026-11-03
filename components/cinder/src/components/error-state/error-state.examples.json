@@ -14,6 +14,18 @@
       "title": "Without retry",
       "description": "Omit onRetry when the failure cannot be retried from this region.",
       "code": "<script lang=\"ts\">\n  import { ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"You do not have access\"\n  description=\"Ask a workspace owner to grant you access to this view.\"\n  headingLevel={3}\n/>\n"
+    },
+    {
+      "id": "with-actions",
+      "title": "Retry status and a second action",
+      "description": "The retry is the page’s only primary action; a secondary action, a progress line and the fault code behind a disclosure sit with it.",
+      "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"Couldn’t load runs\"\n  description=\"Interborough didn’t answer. Your runs are safe; they’re stored on this machine.\"\n  retryStatus=\"Retrying in 8 s (attempt 3 of 8)\"\n  retryLabel=\"Retry now\"\n  detail=\"HTTP 500 from /api/runs\"\n  onRetry={() => {}}\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" label=\"Open Health\" />\n  {/snippet}\n</ErrorState>\n"
+    },
+    {
+      "id": "not-found",
+      "title": "Not found",
+      "description": "The neutral tone for a thing that doesn’t exist: nothing failed, so it is not announced as an alert.",
+      "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  tone=\"neutral\"\n  title=\"This run doesn’t exist\"\n  description=\"It may have been deleted. The address might also be mistyped.\"\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" label=\"Back to Runs\" />\n  {/snippet}\n</ErrorState>\n"
     }
   ]
 }

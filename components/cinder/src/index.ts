@@ -1,7 +1,11 @@
 import './styles/index.css';
 
 export { default as AccessGate } from './components/access-gate/index.ts';
-export type { AccessGateProps, AccessGateVariant } from './components/access-gate/index.ts';
+export type {
+  AccessGateLayout,
+  AccessGateProps,
+  AccessGateVariant,
+} from './components/access-gate/index.ts';
 
 export { default as AccordionItem } from './components/accordion-item/index.ts';
 export type { AccordionItemProps } from './components/accordion-item/index.ts';
@@ -414,7 +418,11 @@ export type {
 } from './components/empty-state/index.ts';
 
 export { default as ErrorState } from './components/error-state/index.ts';
-export type { ErrorStateProps, ErrorStateVariant } from './components/error-state/index.ts';
+export type {
+  ErrorStateProps,
+  ErrorStateTone,
+  ErrorStateVariant,
+} from './components/error-state/index.ts';
 
 export { default as FilterBar } from './components/filter-bar/index.ts';
 export type {

@@ -96,60 +96,99 @@
     overflow-wrap: anywhere;
   }
 
+  /* A denied section is a neutral disc, a title, the reason, the missing scope and its actions,
+   * centred. The inline layout is a compact bordered card for one region of a readable page. */
   .cinder-access-gate[data-cinder-variant='section'] {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: var(--cinder-space-3);
-    align-items: start;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
     inline-size: 100%;
-    padding-block: var(--cinder-space-6);
-    padding-inline: var(--cinder-space-5);
-    border: 1px dashed var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface);
+    box-sizing: border-box;
+    padding-block: var(--cinder-space-5);
+    padding-inline: var(--cinder-space-6);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised);
   }
 
   .cinder-access-gate__section-icon {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface-raised);
+    flex-shrink: 0;
+    inline-size: var(--cinder-space-10);
+    block-size: var(--cinder-space-10);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-surface-inset);
     color: var(--cinder-text-muted);
   }
 
-  .cinder-access-gate__section-copy {
-    display: grid;
-    gap: var(--cinder-space-1);
-    min-inline-size: 0;
+  .cinder-access-gate__section-icon > svg {
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
+  }
+
+  .cinder-access-gate__section-title {
+    margin: 0;
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  .cinder-access-gate__section-reason {
+    margin: 0;
+    margin-block-start: var(--cinder-space-0-5);
+    max-inline-size: 23.75rem;
   }
 
   .cinder-access-gate__requirement {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-1) var(--cinder-space-2);
-    align-items: baseline;
-    margin-block-start: var(--cinder-space-2);
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    line-height: var(--cinder-leading-snug);
-  }
-
-  .cinder-access-gate__requirement-label {
-    font-weight: var(--cinder-font-medium);
+    margin: 0;
+    margin-block-start: var(--cinder-space-1-5);
   }
 
   .cinder-access-gate__requirement-value {
-    padding-block: var(--cinder-space-0-5);
-    padding-inline: var(--cinder-space-1);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
-    color: var(--cinder-text-default);
     font-family: var(--cinder-font-mono);
-    font-size: 0.92em;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-subtle);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-access-gate__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cinder-space-2);
+    margin-block-start: var(--cinder-space-2-5);
+  }
+
+  /* The full-page layout has no card: it is centred in the region it fills, with a 48px disc and
+   * 8px of extra bottom padding for optical centre. */
+  .cinder-access-gate[data-cinder-variant='section'][data-cinder-layout='page'] {
+    justify-content: center;
+    padding-block: var(--cinder-space-2) var(--cinder-space-4);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .cinder-access-gate[data-cinder-layout='page'] .cinder-access-gate__section-icon {
+    inline-size: var(--cinder-space-12);
+    block-size: var(--cinder-space-12);
+  }
+
+  .cinder-access-gate[data-cinder-layout='page'] .cinder-access-gate__section-icon > svg {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+  }
+
+  .cinder-access-gate[data-cinder-layout='page'] .cinder-access-gate__section-title {
+    margin-block-start: var(--cinder-space-3-5);
+    font-size: var(--cinder-text-lg);
+  }
+
+  .cinder-access-gate[data-cinder-layout='page'] .cinder-access-gate__actions {
+    margin-block-start: var(--cinder-space-4);
   }
 
   @media (forced-colors: active) {
@@ -157,8 +196,7 @@
       border-color: CanvasText;
     }
 
-    .cinder-access-gate__section-icon,
-    .cinder-access-gate__requirement-value {
+    .cinder-access-gate__section-icon {
       border: 1px solid CanvasText;
     }
   }
