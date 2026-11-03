@@ -117,6 +117,7 @@ function plugin(name: string, status: PluginListing['status']): PluginListing {
   return {
     descriptor: {
       name,
+      title: name,
       version: '1.0.0',
       description: name,
       required: false,

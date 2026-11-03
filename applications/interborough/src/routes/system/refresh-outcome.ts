@@ -214,7 +214,7 @@ function describeFault(error: HttpClientError, name: string): RefreshOutcome {
             : 'The refresh source could not be reached or returned an unusable response. Nothing changed.',
       };
     case 'InvalidParams':
-      return { kind: 'invalid', message: `Weft rejected the request: ${error.message}` };
+      return { kind: 'invalid', message: `Interborough rejected the request: ${error.message}` };
     case 'Unauthorized':
     case 'Forbidden':
       return {
@@ -225,7 +225,7 @@ function describeFault(error: HttpClientError, name: string): RefreshOutcome {
     default:
       return {
         kind: 'faulted',
-        message: `Weft could not check "${name}": ${error.message}`,
+        message: `Interborough could not check "${name}": ${error.message}`,
       };
   }
 }

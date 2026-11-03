@@ -20,6 +20,7 @@ const SNAPSHOT = {
     {
       descriptor: {
         name: 'linear',
+        title: 'linear',
         version: '0.3.0',
         description: 'Linear issues.',
         required: false,

@@ -682,6 +682,8 @@ export type {
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,
+  ExpiredRecordKind,
+  ExpiredRecordRemoval,
   BureauRecoveryReport,
   BureauWatcherHealth,
   BureauAudit,

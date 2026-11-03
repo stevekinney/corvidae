@@ -85,7 +85,7 @@ describe('RevisionInstallForm', () => {
     });
     await fireEvent.click(getByRole('button', { name: 'Install revision' }));
 
-    expect(await findByText('Weft installed the revision.')).not.toBeNull();
+    expect(await findByText('Interborough installed the revision.')).not.toBeNull();
   });
 
   test('says so when the installed manifest belongs to another workflow', async () => {

@@ -110,6 +110,25 @@ describe('plugin composition', () => {
     expect(setups).toEqual(['core']);
   });
 
+  it('lists each plugin by the title a person reads, or by its name when it declares none (COR-2009)', async () => {
+    const titled = definePlugin({
+      name: 'web-search',
+      title: 'Web search',
+      version: '1.0.0',
+      description: 'Searches the web.',
+    });
+    const plain = definePlugin({ name: 'plain', version: '1.0.0', description: 'No title.' });
+    const bureau = await start({ plugins: [entry(titled), entry(plain)] });
+
+    const listings = await listedPlugins(bureau);
+    expect(listings.map(({ descriptor }) => [descriptor.name, descriptor.title])).toEqual([
+      ['web-search', 'Web search'],
+      ['plain', 'plain'],
+    ]);
+    const [builtIn] = await bureau.plugins.list();
+    expect(builtIn?.descriptor).toMatchObject({ name: 'bureau', title: 'Built-in tools' });
+  });
+
   it('runs the earlier plugin in load order on a plugin-name clash and skips the later one', async () => {
     const setups: string[] = [];
     const named = (location: string) =>
@@ -402,6 +421,7 @@ describe('plugin composition', () => {
     const [keyedListing] = await listedPlugins(bureau);
     expect(keyedListing?.descriptor).toEqual({
       name: 'keyed',
+      title: 'keyed',
       version: '1.0.0',
       description: 'Reads its key.',
       required: false,

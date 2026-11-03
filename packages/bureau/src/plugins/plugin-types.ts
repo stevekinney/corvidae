@@ -271,6 +271,8 @@ export interface PluginContributionListing extends PluginContribution {
 export interface PluginDescriptorListing {
   /** The plugin's name. */
   readonly name: string;
+  /** The plugin's name as a person reads it: its descriptor's `title`, or `name` when it has none. */
+  readonly title: string;
   /** The plugin's version. */
   readonly version: string;
   /** What the plugin does. */

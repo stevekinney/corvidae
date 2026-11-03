@@ -20,6 +20,7 @@ import type { BungalowEnvironment } from '@lostgradient/bungalow';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SHOWCASE_WORKFLOW_FILES } from '../../fixtures/showcase-content.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { WORKFLOW_DIRECTORY_NAME, type HostOptions } from './host.ts';
@@ -102,16 +103,18 @@ export function showcaseProviderResolver(): NonNullable<HostOptions['resolveProv
 }
 
 /**
- * What a showcase host is started with beside its environment: the stub provider's resolver, and
- * the sample world's built-in agents and tools as extra agents. The development entry
- * (`dev.ts`), the end-to-end showcase host and the showcase host test all start it with these.
+ * What a showcase host is started with beside its environment: the stub provider's resolver, the
+ * sample world's built-in agents and tools as extra agents, and its nightly clean-up in the sample
+ * world's Central time, whatever zone the machine is in. The development entry (`dev.ts`), the
+ * end-to-end showcase host and the showcase host test all start it with these.
  */
 export function showcaseHostOptions(): Pick<
   HostOptions,
-  'extraAgents' | 'resolveProviderGenerate'
+  'extraAgents' | 'resolveProviderGenerate' | 'nightlyCleanUp'
 > {
   return {
     extraAgents: showcaseBuiltInAgents(),
     resolveProviderGenerate: showcaseProviderResolver(),
+    nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
   };
 }

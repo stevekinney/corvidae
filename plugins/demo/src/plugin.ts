@@ -42,6 +42,7 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
   const seedOnStart = options.seedOnStart ?? true;
   return definePlugin({
     name: 'demo',
+    title: 'Demo',
     version: '1.0.0',
     description:
       'Scripted agents, tools, validators, a goal, and a schedule that run without a model provider, for trying Interborough out.',

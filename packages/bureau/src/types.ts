@@ -273,6 +273,24 @@ export type BureauHumanInputOption =
   false | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
 
 /**
+ * COR-2009 — a kind of record {@link Bureau.removeExpiredRecords} removes: `audit` records,
+ * resolved `reviews`, `memories`, the log lines of finished runs (`logs`, counted by run),
+ * `notifications` and settled `hookDeliveries`.
+ */
+export type ExpiredRecordKind =
+  'audit' | 'reviews' | 'memories' | 'logs' | 'notifications' | 'hookDeliveries';
+
+/** COR-2009 — what {@link Bureau.removeExpiredRecords} removed. */
+export interface ExpiredRecordRemoval {
+  /** How many records went, every kind together. */
+  readonly removed: number;
+  /** How many records of each kind went; a kind whose pass failed counts zero. */
+  readonly byKind: Readonly<Record<ExpiredRecordKind, number>>;
+  /** The kinds whose pass failed, each diagnosed; empty when every pass ran. */
+  readonly failed: readonly ExpiredRecordKind[];
+}
+
+/**
  * COR-1701 — the retention windows {@link BureauOptions.retention} groups. Each field is optional and
  * keeps the meaning and default it had as a flat option.
  */
@@ -291,8 +309,9 @@ export interface BureauRetentionOptions {
    * existing durable maintenance pass: {@link Bureau.maintain}
    * for a `'manual'` host's own alarm/Cron trigger, and — under the
    * default `'automatic'` profile — the same background interval that
-   * already prunes stale run ownership (AB-374). It is never driven on a
-   * separate schedule of its own.
+   * already prunes stale run ownership (AB-374). Under
+   * `expiredRecords: 'on-request'` it runs only in
+   * {@link Bureau.removeExpiredRecords} instead (COR-2009).
    *
    * Each pass that actually prunes something writes exactly one
    * `audit.pruned` record into the trail itself, naming the count and the
@@ -709,6 +728,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * another Bureau over the same storage may boot beside.
    */
   maintenance?: 'automatic' | 'manual';
+  /**
+   * COR-2009 — who removes the records past their retention window: audit records and the
+   * resolved reviews they describe, expired memories, finished runs' log lines, notifications and
+   * settled hook deliveries. `'maintenance'`, the default, removes them in every maintenance pass,
+   * on the automatic timer or in {@link Bureau.maintain}. `'on-request'` leaves them to
+   * {@link Bureau.removeExpiredRecords}, for a host that cleans up on a schedule of its own, such as
+   * once a night. Every other maintenance pass, task and event history retention included, is
+   * unchanged. Any other value makes `createBureau` throw `BureauError(..., 'BAD_REQUEST')`.
+   */
+  expiredRecords?: 'maintenance' | 'on-request';
   /**
    * COR-1701 — how long each kind of Bureau history is kept: `audit`, `checkpoints`, `events`,
    * `tasks`, and `receipts`. See {@link BureauRetentionOptions}. Every window is read at the next
@@ -2960,6 +2989,18 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * removed none there still resolves `undefined`.
    */
   maintain(now?: number): Promise<true | undefined>;
+
+  /**
+   * COR-2009 — removes every record past its retention window now, and says how many went: audit
+   * records and the resolved reviews they describe (`retention.audit`), expired memories
+   * (`retention.memory`, or the memory policy), finished runs' log lines (`retention.logs`),
+   * notifications (`retention.notifications`) and settled hook deliveries
+   * (`retention.hookDeliveries`). The windows are read afresh first. A kind whose pass fails is
+   * diagnosed and listed in {@link ExpiredRecordRemoval.failed}, and the other kinds still go. It
+   * is how a Bureau created with `expiredRecords: 'on-request'` removes them; under the default it
+   * removes what the next maintenance pass would. Rejects with `CONFLICT` once shutdown has begun.
+   */
+  removeExpiredRecords(): Promise<ExpiredRecordRemoval>;
 
   /**
    * Installs the host-owned authority freshness check used immediately before

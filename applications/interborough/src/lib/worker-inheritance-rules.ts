@@ -32,7 +32,7 @@ export const WORKER_INHERITANCE_RULES: Readonly<
   start: {
     surface: 'start',
     heading: 'Worker version at start',
-    text: 'A workflow that declares a worker versioning policy is pinned to a worker version when it starts: Weft picks the routed deployment build that carries the run’s revision and records it. A workflow that declares no policy gets no worker version.',
+    text: 'A workflow that declares a worker versioning policy is pinned to a worker version when it starts: Interborough picks the routed deployment build that carries the run’s revision and records it. A workflow that declares no policy gets no worker version.',
     sources: ['packages/weft/src/core/engine/lifecycle/start-state.ts'],
   },
   schedule: {

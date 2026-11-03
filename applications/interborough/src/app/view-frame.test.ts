@@ -591,6 +591,7 @@ describe('the chat list, a new chat, and the agents', () => {
   const demoPlugin = (status: string, agentNames: readonly string[]) => ({
     descriptor: {
       name: 'demo',
+      title: 'demo',
       version: '1.0.0',
       description: '',
       required: false,

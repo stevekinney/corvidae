@@ -58,6 +58,8 @@ const secretSchema = z.object({
 const pluginSchema = z.object({
   descriptor: z.object({
     name: z.string().min(1),
+    /** The plugin's name as a person reads it, such as `Web search`; `name` is its identifier. */
+    title: z.string().min(1),
     version: z.string(),
     description: z.string(),
     required: z.boolean(),

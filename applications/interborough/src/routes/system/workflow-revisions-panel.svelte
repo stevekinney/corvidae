@@ -412,8 +412,8 @@
   description={confirmRevision === null
     ? ''
     : confirmIsRefresh
-      ? `Refresh "${confirmRevision}" — Weft re-stamps it as the active revision under a new generation. Nothing about the running revision changes; this does not activate a different revision.`
-      : `Activate "${confirmRevision}" as the active revision for ${workflowName}? Weft evaluates compatibility against the currently active revision before applying — an incompatible candidate is refused with no durable change.`}
+      ? `Refresh "${confirmRevision}" — Interborough re-stamps it as the active revision under a new generation. Nothing about the running revision changes; this does not activate a different revision.`
+      : `Activate "${confirmRevision}" as the active revision for ${workflowName}? Interborough evaluates compatibility against the currently active revision before applying — an incompatible candidate is refused with no durable change.`}
   confirmLabel={confirmIsRefresh ? 'Refresh' : 'Activate'}
   onConfirm={() => {
     if (confirmRevision !== null) {

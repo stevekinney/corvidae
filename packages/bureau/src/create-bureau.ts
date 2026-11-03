@@ -641,6 +641,8 @@ import type {
   ResolveReviewInput,
   ResolveReviewResult,
   BureauRetentionOptions,
+  ExpiredRecordKind,
+  ExpiredRecordRemoval,
   ReviewResolutionFields,
   ReviewStatus,
   RunSummary,
@@ -2288,6 +2290,41 @@ export function createScheduledFireApprovalHook(
   };
 }
 
+/** COR-2009 — refuses a {@link BureauOptions.expiredRecords} that names neither of its two choices. */
+function validateExpiredRecordsOption(value: unknown): void {
+  if (value === undefined || value === 'maintenance' || value === 'on-request') return;
+  throw new BureauError(
+    `expiredRecords must be 'maintenance' or 'on-request', not ${JSON.stringify(value)}.`,
+    'BAD_REQUEST',
+  );
+}
+
+/** Which pass a retention sweep runs in, as its diagnostics name it. */
+type MaintenancePassName = 'Manual' | 'Automatic' | 'Requested';
+
+/** A pass's count of removed records, or zero for one that failed, which the removal lists apart. */
+function removedCount(result: number | 'failed'): number {
+  return result === 'failed' ? 0 : result;
+}
+
+/**
+ * COR-2009 — what {@link Bureau.removeExpiredRecords} reports from each pass's result: how many
+ * records of each kind went, their total, and the kinds whose pass failed.
+ */
+function expiredRecordRemovalOf(
+  results: Readonly<Record<ExpiredRecordKind, number | 'failed'>>,
+): ExpiredRecordRemoval {
+  const kinds = Object.keys(results) as ExpiredRecordKind[];
+  const byKind = Object.fromEntries(
+    kinds.map((kind) => [kind, removedCount(results[kind])]),
+  ) as Record<ExpiredRecordKind, number>;
+  return {
+    removed: kinds.reduce((total, kind) => total + byKind[kind], 0),
+    byKind,
+    failed: kinds.filter((kind) => results[kind] === 'failed'),
+  };
+}
+
 /**
  * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
  * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
@@ -2542,6 +2579,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
   validateRetentionOptions(options.retention, toBadRequest);
+  validateExpiredRecordsOption(options.expiredRecords);
   validateLogsMaximumLinesPerRun(options.logs?.maximumLinesPerRun, toBadRequest);
   validateChildrenOption(options.children, toBadRequest);
   assertMemoryTenantIsStable(options);
@@ -12862,11 +12900,14 @@ async function constructBureau<const D extends AgentDefinitions>(
    * and the destructive operation it gates, narrowed from this pass's
    * entire duration down to one async tick.
    */
-  async function pruneAuditTrail(): Promise<void> {
-    await pruneResolvedReviews();
-    if (!auditTrailInstance) return;
+  async function pruneAuditTrail(): Promise<{
+    readonly audit: number;
+    readonly reviews: number | 'failed';
+  }> {
+    const reviews = await pruneResolvedReviews();
+    if (!auditTrailInstance) return { audit: 0, reviews };
     const retention = currentSettings()['retention.audit'];
-    if (!retention || retention === 'forever') return;
+    if (!retention || retention === 'forever') return { audit: 0, reviews };
 
     await durableEventProducerInstance?.waitForAllActiveWrites();
 
@@ -12933,22 +12974,26 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
       : undefined;
 
-    await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+    const pruned = await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
     // COR-1934 — the tombstones of runs purged before the same cutoff: an entry or event older
     // than it is pruned anyway.
     await chatContentPurge.pruneTombstones(effectiveCutoff);
+    return { audit: pruned?.prunedCount ?? 0, reviews };
   }
 
   /**
    * COR-1828 — retires the resolved-review records decided before `retention.audit` allows, on the
    * same pass and the same setting as the audit entries of those decisions. Kept for ever under
    * `'forever'` or no setting. A failure is diagnosed and does not stop the audit prune that follows.
+   * Resolves how many records it retired, or `'failed'`.
    */
-  async function pruneResolvedReviews(): Promise<void> {
+  async function pruneResolvedReviews(): Promise<number | 'failed'> {
     const retention = currentSettings()['retention.audit'];
-    if (!retention || retention === 'forever') return;
+    if (!retention || retention === 'forever') return 0;
     try {
-      await resolvedReviewStore.pruneBefore(runtimeServices.clock.now() - retention.olderThan);
+      return await resolvedReviewStore.pruneBefore(
+        runtimeServices.clock.now() - retention.olderThan,
+      );
     } catch (error) {
       diagnose({
         level: 'error',
@@ -12956,6 +13001,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] Could not prune the resolved-review records: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13351,6 +13397,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   // this function's own re-thrown `engineMaintenanceError`) before backend
   // teardown, alongside the automatic timer's own await.
   const manualDurableMaintenancePasses = new Set<Promise<void>>();
+  // COR-2009 — whether the maintenance passes remove expired records, or the host does it through
+  // `removeExpiredRecords` on a schedule of its own.
+  const expiredRecordsByMaintenance = options.expiredRecords !== 'on-request';
   // AB-388 (Codex review, PR #597, "Fence maintenance admission once
   // shutdown starts"): closed SYNCHRONOUSLY (no `await` in between) as the
   // very first step of the "stop background work" section of `shutdown()`
@@ -13721,7 +13770,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   // same expired record, so a caller that arrives while one runs waits for it instead of starting
   // another. Within one Bureau this is the whole guard, as `automaticRunOwnershipPruneCurrentPass`
   // is for the timer's own passes.
-  let memoryRetentionSweepInFlight: Promise<void> | undefined;
+  let memoryRetentionSweepInFlight: Promise<number | 'failed'> | undefined;
 
   /**
    * COR-1629 — expires the tenant's records that have outlived their retention, so a collection that
@@ -13729,11 +13778,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * of its own, so every maintenance pass calls this before `propagateMemoryDeletions`, which then
    * starts advancing the deletions the sweep opened. A sweep that throws, or that governed memory
    * refuses, is reported once, by the pass that started it, and never stops the rest of any pass
-   * that waited on it.
+   * that waited on it. Resolves how many expired memories it opened a deletion for, or `'failed'`.
    */
-  function sweepMemoryRetention(pass: 'Manual' | 'Automatic'): Promise<void> {
+  function sweepMemoryRetention(pass: MaintenancePassName): Promise<number | 'failed'> {
     if (runtime.memory === undefined || maintenanceMemoryAuthority === undefined) {
-      return Promise.resolve();
+      return Promise.resolve(0);
     }
     if (memoryRetentionSweepInFlight !== undefined) return memoryRetentionSweepInFlight;
     const memory = runtime.memory;
@@ -13756,7 +13805,9 @@ async function constructBureau<const D extends AgentDefinitions>(
               `[bureau] ${pass} memory retention sweep was ${result.status}` +
               `${result.reason === undefined ? '' : ` (${result.reason})`}, so no expired record was deleted.`,
           });
+          return 'failed' as const;
         }
+        return result.deletionIds.length;
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -13764,6 +13815,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           message: `[bureau] ${pass} memory retention sweep failed: ${serializeUnknownError(error)}`,
           cause: error,
         });
+        return 'failed' as const;
       }
     })().finally(() => {
       memoryRetentionSweepInFlight = undefined;
@@ -13777,12 +13829,13 @@ async function constructBureau<const D extends AgentDefinitions>(
    * than `retention.logs`, read per pass so a change applies to the next one. With the setting unset the
    * lines stay until their run is purged. A failure is reported and never stops the rest of a pass.
    */
-  async function pruneWorkflowLogs(pass: 'Manual' | 'Automatic'): Promise<void> {
+  async function pruneWorkflowLogs(pass: MaintenancePassName): Promise<number | 'failed'> {
     const logs = runtime.durable?.workflowLogs;
     const window = currentSettings()['retention.logs'];
-    if (logs === undefined || window === undefined) return;
+    if (logs === undefined || window === undefined) return 0;
     try {
-      await logs.prune({ olderThan: window.olderThan });
+      const pruned = await logs.prune({ olderThan: window.olderThan });
+      return pruned.runs;
     } catch (error: unknown) {
       diagnose({
         level: 'error',
@@ -13790,6 +13843,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] ${pass} workflow log retention pass failed: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13798,11 +13852,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * pass so a change applies to the next one. With the setting unset an owner keeps up to 1000. A
    * failure is reported and never stops the rest of a pass.
    */
-  async function pruneNotifications(pass: 'Manual' | 'Automatic'): Promise<void> {
+  async function pruneNotifications(pass: MaintenancePassName): Promise<number | 'failed'> {
     const window = currentSettings()['retention.notifications'];
-    if (window === undefined) return;
+    if (window === undefined) return 0;
     try {
-      await notificationsComposition.prune(window.olderThan);
+      return await notificationsComposition.prune(window.olderThan);
     } catch (error: unknown) {
       diagnose({
         level: 'error',
@@ -13810,6 +13864,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] ${pass} notification retention pass failed: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13819,11 +13874,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * unset, or no hooks, nothing is removed; a pending delivery never is. A failure is reported and
    * never stops the rest of a pass.
    */
-  async function pruneHookDeliveries(pass: 'Manual' | 'Automatic'): Promise<void> {
+  async function pruneHookDeliveries(pass: MaintenancePassName): Promise<number | 'failed'> {
     const window = currentSettings()['retention.hookDeliveries'];
-    if (window === undefined || hooksInstance === undefined) return;
+    if (window === undefined || hooksInstance === undefined) return 0;
     try {
-      await hooksInstance.prune(window.olderThan);
+      return await hooksInstance.prune(window.olderThan);
     } catch (error: unknown) {
       diagnose({
         level: 'error',
@@ -13831,6 +13886,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] ${pass} hook delivery retention pass failed: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13970,15 +14026,18 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       }
-      try {
-        await pruneAuditTrail();
-      } catch (error: unknown) {
-        diagnose({
-          level: 'error',
-          scope: 'durable-maintenance',
-          message: `[bureau] Manual audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
+      // COR-2009 — expired records go with this pass unless the host removes them itself.
+      if (expiredRecordsByMaintenance) {
+        try {
+          await pruneAuditTrail();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Manual audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
       }
       // COR-1622 — expired reviews go with a manual host's maintenance, as they do with the
       // automatic timer's: ahead of task retention, which holds a task open for a review it lists.
@@ -14039,14 +14098,16 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       }
-      // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
-      await sweepMemoryRetention('Manual');
-      // COR-1811 — persisted workflow log lines past `retention.logs`.
-      await pruneWorkflowLogs('Manual');
-      // COR-1941 — notifications past `retention.notifications`.
-      await pruneNotifications('Manual');
-      // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
-      await pruneHookDeliveries('Manual');
+      if (expiredRecordsByMaintenance) {
+        // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
+        await sweepMemoryRetention('Manual');
+        // COR-1811 — persisted workflow log lines past `retention.logs`.
+        await pruneWorkflowLogs('Manual');
+        // COR-1941 — notifications past `retention.notifications`.
+        await pruneNotifications('Manual');
+        // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+        await pruneHookDeliveries('Manual');
+      }
       // COR-1898 — governed memory's embedder switch advances only when asked to.
       await memoryEmbedder?.reconcile();
       // COR-1546 — governed memory's deletions advance only when asked to.
@@ -14093,6 +14154,58 @@ async function constructBureau<const D extends AgentDefinitions>(
     })
       ? true
       : undefined;
+  }
+
+  /**
+   * COR-2009 — removes every record past its retention window now: audit records and the resolved
+   * reviews they describe (`retention.audit`), expired memories (`retention.memory`, or the memory
+   * policy), finished runs' log lines (`retention.logs`), notifications (`retention.notifications`)
+   * and settled hook deliveries (`retention.hookDeliveries`), with the windows read afresh. Each
+   * kind's pass is isolated as in `maintain`, so one that fails is diagnosed, listed in `failed`,
+   * and stops none of the others. Shutdown waits for a removal in flight, as for `maintain`.
+   */
+  async function removeExpiredRecords(): Promise<ExpiredRecordRemoval> {
+    if (maintenanceAdmissionClosed) {
+      throw new BureauError('Cannot remove expired records: bureau is shutting down', 'CONFLICT');
+    }
+    let removal: ExpiredRecordRemoval | undefined;
+    const pass = (async () => {
+      try {
+        await settingsComposition?.reload();
+      } catch (error: unknown) {
+        diagnoseSettings(
+          `[bureau] Settings re-read before removing expired records failed: ${serializeUnknownError(error)}`,
+          error,
+        );
+      }
+      let audit: number | 'failed' = 'failed';
+      let reviews: number | 'failed' = 'failed';
+      try {
+        ({ audit, reviews } = await pruneAuditTrail());
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Requested audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+      removal = expiredRecordRemovalOf({
+        audit,
+        reviews,
+        memories: await sweepMemoryRetention('Requested'),
+        logs: await pruneWorkflowLogs('Requested'),
+        notifications: await pruneNotifications('Requested'),
+        hookDeliveries: await pruneHookDeliveries('Requested'),
+      });
+    })();
+    manualDurableMaintenancePasses.add(pass);
+    try {
+      await pass;
+    } finally {
+      manualDurableMaintenancePasses.delete(pass);
+    }
+    return removal!;
   }
 
   // AB-363 — Codex review PR #568, "Run ownership pruning in the automatic
@@ -14299,15 +14412,18 @@ async function constructBureau<const D extends AgentDefinitions>(
             cause: error,
           });
         }
-        try {
-          await pruneAuditTrail();
-        } catch (error: unknown) {
-          diagnose({
-            level: 'error',
-            scope: 'durable-maintenance',
-            message: `[bureau] Automatic audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
+        // COR-2009 — expired records go with this pass unless the host removes them itself.
+        if (expiredRecordsByMaintenance) {
+          try {
+            await pruneAuditTrail();
+          } catch (error: unknown) {
+            diagnose({
+              level: 'error',
+              scope: 'durable-maintenance',
+              message: `[bureau] Automatic audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
         }
         // COR-1613 — expired reviews go without a host calling `sweepExpiredReviews`: a fire's
         // or a session run's approval whose binding ran out is expired, and its state released.
@@ -14369,14 +14485,16 @@ async function constructBureau<const D extends AgentDefinitions>(
             cause: error,
           });
         }
-        // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
-        await sweepMemoryRetention('Automatic');
-        // COR-1811 — persisted workflow log lines past `retention.logs`.
-        await pruneWorkflowLogs('Automatic');
-        // COR-1941 — notifications past `retention.notifications`.
-        await pruneNotifications('Automatic');
-        // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
-        await pruneHookDeliveries('Automatic');
+        if (expiredRecordsByMaintenance) {
+          // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
+          await sweepMemoryRetention('Automatic');
+          // COR-1811 — persisted workflow log lines past `retention.logs`.
+          await pruneWorkflowLogs('Automatic');
+          // COR-1941 — notifications past `retention.notifications`.
+          await pruneNotifications('Automatic');
+          // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+          await pruneHookDeliveries('Automatic');
+        }
         // COR-1898 — governed memory's embedder switch advances only when asked to.
         await memoryEmbedder?.reconcile();
         // COR-1546 — governed memory's deletions advance only when asked to.
@@ -22055,6 +22173,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     ownerOf,
     durableEngine,
     maintain,
+    removeExpiredRecords,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);

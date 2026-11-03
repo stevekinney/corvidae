@@ -470,6 +470,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
   const refusedStanding = (entry: BureauPluginEntry, problem: PluginProblem): PluginStanding => ({
     descriptor: {
       name: entry.descriptor.name,
+      title: entry.descriptor.title ?? entry.descriptor.name,
       version: entry.descriptor.version,
       description: entry.descriptor.description,
       required: entry.descriptor.required === true,

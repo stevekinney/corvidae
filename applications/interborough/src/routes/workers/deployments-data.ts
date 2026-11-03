@@ -36,7 +36,7 @@ const REFETCH_INTERVAL_MS = 30_000;
 /** A deployment diagnostics response the dashboard refuses to render. */
 export class MalformedDeploymentsError extends Error {
   constructor(what: string) {
-    super(`Weft returned malformed deployment diagnostics: ${what}.`);
+    super(`The server returned malformed deployment diagnostics: ${what}.`);
     this.name = 'MalformedDeploymentsError';
   }
 }

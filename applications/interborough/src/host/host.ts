@@ -170,6 +170,7 @@ import {
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { mcpAppRoutes } from './mcp-app-routes.ts';
 import { createHostMemory } from './memory.ts';
+import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
 import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
@@ -373,6 +374,17 @@ export type HostOptions = {
    * attention. Omitted, the host configures none.
    */
   readonly alerts?: AlertingOptions;
+  /**
+   * The nightly clean-up of expired records (COR-2009): the IANA time zone its 3:00 AM is in, which
+   * defaults to the process's, and the clock it reads, which defaults to `Date.now`. The showcase
+   * pins both to its sample world.
+   */
+  readonly nightlyCleanUp?: {
+    /** The IANA time zone the nightly time is in, such as `America/Chicago`. */
+    readonly timeZone?: string;
+    /** The clock the clean-up reads, in milliseconds since the epoch. */
+    readonly now?: () => number;
+  };
 };
 
 /**
@@ -418,6 +430,11 @@ export type Host = {
    * change with {@link PluginWriteLockedError}, reason `deployment`. See {@link PluginManager}.
    */
   readonly plugins: Pick<PluginManager, 'snapshot' | 'update' | 'saveSecret'>;
+  /**
+   * The nightly clean-up of expired records (COR-2009): its standing, which `GET /host/clean-up`
+   * serves, and a clean-up by hand, which `POST /host/clean-up` runs. See {@link NightlyCleanUp}.
+   */
+  readonly cleanUp: Pick<NightlyCleanUp, 'standing' | 'cleanUpNow'>;
   /**
    * The queue every writer of `configuration.json` runs its read-change-write through, so two
    * writers never start from text the other is about to replace. The provider manager uses it;
@@ -784,6 +801,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
+      // Expired records go once a night, at 3:00 AM in the host's zone, not on every maintenance
+      // pass (COR-2009): the host's nightly clean-up removes them.
+      expiredRecords: 'on-request',
       retention: {
         audit: { olderThan: AUDIT_RETENTION_MILLISECONDS },
         logs: { olderThan: WORKFLOW_LOG_RETENTION_MILLISECONDS },
@@ -829,6 +849,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ],
     });
     held.bureau = bureau;
+    // The records past their retention window go once a night (COR-2009): the Bureau leaves them
+    // to this clean-up (`expiredRecords: 'on-request'`), and Data and retention reports it.
+    const nightlyCleanUp = startNightlyCleanUp({
+      storage,
+      removeExpiredRecords: () => bureau.removeExpiredRecords(),
+      ...options.nightlyCleanUp,
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
+    held.nightlyCleanUp = nightlyCleanUp;
     // A tool source connected from now on is loaded at once, and its tools join the Bureau's
     // catalog without a restart (COR-2009).
     toolSources.goLive((tools) => bureau.agents.addTools(tools));
@@ -985,6 +1014,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // a workflow's.
         ...providerRoutes(providers, refuse),
         ...pluginRoutes(pluginManager, refuse),
+        // The nightly clean-up's standing, and "Clean up now" (COR-2009).
+        ...cleanUpRoutes(nightlyCleanUp, refuse),
         // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
         ...mcpAppRoutes(
           mcpMounts.apps,
@@ -1136,6 +1167,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         update: (name, request) => pluginManager.update(name, request),
         saveSecret: (name, secretKey, value) => pluginManager.saveSecret(name, secretKey, value),
       },
+      cleanUp: {
+        standing: () => nightlyCleanUp.standing(),
+        cleanUpNow: () => nightlyCleanUp.cleanUpNow(),
+      },
       providers: {
         connect: (connection) => providers.connect(connection),
         disconnect: (provider) => providers.disconnect(provider),
@@ -1179,6 +1214,7 @@ type Held = {
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   pushDelivery?: HostPushDelivery;
+  nightlyCleanUp?: NightlyCleanUp;
   publicServer?: Bun.Server<HostSocketData>;
   devReload?: DevReload;
   closing?: Promise<void>;
@@ -1203,6 +1239,7 @@ async function teardown(held: Held): Promise<void> {
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
   await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
+  await step(held.nightlyCleanUp && (() => held.nightlyCleanUp?.close()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   // After the Bureau: a run still in flight may be calling a source's tool.
   await step(held.toolSources && (() => held.toolSources?.close()));

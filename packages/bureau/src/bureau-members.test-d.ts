@@ -310,7 +310,9 @@ type TopLevelMembers =
   // COR-1879: the plugins it loaded.
   | 'plugins'
   // COR-2009: what needs attention.
-  | 'attention';
+  | 'attention'
+  // COR-2009: the host's clean-up of expired records.
+  | 'removeExpiredRecords';
 
 export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
 
