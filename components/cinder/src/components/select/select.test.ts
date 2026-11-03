@@ -444,3 +444,66 @@ describe('Select — required marker', () => {
     expect(marker?.textContent).toBe('');
   });
 });
+
+describe('Select — ghost variant', () => {
+  test('a native ghost select carries the variant on the control and its field', () => {
+    const { container } = render(Select, {
+      props: { id: 'ghost-native', label: 'Agent', options: defaultOptions, variant: 'ghost' },
+    });
+    expect(container.querySelector('select')?.getAttribute('data-cinder-variant')).toBe('ghost');
+    expect(
+      container.querySelector('.cinder-select-field')?.getAttribute('data-cinder-variant'),
+    ).toBe('ghost');
+  });
+
+  test('the default variant is the bordered select', () => {
+    const { container } = render(Select, {
+      props: { id: 'bordered', label: 'Agent', options: defaultOptions },
+    });
+    expect(container.querySelector('select')?.getAttribute('data-cinder-variant')).toBe('default');
+  });
+
+  test('ghost has no border or fill at rest, a neutral hover tint and the chevron kept', () => {
+    const styles = readSelectStyles();
+    const rest = styles.slice(styles.indexOf(".cinder-select[data-cinder-variant='ghost'] {"));
+    const restBlock = rest.slice(0, rest.indexOf('}'));
+    expect(restBlock).toContain('background-color: transparent');
+    expect(restBlock).toContain('border-color: transparent');
+    expect(styles).toContain("cinder-select[data-cinder-variant='ghost']:hover:not(:disabled)");
+    expect(styles).toContain('color-mix(in oklch, var(--cinder-border-ink), transparent 94%)');
+    // The chevron is repositioned, never removed.
+    expect(styles).toContain(
+      ".cinder-select[data-cinder-variant='ghost'] + .cinder-select-field__chevron",
+    );
+    expect(styles).not.toMatch(/ghost'\] \+ \.cinder-select-field__chevron \{[^}]*display:\s*none/);
+  });
+
+  test('the ghost focus ring wraps the whole control through the shared ring, border transparent', () => {
+    const styles = readSelectStyles();
+    expect(styles).toContain('box-shadow: var(--_cinder-focus-ring-shadow)');
+    // The shared focus rule keeps the border transparent so the ring never stacks on it.
+    const focus = styles.slice(styles.indexOf('.cinder-select:focus-visible {'));
+    expect(focus.slice(0, focus.indexOf('}'))).toContain('border-color: transparent');
+  });
+});
+
+describe('Select — onValueChange on the native presentation', () => {
+  test('is called with the new value alongside a consumer onchange', async () => {
+    const onValueChange = spyOn({ call: (_value: string) => {} }, 'call');
+    const onchange = spyOn({ call: () => {} }, 'call');
+    const { container } = render(Select, {
+      props: {
+        id: 'native-change',
+        label: 'Agent',
+        options: defaultOptions,
+        onValueChange,
+        onchange,
+      },
+    } as never);
+    const select = requiredInstance(container.querySelector('select'), HTMLSelectElement);
+    select.value = 'b';
+    await fireEvent.change(select);
+    expect(onValueChange).toHaveBeenCalledWith('b');
+    expect(onchange).toHaveBeenCalledTimes(1);
+  });
+});

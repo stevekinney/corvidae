@@ -74,12 +74,16 @@
   }
 
   /* Spinner — visible feedback for sighted users while `aria-busy` informs assistive tech.
- * No `margin-inline-start` here: the parent `.cinder-button` has `gap: var(--cinder-space-1-5)`
- * which already separates the pseudo-element from the preceding label/children. Adding margin
- * too would double-count the gap.
+ * It leads the label (`order: -1`), as the design draws it, and the leading icon steps aside
+ * for it. The button script pins `inline-size` to the resting width while loading, so the
+ * spinner is fitted into the button's own padding rather than growing the box; flex centering
+ * lets the content overflow evenly into that padding. An icon-only button shows the spinner
+ * in place of its icon.
  */
   .cinder-button[data-cinder-loading]::after {
     content: '';
+    order: -1;
+    flex: none;
     display: inline-block;
     width: 0.75em;
     height: 0.75em;
@@ -87,6 +91,10 @@
     border-inline-end-color: transparent;
     border-radius: 50%;
     animation: cinder-button-spin var(--cinder-duration-spin) linear infinite;
+  }
+
+  .cinder-button[data-cinder-loading] > .cinder-button__icon {
+    display: none;
   }
 
   /* At `xs` size the button is ~24px tall and the spinner ends up ~9px square; a 2px border

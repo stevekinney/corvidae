@@ -37,6 +37,7 @@
     size = 'md',
     fullWidth = false,
     loading = false,
+    loadingStatus,
     iconOnly = false,
     leadingIcon,
     trailingIcon,
@@ -75,8 +76,33 @@
 
   // When loading, force aria-disabled/aria-busy to 'true' so assistive tech always hears the
   // loading state. When not loading, preserve whatever the consumer passed so the component
-  // doesn't silently erase their intent.
+  // doesn't silently erase their intent. The native `disabled` attribute is NOT set while
+  // loading: `aria-disabled` keeps the button in the tab order, so focus stays where it was
+  // when the press started instead of falling to the page.
   const resolvedAriaDisabled = $derived(loading ? 'true' : consumerAriaDisabled);
+  // A button that is aria-disabled (loading, or inert because the page says why) is focusable
+  // but does nothing: the press is ignored, whoever set the attribute.
+  const inert = $derived(
+    loading || resolvedAriaDisabled === true || resolvedAriaDisabled === 'true',
+  );
+
+  // Loading keeps the button as wide as it was just before: the spinner takes the leading
+  // icon's place (or sits ahead of the label, using the button's own padding), so the box does
+  // not grow and the layout around it does not move. `$effect.pre` runs before the DOM
+  // update, so `offsetWidth` is still the resting width on the render that flips `loading`.
+  let element = $state<HTMLElement | null>(null);
+  let restingWidth = $state<number | undefined>(undefined);
+  const lockedInlineSize = $derived(restingWidth === undefined ? undefined : `${restingWidth}px`);
+  $effect.pre(() => {
+    if (!loading) {
+      restingWidth = undefined;
+      return;
+    }
+    if (restingWidth === undefined && element && !fullWidth) {
+      const measured = element.offsetWidth;
+      if (measured > 0) restingWidth = measured;
+    }
+  });
   const resolvedAriaBusy = $derived(loading ? 'true' : consumerAriaBusy);
 
   // Normalize ARIA label props: an empty string `aria-label=""` suppresses text-content fallback
@@ -148,7 +174,8 @@
   ) => void;
 
   /**
-   * Wrap the consumer's onclick so it doesn't fire during loading. `preventDefault()` blocks
+   * Wrap the consumer's onclick so it doesn't fire while the button is inert (loading, or
+   * `aria-disabled`). `preventDefault()` blocks
    * the browser's default navigation on anchor left-clicks; stripping `href` in the template
    * handles middle-click / Ctrl-click new-tab paths. Not calling `stopPropagation()` on
    * purpose — unrelated ancestor handlers (analytics, form listeners) should still see the
@@ -159,7 +186,7 @@
       currentTarget: EventTarget & (HTMLButtonElement | HTMLAnchorElement);
     },
   ): void {
-    if (loading) {
+    if (inert) {
       event.preventDefault();
       return;
     }
@@ -225,12 +252,14 @@
 
 {#if href !== undefined}
   <a
+    bind:this={element}
     {...anchorAttributes}
     href={loading ? undefined : href}
     tabindex={loading ? -1 : anchorTabIndex}
     class={mergedClassName}
     {...dataAttributes}
     data-cinder-button-group-item={buttonGroupItemAttribute}
+    style:inline-size={lockedInlineSize}
     aria-disabled={resolvedAriaDisabled}
     aria-busy={resolvedAriaBusy}
     aria-label={resolvedAriaLabel}
@@ -244,12 +273,14 @@
   </a>
 {:else}
   <button
+    bind:this={element}
     {...buttonAttributes}
     type={buttonType ?? 'button'}
     class={mergedClassName}
     {...dataAttributes}
     data-cinder-button-group-item={buttonGroupItemAttribute}
-    disabled={buttonDisabled || loading}
+    style:inline-size={lockedInlineSize}
+    disabled={buttonDisabled}
     aria-disabled={resolvedAriaDisabled}
     aria-busy={resolvedAriaBusy}
     aria-label={resolvedAriaLabel}
@@ -261,4 +292,12 @@
   >
     {@render buttonContent()}
   </button>
+{/if}
+{#if loadingStatus !== undefined}
+  <!-- Always mounted once the prop is given, so the live region is registered before its text
+       is set: a freshly mounted aria-live node is not reliably announced. A sibling of the
+       button, never inside it, so the status is not folded into the button's accessible name. -->
+  <span class="cinder-sr-only" role="status" aria-live="polite" data-cinder-button-status
+    >{loading ? loadingStatus : ''}</span
+  >
 {/if}

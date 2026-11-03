@@ -818,7 +818,13 @@ export { default as SegmentedControl } from './components/segmented-control/inde
 export type { SegmentedControlProps } from './components/segmented-control/index.ts';
 
 export { default as Select } from './components/select/index.ts';
-export type { SelectOption, SelectProps } from './components/select/index.ts';
+export type {
+  SelectGroup,
+  SelectOption,
+  SelectPresentation,
+  SelectProps,
+  SelectVariant,
+} from './components/select/index.ts';
 
 export { default as SelectableRow } from './components/selectable-row/index.ts';
 export type {

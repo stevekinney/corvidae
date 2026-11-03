@@ -19,8 +19,12 @@
     },
     "loading": {
       "type": "boolean",
-      "description": "Disable the button and show a spinner.",
+      "description": "Show a spinner and make the button inert (`aria-disabled`, still focusable) while work is\nin flight; the label stays and the width holds.",
       "default": false
+    },
+    "loadingStatus": {
+      "type": "string",
+      "description": "Text a polite, visually hidden status announces while `loading`, rendered beside the button."
     },
     "iconOnly": {
       "type": "boolean",

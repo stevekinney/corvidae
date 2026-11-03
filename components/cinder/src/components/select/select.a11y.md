@@ -2,7 +2,35 @@
 
 ## Element Choice
 
-This component uses a native `<select>` element rather than a custom listbox. The native element gives keyboard and pointer users correct operating-system-native behaviour for free and is announced correctly by every major screen reader without any custom ARIA.
+By default this component uses a native `<select>` element rather than a custom listbox. The native element gives keyboard and pointer users correct operating-system-native behaviour for free and is announced correctly by every major screen reader without any custom ARIA.
+
+Set `presentation="listbox"` when the choices need what a native `<select>` cannot draw: a sentence under an option, group headings with messages, the check on the current option, or a footer. The listbox presentation is described in its own section below; everything above and below that section is about the native element.
+
+## Listbox presentation
+
+The listbox presentation is the WAI-ARIA select-only combobox pattern. The trigger is a `<button type="button" role="combobox" aria-haspopup="listbox">` with `aria-expanded`, `aria-controls` (while open), and `aria-activedescendant` naming the option the cursor is on. Focus stays on the trigger for the whole interaction, so typing and arrow keys never leave the control. The label is a real `<label for>`, so the trigger is named by it; a visible `valuePrefix` is decorative (`aria-hidden`) and never part of the name.
+
+The panel is a Popover that does not take focus. Inside it, a `role="listbox"` element holds the options, each a `role="option"` with `aria-selected` for the current value and `aria-disabled` for one that cannot be chosen. Its text (label, description, note) is the option's accessible name, so a reason such as "Plugin Demo is disabled" is read with the option. A check glyph marks the current option and is hidden from assistive technology (`aria-selected` carries the state). Option groups are `role="group"` lists named by their heading.
+
+A group `message` and the `footer` are outside the options: they are plain content, never `role="option"`, so the arrow keys and typeahead skip them. A link in either is a keyboard stop of its own, after the last option: Tab from the trigger lands on the first such stop (the list stays open), Tab from the last stop closes the list and hands focus back to the trigger so the next Tab leaves the control, and Shift+Tab from the first stop returns to the trigger. When the list closes while focus is inside the panel, focus returns to the trigger.
+
+| Key (list closed) | Behaviour |
+| --- | --- |
+| Enter / Space / Arrow Down or Up | Opens the list with the cursor on the current option. |
+| A letter | Opens the list and moves the cursor to the next matching label. |
+
+| Key (list open) | Behaviour |
+| --- | --- |
+| Arrow Down / Up | Moves the cursor, wrapping. A disabled option can hold the cursor so its reason can be read. |
+| Home / End | First or last option. |
+| Enter / Space | Chooses the option under the cursor and closes. A disabled option is refused. |
+| A letter | Moves the cursor to the next option whose label starts with what was typed. |
+| Escape | Closes without changing the value; focus stays on the trigger. |
+| Tab | To the first panel stop (footer or message link) if there is one; otherwise closes and moves on. |
+
+`readonly` shows the value and keeps the control focusable (`aria-readonly="true"`) but never opens it. On the native presentation it also blocks the picker. `required` sets `aria-required` on the listbox trigger; unlike a native `<select>`, a button takes no native constraint validation, so validate the value yourself and report it through `error`.
+
+Below `sheetBelow` (640px by default) the panel docks to the bottom edge as a sheet, with focus still on the trigger.
 
 ## ARIA Roles and Attributes
 

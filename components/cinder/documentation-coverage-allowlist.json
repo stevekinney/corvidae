@@ -266,7 +266,6 @@
     ". SegmentCurrentToken",
     ". SegmentProps",
     ". SegmentedControlProps",
-    ". SelectOption",
     ". SelectProps",
     ". SelectableRowCurrentValue",
     ". SelectableRowDensity",

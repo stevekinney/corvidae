@@ -1,7 +1,7 @@
 import { setupHappyDom } from '@lostgradient/testing';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 setupHappyDom();
-const { cleanup, render } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: Button } = await import('./button.svelte');
 afterEach(cleanup);
 
@@ -44,10 +44,10 @@ describe('Button rendering', () => {
     );
   });
 
-  test('loading button has disabled + aria-busy + aria-disabled', () => {
+  test('loading button is aria-disabled and aria-busy, and stays focusable (no native disabled)', () => {
     const { container } = render(Button, { props: { label: 'sending', loading: true } });
     const button = container.querySelector('button');
-    expect(button?.hasAttribute('disabled')).toBe(true);
+    expect(button?.hasAttribute('disabled')).toBe(false);
     expect(button?.getAttribute('aria-busy')).toBe('true');
     expect(button?.getAttribute('aria-disabled')).toBe('true');
     expect(button?.getAttribute('data-cinder-loading')).toBe('');
@@ -184,6 +184,99 @@ describe('Button loading state', () => {
     const { container } = render(Button, { props: { label: 'Saving', loading: true } });
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector('.cinder-spinner')).toBeNull();
+  });
+
+  test('a loading button keeps focus and ignores a second press', async () => {
+    const onclick = mock(() => {});
+    const { container, rerender } = render(Button, { props: { label: 'Save', onclick } });
+    const button = container.querySelector('button')!;
+    button.focus();
+    await rerender({ label: 'Save', onclick, loading: true });
+    expect(document.activeElement).toBe(button);
+    await fireEvent.click(button);
+    await fireEvent.click(button);
+    expect(onclick).not.toHaveBeenCalled();
+  });
+
+  test('loadingStatus is a polite status beside the button, filled only while loading', async () => {
+    const { container, rerender } = render(Button, {
+      props: { label: 'Save', loadingStatus: 'Saving…' },
+    });
+    const status = container.querySelector('[role="status"]')!;
+    expect(status.getAttribute('aria-live')).toBe('polite');
+    // The node is mounted before it has text, so the announcement is not lost.
+    expect(status.textContent).toBe('');
+    // It sits outside the button: it must not become part of the button's accessible name.
+    expect(container.querySelector('button')!.contains(status)).toBe(false);
+    await rerender({ label: 'Save', loadingStatus: 'Saving…', loading: true });
+    expect(container.querySelector('[role="status"]')!.textContent).toBe('Saving…');
+    await rerender({ label: 'Save', loadingStatus: 'Saving…', loading: false });
+    expect(container.querySelector('[role="status"]')!.textContent).toBe('');
+  });
+
+  test('no status node is rendered without loadingStatus', () => {
+    const { container } = render(Button, { props: { label: 'Save', loading: true } });
+    expect(container.querySelector('[data-cinder-button-status]')).toBeNull();
+  });
+
+  test('loading pins the width the button had at rest, and releases it afterwards', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get: () => 96,
+    });
+    try {
+      const { container, rerender } = render(Button, { props: { label: 'Save' } });
+      expect(container.querySelector('button')!.style.inlineSize).toBe('');
+      await rerender({ label: 'Save', loading: true });
+      expect(container.querySelector('button')!.style.inlineSize).toBe('96px');
+      await rerender({ label: 'Save', loading: false });
+      expect(container.querySelector('button')!.style.inlineSize).toBe('');
+    } finally {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', descriptor);
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    }
+  });
+
+  test('a full-width loading button does not pin a width', async () => {
+    const { container, rerender } = render(Button, { props: { label: 'Save', fullWidth: true } });
+    await rerender({ label: 'Save', fullWidth: true, loading: true });
+    expect(container.querySelector('button')!.style.inlineSize).toBe('');
+  });
+});
+
+describe('Button inert (aria-disabled) state', () => {
+  test('an aria-disabled button stays focusable and does not run onclick', async () => {
+    const onclick = mock(() => {});
+    const { container } = render(Button, {
+      props: { label: 'New chat', 'aria-disabled': 'true', onclick },
+    });
+    const button = container.querySelector('button')!;
+    expect(button.hasAttribute('disabled')).toBe(false);
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    await fireEvent.click(button);
+    expect(onclick).not.toHaveBeenCalled();
+  });
+
+  test('aria-disabled="false" still runs onclick', async () => {
+    const onclick = mock(() => {});
+    const { container } = render(Button, {
+      props: { label: 'New chat', 'aria-disabled': 'false', onclick },
+    });
+    await fireEvent.click(container.querySelector('button')!);
+    expect(onclick).toHaveBeenCalledTimes(1);
+  });
+
+  test('an aria-disabled link does not navigate or run onclick', async () => {
+    const onclick = mock(() => {});
+    const { container } = render(Button, {
+      props: { label: 'Go', href: '/x', 'aria-disabled': 'true', onclick },
+    });
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    container.querySelector('a')!.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(onclick).not.toHaveBeenCalled();
   });
 });
 

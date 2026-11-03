@@ -192,6 +192,262 @@
   }
 
   /* ----------------------------------------
+ * Ghost variant
+ * No border or fill at rest, a neutral tint on hover and while open, the focus ring wrapping
+ * the whole control, the chevron kept. For a select inside a bordered container (a composer,
+ * an inline toolbar), so the row of controls reads as one surface that lines up with the
+ * container's own text inset. The tint is the same ink wash the vertical navigation item uses
+ * for hover, so a ghost select and a ghost button feel alike.
+ * ---------------------------------------- */
+
+  .cinder-select[data-cinder-variant='ghost'] {
+    background-color: transparent;
+    border-color: transparent;
+    padding-inline: var(--cinder-pad-control) calc(var(--cinder-pad-control) + 1.25rem);
+  }
+
+  .cinder-select-field[data-cinder-variant='ghost'] {
+    inline-size: fit-content;
+    max-inline-size: 100%;
+  }
+
+  .cinder-select-field[data-cinder-variant='ghost'] .cinder-select-field__control {
+    inline-size: auto;
+  }
+
+  .cinder-select[data-cinder-variant='ghost'] + .cinder-select-field__chevron {
+    inset-inline-end: var(--cinder-pad-control);
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    -webkit-mask-size: 0.875rem 0.875rem;
+    mask-size: 0.875rem 0.875rem;
+  }
+
+  @media (hover: hover) {
+    .cinder-select[data-cinder-variant='ghost']:hover:not(:disabled):not(:focus-visible) {
+      background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 94%);
+      border-color: transparent;
+    }
+  }
+
+  /* The ring wraps the whole control (the tight ring is the shared one); the border stays
+     transparent so it never stacks on the ring. */
+  .cinder-select[data-cinder-variant='ghost'][data-cinder-open]:not(:disabled) {
+    background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 94%);
+  }
+
+  .cinder-select[data-cinder-variant='ghost']:disabled {
+    background-color: transparent;
+    border-color: transparent;
+  }
+
+  .cinder-select[data-cinder-variant='ghost'][aria-invalid='true'] {
+    border-color: var(--cinder-control-border-invalid);
+  }
+
+  /* ----------------------------------------
+ * Read-only
+ * Shows its value and takes focus, but does not open: no pointer affordance, no hover change.
+ * ---------------------------------------- */
+
+  .cinder-select[aria-readonly='true'] {
+    cursor: default;
+  }
+
+  @media (hover: hover) {
+    .cinder-select[aria-readonly='true']:hover:not(:disabled) {
+      border-color: var(--cinder-control-border);
+    }
+
+    .cinder-select[data-cinder-variant='ghost'][aria-readonly='true']:hover:not(:disabled):not(
+        :focus-visible
+      ) {
+      background-color: transparent;
+    }
+  }
+
+  /* ----------------------------------------
+ * Listbox presentation: the trigger
+ * A button drawn like the native select. The chevron stays the shared absolutely positioned
+ * glyph, so both presentations line up.
+ * ---------------------------------------- */
+
+  .cinder-select[data-cinder-presentation='listbox'] {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    font-family: inherit;
+    text-align: start;
+    white-space: nowrap;
+  }
+
+  .cinder-select__prefix {
+    flex: none;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-select__prefix + .cinder-select__value,
+  .cinder-select__leading + .cinder-select__value {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-select__prefix + .cinder-select__leading + .cinder-select__value {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-select__leading {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .cinder-select__value {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cinder-select__value[data-cinder-placeholder] {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-select[data-cinder-presentation='listbox']:disabled .cinder-select__value {
+    color: var(--cinder-text-disabled);
+  }
+
+  /* ----------------------------------------
+ * Listbox presentation: the panel
+ * ---------------------------------------- */
+
+  .cinder-select__panel.cinder-popover {
+    margin: var(--cinder-space-1) 0 0 0;
+    padding: var(--cinder-space-1);
+    min-inline-size: 0;
+    max-inline-size: min(28rem, calc(100vw - var(--cinder-space-4)));
+    overflow: hidden;
+  }
+
+  /* A ghost trigger hugs its content, so the list is not held to that narrow width. */
+  .cinder-select__panel.cinder-popover:has(> .cinder-select__content[data-cinder-variant='ghost']) {
+    min-inline-size: min(16rem, calc(100vw - var(--cinder-space-4)));
+  }
+
+  .cinder-select__content {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    max-block-size: min(24rem, calc(100vh - var(--cinder-space-8)));
+  }
+
+  /* The listbox scrolls; the footer stays put under it. */
+  .cinder-select__listbox {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    min-block-size: 0;
+    overflow-y: auto;
+  }
+
+  .cinder-select__option {
+    align-items: flex-start;
+    cursor: pointer;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-select__option-leading {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    /* Lines the mark up with the label line when the option has more lines under it. */
+    min-block-size: calc(1em * var(--cinder-leading-normal));
+  }
+
+  .cinder-select__option-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
+  .cinder-select__option-label {
+    font-weight: var(--cinder-font-medium);
+    line-height: var(--cinder-leading-normal);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-select__option-description,
+  .cinder-select__option-note {
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  /* The current option: the accent tint and a check, the same current-item look the sidebar
+     uses. The keyboard cursor keeps its inset ring on top. */
+  .cinder-_option-row.cinder-select__option[aria-selected='true'] {
+    background: var(--cinder-accent-background);
+  }
+
+  .cinder-select__option[aria-selected='true'] .cinder-select__option-label {
+    color: var(--cinder-accent-text);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-select__option-check {
+    flex: none;
+    align-self: center;
+    margin-inline-start: auto;
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-select__option[aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  .cinder-select__option[aria-disabled='true'] .cinder-select__option-description,
+  .cinder-select__option[aria-disabled='true'] .cinder-select__option-note {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-select__group[data-cinder-divided] {
+    margin-block-start: var(--cinder-space-1);
+    padding-block-start: var(--cinder-space-1);
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* Non-selectable text under a group heading. A link inside it is a keyboard stop of its own. */
+  .cinder-select__group-message {
+    padding: 0 var(--cinder-space-2) var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-select__group-message a,
+  .cinder-select__footer a {
+    color: var(--cinder-accent-text);
+    text-decoration: underline;
+  }
+
+  .cinder-select__footer {
+    flex: none;
+    margin-block-start: var(--cinder-space-1);
+    padding: var(--cinder-space-2) var(--cinder-space-2) var(--cinder-space-1);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+  }
+
+  /* Docked sheet on a phone: clear the safe area. */
+  .cinder-select__panel.cinder-popover[data-cinder-sheet='docked'] {
+    padding-block-end: max(var(--cinder-space-1), env(safe-area-inset-bottom));
+  }
+
+  /* ----------------------------------------
  * Supporting text
  * ---------------------------------------- */
 

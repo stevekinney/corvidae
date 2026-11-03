@@ -125,8 +125,19 @@ export type ButtonProps = SharedHtmlAttributes &
     size?: ButtonSize;
     /** Expand to container width. */
     fullWidth?: boolean;
-    /** Disable the button and show a spinner. */
+    /**
+     * Show a spinner and make the button inert while work is in flight. The button gets
+     * `aria-disabled` and `aria-busy` (not the native `disabled`, so it keeps focus), keeps its
+     * label, ignores further presses, and holds the width it had at rest.
+     */
     loading?: boolean;
+    /**
+     * Text a polite, visually hidden status announces while `loading` (for example `Saving…`).
+     * The status node is rendered beside the button, so it never joins the button's accessible
+     * name, and it is mounted from the start so the announcement is not lost. Omit it and no
+     * status node is rendered.
+     */
+    loadingStatus?: string;
     /** DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.
      *  If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. */
     leadingIcon?: Snippet;
@@ -159,10 +170,15 @@ export interface ButtonSchemaProps {
    */
   fullWidth?: boolean;
   /**
-   * Disable the button and show a spinner.
+   * Show a spinner and make the button inert (`aria-disabled`, still focusable) while work is
+   * in flight; the label stays and the width holds.
    * @default false
    */
   loading?: boolean;
+  /**
+   * Text a polite, visually hidden status announces while `loading`, rendered beside the button.
+   */
+  loadingStatus?: string;
   /**
    * Render the button with only an icon. Requires an accessible name source.
    * @default false
