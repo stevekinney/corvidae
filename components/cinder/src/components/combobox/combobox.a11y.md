@@ -53,14 +53,28 @@ Options with a `group` render inside a `role="group"` element whose `aria-labell
 
 ## Empty result set (COR-499)
 
-When `filteredOptions` is empty, the open listbox renders zero `role="option"` elements — no fake disabled option. The single visible "No results" line renders as plain, roleless text inside the listbox surface; the one status description that names the empty state for assistive technology lives outside the listbox (`.cinder-combobox__empty-status`, `role="status"`) and is referenced from the text field's own `aria-describedby`, the same describedby-based association CommandMenu uses from its `role="listbox"` element (`command-menu.svelte`'s `emptyStateId`). Focus stays on the text field throughout; `aria-activedescendant` is absent; Arrow keys and Enter cannot select or emit a value change while empty. Clearing the filter removes the empty description and restores normal option rows, active-descendant navigation, and selection.
+When `filteredOptions` is empty, the open listbox renders zero `role="option"` elements — no fake disabled option. The single visible "No results" line renders as plain, roleless text in the panel beside the (hidden, empty) listbox the input controls, never inside it (the text is `noMatchLabel`, "No results" by default); the one status description that names the empty state for assistive technology lives outside the listbox (`.cinder-combobox__empty-status`, `role="status"`) and is referenced from the text field's own `aria-describedby`, the same describedby-based association CommandMenu uses from its `role="listbox"` element (`command-menu.svelte`'s `emptyStateId`). Focus stays on the text field throughout; `aria-activedescendant` is absent; Arrow keys and Enter cannot select or emit a value change while empty. Clearing the filter removes the empty description and restores normal option rows, active-descendant navigation, and selection.
+
+## Panel structure
+
+The panel is a Popover with `role="group"`, named by the field's label. Inside it, in order: the picker's search field, the load error, the `role="listbox"` element (the one `aria-controls` names, and the scroller), the empty message, and the `footer`. Only options live inside the listbox, so the search field, the retry button and footer links are never children of a `role="listbox"`. The empty message and the footer are plain content; the arrow keys and Enter never reach them.
+
+The retry button and any link or button in the `footer` are keyboard stops of their own after the options: Tab from the field lands on the first one and the list stays open; Tab from the last closes the list and hands focus back to the field so the next Tab leaves the control; Shift+Tab from the first returns to the field. When the list closes while focus is inside the panel, focus returns to the field.
+
+## Picker presentation
+
+The closed field is a `<button role="combobox" aria-haspopup="listbox">` labelled by the field's `<label for>`, with `aria-expanded` and (while open) `aria-controls`. Enter, Space, ArrowDown and ArrowUp open it. Opening moves focus into the panel's search field, which is itself a `role="combobox"` with `aria-autocomplete="list"`, `aria-controls` and `aria-activedescendant` naming the option under the cursor; focus stays there while the arrow keys move the cursor, Enter chooses, Escape closes without changing the value, and the value's label in the closed field is never edited by searching. Choosing an option closes the panel and returns focus to the button. The "N of M" count is a polite status.
+
+## Loading and load error
+
+While `loading`, the field is `aria-busy`, shows the loading label as its placeholder (input) or button text (picker), and does not open. The input is read-only, not disabled, so it stays in the tab order and keeps its label. Skeleton's status line below it is a `role="status"` region. A `loadError` is a `role="alert"` message at the top of the panel, so it is announced when the list opens.
 
 ## Hard scope caps (v1)
 
 These are deliberate non-goals for the first version. Consumers who need them should compose their own combobox or open an issue tracking demand.
 
 - **Single-select only.** No multi-select, no token chips.
-- **Synchronous local filtering only.** Pass `filter` for custom logic, but don't expect debounced fetches or async loading.
+- **Synchronous local filtering only.** Pass `filter` for custom logic, but don't expect debounced fetches. A consumer that loads its options draws the wait with `loading` and a failure with `loadError`.
 - **No virtualization.** Visible option count is capped at `maxVisibleOptions` (default 200). Larger lists should be paginated or pre-filtered.
 - **Custom values are opt-in.** With `customValueAllowed`, typed text can be committed with Enter or on blur; when the text exactly matches an existing option label or value, the component still commits that option's canonical value instead of treating it as arbitrary text.
-- **No custom option renderer.** Rich rows support `description` and `avatar` out of the box. Consumers needing a different layout should open a feature request; a snippet-based renderer is a candidate for a future iteration.
+- **No custom option renderer.** Rich rows support `description`, `avatar`, `code` and `meta` (or the `optionMeta` snippet) out of the box. Consumers needing a different layout should open a feature request; a snippet-based renderer is a candidate for a future iteration.

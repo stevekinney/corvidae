@@ -70,7 +70,7 @@ describe('Combobox grouped options', () => {
     render(Combobox, { id: 'workflow', options: workflows });
     await openList('workflow');
 
-    const groups = Array.from(document.body.querySelectorAll('[role="group"]'));
+    const groups = Array.from(document.body.querySelectorAll('[role="listbox"] [role="group"]'));
     expect(groups).toHaveLength(2);
     for (const group of groups) {
       const labelledBy = group.getAttribute('aria-labelledby') ?? '';
@@ -84,7 +84,7 @@ describe('Combobox grouped options', () => {
     const chat = Array.from(document.body.querySelectorAll('[role="option"]')).find((option) =>
       option.textContent?.includes('Chat with an agent'),
     );
-    expect(chat?.closest('[role="group"]')).toBeNull();
+    expect(chat?.closest('[role="listbox"] [role="group"]')).toBeNull();
   });
 
   test('typing filters across groups, keeps headings of groups that still match and drops the rest', async () => {
@@ -194,7 +194,8 @@ describe('Combobox grouped options', () => {
     await openList('plain');
 
     expect(optionLabels()).toEqual(['Alpha', 'Beta']);
-    expect(document.body.querySelector('[role="group"]')).toBeNull();
+    // The panel itself is a `role="group"` that holds the list; no group lives inside the list.
+    expect(document.body.querySelector('[role="listbox"] [role="group"]')).toBeNull();
     expect(headings()).toEqual([]);
   });
 });

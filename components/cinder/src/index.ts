@@ -231,7 +231,13 @@ export type {
 } from './components/color-swatch-picker/index.ts';
 
 export { default as Combobox } from './components/combobox/index.ts';
-export type { ComboboxOption, ComboboxProps } from './components/combobox/index.ts';
+export type {
+  ComboboxFooterContext,
+  ComboboxLoadError,
+  ComboboxOption,
+  ComboboxPresentation,
+  ComboboxProps,
+} from './components/combobox/index.ts';
 
 export { default as CommandItem } from './components/command-item/index.ts';
 export type { CommandItemProps } from './components/command-item/index.ts';
