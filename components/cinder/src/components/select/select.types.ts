@@ -129,6 +129,13 @@ export type SelectProps<T extends string = string> = Omit<
    * the picker.
    */
   readonly?: boolean;
+  /**
+   * Marks a select that changes something. Inside a stale `<StaleRegion>` it goes inert: it can
+   * be focused but not opened or changed, carries `aria-disabled`, and the region's reason
+   * describes it. It returns by itself when the region stops being stale.
+   * @default false
+   */
+  mutating?: boolean;
   /** Called with the new value when the person picks an option. */
   onValueChange?: (value: T) => void;
   /**

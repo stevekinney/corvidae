@@ -31,7 +31,7 @@
     inline-size: 0.5rem;
     block-size: 0.5rem;
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-status-success-solid);
+    background: var(--_cinder-connection-indicator-dot-color, var(--cinder-status-success-solid));
   }
 
   /* The pending ring: the same hollow neutral ring a status dot draws for Waiting, so "Out of
@@ -79,23 +79,26 @@
     color: currentColor;
   }
 
-  /* connecting and reconnecting both spin the icon wrapper to signal in-progress work. This
+  /* The reconnecting dot is still and neutral: the same solid control-border dot a status dot draws
+     for a neutral state. It is not green (not live) and does not pulse; the retry count belongs to
+     the banner, so the indicator says only "Reconnecting". */
+  .cinder-connection-indicator[data-cinder-status='reconnecting']
+    .cinder-connection-indicator__dot {
+    --_cinder-connection-indicator-dot-color: var(--cinder-border-control);
+  }
+
+  /* connecting spins the icon wrapper to signal in-progress work. This
  * targets the wrapper span (not the inner svg with a :global() selector) because this file is
  * a plain CSS asset imported from index.ts — the Svelte compiler never processes it, so
  * :global() has no effect here and browsers drop the whole rule as an unknown pseudo-class.
  * Rotating the wrapper rotates its svg child identically. */
-  .cinder-connection-indicator[data-cinder-status='connecting'] .cinder-connection-indicator__icon,
-  .cinder-connection-indicator[data-cinder-status='reconnecting']
-    .cinder-connection-indicator__icon {
+  .cinder-connection-indicator[data-cinder-status='connecting'] .cinder-connection-indicator__icon {
     animation: cinder-connection-indicator-spin var(--cinder-duration-spin) linear infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-connection-indicator[data-cinder-status='connecting']
-      .cinder-connection-indicator__icon,
-    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
-      .cinder-connection-indicator[data-cinder-status='reconnecting']
       .cinder-connection-indicator__icon {
       animation: none;
     }
@@ -124,9 +127,7 @@
  * label text. Colour is never the sole signal (WCAG 1.4.1).
  * ---------------------------------------- */
 
-  .cinder-connection-indicator[data-cinder-status='connecting'] .cinder-connection-indicator__icon,
-  .cinder-connection-indicator[data-cinder-status='reconnecting']
-    .cinder-connection-indicator__icon {
+  .cinder-connection-indicator[data-cinder-status='connecting'] .cinder-connection-indicator__icon {
     color: var(--cinder-status-warning-text);
   }
 

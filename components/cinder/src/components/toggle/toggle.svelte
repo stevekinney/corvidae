@@ -17,6 +17,11 @@
 <script lang="ts">
   import type { ToggleProps } from './toggle.types.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import {
+    getStaleRegionContext,
+    isStaleInert,
+    mergeDescribedBy,
+  } from '../../_internal/stale-region-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { commitValue } from '../../utilities/value-change.ts';
 
@@ -27,6 +32,7 @@
     onValueChange,
     label,
     disabled,
+    mutating = false,
     labelVisible = true,
     name,
     value = 'on',
@@ -46,10 +52,18 @@
   const ownLabelId = $derived(label ? `${id ?? generatedId}-label` : undefined);
   const labelId = $derived(context?.labelId ?? ownLabelId);
   const resolvedId = $derived(context?.controlId ?? id);
-  const describedBy = $derived(context?.describedBy);
+
+  // A switch that changes something (`mutating`) under a stale `<StaleRegion>` is inert but still
+  // focusable: `aria-disabled` (not the native `disabled`), described by the region's reason, and
+  // it ignores a press on the track or on its label.
+  const staleRegion = getStaleRegionContext();
+  const staleInert = $derived(isStaleInert(staleRegion, mutating));
+  const describedBy = $derived(
+    mergeDescribedBy(context?.describedBy, staleInert ? staleRegion?.reasonId : undefined),
+  );
 
   function toggle(): void {
-    if (!resolvedDisabled) {
+    if (!resolvedDisabled && !staleInert) {
       commitValue(
         !checked,
         onValueChangeRequest,
@@ -71,6 +85,7 @@
     aria-labelledby={labelId}
     aria-describedby={describedBy}
     disabled={resolvedDisabled}
+    aria-disabled={staleInert ? 'true' : undefined}
     onclick={toggle}
     class={classNames('cinder-toggle', customClassName)}
     data-cinder-checked={checked ? '' : undefined}
@@ -102,7 +117,7 @@
         class="cinder-toggle-field__label"
         role="presentation"
         data-hidden={!labelVisible || undefined}
-        data-disabled={resolvedDisabled || undefined}
+        data-disabled={resolvedDisabled || staleInert || undefined}
         onclick={toggle}>{label}</span
       >
     </span>
@@ -117,7 +132,7 @@
       class="cinder-toggle-field__label"
       role="presentation"
       data-hidden={!labelVisible || undefined}
-      data-disabled={resolvedDisabled || undefined}
+      data-disabled={resolvedDisabled || staleInert || undefined}
       onclick={toggle}
     >
       {label}

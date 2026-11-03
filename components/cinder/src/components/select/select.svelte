@@ -25,6 +25,11 @@
   import type { SelectProps } from './select.types.ts';
   import { resolveFieldControl } from '../../_internal/field-control.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import {
+    getStaleRegionContext,
+    isStaleInert,
+    mergeDescribedBy,
+  } from '../../_internal/stale-region-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import FormFieldFrame from '../../_internal/form-field-frame.svelte';
@@ -49,6 +54,7 @@
     groups,
     footer,
     readonly = false,
+    mutating = false,
     onValueChange,
     sheetBelow,
     name,
@@ -62,6 +68,12 @@
   }: SelectProps<T> = $props();
 
   const context = getFormFieldContext();
+  // A select that changes something (`mutating`) under a stale `<StaleRegion>` is inert but still
+  // focusable: it cannot be opened or changed, carries `aria-disabled`, and is described by the
+  // region's reason. It returns by itself when the region stops being stale.
+  const staleRegion = getStaleRegionContext();
+  const staleInert = $derived(isStaleInert(staleRegion, mutating));
+  const blocked = $derived(readonly || staleInert);
   const field = $derived(
     resolveFieldControl({
       id,
@@ -70,7 +82,10 @@
       hasDescription: !!description,
       hasError: !!error,
       localIdNamespace: 'select',
-      consumerDescribedBy,
+      consumerDescribedBy: mergeDescribedBy(
+        consumerDescribedBy,
+        staleInert ? staleRegion?.reasonId : undefined,
+      ),
       consumerInvalid,
       required,
       disabled,
@@ -89,11 +104,11 @@
   // A native select has no `readonly`: block the picker from opening (pointer and keyboard)
   // and put the value back if anything still changes it. Tab and the other keys stay free.
   function blockWhenReadonly(event: MouseEvent & { currentTarget: HTMLSelectElement }): void {
-    if (readonly) event.preventDefault();
+    if (blocked) event.preventDefault();
     else (consumerOnMouseDown as ((event: MouseEvent) => void) | undefined)?.(event);
   }
   function blockKeyWhenReadonly(event: KeyboardEvent & { currentTarget: HTMLSelectElement }): void {
-    if (readonly && event.key !== 'Tab') event.preventDefault();
+    if (blocked && event.key !== 'Tab') event.preventDefault();
     else (consumerOnKeyDown as ((event: KeyboardEvent) => void) | undefined)?.(event);
   }
   function handleNativeChange(event: Event & { currentTarget: HTMLSelectElement }): void {
@@ -129,7 +144,8 @@
       {size}
       {variant}
       disabled={field.disabled}
-      {readonly}
+      readonly={blocked}
+      aria-disabled={staleInert ? 'true' : undefined}
       required={field.required}
       name={name ?? undefined}
       describedBy={field.describedBy}
@@ -151,6 +167,7 @@
           required={field.required}
           {name}
           aria-readonly={readonly || undefined}
+          aria-disabled={staleInert ? 'true' : undefined}
           onmousedown={blockWhenReadonly}
           onkeydown={blockKeyWhenReadonly}
           data-cinder-empty="true"
@@ -168,6 +185,7 @@
           required={field.required}
           {name}
           aria-readonly={readonly || undefined}
+          aria-disabled={staleInert ? 'true' : undefined}
           onmousedown={blockWhenReadonly}
           onkeydown={blockKeyWhenReadonly}
           bind:value

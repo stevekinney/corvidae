@@ -26,6 +26,11 @@
       "type": "string",
       "description": "Text a polite, visually hidden status announces while `loading`, rendered beside the button."
     },
+    "mutating": {
+      "type": "boolean",
+      "description": "Marks a button that changes something. Inside a stale `<StaleRegion>` it goes inert\n(`aria-disabled`, still focusable) and is described by the region's reason.",
+      "default": false
+    },
     "iconOnly": {
       "type": "boolean",
       "description": "Render the button with only an icon. Requires an accessible name source.",

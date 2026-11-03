@@ -172,6 +172,7 @@ export { default as speedDialSchema } from '../components/speed-dial/speed-dial.
 export { default as spinnerSchema } from '../components/spinner/spinner.schema.ts';
 export { default as stackSchema } from '../components/stack/stack.schema.ts';
 export { default as stackedListItemSchema } from '../components/stacked-list-item/stacked-list-item.schema.ts';
+export { default as staleRegionSchema } from '../components/stale-region/stale-region.schema.ts';
 export { default as statisticGroupSchema } from '../components/statistic-group/statistic-group.schema.ts';
 export { default as statisticSchema } from '../components/statistic/statistic.schema.ts';
 export { default as statusDotSchema } from '../components/status-dot/status-dot.schema.ts';

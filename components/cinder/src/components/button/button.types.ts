@@ -138,6 +138,14 @@ export type ButtonProps = SharedHtmlAttributes &
      * status node is rendered.
      */
     loadingStatus?: string;
+    /**
+     * Marks a button that changes something (Edit, Save, Delete, a header "+"). Inside a stale
+     * `<StaleRegion>` it goes inert: `aria-disabled`, still focusable, ignoring the press, and
+     * described by the region's reason ("Off until it’s back"). It returns by itself when the
+     * region stops being stale. A button that only reads (a link, Retry now) leaves this off and
+     * stays live.
+     */
+    mutating?: boolean;
     /** DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.
      *  If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. */
     leadingIcon?: Snippet;
@@ -179,6 +187,12 @@ export interface ButtonSchemaProps {
    * Text a polite, visually hidden status announces while `loading`, rendered beside the button.
    */
   loadingStatus?: string;
+  /**
+   * Marks a button that changes something. Inside a stale `<StaleRegion>` it goes inert
+   * (`aria-disabled`, still focusable) and is described by the region's reason.
+   * @default false
+   */
+  mutating?: boolean;
   /**
    * Render the button with only an icon. Requires an accessible name source.
    * @default false

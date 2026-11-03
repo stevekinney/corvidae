@@ -178,6 +178,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       fullWidth: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       loadingStatus: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: { children: s0(true), leadingIcon: s0(true), trailingIcon: s0(true) },
@@ -517,6 +518,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       valuePrefix: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       groups: { optional: true, type_kind: 'TSTypeOperator', default: NO_DEFAULT },
       readonly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       sheetBelow: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
@@ -606,6 +608,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // through FormField context (`disabled ?? context?.disabled ?? false`), so
       // the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onValueChangeRequest: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       labelVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },

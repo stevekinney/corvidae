@@ -30,6 +30,7 @@ Three callbacks can observe a toggle, and they fire in this order with different
 | `id` | `string` | no | — | Unique identifier for label association and ARIA wiring. Optional: when omitted, a stable id is generated via `$props.id()` (or inherited from a FormField context), matching Input/Autocomplete. Provide it when you need a known id to reference. |
 | `indeterminate` | `boolean` | no | — | Bound indeterminate state. Mutually exclusive with `checked` visually. |
 | `label` | `string` | no | — | Visible label rendered in a `<label>` element associated via `for`. |
+| `mutating` | `boolean` | no | `false` | Marks a checkbox that changes something. Inside a stale `<StaleRegion>` it goes inert: `aria-disabled`, still focusable, a press is undone, and the region's reason describes it. It returns by itself when the region stops being stale. |
 | `onValueChange` | `(opaque)` | no | — | Notify after the bindable value has been committed. Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChangeRequest` | `(opaque)` | no | — | Intercept a proposed checked state before the bindable value is written. Return a replacement value to transform it. Not expressible in JSON Schema; see the component types for the signature. |
 

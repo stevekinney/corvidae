@@ -117,6 +117,7 @@ Fourteen sites (fifteen declarations: the ColorField hatch has two stops) are a 
 | `resizable-panels` grip | `border.control` (was `border.strong`) | `color:`, inherited by a child, undiluted — the child's `opacity: 0.5` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `entry-frame` busy dot (Chat) | `border.control` | 8 × 8px |
 | `attempts-indicator` filled segment, through `--_cinder-attempts-indicator-fill` | `border.control` | a 6px tall segment, one per allowed attempt, over the row or the dialog surface (the empty ones are `surface.inset`) |
+| `connection-indicator` reconnecting dot, through `--_cinder-connection-indicator-dot-color` | `border.control` | 8 × 8px, still, beside the word "Reconnecting"; the same neutral dot a `status-dot` draws, over the page surface |
 
 Four of those do not reach the tier through `background` at all, which is how two earlier passes of this document missed them: `color-field` uses `background-image`, `resizable-panels` uses `color`, and `rating` and `status-dot` hop through a component token (`--_cinder-rating-empty`, `--cinder-status-dot-color`). `status-dot` borrows a border tier because every other status maps to a `*-solid` and neutral has none.
 

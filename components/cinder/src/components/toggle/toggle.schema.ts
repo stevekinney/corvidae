@@ -22,6 +22,12 @@ const schema = {
       type: 'boolean',
       description: 'Prevents interaction when true. Sets `disabled` attribute.',
     },
+    mutating: {
+      type: 'boolean',
+      description:
+        "Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, ignoring the press, and described by the region's reason.\nIt returns by itself when the region stops being stale.",
+      default: false,
+    },
     labelVisible: {
       type: 'boolean',
       description:

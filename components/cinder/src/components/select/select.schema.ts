@@ -68,6 +68,12 @@ const schema = {
       description:
         'The control shows its value and can be focused, but does not open and does not change.\nExposed as `aria-readonly` on the listbox presentation; the native presentation also blocks\nthe picker.',
     },
+    mutating: {
+      type: 'boolean',
+      description:
+        "Marks a select that changes something. Inside a stale `<StaleRegion>` it goes inert: it can\nbe focused but not opened or changed, carries `aria-disabled`, and the region's reason\ndescribes it. It returns by itself when the region stops being stale.",
+      default: false,
+    },
     sheetBelow: {
       anyOf: [
         {

@@ -1,0 +1,19 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * STALE REGION
+ *
+ * Old data keeps its text, dots and tones exactly as they were: this stylesheet never dims,
+ * fades or filters anything inside the region (design rows 05e, 11j: 4.5:1 or better, nothing
+ * dimmed with opacity). The only visible sign that the data is old is the banner the page puts
+ * above it, and the only visible change under the region is a control that went inert, which
+ * draws itself muted through its own aria-disabled styling.
+ *
+ * The wrapper takes no box of its own, so a page that wraps its header, banner and list does not
+ * change its layout. A consumer class that needs a box sets `display` itself.
+ * ======================================== */
+
+  .cinder-stale-region {
+    display: contents;
+  }
+}

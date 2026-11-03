@@ -168,6 +168,7 @@
 @import '../components/spinner/spinner.css';
 @import '../components/stack/stack.css';
 @import '../components/stacked-list-item/stacked-list-item.css';
+@import '../components/stale-region/stale-region.css';
 @import '../components/statistic-group/statistic-group.css';
 @import '../components/statistic/statistic.css';
 @import '../components/status-dot/status-dot.css';

@@ -172,6 +172,7 @@ export { default as speedDialVariables } from '../components/speed-dial/speed-di
 export { default as spinnerVariables } from '../components/spinner/spinner.variables.ts';
 export { default as stackVariables } from '../components/stack/stack.variables.ts';
 export { default as stackedListItemVariables } from '../components/stacked-list-item/stacked-list-item.variables.ts';
+export { default as staleRegionVariables } from '../components/stale-region/stale-region.variables.ts';
 export { default as statisticGroupVariables } from '../components/statistic-group/statistic-group.variables.ts';
 export { default as statisticVariables } from '../components/statistic/statistic.variables.ts';
 export { default as statusDotVariables } from '../components/status-dot/status-dot.variables.ts';

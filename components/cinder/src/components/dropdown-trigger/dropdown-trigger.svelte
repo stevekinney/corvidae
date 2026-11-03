@@ -17,6 +17,11 @@
 <script lang="ts">
   import type { DropdownTriggerProps } from './dropdown-trigger.types.ts';
 
+  import {
+    getStaleRegionContext,
+    isStaleInert,
+    mergeDescribedBy,
+  } from '../../_internal/stale-region-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import {
     getDropdownContext,
@@ -27,15 +32,26 @@
   let {
     class: customClassName,
     caretVisible = true,
+    mutating = false,
     children,
     onclick,
     style: consumerStyle,
+    'aria-describedby': consumerDescribedBy,
     ...rest
   }: DropdownTriggerProps = $props();
 
   const context = getDropdownContext();
   const registerTrigger = getDropdownRegisterTrigger();
   const setOpen = getDropdownSetOpen();
+
+  // A menu of actions that change something (`mutating`) under a stale `<StaleRegion>` is inert
+  // but still focusable: the menu does not open, the trigger carries `aria-disabled`, and the
+  // region's reason describes it.
+  const staleRegion = getStaleRegionContext();
+  const staleInert = $derived(isStaleInert(staleRegion, mutating));
+  const describedBy = $derived(
+    mergeDescribedBy(consumerDescribedBy, staleInert ? staleRegion?.reasonId : undefined),
+  );
 
   function terminated(declaration: string): string {
     const trimmed = declaration.trim();
@@ -57,6 +73,10 @@
   function handleClick(
     event: MouseEvent & { currentTarget: EventTarget & HTMLButtonElement },
   ): void {
+    if (staleInert) {
+      event.preventDefault();
+      return;
+    }
     if (typeof onclick === 'function') {
       onclick(event);
     }
@@ -74,7 +94,9 @@
   aria-haspopup="menu"
   aria-expanded={context.isOpen}
   aria-controls={context.menuId}
-  popovertarget={context.supportsPopover ? context.menuId : undefined}
+  popovertarget={context.supportsPopover && !staleInert ? context.menuId : undefined}
+  aria-disabled={staleInert ? 'true' : undefined}
+  aria-describedby={describedBy}
   onclick={handleClick}
   {...rest}
 >

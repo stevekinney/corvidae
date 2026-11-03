@@ -928,6 +928,7 @@ export type {
 } from './components/source-diff-viewer/index.ts';
 
 export { default as StackedListItem } from './components/stacked-list-item/index.ts';
+
 export type {
   StackedListItemAction,
   StackedListItemDensity,
@@ -938,6 +939,8 @@ export type {
   StackedListItemTitleLines,
   StackedListItemTone,
 } from './components/stacked-list-item/index.ts';
+export { default as StaleRegion } from './components/stale-region/index.ts';
+export type { StaleRegionProps } from './components/stale-region/index.ts';
 
 export { default as Stack } from './components/stack/index.ts';
 export type {

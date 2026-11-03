@@ -288,6 +288,13 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'attempts-indicator',
     },
   ],
+  'components/cinder/src/components/connection-indicator/connection-indicator.css': [
+    {
+      declaration: '--_cinder-connection-indicator-dot-color: var(--cinder-border-control);',
+      category: 'area',
+      audit: 'connection-indicator',
+    },
+  ],
   'components/cinder/src/components/slider/slider.css': [
     {
       declaration: 'background: var(--cinder-border-control, currentColor);',

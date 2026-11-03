@@ -343,6 +343,7 @@ const SIDEBAR_BASELINE = [
   'spinner',
   'stack',
   'stacked-list-item',
+  'stale-region',
   'statistic-group',
   'status-dot',
   'steps',

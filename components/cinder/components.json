@@ -5314,6 +5314,36 @@
       }
     },
     {
+      "name": "StaleRegion",
+      "id": "stale-region",
+      "import": "@lostgradient/cinder",
+      "exportName": "StaleRegion",
+      "category": "feedback",
+      "status": "beta",
+      "purpose": "Wrapper for a page whose data may be old that keeps that data at full contrast and turns off only the controls that change something, each described by why.",
+      "tags": ["stale", "offline", "inert"],
+      "useWhen": [
+        "The server is unreachable or a refresh failed and the page keeps showing what it loaded, with a banner above it.",
+        "Turning off a page's writing controls (Edit, Save, Delete, a switch) while its reading controls (links, filters, tabs, Retry) stay live."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Disabling one control for its own reason, such as a missing provider — set aria-disabled on that control and describe it."
+        },
+        {
+          "reason": "Showing the connection state itself — use banner with a connection preset."
+        }
+      ],
+      "related": ["banner", "button", "toggle", "checkbox", "select"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/stale-region/stale-region.schema.json",
+        "variables": "src/components/stale-region/stale-region.variables.json",
+        "examples": "src/components/stale-region/stale-region.examples.json"
+      }
+    },
+    {
       "name": "Statistic",
       "id": "statistic",
       "import": "@lostgradient/cinder",

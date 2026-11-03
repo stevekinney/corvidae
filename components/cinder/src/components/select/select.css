@@ -76,7 +76,7 @@
   }
 
   @media (hover: hover) {
-    .cinder-select:hover:not(:disabled) {
+    .cinder-select:hover:not(:disabled):not([aria-disabled='true']) {
       border-color: var(--cinder-control-border-hover);
     }
   }
@@ -103,6 +103,21 @@
     border-color: var(--cinder-control-border-disabled);
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
+  }
+
+  /*
+   * Inert (a stale region's mutating select): drawn like a disabled one, but it keeps focus and
+   * its value stays readable, because the value is old data and old data keeps its contrast.
+   */
+  .cinder-select[aria-disabled='true'] {
+    background-color: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
+    cursor: not-allowed;
+  }
+
+  .cinder-select[data-cinder-variant='ghost'][aria-disabled='true'] {
+    background-color: transparent;
+    border-color: transparent;
   }
 
   /*

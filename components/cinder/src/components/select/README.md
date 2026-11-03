@@ -62,6 +62,7 @@ Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"
 | `id` | `string` | yes | — | Unique identifier — required for label association and ARIA wiring. |
 | `label` | `string` | no | — | Visible label rendered in a `<label>` associated via `for`. |
 | `labelVisible` | `boolean` | no | `true` | Whether the label is visibly rendered. Set `false` to visually hide it while keeping it available to assistive technology. |
+| `mutating` | `boolean` | no | `false` | Marks a select that changes something. Inside a stale `<StaleRegion>` it goes inert: it can be focused but not opened or changed, carries `aria-disabled`, and the region's reason describes it. It returns by itself when the region stops being stale. |
 | `placeholder` | `string` | no | — | Listbox only: text shown in the trigger while no option is selected, such as `Loading models`. |
 | `presentation` | `"native"` \| `"listbox"` | no | `"native"` | Native `<select>` or a drawn listbox; see `SelectPresentation`. The listbox-only props below (`placeholder`, `valuePrefix`, `leading`, `footer`, `groups`, and the rich option fields) do nothing in the native presentation. |
 | `readonly` | `boolean` | no | — | The control shows its value and can be focused, but does not open and does not change. Exposed as `aria-readonly` on the listbox presentation; the native presentation also blocks the picker. |

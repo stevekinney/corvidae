@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "stale-region",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Old data with inert writes",
+      "description": "The server is unreachable, so the page keeps its data at full contrast under a warning banner. Only the button that changes something is inert (aria-disabled, still focusable, described by \"Off until it’s back\"); the link and Retry now stay live.",
+      "code": "<script lang=\"ts\">\n  import { Banner, Button, Link, StaleRegion } from '@lostgradient/cinder';\n\n  let stale = $state(true);\n  const loadedAt = new Date(Date.now() - 120_000);\n</script>\n\n<StaleRegion {stale}>\n  {#if stale}\n    <Banner\n      preset=\"unreachable\"\n      dataUpdatedAt={loadedAt}\n      retryInSeconds={4}\n      attempt={3}\n      onRetry={() => (stale = false)}\n    />\n  {/if}\n  <div style=\"display: grid; gap: 0.75rem; margin-block-start: 0.75rem;\">\n    <div style=\"display: flex; align-items: center; justify-content: space-between;\">\n      <strong>Agents</strong>\n      <Button mutating iconOnly aria-label=\"New agent\">+</Button>\n    </div>\n    <div>\n      <Link href=\"#tool-runner\">Tool runner</Link>\n      · Available\n    </div>\n    <div>\n      <Link href=\"#assistant\">Assistant</Link>\n      · Available\n    </div>\n    <div>\n      <Button variant=\"ghost\" onclick={() => (stale = !stale)}>\n        {stale ? 'Pretend the server is back' : 'Pretend the server is gone'}\n      </Button>\n    </div>\n  </div>\n</StaleRegion>\n"
+    },
+    {
+      "id": "controls",
+      "title": "Every control that changes something",
+      "description": "Button, Toggle, Checkbox and Select opt in with mutating. Under a stale region each one keeps focus, ignores the press and is described by the reason. The page words the reason, and the filter beside them, which only reads, stays live.",
+      "code": "<script lang=\"ts\">\n  import { Button, Checkbox, Input, Select, StaleRegion, Toggle } from '@lostgradient/cinder';\n\n  let checked = $state(true);\n  let active = $state(true);\n  let filter = $state('');\n  let asks = $state<'never' | 'changes' | 'always'>('changes');\n</script>\n\n<StaleRegion reason=\"Off until storage answers.\">\n  <div style=\"display: grid; gap: 0.75rem; max-inline-size: 22rem;\">\n    <Input id=\"filter-keys\" label=\"Filter\" placeholder=\"Filter keys\" bind:value={filter} />\n    <Toggle id=\"active-switch\" label=\"Active\" bind:checked={active} mutating />\n    <Checkbox label=\"Tool is on\" bind:checked mutating />\n    <Select\n      id=\"default-asks\"\n      label=\"Default asks\"\n      mutating\n      bind:value={asks}\n      options={[\n        { value: 'never', label: 'Never' },\n        { value: 'changes', label: 'On changes' },\n        { value: 'always', label: 'Always' },\n      ]}\n    />\n    <div style=\"display: flex; gap: 0.5rem;\">\n      <Button mutating variant=\"primary\">Save value</Button>\n      <Button>Copy key</Button>\n    </div>\n  </div>\n</StaleRegion>\n"
+    }
+  ]
+}

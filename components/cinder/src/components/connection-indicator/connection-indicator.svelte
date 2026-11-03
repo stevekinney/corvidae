@@ -25,7 +25,6 @@
 <script lang="ts">
   import Loader from '@lucide/svelte/icons/loader';
   import RefreshCcwDot from '@lucide/svelte/icons/refresh-ccw-dot';
-  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import WifiOff from '@lucide/svelte/icons/wifi-off';
   import { classNames } from '../../utilities/class-names.ts';
@@ -46,13 +45,14 @@
 
   // `live` has no icon: the pulsing dot is its whole glyph, and the "Live" label still names the
   // state, so the state is never carried by color alone (WCAG 1.4.1).
-  // `out-of-date` is the same: its hollow ring is the glyph, so it is not in this table.
+  // `reconnecting` is the same with a still, neutral dot: while the server is unreachable the
+  // banner carries the retries and the count, so the indicator only says "Reconnecting".
+  // `out-of-date` draws its hollow ring as the glyph. None of the three is in this table.
   const statusIcons: Record<
-    Exclude<ConnectionIndicatorStatus, 'live' | 'out-of-date'>,
+    Exclude<ConnectionIndicatorStatus, 'live' | 'reconnecting' | 'out-of-date'>,
     typeof Loader
   > = {
     connecting: Loader,
-    reconnecting: RefreshCw,
     polling: RefreshCcwDot,
     stale: TriangleAlert,
     closed: WifiOff,
@@ -83,7 +83,9 @@
       : (normalizedAriaLabel ?? `Connection: ${resolvedLabel}`),
   );
   const Icon = $derived(
-    status === 'live' || status === 'out-of-date' ? undefined : statusIcons[status],
+    status === 'live' || status === 'reconnecting' || status === 'out-of-date'
+      ? undefined
+      : statusIcons[status],
   );
 </script>
 

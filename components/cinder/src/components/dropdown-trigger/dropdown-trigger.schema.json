@@ -9,6 +9,11 @@
     "caretVisible": {
       "type": "boolean",
       "description": "Render the trailing disclosure caret. Defaults to true."
+    },
+    "mutating": {
+      "type": "boolean",
+      "description": "Marks a menu of actions that change something. Inside a stale `<StaleRegion>` the trigger\ngoes inert: it keeps focus and carries `aria-disabled`, the menu does not open, and the\nregion's reason describes it. It returns by itself when the region stops being stale.",
+      "default": false
     }
   },
   "additionalProperties": false,

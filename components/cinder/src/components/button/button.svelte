@@ -19,6 +19,11 @@
   import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
+  import {
+    getStaleRegionContext,
+    isStaleInert,
+    mergeDescribedBy,
+  } from '../../_internal/stale-region-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import type { ButtonProps } from './button.types.ts';
@@ -38,6 +43,7 @@
     fullWidth = false,
     loading = false,
     loadingStatus,
+    mutating = false,
     iconOnly = false,
     leadingIcon,
     trailingIcon,
@@ -53,6 +59,7 @@
     'aria-expanded': ariaExpanded,
     'aria-controls': ariaControls,
     'aria-haspopup': ariaHaspopup,
+    'aria-describedby': consumerDescribedBy,
     ...rest
   }: ButtonProps = $props();
 
@@ -79,7 +86,16 @@
   // doesn't silently erase their intent. The native `disabled` attribute is NOT set while
   // loading: `aria-disabled` keeps the button in the tab order, so focus stays where it was
   // when the press started instead of falling to the page.
-  const resolvedAriaDisabled = $derived(loading ? 'true' : consumerAriaDisabled);
+  //
+  // A button that changes something (`mutating`) under a stale `<StaleRegion>` is inert the same
+  // way: `aria-disabled`, still focusable, and described by the region's reason. When the region
+  // stops being stale the button returns by itself.
+  const staleRegion = getStaleRegionContext();
+  const staleInert = $derived(isStaleInert(staleRegion, mutating));
+  const resolvedAriaDisabled = $derived(loading || staleInert ? 'true' : consumerAriaDisabled);
+  const resolvedDescribedBy = $derived(
+    mergeDescribedBy(consumerDescribedBy, staleInert ? staleRegion?.reasonId : undefined),
+  );
   // A button that is aria-disabled (loading, or inert because the page says why) is focusable
   // but does nothing: the press is ignored, whoever set the attribute.
   const inert = $derived(
@@ -138,6 +154,7 @@
       | 'aria-expanded'
       | 'aria-controls'
       | 'aria-haspopup'
+      | 'aria-describedby'
     >,
   );
   const buttonAttributes = $derived(
@@ -154,6 +171,7 @@
       | 'aria-expanded'
       | 'aria-controls'
       | 'aria-haspopup'
+      | 'aria-describedby'
     >,
   );
 
@@ -254,8 +272,9 @@
   <a
     bind:this={element}
     {...anchorAttributes}
-    href={loading ? undefined : href}
-    tabindex={loading ? -1 : anchorTabIndex}
+    href={loading || staleInert ? undefined : href}
+    role={staleInert ? 'link' : undefined}
+    tabindex={loading ? -1 : staleInert ? 0 : anchorTabIndex}
     class={mergedClassName}
     {...dataAttributes}
     data-cinder-button-group-item={buttonGroupItemAttribute}
@@ -267,6 +286,7 @@
     aria-expanded={ariaExpanded}
     aria-controls={ariaControls}
     aria-haspopup={ariaHaspopup}
+    aria-describedby={resolvedDescribedBy}
     onclick={handleClick}
   >
     {@render buttonContent()}
@@ -288,6 +308,7 @@
     aria-expanded={ariaExpanded}
     aria-controls={ariaControls}
     aria-haspopup={ariaHaspopup}
+    aria-describedby={resolvedDescribedBy}
     onclick={handleClick}
   >
     {@render buttonContent()}
