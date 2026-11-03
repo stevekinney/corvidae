@@ -37,6 +37,8 @@ import type {
 } from './agent-file-catalog';
 import type { AgentFileWriter } from './agent-file-writer';
 import type { AgentVersionRecord } from './agent-version-store';
+import { createAgentOverrideStore, type AgentOverrideStore } from './agent-override-store';
+import { type CodeAgentOverrides, createCodeAgentOverrides } from './code-agent-overrides';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
 
@@ -253,6 +255,13 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
     restore: AgentFileVersions['restore'];
   };
   /**
+   * COR-2009 — the saved overrides of the built-in agents (code agents the host defines, never a
+   * plugin's): what a person changed on one (its tools and how each asks, guardrails, budgets,
+   * model, switchable models, effort, step limit and instructions), each save numbered as a
+   * version that can be restored like a file agent's. An agent never changed has none.
+   */
+  readonly overrides: CodeAgentOverrides;
+  /**
    * Rescan the agent directory now, and when the model catalog has changed since the last scan,
    * revalidate against it. Resolves once the catalog reflects the directory. A no-op without
    * `BureauOptions.agentSource`.
@@ -334,6 +343,11 @@ export interface CreateAgentCatalogOptions {
    * identifier the code-defined map already holds is not listed again.
    */
   readonly unavailable?: readonly UnavailableCodeAgent[] | undefined;
+  /**
+   * COR-2009 — where the built-in agents' override versions live. Defaults to a memory store,
+   * which a restart forgets.
+   */
+  readonly overrides?: AgentOverrideStore | undefined;
 }
 
 /**
@@ -438,6 +452,19 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     ]),
   );
 
+  const overrides = createCodeAgentOverrides({
+    store:
+      options?.overrides ?? createAgentOverrideStore({ nowISO: () => new Date().toISOString() }),
+    codeAgents: new Map(
+      entries.map((entry) => [entry.name, { tools: codeToolNames(entry.agent) }] as const),
+    ),
+    listsOtherAgent: (id) =>
+      unavailable.has(id) || (files?.list() ?? []).some((listing) => listing.id === id),
+    toolNames: () => new Set((files?.tools() ?? []).map((tool) => tool.name)),
+    descriptors,
+    modelPolicy,
+  });
+
   const catalog: BureauAgentCatalog<D> = {
     // Same cast rationale as above: `byName.get(name)!.agent` is genuinely
     // `D[TName]` for a `TName` the caller supplied, but the `Map`'s own
@@ -538,6 +565,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       restore: async (id, revision, writeOptions) =>
         requireFiles().versions.restore(id, revision, writeOptions),
     },
+    overrides,
     refresh() {
       return files?.refresh() ?? Promise.resolve();
     },

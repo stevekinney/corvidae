@@ -130,6 +130,14 @@ export {
 } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
+export type {
+  AgentOverrides,
+  AgentOverrideState,
+  AgentOverrideVersionRecord,
+  AgentOverrideWriteResult,
+} from './agent-override-store';
+export type { CodeAgentOverrides } from './code-agent-overrides';
+export { SESSION_END_REASONS, type SessionEndReason } from './bureau-session-persistence';
 export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
 export type {
   WorkflowCodeDetail,

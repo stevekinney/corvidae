@@ -172,7 +172,34 @@ const LAST_RUN_MARKER_KEYS = [
   'lastRunStatus',
   'lastFinishReason',
   'lastError',
+  'lastRunEndReason',
 ] as const;
+
+/**
+ * COR-2009 — why a session's last run ended when the run did not end itself: `host-stopped` is a
+ * run the host's shutdown aborted, such as one interrupted by a restart. Written beside the run's
+ * other marker keys (`lastRunEndReason`) on every aborted run, `null` when something else aborted
+ * it, so a reason never outlives the run it names.
+ */
+export const SESSION_END_REASON_HOST_STOPPED = 'host-stopped';
+
+/** The reasons {@link sessionEndReasonOf} can report. */
+export const SESSION_END_REASONS = [SESSION_END_REASON_HOST_STOPPED] as const;
+
+/** One of {@link SESSION_END_REASONS}. */
+export type SessionEndReason = (typeof SESSION_END_REASONS)[number];
+
+/**
+ * Why the session whose metadata is `metadata` ended, or `null`: a reason is read only while the
+ * last run is recorded as aborted, so a run started since, or one that ended on its own, reads none.
+ */
+export function sessionEndReasonOf(metadata: Record<string, JSONValue>): SessionEndReason | null {
+  if (metadata['lastRunStatus'] !== 'aborted') return null;
+  const reason = metadata['lastRunEndReason'];
+  return (SESSION_END_REASONS as readonly unknown[]).includes(reason)
+    ? (reason as SessionEndReason)
+    : null;
+}
 
 function withoutLastRunMarker(metadata: Record<string, JSONValue>): Record<string, JSONValue> {
   const remaining: Record<string, JSONValue> = { ...metadata };

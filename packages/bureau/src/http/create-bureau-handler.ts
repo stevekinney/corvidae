@@ -136,6 +136,7 @@ import {
   type BureauAgentDefinitionsOperationHost,
   bureauAgentDefinitionsOperations,
 } from './management/agent-definitions-operations.ts';
+import { bureauAgentOverridesOperations } from './management/agent-overrides-operations.ts';
 import {
   type BureauDiagnosticsOperationHost,
   diagnosticsGetOperation,
@@ -337,6 +338,7 @@ export type BureauHandlerSource = Pick<
     | 'tools'
     | 'revisions'
     | 'versions'
+    | 'overrides'
     | 'create'
     | 'update'
     | 'delete'
@@ -774,6 +776,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsRenameOperation,
   contextsWindowOperation,
   ...bureauAgentDefinitionsOperations,
+  ...bureauAgentOverridesOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   eventsCatalogOperation,

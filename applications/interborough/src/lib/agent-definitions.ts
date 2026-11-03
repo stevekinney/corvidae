@@ -193,7 +193,8 @@ const versionsSchema = z.object({
       hash: z.string(),
       savedAt: z.string(),
       savedBy: z.string().nullable(),
-      definition: definitionSchema,
+      /** The definition a file agent's version holds; `null` for a built-in agent's, which holds overrides (COR-2009). */
+      definition: definitionSchema.nullable(),
       changedKeys: z.array(z.string()),
     }),
   ),

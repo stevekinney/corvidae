@@ -237,7 +237,10 @@ import {
   subscribeEventFeed,
 } from './bureau-event-forwarders.ts';
 import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
-import { createSessionPersistence } from './bureau-session-persistence';
+import {
+  createSessionPersistence,
+  SESSION_END_REASON_HOST_STOPPED,
+} from './bureau-session-persistence';
 import {
   type BureauChildren,
   type ChildTopologyParent,
@@ -454,6 +457,7 @@ import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
 import { createWorkflowScheduleHolds } from './workflow-schedule-holds';
+import { createAgentOverrideStore } from './agent-override-store';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   type AgentStepRequest,
@@ -3420,6 +3424,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       descriptors: () => models.catalog().descriptors,
       modelPolicy: () => modelPolicyOf(currentSettings()),
       unavailable: composedPlugins.unavailableAgents,
+      overrides: createAgentOverrideStore({
+        store: runtime.kv,
+        nowISO: runtimeServices.clock.nowISO,
+      }),
     });
     // COR-1721 — after the first scan, so the files present at boot are not reported as added.
     stopForwarding.push(
@@ -3585,6 +3593,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * every durable run: only the tasks a process started are its own to cancel (COR-1707).
    */
   const recoveredActiveRuns = new WeakSet<ActiveRun>();
+  /**
+   * COR-2009 — the runs a shutdown aborted. Their session records why the run ended
+   * (`lastRunEndReason: 'host-stopped'`), so a chat the host stopped reads as ended by it.
+   */
+  const runsStoppedByShutdown = new WeakSet<ActiveRun>();
   // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
   // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
   // not the arbitrary `AgentRun` a catalog `RunnableAgent` may return on the
@@ -9335,6 +9348,11 @@ async function constructBureau<const D extends AgentDefinitions>(
                 // so the field must be written here, not only on the old recovery path.
                 lastFinishReason: 'aborted',
                 lastError: serializeUnknownError(event.error),
+                // COR-2009 — why the run ended, when the run did not end itself: the host
+                // stopped it. Written on every abort, so an earlier run's reason never lingers.
+                lastRunEndReason: runsStoppedByShutdown.has(activeRun)
+                  ? SESSION_END_REASON_HOST_STOPPED
+                  : null,
               },
               agentName,
               baseConversationHistory,
@@ -20290,6 +20308,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           // A run this process recovered is left running for the next one, as under 'detach'.
           if (runtime.durable && recoveredActiveRuns.has(activeRun)) continue;
           abortedRunTerminals.push(whenActiveRunTerminal(activeRun));
+          runsStoppedByShutdown.add(activeRun);
           activeRun.abort('Bureau disposed');
         }
         // A run that already reported its error is over; it is not aborted, only waited for

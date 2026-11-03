@@ -131,6 +131,8 @@ const AGENT_DEFINITION_PARAMETERS = {
   definition: { model: 'nobody/none', instructions: '' },
   // `bureau.agents.try` starts a chat with the definition; one that names no model never starts.
   message: 'x',
+  // `bureau.agents.overrides.update` saves overrides whose model the catalog lacks, so it never writes.
+  overrides: { model: 'nobody/none' },
 } as const;
 
 /**
@@ -208,7 +210,8 @@ const CONTEXT_COMMAND_PARAMETERS = {
 function namesAnAgent(operation: CatalogOperation): boolean {
   return (
     operation.name.startsWith('bureau.agents.definitions.') ||
-    operation.name.startsWith('bureau.agents.versions.')
+    operation.name.startsWith('bureau.agents.versions.') ||
+    operation.name.startsWith('bureau.agents.overrides.')
   );
 }
 
