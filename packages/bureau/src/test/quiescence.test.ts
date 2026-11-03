@@ -82,9 +82,16 @@ function blockingGenerate(): GenerateFunction {
 function routeAuditWritesThroughFaultEngine<T extends Storage>(
   raw: T,
   engine: ReturnType<typeof createFaultEngine>,
+  auditType?: string,
 ): T {
   const faulted = engine.wrapStorage(raw);
-  const isAuditKey = (key: string) => key.startsWith('audit:v1:');
+  const decoder = new TextDecoder();
+  // With `auditType`, only the writes of records of that type: a run's other audit writes (its
+  // `run.started`, COR-2009) go through untouched, so the fault lands on the record the test names.
+  const isAuditKey = (key: string, value?: Uint8Array) =>
+    key.startsWith('audit:v1:') &&
+    (auditType === undefined ||
+      (value !== undefined && decoder.decode(value).includes(`"type":"${auditType}"`)));
   return new Proxy(raw, {
     get(target, property, receiver) {
       if (property === 'conditionalBatch') {
@@ -92,7 +99,9 @@ function routeAuditWritesThroughFaultEngine<T extends Storage>(
           conditions: Parameters<NonNullable<T['conditionalBatch']>>[0],
           operations: Parameters<NonNullable<T['conditionalBatch']>>[1],
         ) =>
-          operations.some((operation) => isAuditKey(operation.key))
+          operations.some((operation) =>
+            isAuditKey(operation.key, operation.type === 'put' ? operation.value : undefined),
+          )
             ? faulted.conditionalBatch!(conditions, operations)
             : target.conditionalBatch!(conditions, operations);
       }
@@ -109,9 +118,10 @@ function routeAuditWritesThroughFaultEngine<T extends Storage>(
  */
 function faultedAuditStorageFixture(
   engine: ReturnType<typeof createFaultEngine>,
+  auditType?: string,
 ): BureauStorageFixture & { readonly rawStorage: MemoryStorage } {
   const rawStorage = new MemoryStorage();
-  const storage = routeAuditWritesThroughFaultEngine(rawStorage, engine);
+  const storage = routeAuditWritesThroughFaultEngine(rawStorage, engine, auditType);
   const fixture: BureauStorageFixture & { readonly rawStorage: MemoryStorage } = {
     kind: 'memory',
     storage,
@@ -793,7 +803,7 @@ describe('AB-322: fault-forced leftovers populate the corresponding rows', () =>
       },
     ];
     const engine = createFaultEngine(plan, runtime);
-    const storage = faultedAuditStorageFixture(engine);
+    const storage = faultedAuditStorageFixture(engine, 'eval.sample.recorded');
     const harness = await createBureauTestHarness({
       agents: {
         worker: createAgent({ name: 'worker', generate: mockGenerate('worker done') }),

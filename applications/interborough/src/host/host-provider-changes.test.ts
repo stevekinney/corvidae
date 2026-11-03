@@ -813,6 +813,21 @@ describe('disconnecting a provider', () => {
     expect(pairsOf(restarted).some((pair) => pair.startsWith('anthropic/'))).toBe(false);
   });
 
+  test('records the removal in the audit trail by provider, never the key, after the host’s start (COR-2009)', async () => {
+    const { host } = await startConnected();
+    await host.providers.disconnect('anthropic');
+
+    const page = await host.bureau.audit.query({ limit: 100 });
+    const story = page.records
+      .filter((record) => record.type === 'host.started' || record.type === 'provider.disconnected')
+      .map((record) => [record.type, record.resource, record.principal, record.detail]);
+    expect(story).toEqual([
+      ['host.started', 'host', 'system:host', null],
+      ['provider.disconnected', 'provider:anthropic', 'anonymous:local', { provider: 'anthropic' }],
+    ]);
+    expect(JSON.stringify(page)).not.toContain(KEY_A);
+  });
+
   test('connecting again brings the models back with the edits that were kept', async () => {
     const { host } = await startConnected();
     await host.providers.disconnect('anthropic');

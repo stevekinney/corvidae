@@ -24,7 +24,8 @@ describe('an A2A call', () => {
         });
         const second = await sendForTask(opened, 'assistant', { message: retried });
         // An exact retry of the same send answers the same task and records no second call.
-        expect((await sendForTask(opened, 'assistant', { message: retried })).id).toBe(second.id);
+        const repeated = await sendForTask(opened, 'assistant', { message: retried });
+        expect(repeated.id).toBe(second.id);
         const unnamed = await sendForTask(opened, 'assistant', { message: message('Hello') });
 
         const page = await opened.bureau.audit.query({ type: A2A_CALL_AUDIT_TYPE });

@@ -85,9 +85,36 @@ import {
 export interface AgentDefinitionAuditEntry {
   readonly runId: string;
   readonly type: 'agent.created' | 'agent.updated' | 'agent.deleted';
-  readonly detail: { readonly id: string; readonly hash: string; readonly previousHash?: string };
+  readonly detail: AgentDefinitionAuditDetail;
   /** The caller's owner string; absent for a caller the deployment cannot attribute. */
   readonly principal?: string;
+}
+
+/**
+ * What an agent write's audit entry says about it. Beyond the file hashes, it names the saved
+ * version the write made (COR-2009), so the audit log can say "Tool runner · version 3 → 4" and
+ * what changed without carrying any of the definition's text: the instructions' before and after
+ * are read from `bureau.agents.versions.list`, never from the trail.
+ */
+export interface AgentDefinitionAuditDetail {
+  /** The agent's identifier. */
+  readonly id: string;
+  /** The SHA-256 of the file the write left. */
+  readonly hash: string;
+  /** The hash the write replaced, for an update. */
+  readonly previousHash?: string;
+  /** The agent's identifier again, under the key every audit record names an agent with. */
+  readonly agentName?: string;
+  /** The saved version (definition revision) the write made; absent when none was stored. */
+  readonly revision?: number;
+  /** The saved version it replaced; absent for a first version or when none is stored. */
+  readonly previousRevision?: number;
+  /** The definition's keys that changed, in the definition's order, joined by commas: `instructions,tools`. */
+  readonly changedKeys?: string;
+  /** The tool identifiers the write added to `tools`, joined by commas; absent when none. */
+  readonly toolsAdded?: string;
+  /** The tool identifiers the write removed from `tools`, joined by commas; absent when none. */
+  readonly toolsRemoved?: string;
 }
 
 /** What the agent definition operations read from the handler's `host`. */
@@ -540,6 +567,47 @@ function faultOf(error: unknown, id: string, expectedHash?: string): never {
   throw error;
 }
 
+/** The tools in `next` and not in `previous`, joined by commas, or `undefined` when there are none. */
+function addedTools(previous: readonly string[], next: readonly string[]): string | undefined {
+  const before = new Set(previous);
+  const added = next.filter((tool) => !before.has(tool));
+  return added.length === 0 ? undefined : added.join(',');
+}
+
+/**
+ * The saved version a write left, and the one before it, as audit detail (COR-2009): read after
+ * the write from the agent's versions, matched by the file hash the write returned. A version that
+ * is not stored (a code agent, a store that failed) adds nothing, and the entry names the hashes
+ * alone, as it always did.
+ */
+async function versionDetailOf(
+  host: BureauAgentDefinitionsOperationHost,
+  type: AgentDefinitionAuditEntry['type'],
+  result: { readonly id: string; readonly hash: string },
+): Promise<Partial<AgentDefinitionAuditDetail>> {
+  if (type === 'agent.deleted') return { agentName: result.id };
+  const versions = await host.agentDefinitions.agents.versions
+    .list(result.id)
+    .catch(() => [] as const);
+  const index = versions.findIndex((version) => version.hash === result.hash);
+  if (index === -1) return { agentName: result.id };
+  const current = versions[index]!;
+  const previous = versions[index + 1];
+  const toolsAdded = addedTools(previous?.definition.tools ?? [], current.definition.tools);
+  const toolsRemoved =
+    previous === undefined
+      ? undefined
+      : addedTools(current.definition.tools, previous.definition.tools);
+  return {
+    agentName: result.id,
+    revision: current.revision,
+    ...(previous === undefined ? {} : { previousRevision: previous.revision }),
+    ...(current.changedKeys.length === 0 ? {} : { changedKeys: current.changedKeys.join(',') }),
+    ...(toolsAdded === undefined ? {} : { toolsAdded }),
+    ...(toolsRemoved === undefined ? {} : { toolsRemoved }),
+  };
+}
+
 async function audit(
   host: BureauAgentDefinitionsOperationHost,
   principal: Principal,
@@ -555,6 +623,7 @@ async function audit(
       id: result.id,
       hash: result.hash,
       ...(previousHash === undefined ? {} : { previousHash }),
+      ...(await versionDetailOf(host, type, result)),
     },
     ...(actor === undefined ? {} : { principal: actor }),
   });

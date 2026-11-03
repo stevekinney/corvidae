@@ -2360,6 +2360,13 @@ function watcherHealthOf(
   return { source, lastScanAt: lastScanAt ?? null, lastScanError: lastScanError ?? null };
 }
 
+/** COR-2009: the audit record of an approved tool call that ran (`tool.settled`, with its review). */
+type ApprovedCallAudit = {
+  readonly runId: string;
+  readonly type: 'tool.settled';
+  readonly detail: Readonly<Record<string, unknown>>;
+};
+
 /**
  * How a construction that fails part-way stops what it started (COR-1781). `constructBureau` names
  * it as construction goes on: none while it fails before anything is guarded, then the shutdown of
@@ -8575,6 +8582,15 @@ async function constructBureau<const D extends AgentDefinitions>(
       // call can observe this run) rather than relying on the tool-bubble-event
       // heuristic, which cannot see a run that never calls a tool.
       runAttribution.set(runId, { agentName, principal: owner });
+      // COR-2009 — the audit log's "Started a run": who started it, the agent, and the chat it runs
+      // in, which the log names by its title. Best effort and not awaited, so starting a run takes
+      // no extra turn (AB-13 above); the trail tracks the write until it is disposed.
+      void auditTrailInstance?.record({
+        runId,
+        type: 'run.started',
+        principal: owner,
+        detail: { agentName, sessionId },
+      });
       const runRuntime = await runtime.createRunRuntime(
         {
           ...request,
@@ -18181,6 +18197,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     let actionStarted = false;
     // COR-1920: what the audit entry says of each secret answer this delivery stored.
     let secretAnswerAudit: readonly SecretAnswerAuditEntry[] = [];
+    // COR-2009: the audit record of the approved call, once it has run.
+    let approvedCallAudit: ApprovedCallAudit | undefined;
 
     let result: unknown;
     let keepPending = false;
@@ -18361,6 +18379,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               `Cannot approve: ${failedResult.error?.message ?? failedResult.errorMessage ?? 'tool approval resume failed before execution admission.'}`,
               'CONFLICT',
             );
+          } else {
+            // Written once the decision is recorded, below, so the log reads approval, then the
+            // call it let run.
+            approvedCallAudit = approvedCallAuditOf(review, approval, result);
           }
         } else if (review.approval.approvalBinding && review.approval.approvalToken !== undefined) {
           await persistApprovalResolutionStartedWithRetry(review.sessionId, review.id);
@@ -18509,6 +18531,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1828: a superseded call decided nothing, so it keeps no resolved-review record.
       decisionIsFinal: !keepPending,
     });
+    await recordApprovedCall(approvedCallAudit);
 
     if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
 
@@ -18603,6 +18626,39 @@ async function constructBureau<const D extends AgentDefinitions>(
    * couple to, to write it directly. Kept as one function so the two paths
    * can never drift on shape.
    */
+  /**
+   * COR-2009 — the audit record of an approved call that ran. It ran outside the run's step loop,
+   * so the action stream that audits a run's own tool calls never sees it; the audit log's
+   * "Refunded order 4472" is this record: the tool, its call, the review that approved it and how
+   * it ended, never its arguments or result.
+   */
+  function approvedCallAuditOf(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    approval: { readonly toolName: string; readonly callId: string },
+    result: unknown,
+  ): ApprovedCallAudit {
+    const outcome =
+      result !== null && typeof result === 'object' && 'outcome' in result
+        ? result.outcome
+        : undefined;
+    return {
+      runId: review.runId,
+      type: 'tool.settled',
+      detail: {
+        agentName: review.agentName,
+        toolName: approval.toolName,
+        toolCallId: approval.callId,
+        reviewId: review.id,
+        ...(typeof outcome === 'string' ? { status: outcome } : {}),
+      },
+    };
+  }
+
+  /** Writes an approved call's audit record, when the resolution ran one. Best effort. */
+  async function recordApprovedCall(audit: ApprovedCallAudit | undefined): Promise<void> {
+    if (audit !== undefined) await auditTrailInstance?.record(audit);
+  }
+
   function buildReviewDecisionAuditRecord(
     review: PendingReview,
     decision: 'approve' | 'deny' | 'reject',

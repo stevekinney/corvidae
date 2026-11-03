@@ -210,6 +210,13 @@ const REMOTE_LOCKED_SETTINGS = {
 } as const satisfies NonNullable<SettingsOptions['locked']>;
 
 /**
+ * The actor of what the host itself does, as the audit trail names it: `host.started` (COR-2009).
+ * It sits in the `system:` namespace Bureau reserves for its own actors, so no credential can
+ * claim it, and the audit log shows it as Interborough.
+ */
+export const HOST_ACTOR = 'system:host';
+
+/**
  * How long the host keeps its audit trail by default: 90 days, in milliseconds (COR-1810). It is
  * the `retention.audit` window the Bureau starts with; a value stored on the Settings page replaces it.
  */
@@ -661,6 +668,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       afterConfigurationWrite: () => pluginManager.reload(),
       warn: options.warn ?? ((message) => console.warn(message)),
       resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
+      // The Bureau is built after the providers, so the trail is read through `held`.
+      audit: async (entry) => {
+        await held.bureau?.internals.auditTrail?.record(entry);
+      },
     });
     held.providers = providers;
     const generateFor = (selection: ModelSelection): GenerateFunction =>
@@ -982,6 +993,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       options.warn ?? ((message) => console.warn(message)),
     );
     if (pushDelivery !== undefined) held.pushDelivery = pushDelivery;
+    // COR-2009 — the audit log's "Server started", recorded once the listener is up. The missed
+    // schedule occurrences this start finds are recorded by the Bureau as `schedule.missed`.
+    await bureau.internals.auditTrail?.record({
+      runId: 'host',
+      type: 'host.started',
+      principal: HOST_ACTOR,
+      detail: {},
+    });
     bureauHandler = createBureauHandler(bureau, {
       // The local caller, unless the request carries a credential. With an A2A key configured
       // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
