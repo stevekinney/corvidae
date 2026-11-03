@@ -5,6 +5,9 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { createAgent } from '@lostgradient/operative';
+
+import { lookupTool } from '../../testing/agent-file-fixtures.test-support.ts';
 import {
   callAs,
   disposeServed,
@@ -54,6 +57,29 @@ describe('bureau.agents.overrides', () => {
     const versions = await callAs(served.owner, 'bureau.agents.versions.list', { id: 'alpha' });
     expect(versions.error).toBeUndefined();
     expect(listOf(versions, 'versions')).toEqual([]);
+  });
+
+  it('serves the agent’s own tools beside the overrides, so a tool the overrides removed can be added back', async () => {
+    const served = await serve({
+      agents: {
+        alpha: createAgent({
+          name: 'alpha',
+          generate: async () => ({ content: 'alpha', toolCalls: [] }),
+          tools: { 'lookup-order': lookupTool },
+        }),
+      },
+    });
+    const before = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
+    expect(before.result).toMatchObject({ ownTools: ['lookup-order'], overrides: { tools: null } });
+
+    const saved = await save(served, { tools: [] });
+    expect(saved.error).toBeUndefined();
+
+    const after = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
+    expect(after.result).toMatchObject({ ownTools: ['lookup-order'], overrides: { tools: [] } });
+    // The detail shows the tools in force, which no longer hold the removed one.
+    const detail = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'alpha' });
+    expect(detail.result).toMatchObject({ codeDefinition: { tools: [] } });
   });
 
   it('saves each change as the next version, listed newest first with its overrides', async () => {

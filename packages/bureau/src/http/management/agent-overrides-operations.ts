@@ -47,6 +47,12 @@ const getOutput = z.object({
   /** The newest version, or `null` for an agent nobody changed. */
   version: z.number().int().positive().nullable(),
   overrides: agentOverridesOutputSchema,
+  /**
+   * The tools the agent states itself, by name, before any override: what it may use when
+   * `overrides.tools` is `null`, and the set the Access tab shows a removed tool from so it can be
+   * added back. The agent detail's `codeDefinition.tools` is the effective list instead.
+   */
+  ownTools: z.array(z.string()),
 });
 
 export const agentOverridesGetOperation = defineOperation<
@@ -58,7 +64,7 @@ export const agentOverridesGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read the saved overrides of a built-in agent',
   description:
-    'Returns what a person changed on the built-in agent `id` (a code agent the host defines, not a plugin’s): its `overrides`, each key `null` when it is not overridden and the agent’s own value applies (`instructions`, the `tools` it may use, `toolApproval`, `guardrails`, `costBudget`, `toolBudget`, `model`, `models`, `defaultEffort`, `stepLimit`), the `version` they were saved as (`null` for an agent nobody changed, which has no versions), and their `hash`, which `bureau.agents.overrides.update` and `bureau.agents.versions.restore` take as `expectedHash`. An identifier that is no built-in agent is `NotFound`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns what a person changed on the built-in agent `id` (a code agent the host defines, not a plugin’s): its `overrides`, each key `null` when it is not overridden and the agent’s own value applies (`instructions`, the `tools` it may use, `toolApproval`, `guardrails`, `costBudget`, `toolBudget`, `model`, `models`, `defaultEffort`, `stepLimit`), the `version` they were saved as (`null` for an agent nobody changed, which has no versions), its `ownTools` (the tools the agent states itself, by name, before any override, which `codeDefinition.tools` on `bureau.agents.definitions.get` does not show once `tools` is overridden, so a removed tool can be added back), and their `hash`, which `bureau.agents.overrides.update` and `bureau.agents.versions.restore` take as `expectedHash`. An identifier that is no built-in agent is `NotFound`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -77,6 +83,7 @@ export const agentOverridesGetOperation = defineOperation<
       hash: state.hash,
       version: state.version,
       overrides: overridesView(state.overrides),
+      ownTools: [...definitions.agents.overrides.ownTools(input.id)],
     };
   },
 });
