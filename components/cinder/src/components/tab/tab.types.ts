@@ -1,5 +1,6 @@
 import type { Snippet } from 'svelte';
 import type { HTMLButtonAttributes } from 'svelte/elements';
+import type { BadgeVariant } from '../badge/badge.types.ts';
 // `onclick` and `onkeydown` are omitted because the component sets both
 // unconditionally on the root `<button>` (activation + the shared roving
 // tabindex keyboard handler) — same reasoning as `id` and `value` below. Since
@@ -28,6 +29,20 @@ export type TabProps = Omit<
   class?: string;
   /** Tab label content. */
   children: Snippet;
+  /**
+   * A count of things in this tab that want attention, drawn as a small pill after the label. Zero,
+   * a negative number and `undefined` show nothing, so a healthy tab carries no chip. The count is
+   * part of the tab's accessible name, so it never depends on colour.
+   */
+  count?: number;
+  /**
+   * The words that follow the count in the pill's accessible name: "needs attention" gives
+   * "1 needs attention", so the tab reads "Workers 1 needs attention". Without it the pill
+   * reads as the bare number.
+   */
+  countLabel?: string;
+  /** Tone of the count pill. Defaults to `'warning'`, the amber of a count that needs attention. */
+  countTone?: BadgeVariant;
   /**
    * Decorative content rendered inside an `aria-hidden` span (badges, kbd hints,
    * counters). Do NOT use for interactive controls like close buttons —

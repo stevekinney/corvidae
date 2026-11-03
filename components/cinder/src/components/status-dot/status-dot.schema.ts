@@ -5,9 +5,19 @@ const schema = {
   type: 'object',
   properties: {
     status: {
-      enum: ['online', 'offline', 'warning', 'danger', 'pending', 'neutral', 'success', 'accent'],
+      enum: [
+        'online',
+        'offline',
+        'warning',
+        'danger',
+        'info',
+        'pending',
+        'neutral',
+        'success',
+        'accent',
+      ],
       description:
-        'Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `accent` maps to `--cinder-accent-solid`.',
+        'Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-status-info-solid`; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`.',
     },
     connectionState: {
       enum: ['connected', 'connecting', 'disconnected', 'error'],
@@ -34,12 +44,28 @@ const schema = {
       description: 'Dot size.',
       default: 'md',
     },
+    wordTone: {
+      enum: ['muted', 'status'],
+      description:
+        'How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status\'s text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured.',
+      default: 'muted',
+    },
     class: {
       type: 'string',
       description: 'Extra classes appended to the root element.',
     },
   },
   additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'word',
+        reason: 'unknown-shape',
+        description:
+          'A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a middle dot ("Running · checking the result") rides along. An explicit `status` or `label` wins over what the word supplies.',
+      },
+    ],
+  },
 } satisfies ComponentSchema;
 
 /** JSON Schema describing the props of this component. */

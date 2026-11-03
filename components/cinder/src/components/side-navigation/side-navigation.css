@@ -6,6 +6,7 @@
  * `dist/` because the layout mirrors. */
 @import '../side-navigation-group/side-navigation-group.css';
 @import '../navigation-item/navigation-item.css';
+@import '../side-navigation-item/side-navigation-item.css';
 
 @layer cinder.components {
   /* ========================================

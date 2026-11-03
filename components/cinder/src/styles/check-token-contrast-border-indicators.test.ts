@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { NON_TEXT } from '../tokens/runtime/contrast/index.ts';
+import { NON_TEXT, contrastRatio, wcagLuminance } from '../tokens/runtime/contrast/index.ts';
 import * as values from './check-token-contrast-test-values.ts';
 import type { TranslucentColor, TranslucentTokenArms } from './token-contrast-test-readers.ts';
 
@@ -159,4 +159,28 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
       }
     }
   }
+});
+
+describe('COR-2010 row 08f: the skeleton fill stays visible on the canvas and the surface', () => {
+  // A skeleton bar is a placeholder, not a control, so WCAG 1.4.11 does not apply; it only has to
+  // read as a shape. The floor is the one the faint hairline holds (1.1:1), which both arms clear on
+  // the page canvas and on the plain surface a card body paints. The dark arm is the raised
+  // surface, never the surface itself, which is what keeps a bar inside a card from vanishing.
+  const SKELETON_FLOOR = 1.1;
+  const skeleton = values.readOklchToken('--cinder-skeleton-background');
+
+  for (const arm of ['light', 'dark'] as const) {
+    for (const [groundName, ground] of Object.entries({ canvas: bg, surface })) {
+      it(`${arm}: the skeleton fill reads at least ${SKELETON_FLOOR}:1 on the ${groundName}`, () => {
+        expect(
+          contrastRatio(wcagLuminance(skeleton[arm]), wcagLuminance(ground[arm])),
+        ).toBeGreaterThanOrEqual(SKELETON_FLOOR);
+      });
+    }
+  }
+
+  it('the dark skeleton fill is the raised surface, not the plain surface', () => {
+    expect(skeleton.dark.l).toBeCloseTo(surfaceRaised.dark.l, 5);
+    expect(skeleton.dark.l).not.toBeCloseTo(surface.dark.l, 2);
+  });
 });

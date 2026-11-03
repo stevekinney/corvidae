@@ -20,6 +20,12 @@
       "title": "Status dot default word",
       "description": "With only a status, a StatusDot renders a word derived from it, so a status is never a dot alone.",
       "code": "<script lang=\"ts\">\n  import { StatusDot } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-row\">\n  <StatusDot status=\"online\" />\n  <StatusDot status=\"warning\" />\n  <StatusDot status=\"danger\" />\n  <StatusDot status=\"pending\" label=\"Deploying\" />\n</div>\n"
+    },
+    {
+      "id": "source-status",
+      "title": "Source status lines",
+      "description": "A connected source reads a green dot with a muted “Connected”; a source whose sign-in expired reads an amber dot with “Needs sign-in”, the reason and the same type chip. The word, not the colour, carries the meaning.",
+      "code": "<script lang=\"ts\">\n  import { Chip, StatusDot } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-column\">\n  <div class=\"example-preview-row\">\n    <StatusDot word=\"Connected\" />\n    <span>Signed in as you · last tested 2 min ago</span>\n    <Chip label=\"MCP server\" />\n  </div>\n  <div class=\"example-preview-row\">\n    <StatusDot word=\"Needs sign-in\" />\n    <span>Your GitHub sign-in expired on Oct 31.</span>\n    <Chip label=\"MCP server\" />\n  </div>\n</div>\n"
     }
   ]
 }

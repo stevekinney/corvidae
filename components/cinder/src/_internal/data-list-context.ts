@@ -9,8 +9,9 @@
  * `comfortable` — so a standalone `StackedListItem` (no DataList ancestor) is
  * unaffected, and a per-row `density` prop always overrides the list default.
  *
- * The context value is intentionally minimal (density only). Additional
- * list-level fields require a separate API review before being added.
+ * The context value is intentionally minimal: density, and whether the list keeps a status
+ * column for rows with no status. Additional list-level fields require a separate API review
+ * before being added.
  */
 
 import { createContext } from 'svelte';
@@ -26,6 +27,11 @@ import { optionalContext } from './optional-context.ts';
 export type DataListContextValue = {
   /** The list-level density, or `undefined` when the list set none. */
   readonly density: StackedListItemDensity | undefined;
+  /**
+   * Whether the list keeps the status column's width for rows that have no status, so every
+   * title starts at one x position. `undefined` when the list set none.
+   */
+  readonly statusColumn: boolean | undefined;
 };
 
 const [getDataListContextStrict, setDataListContextRaw] = createContext<DataListContextValue>();

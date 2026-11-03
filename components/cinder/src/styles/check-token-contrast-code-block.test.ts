@@ -1,0 +1,113 @@
+import { readFileSync } from 'node:fs';
+
+import { describe, expect, it } from 'bun:test';
+
+import githubDark from '@shikijs/themes/github-dark';
+
+import type { Rgb } from '../tokens/runtime/contrast/index.ts';
+
+import {
+  AA_TEXT,
+  contrastRatio,
+  decodeSrgb,
+  relativeLuminance,
+  wcagLuminance,
+} from '../tokens/runtime/contrast/index.ts';
+import * as values from './check-token-contrast-test-values.ts';
+
+const { readOklchToken, surfaceInset } = values;
+
+/** Parses `#rgb`, `#rrggbb` or `#rrggbbaa` into linear sRGB, ignoring alpha. */
+function hexToLinearRgb(hex: string): Rgb {
+  const digits = hex.replace('#', '');
+  const full =
+    digits.length === 3 ? digits.replaceAll(/./g, (digit) => digit + digit) : digits.slice(0, 6);
+  const channel = (offset: number): number =>
+    decodeSrgb(Number.parseInt(full.slice(offset, offset + 2), 16) / 255);
+  return [channel(0), channel(2), channel(4)];
+}
+
+/** Every foreground color the `github-dark` theme paints text with: tokens and the default. */
+function githubDarkForegrounds(): ReadonlyMap<string, string> {
+  const foregrounds = new Map<string, string>();
+  const defaultForeground = githubDark.colors?.['editor.foreground'];
+  if (defaultForeground !== undefined) foregrounds.set('editor.foreground', defaultForeground);
+  for (const rule of githubDark.tokenColors ?? []) {
+    const foreground = rule.settings?.foreground;
+    // A rule that paints its own background (the invalid-character marker) never sits on the inset.
+    if (foreground === undefined || rule.settings?.background !== undefined) continue;
+    const scope = Array.isArray(rule.scope) ? rule.scope.join(', ') : (rule.scope ?? 'unscoped');
+    foregrounds.set(`${scope} ${foreground}`, foreground);
+  }
+  return foregrounds;
+}
+
+/**
+ * The dark values `code-block.css` lifts: each `span[style*='--shiki-dark:#rrggbb' i]` rule that
+ * reassigns `--shiki-dark` to a Cinder token, keyed by the lowercase hex it replaces.
+ */
+function liftedDarkColors(): ReadonlyMap<string, string> {
+  const css = readFileSync(
+    new URL('../components/code-block/code-block.css', import.meta.url),
+    'utf8',
+  );
+  const lifted = new Map<string, string>();
+  const rule =
+    /span\[style\*='--shiki-dark:(#[0-9a-f]{6})' i\]\s*\{\s*--shiki-dark:\s*var\((--cinder-[a-z-]+)\)\s*!important;/gi;
+  for (const match of css.matchAll(rule)) {
+    lifted.set((match[1] ?? '').toLowerCase(), match[2] ?? '');
+  }
+  return lifted;
+}
+
+describe('dark code-block contrast (COR-2010 inset at 18%)', () => {
+  // The code-block ground is `--cinder-surface-inset` in the dark arm (code-block.css), which the
+  // design moves from 11% to 18% lightness. Shiki's `github-dark` token colors were chosen against
+  // a near-black field, so the move is adopted only while every one of them still clears AA text
+  // on the lighter ground.
+  const inset = surfaceInset.dark;
+  const insetLuminance = wcagLuminance(inset);
+
+  it('the dark inset is the 18% band the design draws', () => {
+    expect(inset.l).toBeCloseTo(0.18, 5);
+  });
+
+  it('every github-dark token color clears AA text on the dark inset', () => {
+    const foregrounds = githubDarkForegrounds();
+    const lifted = liftedDarkColors();
+    expect(foregrounds.size).toBeGreaterThan(5);
+    for (const [label, hex] of foregrounds) {
+      const lift = lifted.get(hex.toLowerCase());
+      const luminance =
+        lift === undefined
+          ? relativeLuminance(hexToLinearRgb(hex))
+          : wcagLuminance(readOklchToken(lift).dark);
+      expect(
+        contrastRatio(luminance, insetLuminance),
+        `${label} on the dark inset${lift === undefined ? '' : ` (lifted to ${lift})`}`,
+      ).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it('lifts the comment color, which falls under AA on the 18% inset without it', () => {
+    const lifted = liftedDarkColors();
+    expect([...lifted.keys()]).toEqual(['#6a737d']);
+    const unlifted = contrastRatio(relativeLuminance(hexToLinearRgb('#6a737d')), insetLuminance);
+    expect(unlifted).toBeLessThan(AA_TEXT);
+  });
+
+  it('Cinder text tokens clear AA text on the dark inset', () => {
+    for (const token of [
+      '--cinder-text-default',
+      '--cinder-text-muted',
+      '--cinder-text-subtle',
+      '--cinder-accent-text',
+    ]) {
+      const foreground = readOklchToken(token).dark;
+      expect(
+        contrastRatio(wcagLuminance(foreground), insetLuminance),
+        `${token} on the dark inset`,
+      ).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+});

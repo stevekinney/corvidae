@@ -6,7 +6,7 @@ const schema = {
   properties: {
     value: {
       type: 'number',
-      description: 'Current bounded value.',
+      description: 'Current bounded value. Required for a bar; omit it when `points` is given.',
     },
     max: {
       type: 'number',
@@ -14,7 +14,8 @@ const schema = {
     },
     label: {
       type: 'string',
-      description: 'Visible label for the measured row.',
+      description:
+        'Visible label for a bar. For a line (when `points` is given) it is the accessible name and is not drawn.',
     },
     trailing: {
       type: 'string',
@@ -22,11 +23,29 @@ const schema = {
     },
     size: {
       enum: ['sm', 'md', 'lg'],
-      description: 'Track thickness and text scale. Default `md`.',
+      description:
+        'Track thickness and text scale. Default `md`. For a line, the height of the plot: 3rem, 6rem or 8rem.',
     },
     variant: {
       enum: ['accent', 'success', 'warning'],
       description: 'Fill color intent. Default `accent`.',
+    },
+    points: {
+      type: 'array',
+      items: {
+        type: 'number',
+      },
+      description:
+        'Draws a trend line instead of a bar: the series, oldest first, on a scale from its lowest to its highest value. Values that are not finite are skipped.',
+    },
+    startLabel: {
+      type: 'string',
+      description:
+        'Line only: text under the left end of the baseline, such as "1.4 GB · 24 hours ago".',
+    },
+    endLabel: {
+      type: 'string',
+      description: 'Line only: text under the right end of the baseline, such as "Now".',
     },
     theme: {
       type: 'object',
@@ -56,7 +75,8 @@ const schema = {
     },
     ariaLabel: {
       type: 'string',
-      description: 'Accessible name override. Defaults to `${label}, ${percentage}%`.',
+      description:
+        'Accessible name override. Defaults to `${label}, ${percentage}%` for a bar, and to `label` for a line.',
     },
     ariaValueText: {
       type: 'string',
@@ -69,7 +89,7 @@ const schema = {
     },
   },
   additionalProperties: false,
-  required: ['label', 'value'],
+  required: ['label'],
 } satisfies ComponentSchema;
 
 /** JSON Schema describing the props of this component. */

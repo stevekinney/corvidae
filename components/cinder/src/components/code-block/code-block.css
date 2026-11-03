@@ -226,6 +226,16 @@
     }
   }
 
+  /* Shiki's `github-dark` comment color (#6A737D) reads 4.24:1 on the old 11% dark inset and 3.90:1
+   * on the 18% inset the design adopts (COR-2010), both under the 4.5:1 AA text floor. Its dark
+   * value is an inline custom property (`--shiki-dark`), which an `!important` declaration in a
+   * stylesheet overrides, so the lift costs no second set of dark-theme anchors: the property is
+   * read only by the dark swap above. Comments take `--cinder-text-subtle`, the quietest text
+   * role that still clears AA on the inset. */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-dark:#6a737d' i] {
+    --shiki-dark: var(--cinder-text-subtle) !important;
+  }
+
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just
  * the glyph with a hover wash.
  *

@@ -1,14 +1,15 @@
 /**
  * The one status vocabulary of the records pages (Runs, Workflows, Internal workflows, Agents and
- * Goals): seven words, each with one tone, shown as a StatusDot. The Bureau has its own states for a
- * task, a goal and a schedule, and each page maps its own onto these words here, so no page invents
- * a word of its own and the same word is the same colour everywhere.
+ * Goals): seven words shown as a StatusDot. The Bureau has its own states for a task, a goal and a
+ * schedule, and each page maps its own onto these words here, so no page invents a word of its own.
  *
- * The tone is a StatusDot `status` (`accent` for Running through `offline` for Paused), and
- * {@link STATUS_BADGE_VARIANTS} is the same map for the places that must be a Badge, whose variants
- * have no `pending` or `offline`: Scheduled reads as `info` and Paused as `neutral` there.
+ * The tone of a word is not decided here: Cinder's StatusDot owns the word-to-tone table, and
+ * {@link StatusLabel} hands it the word, so the same word is the same colour everywhere (Running is
+ * the blue `info` dot, Scheduled the hollow ring, Paused and Canceled neutral).
+ * {@link STATUS_BADGE_VARIANTS} is the map for the places that must be a Badge, whose variants have
+ * no `pending`: Scheduled reads as `info` and Paused as `neutral` there.
  */
-import type { BadgeVariant, StatusDotStatus } from '@lostgradient/cinder';
+import type { BadgeVariant } from '@lostgradient/cinder';
 
 import type { Goal, GoalStatus } from './bureau-goals.ts';
 import type { TaskState } from './bureau-tasks.ts';
@@ -26,17 +27,6 @@ export const STATUS_WORDS = [
 
 /** One of the seven words. */
 export type StatusWord = (typeof STATUS_WORDS)[number];
-
-/** The StatusDot tone of each word. */
-export const STATUS_TONES: Readonly<Record<StatusWord, StatusDotStatus>> = {
-  Running: 'accent',
-  'Waiting on you': 'warning',
-  Done: 'success',
-  Failed: 'danger',
-  Canceled: 'neutral',
-  Scheduled: 'pending',
-  Paused: 'offline',
-};
 
 /** The Badge variant of each word, for the few places that show a status as a Badge. */
 export const STATUS_BADGE_VARIANTS: Readonly<Record<StatusWord, BadgeVariant>> = {

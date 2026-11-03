@@ -81,12 +81,19 @@ function getGroupData(
   return { key, label: entry.groupLabel ?? key };
 }
 
+function ownsNoRail(kind: TimelineEntry['kind']): boolean {
+  return kind === 'now' || kind === 'separator' || kind === 'band';
+}
+
 function getConnectorAfter(
   current: ParsedTimelineEntry,
   next: ParsedTimelineEntry | undefined,
   gapThresholdMinutes: number | undefined,
 ): 'visible' | 'hidden' {
   if (next === undefined) return 'hidden';
+  // The Now marker, a separator and a band sit between rows and own no rail, so nothing connects
+  // to them.
+  if (ownsNoRail(current.entry.kind) || ownsNoRail(next.entry.kind)) return 'hidden';
   if (next.groupKey !== current.groupKey) return 'hidden';
   if (gapThresholdMinutes === undefined) return 'visible';
   if (current.parsedTime === undefined || next.parsedTime === undefined) return 'visible';

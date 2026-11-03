@@ -28,6 +28,8 @@ Use the public props and documented examples to provide accessible names, descri
 
 A dot with only `status` renders a default word derived from it (for example "Online"), so the status is never communicated by color alone. That word is also the accessible name; with `labelVisible={false}` it stays the name without being drawn.
 
+A `word` supplies both the tone and the visible word, and the word is the accessible name. Colour never carries the status alone: under forced colors the solid dot is drawn with `Highlight` and the hollow `pending` ring with `CanvasText`, so the word is what tells Waiting from Running.
+
 When StatusDot accepts snippets or arbitrary children, the caller owns the semantics inside those children. Prefer native elements first, and add ARIA only when it matches the rendered behavior.
 
 ## Verification

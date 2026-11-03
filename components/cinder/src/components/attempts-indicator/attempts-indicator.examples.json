@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "attempts-indicator",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Attempts on a list row",
+      "description": "One segment per allowed attempt, filled for the attempts made, neutral in every state. It sits beside its count on a row's second line; the whole bar is one image named \"2 of 5 attempts\".",
+      "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div\n  style=\"display: grid; gap: 0.5rem; font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);\"\n>\n  <span>Tool runner · <AttemptsIndicator made={2} allowed={5} /> 2 of 5</span>\n  <span>Assistant · <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>\n  <span>Assistant · <AttemptsIndicator made={1} allowed={1} /> 1 of 1</span>\n</div>\n"
+    },
+    {
+      "id": "reconnecting",
+      "title": "Accent bar that fills its container",
+      "description": "With tone accent and layout block the bar is a progress cue in its own right, as in the reconnecting dialog's \"Attempt 3 of 8\". Name it with label so the count is spoken.",
+      "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div style=\"max-width: 24rem;\">\n  <p style=\"margin: 0 0 0.75rem;\">Trying again in 4 s. Attempt 3 of 8.</p>\n  <AttemptsIndicator made={3} allowed={8} tone=\"accent\" layout=\"block\" label=\"Attempt 3 of 8\" />\n</div>\n"
+    }
+  ]
+}

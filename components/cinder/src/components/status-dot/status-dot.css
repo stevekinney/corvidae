@@ -17,7 +17,8 @@
     gap: var(--cinder-space-1-5);
     font-size: var(--cinder-text-sm);
     line-height: 1.25;
-    color: var(--cinder-text-default);
+    /* The status word is muted unless its status is one of the toned words (see the mapping below). */
+    color: var(--_cinder-status-dot-word-color, var(--cinder-text-muted));
     vertical-align: middle;
   }
 
@@ -58,6 +59,11 @@
     color: inherit;
   }
 
+  /* A status word is semibold; the connection presets keep their own pill weight. */
+  .cinder-status-dot:not([data-cinder-state]) .cinder-status-dot__label {
+    font-weight: var(--cinder-font-semibold);
+  }
+
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */
@@ -83,19 +89,27 @@
     --cinder-status-dot-color: var(--cinder-text-muted);
   }
 
+  /* Only a word that asks for attention or reports a failure is coloured; success, neutral and
+     pending words stay muted so the dot carries the tone. */
   .cinder-status-dot[data-cinder-status='warning'] {
     --cinder-status-dot-color: var(--cinder-status-warning-solid);
+    --_cinder-status-dot-word-color: var(--cinder-status-warning-text);
   }
 
   .cinder-status-dot[data-cinder-status='danger'] {
     --cinder-status-dot-color: var(--cinder-status-danger-solid);
+    --_cinder-status-dot-word-color: var(--cinder-status-danger-text);
   }
 
-  .cinder-status-dot[data-cinder-status='pending'] {
+  .cinder-status-dot[data-cinder-status='info'] {
     --cinder-status-dot-color: var(--cinder-status-info-solid);
+    --_cinder-status-dot-word-color: var(--cinder-status-info-text);
   }
 
-  .cinder-status-dot[data-cinder-status='neutral'] {
+  /* Neutral is a solid control-border dot; pending is the same colour as a hollow ring (drawn by
+     the indicator below), so Waiting and Scheduled read differently from the solid Running dot. */
+  .cinder-status-dot[data-cinder-status='neutral'],
+  .cinder-status-dot[data-cinder-status='pending'] {
     --cinder-status-dot-color: var(--cinder-border-control);
   }
 
@@ -105,6 +119,19 @@
 
   .cinder-status-dot[data-cinder-status='accent'] {
     --cinder-status-dot-color: var(--cinder-accent-solid);
+  }
+
+  /* `wordTone="status"`: a result sentence next to a success dot reads in the success text colour
+     instead of the muted word every list row uses. */
+  .cinder-status-dot[data-cinder-word-tone='status'][data-cinder-status='success'],
+  .cinder-status-dot[data-cinder-word-tone='status'][data-cinder-status='online'] {
+    --_cinder-status-dot-word-color: var(--cinder-status-success-text);
+  }
+
+  .cinder-status-dot[data-cinder-status='pending'] .cinder-status-dot__indicator {
+    box-sizing: border-box;
+    border: 0.09375rem solid var(--cinder-status-dot-color); /* 1.5px */
+    background: transparent;
   }
 
   .cinder-status-dot[data-cinder-state='connecting'] .cinder-status-dot__indicator {
@@ -126,6 +153,26 @@
       .cinder-status-dot[data-cinder-state='connecting']
       .cinder-status-dot__indicator {
       animation: none;
+    }
+  }
+
+  /* ----------------------------------------
+ * Forced colors
+ *
+ * The browser replaces author colors, so the dot is drawn with system colors: the solid dot with
+ * Highlight and the hollow pending ring with CanvasText. The status word always carries the
+ * meaning, so nothing depends on the hue.
+ * ---------------------------------------- */
+
+  @media (forced-colors: active) {
+    .cinder-status-dot__indicator {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+
+    .cinder-status-dot[data-cinder-status='pending'] .cinder-status-dot__indicator {
+      border-color: CanvasText;
+      background: transparent;
     }
   }
 }

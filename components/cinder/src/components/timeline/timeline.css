@@ -1,4 +1,8 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* A band entry renders a StackedListItem band group row with a StatusDot, so the styles they need
+ * travel with it. */
+@import '../stacked-list-item/stacked-list-item.css';
+@import '../status-dot/status-dot.css';
 @layer cinder.components {
   /* ========================================
  * TIMELINE
@@ -125,6 +129,14 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* Pending is a hollow neutral ring: nothing has happened yet. It is the colour a status dot
+     * uses for Waiting and Scheduled, and it stays hollow so it never reads as a green or blue
+     * event. The fill is transparent, not the surface, so it follows whatever sits behind it. */
+  .cinder-timeline-item[data-cinder-tone='pending'] .cinder-timeline-item__marker {
+    border-color: var(--cinder-border-control);
+    background: transparent;
+  }
+
   .cinder-timeline-item__header {
     display: flex;
     align-items: baseline;
@@ -173,5 +185,151 @@
     bottom: auto;
     width: auto;
     height: 1px;
+  }
+
+  /* ----------------------------------------
+ * Controls at the end of an event's row
+ *
+ * The third grid column holds whatever the entry's `actions` draw (a "Skip" button). It is
+ * centred on the row and never shrinks, so a long title gives up room before the button does.
+ * ---------------------------------------- */
+
+  .cinder-timeline-item__event[data-cinder-has-actions] {
+    grid-template-columns: var(--_cinder-timeline-rail-size) minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .cinder-timeline-item__actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  /* ----------------------------------------
+ * Now marker and separator
+ *
+ * Both are full-width rows with no rail marker, so neither takes part in the connector. The Now
+ * marker is an accent pill, a rule in the same accent and the time at the right; the separator is
+ * a label between two quiet rules.
+ * ---------------------------------------- */
+
+  .cinder-timeline-item[data-cinder-kind='now'],
+  .cinder-timeline-item[data-cinder-kind='separator'],
+  .cinder-timeline-item[data-cinder-kind='band'] {
+    padding-block: var(--cinder-space-2);
+  }
+
+  /* A band is a stacked-list-item group row in a list of its own, full width and without a rail. */
+  .cinder-timeline-item__band {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-timeline-item__now,
+  .cinder-timeline-item__separator {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  .cinder-timeline-item__now-label {
+    flex: none;
+    padding: var(--cinder-space-0-5) var(--cinder-space-2);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    line-height: 1.25;
+  }
+
+  .cinder-timeline-item__rule {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    block-size: 1px;
+    background: var(--cinder-border-faint);
+  }
+
+  .cinder-timeline-item__now .cinder-timeline-item__rule {
+    block-size: 0.09375rem; /* 1.5px */
+    background: var(--cinder-accent-solid);
+  }
+
+  .cinder-timeline-item__now .cinder-timeline-item__time {
+    flex: none;
+  }
+
+  .cinder-timeline-item__separator-label {
+    flex: none;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  /* ----------------------------------------
+ * List variant: compact rows
+ *
+ * The same entries as quiet rows: no connector, a hairline between rows, the time first and large,
+ * and the title beside it small and muted ("Thu Nov 5, 3:00 AM  in 3 days"). The marker shrinks to
+ * an 8px ring that centres on the row, and a row is at least 40px (44px under a coarse pointer).
+ * ---------------------------------------- */
+
+  .cinder-timeline[data-cinder-variant='list'] {
+    --_cinder-timeline-rail-size: 0.5rem;
+    --_cinder-timeline-marker-size: 0.5rem;
+  }
+
+  .cinder-timeline[data-cinder-variant='list'] .cinder-timeline-item {
+    padding-block-end: 0;
+  }
+
+  .cinder-timeline[data-cinder-variant='list'] .cinder-timeline-item__event {
+    align-items: center;
+    min-block-size: 2.5rem;
+    padding-block: var(--cinder-space-1);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-timeline[data-cinder-variant='list']
+    .cinder-timeline-item:last-child
+    .cinder-timeline-item__event {
+    border-block-end: 0;
+  }
+
+  .cinder-timeline[data-cinder-variant='list'] .cinder-timeline-item__event::before {
+    display: none;
+  }
+
+  .cinder-timeline[data-cinder-variant='list'] .cinder-timeline-item__marker {
+    margin-top: 0;
+    border-width: 0.09375rem; /* 1.5px */
+  }
+
+  .cinder-timeline[data-cinder-variant='list'] .cinder-timeline-item__header {
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: var(--cinder-space-3);
+  }
+
+  .cinder-timeline[data-cinder-variant='list']
+    .cinder-timeline-item__header
+    .cinder-timeline-item__time {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-timeline[data-cinder-variant='list'] .cinder-timeline-item__title {
+    color: var(--cinder-text-subtle);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  @media (pointer: coarse) {
+    .cinder-timeline[data-cinder-variant='list'] .cinder-timeline-item__event {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 }

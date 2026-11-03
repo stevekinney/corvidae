@@ -34,8 +34,10 @@
   let {
     label,
     value,
+    attention = false,
     change,
     icon,
+    caption,
     theme,
     valueFormatOptions,
     valueLocale,
@@ -49,6 +51,8 @@
   const stableId = $derived(id ?? generatedId);
   const labelId = $derived(`${stableId}-label`);
   const valueId = $derived(`${stableId}-value`);
+  const captionId = $derived(`${stableId}-caption`);
+  const hasCaption = $derived(caption !== undefined && caption.trim() !== '');
 
   const displayValue = $derived(
     typeof value === 'number'
@@ -116,7 +120,9 @@
   class={classNames('cinder-statistic', customClassName)}
   role="group"
   aria-labelledby={`${labelId} ${valueId}`}
+  aria-describedby={hasCaption ? captionId : undefined}
   data-cinder-has-icon={icon ? '' : undefined}
+  data-cinder-attention={attention ? '' : undefined}
   style:--_cinder-chart-foreground={resolvedTheme.foreground}
   style:--_cinder-chart-muted={resolvedTheme.muted}
   style:--_cinder-chart-background={resolvedTheme.background}
@@ -124,8 +130,14 @@
   {#if icon}
     <span class="cinder-statistic__icon" aria-hidden="true">{@render icon()}</span>
   {/if}
-  <span id={labelId} class="cinder-statistic__label">{label}</span>
+  <span id={labelId} class="cinder-statistic__label"
+    >{#if attention}<span class="cinder-statistic__attention" aria-hidden="true"
+      ></span>{/if}{label}</span
+  >
   <span id={valueId} class="cinder-statistic__value">{displayValue}</span>
+  {#if hasCaption}
+    <span id={captionId} class="cinder-statistic__caption">{caption}</span>
+  {/if}
   {#if change}
     <span class="cinder-statistic__change" data-cinder-direction={change.direction}>
       <span class="cinder-sr-only">{changeAccessibleText}</span>

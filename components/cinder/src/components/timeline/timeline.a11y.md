@@ -28,6 +28,8 @@ Use the public props and documented examples to provide accessible names, descri
 
 When Timeline accepts snippets or arbitrary children, the caller owns the semantics inside those children. Prefer native elements first, and add ARIA only when it matches the rendered behavior.
 
+The Now marker and a separator are still list items of the ordered list, so the list count and position stay true. Their rules are decorative (`aria-hidden`); the pill text and the separator label are the content, and the Now row's `<time>` carries the machine-readable moment. The `pending` ring is decoration like every marker: say what is upcoming in the row's own text ("in 3 days"), never by the ring alone. `actions` are real controls in the tab order, so give each a name that says which row it acts on when several rows repeat the same label.
+
 ## Verification
 
 - Render Timeline in the playground or a focused test fixture.

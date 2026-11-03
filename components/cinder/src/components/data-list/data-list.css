@@ -18,6 +18,82 @@
     margin: 0;
     padding: 0;
     list-style: none;
+    /* The long-value default for every row in the list: an unbroken value (an identifier) wraps
+     * anywhere, so no value widens the list past its frame. Rows inherit it. */
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* ----------------------------------------
+ * Groups: a header band over a nested list of rows
+ *
+ * A group is an `<li>` holding the header and a nested list that the header names, so a screen
+ * reader announces the day. The header is the inset band of the design: muted text at the left
+ * (`Today · Monday, Nov 2`) and the zone at the right (`Central time`).
+ * ---------------------------------------- */
+
+  .cinder-data-list-group {
+    display: block;
+  }
+
+  .cinder-data-list-group__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-2) var(--cinder-space-3-5);
+    border-block-end: 1px solid var(--cinder-border-muted);
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-data-list-group:not(:first-child) > .cinder-data-list-group__header {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-data-list-group__detail {
+    color: var(--cinder-text-subtle);
+    font-weight: var(--cinder-font-normal);
+    white-space: nowrap;
+  }
+
+  .cinder-data-list-group__items {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* The next group's header draws the divider, so a group's last row draws none. */
+  .cinder-data-list-group__items > :last-child {
+    border-block-end: 0;
+  }
+
+  /* The live region for inserted rows. Until rows arrive it takes no space and is not drawn. Once
+   * it holds an announcement it is the accent status strip of the design, "1 new run", above the
+   * first group; the text stays in the same polite region, so it is spoken and drawn as one. */
+  .cinder-data-list-live {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .cinder-data-list-live[data-announced] {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    overflow: visible;
+    clip-path: none;
+    padding: var(--cinder-space-1-5) var(--cinder-space-3-5);
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
   }
 
   /* Empty state: a single `<li>` so the `<ul>` stays valid. Component-owned

@@ -86,7 +86,9 @@ describe('LIST_ITEM_PARTS', () => {
       const markup = source
         .replace(/<script[\s\S]*?<\/script>/g, '')
         .replace(/<style[\s\S]*?<\/style>/g, '')
-        .replace(/<!--[\s\S]*?-->/g, '');
+        .replace(/<!--[\s\S]*?-->/g, '')
+        // A snippet defined above the root is not the root: only the markup the part renders counts.
+        .replace(/\{#snippet[\s\S]*?\{\/snippet\}/g, '');
       if (/<([a-z][a-z0-9-]*)\b/.exec(markup)?.[1] === 'li') listItemRoots.push(part);
     }
 

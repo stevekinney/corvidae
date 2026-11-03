@@ -88,6 +88,81 @@
     background: var(--cinder-status-warning-solid);
   }
 
+  /* ----------------------------------------
+ * Line arm (`points`): a thin trend line over a baseline, a dot on the latest value, and a label
+ * at each end of the axis. The line is an SVG stretched to the plot with a non-scaling stroke, so
+ * the stroke stays 2px at any width. The line and the dot are the accent unless a theme palette
+ * names another colour. The dot is an element placed over the line, because a circle drawn inside
+ * the stretched SVG would squash into an oval.
+ * ---------------------------------------- */
+
+  .cinder-sparkbar[data-cinder-kind='line'] {
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-sparkbar__plot {
+    position: relative;
+    box-sizing: border-box;
+    /* Room at the right and left for half the end dot and half the stroke. */
+    margin-inline: 0.25rem;
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-sparkbar[data-cinder-size='sm'] .cinder-sparkbar__plot {
+    block-size: 3rem;
+  }
+
+  .cinder-sparkbar[data-cinder-size='md'] .cinder-sparkbar__plot {
+    block-size: 6rem;
+  }
+
+  .cinder-sparkbar[data-cinder-size='lg'] .cinder-sparkbar__plot {
+    block-size: 8rem;
+  }
+
+  .cinder-sparkbar__line {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    overflow: visible;
+  }
+
+  .cinder-sparkbar__path {
+    stroke: var(--_cinder-sparkbar-line-color, var(--cinder-accent-solid));
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .cinder-sparkbar__endpoint {
+    position: absolute;
+    inset-inline-end: 0;
+    inline-size: 0.4375rem;
+    block-size: 0.4375rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--_cinder-sparkbar-line-color, var(--cinder-accent-solid));
+    transform: translate(50%, -50%);
+  }
+
+  .cinder-sparkbar:dir(rtl) .cinder-sparkbar__endpoint {
+    transform: translate(-50%, -50%);
+  }
+
+  .cinder-sparkbar__axis {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: var(--_cinder-chart-muted, currentColor);
+    font-size: var(--cinder-text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* RTL: the series still runs oldest to newest, so mirror the line with the axis. */
+  .cinder-sparkbar:dir(rtl) .cinder-sparkbar__line {
+    transform: scaleX(-1);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-sparkbar__fill {

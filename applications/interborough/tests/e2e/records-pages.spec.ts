@@ -9,12 +9,23 @@
 import type { Page } from '@playwright/test';
 
 import { TASK_COPY } from '../../src/app/copy.ts';
-import { STATUS_TONES, STATUS_WORDS } from '../../src/lib/status.ts';
+import { STATUS_WORDS } from '../../src/lib/status.ts';
 import { STARTED_BY_LABELS } from '../../src/routes/workflows/runs/started-by.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { TWO_QUESTIONS_AGENT_NAME } from './question-agents.ts';
+
+/** The agreed tone of each records-page status word (Cinder's StatusDot word-to-tone table). */
+const AGREED_TONES = {
+  Running: 'info',
+  'Waiting on you': 'warning',
+  Done: 'success',
+  Failed: 'danger',
+  Canceled: 'neutral',
+  Scheduled: 'pending',
+  Paused: 'neutral',
+} as const;
 
 const WAITING_THREAD = newThreadId('records-waiting');
 
@@ -199,7 +210,7 @@ test.describe('the records pages', () => {
           ]),
         );
       for (const [word, tone] of tones) {
-        expect(tone, `${path}: ${word}`).toBe(STATUS_TONES[word as keyof typeof STATUS_TONES]);
+        expect(tone, `${path}: ${word}`).toBe(AGREED_TONES[word as keyof typeof AGREED_TONES]);
       }
     }
   });

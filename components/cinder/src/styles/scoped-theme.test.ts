@@ -115,7 +115,7 @@ describe('scoped theme tokens', () => {
     expect(navigationItemCss).toContain('color: var(--cinder-text-muted);');
     expect(navigationItemCss).toContain('color: var(--cinder-text-default);');
     expect(navigationItemCss).toContain('background-color: var(--cinder-surface-hover);');
-    expect(navigationItemCss).toContain('background-color: var(--cinder-surface-inset);');
+    expect(navigationItemCss).toContain('background-color: var(--cinder-accent-background);');
     expect(navigationItemCss).toContain(
       'var(--_cinder-navigation-item-ring, var(--cinder-ring-color))',
     );
@@ -334,7 +334,7 @@ describe('scoped theme tokens', () => {
       '--cinder-surface-inset',
       '--cinder-surface-raised',
       '--cinder-surface-hover',
-      '--cinder-surface-inverse',
+      '--cinder-surface-upcoming-marker',
     ]) {
       expect(
         lightDarkArms(rootDeclarations.get(token) ?? ''),

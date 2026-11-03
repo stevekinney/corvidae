@@ -14,10 +14,11 @@ import type { HTMLAttributes } from 'svelte/elements';
  * - `reconnecting` — a previously live connection dropped and is retrying.
  * - `polling` — receiving updates via interval polling rather than push.
  * - `stale` — connected but data has not refreshed within an expected window.
+ * - `out-of-date` — retries have stopped and what is shown is the last data that loaded; drawn as a hollow ring, the same pending ring a status dot uses, so it never reads as green.
  * - `closed` — the connection is intentionally or terminally closed.
  */
 export type ConnectionIndicatorStatus =
-  'connecting' | 'live' | 'reconnecting' | 'polling' | 'stale' | 'closed';
+  'connecting' | 'live' | 'reconnecting' | 'polling' | 'stale' | 'out-of-date' | 'closed';
 
 /**
  * Props for ConnectionIndicator.
@@ -32,7 +33,7 @@ export type ConnectionIndicatorProps = Omit<
   HTMLAttributes<HTMLDivElement>,
   'class' | 'children'
 > & {
-  /** Current connection lifecycle state. Drives icon, text, and color via `data-cinder-status`. */
+  /** Current connection lifecycle state. Drives the glyph, text, and tone via `data-cinder-status`. */
   status: ConnectionIndicatorStatus;
   /** Optional human label override. Replaces the default text for `status` (and the "Connection: …" accessible name). */
   label?: string;
@@ -44,7 +45,7 @@ export type ConnectionIndicatorProps = Omit<
 
 /** Schema-facing mirror of {@link ConnectionIndicatorProps}, omitting the non-serializable `attempt` snippet and native HTML attribute passthrough. */
 export interface ConnectionIndicatorSchemaProps {
-  /** Current connection lifecycle state. Drives icon, text, and color via `data-cinder-status`. */
+  /** Current connection lifecycle state. Drives the glyph, text, and tone via `data-cinder-status`. */
   status: ConnectionIndicatorStatus;
   /** Optional human label override. Replaces the default text for `status` (and the "Connection: …" accessible name). */
   label?: string;

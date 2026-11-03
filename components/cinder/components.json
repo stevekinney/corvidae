@@ -32,6 +32,7 @@
       "gap",
       "kanban-board",
       "leading",
+      "list",
       "marquee",
       "modal",
       "motion",
@@ -46,6 +47,7 @@
       "severity",
       "shadow",
       "side-navigation",
+      "skeleton",
       "space",
       "spinner",
       "statistic",
@@ -420,6 +422,36 @@
         "schema": "src/components/aspect-ratio/aspect-ratio.schema.json",
         "variables": "src/components/aspect-ratio/aspect-ratio.variables.json",
         "examples": "src/components/aspect-ratio/aspect-ratio.examples.json"
+      }
+    },
+    {
+      "name": "AttemptsIndicator",
+      "id": "attempts-indicator",
+      "import": "@lostgradient/cinder",
+      "exportName": "AttemptsIndicator",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Segmented bar with one segment per allowed attempt, filled for the attempts made, that reads as an image named \"2 of 5 attempts\".",
+      "tags": ["attempts", "progress", "segments"],
+      "useWhen": [
+        "Showing how many of a fixed number of attempts a goal, retry or reconnection has used, beside its count.",
+        "Drawing a neutral attempts bar on a list row's second line, where the word beside it carries the outcome."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing continuous progress toward a value — use progress or meter."
+        },
+        {
+          "reason": "Drawing a trend over time — use sparkbar."
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/attempts-indicator/attempts-indicator.schema.json",
+        "variables": "src/components/attempts-indicator/attempts-indicator.variables.json",
+        "examples": "src/components/attempts-indicator/attempts-indicator.examples.json"
       }
     },
     {
@@ -1422,10 +1454,10 @@
       "exportName": "ConnectionIndicator",
       "category": "feedback",
       "status": "beta",
-      "purpose": "Small standalone status pill for a live connection, distinguishing connecting, live, reconnecting, polling, stale, and closed states through icon and text rather than color alone.",
+      "purpose": "Quiet inline dot-and-word status for a live connection, telling connecting, live, reconnecting, polling, stale, out-of-date, and closed apart by shape and text, not color alone.",
       "tags": ["connection", "status", "realtime"],
       "useWhen": [
-        "Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained pill.",
+        "Surfacing the transport-level health of a websocket, SSE stream, or polling loop as a compact, self-contained dot and word.",
         "Distinguishing push (`live`) from interval polling (`polling`) so operators don't mistake one for the other."
       ],
       "avoidWhen": [
@@ -1449,7 +1481,7 @@
       "a11y": {
         "pattern": "role=\"status\" live region",
         "notes": [
-          "Status is conveyed by icon and text together, never color alone (WCAG 1.4.1); the live pulsing dot collapses to a static dot under prefers-reduced-motion."
+          "Status is conveyed by shape and text together, never color alone (WCAG 1.4.1): live is a dot, out-of-date a hollow ring, the rest an icon. The live pulsing dot collapses to a static dot under prefers-reduced-motion."
         ]
       }
     },
@@ -1606,12 +1638,13 @@
       "exportName": "DataList",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Semantic list container for homogeneous record rows, with a styled empty state and an optional list-level density.",
+      "purpose": "Semantic list container for like rows: empty state, density, day groups, a shared status column, and announced live insertion.",
       "tags": ["list", "iterator"],
       "useWhen": [
         "Rendering a vertical list of like records where each row shares the same layout.",
         "Pairing with StackedListItem rows for leading/title/description/meta/trailing content.",
-        "Showing a dedicated empty state when the collection has no items."
+        "Showing a dedicated empty state when the collection has no items.",
+        "Grouping rows under day headers, or announcing rows that arrive while the list is on screen."
       ],
       "avoidWhen": [
         {
@@ -4159,7 +4192,7 @@
       "exportName": "RelativeTime",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Localized, live-updating relative date label for timestamps.",
+      "purpose": "Live-updating relative or absolute time label in the viewer's zone, with the other reading in a tooltip.",
       "tags": ["relative-time"],
       "useWhen": ["Showing when a message, issue, or event happened."],
       "avoidWhen": [
@@ -5046,10 +5079,11 @@
       "exportName": "Sparkbar",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Compact labeled meter with a thin horizontal fill bar for inline cost, token, budget, or quota breakdowns.",
-      "tags": ["sparkbar", "meter", "cost"],
+      "purpose": "Compact labeled meter with a thin fill bar for inline cost, token, or quota breakdowns, or, given points, a thin trend line with an end dot.",
+      "tags": ["sparkbar", "meter", "cost", "sparkline", "trend"],
       "useWhen": [
-        "Comparing several bounded values in dense rows, such as per-step spend, token usage, or budget consumption."
+        "Comparing several bounded values in dense rows, such as per-step spend, token usage, or budget consumption.",
+        "Showing the shape of one metric over a recent window inside a metric card, with its latest value marked and the window named at each end."
       ],
       "avoidWhen": [
         {
@@ -5058,7 +5092,7 @@
         },
         {
           "reason": "Rendering a full cartesian chart with axes, scales, or multiple series.",
-          "alternative": "bar-chart"
+          "alternative": "line-chart"
         }
       ],
       "related": ["meter", "progress", "bar-chart"],
@@ -5255,11 +5289,12 @@
       "exportName": "StackedListItem",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Dense list row with leading, title, description, meta, and trailing slots that may optionally render as an anchor.",
-      "tags": ["list", "row"],
+      "purpose": "Dense list row with leading, status, title, time, description, meta, and trailing slots; the status-first two-line row has a fixed 128px status column, a two-line title clamp and a whole-row link.",
+      "tags": ["list", "row", "status"],
       "useWhen": [
         "Listing entities vertically with consistent leading icons or avatars and trailing actions.",
-        "Linking each row to a detail view by passing href."
+        "Linking each row to a detail view by passing href, which makes the whole row one link.",
+        "Listing runs, goals, schedules or agents with a status word, bold title and time on line one and muted meta on line two."
       ],
       "avoidWhen": [
         {
@@ -5951,7 +5986,10 @@
       "status": "stable",
       "purpose": "Timestamp-first event rail with grouping, tone markers, and connector continuity.",
       "tags": ["timeline", "history", "events"],
-      "useWhen": ["Showing dated workflow, audit, or run-history events on a temporal rail."],
+      "useWhen": [
+        "Showing dated workflow, audit, or run-history events on a temporal rail.",
+        "Listing upcoming and past runs as compact rows split by a Now marker, with a labelled break where the clock changed."
+      ],
       "avoidWhen": [
         {
           "reason": "Surfacing a real-time social or activity stream — feed is the higher-affordance composition."

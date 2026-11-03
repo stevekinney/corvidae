@@ -21,6 +21,10 @@ Follows WAI-ARIA APG [Disclosure](https://www.w3.org/WAI/ARIA/apg/patterns/discl
 - `aria-controls` on the trigger points at the disclosed `<ul>`'s `id`.
 - The disclosed region uses the `hidden` attribute (not a CSS class) when collapsed. `hidden` is equivalent to `display: none` at the layout level, which means the browser and all assistive technologies consistently exclude collapsed children from focus order and the accessibility tree — no extra ARIA is needed to enforce this.
 
+## Counts, dots and collapsed rows
+
+A `SideNavigationItem` with a `label` and a non-zero `count` is named `"<label>, <count> <countLabel>"` ("Health, 3 need attention"), so the figure carries the meaning. The numeric pill and the status dot are `aria-hidden` decoration over that name. On a collapsed icon rail the visible label is clipped, not removed, so the name is unchanged; hover or focus shows the same words in a tooltip (`"Reviews · 2 need you"`). The tooltip is not the row's description (`aria-describedby` is not set), because the name already says it.
+
 ## Keyboard model
 
 This is a navigation landmark containing links and disclosure buttons — it is **not** a composite widget like `tablist` or `menubar`.

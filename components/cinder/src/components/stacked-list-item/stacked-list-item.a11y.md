@@ -39,7 +39,7 @@ All interaction lives inside child elements:
 - **Navigation:** via the `title` link when `href` is supplied.
 - **Actions:** via controls placed in the `trailing` snippet.
 
-If you need the entire row to be clickable, wrap the row in an explicit interactive element rather than attaching `onclick` to the `<li>`.
+If you need the entire row to be clickable, pass `href`: the row's one link is stretched over it, rather than attaching `onclick` to the `<li>`.
 
 ## Disambiguated Action Labels
 
@@ -56,9 +56,11 @@ The snippet receives no automatic row context — the consumer is responsible fo
 
 ## Linkified Rows
 
-When `href` is set, the title anchor is the primary focusable element representing the row's destination. Focus order within the row is: title link → any trailing controls (left-to-right in DOM order). This component intentionally does **not** implement the stretched-link pattern (where the entire row surface area is the click target) because that pattern conflicts with independently activatable trailing controls.
+When `href` is set, the title anchor is the one link of the row, and it is stretched over the whole row (the stretched-link pattern): the anchor's pseudo-element covers the row, so a click anywhere follows it, hover tints the whole row, and the keyboard focus ring wraps the whole row rather than the title. There is still exactly one link and one tab stop for the row, and its accessible name is the title, so assistive technology reads the same thing it always did.
 
-If `trailing` contains interactive elements alongside a linked title, both are separately reachable via keyboard. Ensure both have distinct, disambiguated accessible names.
+Focus order within the row is: title link → any trailing controls or actions (left-to-right in DOM order). Controls in `trailing`, `actions`, `meta` and the group disclosure sit above the cover, so they stay separately reachable and activatable; ensure they have distinct, disambiguated accessible names.
+
+Under forced colors the focus ring is a real outline in the system colour drawn inside the row.
 
 ## Density and Touch Target Size
 
@@ -80,9 +82,41 @@ The `leading` snippet is not automatically hidden from assistive technologies. I
 
 Duplicating identity information is acceptable and sometimes preferred — it makes the row easier to scan with a screen reader. Hiding it is only correct when the title already provides a complete, unambiguous label.
 
+## Status-first row
+
+With `status`, `time` or `details` the row is a two-line grid: the status dot and word in a fixed 128px leading column, then the title and the time, then the muted `meta` on line two. The status is a `StatusDot`, so the word, not the colour, carries the meaning, and a row with nothing to report has no status at all (the column stays empty to keep titles aligned). The status element comes first in the DOM, so a screen reader reads the status before the title. On a phone, and in the chat list's `line-two` placement, the same element sits at the start of line two; it is not duplicated.
+
+The title is clamped at two lines with an ellipsis; set `tooltip` to the title's text so the full text is available on hover. Line two is one line that ends in an ellipsis, so give a long value its full text through the surrounding page (the detail page) rather than relying on the row.
+
+## Failed row
+
+A row with `error` says the message as plain text on line two; the warning glyph is decorative and hidden, so the message, not the colour, carries the meaning. The "Try again" button is described by the message (`aria-describedby`), so a list of several failed rows still tells them apart by their titles in reading order. A failed row is not a link.
+
+## Group row
+
+A group row (`details`) is a non-link row with a real `<button>` that carries `aria-expanded` and `aria-controls`; the region is `hidden` while collapsed. Its name is the visible "Show" or "Hide", so pass `expandLabel` and `collapseLabel` that name what they open when several appear on a page.
+
+With `groupLayout="band"` the whole band is one `<button>` whose name is its content: the title, the muted text and the visible "Show each" or "Hide", so the label comes first in the name (WCAG 2.5.3). The status dot sits outside the band; give its `StatusDot` a `label`, because the band carries no word for it. The chevron is decorative and hidden. The amber tint is never the only signal: the title says what was missed.
+
+## Selected row
+
+`selected` sets `aria-current="true"` on the row's link, or on the row when it has no link, so the open item is announced and not only tinted. Under forced colors the row gets a `Highlight` outline.
+
+## Glyph tile
+
+The tile behind `leading` (`leadingTone`) is decoration and carries `aria-hidden="true"`. The glyph names the kind of row, so the title must say the same thing in words.
+
+## Line two tooltip
+
+`metaTooltip` is a native tooltip, which keyboard and touch users do not reach. It repeats text the row's page shows in full; it is never the only place the text appears.
+
+## Trailing actions
+
+`actions` render as buttons, or on a phone as one menu button named by `actionsLabel`. A disabled action keeps `aria-disabled="true"` and stays focusable; `disabledReason` is its `aria-describedby` text and its tooltip, so the reason is reachable by keyboard and screen reader, not only by hover.
+
 ## Reading Order and Container Queries
 
-The responsive layout (trailing dropping below body at narrow widths) is purely visual — implemented via CSS container queries on the `<li>`. DOM order is always `leading → title → description → meta → trailing`, regardless of how the grid re-flows at narrow container widths. Screen readers follow DOM order, so the reading sequence is stable and predictable across all breakpoints.
+The responsive layout (trailing dropping below body at narrow widths) is purely visual — implemented via CSS container queries on the `<li>`. DOM order is always `leading → title → description → meta → trailing`, regardless of how the grid re-flows at narrow container widths. (With `status`, the status element leads the order.) Screen readers follow DOM order, so the reading sequence is stable and predictable across all breakpoints.
 
 ## Animation and Motion
 

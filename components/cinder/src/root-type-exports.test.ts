@@ -3,12 +3,18 @@ import { expect, expectTypeOf, test } from 'bun:test';
 import { isRedispatchedPortaledEvent as ownedPortalEventPredicate } from './components/portal/index.ts';
 import {
   createBodyScrollLock,
+  formatDateTime,
+  formatRelativeTime,
   isRedispatchedPortaledEvent,
   Toolbar,
   ToolbarGroup,
   ToolbarSpacer,
 } from './index.ts';
 import { createBodyScrollLock as ownedBodyScrollLock } from './utilities/attachments.ts';
+import {
+  formatDateTime as ownedFormatDateTime,
+  formatRelativeTime as ownedFormatRelativeTime,
+} from './utilities/format-date.ts';
 
 import type {
   AreaChartDataTableVisibility,
@@ -221,5 +227,7 @@ test('root exports expose the existing toolbar parts and DOM utility owners', ()
   expect(ToolbarGroup).toBe(Toolbar.Group);
   expect(ToolbarSpacer).toBe(Toolbar.Spacer);
   expect(createBodyScrollLock).toBe(ownedBodyScrollLock);
+  expect(formatDateTime).toBe(ownedFormatDateTime);
+  expect(formatRelativeTime).toBe(ownedFormatRelativeTime);
   expect(isRedispatchedPortaledEvent).toBe(ownedPortalEventPredicate);
 });

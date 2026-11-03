@@ -122,22 +122,58 @@
   /* ----------------------------------------
  * Vertical variant — sidebar / vertical-tab contexts
  *
- * Square row geometry for flush sidebar edges. The active row is a tint (the
- * inset surface), never an accent stripe (COR-1821), so toggling active state
- * never shifts the label.
+ * Row geometry for sidebar edges. The active row is an accent tint, never an
+ * accent stripe (COR-1821), so toggling active state never shifts the label.
  * ---------------------------------------- */
 
+  /* One control, one 30px row (COR-2010, rows 02m to 02p). Hover, focus and the active fill all
+   * paint this whole box, never only the label or the icon. The row is 30px with a real line height
+   * so descenders are never clipped, and a coarse pointer raises it to the list-row minimum (44px)
+   * through `--cinder-list-row-min-height`, which is zero for a fine pointer. */
   .cinder-navigation-item[data-variant='vertical'] {
     display: flex;
     inline-size: 100%;
+    box-sizing: border-box;
     justify-content: flex-start;
+    gap: var(--cinder-space-2);
+    min-block-size: max(1.875rem, var(--cinder-list-row-min-height));
+    padding-inline: var(--cinder-space-2);
+    padding-block: 0;
+    font-weight: var(--cinder-font-medium);
+    line-height: 1.25rem;
     border-bottom: none;
-    border-radius: 0;
+    border-radius: var(--cinder-radius-sm);
   }
 
+  /* The current page is a visible accent tint with accent text and semibold weight (S13, row 02p),
+   * so it reads against any sidebar paint. The tint replaces the old inset-surface fill, which was
+   * invisible on a sidebar that is itself painted with the inset surface. */
   .cinder-navigation-item[data-variant='vertical'][data-active='true'] {
     border-bottom-color: transparent;
-    background-color: var(--cinder-surface-inset);
+    background-color: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* Hover on a sidebar row is a neutral tint, never an accent wash (row 02n): the ink at 6% over
+   * whatever the sidebar is painted with, about oklch(94.5% .008 270) over the light surface and a
+   * step up from the surface in dark. `--cinder-surface-hover` washes toward the accent in light
+   * mode by design, which reads as the active tint on a sidebar, so a vertical row sets its own. */
+  @media (hover: hover) {
+    .cinder-navigation-item[data-variant='vertical']:hover:not(
+        [aria-disabled='true'],
+        [data-active='true']
+      ) {
+      background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 94%);
+    }
+  }
+
+  /* The active row takes no hover change (row 02n): it keeps its accent fill and accent text. */
+  @media (hover: hover) {
+    .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
+      background-color: var(--cinder-accent-background);
+      color: var(--cinder-accent-text);
+    }
   }
 
   /* Forced-colors fallback for the vertical-variant inset ring. Inset
@@ -160,6 +196,11 @@
      * are the system pair for a selected row; unlike an outline they coexist
      * with the focus ring above. */
     .cinder-navigation-item[data-variant='vertical'][data-active='true'] {
+      background-color: SelectedItem;
+      color: SelectedItemText;
+    }
+
+    .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
       background-color: SelectedItem;
       color: SelectedItemText;
     }

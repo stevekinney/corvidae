@@ -26,13 +26,34 @@ const schema = {
             description: 'Visible event title.',
           },
           tone: {
-            enum: ['info', 'success', 'warning', 'error'],
-            description: 'Semantic marker tone.',
+            enum: ['info', 'success', 'warning', 'error', 'pending'],
+            description:
+              'Semantic marker tone. `pending` is a hollow neutral ring for something that has not happened\nyet (an upcoming run), the same ring a status dot draws for Waiting.',
             default: 'info',
+          },
+          kind: {
+            enum: ['event', 'now', 'separator', 'band'],
+            description:
+              'What the entry is. For `now`, `title` is the pill\'s text ("Now") and `timestamp` the time at\nthe right. For `separator`, `title` is the label and `timestamp` and `datetime` say what moment\nit marks. Neither draws a marker, a connector, a body or actions. For `band`, `tone` tints the\nband (`warning` is amber, anything else neutral) and `title` is its bold text.',
+            default: 'event',
           },
           groupLabel: {
             type: 'string',
             description: 'Optional day/week group label override. The first entry in a group wins.',
+          },
+          detail: {
+            type: 'string',
+            description: 'For a `band`: the muted text after the title ("Interborough was off").',
+          },
+          expandLabel: {
+            type: 'string',
+            description: 'For a `band`: the text of the button that opens it.',
+            default: 'Show',
+          },
+          collapseLabel: {
+            type: 'string',
+            description: 'For a `band`: the text of the button that closes it.',
+            default: 'Hide',
           },
         },
         additionalProperties: false,
@@ -44,6 +65,11 @@ const schema = {
       enum: ['vertical', 'horizontal'],
       description: 'Layout orientation.',
       default: 'vertical',
+    },
+    variant: {
+      enum: ['rail', 'list'],
+      description: 'Rail with connectors, or compact rows with none.',
+      default: 'rail',
     },
     groupBy: {
       enum: ['none', 'day', 'week'],
@@ -79,6 +105,12 @@ const schema = {
   required: ['entries'],
   metadata: {
     unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description:
+          'Optional per-entry controls, drawn at the inline end of the entry\'s row (a "Skip" button on an\nupcoming run). Unlike `marker`, they are interactive and in the tab order. Not drawn for a\n`now` or `separator` entry.',
+      },
       {
         name: 'children',
         reason: 'function-or-snippet',

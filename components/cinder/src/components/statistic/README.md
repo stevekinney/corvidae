@@ -30,12 +30,27 @@ Pass a partial `theme` when a statistic needs an explicit local foreground, mute
 
 Change direction remains visible through its arrow glyph, signed value, description, and screen-reader text rather than color alone.
 
+## Attention dot
+
+Set `attention` to draw an amber dot before the label when the value is a non-zero bad count, such as items waiting on you or missed schedule runs. Leave it off for a zero count and for a healthy one, so a dot always means there is something to look at. The dot is decorative (`aria-hidden`) and is drawn with `Highlight` under forced colors; the label wording carries the meaning, so write the label to say what the count is.
+
+```svelte
+<script lang="ts">
+  import { Statistic } from '@lostgradient/cinder';
+</script>
+
+<Statistic label="Needs you" value={2} attention />
+<Statistic label="Failed in 24 hours" value={0} />
+```
+
 ## Props
 
 <!-- generated:props:start -->
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `attention` | `boolean` | no | — | Draws an amber attention dot before the label. Set it only when the value is a non-zero bad count (such as missed runs or items waiting on you), never on a zero or a healthy count. The dot is decorative: the label wording carries the meaning. |
+| `caption` | `string` | no | — | A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-statistic`. |
 | `label` | `string` | yes | — | Short label describing the metric, e.g. "Monthly Revenue". |
 | `style` | `string` | no | — | Inline style string applied to the `.cinder-statistic` root. |

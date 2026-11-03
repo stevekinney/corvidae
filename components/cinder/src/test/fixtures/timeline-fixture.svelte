@@ -1,4 +1,6 @@
 <script lang="ts" module>
+  import type { TimelineTone } from '../../components/timeline/timeline.types.ts';
+
   /** Test-only fixture driving Timeline via its `entries` + snippet API. */
   export type TimelineFixtureProps = {
     items: Array<{
@@ -6,7 +8,7 @@
       title?: string | undefined;
       datetime: string;
       timestamp: string;
-      tone?: 'info' | 'success' | 'warning' | 'error' | undefined;
+      tone?: TimelineTone | undefined;
       groupLabel?: string | undefined;
       body?: string | undefined;
     }>;

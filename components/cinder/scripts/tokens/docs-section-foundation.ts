@@ -94,6 +94,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-font-bold',
       '--cinder-type-tab-size',
       '--cinder-touch-target-min',
+      '--cinder-list-row-min-height',
     ],
   },
   {
@@ -141,6 +142,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-surface-raised-hover',
       '--cinder-surface-raised-pressed',
       '--cinder-surface-upcoming-marker',
+      '--cinder-skeleton-background',
       '--cinder-surface-inverse',
       '--cinder-text-inverse',
       '--cinder-border-inverse',

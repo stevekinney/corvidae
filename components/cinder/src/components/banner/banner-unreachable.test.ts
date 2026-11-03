@@ -97,7 +97,7 @@ describe('Banner unreachable preset', () => {
     const notice = container.querySelector('.cinder-banner__stale');
     expect(notice?.textContent).toContain('Showing data from');
     expect(notice?.querySelector('time')?.getAttribute('datetime')).toBe(updatedAt.toISOString());
-    expect(notice?.querySelector('time')?.textContent).toContain('2 minutes ago');
+    expect(notice?.querySelector('time')?.textContent).toContain('2 min ago');
   });
 
   test('omits the stale-data notice without dataUpdatedAt and honours staleDataLabel', () => {

@@ -9,6 +9,7 @@ export { default as alertSchema } from '../components/alert/alert.schema.ts';
 export { default as approvalCardSchema } from '../components/approval-card/approval-card.schema.ts';
 export { default as areaChartSchema } from '../components/area-chart/area-chart.schema.ts';
 export { default as aspectRatioSchema } from '../components/aspect-ratio/aspect-ratio.schema.ts';
+export { default as attemptsIndicatorSchema } from '../components/attempts-indicator/attempts-indicator.schema.ts';
 export { default as audioPlayerSchema } from '../components/audio-player/audio-player.schema.ts';
 export { default as autocompleteSchema } from '../components/autocomplete/autocomplete.schema.ts';
 export { default as avatarGroupSchema } from '../components/avatar-group/avatar-group.schema.ts';

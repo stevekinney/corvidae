@@ -13,7 +13,7 @@ Five tokens in `src/styles/tokens-base.css` (the `/* Focus ring */` block) are t
 | `--cinder-ring-width` | `2px` | Accent ring thickness. Never hard-code `2px` or `3px` in new rules — use this token. Pre-existing fallbacks (e.g. `var(--cinder-ring-width, 2px)`) are tolerated but should be cleaned up opportunistically. |
 | `--cinder-ring-offset` | `0px` | Distance between element edge and accent ring. Zero by default, so the ring is tight: one 2px band directly on the control edge. Used as `outline-offset` in Strategy A and as the offset-band thickness in Strategy B. Not used in Strategy B-inset. Emitted as `0px` rather than a bare `0` because Strategy B adds it to the width inside `calc()`. |
 | `--cinder-ring-offset-color` | `var(--cinder-surface-raised)` | Color of the gap band between a filled control and its ring (see [Filled Variants and States](#filled-variants-and-states)), and of the Strategy B offset band if a theme sets a non-zero offset. Unfilled controls paint no gap. Not used in A or B-inset. |
-| `--cinder-ring-color` | `light-dark(…)` accent | The ring color. Per-variant overrides should use a private `--_cinder-<component>-ring` custom property whose fallback is `var(--cinder-ring-color)`. |
+| `--cinder-ring-color` | `oklch(from var(--cinder-accent-solid) 0.62 0.16 h)` | The ring color: the accent hue at 62% lightness in both themes, one quiet ring for every control. Per-variant overrides should use a private `--_cinder-<component>-ring` custom property whose fallback is `var(--cinder-ring-color)`. |
 | `--cinder-ring-on-accent` | `light-dark(…)` near-black / white | The ring FloatingAction `primary` paints directly on its accent fill. It measures about 3:1 (light) and 2.5:1 (dark) against that fill, so other filled controls use the gap below instead. |
 
 The default ring is tight. There is no offset band between the control and the ring, so a focused control shows a single 2px line rather than a 4px double band. Filled controls are the exception: they keep a 2px gap (below). The width stays `2px`, the WCAG 2.4.13 floor.
@@ -34,7 +34,7 @@ Use when:
 
 `outline-offset` may be a fixed pixel value when a specific nudge is needed — some call sites use `2px` or `3px`. The rule against hard-coding applies to **ring thickness** (`--cinder-ring-width`) and **ring color** (`--cinder-ring-color`) only.
 
-Strategy A does **not** need a `@media (forced-colors: active)` override. A solid `outline` is already preserved by forced-colors mode (the system substitutes a system color). Adding a redundant override is unnecessary.
+Strategy A needs no per-component `@media (forced-colors: active)` override: a solid `outline` is already preserved by forced-colors mode. The one global default in `foundation.css` names the system focus color (`Highlight`) itself under forced colors, so the ring never depends on how a browser substitutes the author's color.
 
 **Representative call site:**
 

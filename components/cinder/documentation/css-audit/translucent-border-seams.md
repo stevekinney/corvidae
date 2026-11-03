@@ -99,7 +99,7 @@ y=19  rgb(141,144,148)   the border.control border, 48% ink
 
 A stacked pair would have produced a single row at their combined weight. The edge is 2px of two different weights, which is what it was before the tiers were composed — both layers simply track the surface now.
 
-Thirteen sites (fourteen declarations: the ColorField hatch has two stops) are a real area rather than a hairline. All of them carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. One is outside `@lostgradient/cinder` (Chat's busy dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet. Every one of them is the only visible shape of an indicator, so since the two-job split every one is on a control tier.
+Fourteen sites (fifteen declarations: the ColorField hatch has two stops) are a real area rather than a hairline. All of them carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. One is outside `@lostgradient/cinder` (Chat's busy dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet. Every one of them is the only visible shape of an indicator, so since the two-job split every one is on a control tier.
 
 | site | tier | how it is painted |
 | --- | --- | --- |
@@ -112,10 +112,11 @@ Thirteen sites (fourteen declarations: the ColorField hatch has two stops) are a
 | `slider` tick | `border.control` | 2 × 8px, undiluted — the redundant `opacity: 0.6` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `color-field` empty hatch | `border.control` | a 6px `linear-gradient` repeat across the swatch |
 | `feed-event` dot | `border.control` (was `border.strong`) | 8 × 8px |
-| `status-dot` neutral indicator | `border.control` (was `border.strong`) | `--cinder-status-dot-size` |
+| `status-dot` neutral indicator, and the `pending` hollow ring | `border.control` (was `border.strong`) | `--cinder-status-dot-size` |
 | `rating` empty star | `border.control` (was `border.strong`) | a 1.5rem masked glyph |
 | `resizable-panels` grip | `border.control` (was `border.strong`) | `color:`, inherited by a child, undiluted — the child's `opacity: 0.5` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `entry-frame` busy dot (Chat) | `border.control` | 8 × 8px |
+| `attempts-indicator` filled segment, through `--_cinder-attempts-indicator-fill` | `border.control` | a 6px tall segment, one per allowed attempt, over the row or the dialog surface (the empty ones are `surface.inset`) |
 
 Four of those do not reach the tier through `background` at all, which is how two earlier passes of this document missed them: `color-field` uses `background-image`, `resizable-panels` uses `color`, and `rating` and `status-dot` hop through a component token (`--_cinder-rating-empty`, `--cinder-status-dot-color`). `status-dot` borrows a border tier because every other status maps to a `*-solid` and neutral has none.
 

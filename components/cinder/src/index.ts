@@ -47,6 +47,13 @@ export type {
   AreaChartSchemaProps,
 } from './components/area-chart/index.ts';
 
+export { default as AttemptsIndicator } from './components/attempts-indicator/index.ts';
+export type {
+  AttemptsIndicatorLayout,
+  AttemptsIndicatorProps,
+  AttemptsIndicatorTone,
+} from './components/attempts-indicator/index.ts';
+
 export { default as Autocomplete } from './components/autocomplete/index.ts';
 export type {
   AutocompleteProps,
@@ -268,8 +275,27 @@ export type { CopyButtonProps } from './components/copy-button/index.ts';
 
 export { copyToClipboard } from './utilities/clipboard.ts';
 
+export {
+  formatDate,
+  formatDateTime,
+  formatDayAndTime,
+  formatDayHeading,
+  formatRelativeTime,
+  formatScheduleTime,
+  formatTimeOfDay,
+  formatTimeZoneLabel,
+  formatTimestamp,
+} from './utilities/format-date.ts';
+export type {
+  DateFormatOptions,
+  DateInput,
+  DayHeadingOptions,
+  RelativeTimeFormatOptions,
+  TimeZoneLabelOptions,
+} from './utilities/format-date.ts';
+
 export { default as DataList } from './components/data-list/index.ts';
-export type { DataListProps } from './components/data-list/index.ts';
+export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
 
 export { default as DataGrid } from './components/data-grid/index.ts';
 export type {
@@ -878,8 +904,14 @@ export type {
 
 export { default as StackedListItem } from './components/stacked-list-item/index.ts';
 export type {
+  StackedListItemAction,
   StackedListItemDensity,
+  StackedListItemGroupLayout,
+  StackedListItemLeadingTone,
   StackedListItemProps,
+  StackedListItemStatusPlacement,
+  StackedListItemTitleLines,
+  StackedListItemTone,
 } from './components/stacked-list-item/index.ts';
 
 export { default as Stack } from './components/stack/index.ts';
@@ -923,7 +955,13 @@ export type {
 } from './components/speed-dial-action/index.ts';
 
 export { default as Sparkbar } from './components/sparkbar/index.ts';
-export type { SparkbarProps, SparkbarSize, SparkbarVariant } from './components/sparkbar/index.ts';
+export type {
+  SparkbarBarProps,
+  SparkbarLineProps,
+  SparkbarProps,
+  SparkbarSize,
+  SparkbarVariant,
+} from './components/sparkbar/index.ts';
 
 export { default as Steps } from './components/steps/index.ts';
 export type {
@@ -947,12 +985,19 @@ export type {
   StatisticGroupVariant,
 } from './components/statistic-group/index.ts';
 
-export { default as StatusDot } from './components/status-dot/index.ts';
+export {
+  default as StatusDot,
+  statusDotWordTones,
+  statusForStatusDotWord,
+} from './components/status-dot/index.ts';
 export type {
   StatusDotConnectionState,
   StatusDotProps,
   StatusDotSize,
   StatusDotStatus,
+  StatusDotWord,
+  StatusDotWordLabel,
+  StatusDotWordTone,
 } from './components/status-dot/index.ts';
 
 export { default as Surface } from './components/surface/index.ts';
@@ -1240,10 +1285,12 @@ export type { SliderRangeProps, SliderSingleProps } from './components/slider/in
 export type { SpeedDialSchemaProps } from './components/speed-dial/index.ts';
 export type {
   TimelineEntry,
+  TimelineEntryKind,
   TimelineGroupBy,
   TimelineHeadingLevel,
   TimelineOrientation,
   TimelineTone,
+  TimelineVariant,
   TimelineWeekStartsOn,
 } from './components/timeline/index.ts';
 export { ToolbarGroup, ToolbarSpacer } from './components/toolbar/index.ts';

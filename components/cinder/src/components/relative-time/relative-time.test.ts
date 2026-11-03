@@ -51,26 +51,116 @@ describe('RelativeTime', () => {
     expect(element?.getAttribute('class')).toContain('my-custom-class');
   });
 
-  test('formats signed past and future deltas with Intl.RelativeTimeFormat', () => {
+  test('reads past and future deltas on the shared design format', () => {
     const realNow = Date.now;
-    Date.now = () => Date.UTC(2026, 0, 2, 12);
+    Date.now = () => Date.UTC(2026, 0, 2, 18);
     try {
       const past = render(RelativeTime, {
-        date: Date.UTC(2026, 0, 2, 11),
+        date: Date.UTC(2026, 0, 2, 17),
         locale: 'en',
+        timeZone: 'America/Chicago',
         tick: false,
       });
-      expect(past.container.querySelector('time')?.textContent).toBe('1 hour ago');
+      expect(past.container.querySelector('time')?.textContent).toBe('1 h ago');
       past.unmount();
-      const future = render(RelativeTime, {
-        date: Date.UTC(2026, 0, 2, 13),
+      const minutes = render(RelativeTime, {
+        date: Date.UTC(2026, 0, 2, 17, 56),
         locale: 'en',
+        timeZone: 'America/Chicago',
         tick: false,
       });
-      expect(future.container.querySelector('time')?.textContent).toBe('in 1 hour');
+      expect(minutes.container.querySelector('time')?.textContent).toBe('4 min ago');
+      minutes.unmount();
+      const future = render(RelativeTime, {
+        date: Date.UTC(2026, 0, 2, 20),
+        locale: 'en',
+        timeZone: 'America/Chicago',
+        tick: false,
+      });
+      expect(future.container.querySelector('time')?.textContent).toBe('in 2 h');
     } finally {
       Date.now = realNow;
     }
+  });
+
+  test('reads yesterday as a clock time in the given zone', () => {
+    const realNow = Date.now;
+    Date.now = () => Date.UTC(2026, 10, 2, 16, 46);
+    try {
+      const view = render(RelativeTime, {
+        date: Date.UTC(2026, 10, 1, 22, 12),
+        timeZone: 'America/Chicago',
+        locale: 'en-US',
+        tick: false,
+      });
+      expect(view.container.querySelector('time')?.textContent).toBe('Yesterday, 4:12 PM');
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('absolute format never reads relative and puts the relative reading in the tooltip', () => {
+    const realNow = Date.now;
+    Date.now = () => Date.UTC(2026, 10, 2, 16, 46);
+    try {
+      const view = render(RelativeTime, {
+        date: Date.UTC(2026, 10, 2, 16, 44),
+        format: 'absolute',
+        timeZone: 'America/Chicago',
+        locale: 'en-US',
+        tick: false,
+      });
+      const element = view.container.querySelector('time');
+      expect(element?.textContent).toBe('Today, 10:44 AM');
+      expect(element?.getAttribute('title')).toBe('2 min ago');
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('absolute format says Today but names yesterday by its day (row 80h)', () => {
+    const realNow = Date.now;
+    Date.now = () => Date.UTC(2026, 10, 2, 16, 46);
+    try {
+      const read = (date: number, dayWords?: boolean | 'today') =>
+        render(RelativeTime, {
+          date,
+          format: 'absolute',
+          ...(dayWords === undefined ? {} : { dayWords }),
+          timeZone: 'America/Chicago',
+          locale: 'en-US',
+          tick: false,
+        }).container.querySelector('time')?.textContent;
+      expect(read(Date.UTC(2026, 10, 2, 16, 44))).toBe('Today, 10:44 AM');
+      expect(read(Date.UTC(2026, 10, 1, 22, 12))).toBe('Sun Nov 1, 4:12 PM');
+      expect(read(Date.UTC(2026, 10, 1, 22, 12), true)).toBe('Yesterday, 4:12 PM');
+      expect(read(Date.UTC(2026, 10, 2, 16, 44), false)).toBe('Mon Nov 2, 10:44 AM');
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('relative format carries the full dated reading in the tooltip', () => {
+    const realNow = Date.now;
+    Date.now = () => Date.UTC(2026, 10, 2, 16, 46);
+    try {
+      const view = render(RelativeTime, {
+        date: Date.UTC(2026, 10, 1, 22, 12),
+        timeZone: 'America/Chicago',
+        locale: 'en-US',
+        tick: false,
+      });
+      expect(view.container.querySelector('time')?.getAttribute('title')).toMatch(
+        /^Sunday, November 1, 2026.*4:12.PM CST$/,
+      );
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('an explicit title replaces the tooltip', () => {
+    const { container } = render(RelativeTime, { date: Date.now(), title: 'Sent', tick: false });
+    expect(container.querySelector('time')?.getAttribute('title')).toBe('Sent');
   });
 
   test('defers the clock-derived label until after mounting', () => {
@@ -79,14 +169,15 @@ describe('RelativeTime', () => {
     expect(source).toContain('const initialNow = Date.now();');
     expect(source).toContain('let now = $state(initialNow);');
     expect(source).toContain('hasMounted = true;');
-    expect(source).toContain("{hasMounted ? relative : ''}");
+    expect(source).toContain("{hasMounted ? label : ''}");
   });
 
   test('server-renders a stable semantic time before the relative label mounts', () => {
     const html = relativeTimeServerHtml;
     expect(html).toContain('datetime="2026-01-01T12:00:00.000Z"');
-    expect(html).not.toContain('>yesterday');
-    expect(html).not.toContain('>now');
+    expect(html).not.toContain('Yesterday');
+    expect(html).not.toContain('just now');
+    expect(html).not.toContain('title=');
   });
 
   test.each([new Date('invalid'), 'not-a-date'])('renders invalid dates safely: %s', (date) => {
@@ -117,7 +208,8 @@ describe('RelativeTime', () => {
       const first = render(RelativeTime, { date: oldDate });
       const second = render(RelativeTime, { date: oldDate });
       expect(scheduleCount).toBe(2);
-      expect(scheduledDelays.at(-1)).toBeGreaterThan(1_799_000);
+      expect(scheduledDelays.at(-1)).toBeGreaterThan(299_000);
+      expect(scheduledDelays.at(-1)).toBeLessThanOrEqual(300_000);
       first.unmount();
       expect(clearCount).toBe(2);
       second.unmount();
@@ -142,7 +234,7 @@ describe('RelativeTime', () => {
     try {
       const view = render(RelativeTime, { date: Date.now() - 2 * 60 * 60 * 1_000 });
       await view.rerender({ date: Date.now() });
-      expect(scheduledDelays.at(-1)).toBeLessThan(60_000);
+      expect(scheduledDelays.at(-1)).toBeLessThanOrEqual(60_001);
       view.unmount();
     } finally {
       window.setTimeout = originalSetTimeout;
@@ -150,7 +242,7 @@ describe('RelativeTime', () => {
     }
   });
 
-  test('schedules at the next rounded display boundary', () => {
+  test('schedules at the next whole minute of the displayed age', () => {
     const originalSetTimeout = window.setTimeout;
     const originalClearTimeout = window.clearTimeout;
     const scheduledDelays: number[] = [];
@@ -163,10 +255,11 @@ describe('RelativeTime', () => {
 
     try {
       const renderedAt = Date.now();
-      const view = render(RelativeTime, { date: renderedAt - 10_000 });
+      // 90 seconds old: the label turns from "1 min ago" to "2 min ago" 30 seconds from now.
+      const view = render(RelativeTime, { date: renderedAt - 90_000 });
       const elapsed = Date.now() - renderedAt;
-      expect(scheduledDelays.at(-1)).toBeGreaterThan(500 - elapsed - 5);
-      expect(scheduledDelays.at(-1)).toBeLessThanOrEqual(500);
+      expect(scheduledDelays.at(-1)).toBeGreaterThan(30_000 - elapsed - 5);
+      expect(scheduledDelays.at(-1)).toBeLessThanOrEqual(30_001);
       view.unmount();
     } finally {
       window.setTimeout = originalSetTimeout;

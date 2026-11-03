@@ -457,7 +457,8 @@ describe('vertical navigation-item geometry lives on the item', () => {
     const root = parse(navigationItemCss);
     const rule = findRule(root, ".cinder-navigation-item[data-variant='vertical']");
     expect(rule).toBeDefined();
-    expect(declValue(rule!, 'border-radius')).toBe('0');
+    // The row is a 6px-rounded control (COR-2010, row 02m), not a square flush edge.
+    expect(declValue(rule!, 'border-radius')).toBe('var(--cinder-radius-sm)');
     expect(declValue(rule!, 'border-bottom')).toBe('none');
   });
 
@@ -468,7 +469,8 @@ describe('vertical navigation-item geometry lives on the item', () => {
       ".cinder-navigation-item[data-variant='vertical'][data-active='true']",
     );
     expect(rule).toBeDefined();
-    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-surface-inset)');
+    // The current page is an accent tint (Sweep S13, row 02p), visible on any sidebar paint.
+    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-accent-background)');
     // A selected row is a tint, never an accent stripe (COR-1821).
     expect(declValue(rule!, 'border-inline-start-color')).toBeUndefined();
     expect(rule!.toString()).not.toContain('color-mix(');
@@ -1034,6 +1036,27 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     expect(foundation).toContain('--_cinder-focus-ring-filled-gap: 2px;');
     expect(foundation).toContain(
       `--_cinder-focus-ring-filled-shadow: ${gapRecipe('var(--cinder-ring-color)')};`,
+    );
+  });
+});
+
+describe('COR-2010 row 05k: the global focus ring names the system focus color under forced colors', () => {
+  const foundationRoot = parsePostcss(loadCss('../styles/foundation.css'));
+
+  test('a forced-colors rule repaints the bare :focus-visible outline with Highlight', () => {
+    const rules = findRulesByNormalizedSelector(foundationRoot, ':focus-visible').filter((rule) =>
+      isUnderForcedColors(rule),
+    );
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.map((rule) => declValue(rule, 'outline-color'))).toContain('Highlight');
+  });
+
+  test('the base rule stays the quiet accent ring outside forced colors', () => {
+    const rules = findRulesByNormalizedSelector(foundationRoot, ':focus-visible').filter(
+      (rule) => !isUnderForcedColors(rule),
+    );
+    expect(rules.map((rule) => declValue(rule, 'outline'))).toContain(
+      'var(--cinder-ring-width) solid var(--cinder-ring-color)',
     );
   });
 });

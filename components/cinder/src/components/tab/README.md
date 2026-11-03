@@ -14,6 +14,9 @@ Individual tab trigger within a tab list for switching between labelled content 
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-tab`. |
 | `controls` | `string` | no | — | Optional non-empty `aria-controls` target for caller-owned panels. Empty or whitespace-only strings are treated as omitted. By default, Cinder points at the matching TabPanel id (`${baseId}-panel-${value}`). |
+| `count` | `number` | no | — | A count of things in this tab that want attention, drawn as a small pill after the label. Zero, a negative number and `undefined` show nothing, so a healthy tab carries no chip. The count is part of the tab's accessible name, so it never depends on colour. |
+| `countLabel` | `string` | no | — | The words that follow the count in the pill's accessible name: "needs attention" gives "1 needs attention", so the tab reads "Workers 1 needs attention". Without it the pill reads as the bare number. |
+| `countTone` | `"neutral"` \| `"success"` \| `"warning"` \| `"danger"` \| `"info"` \| `"accent"` | no | — | Tone of the count pill. Defaults to `'warning'`, the amber of a count that needs attention. |
 | `disabled` | `boolean` | no | `false` | Disables this single tab and removes it from keyboard activation. |
 | `id` | `string` | no | — | Optional explicit id override; auto-generated otherwise for ARIA wiring. |
 | `value` | `string` | yes | — | Stable identifier used for tab selection; matches TabPanel in the default pattern. |

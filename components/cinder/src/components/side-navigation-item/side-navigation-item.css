@@ -1,0 +1,117 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* SideNavigationItem renders a Badge, a StatusDot and a Tooltip around NavigationItem, so the
+ * styles it needs travel with it. Sibling-leaf paths resolve identically in `src/` and the
+ * verbatim-copied `dist/` because the layout mirrors. */
+@import '../navigation-item/navigation-item.css';
+@import '../badge/badge.css';
+@import '../status-dot/status-dot.css';
+@import '../tooltip/tooltip.css';
+
+@layer cinder.components {
+  /* ========================================
+ * SIDE NAVIGATION ITEM
+ * One row, one control (COR-2010, rows 02m to 02q and 03b). The row geometry, hover, focus and
+ * active states live on `.cinder-navigation-item[data-variant='vertical']`; this file adds the
+ * parts a sidebar row has that a tab does not: an icon, a label that can step aside, and a
+ * count or dot.
+ * ======================================== */
+
+  .cinder-side-navigation-item {
+    position: relative;
+  }
+
+  .cinder-side-navigation-item__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  /* The label never wraps, so a long name cannot make the row taller than 30px, and it gives up
+   * room before the indicator does. It exists only on a row that passes `icon`; a legacy item that
+   * puts its own icon inside `children` renders them as direct children of the link, as before. */
+  .cinder-side-navigation-item__label {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A count sits at the row's trailing edge. It is a pill: the badge is 18px tall with its border,
+   * at least 18px wide, so a single digit is a circle. */
+  .cinder-side-navigation-item__count {
+    margin-inline-start: auto;
+    flex: none;
+    min-inline-size: 1.125rem;
+    box-sizing: border-box;
+    justify-content: center;
+    border-radius: 9999px;
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* The dot sits right after the label, nudged in so it reads as part of the word. */
+  .cinder-side-navigation-item__dot {
+    display: inline-flex;
+    flex: none;
+    margin-inline-start: calc(var(--cinder-space-0-5, 0.125rem) * -1);
+  }
+
+  /* ----------------------------------------
+ * Collapsed: an icon rail
+ *
+ * A row with an icon becomes a 40px square-ended target centred in the rail. The label stays in
+ * the accessible name (clipped, not removed), and the count or dot rides the icon's top-right
+ * corner. A row without an icon has nothing to collapse to and stays as it was.
+ * ---------------------------------------- */
+
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon] {
+    inline-size: 2.5rem;
+    margin-inline: auto;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__count {
+    position: absolute;
+    inset-block-start: 0.1875rem;
+    inset-inline-end: 0.1875rem;
+    margin: 0;
+    min-inline-size: 0.875rem;
+    block-size: 0.875rem;
+    padding-inline: 0.1875rem;
+    background: var(--cinder-status-warning-solid);
+    color: var(--cinder-status-warning-contrast);
+    border-color: transparent;
+    font-size: 0.625rem;
+    line-height: 0.75rem;
+    /* A ring in the sidebar's own surface separates the pill from the icon beneath it. */
+    box-shadow: 0 0 0 2px var(--cinder-surface);
+  }
+
+  .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
+    .cinder-side-navigation-item__dot {
+    position: absolute;
+    inset-block-start: 0.3125rem;
+    inset-inline-end: 0.4375rem;
+    margin: 0;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 2px var(--cinder-surface);
+  }
+}

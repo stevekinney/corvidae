@@ -21,6 +21,7 @@
 
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
+  import { statusForStatusDotWord } from './status-dot.words.ts';
   import type {
     StatusDotConnectionState,
     StatusDotProps,
@@ -47,6 +48,7 @@
     offline: 'Offline',
     warning: 'Warning',
     danger: 'Danger',
+    info: 'Info',
     pending: 'Pending',
     neutral: 'Neutral',
     success: 'Success',
@@ -55,30 +57,42 @@
 
   let {
     status,
+    word,
     connectionState,
     label,
     live,
     labelVisible = true,
     size = 'md',
+    wordTone = 'muted',
     class: className,
     'aria-label': ariaLabel,
     ...rest
   }: StatusDotProps = $props();
 
   const normalizedAriaLabel = $derived(ariaLabel?.trim() ? ariaLabel.trim() : undefined);
+  const trimmedWord = $derived(word?.trim() ? word.trim() : undefined);
+  // A word the table does not know stays neutral rather than guessing a tone.
+  const wordStatus = $derived(
+    trimmedWord === undefined ? undefined : (statusForStatusDotWord(trimmedWord) ?? 'neutral'),
+  );
   const resolvedStatus = $derived(
-    status ?? (connectionState === undefined ? 'neutral' : connectionStatusMap[connectionState]),
+    status ??
+      wordStatus ??
+      (connectionState === undefined ? 'neutral' : connectionStatusMap[connectionState]),
   );
   const resolvedLive = $derived(live ?? connectionState !== undefined);
   const normalizedLabel = $derived(
     label?.trim()
       ? label.trim()
-      : connectionState !== undefined
-        ? connectionLabels[connectionState]
-        : // Only an absent label falls back to the status word; a blank one is an explicit "no word".
-          label === undefined
-          ? statusWords[resolvedStatus]
-          : undefined,
+      : // The word is the label unless a label is given (a blank one is an explicit "no word").
+        label === undefined && trimmedWord !== undefined
+        ? trimmedWord
+        : connectionState !== undefined
+          ? connectionLabels[connectionState]
+          : // Only an absent label falls back to the status word; a blank one is an explicit "no word".
+            label === undefined
+            ? statusWords[resolvedStatus]
+            : undefined,
   );
   const hasVisibleLabel = $derived(labelVisible && normalizedLabel !== undefined);
 
@@ -116,6 +130,7 @@
   data-cinder-status={resolvedStatus}
   data-cinder-state={connectionState}
   data-cinder-size={size}
+  data-cinder-word-tone={wordTone === 'status' ? 'status' : undefined}
   role={resolvedLive ? 'status' : 'img'}
   aria-live={resolvedLive ? 'polite' : undefined}
   aria-atomic={resolvedLive ? 'true' : undefined}

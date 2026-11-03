@@ -1014,7 +1014,7 @@ describe('the header Save', () => {
     const { findByTestId } = mountEditor('researcher');
     const saved = await findByTestId('agent-saved');
     expect(saved.textContent).toContain(AGENT_EDITOR_COPY.saved);
-    expect(saved.textContent).toContain('2 minutes ago');
+    expect(saved.textContent).toContain('2 min ago');
     const link = saved.querySelector('a');
     expect(link?.textContent).toBe(AGENT_EDITOR_COPY.version(4));
     expect(link?.getAttribute('href')).toContain('/agents/researcher?tab=settings');

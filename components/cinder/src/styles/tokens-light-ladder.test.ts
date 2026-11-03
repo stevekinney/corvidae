@@ -276,9 +276,11 @@ describe('light mode anchors at white', () => {
 describe('the dark arm is untouched by light-mode work', () => {
   // The dark arm builds UP from near-black across 17 lightness points, where a wide
   // fill-carried ramp is the right model. It was never the complaint. Pin it so a
-  // future light-mode retune cannot drift it as a side effect.
+  // future light-mode retune cannot drift it as a side effect. The inset sits at 18% (it was
+  // 11%, which read as a hole below the 15% canvas): header bands, day bands and tracks step up
+  // gently, between the canvas and the 21% surface.
   const expected = {
-    '--cinder-surface-inset': 0.11,
+    '--cinder-surface-inset': 0.18,
     '--cinder-surface-canvas': 0.15,
     '--cinder-surface': 0.21,
     '--cinder-surface-raised': 0.28,

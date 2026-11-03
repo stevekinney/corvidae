@@ -14,14 +14,23 @@ import type { HTMLAttributes } from 'svelte/elements';
 
 import StatusDot from './status-dot.svelte';
 import type { StatusDotProps } from './status-dot.types.ts';
+import type { StatusDotWordLabel } from './status-dot.words.ts';
 
 // --- Snapshot of the pre-migration StatusDotProps shape -------------------------------
-// Copied verbatim from the original module-script types in `src/components/status-dot.svelte`
-// at the start of the migration. This anchors the public surface so future
+// Copied from the original module-script types in `src/components/status-dot.svelte` at the
+// start of the migration, plus the `info` status and the `word` prop COR-2010 added. This anchors the public surface so future
 // refactors must explicitly update both the migrated type AND this snapshot.
 
 type SnapshotStatusDotStatus =
-  'online' | 'offline' | 'warning' | 'danger' | 'pending' | 'neutral' | 'success' | 'accent';
+  | 'online'
+  | 'offline'
+  | 'warning'
+  | 'danger'
+  | 'info'
+  | 'pending'
+  | 'neutral'
+  | 'success'
+  | 'accent';
 
 type SnapshotStatusDotSize = 'sm' | 'md';
 
@@ -30,6 +39,8 @@ type SnapshotStatusDotConnectionState = 'connected' | 'connecting' | 'disconnect
 type SnapshotStatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   /** Required semantic status. Drives color via `data-cinder-status`. */
   status?: SnapshotStatusDotStatus;
+  /** A status word from the word-to-tone table; sets the tone and the visible word. */
+  word?: StatusDotWordLabel;
   /** Connection preset that maps to status, label, and live-region defaults. */
   connectionState?: SnapshotStatusDotConnectionState;
   /** Optional human label. Rendered visibly when `labelVisible` is true; used as the accessible name either way. */

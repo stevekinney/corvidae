@@ -6,9 +6,13 @@
 
   .cinder-stacked-list-item {
     display: block;
+    /* The row's anchor stretches over it (see the title link), so the row is the containing block. */
+    position: relative;
     container-type: inline-size;
     container-name: cinder-stacked-list-item;
     padding: var(--cinder-space-3) var(--cinder-space-4);
+    /* 0 by default; 44px under a coarse pointer (foundation.css). */
+    min-block-size: var(--cinder-list-row-min-height);
     border-bottom: 1px solid var(--cinder-border-muted);
   }
 
@@ -83,10 +87,32 @@
     align-items: center;
   }
 
+  /*
+   * The long-value defaults, so no page has to fix them one at a time. A title takes at most two
+   * lines (one with titleLines=1) and ends in an ellipsis; an unbroken value such as an
+   * identifier wraps anywhere, so no value widens the row past its frame or grows it without bound.
+   */
+  .cinder-stacked-list-item__title,
+  .cinder-stacked-list-item__description,
+  .cinder-stacked-list-item__meta {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
   .cinder-stacked-list-item__title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-snug);
     color: var(--cinder-text-default);
+  }
+
+  .cinder-stacked-list-item__title[data-cinder-title-lines='1'] {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
   }
 
   .cinder-stacked-list-item__title-link {
@@ -98,18 +124,49 @@
     text-decoration: underline;
   }
 
+  /*
+   * The whole row is one link: the anchor's pseudo-element covers the row, so a click anywhere
+   * on it follows the link, hover tints the whole row, and the keyboard focus ring wraps the
+   * whole row rather than the title. The ring is drawn inside the row because a list clips its
+   * rows. Controls inside the row sit above the cover (see below), so they stay usable.
+   */
+  .cinder-stacked-list-item__title-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
   .cinder-stacked-list-item__title-link:focus-visible {
+    outline: none;
+  }
+
+  .cinder-stacked-list-item__title-link:focus-visible::after {
     outline: var(--cinder-ring-width) solid transparent;
-    border-radius: var(--cinder-radius-sm);
-    box-shadow: var(--_cinder-focus-ring-shadow);
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (hover: hover) {
+    .cinder-stacked-list-item--linked:hover {
+      background: var(--cinder-surface-hover);
+    }
   }
 
   /* Forced Colors Mode — box-shadow focus rings are invisible; use a real outline. */
   @media (forced-colors: active) {
-    .cinder-stacked-list-item__title-link:focus-visible {
+    .cinder-stacked-list-item__title-link:focus-visible::after {
       outline: var(--cinder-ring-width) solid ButtonText;
-      outline-offset: 3px;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
     }
+  }
+
+  .cinder-stacked-list-item__trailing {
+    position: relative;
+    z-index: 1;
+  }
+
+  .cinder-stacked-list-item__line-two :is(a, button, [role='button']) {
+    position: relative;
+    z-index: 1;
   }
 
   .cinder-stacked-list-item__description {
@@ -129,21 +186,498 @@
     line-height: var(--cinder-leading-tight);
   }
 
-  /* Narrow container query — trailing drops below body */
+  /* Narrow container query — trailing drops below body. A phone's one menu button (the collapsed
+     actions) is compact and stays beside the body. */
   @container cinder-stacked-list-item (max-width: 448px) {
-    .cinder-stacked-list-item--has-trailing .cinder-stacked-list-item__layout {
+    .cinder-stacked-list-item--has-trailing:not(.cinder-stacked-list-item--collapsed-actions)
+      .cinder-stacked-list-item__layout {
       grid-template-columns: 1fr;
       grid-template-areas:
         'body'
         'trailing';
     }
 
-    .cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing
+    .cinder-stacked-list-item--has-leading.cinder-stacked-list-item--has-trailing:not(
+        .cinder-stacked-list-item--collapsed-actions
+      )
       .cinder-stacked-list-item__layout {
       grid-template-columns: auto 1fr;
       grid-template-areas:
         'leading body'
         'trailing trailing';
     }
+  }
+
+  /* ----------------------------------------
+ * Status-first two-line row
+ *
+ * Line one: a status dot and word in a fixed 128px leading column (the same on every page, so
+ * titles start at one x position down the list), a bold title, and the time at the right edge.
+ * Line two: muted meta, which starts under the title and not under the status. The status and the
+ * time sit on the baseline of the first line of the title (a title-sized strut gives each cell that
+ * baseline) and stay there when the title clamps to a second line.
+ *
+ * The body is flattened into the layout grid so the status can lead the row, sit under the title
+ * on a phone, or sit at the start of line two (the chat list), from one DOM order.
+ * ---------------------------------------- */
+
+  .cinder-stacked-list-item.cinder-stacked-list-item--lines:not([data-cinder-density='condensed']) {
+    padding-block: var(--cinder-space-2-5);
+    padding-inline: var(--cinder-space-3-5);
+  }
+
+  .cinder-stacked-list-item.cinder-stacked-list-item--lines > .cinder-stacked-list-item__layout {
+    --_cinder-line-one-height: calc(var(--cinder-text-base) * var(--cinder-leading-snug));
+    --_cinder-status-track: 0px;
+    display: grid;
+    align-items: start;
+    column-gap: 0;
+    row-gap: var(--cinder-space-0-5);
+    grid-template-columns:
+      [status] var(--_cinder-status-track) [leading] auto [title] minmax(0, 1fr) [time] auto
+      [trailing] auto;
+    grid-template-areas:
+      'status leading title time trailing'
+      'status leading line line trailing'
+      '. . details details .';
+  }
+
+  /* Reserved when the row has a status or the list keeps the column for rows with none. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-column
+    > .cinder-stacked-list-item__layout {
+    --_cinder-status-track: calc(var(--_cinder-status-width, 8rem) + var(--cinder-space-3));
+  }
+
+  .cinder-stacked-list-item--lines
+    > .cinder-stacked-list-item__layout
+    > .cinder-stacked-list-item__body {
+    display: contents;
+  }
+
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__status {
+    grid-area: status;
+    display: flex;
+    align-items: baseline;
+    min-block-size: var(--_cinder-line-one-height);
+    min-inline-size: 0;
+    padding-inline-end: var(--cinder-space-3);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* The status word and the time sit on the baseline of the title's first line. Each cell opens
+     with a zero-width strut set in the title's type (the same size and line height, so its baseline
+     is the title's), and the flex line aligns the word or the time to it. The negative end margin
+     takes back the cell's gap so the strut moves nothing. The status dot stays centred on the word
+     (see the dot rule below), so the dot and the word keep one optical line. */
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__status::before,
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__time::before {
+    content: '\200b' / '';
+    flex: none;
+    inline-size: 0;
+    margin-inline-end: calc(var(--_cinder-strut-gap, 0px) * -1);
+    font-size: var(--cinder-text-base);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* Status on line two (the chat list, or a phone) sits beside 12px preview text, not the title,
+     so it has no strut. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two
+    .cinder-stacked-list-item__status::before,
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    .cinder-stacked-list-item__status::before {
+    display: none;
+  }
+
+  /* The dot centres on the word's line box while the word's baseline is the flex baseline. */
+  .cinder-stacked-list-item__status .cinder-status-dot {
+    align-items: center;
+  }
+
+  .cinder-stacked-list-item__status .cinder-status-dot__label {
+    align-self: baseline;
+  }
+
+  /* A status in the column is a small dot (8px) and a 12px semibold word, so the longest word
+     ("Waiting on you") fits the fixed width on every page. */
+  .cinder-stacked-list-item__status .cinder-status-dot[data-cinder-size] {
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-stacked-list-item__status .cinder-status-dot__indicator {
+    inline-size: 0.5rem; /* 8px */
+    block-size: 0.5rem;
+  }
+
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__leading {
+    margin-inline-end: var(--cinder-space-3);
+  }
+
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__title {
+    grid-area: title;
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__time {
+    grid-area: time;
+    display: flex;
+    align-items: baseline;
+    --_cinder-strut-gap: var(--cinder-space-2);
+    gap: var(--_cinder-strut-gap);
+    min-block-size: var(--_cinder-line-one-height);
+    margin-inline-start: var(--cinder-space-3);
+    font-size: var(--cinder-text-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--cinder-text-subtle);
+    white-space: nowrap;
+  }
+
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__line-two {
+    grid-area: line;
+    min-inline-size: 0;
+  }
+
+  /* Line two is one line of muted text that ends in an ellipsis rather than wrapping. */
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__description,
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__meta {
+    overflow: hidden;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A row whose details failed to load (row 14q): line two is the message in the danger text
+   * colour beside a warning glyph, and the row's own secondary "Try again" button at the end. It
+   * wraps rather than truncating, because the message is the one thing the row has to say. */
+  .cinder-stacked-list-item__error {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    margin-block-start: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-stacked-list-item__error-glyph {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .cinder-stacked-list-item__error-message {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-stacked-list-item__error > .cinder-button {
+    flex: none;
+  }
+
+  /* The trailing region spans both lines and stays beside them. */
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__trailing {
+    margin-inline-start: var(--cinder-space-3);
+  }
+
+  /* The chat list's exception: the pane is too narrow for a leading column, so line one is the
+     title and the time, and line two is the status in its own fixed-width column, then the
+     preview, so previews line up. A phone leading row takes the same shape with an unfixed width. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two
+    > .cinder-stacked-list-item__layout,
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    > .cinder-stacked-list-item__layout {
+    grid-template-columns:
+      [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr) [time] auto
+      [trailing] auto;
+    grid-template-areas:
+      'leading title title time trailing'
+      'leading status line line trailing'
+      '. . details details .';
+  }
+
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two.cinder-stacked-list-item--status-column
+    > .cinder-stacked-list-item__layout {
+    --_cinder-status-width: 6.5rem; /* 104px */
+    --_cinder-status-track: calc(var(--_cinder-status-width) + var(--cinder-space-2));
+  }
+
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two
+    .cinder-stacked-list-item__status {
+    align-items: center;
+    min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
+    padding-inline-end: var(--cinder-space-2);
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    > .cinder-stacked-list-item__layout {
+    --_cinder-status-track: auto;
+  }
+
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    .cinder-stacked-list-item__status {
+    align-items: center;
+    min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
+    padding-inline-end: 0;
+  }
+
+  /* On a phone the status moves to line two beside the kind and agent: "Waiting on you · Chat". */
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    .cinder-stacked-list-item__status::after {
+    content: '·' / '';
+    margin-inline: var(--cinder-space-1-5);
+    color: var(--cinder-text-subtle);
+  }
+
+  /* ----------------------------------------
+ * Group row (a collapsed row with a disclosure)
+ * ---------------------------------------- */
+
+  /* A group row is always tinted, so it reads as a different kind of row (not a run) among its
+     neighbours, open or shut. The warning tone is the amber of something that did not happen. */
+  .cinder-stacked-list-item--group.cinder-stacked-list-item--tone-neutral {
+    background: color-mix(in oklch, var(--cinder-surface-inset), transparent 50%);
+  }
+
+  .cinder-stacked-list-item--group.cinder-stacked-list-item--tone-warning {
+    background: color-mix(in oklch, var(--cinder-status-warning-background), transparent 40%);
+  }
+
+  /* Open, a group row shows all of its line two instead of ending it in an ellipsis. */
+  .cinder-stacked-list-item--group[data-cinder-expanded] .cinder-stacked-list-item__description,
+  .cinder-stacked-list-item--group[data-cinder-expanded] .cinder-stacked-list-item__meta {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  /* ----------------------------------------
+ * Band group row: the missed runs among one schedule's runs. One line: the status dot, then a
+ * tinted band holding a chevron, the bold title, muted text and the disclosure label at the right.
+ * The whole band is the button, so a click anywhere on it opens the details.
+ * ---------------------------------------- */
+
+  .cinder-stacked-list-item--band,
+  .cinder-stacked-list-item--band.cinder-stacked-list-item--group {
+    padding-block: var(--cinder-space-1);
+    padding-inline: 0;
+    border-bottom: 0;
+    background: transparent;
+  }
+
+  .cinder-stacked-list-item__band-line {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-stacked-list-item__band-status {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .cinder-stacked-list-item__band-surface {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    border-radius: var(--cinder-radius-md);
+    background: color-mix(in oklch, var(--cinder-surface-inset), transparent 50%);
+  }
+
+  .cinder-stacked-list-item--tone-warning .cinder-stacked-list-item__band-surface {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-stacked-list-item__band-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-block-size: max(var(--cinder-list-row-min-height), var(--cinder-space-8));
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-2-5);
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-stacked-list-item__band-toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-stacked-list-item__band-title {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    font-weight: var(--cinder-font-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-stacked-list-item__band-meta {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--cinder-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-stacked-list-item--tone-warning .cinder-stacked-list-item__band-meta {
+    color: inherit;
+  }
+
+  .cinder-stacked-list-item__band-label {
+    flex: none;
+    margin-inline-start: auto;
+    font-weight: var(--cinder-font-semibold);
+    white-space: nowrap;
+  }
+
+  .cinder-stacked-list-item--band .cinder-stacked-list-item__details {
+    padding-inline-start: var(--cinder-space-2-5);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-stacked-list-item__band-surface {
+      border: 1px solid CanvasText;
+    }
+
+    .cinder-stacked-list-item__band-toggle:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  /* ----------------------------------------
+ * The selected row (the one open in the detail beside the list) and the glyph tile
+ * ---------------------------------------- */
+
+  .cinder-stacked-list-item.cinder-stacked-list-item--selected {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  @media (hover: hover) {
+    .cinder-stacked-list-item--linked.cinder-stacked-list-item--selected:hover {
+      background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-stacked-list-item--selected {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
+
+  .cinder-stacked-list-item__leading-tile {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--cinder-space-8);
+    block-size: var(--cinder-space-8);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-status-neutral-background);
+    color: var(--cinder-status-neutral-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='info'] {
+    background: var(--cinder-status-info-background);
+    color: var(--cinder-status-info-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='success'] {
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='warning'] {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='danger'] {
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+  }
+
+  /* The tile is centred on the two lines beside it. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading-tile
+    .cinder-stacked-list-item__leading {
+    align-self: center;
+  }
+
+  .cinder-stacked-list-item__disclosure {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    min-block-size: var(--cinder-list-row-min-height);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-subtle);
+    font: inherit;
+    font-size: var(--cinder-text-xs);
+    cursor: pointer;
+  }
+
+  .cinder-stacked-list-item__disclosure:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-stacked-list-item__disclosure:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  .cinder-stacked-list-item__details {
+    grid-area: details;
+    min-inline-size: 0;
+    padding-block: var(--cinder-space-2) var(--cinder-space-1);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  /* ----------------------------------------
+ * Trailing actions: buttons on a tablet or desktop, one menu button on a phone
+ * ---------------------------------------- */
+
+  .cinder-stacked-list-item__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-stacked-list-item__reason {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* The menu button is a square icon button with the shared control height (44px under a coarse
+     pointer), so it is a target as large as the buttons it replaces. */
+  .cinder-stacked-list-item__actions-trigger {
+    inline-size: var(--cinder-control-height-md);
+    min-inline-size: var(--cinder-control-height-md);
+    padding-inline: 0;
   }
 }

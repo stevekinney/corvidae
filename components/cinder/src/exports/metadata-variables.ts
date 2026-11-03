@@ -9,6 +9,7 @@ export { default as alertVariables } from '../components/alert/alert.variables.t
 export { default as approvalCardVariables } from '../components/approval-card/approval-card.variables.ts';
 export { default as areaChartVariables } from '../components/area-chart/area-chart.variables.ts';
 export { default as aspectRatioVariables } from '../components/aspect-ratio/aspect-ratio.variables.ts';
+export { default as attemptsIndicatorVariables } from '../components/attempts-indicator/attempts-indicator.variables.ts';
 export { default as audioPlayerVariables } from '../components/audio-player/audio-player.variables.ts';
 export { default as autocompleteVariables } from '../components/autocomplete/autocomplete.variables.ts';
 export { default as avatarGroupVariables } from '../components/avatar-group/avatar-group.variables.ts';

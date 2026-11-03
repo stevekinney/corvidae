@@ -3,6 +3,16 @@ import type { HTMLAttributes } from 'svelte/elements';
 
 import type { StackedListItemDensity } from '../stacked-list-item/stacked-list-item.types.ts';
 
+/** A group of consecutive rows under one header band (a day on Runs and Chats). */
+export type DataListGroup = {
+  /** Identifies the group. Consecutive items with the same key share one header. */
+  key: string | number;
+  /** The header's text, such as `Today · Monday, Nov 2`. */
+  label: string;
+  /** Muted text at the right of the header, such as the time zone (`Central time`). */
+  detail?: string;
+};
+
 // Forwarded `<ul>` attributes (matches GridListProps). `role` is omitted because
 // the component enforces `role="list"`; `class` and `children` are redefined
 // below with component-specific shapes.
@@ -33,6 +43,24 @@ export type DataListProps<T> = Omit<
    * `{...(density ? { density } : {})}`
    */
   density?: StackedListItemDensity;
+  /**
+   * Keep the status column's width for every row that has no `status` (a workflow, an agent with
+   * nothing to report), so titles line up down the whole list. A row's own `statusColumn` wins.
+   */
+  statusColumn?: boolean;
+  /**
+   * Group consecutive items under a header band, newest group first as the items arrive. Each
+   * group is a nested list named by its header, so a screen reader announces the day. Items are
+   * not reordered; pass them already sorted.
+   */
+  groupBy?: (item: T) => DataListGroup;
+  /**
+   * Announce rows inserted while the list is on screen. Called with the number of new rows; the
+   * returned text (`1 new run`) is spoken politely through a live region that is also drawn as a
+   * status strip above the first group. The first render announces nothing. Rows inserted above
+   * the viewport do not move what the reader is looking at.
+   */
+  insertionAnnouncement?: (count: number) => string;
   /** Additional class merged onto the `.cinder-data-list` root element. */
   class?: string;
   /**
