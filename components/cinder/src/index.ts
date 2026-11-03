@@ -95,8 +95,21 @@ export type {
 export { default as Backdrop } from './components/backdrop/index.ts';
 export type { BackdropProps } from './components/backdrop/index.ts';
 
-export { default as Banner } from './components/banner/index.ts';
-export type { BannerPreset, BannerProps, BannerVariant } from './components/banner/index.ts';
+export {
+  BANNER_BACK_ONLINE_COPY,
+  BANNER_MAX_ATTEMPTS,
+  BANNER_PRESETS,
+  default as Banner,
+  bannerPresetCopy,
+  formatBannerAsOf,
+} from './components/banner/index.ts';
+export type {
+  BannerPreset,
+  BannerPresetCopy,
+  BannerPresetFacts,
+  BannerProps,
+  BannerVariant,
+} from './components/banner/index.ts';
 
 export { default as BarChart } from './components/bar-chart/index.ts';
 export type {

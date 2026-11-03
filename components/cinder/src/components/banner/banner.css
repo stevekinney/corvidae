@@ -13,6 +13,9 @@
 
   .cinder-banner {
     display: flex;
+    /* A banner wraps instead of squeezing: the words take their lines and the actions drop to a
+     * line of their own at the right when the width runs out (a phone), never overlapping. */
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-3);
     inline-size: 100%;
@@ -44,8 +47,32 @@
  * ---------------------------------------- */
 
   .cinder-banner__content {
-    flex: 1;
+    flex: 1 1 14rem;
     min-width: 0;
+  }
+
+  /* A glyph at the start, as tall as the first line so it sits beside it, not centered on a
+   * two-line message. */
+  .cinder-banner__icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    align-self: flex-start;
+    block-size: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));
+  }
+
+  /* The bold lead keeps the tone's colour; the sentence after it reads in the default text
+   * colour, so only the lead is amber or blue. A page's own children keep the status colour. */
+  .cinder-banner__title {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-banner__title[data-cinder-title-layout='stacked'] {
+    display: block;
+  }
+
+  .cinder-banner__text {
+    color: var(--cinder-text-default);
   }
 
   /* The stale-data notice sits on its own line beneath the message, a step smaller. It keeps
@@ -64,6 +91,25 @@
     align-items: center;
     gap: var(--cinder-space-2);
     flex-shrink: 0;
+    /* At the right whether it shares the line with the words or has dropped to its own. */
+    margin-inline-start: auto;
+  }
+
+  /* Touch: the action is a full 44px target, not the compact desktop height. */
+  @media (pointer: coarse) {
+    .cinder-banner__actions > :is(button, a) {
+      min-block-size: 2.75rem;
+    }
+  }
+
+  /* ----------------------------------------
+ * Sticky
+ * ---------------------------------------- */
+
+  .cinder-banner[data-cinder-sticky='true'] {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
   }
 
   /* ----------------------------------------
@@ -121,6 +167,15 @@
  * dark-theme triple background sits ~8 oklch-L points lighter (28% vs 20% L),
  * exceeding the 0.02 ΔL threshold. See documentation/css-audit/status-triple-equivalence.md.
  * ---------------------------------------- */
+
+  /* Neutral is a notice, not a status, so it takes the neutral tokens instead of the status-surface
+   * recipe, which tints from a status hue. */
+  .cinder-banner[data-cinder-variant='neutral'] {
+    --_cinder-banner-ring: var(--cinder-ring-color);
+    border-color: var(--cinder-status-neutral-border);
+    background: var(--cinder-status-neutral-background);
+    color: var(--cinder-status-neutral-text);
+  }
 
   .cinder-banner[data-cinder-variant='info'] {
     --_cinder-banner-ring: var(--cinder-status-info-text);

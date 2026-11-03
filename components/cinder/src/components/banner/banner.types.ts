@@ -1,18 +1,17 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
+import type { BannerPreset, BannerPresetFacts } from './banner-presets.ts';
+
 /**
  * Visual + semantic variants for {@link Banner}.
  *
- * Note: `banner.svelte` uses `danger` (matching the semantic token
+ * `neutral` is a plain notice that is not a problem and not a status, such as a setting the
+ * person chose. Note: `banner.svelte` uses `danger` (matching the semantic token
  * `--cinder-status-danger-solid`) where `alert.svelte` uses `error`. The divergence is
  * intentional and tracked in `banner.a11y.md`.
  */
-export type BannerVariant = 'info' | 'success' | 'warning' | 'danger';
-/**
- * Ready-made banner configurations for {@link Banner}. `'unreachable'` is the server or
- * connection is down: it uses the `warning` variant and the accessible name "Connection problem".
- */
-export type BannerPreset = 'unreachable';
+export type BannerVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+export type { BannerPreset } from './banner-presets.ts';
 /**
  * Props for the page-level {@link Banner} component.
  *
@@ -34,26 +33,43 @@ export type BannerPreset = 'unreachable';
 export type BannerProps = Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'class' | 'role'> & {
   /** Visual + semantic variant. Default `'info'`. @default "info" */
   variant?: BannerVariant;
-  /** Whether the banner shows a dismiss (×) button. Default `true`. @default true */
+  /**
+   * Whether the banner shows a dismiss (×) button. Default `true`. A banner with a `preset` is
+   * never dismissible: the connection and restart states cannot be hidden.
+   * @default true
+   */
   dismissible?: boolean;
   /** Called after the dismiss button is clicked. Use to persist state. */
   onDismiss?: () => void;
   /**
-   * Applies a ready-made configuration. `'unreachable'` overrides `variant` with `'warning'` and
-   * names the region "Connection problem" unless `aria-label` or `aria-labelledby` is passed.
-   * Pair it with `onRetry` and `dataUpdatedAt`.
+   * Applies a ready-made configuration: the tone, the accessible name, the words, a glyph and the
+   * actions of a connection or restart state (see {@link BannerPreset}). The preset overrides
+   * `variant`, makes the banner non-dismissible and, when `children` is omitted, writes its copy
+   * from `dataUpdatedAt`, `subject`, `retryInSeconds`, `attempt` and `consequence`. Passing
+   * `children` replaces the generated words and keeps the rest.
    */
   preset?: BannerPreset;
-  /** Called when the Retry button is pressed. The button renders in the actions region, before `actions`, only when this is set. */
+  /**
+   * Called when the Retry button is pressed. The button renders in the actions region, before
+   * `actions`, only when this is set. A preset that retries (`offline`, `unreachable`, `stopped`,
+   * `refresh-failed`, `reconnecting`) offers it only when this is set; `restarting`,
+   * `restart-failed` and `back-online` never offer it.
+   */
   onRetry?: () => void;
   /**
-   * Label of the Retry button.
+   * Label of the Retry button. A preset labels it "Retry now" unless this says otherwise.
    * @default 'Retry'
    */
   retryLabel?: string;
   /**
-   * When the data still on screen was last fetched. Adds a stale-data notice that reads
-   * "Showing data from" followed by a live relative time such as "2 minutes ago".
+   * How prominent the Retry button is. A preset makes it `primary` where Retry now is the way back
+   * (`stopped`) and `secondary` everywhere else, so one action at a time looks primary.
+   */
+  retryVariant?: 'primary' | 'secondary';
+  /**
+   * When the data still on screen was last loaded. With a `preset` and no `children` the copy names
+   * it as an absolute time with its zone ("as of 10:44 AM CST"). Otherwise it adds a stale-data
+   * notice that reads "Showing data from" followed by a live relative time such as "2 minutes ago".
    */
   dataUpdatedAt?: Date | string | number;
   /**
@@ -61,8 +77,53 @@ export type BannerProps = Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'cla
    * @default 'Showing data from'
    */
   staleDataLabel?: string;
-  /** Banner body content. */
-  children: Snippet;
+  /**
+   * What the page is showing, completing the preset's "Showing … as of …" sentence.
+   * @default 'what loaded'
+   */
+  subject?: BannerPresetFacts['subject'];
+  /** Seconds until the next automatic retry. A preset writes "Retrying in 4 s". */
+  retryInSeconds?: BannerPresetFacts['retryInSeconds'];
+  /** The attempt under way, counted from 1. A preset writes "(attempt 3 of 8)". */
+  attempt?: BannerPresetFacts['attempt'];
+  /**
+   * How many attempts there are.
+   * @default 8
+   */
+  maxAttempts?: BannerPresetFacts['maxAttempts'];
+  /**
+   * The sentence that says what is off while the banner shows, replacing the preset's own. Pass
+   * `false` to leave the sentence out.
+   */
+  consequence?: BannerPresetFacts['consequence'];
+  /** IANA time zone of the preset's "as of" time. Defaults to the viewer's zone. */
+  timeZone?: BannerPresetFacts['timeZone'];
+  /**
+   * A bold lead for the banner, such as "1 change waits for a restart". With a `preset` it
+   * replaces the preset's lead and sits inline before the words; otherwise it sits on its own line
+   * above them.
+   */
+  title?: string;
+  /**
+   * Where the title sits. A preset runs it inline, as the first words of its sentence; a banner
+   * without a preset puts it on its own line above the message.
+   */
+  titleLayout?: 'inline' | 'stacked';
+  /**
+   * A glyph at the start of the banner, drawn decoratively (`aria-hidden`). The `offline`,
+   * `unreachable` and `stopped` presets supply their own connection glyph.
+   */
+  icon?: Snippet;
+  /** Keeps the banner at the top of its scroll container while the page scrolls under it. */
+  sticky?: boolean;
+  /** Called when the `restart-failed` preset's primary action, "Restart again", is pressed. */
+  onRestart?: () => void;
+  /** Called when the `restart-failed` preset's secondary action, "Open Health", is pressed. */
+  onOpenHealth?: () => void;
+  /** Makes "Open Health" a link to this address instead of a button. */
+  healthHref?: string;
+  /** Banner body content. Optional with a `preset`, which writes its own words. */
+  children?: Snippet;
   /** Optional trailing CTA region (e.g., "Renew now" button). */
   actions?: Snippet;
   /**

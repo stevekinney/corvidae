@@ -11,6 +11,7 @@ The root element is a `<div>` with:
 
 | `variant` | Default `aria-label` |
 | --------- | -------------------- |
+| `neutral` | `Notice`             |
 | `info`    | `Information`        |
 | `success` | `Success`            |
 | `warning` | `Warning`            |
@@ -28,11 +29,26 @@ The component computes the accessible name in three tiers:
 
 `role` is intentionally locked. The component's `BannerProps` `Omit`s `role` from the underlying `HTMLAttributes`, so callers cannot silently turn the banner into `role="alert"`. The component also strips `aria-live`, `aria-atomic`, and `aria-relevant` from rest-props at runtime — the type system permits them (they live on `HTMLAttributes`), but the banner is a landmark, not a live region, and allowing those attributes through would reintroduce the assertive-announcement behavior `role="region"` was chosen to avoid. `aria-busy` is **not** stripped: it is a status flag, not a live-region attribute, and is valid on `role="region"` to signal that banner content is updating.
 
-## Unreachable preset
+## Connection presets
 
-`preset="unreachable"` keeps `role="region"` and changes only the defaults: the variant is `warning` and the accessible name is "Connection problem" instead of "Warning", still overridable with `aria-label` or `aria-labelledby`. It does not become a live region, so a connection that drops while the page is open is not announced by the banner itself. If the drop must be announced, pair the banner with a `toast-region` or `use-announcer` message.
+A preset keeps `role="region"` and fixes the defaults: the tone, the accessible name, the words and the actions. It does not become a live region, so a connection that drops while the page is open is not announced by the banner itself. If the drop must be announced, pair the banner with a `toast-region` or `use-announcer` message.
 
-The Retry button is a native `<button>` named "Retry" (or `retryLabel`), placed first in the actions region so it is the first stop after the message. The stale-data notice is plain text with a `<time>` element carrying the ISO `datetime`, so the age reads as "Showing data from 2 minutes ago".
+| `preset` | Tone | Default `aria-label` |
+| --- | --- | --- |
+| `offline`, `unreachable`, `stopped` | `warning` | `Connection problem` |
+| `refresh-failed` | `warning` | `Refresh problem` |
+| `restarting`, `reconnecting`, `restart-failed` | `info`, `info`, `warning` | `Restart status` |
+| `back-online` | `success` | `Connection restored` |
+
+`aria-label` and `aria-labelledby` still override the name. A preset is never dismissible, so there is no dismiss button to reach. The glyph at the start of `offline`, `unreachable` and `stopped` (and any `icon`) is `aria-hidden`; the words carry the meaning. The countdown ("Retrying in 4 s") is plain text that a page updates; it sits in a region, not a live region, so it does not announce every second.
+
+The bold lead is a `<strong>`, so it reads as emphasis, and the sentence after it is plain text in the same paragraph. The "as of" time is written out ("10:44 AM CST"), not a `<time>` element that a screen reader would re-read as a relative age.
+
+The Retry now button is a native `<button>` placed first in the actions region so it is the first stop after the message; its refresh glyph is `aria-hidden`. `restart-failed` puts Open Health (a link when `healthHref` is set) before Restart again. On a touch pointer each action has a 44px minimum height.
+
+Without a preset, `dataUpdatedAt` adds a stale-data notice: plain text with a `<time>` element carrying the ISO `datetime`, so the age reads as "Showing data from 2 minutes ago".
+
+The `neutral` variant is named `Notice`.
 
 ## Why not `role="alert"`?
 

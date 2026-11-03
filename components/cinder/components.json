@@ -643,7 +643,7 @@
       "tags": ["feedback", "notice"],
       "useWhen": [
         "Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.",
-        "Reporting that the server or connection is unreachable with the unreachable preset, a Retry action, and the age of the data still shown.",
+        "Reporting that the browser is offline, the server is unreachable, a refresh failed or a restart is running, using a connection preset.",
         "Pinning a non-urgent message above page content that should remain readable until acknowledged."
       ],
       "avoidWhen": [
