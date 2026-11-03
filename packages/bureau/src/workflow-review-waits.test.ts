@@ -89,6 +89,12 @@ async function waitsFor(
   return (state?.waitingForSignals ?? []).includes(signal);
 }
 
+/** The audit entries that record a decision on a review of instance `runId`. */
+async function decisionAudit(harness: WorkflowBureauHarness, runId: string) {
+  const records = await harness.bureau.internals.auditTrail!.query({ runId });
+  return records.filter((record) => /^review\.human-wait\.(approved|denied)$/u.test(record.type));
+}
+
 async function statusOf(harness: WorkflowBureauHarness, runId: string): Promise<string> {
   const state = await harness.bureau.durableEngine()!.get(runId);
   return state?.status ?? 'missing';
@@ -229,6 +235,10 @@ describe('a workflow review step', () => {
       }),
     );
     expect((again as BureauError).code).toBe('NOT_FOUND');
+    // The decision is audited once: the refused second resolve writes no second entry.
+    expect(await decisionAudit(harness, runId)).toEqual([
+      expect.objectContaining({ runId, type: 'review.human-wait.approved' }),
+    ]);
   });
 
   it('delivers a denial with its reason, which the next step reads as what to change', async () => {
@@ -272,6 +282,9 @@ describe('a workflow review step', () => {
       }),
     );
     expect((different as BureauError).code).toBe('CONFLICT');
+    expect(await decisionAudit(harness, runId)).toEqual([
+      expect.objectContaining({ runId, type: 'review.human-wait.denied' }),
+    ]);
   });
 
   it('reaches the Reviews page over the wire, which lists, reads and resolves it', async () => {
