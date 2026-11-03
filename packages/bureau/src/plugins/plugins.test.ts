@@ -82,7 +82,7 @@ describe('plugin composition', () => {
     expect(setups).toEqual(['fine']);
   });
 
-  it('reports a disabled plugin without running its setup, and a required one runs anyway', async () => {
+  it('reports a disabled plugin and registers nothing of it, and a required one runs anyway', async () => {
     const setups: string[] = [];
     const plugin = (name: string, extra: { required?: boolean; enabledByDefault?: boolean } = {}) =>
       definePlugin({
@@ -107,7 +107,9 @@ describe('plugin composition', () => {
     const listings = await listedPlugins(bureau);
     expect(listings.map(({ status }) => status)).toEqual(['disabled', 'disabled', 'running']);
     expect(bureau.plugins.registered()).toEqual(['bureau', 'core']);
-    expect(setups).toEqual(['core']);
+    // COR-2009: a disabled plugin's setup runs once, only to read the code agents Bureau lists as
+    // unavailable; nothing it returns is registered.
+    expect(setups).toEqual(['off', 'demo', 'core']);
   });
 
   it('lists each plugin by the title a person reads, or by its name when it declares none (COR-2009)', async () => {

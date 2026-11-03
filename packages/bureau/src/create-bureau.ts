@@ -3417,6 +3417,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       snapshots: fileAgents?.snapshots,
       descriptors: () => models.catalog().descriptors,
       modelPolicy: () => modelPolicyOf(currentSettings()),
+      unavailable: composedPlugins.unavailableAgents,
     });
     // COR-1721 — after the first scan, so the files present at boot are not reported as added.
     stopForwarding.push(
@@ -8289,6 +8290,22 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * The refusal of a run of `agentName`, which no catalog agent resolves. A disabled plugin's agent
+   * is listed `unavailable` (COR-2009), so the refusal says why it cannot run.
+   */
+  function missingAgentError(agentName: string): BureauError {
+    const unavailable = agentCatalog
+      .list()
+      .find((listing) => listing.id === agentName)?.unavailable;
+    return new BureauError(
+      unavailable === undefined
+        ? `Unknown agent "${agentName}"`
+        : `Agent "${agentName}" is unavailable: ${unavailable.message}.`,
+      'NOT_FOUND',
+    );
+  }
+
+  /**
    * COR-1911 — a tried agent belongs to the one context that was started with it: a name that is
    * held for another context, or for none, is an agent that does not exist.
    */
@@ -8537,9 +8554,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
     const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
-    if (resolution.status === 'missing-agent') {
-      throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
-    }
+    if (resolution.status === 'missing-agent') throw missingAgentError(agentName);
     if (resolution.status === 'not-durable-capable') {
       throw new BureauError(
         `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,

@@ -11,6 +11,9 @@
  * `eventFormatters`, `decisions`, `onlineEvals`, the agent catalog, the agent tool catalog and the
  * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
+ * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
+ * agents the agent catalog lists as `unavailable` (COR-2009); see `codeAgentsOfDisabledPlugin`.
+ *
  * @module compose-plugins
  */
 
@@ -33,7 +36,7 @@ import {
   type Tool,
 } from 'armorer';
 
-import type { AgentDefinitions } from '../agent-catalog';
+import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
 import type { AgentSource } from '../sources/definition-source';
 import { createAgentContributions } from '../agent-contributions';
@@ -85,6 +88,12 @@ export interface ComposedPlugins<O extends ComposableOptions> {
    * {@link BureauOptions.pluginWorkflowSource}.
    */
   readonly shippedContent: readonly { readonly plugin: string; readonly content: URL }[];
+  /**
+   * COR-2009 — the code agents of the disabled plugins, in load order, which the agent catalog
+   * lists `unavailable` (`Plugin Demo is disabled`) so they can be read and duplicated, never run.
+   * See {@link codeAgentsOfDisabledPlugin} for how they are read without the plugin running.
+   */
+  readonly unavailableAgents: readonly UnavailableCodeAgent[];
   /**
    * Starts following the host's `watch` for every running plugin's declared secrets, so a saved or
    * removed secret changes what its contributions do with no restart. Returns the function that
@@ -689,6 +698,48 @@ async function setUp(
   }
 }
 
+/**
+ * COR-2009 — the code agents a disabled plugin ships, read so the agent catalog can list them
+ * `unavailable` and `duplicate` can copy one. Only `setup` can say what they are, so it runs once,
+ * with nothing it could change or reveal: storage confined to `plugin:<name>:` of a scratch
+ * `MemoryStorage` that is dropped after, no secret (every `get` answers `undefined`), and a host
+ * API that is never bound, so a call to it rejects. Only `codeAgents` is kept; no other
+ * contribution is registered, `afterStart` never runs, and none of the agents can start a run. A
+ * plugin whose configuration does not parse, or whose `setup` throws, lists none: it is disabled
+ * either way, and enabling it reports the failure where a running plugin's would be.
+ */
+async function codeAgentsOfDisabledPlugin(
+  entry: BureauPluginEntry,
+  options: Pick<ComposableOptions, 'pluginConfiguration'>,
+): Promise<UnavailableCodeAgent[]> {
+  const { descriptor } = entry;
+  if (descriptor.setup === undefined) return [];
+  const configuration = configurationProblems(
+    entry,
+    settingsOf(options.pluginConfiguration, descriptor.name),
+  );
+  if ('problems' in configuration) return [];
+  try {
+    const context: PluginSetupContext = {
+      configuration: configuration.value,
+      secrets: { get: () => Promise.resolve(undefined) },
+      storage: createPluginStorage(new MemoryStorage(), descriptor.name),
+      host: lateHostApi(descriptor.name).api,
+      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
+    };
+    const returned: PluginSetupResult = (await descriptor.setup(context as never)) ?? {};
+    const message = `Plugin ${descriptor.title ?? descriptor.name} is disabled`;
+    return (returned.codeAgents ?? []).map(({ name, agent }) => ({
+      id: formatToolId({ namespace: descriptor.name, name }),
+      plugin: descriptor.name,
+      agent,
+      unavailable: { code: 'plugin-disabled', message },
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /** `given` with every caller-owned collection composition reads after an await copied now. */
 function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
@@ -739,6 +790,7 @@ export async function composePlugins<O extends ComposableOptions>(
   const options = snapshotOf(given);
   const contributed = new Contributed();
   const records: PluginRecord[] = [];
+  const unavailableAgents: UnavailableCodeAgent[] = [];
   const claims = heldByHost(options);
   const storage = options.storage ?? new MemoryStorage();
   for (const entry of pluginLoadOrder(options.plugins ?? [])) {
@@ -757,6 +809,9 @@ export async function composePlugins<O extends ComposableOptions>(
     }
     claims.hold({ space: 'plugin', name: entry.descriptor.name }, party);
     const outcome = await setUp(entry, options, storage);
+    if (outcome.status === 'disabled') {
+      unavailableAgents.push(...(await codeAgentsOfDisabledPlugin(entry, options)));
+    }
     if (outcome.status !== 'set-up') {
       record(outcome.status, outcome.problems);
       continue;
@@ -808,6 +863,7 @@ export async function composePlugins<O extends ComposableOptions>(
     tools: contributed.tools,
     records,
     shippedContent: shippedContentOf(records),
+    unavailableAgents,
     watchSecrets: () => {
       const stops = gates.map((gate) => gate.watch());
       return () => {

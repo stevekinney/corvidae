@@ -110,6 +110,7 @@ export type {
   AgentFileDetail,
   AgentListing,
   AgentToolDescription,
+  AgentUnavailability,
 } from './agent-file-catalog';
 export type { AgentFileWriteResult } from './agent-file-writer';
 export type {

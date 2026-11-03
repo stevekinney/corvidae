@@ -164,7 +164,8 @@ const problemSchema = z.object({
 const agentListingSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  state: z.enum(['ready', 'invalid']),
+  /** `unavailable` is a code agent of a disabled plugin, listed read-only (COR-2009): it can be read and duplicated, never run. */
+  state: z.enum(['ready', 'invalid', 'unavailable']),
   name: z.string(),
   description: z.string().nullable(),
   a2a: z.boolean(),
@@ -172,8 +173,10 @@ const agentListingSchema = z.object({
   hash: z.string().nullable(),
   definitionRevision: z.number().int().positive().nullable(),
   problem: problemSchema.nullable(),
-  /** The plugin whose read-only layer ships the agent (`plugin:name`), or `null` for a code agent or an owner's file (COR-1873). */
+  /** The plugin whose read-only layer ships the agent (`plugin:name`), or whose disabled code ships it (COR-2009); `null` for an owner's file or any other code agent (COR-1873). */
   plugin: z.string().nullable(),
+  /** Why an `unavailable` agent cannot run, such as `Plugin Demo is disabled`; `null` in every other state (COR-2009). */
+  unavailable: z.object({ code: z.enum(['plugin-disabled']), message: z.string() }).nullable(),
 });
 
 const definitionOutputSchema = z.object({
@@ -358,10 +361,13 @@ function problemView(problem: NonNullable<AgentListing['problem']>) {
  * allowlist for a code-defined agent, its own file for a persisted one.
  */
 function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentListing) {
+  // An unavailable agent answers nobody, A2A callers included.
   const a2a =
-    listing.source === 'code'
-      ? host.agentDefinitions.optsCodeAgentIntoA2A(listing.id)
-      : listing.a2a;
+    listing.state === 'unavailable'
+      ? false
+      : listing.source === 'code'
+        ? host.agentDefinitions.optsCodeAgentIntoA2A(listing.id)
+        : listing.a2a;
   return {
     id: listing.id,
     source: listing.source,
@@ -374,6 +380,7 @@ function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentLi
     definitionRevision: listing.definitionRevision ?? null,
     problem: listing.problem === undefined ? null : problemView(listing.problem),
     plugin: listing.plugin ?? null,
+    unavailable: listing.unavailable === undefined ? null : { ...listing.unavailable },
   };
 }
 
@@ -790,7 +797,7 @@ export const agentDefinitionsDuplicateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Copy a plugin’s agent into the owner’s agents',
   description:
-    'Copies the read-only agent `id` (`plugin:name`) that a running plugin ships into the owner’s agents as `name`, an agent file the owner can edit, with every tool it names written without a pinned version so the copy follows whichever version is loaded. Answers the new agent’s `id` and `hash`. An `id` that is not a plugin’s agent is `InvalidParams`; a plugin agent that is not loaded is `NotFound`; an owner’s agent that already has the name is a `Conflict` and nothing is written; an agent whose `references` name documents beside the plugin’s files cannot be copied and is `Unprocessable`, as is one whose model the `modelPolicy` deployment or Bureau layer forbids (`model-policy-denied`) or whose model does not support its `defaultEffort` (`effort-not-supported`). Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
+    'Copies the read-only agent `id` (`plugin:name`) that a running plugin ships into the owner’s agents as `name`, an agent file the owner can edit, with every tool it names written without a pinned version so the copy follows whichever version is loaded. A plugin’s code agent, whether its plugin runs or is disabled (state `unavailable`), is copied from what it states about itself: its name, description, instructions, tools (its plugin’s own as `plugin:tool`), skills and model; one that names no model, such as a scripted agent, gets its first switchable model or else the first model of the deployment’s catalog the model policy allows, and with none the copy is `Unprocessable` (`unknown-model`), as is one that names a tool the catalog does not hold (`unknown-tool`). Answers the new agent’s `id` and `hash`. An `id` that is not a plugin’s agent is `InvalidParams`; a plugin agent that is not loaded is `NotFound`; an owner’s agent that already has the name is a `Conflict` and nothing is written; an agent whose `references` name documents beside the plugin’s files cannot be copied and is `Unprocessable`, as is one whose model the `modelPolicy` deployment or Bureau layer forbids (`model-policy-denied`) or whose model does not support its `defaultEffort` (`effort-not-supported`). Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: duplicateInput,
@@ -837,7 +844,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only: its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `skillDescriptors`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready`, `invalid` (with the `problem` that makes it so), or `unavailable` (a code agent of a disabled plugin, with the `unavailable` reason, such as `Plugin Demo is disabled`, and the `plugin`; it can be read and duplicated, and no run can start on it), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only: its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `skillDescriptors`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -870,7 +877,7 @@ export const agentDefinitionsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List agent definitions',
   description:
-    'Lists every agent: the code-defined ones in definition order, then the agent files by identifier, `ready` and `invalid` alike. Each file shows its `hash`, `state`, and `definitionRevision`. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s agents and lacks `bureau.agents:read` gets an empty page.',
+    'Lists every agent: the code-defined ones in definition order, then the code agents of disabled plugins as `unavailable` (each with its `plugin` and the `unavailable` reason, such as `Plugin Demo is disabled`), then the agent files by identifier, `ready` and `invalid` alike. Each file shows its `hash`, `state`, and `definitionRevision`. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s agents and lacks `bureau.agents:read` gets an empty page.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: listInput,

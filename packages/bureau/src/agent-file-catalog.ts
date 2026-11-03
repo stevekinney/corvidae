@@ -296,12 +296,28 @@ function toolOrigin(
 /** The reserved name of the implicit Bureau-wide agent, which no longer exists. No file may take its name. */
 export const RESERVED_DEFAULT_AGENT_IDENTIFIER = 'bureau';
 
+/**
+ * COR-2009 — why a listed agent cannot run now, though Bureau knows it: the plugin that ships it is
+ * disabled. Enabling the plugin and restarting makes the agent available again.
+ */
+export interface AgentUnavailability {
+  /** `plugin-disabled`: the plugin that ships the agent is disabled. */
+  readonly code: 'plugin-disabled';
+  /** The reason as a person reads it, naming the plugin by its title: `Plugin Demo is disabled`. */
+  readonly message: string;
+}
+
 /** One agent in {@link BureauAgentCatalog.list}, code-defined or from a file. */
 export interface AgentListing {
   /** A code agent's map key, or a file agent's filename without `.md`. */
   readonly id: string;
   readonly source: 'code' | 'file';
-  readonly state: 'ready' | 'invalid';
+  /**
+   * `ready` runs; `invalid` is a file that cannot be used (see `problem`); `unavailable` is a code
+   * agent of a disabled plugin (COR-2009), listed read-only so it can be read and duplicated, never
+   * run (see `unavailable`).
+   */
+  readonly state: 'ready' | 'invalid' | 'unavailable';
   /** The display label. For an invalid file, the identifier. */
   readonly name: string;
   readonly description: string | null;
@@ -324,10 +340,13 @@ export interface AgentListing {
   readonly problem?: AgentFileProblem;
   /**
    * COR-1873 — the plugin that ships the agent, for a file of a plugin's read-only layer
-   * (`plugin:name`). Such a file cannot be written; `duplicate` copies it into the owner's source.
-   * Absent for a code agent and an owner's file.
+   * (`plugin:name`), or for a code agent of a disabled plugin (COR-2009). Such an agent cannot be
+   * written; `duplicate` copies it into the owner's source. Absent for an owner's file and for any
+   * other code agent.
    */
   readonly plugin?: string;
+  /** COR-2009 — why an `unavailable` agent cannot run. Absent for every other state. */
+  readonly unavailable?: AgentUnavailability;
 }
 
 /** The plugin a listed file belongs to: the namespace of a `plugin:name` the identifier check accepted. */

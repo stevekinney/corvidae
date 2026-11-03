@@ -328,6 +328,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
     id: 'researcher',
     source: 'file',
     state: 'ready',
+    unavailable: null,
     name: 'Researcher',
     description: 'Finds and cites sources',
     a2a: false,

@@ -51,11 +51,21 @@ async function start(
 }
 
 describe('the demo plugin', () => {
-  test('is off until the owner turns it on, and then contributes no agent', async () => {
+  test('is off until the owner turns it on, and then lists its agents unavailable and runs none (COR-2009)', async () => {
     const bureau = await start({ enabled: false });
     const listing = await demoListing(bureau);
     expect(listing).toMatchObject({ descriptor: { name: 'demo' }, status: 'disabled' });
-    expect(bureau.agents.list().filter(({ id }) => id.startsWith('demo:'))).toEqual([]);
+    const listed = bureau.agents.list().filter(({ id }) => id.startsWith('demo:'));
+    expect(listed.map(({ id }) => id).toSorted()).toEqual(
+      DEMO_AGENT_NAMES.map((name) => `demo:${name}`).toSorted(),
+    );
+    for (const agent of listed) {
+      expect(agent).toMatchObject({
+        state: 'unavailable',
+        unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+      });
+      expect(bureau.agents.find(agent.id)).toBeUndefined();
+    }
   });
 
   test('declares one generated secret of its own, never the host’s approval secret', () => {

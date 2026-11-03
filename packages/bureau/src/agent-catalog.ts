@@ -21,10 +21,10 @@ import type {
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
 import type { Tool } from 'armorer';
 
-import { AgentFileError } from './agent-file';
+import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
 import { agentSkillNames } from './agent-skills';
 import { type AgentModels, describeAgentModels } from './agent-models';
-import type { BureauModelPolicyOptions } from './model-policy';
+import { modelPolicyDenialOf, type BureauModelPolicyOptions } from './model-policy';
 import type {
   AgentCatalogChange,
   AgentCodeDefinition,
@@ -33,6 +33,7 @@ import type {
   AgentFileVersions,
   AgentListing,
   AgentToolDescription,
+  AgentUnavailability,
 } from './agent-file-catalog';
 import type { AgentFileWriter } from './agent-file-writer';
 import type { AgentVersionRecord } from './agent-version-store';
@@ -270,8 +271,31 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   /**
    * COR-1873 — copy a plugin's read-only agent (`plugin:name`) into the owner's source as
    * `name.md`, with its tools unversioned. Fails with `AgentFileConflictError` when that file exists.
+   *
+   * COR-2009 — a plugin's code agent, whether its plugin runs or is disabled, is copied from what it
+   * states about itself (`detail(id).codeDefinition`): its name, description, instructions, tools
+   * (by the name the tool catalog holds, `plugin:tool` for its plugin's own), skills, and model. A
+   * scripted or routed agent names no model, so the copy gets its first switchable model, or else
+   * the first model of the deployment's catalog the model policy allows; with none, it fails with
+   * `AgentFileError` `unknown-model` and writes nothing. The copy is checked like any new file, so a
+   * tool the catalog does not hold (a disabled plugin's own) refuses it with `unknown-tool`.
    */
   duplicate: AgentFileWriter['duplicate'];
+}
+
+/**
+ * COR-2009 — a code agent Bureau knows but cannot run: one a disabled plugin ships. It is listed
+ * `unavailable` so it can be read and duplicated; no run can start on it.
+ */
+export interface UnavailableCodeAgent {
+  /** Its identifier, `plugin:name`. */
+  readonly id: string;
+  /** The plugin that ships it. */
+  readonly plugin: string;
+  /** The agent, read only for what it states about itself and never run. */
+  readonly agent: AnyRunnableAgent;
+  /** Why it cannot run. */
+  readonly unavailable: AgentUnavailability;
 }
 
 /**
@@ -304,6 +328,12 @@ export interface CreateAgentCatalogOptions {
    * no tool catalog to add to.
    */
   readonly addTools?: ((tools: Readonly<Record<string, Tool>>) => Promise<void>) | undefined;
+  /**
+   * COR-2009 — the code agents of disabled plugins, listed after the code-defined agents as
+   * `unavailable`. `find`, `has`, `get` and `models` do not hold them, so no run starts on one. An
+   * identifier the code-defined map already holds is not listed again.
+   */
+  readonly unavailable?: readonly UnavailableCodeAgent[] | undefined;
 }
 
 /**
@@ -364,6 +394,29 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     ([name, agent]) => Object.freeze({ name, agent }) as AgentCatalogEntry<D>,
   );
   const byName = new Map<string, AgentCatalogEntry<D>>(entries.map((entry) => [entry.name, entry]));
+  const unavailable = new Map<string, UnavailableCodeAgent>(
+    (options?.unavailable ?? [])
+      .filter((entry) => !byName.has(entry.id))
+      .map((entry) => [entry.id, entry]),
+  );
+  const unavailableListing = (entry: UnavailableCodeAgent): AgentListing => ({
+    id: entry.id,
+    source: 'code',
+    state: 'unavailable',
+    name: entry.agent.name,
+    description: entry.agent.description ?? null,
+    a2a: false,
+    owner: ownerOrLocal(undefined),
+    definitionRevision: readGenerationProfile(entry.agent).revision,
+    plugin: entry.plugin,
+    unavailable: entry.unavailable,
+  });
+  /** A plugin's code agent (`plugin:name`), running or disabled, which `duplicate` copies from. */
+  const pluginCodeAgent = (id: string): AnyRunnableAgent | undefined => {
+    const disabled = unavailable.get(id);
+    if (disabled !== undefined) return disabled.agent;
+    return id.includes(':') ? byName.get(id)?.agent : undefined;
+  };
   const codeListing = (entry: AgentCatalogEntry<D>): AgentListing => ({
     id: entry.name,
     source: 'code',
@@ -425,7 +478,11 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return profile;
     },
     list() {
-      return [...entries.map(codeListing), ...(files?.list() ?? [])];
+      return [
+        ...entries.map(codeListing),
+        ...[...unavailable.values()].map(unavailableListing),
+        ...(files?.list() ?? []),
+      ];
     },
     async detail(id) {
       const code = byName.get(id);
@@ -435,6 +492,15 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           text: null,
           definition: null,
           codeDefinition: describeCodeAgent(code.agent, descriptors(), modelPolicy()),
+        };
+      }
+      const disabled = unavailable.get(id);
+      if (disabled !== undefined) {
+        return {
+          ...unavailableListing(disabled),
+          text: null,
+          definition: null,
+          codeDefinition: describeCodeAgent(disabled.agent, descriptors(), modelPolicy()),
         };
       }
       return files?.detail(id);
@@ -484,7 +550,17 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
-    duplicate: async (id, writeOptions) => requireFiles().duplicate(id, writeOptions),
+    duplicate: async (id, writeOptions) => {
+      const agent = pluginCodeAgent(id);
+      if (agent === undefined) return requireFiles().duplicate(id, writeOptions);
+      const writer = requireFiles();
+      const copy = copyOfCodeAgent(id, agent, {
+        descriptors: descriptors(),
+        policy: modelPolicy(),
+        toolNames: new Set(writer.tools().map((tool) => tool.name)),
+      });
+      return writer.create(id.slice(id.indexOf(':') + 1), copy, writeOptions);
+    },
   };
 
   return Object.freeze(catalog);
@@ -515,6 +591,58 @@ function describeCodeAgent(
       typeof stated.instructions === 'string' && stated.instructions !== ''
         ? stated.instructions
         : null,
+  };
+}
+
+/**
+ * COR-2009 — the agent file a plugin's code agent `id` (`plugin:name`) is copied into: what it states
+ * about itself, with each tool named as the tool catalog holds it (`plugin:tool` for one of its
+ * plugin's own, whose code agents name them without the plugin) and a model a file can hold. See
+ * {@link BureauAgentCatalog.duplicate}.
+ */
+function copyOfCodeAgent(
+  id: string,
+  agent: AnyRunnableAgent,
+  deployment: {
+    readonly descriptors: readonly BackendDescriptor[];
+    readonly policy: BureauModelPolicyOptions | undefined;
+    readonly toolNames: ReadonlySet<string>;
+  },
+): AgentFileDefinitionInput {
+  const { descriptors, policy, toolNames } = deployment;
+  const plugin = id.slice(0, id.indexOf(':'));
+  const stated = describeCodeAgent(agent, descriptors, policy);
+  const models = describeAgentModels(agent, descriptors, policy);
+  const named = (choice: { readonly provider: string; readonly model: string }) =>
+    `${choice.provider}/${choice.model}`;
+  const allowed = models.models.filter((choice) => choice.denied !== true).map(named);
+  const fallback = descriptors.find(
+    (row) => row.lifecycle !== 'retired' && modelPolicyDenialOf(row, policy) === undefined,
+  );
+  const model =
+    (models.default !== null && models.default.denied !== true
+      ? named(models.default)
+      : undefined) ??
+    allowed[0] ??
+    (fallback === undefined ? undefined : named(fallback));
+  if (model === undefined) {
+    throw new AgentFileError(
+      'unknown-model',
+      `"${id}" names no model, and the deployment's model catalog has none its copy may use.`,
+    );
+  }
+  const local = id.slice(plugin.length + 1);
+  return {
+    name: stated.name === '' || stated.name === '(agent)' ? local : stated.name,
+    description: stated.description,
+    model,
+    ...(allowed.length > 1 && allowed.includes(model) ? { models: allowed } : {}),
+    tools: stated.tools.map((tool) =>
+      !toolNames.has(tool) && toolNames.has(`${plugin}:${tool}`) ? `${plugin}:${tool}` : tool,
+    ),
+    skillDescriptors: stated.skillDescriptors,
+    ...(stated.skills.length === 0 ? {} : { allowedSkills: stated.skills }),
+    instructions: stated.instructions ?? '',
   };
 }
 

@@ -54,7 +54,6 @@
     ". AgentFileWriteResult.id",
     ". AgentListing.description",
     ". AgentListing.source",
-    ". AgentListing.state",
     ". AgentRevision.definition",
     ". AgentRevision.firstRunAt",
     ". AgentRevision.hash",

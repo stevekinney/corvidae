@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { openBungalow } from '@lostgradient/bungalow';
 import {
   DEMO_AGENT_NAMES,
   HUMAN_INPUT_PROMPT,
@@ -11,6 +12,7 @@ import {
   SEEDED_GOAL_RUN_IDENTIFIER,
   SEEDED_SCHEDULE_DESCRIPTION,
 } from '@lostgradient/plugin-demo';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 import { enableDemoPlugin } from './demo-plugin-home.ts';
@@ -285,13 +287,25 @@ describe('the demo schedule and goal', () => {
     expect(await statusOf()).toBe('canceled');
   });
 
-  test('with the plugin disabled, the host lists no demo agent and seeds no schedule or goal', async () => {
+  test('with the plugin disabled, the host lists the demo agents unavailable, runs none, and seeds no schedule or goal (COR-2009)', async () => {
     const home = await mkdtemp(join(tmpdir(), 'interborough-demo-off-'));
     homes.push(home);
     const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
     hosts.push(host);
-    expect(host.bureau.agents.list().filter(({ id }) => id.startsWith('demo:'))).toEqual([]);
+    const listed = host.bureau.agents.list().filter(({ id }) => id.startsWith('demo:'));
+    expect(listed.map(({ id }) => id).toSorted()).toEqual([...DEMO_AGENT_IDS].toSorted());
+    for (const listing of listed) {
+      expect(listing).toMatchObject({
+        source: 'code',
+        state: 'unavailable',
+        plugin: 'demo',
+        unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+      });
+    }
     for (const id of DEMO_AGENT_IDS) expect(host.bureau.agents.has(id)).toBe(false);
+    expect(
+      String(await rejectionOf(host.bureau.tasks.start('demo:release-helper', 'Draft'))),
+    ).toContain('Plugin Demo is disabled');
     const schedules = await host.bureau.schedules.list();
     expect(schedules?.items).toEqual([]);
     expect(await host.bureau.goals.list()).toEqual([]);
@@ -338,6 +352,9 @@ describe('the demo schedule and goal', () => {
       restartRequired: true,
     });
     expect(first.bureau.agents.has('demo:release-helper')).toBe(false);
+    expect(first.bureau.agents.list().find(({ id }) => id === 'demo:release-helper')?.state).toBe(
+      'unavailable',
+    );
     await first.close();
     hosts.splice(hosts.indexOf(first), 1);
 
@@ -350,6 +367,54 @@ describe('the demo schedule and goal', () => {
     });
     expect(second.bureau.agents.has('demo:release-helper')).toBe(true);
     expect(second.bureau.agents.has('demo:changelog-writer')).toBe(true);
+    const enabledListing = second.bureau.agents
+      .list()
+      .find(({ id }) => id === 'demo:release-helper');
+    expect(enabledListing?.state).toBe('ready');
+    expect(enabledListing?.unavailable).toBeUndefined();
+  });
+
+  test('Duplicate copies a disabled plugin’s agent into an agent file you own once a provider is connected, and is refused before (COR-2009)', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-demo-duplicate-'));
+    homes.push(home);
+    const bare = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(bare);
+    // Release helper is scripted and names no model, and a file agent must name one the catalog
+    // holds: with no provider connected there is none, so the copy is refused, as New agent is.
+    expect(await rejectionOf(bare.bureau.agents.duplicate('demo:release-helper'))).toMatchObject({
+      code: 'unknown-model',
+    });
+    expect(await bare.bureau.agents.read('release-helper')).toBeUndefined();
+    await bare.close();
+    hosts.splice(hosts.indexOf(bare), 1);
+
+    const bungalow = await openBungalow({
+      name: 'interborough',
+      environment: { INTERBOROUGH_HOME: home },
+    });
+    try {
+      bungalow.writeSecret('anthropic-api-key', 'fixture-anthropic-key-duplicate-31cc');
+    } finally {
+      bungalow.close();
+    }
+    const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(host);
+    const copy = await host.bureau.agents.duplicate('demo:release-helper');
+    expect(copy.id).toBe('release-helper');
+    await host.bureau.agents.refresh();
+    expect(host.bureau.agents.list().find(({ id }) => id === 'release-helper')).toMatchObject({
+      source: 'file',
+      state: 'ready',
+    });
+    expect(host.bureau.agents.find('release-helper')).toBeDefined();
+    const read = await host.bureau.agents.read('release-helper');
+    expect(read?.text).toContain(
+      'Drafts release notes from the pull requests merged since the last tag.',
+    );
+    expect(read?.text).toMatch(/^model: anthropic\//mu);
+    expect(host.bureau.agents.list().find(({ id }) => id === 'demo:release-helper')?.state).toBe(
+      'unavailable',
+    );
   });
 });
 

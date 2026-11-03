@@ -136,10 +136,21 @@ const problemSchema = z.object({
  */
 export type AgentProblem = z.infer<typeof problemSchema>;
 
+/**
+ * Why an `unavailable` agent cannot run (COR-2009): its plugin is disabled, as in `Plugin Demo is
+ * disabled`. A stub that predates the key reads as available.
+ */
+const unavailableSchema = z
+  .object({ code: z.literal('plugin-disabled'), message: z.string() })
+  .nullable()
+  .default(null);
+
 const detailSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  state: z.enum(['ready', 'invalid']),
+  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
+  state: z.enum(['ready', 'invalid', 'unavailable']),
+  unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
   a2a: z.boolean(),
@@ -357,7 +368,9 @@ export async function listAgentRevisions(
 const listingSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  state: z.enum(['ready', 'invalid']),
+  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
+  state: z.enum(['ready', 'invalid', 'unavailable']),
+  unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
   a2a: z.boolean(),

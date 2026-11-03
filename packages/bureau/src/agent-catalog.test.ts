@@ -7,6 +7,8 @@ import {
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentCatalog } from './agent-catalog';
+import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
+import type { AgentFileCatalog } from './agent-file-catalog';
 
 function agent(name: string) {
   return createAgent({ generate: createMockGenerate([]), name });
@@ -284,5 +286,101 @@ describe('createAgentCatalog: generationProfile (AB-64/AB-247/mod-02e)', () => {
     expect(entry?.agent).toBe(writer);
     expect(entry?.agent.description).toBe('Writes things.');
     expect(entry?.agent.skillDescriptors).toBe(skillDescriptors);
+  });
+});
+
+describe('a disabled plugin’s code agents (COR-2009)', () => {
+  const unavailable = { code: 'plugin-disabled' as const, message: 'Plugin Demo is disabled' };
+  /** An agent file catalog that records what `create` is asked to write. */
+  function recordingFiles(toolNames: readonly string[]) {
+    const created: { id: string; definition: AgentFileDefinitionInput }[] = [];
+    const files = {
+      list: () => [],
+      tools: () => toolNames.map((name) => ({ name })),
+      create: async (id: string, definition: AgentFileDefinitionInput) => {
+        created.push({ id, definition });
+        return { id, hash: 'hash' };
+      },
+    } as unknown as AgentFileCatalog;
+    return { files, created };
+  }
+
+  it('lists them after the code agents as unavailable, and never lists one the code map holds', () => {
+    const catalog = createAgentCatalog(
+      { assistant: agent('assistant'), 'demo:echo': agent('echo') },
+      {
+        unavailable: [
+          {
+            id: 'demo:release-helper',
+            plugin: 'demo',
+            agent: agent('release-helper'),
+            unavailable,
+          },
+          { id: 'demo:echo', plugin: 'demo', agent: agent('echo'), unavailable },
+        ],
+      },
+    );
+    expect(catalog.list().map(({ id, state }) => [id, state])).toEqual([
+      ['assistant', 'ready'],
+      ['demo:echo', 'ready'],
+      ['demo:release-helper', 'unavailable'],
+    ]);
+    expect(catalog.list()[2]).toMatchObject({ plugin: 'demo', unavailable, a2a: false });
+    expect(catalog.find('demo:release-helper')).toBeUndefined();
+    expect(catalog.models('demo:release-helper')).toBeUndefined();
+  });
+
+  it('copies one with its plugin’s tools named as the catalog holds them and the first catalog model', async () => {
+    const descriptors = createModelCatalog().descriptors;
+    const helper = Object.create(agent('tool-runner'), {
+      toolNames: { value: ['lookup-order', 'shared-tool'] },
+    }) as ReturnType<typeof agent>;
+    const { files, created } = recordingFiles(['demo:lookup-order', 'shared-tool']);
+    const catalog = createAgentCatalog(
+      {},
+      {
+        files,
+        descriptors: () => descriptors,
+        unavailable: [{ id: 'demo:tool-runner', plugin: 'demo', agent: helper, unavailable }],
+      },
+    );
+    await catalog.duplicate('demo:tool-runner');
+    const first = descriptors.find((row) => row.lifecycle !== 'retired');
+    expect(created).toEqual([
+      {
+        id: 'tool-runner',
+        definition: expect.objectContaining({
+          name: 'tool-runner',
+          model: `${first?.provider}/${first?.model}`,
+          tools: ['demo:lookup-order', 'shared-tool'],
+          instructions: '',
+        }),
+      },
+    ]);
+  });
+
+  it('refuses a copy, writing nothing, when the agent names no model and the catalog has none', async () => {
+    const { files, created } = recordingFiles([]);
+    const catalog = createAgentCatalog(
+      {},
+      {
+        files,
+        unavailable: [
+          {
+            id: 'demo:release-helper',
+            plugin: 'demo',
+            agent: agent('release-helper'),
+            unavailable,
+          },
+        ],
+      },
+    );
+    const refused = await catalog.duplicate('demo:release-helper').then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(AgentFileError);
+    expect(refused).toMatchObject({ code: 'unknown-model' });
+    expect(created).toEqual([]);
   });
 });
