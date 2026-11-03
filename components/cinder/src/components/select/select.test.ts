@@ -497,6 +497,20 @@ describe('Select — ghost variant', () => {
     expect(styles).not.toMatch(/ghost'\] \+ \.cinder-select-field__chevron \{[^}]*display:\s*none/);
   });
 
+  test('a ghost select can shrink inside a flex row and caps its trigger at the field, so a composer at phone width never overflows (row 02u)', () => {
+    const styles = readSelectStyles();
+    const fieldBlock = styles
+      .slice(styles.indexOf(".cinder-select-field[data-cinder-variant='ghost'] {"))
+      .split('}')[0];
+    expect(fieldBlock).toContain('min-inline-size: 0');
+    expect(fieldBlock).toContain('max-inline-size: 100%');
+    const controlBlock = styles
+      .slice(styles.indexOf(".cinder-select-field[data-cinder-variant='ghost'] .cinder-select {"))
+      .split('}')[0];
+    expect(controlBlock).toContain('max-inline-size: 100%');
+    expect(controlBlock).toContain('min-inline-size: 0');
+  });
+
   test('the ghost focus ring wraps the whole control through the shared ring, border transparent', () => {
     const styles = readSelectStyles();
     expect(styles).toContain('box-shadow: var(--_cinder-focus-ring-shadow)');

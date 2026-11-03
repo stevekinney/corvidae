@@ -10,10 +10,16 @@ const schema = {
         'Accessible name of the bar, read as the name of its group: "Run actions", "Decision".',
       default: 'Actions',
     },
+    variant: {
+      enum: ['strip', 'card'],
+      description:
+        "How the bar is drawn: a flush strip with only a top border, or a bordered, raised card. The bar\ndocks to the bottom of a short page when its parent is a flex column at least as tall as the\nscrolling area; the parent's `gap` sets the space above the bar.",
+      default: 'strip',
+    },
     off: {
       type: 'boolean',
       description:
-        "Turns the bar's actions off together, for one reason. Controls inside that opted in with\n`mutating` go inert (`aria-disabled`, still focusable, described by `reason`), exactly as under\na `<StaleRegion>`, and the bar draws `reason` under its row. A field in the bar is the page's to\nmake read-only. The bar keeps its place and its height, so nothing under it moves.",
+        "Turns the bar's actions off together, for one reason. Controls inside that opted in with\n`mutating` go inert (`aria-disabled`, still focusable, described by `reason`), exactly as under\na `<StaleRegion>`, and the bar draws `reason` under its row. A field in the bar is the page's to\nmake read-only; the bar mutes an `Input` or `Textarea` inside it while it is off. The bar keeps\nits place and its height, so nothing under it moves.",
       default: false,
     },
     reason: {

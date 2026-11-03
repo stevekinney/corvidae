@@ -68,6 +68,7 @@
   <Button
     variant="ghost"
     iconOnly
+    quiet
     class="weft-shell-topbar-control weft-shell-menu-trigger"
     aria-label="Toggle navigation menu"
     onclick={() => (drawerOpen = !drawerOpen)}

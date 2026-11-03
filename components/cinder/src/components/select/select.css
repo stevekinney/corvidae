@@ -221,19 +221,25 @@
     padding-inline: var(--cinder-pad-control) calc(var(--cinder-pad-control) + 1.25rem);
   }
 
+  /* min-inline-size: 0 lets a ghost select in a flex row give up width before it overflows the
+   * container (a composer at phone width): its value ellipsizes instead of running past the
+   * border. A row that would rather wrap sets flex-wrap on itself. */
   .cinder-select-field[data-cinder-variant='ghost'] {
     inline-size: fit-content;
+    min-inline-size: 0;
     max-inline-size: 100%;
   }
 
   .cinder-select-field[data-cinder-variant='ghost'] .cinder-select-field__control {
     inline-size: auto;
+    min-inline-size: 0;
   }
 
   /* A native ghost select takes the width of its widest option instead of filling the field. */
   .cinder-select-field[data-cinder-variant='ghost'] .cinder-select {
     inline-size: auto;
     min-inline-size: 0;
+    max-inline-size: 100%;
   }
 
   .cinder-select[data-cinder-variant='ghost'] + .cinder-select-field__chevron {

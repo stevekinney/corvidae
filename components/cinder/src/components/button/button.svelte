@@ -49,6 +49,7 @@
     loadingStatus,
     mutating = false,
     iconOnly = false,
+    quiet = false,
     leadingIcon,
     trailingIcon,
     children,
@@ -87,6 +88,7 @@
     'data-cinder-full-width': fullWidth ? '' : undefined,
     'data-cinder-loading': loading ? '' : undefined,
     'data-cinder-icon-only': iconOnly ? '' : undefined,
+    'data-cinder-quiet': quiet && iconOnly && resolvedVariant === 'ghost' ? '' : undefined,
   });
 
   // When loading, force aria-disabled/aria-busy to 'true' so assistive tech always hears the

@@ -42,6 +42,12 @@ const schema = {
       description: 'Render the button with only an icon. Requires an accessible name source.',
       default: false,
     },
+    quiet: {
+      type: 'boolean',
+      description:
+        'Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button\notherwise paints, for a toolbar such as the shell\'s top bar. Hover, pressed and focus still\npaint. It has no effect unless the button is `iconOnly` with `variant="ghost"`.',
+      default: false,
+    },
     href: {
       type: 'string',
       description: 'Render as an anchor `<a>` element with this href.',

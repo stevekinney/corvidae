@@ -60,6 +60,32 @@ describe('DockedActionBar', () => {
     expect(classes).toContain('my-custom-class');
   });
 
+  test('draws a strip by default and a card on request', () => {
+    const strip = render(DockedActionBar, { actions: textSnippet('buttons') });
+    expect(
+      strip.container
+        .querySelector('.cinder-docked-action-bar')
+        ?.getAttribute('data-cinder-variant'),
+    ).toBe('strip');
+    cleanup();
+    const card = render(DockedActionBar, { variant: 'card', actions: textSnippet('buttons') });
+    expect(
+      card.container
+        .querySelector('.cinder-docked-action-bar')
+        ?.getAttribute('data-cinder-variant'),
+    ).toBe('card');
+    cleanup();
+    const unknown = render(DockedActionBar, {
+      variant: 'bogus' as never,
+      actions: textSnippet('buttons'),
+    });
+    expect(
+      unknown.container
+        .querySelector('.cinder-docked-action-bar')
+        ?.getAttribute('data-cinder-variant'),
+    ).toBe('strip');
+  });
+
   test('marks equal actions', () => {
     const { container } = render(DockedActionBar, {
       equalActions: true,
@@ -156,6 +182,43 @@ describe('docked-action-bar.css', () => {
     const narrow = cssText.slice(cssText.indexOf('@container (inline-size < 32rem)'));
     expect(narrow).toMatch(
       /\.cinder-button\[data-cinder-size\][^}]*min-height: var\(--cinder-touch-target-min\)/s,
+    );
+  });
+
+  test('docks to the bottom of a short page: the bar pushes itself down, with no fixed space above it (row 04u)', () => {
+    const rule = cssText.slice(cssText.indexOf('.cinder-docked-action-bar {'));
+    const block = rule.slice(0, rule.indexOf('}'));
+    expect(block).toContain('margin-block-start: auto;');
+  });
+
+  test('is a flush strip with only a top border by default, and a raised card in the card variant (row 26p)', () => {
+    const rule = cssText.slice(cssText.indexOf('.cinder-docked-action-bar {'));
+    const block = rule.slice(0, rule.indexOf('}'));
+    expect(block).toContain('border: 0;');
+    expect(block).toContain('border-block-start: 1px solid var(--cinder-border);');
+    expect(block).toContain('border-radius: 0;');
+    expect(block).not.toContain('box-shadow');
+    const cardStart = cssText.indexOf(".cinder-docked-action-bar[data-cinder-variant='card'] {");
+    const card = cssText.slice(cardStart, cssText.indexOf('}', cardStart));
+    expect(card).toContain('border: 1px solid var(--cinder-border);');
+    expect(card).toContain('border-radius: var(--cinder-radius-lg);');
+    expect(card).toContain('box-shadow:');
+  });
+
+  test('mutes the field of an off bar with the inset fill and muted text (row 56e)', () => {
+    const start = cssText.indexOf('.cinder-docked-action-bar[data-cinder-off] .cinder-input');
+    expect(start).toBeGreaterThan(-1);
+    const block = cssText.slice(start, cssText.indexOf('}', start));
+    expect(block).toContain('background: var(--cinder-surface-inset);');
+    expect(block).toContain('color: var(--cinder-text-muted);');
+  });
+
+  test('a narrow bar wraps its actions instead of overflowing, except an equal pair (row 56e)', () => {
+    const narrow = cssText.slice(cssText.indexOf('@container (inline-size < 32rem)'));
+    const actions = narrow.slice(narrow.indexOf('.cinder-docked-action-bar__actions {'));
+    expect(actions.slice(0, actions.indexOf('}'))).toContain('flex-wrap: wrap;');
+    expect(narrow).toMatch(
+      /data-cinder-equal-actions\] \.cinder-docked-action-bar__actions \{\s*flex-wrap: nowrap;/,
     );
   });
 

@@ -23,6 +23,12 @@ export type ComboboxOption<T extends string = string> = {
    */
   code?: string;
   /**
+   * Muted words on the label's own line, after a middle dot ("Chat with an agent · built in"). Use
+   * it for a fact that belongs beside the name; a sentence goes in `description`, and a short
+   * trailing value in `meta`.
+   */
+  suffix?: string;
+  /**
    * Short text drawn at the trailing edge of the row, on the label's line ("4 steps", "any
    * workflow"). A consumer that needs more than text passes the `optionMeta` snippet, which
    * replaces this.

@@ -281,8 +281,8 @@ describe('EmptyState kind', () => {
     expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
   });
 
-  test('blocked and not-found mark the root and render their action', () => {
-    for (const kind of ['blocked', 'not-found'] as const) {
+  test('blocked, not-found and disabled mark the root and render their action', () => {
+    for (const kind of ['blocked', 'not-found', 'disabled'] as const) {
       const { container } = render(EmptyState, {
         props: { title: 'Nope', kind, action: actionSnippet },
       });
@@ -325,14 +325,14 @@ describe('EmptyState kind', () => {
   test('neutral kinds keep the neutral disc, which is the base rule', () => {
     const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');
     expect(disc.get('background')).toBe('var(--cinder-surface-inset)');
-    for (const kind of ['filtered', 'not-found']) {
+    for (const kind of ['filtered', 'not-found', 'disabled']) {
       expect(emptyStateCss).not.toContain(`data-cinder-kind='${kind}'`);
     }
   });
 });
 
 describe('EmptyState default glyphs', () => {
-  const glyphKinds = ['done', 'filtered', 'not-found', 'blocked'] as const;
+  const glyphKinds = ['done', 'filtered', 'not-found', 'blocked', 'disabled'] as const;
 
   test('every kind except first-use shows a glyph in its disc when no icon is passed', () => {
     for (const kind of glyphKinds) {

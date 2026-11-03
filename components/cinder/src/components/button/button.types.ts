@@ -146,6 +146,13 @@ export type ButtonProps = SharedHtmlAttributes &
      * stays live.
      */
     mutating?: boolean;
+    /**
+     * Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button
+     * otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still
+     * paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`.
+     * @default false
+     */
+    quiet?: boolean;
     /** DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.
      *  If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. */
     leadingIcon?: Snippet;
@@ -198,6 +205,13 @@ export interface ButtonSchemaProps {
    * @default false
    */
   iconOnly?: boolean;
+  /**
+   * Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button
+   * otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still
+   * paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`.
+   * @default false
+   */
+  quiet?: boolean;
   /** Render as an anchor `<a>` element with this href. */
   href?: string;
   /** Visible text label. Must be non-empty if provided. */

@@ -43,7 +43,7 @@
       "id": "loading-and-error",
       "title": "Loading and a failed load",
       "description": "While loading the field stays a combobox and shows its loading label; after the threshold Skeleton's status line offers Cancel. A failed load shows its message and a retry above the options that did load.",
-      "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n</script>\n\n<Combobox\n  id=\"workflow-loading\"\n  label=\"Workflow\"\n  required\n  options={[]}\n  loading\n  loadingLabel=\"Loading workflows…\"\n  stillLoadingAfter={10000}\n  onCancel={() => {}}\n/>\n\n<Combobox\n  id=\"workflow-failed\"\n  label=\"Workflow\"\n  required\n  presentation=\"picker\"\n  placeholder=\"Pick a workflow\"\n  options={[{ value: 'chat', label: 'Chat with an agent', meta: 'built in' }]}\n  loadError={{\n    title: 'Couldn’t load workflows.',\n    description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',\n  }}\n  onRetry={() => {}}\n/>\n"
+      "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n</script>\n\n<Combobox\n  id=\"workflow-loading\"\n  label=\"Workflow\"\n  required\n  options={[]}\n  loading\n  loadingLabel=\"Loading workflows…\"\n  stillLoadingAfter={10000}\n  onCancel={() => {}}\n/>\n\n<Combobox\n  id=\"workflow-failed\"\n  label=\"Workflow\"\n  required\n  presentation=\"picker\"\n  placeholder=\"Pick a workflow\"\n  options={[{ value: 'chat', label: 'Chat with an agent', suffix: 'built in' }]}\n  loadError={{\n    title: 'Couldn’t load workflows.',\n    description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',\n  }}\n  onRetry={() => {}}\n/>\n"
     }
   ]
 }

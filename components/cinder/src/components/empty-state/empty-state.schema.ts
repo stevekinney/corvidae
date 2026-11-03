@@ -29,9 +29,9 @@ const schema = {
       default: 'center',
     },
     kind: {
-      enum: ['first-use', 'filtered', 'done', 'blocked', 'not-found'],
+      enum: ['first-use', 'filtered', 'done', 'blocked', 'not-found', 'disabled'],
       description:
-        "Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked or not found).\nEvery kind renders the `action` snippet; `'filtered'` also adds a secondary \"Clear filters\"\nbutton before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'`\na quiet `Link`, and `'filtered'` the Clear filters button alone.",
+        "Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked, not found or disabled).\nEvery kind renders the `action` snippet; `'filtered'` also adds a secondary \"Clear filters\"\nbutton before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'`\na quiet `Link`, and `'filtered'` the Clear filters button alone.",
       default: 'first-use',
     },
     size: {

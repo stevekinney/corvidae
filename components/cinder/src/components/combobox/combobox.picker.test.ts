@@ -486,7 +486,7 @@ describe('Combobox loading and load error', () => {
       required: true,
       placeholder: 'Pick a workflow',
       presentation: 'picker',
-      options: [{ value: 'chat', label: 'Chat with an agent', meta: 'built in' }],
+      options: [{ value: 'chat', label: 'Chat with an agent', suffix: 'built in' }],
       loadError: {
         title: 'Couldn’t load workflows.',
         description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',
@@ -504,10 +504,20 @@ describe('Combobox loading and load error', () => {
     expect(error.getAttribute('role')).toBe('alert');
     expect(error.textContent).toContain('Couldn’t load workflows.');
     expect(error.textContent).toContain('Chat with an agent is built in and still works.');
-    // The built-in row stays listed and selectable below the message.
-    expect(document.body.querySelector('[role="option"]')?.textContent).toContain(
-      'Chat with an agent',
+    // The built-in row stays listed and selectable below the message, with "built in" muted
+    // inline after the name rather than at the trailing edge (row 75j).
+    const builtInRow = requiredInstance(
+      document.body.querySelector('[role="option"]'),
+      HTMLElement,
     );
+    expect(builtInRow.textContent).toContain('Chat with an agent');
+    expect(
+      builtInRow.querySelector('.cinder-combobox__option-label .cinder-combobox__option-suffix')
+        ?.textContent,
+    ).toBe(' · built in');
+    expect(builtInRow.querySelector('.cinder-combobox__option-meta')).toBeNull();
+    // With no other line the row's text is its name: the label then the suffix, read as one.
+    expect(builtInRow.textContent?.trim()).toBe('Chat with an agent · built in');
     const retry = requiredInstance(
       Array.from(error.querySelectorAll('button')).find((button) =>
         button.textContent?.includes('Try again'),

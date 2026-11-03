@@ -10,6 +10,7 @@
    * @useWhen Replacing a primary content region after a filter or search returns no results.
    * @useWhen Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind.
    * @useWhen Saying that a thing doesn't exist with the not-found kind, or that a recoverable condition blocks the view with the blocked kind.
+   * @useWhen Saying that a setting the person chose, such as a disabled plugin, holds content back with the disabled kind.
    * @avoidWhen Indicating that data is still loading — use skeleton or spinner instead.
    * @avoidWhen Reporting a transient error — use alert, banner, or toast-region.
    * @related skeleton, spinner
@@ -24,7 +25,7 @@
 
 <script lang="ts">
   import type { EmptyStateProps } from './empty-state.types.ts';
-  import { Check, Funnel, Search, TriangleAlert } from '@lucide/svelte';
+  import { Check, Funnel, Plug, Search, TriangleAlert } from '@lucide/svelte';
 
   import Button from '../button/button.svelte';
   import { classNames } from '../../utilities/class-names.ts';
@@ -61,7 +62,11 @@
   // Normalise at runtime: an unknown kind or size behaves as the default rather than
   // producing a root attribute no stylesheet rule matches.
   const safeKind = $derived(
-    kind === 'filtered' || kind === 'done' || kind === 'blocked' || kind === 'not-found'
+    kind === 'filtered' ||
+      kind === 'done' ||
+      kind === 'blocked' ||
+      kind === 'not-found' ||
+      kind === 'disabled'
       ? kind
       : 'first-use',
   );
@@ -93,6 +98,8 @@
         <Funnel />
       {:else if safeKind === 'not-found'}
         <Search />
+      {:else if safeKind === 'disabled'}
+        <Plug />
       {:else}
         <TriangleAlert />
       {/if}

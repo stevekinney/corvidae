@@ -41,6 +41,7 @@ Pick the `kind` that says why the view is empty. It sets the tint of the 48px di
 - `done`: the work is finished. A green disc with a check, and optionally a quiet link as the action.
 - `blocked`: something the person can fix keeps the view empty. An amber disc with a warning glyph.
 - `not-found`: the thing asked for doesn't exist. A neutral disc with a magnifying glass.
+- `disabled`: a setting the person chose (a disabled plugin) holds the content back, so it is not a warning. A neutral disc with a plug.
 
 A title says what is missing or what happened, never an instruction ("No hooks yet", not "Build your first hook"), and the sentence under it is one sentence of at most 380px, with contractions.
 
@@ -95,7 +96,7 @@ The `icon` snippet replaces the glyph in the disc. The description keeps a measu
 | `clearFiltersLabel` | `string` | no | `"Clear filters"` | Label of the "Clear filters" button. |
 | `description` | `string` | no | — | Secondary descriptive text rendered as a paragraph below the title. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the title element. |
-| `kind` | `"first-use"` \| `"filtered"` \| `"done"` \| `"blocked"` \| `"not-found"` | no | `"first-use"` | Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked or not found). Every kind renders the `action` snippet; `'filtered'` also adds a secondary "Clear filters" button before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'` a quiet `Link`, and `'filtered'` the Clear filters button alone. |
+| `kind` | `"first-use"` \| `"filtered"` \| `"done"` \| `"blocked"` \| `"not-found"` \| `"disabled"` | no | `"first-use"` | Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked, not found or disabled). Every kind renders the `action` snippet; `'filtered'` also adds a secondary "Clear filters" button before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'` a quiet `Link`, and `'filtered'` the Clear filters button alone. |
 | `size` | `"default"` \| `"compact"` | no | `"default"` | Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a tab or a panel rather than a whole page region. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
 | `action` | `(opaque)` | no | — | Call-to-action content rendered below the description, after the "Clear filters" button when both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for done, and a secondary button for a not-found or blocked state. Not expressible in JSON Schema; see the component types for the signature. |

@@ -6,10 +6,16 @@
  * A bar that keeps a page's main actions at the bottom of the scrolling area while the page
  * scrolls behind it (design rows 04u, 05j, 26p, 54o, 56e). It is `position: sticky`, so it sits in
  * the flow at the end of the content: the content above it never needs bottom padding of its own,
- * because the bar occupies exactly that space. It rides above the on-screen keyboard through
+ * because the bar occupies exactly that space. `margin-block-start: auto` docks it to the bottom of
+ * a short page too, when its parent is a flex column at least as tall as the scrolling area (the
+ * parent's own `gap` sets the space above it). It rides above the on-screen keyboard through
  * `--_cinder-keyboard-inset` (keyboard-inset.ts), clears the home indicator through
  * `env(safe-area-inset-bottom)`, and publishes its own height as `--_cinder-docked-action-bar-height`
  * (docked-bar-height.ts) so the toast region sits above it.
+ *
+ * The default is a flush strip with only a top border (row 26p: the phone decision bar). The
+ * `card` variant is the bordered, rounded, raised card the run page draws on a wide screen
+ * (row 56e).
  * ======================================== */
 
   .cinder-docked-action-bar {
@@ -21,13 +27,19 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-1-5);
-    margin-block-start: var(--cinder-space-4);
+    margin-block-start: auto;
     padding: var(--cinder-space-2-5);
     padding-block-end: max(var(--cinder-space-2-5), env(safe-area-inset-bottom));
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
+    border: 0;
+    border-block-start: 1px solid var(--cinder-border);
+    border-radius: 0;
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
+  }
+
+  .cinder-docked-action-bar[data-cinder-variant='card'] {
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
     box-shadow: 0 -4px 16px light-dark(oklch(0% 0 0 / 0.08), oklch(0% 0 0 / 0.4));
   }
 
@@ -78,6 +90,20 @@
     color: var(--cinder-text-muted);
   }
 
+  /* An off bar mutes its field: the muted fill and text of a disabled control, with the rule kept,
+   * so the field reads as paused beside the inert buttons (row 56e). The page makes the field
+   * read-only. */
+  .cinder-docked-action-bar[data-cinder-off] .cinder-input.cinder-input,
+  .cinder-docked-action-bar[data-cinder-off] .cinder-textarea.cinder-textarea {
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-docked-action-bar[data-cinder-off] .cinder-input::placeholder,
+  .cinder-docked-action-bar[data-cinder-off] .cinder-textarea::placeholder {
+    color: var(--cinder-text-muted);
+  }
+
   /* Every button and field in the bar is a full 44px target on touch (row 04u) and in a narrow bar
    * (row 26p: the bar at 375px has equal-width 44px Deny and Approve whatever the pointer). The
    * selectors repeat the controls' own attribute and class so they outrank the compact desktop
@@ -100,13 +126,24 @@
       flex: 1 1 100%;
     }
 
+    /* The actions wrap onto further lines before they would overflow the bar, each taking an even
+     * share of its line. An equal pair (Deny, Approve) keeps one line. */
     .cinder-docked-action-bar__actions {
       flex: 1 1 100%;
+      flex-wrap: wrap;
     }
 
     .cinder-docked-action-bar__actions > * {
-      flex: 1 1 0;
+      flex: 1 1 8rem;
       min-inline-size: 0;
+    }
+
+    .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions {
+      flex-wrap: nowrap;
+    }
+
+    .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions > * {
+      flex: 1 1 0;
     }
 
     .cinder-docked-action-bar .cinder-button[data-cinder-size],

@@ -130,6 +130,18 @@ describe('Button icon-only ghost CSS contract', () => {
     expectColorMixBackgroundHasFallback(ghostDangerBlock);
   });
 
+  test('a quiet icon-only ghost rests as the bare glyph, after the resting chrome it replaces (row 02r)', () => {
+    const source = readButtonSource();
+    const quietSelector =
+      ".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'][data-cinder-quiet]";
+    const block = readCssRuleBlock(source, quietSelector);
+    expectDeclaration(block, 'background', 'transparent');
+    expectDeclaration(block, 'border-color', 'transparent');
+    expect(source.indexOf(quietSelector)).toBeGreaterThan(
+      source.indexOf(".cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'] {"),
+    );
+  });
+
   test('loading icon-only ghost-danger preserves resting chrome', () => {
     const source = readButtonSource();
 

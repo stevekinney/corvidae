@@ -30,7 +30,7 @@
   required
   presentation="picker"
   placeholder="Pick a workflow"
-  options={[{ value: 'chat', label: 'Chat with an agent', meta: 'built in' }]}
+  options={[{ value: 'chat', label: 'Chat with an agent', suffix: 'built in' }]}
   loadError={{
     title: 'Couldn’t load workflows.',
     description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',

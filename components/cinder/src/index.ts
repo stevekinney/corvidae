@@ -377,7 +377,10 @@ export { default as Divider } from './components/divider/index.ts';
 export type { DividerOrientation, DividerProps, DividerTone } from './components/divider/index.ts';
 
 export { default as DockedActionBar } from './components/docked-action-bar/index.ts';
-export type { DockedActionBarProps } from './components/docked-action-bar/index.ts';
+export type {
+  DockedActionBarProps,
+  DockedActionBarVariant,
+} from './components/docked-action-bar/index.ts';
 
 export { default as Drawer } from './components/drawer/index.ts';
 export type { DrawerPlacement, DrawerProps, DrawerSize } from './components/drawer/index.ts';

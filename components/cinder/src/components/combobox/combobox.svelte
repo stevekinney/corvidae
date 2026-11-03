@@ -706,7 +706,12 @@
 
   /** Accessible name of an option: its text lines joined, so a reader hears the reason a row is off. */
   function optionName(option: ComboboxOption<T>): string | undefined {
-    const parts = [option.label, option.code, option.description, option.meta].filter(Boolean);
+    const parts = [
+      option.suffix ? `${option.label} · ${option.suffix}` : option.label,
+      option.code,
+      option.description,
+      option.meta,
+    ].filter(Boolean);
     return parts.length > 1 ? parts.join(', ') : undefined;
   }
 </script>
@@ -759,7 +764,11 @@
     {/if}
     <span class="cinder-combobox__option-text">
       <span class="cinder-combobox__option-heading">
-        <span class="cinder-combobox__option-label">{option.label}</span>
+        <span class="cinder-combobox__option-label"
+          >{option.label}{#if option.suffix}<span class="cinder-combobox__option-suffix"
+              >{` · ${option.suffix}`}</span
+            >{/if}</span
+        >
         {#if option.code}
           <code class="cinder-combobox__option-code">{option.code}</code>
         {/if}

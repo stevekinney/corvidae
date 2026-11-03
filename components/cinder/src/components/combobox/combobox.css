@@ -353,6 +353,12 @@
     color: var(--cinder-text-default);
   }
 
+  /* Muted words after the name on its own line (an option's suffix), plain even in the chosen row. */
+  .cinder-combobox__option-suffix {
+    font-weight: var(--cinder-font-normal);
+    color: var(--cinder-text-muted);
+  }
+
   .cinder-combobox__option-description {
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);

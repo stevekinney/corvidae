@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Ghost variant in a bordered row';
   export const description =
-    'variant="ghost" has no border or fill at rest, a neutral tint on hover and while open, the quiet focus ring around the whole control, and keeps its chevron. Inside a bordered container the controls align to the composer’s 10px text inset and read as one surface.';
+    'variant="ghost" has no border or fill at rest, a neutral tint on hover and while open, the quiet focus ring around the whole control, and keeps its chevron. Inside a bordered container the controls align to the composer’s 10px text inset and read as one surface. At phone width the row wraps, and a control that still does not fit shortens its value with an ellipsis instead of running past the border.';
 </script>
 
 <script lang="ts">
@@ -33,7 +33,7 @@
   <div style="padding-block: var(--cinder-space-2); color: var(--cinder-text-muted)">
     Message the agent…
   </div>
-  <div style="display: flex; align-items: center; gap: var(--cinder-space-1)">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--cinder-space-1)">
     <Select
       id="ghost-model"
       label="Model"

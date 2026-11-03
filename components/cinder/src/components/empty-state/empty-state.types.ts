@@ -14,8 +14,11 @@ export type EmptyStateAlign = 'center' | 'start';
  * - `'blocked'`: a condition the person can fix keeps the view from showing anything. An amber
  *   disc with a warning glyph.
  * - `'not-found'`: the thing asked for doesn't exist. A neutral disc with a magnifying glass.
+ * - `'disabled'`: a setting the person chose (a disabled plugin) holds the content back, which is
+ *   not a warning. A neutral disc with a plug.
  */
-export type EmptyStateKind = 'first-use' | 'filtered' | 'done' | 'blocked' | 'not-found';
+export type EmptyStateKind =
+  'first-use' | 'filtered' | 'done' | 'blocked' | 'not-found' | 'disabled';
 
 /** Scale of an empty state: `'default'` fills a page region, `'compact'` fits a tab or panel. */
 export type EmptyStateSize = 'default' | 'compact';
@@ -40,7 +43,7 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   align?: EmptyStateAlign;
   /**
-   * Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked or not found).
+   * Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked, not found or disabled).
    * Every kind renders the `action` snippet; `'filtered'` also adds a secondary "Clear filters"
    * button before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'`
    * a quiet `Link`, and `'filtered'` the Clear filters button alone.

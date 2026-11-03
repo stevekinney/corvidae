@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Top bar icon buttons';
   export const description =
-    'Notifications and quick settings as 32px icon-only buttons. Each has an aria-label, the notifications label carries the unread count, and hover, focus and pressed are distinct; focus uses the shared quiet ring.';
+    'Notifications and quick settings as 32px icon-only buttons. They rest as the bare glyph (quiet). Each has an aria-label, the notifications label carries the unread count, and hover, focus and pressed are distinct; focus uses the shared quiet ring.';
 </script>
 
 <script lang="ts">
@@ -14,14 +14,14 @@
 
 <div class="example-preview-row">
   <span style="position: relative; display: inline-flex">
-    <Button iconOnly variant="ghost" aria-label={`Notifications, ${unread} unread`}>
+    <Button iconOnly quiet variant="ghost" aria-label={`Notifications, ${unread} unread`}>
       {#snippet leadingIcon()}<Bell size={16} aria-hidden="true" />{/snippet}
     </Button>
     <span style="position: absolute; inset-block-start: -4px; inset-inline-end: -4px">
       <Badge variant="accent" size="xs">{unread}</Badge>
     </span>
   </span>
-  <Button iconOnly variant="ghost" aria-label="Quick settings">
+  <Button iconOnly quiet variant="ghost" aria-label="Quick settings">
     {#snippet leadingIcon()}<SlidersHorizontal size={16} aria-hidden="true" />{/snippet}
   </Button>
 </div>

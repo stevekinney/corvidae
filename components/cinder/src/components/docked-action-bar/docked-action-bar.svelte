@@ -14,7 +14,7 @@
    * @rationale Nearest alternative: Drawer footer — a footer belongs to an overlay; the docked bar belongs to the page and scrolls with its container.
    * @related stale-region, toast-region, button
    */
-  export type { DockedActionBarProps } from './docked-action-bar.types.ts';
+  export type { DockedActionBarProps, DockedActionBarVariant } from './docked-action-bar.types.ts';
 </script>
 
 <script lang="ts">
@@ -28,6 +28,7 @@
 
   let {
     label = 'Actions',
+    variant = 'strip',
     off = false,
     reason,
     equalActions = false,
@@ -57,6 +58,7 @@
   class={classNames('cinder-docked-action-bar', customClassName)}
   role="group"
   aria-label={label}
+  data-cinder-variant={variant === 'card' ? 'card' : 'strip'}
   data-cinder-off={off ? '' : undefined}
   data-cinder-equal-actions={equalActions ? '' : undefined}
 >

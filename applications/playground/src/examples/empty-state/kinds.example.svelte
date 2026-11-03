@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Every kind';
   export const description =
-    'Why a view is empty sets the disc: first use is accent with a primary button, filtered is neutral with a secondary Clear filters, done is green with a quiet link, blocked is amber and not-found is neutral.';
+    'Why a view is empty sets the disc: first use is accent with a primary button, filtered is neutral with a secondary Clear filters, done is green with a quiet link, blocked is amber, not-found is neutral and disabled is neutral with a plug, for content a setting you chose holds back.';
 </script>
 
 <script lang="ts">
@@ -38,6 +38,11 @@
   </EmptyState>
   <EmptyState
     kind="blocked"
+    title="Connect a model provider"
+    description="Model agents can't answer until one is connected."
+  />
+  <EmptyState
+    kind="disabled"
     title="2 agents are unavailable"
     description="Their plugin, Demo, is disabled. Enable it and restart to chat with them."
   />

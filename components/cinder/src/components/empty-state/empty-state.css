@@ -35,7 +35,8 @@
 
   /* The glyph sits in a 48px tinted disc. The disc is neutral by default (a filtered or
    * not-found state), accented for a first-use state that invites an action, success-tinted once
-   * everything is done, and amber for a blocked state the person can recover from. */
+   * everything is done, and amber for a blocked state the person can recover from. A disabled state
+   * (a setting the person chose) keeps the neutral disc, because it is not a warning. */
   .cinder-empty-state-icon {
     display: flex;
     align-items: center;
