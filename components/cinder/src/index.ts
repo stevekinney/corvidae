@@ -347,9 +347,11 @@ export type {
 
 export { default as DataTable } from './components/data-table/index.ts';
 export type {
+  DataTableCellContext,
   DataTableColumn,
   DataTableProps,
   DataTableRow,
+  DataTableRowContext,
   DataTableSelectionMode,
 } from './components/data-table/index.ts';
 
@@ -625,6 +627,7 @@ export type { LocaleProviderProps, TextDirection } from './components/locale-pro
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
+  ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,
   ListDetailSelectionLocation,

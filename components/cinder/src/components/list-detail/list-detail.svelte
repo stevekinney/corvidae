@@ -21,6 +21,7 @@
    * @a11yNote J and K are ignored while focus is in a text field, a menu, a listbox, a combobox or a dialog, so typing is never taken.
    */
   export type {
+    ListDetailListBodyContext,
     ListDetailProps,
     ListDetailRowContext,
     ListDetailSelectionLocation,
@@ -38,6 +39,7 @@
   import { EmptyState } from '../empty-state/index.ts';
   import { ChevronLeft } from '../icons/index.ts';
   import { ResizablePanels } from '../resizable-panels/index.ts';
+  import { Skeleton } from '../skeleton/index.ts';
   import type {
     ResizablePanelDefinition,
     ResizablePanelsResizeEvent,
@@ -67,6 +69,10 @@
     key,
     label,
     list,
+    listBody,
+    groupBy,
+    loading = false,
+    loadingLabel = 'Loading',
     detail,
     empty,
     listEmpty,
@@ -77,8 +83,8 @@
     selectionLocation,
     storageKey,
     storage,
-    pushBelow = 900,
-    defaultListWidth = 320,
+    pushBelow = 600,
+    defaultListWidth = 280,
     backLabel = 'Back',
     detailLabel = 'Details',
     emptyTitle = 'Nothing selected',
@@ -87,8 +93,22 @@
     ...rest
   }: ListDetailProps<T> = $props();
 
-  const ROW_SELECTOR = 'li[data-cinder-list-detail-key]';
-  const ROW_KEY_ATTRIBUTE = 'data-cinder-list-detail-key';
+  // A row is an `<li>` ListDetail draws, or any element a `listBody` draws that carries the row's
+  // key in `data-cinder-row-id` (a DataTable row does).
+  const ROW_KEY_ATTRIBUTES = ['data-cinder-list-detail-key', 'data-cinder-row-id'] as const;
+  const ROW_SELECTOR = ROW_KEY_ATTRIBUTES.map((attribute) => `[${attribute}]`).join(', ');
+  // How long the placeholder waits before it appears, so a fast load never flickers.
+  const LOADING_DELAY_MILLISECONDS = 300;
+  // How long a load runs before the placeholder says it is taking longer than usual.
+  const STILL_LOADING_MILLISECONDS = 10_000;
+
+  function rowKeyAttribute(row: Element): string | null {
+    for (const attribute of ROW_KEY_ATTRIBUTES) {
+      const value = row.getAttribute(attribute);
+      if (value !== null) return value;
+    }
+    return null;
+  }
 
   let rootElement: HTMLDivElement | undefined = $state();
   let rootWidth = $state(0);
@@ -198,12 +218,13 @@
   }
 
   function rowElementFor(rowKey: string): HTMLElement | undefined {
-    return rowElements().find((row) => row.getAttribute(ROW_KEY_ATTRIBUTE) === rowKey);
+    return rowElements().find((row) => rowKeyAttribute(row) === rowKey);
   }
 
   function rowKeyOf(target: EventTarget | null): string | null {
     if (!(target instanceof Element)) return null;
-    return target.closest(ROW_SELECTOR)?.getAttribute(ROW_KEY_ATTRIBUTE) ?? null;
+    const row = target.closest(ROW_SELECTOR);
+    return row ? rowKeyAttribute(row) : null;
   }
 
   function isRowPrimaryAction(target: EventTarget | null): boolean {
@@ -215,7 +236,9 @@
     const row = rowElementFor(rowKey);
     const control =
       row?.querySelector<HTMLElement>('.cinder-selectable-row__primary') ??
-      row?.querySelector<HTMLElement>('a[href], button:not(:disabled)');
+      row?.querySelector<HTMLElement>('a[href], button:not(:disabled)') ??
+      // A table row that opens on Enter takes focus itself.
+      (row?.hasAttribute('tabindex') ? row : null);
     control?.focus();
   }
 
@@ -279,23 +302,41 @@
     {#if header}
       <header class="cinder-list-detail__header">{@render header()}</header>
     {/if}
-    <div class="cinder-list-detail__rows">
-      <DataList {items} {key} {...listEmpty ? { empty: listEmpty } : {}}>
-        {#snippet children(item)}
-          {@const rowKey = key(item)}
-          <li
-            class="cinder-list-detail__row"
-            data-cinder-list-detail-key={rowKey}
-            data-cinder-active={activeKey === rowKey ? '' : undefined}
-          >
-            {@render list(item, {
-              selected: selectedKey === rowKey,
-              active: activeKey === rowKey,
-              open: () => void open(rowKey),
-            })}
-          </li>
-        {/snippet}
-      </DataList>
+    <div class="cinder-list-detail__rows" aria-busy={loading ? 'true' : undefined}>
+      {#if loading}
+        <Skeleton
+          variant="list"
+          rows={5}
+          label={loadingLabel}
+          delay={LOADING_DELAY_MILLISECONDS}
+          stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+          class="cinder-list-detail__loading"
+        />
+      {:else if listBody}
+        {@render listBody({ items, selectedKey, open: (rowKey) => void open(rowKey) })}
+      {:else}
+        <DataList
+          {items}
+          {key}
+          {...groupBy ? { groupBy } : {}}
+          {...listEmpty ? { empty: listEmpty } : {}}
+        >
+          {#snippet children(item)}
+            {@const rowKey = key(item)}
+            <li
+              class="cinder-list-detail__row"
+              data-cinder-list-detail-key={rowKey}
+              data-cinder-active={activeKey === rowKey ? '' : undefined}
+            >
+              {@render list?.(item, {
+                selected: selectedKey === rowKey,
+                active: activeKey === rowKey,
+                open: () => void open(rowKey),
+              })}
+            </li>
+          {/snippet}
+        </DataList>
+      {/if}
     </div>
   </section>
 {/snippet}
@@ -314,7 +355,11 @@
       </div>
     {/if}
     <div class="cinder-list-detail__detail-body">
-      {#if selectedEntry}
+      {#if loading}
+        <div class="cinder-list-detail__loading-detail" aria-hidden="true">
+          <Skeleton variant="card" lines={5} delay={LOADING_DELAY_MILLISECONDS} />
+        </div>
+      {:else if selectedEntry}
         {@render detail(selectedEntry.item)}
       {:else if empty}
         {@render empty()}

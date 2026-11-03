@@ -26,6 +26,7 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import { lengthToPixels } from './table.length.ts';
   import { setTableContext } from './table.context.ts';
   import type { TableProps } from './table.types.ts';
 
@@ -36,7 +37,7 @@
   } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
-  import { overflowShadow } from '../../utilities/attachments.ts';
+  import { overflowFadeEdges } from '../../utilities/attachments.ts';
 
   let {
     sort = $bindable(),
@@ -44,7 +45,7 @@
     stickyHeader = false,
     density = 'comfortable',
     selectable = false,
-    scrollable = false,
+    scrollable = true,
     scrollContainerProps,
     stackBelow = PHONE_VIEWPORT_BREAKPOINT,
     class: className,
@@ -54,7 +55,55 @@
 
   const stackBreakpoint = $derived(readViewportBreakpoint(stackBelow, 'Table', 'stackBelow'));
   const narrowViewport = useViewportBelow(() => stackBreakpoint);
-  const stacked = $derived(narrowViewport.current);
+
+  // A table stacks only while one of its cells holds a control, and by the width of the box it sits
+  // in, not the window: a table in a narrow column stacks in a wide window, and a table in a wide
+  // column does not stack in a narrow one. The container is the table's parent (the scroll wrapper
+  // when `scrollable`). Until the container has a measurable width (the server, the first paint,
+  // an engine with no layout) the viewport stands in for it.
+  let controlRegistrations = 0;
+  let hasControls = $state(false);
+  let containerNarrow = $state<boolean | undefined>(undefined);
+  const stacked = $derived(hasControls && (containerNarrow ?? narrowViewport.current));
+
+  function registerControls(): () => void {
+    // A plain counter, so registering inside a cell's effect never reads the state it writes.
+    controlRegistrations += 1;
+    hasControls = true;
+    return () => {
+      controlRegistrations -= 1;
+      hasControls = controlRegistrations > 0;
+    };
+  }
+
+  const measureContainer: Attachment<HTMLTableElement> = (table) => {
+    const container = table.parentElement;
+    const breakpoint = stackBreakpoint;
+    // Only a table with a control in it can stack, so only that table watches its container.
+    if (
+      !container ||
+      breakpoint === undefined ||
+      !hasControls ||
+      typeof ResizeObserver === 'undefined'
+    ) {
+      containerNarrow = undefined;
+      return;
+    }
+    const threshold = lengthToPixels(breakpoint, table);
+    const update = (width: number): void => {
+      containerNarrow = threshold === undefined || !(width > 0) ? undefined : width < threshold;
+    };
+    update(container.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      update(entry ? entry.contentRect.width : container.getBoundingClientRect().width);
+    });
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      containerNarrow = undefined;
+    };
+  };
 
   // A stacked cell shows its column's header text above its value. The header
   // row is the one source of those names, so copy each header cell's text onto
@@ -218,6 +267,7 @@
       return selectable;
     },
     onSortChange,
+    registerControls,
   });
 </script>
 
@@ -230,6 +280,7 @@
     data-cinder-selectable={selectable || undefined}
     data-cinder-stacked={stacked || undefined}
     style:--cinder-table-caption-height={normalizedCaption ? `${captionHeight}px` : undefined}
+    {@attach measureContainer}
     {@attach labelCellsWhileStacked}
   >
     {#if normalizedCaption}
@@ -243,12 +294,12 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
     {...scrollContainerProps}
-    class={classNames('cinder-table-scroll', wrapperClassName)}
+    class={classNames('cinder-table-scroll', 'cinder-_scroll-fade-inline-end', wrapperClassName)}
     role={wrapperRole}
     aria-label={wrapperAriaLabel}
     aria-labelledby={wrapperAriaLabelledBy}
     tabindex={wrapperTabindex}
-    {@attach overflowShadow('inline')}
+    {@attach overflowFadeEdges('inline')}
   >
     {@render table()}
   </div>

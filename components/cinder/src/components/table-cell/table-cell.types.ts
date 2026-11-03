@@ -12,13 +12,18 @@ export type TableCellProps = Omit<HTMLTdAttributes, 'class' | 'align' | 'scope'>
    */
   truncate?: boolean;
   /**
-   * Marks a cell that holds a form control (a select, an input, a button). The
-   * control fills the cell, so every control in the column shares the one width
-   * the column has, and the cell keeps a minimum width so the control stays
-   * usable. Set it on every cell in the column.
+   * Marks a cell that holds a form control (a select, an input, a button). The control fills the
+   * cell, so every control in the column shares the one width the column has, and the cell keeps a
+   * minimum width so the control stays usable. Set it on every cell in the column. `'fit'` is for a
+   * control that keeps its own size, such as a checkbox or a switch: the cell does not stretch it or
+   * set a minimum width.
+   *
+   * A table stacks its rows on a narrow container only while a cell has this set. When it
+   * stacks, the control cells move to a line of their own under the other cells, each at least 44px
+   * tall, and a `'fit'` cell shows its column's header text beside the control.
    * @default false
    */
-  controls?: boolean;
+  controls?: boolean | 'fit';
   /** Visual alignment for numeric columns. @default "left" */
   align?: 'left' | 'center' | 'right';
   /**

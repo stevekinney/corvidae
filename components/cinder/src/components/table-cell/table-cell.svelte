@@ -17,6 +17,7 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
@@ -30,6 +31,13 @@
     children,
     ...rest
   }: TableCellProps = $props();
+
+  // A cell with a control tells its table, which stacks its rows only while one is mounted.
+  const tableContext = tryGetTableContext();
+  $effect(() => {
+    if (!controls) return;
+    return tableContext?.registerControls?.();
+  });
 
   // A truncating cell shows the full text on hover. Unless the caller supplied
   // a `title`, read it from the rendered text so a snippet child needs no
@@ -57,7 +65,7 @@
   class={classNames('cinder-table__cell', className)}
   data-cinder-align={align}
   data-cinder-truncate={truncate || undefined}
-  data-cinder-controls={controls || undefined}
+  data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
 >
   {#if truncate}
     <span class="cinder-table__cell-text" title={title ?? renderedText} {@attach readRenderedText}>

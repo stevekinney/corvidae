@@ -47,7 +47,7 @@
     stickyHeader = false,
     density,
     selectable = false,
-    scrollable = false,
+    scrollable = true,
     scrollContainerProps,
     stackBelow,
     includeHeaderSelectionState = true,

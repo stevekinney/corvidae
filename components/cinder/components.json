@@ -1671,7 +1671,7 @@
       "exportName": "DataTable",
       "category": "data-display",
       "status": "alpha",
-      "purpose": "Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from a columns array and a rows array.",
+      "purpose": "Data-driven convenience wrapper over the compositional Table family that renders a full semantic table from columns and rows, with custom cells, day groups, a footer and rows that open a detail pane.",
       "tags": ["table", "data"],
       "useWhen": [
         "Rendering a structured dataset where columns and rows are known at runtime (e.g. API responses, config-driven dashboards).",
@@ -1679,7 +1679,7 @@
       ],
       "avoidWhen": [
         {
-          "reason": "You need custom cell rendering, interactive cells, nested components, or column spanning — use the compositional Table family directly."
+          "reason": "You need nested components in header cells or column spanning — use the compositional Table family directly."
         },
         {
           "reason": "You need fully custom cell or row composition — use Table directly."

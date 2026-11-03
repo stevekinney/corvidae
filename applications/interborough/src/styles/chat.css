@@ -232,6 +232,8 @@
 
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-chats {
+  /* The open chat lays out its own header, timeline and composer edge to edge. */
+  --cinder-list-detail-detail-padding: 0;
   block-size: max(28rem, calc(100dvh - 8rem));
   min-inline-size: 0;
   border: 1px solid var(--cinder-border-muted);

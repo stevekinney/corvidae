@@ -13,7 +13,7 @@ Purpose: Data-driven convenience wrapper over the compositional Table family tha
 
 ## Avoid when
 
-- You need custom cell rendering, interactive cells, nested components, or column spanning — use the compositional Table family directly.
+- You need nested components in header cells, or column spanning — use the compositional Table family directly.
 - You need `aria-selected` on rows — DataTable keeps native table semantics and exposes selection through checkboxes instead.
 
 ## Keyboard and focus
@@ -31,8 +31,9 @@ When `resizable` is enabled, each column separator is a focusable `role="separat
 | Sort button | Enter or Space | Applies the next sort state and updates `aria-sort` on its header cell. |
 | Column separator | ArrowLeft / ArrowRight | Decreases or increases the column width by 10 pixels within its bounds. |
 | Column separator | Other keys | No resize action; focus remains on the separator. |
-| Virtualized row | ArrowUp / ArrowDown | Moves roving focus to the previous or next rendered row. |
-| Virtualized row | Home / End | Moves roving focus to the first or last row. |
+| Virtualized row, or row that opens | ArrowUp / ArrowDown | Moves roving focus to the previous or next rendered row. |
+| Virtualized row, or row that opens | Home / End | Moves roving focus to the first or last row. |
+| Row that opens | Enter or Space | Opens the row, when `selectable` is `none`. A click on a control inside the row does not open it. |
 
 ### Assistive technology and review outcome
 
