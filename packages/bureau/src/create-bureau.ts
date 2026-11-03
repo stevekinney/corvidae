@@ -104,6 +104,7 @@ import {
   readDurableRunResult,
   humanInputSchemaOf,
   sessionOwnerOf,
+  type ScheduleTick,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -440,6 +441,7 @@ import {
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
+import { isScheduleTickRunId, startScheduleTick } from './schedule-tick';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { createWorkflowTools } from './workflow-tools';
@@ -2616,8 +2618,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records);
-  // COR-2009: a plugin that did not load needs attention from the moment its loading was tried.
-  const pluginsComposedAt = Date.now();
+  // COR-2009: when this Bureau started. A plugin that did not load needs attention from here, and
+  // a missed window that began before it is the catch-up after the host was off.
+  const bureauStartedAt = Date.now();
   // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
   // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
   const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
@@ -3107,7 +3110,20 @@ async function constructBureau<const D extends AgentDefinitions>(
           // COR-1721: the composition listens from the moment the engine exists, and replays here.
           runtime.durable.missedFires,
           (scheduleId) => getSchedule(scheduleId),
-          (event) => emitter.dispatch(event),
+          (event) => {
+            emitter.dispatch(event);
+            // COR-2009: the notice is also a schedule tick, the Bureau's own run.
+            void recordScheduleTick(event.scheduleId, (scheduleName) => ({
+              event: 'missed-runs',
+              scheduleId: event.scheduleId,
+              scheduleName,
+              missedRuns: event.missedCount,
+              reason: event.reason,
+              since: event.windowStart,
+              until: event.windowEnd,
+              whileStopped: event.windowStart < bureauStartedAt,
+            }));
+          },
           diagnose,
         ),
       );
@@ -10929,6 +10945,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         // COR-1527: an instance of a workflow file carries a document's trigger, not an agent
         // run's input, so the classification below would read it as a foreign run and cancel it.
         // The workflow runtime registered its revision before this recovery; the engine resumes it.
+        // COR-2009: a schedule tick carries what it records, and is the Bureau's own; the engine
+        // resumes it too. Its id says what it is, so this costs no read.
+        if (isScheduleTickRunId(handle.id)) continue;
         if (workflowRuntime !== undefined) {
           const instance = await durable.engine.get(handle.id);
           if (instance !== null && (await workflowRuntime.isWorkflowType(instance.type))) continue;
@@ -19636,6 +19655,30 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   }
 
+  /**
+   * COR-2009 — starts the schedule tick that records what the scheduler did, naming the schedule by
+   * its description as it is now. Best effort: a tick that cannot be recorded is diagnosed and never
+   * holds up the fire or the notice it records.
+   */
+  async function recordScheduleTick(
+    scheduleId: string,
+    tickOf: (scheduleName: string | null) => ScheduleTick,
+  ): Promise<void> {
+    const engine = runtime.durable?.engine;
+    if (engine === undefined) return;
+    try {
+      const schedule = await engine.getSchedule(scheduleId);
+      await startScheduleTick(engine, tickOf(schedule?.description ?? null));
+    } catch (error) {
+      diagnose({
+        level: 'warn',
+        scope: 'schedules',
+        message: `[bureau] Could not record the schedule tick of schedule "${scheduleId}":`,
+        cause: error,
+      });
+    }
+  }
+
   async function getSchedule(
     scheduleId: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | null | undefined> {
@@ -21910,7 +21953,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         missed: (scheduleId) => schedules.missed(scheduleId),
         hooks: async () => (await hooksInstance?.hooks.list()) ?? [],
         plugins: () => pluginRegistry.plugins.list(),
-        pluginsComposedAt,
+        pluginsComposedAt: bureauStartedAt,
         ...(options.attention === undefined ? {} : { contributed: options.attention }),
       }),
     reviews,
@@ -22314,6 +22357,17 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] Could not record the task of schedule fire "${fire.runId}":`,
         cause: error,
       });
+    }
+    // COR-2009: an agent schedule that came due is a schedule tick, the Bureau's own run. A fire a
+    // person started with `schedules.runNow` did not come due, so it records none.
+    const { scheduleId } = fire;
+    if (scheduleId !== undefined && fire.manual !== true) {
+      await recordScheduleTick(scheduleId, (scheduleName) => ({
+        event: 'came-due',
+        scheduleId,
+        scheduleName,
+        fireRunId: fire.runId,
+      }));
     }
     const trail = auditTrailInstance;
     if (trail === undefined) return;

@@ -831,17 +831,18 @@ describe('disconnecting a provider', () => {
 
   test('lists no model provider connected under Needs attention once the last key is removed (COR-2009)', async () => {
     const { host } = await startConnected();
-    expect((await host.bureau.attention()).items).toEqual([]);
+    const connected = await host.bureau.attention();
+    expect(connected.items).toEqual([]);
 
     await host.providers.disconnect('openai');
     // Anthropic still offers a model, so nothing needs attention yet.
-    expect((await host.bureau.attention()).items).toEqual([]);
+    const oneLeft = await host.bureau.attention();
+    expect(oneLeft.items).toEqual([]);
     await host.providers.disconnect('anthropic');
 
     const attention = await host.bureau.attention();
-    const [removed] = (
-      await host.bureau.audit.query({ type: 'provider.disconnected', limit: 100 })
-    ).records.toReversed();
+    const removals = await host.bureau.audit.query({ type: 'provider.disconnected', limit: 100 });
+    const [removed] = removals.records.toReversed();
     expect(attention.items).toEqual([
       {
         kind: 'no-provider',
@@ -864,8 +865,12 @@ describe('disconnecting a provider', () => {
 
     engine.dispatchEvent(new StorageSizeReportedEvent(1_600));
 
-    await waitUntil(async () => (await host.bureau.attention()).count === 1);
-    expect((await host.bureau.attention()).items).toEqual([
+    await waitUntil(async () => {
+      const attention = await host.bureau.attention();
+      return attention.count === 1;
+    });
+    const firing = await host.bureau.attention();
+    expect(firing.items).toEqual([
       {
         kind: 'alert',
         area: 'storage',

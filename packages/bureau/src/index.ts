@@ -575,6 +575,7 @@ export type {
   PersonTaskOrigin,
   ScheduleTaskOrigin,
   StartTaskOrigin,
+  SystemTaskOrigin,
   TaskOrigin,
   TaskOriginKind,
   TaskPersonSurface,

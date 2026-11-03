@@ -3,7 +3,11 @@
  * the Bureau finds, the one order they are listed in, the checks counted from the same list, and the
  * `bureau.health.attention` operation over a real Bureau with a firing `storage.size` alert.
  */
-import { StorageSizeReportedEvent, type AlertStateSnapshot } from '@lostgradient/weft';
+import {
+  StorageSizeReportedEvent,
+  type AlertStateSnapshot,
+  type ScheduleSummary,
+} from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -50,7 +54,7 @@ function storageAlert(): AlertStateSnapshot {
   };
 }
 
-function dailySummary(lastFireAt = Date.UTC(2026, 9, 29, 9, 0)) {
+function dailySummary(lastFireAt = Date.UTC(2026, 9, 29, 9, 0)): ScheduleSummary {
   return {
     id: 'daily-summary',
     workflowType: 'agentRun',
@@ -59,15 +63,16 @@ function dailySummary(lastFireAt = Date.UTC(2026, 9, 29, 9, 0)) {
     overlap: 'skip',
     backfill: false,
     timeZone: 'America/Chicago',
-    revisionPolicy: 'latest',
+    revisionPolicy: 'active-at-fire',
     revision: 1,
     createdAt: Date.UTC(2026, 9, 1),
     updatedAt: Date.UTC(2026, 9, 1),
     lastFireAt,
     missedFireCount: 4,
     skippedCount: 0,
+    queuedRuns: [],
     nextFireAt: Date.UTC(2026, 10, 3, 9, 0),
-  } as const;
+  };
 }
 
 function webhook(

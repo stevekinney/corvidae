@@ -33,6 +33,7 @@ import {
   RUN_ENGINE_WORKFLOW_TYPES,
   type RunEngineWorkflowType,
 } from './run-engine-workflow-types';
+import { createScheduleTickWorkflow } from './schedule-tick-workflow';
 import { createStorageActivities } from './storage-activities';
 
 /**
@@ -428,6 +429,7 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
     [RUN_ENGINE_WORKFLOW_TYPE.agentRun]: options.runWorkflow,
     [RUN_ENGINE_WORKFLOW_TYPE.durableHeartbeatTick]: createDurableHeartbeatTickWorkflow(),
     [RUN_ENGINE_WORKFLOW_TYPE.goalRun]: options.goalWorkflow,
+    [RUN_ENGINE_WORKFLOW_TYPE.scheduleTick]: createScheduleTickWorkflow(),
   };
   const workflows: Record<string, AnyWorkflowDefinition> = {};
   for (const type of RUN_ENGINE_WORKFLOW_TYPES) {

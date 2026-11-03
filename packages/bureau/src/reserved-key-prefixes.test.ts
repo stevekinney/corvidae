@@ -36,6 +36,8 @@ const NOT_STORAGE_KEYS = new Set([
   'REVIEW_AUDIT_OUTBOX_NAMESPACE',
   // COR-2009: the text a generated hook signing secret starts with (`whsec_`), not a storage key.
   'HOOK_SIGNING_SECRET_PREFIX',
+  // COR-2009: the start of a schedule tick's run id, a workflow id, not a storage key.
+  'SCHEDULE_TICK_ID_PREFIX',
 ]);
 
 /**

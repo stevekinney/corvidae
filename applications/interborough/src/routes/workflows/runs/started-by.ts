@@ -20,6 +20,8 @@ export const STARTED_BY_LABELS = {
   agent: 'An agent',
   goal: 'A goal',
   parent: 'A workflow',
+  // COR-2009: Interborough's own runs, such as the schedule tick.
+  system: 'Interborough',
 } as const satisfies Record<StartedBy, string>;
 
 function isStartedBy(kind: string): kind is StartedBy {
