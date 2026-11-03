@@ -1,4 +1,10 @@
-import type { AgentSession, JSONValue, SessionStore, Store } from '@lostgradient/operative';
+import type {
+  AgentSession,
+  JSONValue,
+  RuntimeServices,
+  SessionStore,
+  Store,
+} from '@lostgradient/operative';
 import { createAgentSession, SESSION_OWNER_METADATA_KEY } from '@lostgradient/operative';
 import {
   Conversation,
@@ -26,6 +32,11 @@ export interface SessionPersistenceDependencies {
   readonly sleep: (milliseconds: number) => Promise<void>;
   readonly diagnose: DiagnosticSink;
   readonly serializeError: (error: unknown) => string;
+  /**
+   * The runtime a new session is stamped on (COR-2009), so a chat's `createdAt` reads the Bureau's
+   * clock like its `updatedAt`; the process's own services when absent.
+   */
+  readonly runtime?: RuntimeServices | undefined;
 }
 
 function messagesAreEqual(
@@ -318,6 +329,7 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
           id: sessionId,
           agentName: agentName ?? BUREAU_AGENT_NAME,
           conversationHistory: conversation.current,
+          runtime: dependencies.runtime,
         });
       // COR-1577 — a session is bound to the agent of the run that created it, so a later save
       // never changes it. `tasks.start` refuses a run that names another agent before it reaches

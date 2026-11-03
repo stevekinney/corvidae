@@ -6118,6 +6118,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     sleep: sessionPersistenceSleep,
     diagnose,
     serializeError: serializeUnknownError,
+    runtime: runtimeServices,
   });
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
 

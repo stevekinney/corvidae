@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog.ts';
 import { createBureau } from './create-bureau.ts';
+import { waitForTaskState } from './test';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -49,5 +50,32 @@ describe('a Bureau on an injected clock', () => {
       timeZone: 'UTC',
     });
     expect(summary?.nextFireAt).toBe(Date.parse('2026-10-29T09:00:00.000Z'));
+  });
+
+  it('stamps a new chat’s creation and its last update on that clock', async () => {
+    const real = createDefaultRuntimeServices();
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        default: createAgent({
+          generate: async () => ({ content: 'Hello.', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+      maintenance: 'manual',
+      runtime: {
+        ...real,
+        clock: { now: () => BUREAU_NOW, nowISO: () => new Date(BUREAU_NOW).toISOString() },
+      },
+    });
+    cleanups.push(() => bureau.dispose());
+
+    const run = await bureau.tasks.start('default', 'Say hello', { contextId: 'clock-chat' });
+    await waitForTaskState(bureau, run.id);
+    const session = await bureau.contexts.get('clock-chat');
+    expect(session?.createdAt).toBe(new Date(BUREAU_NOW).toISOString());
+    expect(session?.updatedAt).toBe(new Date(BUREAU_NOW).toISOString());
   });
 });

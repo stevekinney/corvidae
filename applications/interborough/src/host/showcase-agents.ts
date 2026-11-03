@@ -93,15 +93,61 @@ export const SHOWCASE_WORKFLOW_AUTHOR_TOOLS: Readonly<Record<string, ToolApprova
  * order answers from it, and Tool runner refunds an order's whole total.
  */
 export const SHOWCASE_ORDERS: Readonly<
-  Record<string, { readonly totalCents: number; readonly delivered: string }>
+  Record<
+    string,
+    {
+      readonly totalCents: number;
+      readonly delivered: string;
+      /**
+       * What Tool runner says as it asks to refund the order, if anything. A run's last answer is
+       * what its agent remembers, so this is the memory the ask leaves (PageMemory: "Order 4471
+       * arrived with a cracked mug; the customer asked for a refund.", from Tool runner at 10:42 AM).
+       */
+      readonly note?: string;
+    }
+  >
 > = {
   '4468': { totalCents: 2650, delivered: 'Oct 27' },
-  '4471': { totalCents: 4200, delivered: 'Oct 31' },
+  '4471': {
+    totalCents: 4200,
+    delivered: 'Oct 31',
+    note: 'Order 4471 arrived with a cracked mug; the customer asked for a refund.',
+  },
   '4472': { totalCents: 1850, delivered: 'Oct 30' },
 };
 
 /** Why every refund in the sample world is owed. */
 export const SHOWCASE_REFUND_REASON = 'Arrived damaged';
+
+/**
+ * What Tool runner answers a message that names no order: the start of a plan it never finishes in
+ * the sample world, because the server restarts while it answers ("Rename the billing tables").
+ */
+export const SHOWCASE_TOOL_RUNNER_PLAN =
+  'I’ll start with the invoices table, then the payments table, and check that every query still works.';
+
+/** A moment in Tool runner's script, handed to {@link ShowcasePacing.toolRunner} before it answers. */
+export interface ShowcaseToolRunnerMoment {
+  /** What Tool runner is about to do: look an order up, ask to refund it, or answer in words. */
+  readonly step: 'lookup' | 'refund-ask' | 'answer';
+  /** The order the turn's message names, when it names one. */
+  readonly orderId: string | undefined;
+  /** The text of the turn's message. */
+  readonly request: string;
+  /** Aborted when the run is: a pace that waits must stop waiting then. */
+  readonly signal: AbortSignal | undefined;
+}
+
+/**
+ * How the sample world's seed paces the scripted agents (`fixtures/sample-world-seed.ts`): Tool
+ * runner awaits {@link ShowcasePacing.toolRunner} before each answer, so the seed can move its clock
+ * inside a run (the 4471 ask comes 20 s after its run starts) or hold an answer until the server
+ * stops. Without pacing every answer comes at once.
+ */
+export interface ShowcasePacing {
+  /** Awaited before each Tool runner answer; a rejection fails the answer, as an aborted one does. */
+  readonly toolRunner?: (moment: ShowcaseToolRunnerMoment) => void | Promise<void>;
+}
 
 /** How Tool runner asks for each of its tools: Lookup order Never, Issue refund Always, Triage refunds On changes. */
 export const SHOWCASE_TOOL_APPROVAL: Readonly<Record<string, ToolApprovalMode>> = {
@@ -204,13 +250,6 @@ function asksOnlyToLookUp(text: string): boolean {
   return /look\s*up/i.test(text) && !/refund/i.test(text);
 }
 
-/** What Tool runner says once a refund's result is in its turn. */
-export function toolRunnerRefundReply(orderId: string, refunded: boolean): string {
-  return refunded
-    ? `Order ${orderId} was refunded to the original card.`
-    : `The refund of order ${orderId} wasn’t issued.`;
-}
-
 /** What Tool runner says after looking an order up when it was asked only to look. */
 export function toolRunnerLookupReply(orderId: string): string {
   const order = SHOWCASE_ORDERS[orderId];
@@ -222,35 +261,52 @@ export function toolRunnerLookupReply(orderId: string): string {
 /**
  * Tool runner's script: it answers from where the turn has got to, because the run that follows an
  * approval is a new run on the same session. It looks the order the message names up, then (unless
- * it was asked only to look) asks to refund the order's total; once the refund's result is in the
- * turn it says what became of it. Each turn's calls carry the turn's number, because a tool call
- * identifier names one call in a conversation.
+ * it was asked only to look) asks to refund the order's total, saying the order's note as it asks;
+ * once the refund's result is in the turn its run ends with no reply ("Run finished · no reply"), so
+ * nothing more is remembered. A message that names no order gets {@link SHOWCASE_TOOL_RUNNER_PLAN}.
+ * Each turn's calls carry the turn's number, because a tool call identifier names one call in a
+ * conversation. `pacing` is awaited before each answer.
  */
-export function showcaseToolRunnerGenerate(): GenerateFunction {
-  return async ({ conversation }) => {
+export function showcaseToolRunnerGenerate(pacing: ShowcasePacing = {}): GenerateFunction {
+  return async ({ conversation, signal }) => {
     const messages = conversation.getMessages();
     const lastUser = messages.findLastIndex((message) => message.role === 'user');
     const request = textOf(messages[lastUser]?.content);
     const turn = messages.slice(lastUser + 1);
     const turnNumber = messages.filter((message) => message.role === 'user').length;
-    const orderId = orderNamedIn(request) ?? '4471';
+    const orderId = orderNamedIn(request);
+    const pace = async (step: ShowcaseToolRunnerMoment['step']) =>
+      pacing.toolRunner?.({ step, orderId, request, signal });
+    if (orderId === undefined) {
+      await pace('answer');
+      return replyResponse(SHOWCASE_TOOL_RUNNER_PLAN);
+    }
     const lookupId = `showcase-lookup-order-${String(turnNumber)}`;
     const refundId = `showcase-issue-refund-${String(turnNumber)}`;
     const resultOf = (callId: string) =>
       turn.find((message) => message.toolResult?.callId === callId)?.toolResult;
     const refund = resultOf(refundId);
     if (refund !== undefined && refund.outcome !== 'action_required') {
-      return replyResponse(toolRunnerRefundReply(orderId, refund.outcome === 'success'));
+      await pace('answer');
+      return replyResponse('');
     }
     if (resultOf(lookupId) !== undefined) {
-      if (asksOnlyToLookUp(request)) return replyResponse(toolRunnerLookupReply(orderId));
-      const cents = SHOWCASE_ORDERS[orderId]?.totalCents ?? 0;
-      return callResponse(
-        'issue-refund',
-        { orderId, cents, reason: SHOWCASE_REFUND_REASON },
-        refundId,
-      );
+      if (asksOnlyToLookUp(request)) {
+        await pace('answer');
+        return replyResponse(toolRunnerLookupReply(orderId));
+      }
+      const order = SHOWCASE_ORDERS[orderId];
+      await pace('refund-ask');
+      return {
+        ...callResponse(
+          'issue-refund',
+          { orderId, cents: order?.totalCents ?? 0, reason: SHOWCASE_REFUND_REASON },
+          refundId,
+        ),
+        content: order?.note ?? '',
+      };
     }
+    await pace('lookup');
     return callResponse('lookup-order', { orderId }, lookupId);
   };
 }
@@ -354,9 +410,9 @@ export function showcaseWorkflowAuthor(tools: BureauOwnTools) {
 /**
  * The six built-in agents, fresh, so no two hosts share a script's position. The showcase host
  * passes them as `HostOptions.extraAgents`: Workflow author among those built from the Bureau's
- * own tools.
+ * own tools. `pacing` paces Tool runner's script (the sample world's seed passes it).
  */
-export function showcaseBuiltInAgents(): ExtraAgents {
+export function showcaseBuiltInAgents(pacing: ShowcasePacing = {}): ExtraAgents {
   return {
     agents: {
       assistant: createAgent({
@@ -377,7 +433,7 @@ export function showcaseBuiltInAgents(): ExtraAgents {
         name: 'tool-runner',
         description: 'Looks an order up, then asks for approval to refund it.',
         examples: ['Please refund order 4471, it arrived damaged.'],
-        generate: showcaseToolRunnerGenerate(),
+        generate: showcaseToolRunnerGenerate(pacing),
         toolbox: createShowcaseToolRunnerToolbox(),
         stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       }),

@@ -20,11 +20,16 @@ import {
   orderNamedIn,
   SHOWCASE_AGENT_IDENTIFIERS,
   SHOWCASE_ASSISTANT_REPLY,
+  SHOWCASE_ORDERS,
   SHOWCASE_TOOL_APPROVAL,
+  SHOWCASE_TOOL_RUNNER_PLAN,
   SHOWCASE_WORKFLOW_AUTHOR_REPLY,
   SHOWCASE_WORKFLOW_AUTHOR_TOOLS,
   showcaseBuiltInAgents,
+  showcaseToolRunnerGenerate,
   toolRunnerLookupReply,
+  type ShowcasePacing,
+  type ShowcaseToolRunnerMoment,
 } from './showcase-agents.ts';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
@@ -43,10 +48,10 @@ async function run(bureau: Bureau<AgentDefinitions>, agent: string, message: str
   return task.result();
 }
 
-async function start(): Promise<Bureau<AgentDefinitions>> {
+async function start(pacing?: ShowcasePacing): Promise<Bureau<AgentDefinitions>> {
   const directory = await mkdtemp(join(tmpdir(), 'showcase-agents-workflows-'));
   directories.push(directory);
-  const builtIns = showcaseBuiltInAgents();
+  const builtIns = showcaseBuiltInAgents(pacing);
   const bureau = await createBureau<AgentDefinitions>({
     agents: { ...builtIns.agents },
     ...(builtIns.withBureauTools === undefined
@@ -129,6 +134,54 @@ describe('the showcase built-in agents', () => {
     ]);
     const pending = result.steps.at(-1)?.results[0];
     expect(pending?.pendingApproval).toBeDefined();
+  });
+
+  test('Tool runner says the order’s note as it asks, the answer it remembers, and is paced before each answer', async () => {
+    const moments: ShowcaseToolRunnerMoment[] = [];
+    const bureau = await start({ toolRunner: (moment) => void moments.push(moment) });
+    const result = await run(
+      bureau,
+      'tool-runner',
+      'Please refund order 4471, it arrived damaged.',
+    );
+    expect(result.steps.at(-1)?.content).toBe(SHOWCASE_ORDERS['4471']?.note);
+    expect(moments.map(({ step, orderId }) => [step, orderId])).toEqual([
+      ['lookup', '4471'],
+      ['refund-ask', '4471'],
+    ]);
+  });
+
+  test('Tool runner ends a refund’s run with no reply once the refund is decided', async () => {
+    const generate = showcaseToolRunnerGenerate();
+    const conversation = {
+      getMessages: () => [
+        { role: 'user', content: 'Please refund order 4472, $18.50.' },
+        {
+          role: 'assistant',
+          toolResult: { callId: 'showcase-lookup-order-1', outcome: 'success' },
+        },
+        {
+          role: 'assistant',
+          toolResult: { callId: 'showcase-issue-refund-1', outcome: 'success' },
+        },
+      ],
+    };
+    const response = await generate({ conversation } as unknown as Parameters<typeof generate>[0]);
+    expect(response).toEqual({ content: '', toolCalls: [] });
+  });
+
+  test('Tool runner answers a message that names no order with its plan, once its pace lets it', async () => {
+    const answering = Promise.withResolvers<void>();
+    const bureau = await start({
+      toolRunner: async (moment) => {
+        if (moment.step === 'answer') await answering.promise;
+      },
+    });
+    const task = await bureau.tasks.start('tool-runner', 'Rename the billing tables');
+    answering.resolve();
+    const result = await task.result();
+    expect(callsOf(result)).toEqual([]);
+    expect(result.content).toBe(SHOWCASE_TOOL_RUNNER_PLAN);
   });
 
   test('Tool runner only looks an order up when that is all it is asked', async () => {

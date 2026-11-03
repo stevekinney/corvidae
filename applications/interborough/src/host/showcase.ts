@@ -24,7 +24,7 @@ import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SHOWCASE_WORKFLOW_FILES } from '../../fixtures/showcase-content.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { WORKFLOW_DIRECTORY_NAME, type HostOptions } from './host.ts';
-import { showcaseBuiltInAgents } from './showcase-agents.ts';
+import { showcaseBuiltInAgents, type ShowcasePacing } from './showcase-agents.ts';
 import { fakeProvider, writeProviderHome } from './stub-provider.ts';
 
 /** The flag the development entry takes to run the showcase host. */
@@ -106,14 +106,14 @@ export function showcaseProviderResolver(): NonNullable<HostOptions['resolveProv
  * What a showcase host is started with beside its environment: the stub provider's resolver, the
  * sample world's built-in agents and tools as extra agents, and its nightly clean-up in the sample
  * world's Central time, whatever zone the machine is in. The development entry (`dev.ts`), the
- * end-to-end showcase host and the showcase host test all start it with these.
+ * end-to-end showcase host and the showcase host test all start it with these; the sample world's
+ * seed passes `pacing` to pace the scripted agents.
  */
-export function showcaseHostOptions(): Pick<
-  HostOptions,
-  'extraAgents' | 'resolveProviderGenerate' | 'nightlyCleanUp'
-> {
+export function showcaseHostOptions(
+  pacing: ShowcasePacing = {},
+): Pick<HostOptions, 'extraAgents' | 'resolveProviderGenerate' | 'nightlyCleanUp'> {
   return {
-    extraAgents: showcaseBuiltInAgents(),
+    extraAgents: showcaseBuiltInAgents(pacing),
     resolveProviderGenerate: showcaseProviderResolver(),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
   };
