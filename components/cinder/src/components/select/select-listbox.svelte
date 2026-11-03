@@ -257,9 +257,8 @@
       (next) => {
         value = next;
       },
-      (next) => {
-        if (next !== previous) onValueChange?.(next);
-      },
+      onValueChange,
+      { value: previous },
     );
     open = false;
     triggerElement?.focus();

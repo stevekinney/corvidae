@@ -36,7 +36,11 @@
     border: 1px solid var(--cinder-border-inverse);
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-snug);
-    white-space: nowrap;
+    /* A short label stays on one line (max-content); a long one, such as a full page title,
+     * wraps at the max-width and breaks a word that is longer than the chip, so it is never cut. */
+    inline-size: max-content;
+    white-space: normal;
+    overflow-wrap: anywhere;
 
     pointer-events: none;
     user-select: none;

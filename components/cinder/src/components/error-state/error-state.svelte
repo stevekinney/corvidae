@@ -32,6 +32,7 @@
     tone = 'danger',
     onRetry,
     retryLabel = 'Try again',
+    retryIcon,
     secondaryAction,
     icon,
     headingLevel = 2,
@@ -92,7 +93,11 @@
         {#if onRetry}
           <Button variant="primary" label={retryLabel} onclick={() => onRetry()}>
             {#snippet leadingIcon()}
-              <RefreshCw />
+              {#if retryIcon}
+                {@render retryIcon()}
+              {:else}
+                <RefreshCw />
+              {/if}
             {/snippet}
           </Button>
         {/if}

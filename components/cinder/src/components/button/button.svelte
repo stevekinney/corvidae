@@ -230,7 +230,8 @@
    * Wrap the consumer's onclick so it doesn't fire while the button is inert (loading, or
    * `aria-disabled`). `preventDefault()` blocks
    * the browser's default navigation on anchor left-clicks; stripping `href` in the template
-   * handles middle-click / Ctrl-click new-tab paths. Not calling `stopPropagation()` on
+   * (for every inert anchor, whoever set `aria-disabled`) handles middle-click, Ctrl-click,
+   * "Open in new tab" and drag. Not calling `stopPropagation()` on
    * purpose — unrelated ancestor handlers (analytics, form listeners) should still see the
    * event; only the consumer's own button handler is skipped.
    */
@@ -307,9 +308,9 @@
   <a
     bind:this={element}
     {...anchorAttributes}
-    href={loading || staleInert ? undefined : href}
-    role={staleInert ? 'link' : undefined}
-    tabindex={loading ? -1 : staleInert ? 0 : anchorTabIndex}
+    href={inert ? undefined : href}
+    role={inert && !loading ? 'link' : undefined}
+    tabindex={loading ? -1 : inert ? 0 : anchorTabIndex}
     class={mergedClassName}
     {...dataAttributes}
     data-cinder-button-group-item={buttonGroupItemAttribute}

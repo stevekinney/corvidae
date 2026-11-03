@@ -125,6 +125,7 @@
         if (element.value !== next) element.value = next ?? '';
       },
       onValueChange,
+      { value },
     );
     (consumerOnChange as ((event: Event) => void) | undefined)?.(event);
   }

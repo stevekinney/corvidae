@@ -233,6 +233,19 @@ describe('ErrorState actions', () => {
     expect(buttons[1]?.getAttribute('data-cinder-variant')).toBe('secondary');
   });
 
+  test('retryIcon replaces the refresh glyph on the primary button', async () => {
+    const { default: RetryIconFixture } =
+      await import('../../test/fixtures/error-state-retry-icon-fixture.svelte');
+    const { getAllByRole, getByTestId } = render(RetryIconFixture);
+    const [primary, secondary] = getAllByRole('button');
+    expect(primary?.textContent?.trim()).toBe('New chat');
+    expect(primary?.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(primary?.contains(getByTestId('pencil'))).toBe(true);
+    expect(primary?.querySelectorAll('svg').length).toBe(1);
+    expect(secondary?.textContent?.trim()).toBe('Back to chats');
+    expect(secondary?.getAttribute('data-cinder-variant')).toBe('secondary');
+  });
+
   test('a secondaryAction renders without a retry button', async () => {
     const { default: SecondaryActionFixture } =
       await import('../../test/fixtures/error-state-secondary-action-fixture.svelte');

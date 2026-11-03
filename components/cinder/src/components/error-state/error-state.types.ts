@@ -57,6 +57,11 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    */
   retryLabel?: string;
   /**
+   * Replaces the refresh glyph on the primary button. Use it when the primary action is not a
+   * retry, such as a "New chat" button with a pencil on a not-found page. Decorative.
+   */
+  retryIcon?: Snippet;
+  /**
    * Heading level for the title element.
    * @default 2
    */

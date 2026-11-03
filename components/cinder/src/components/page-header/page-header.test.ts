@@ -297,6 +297,25 @@ describe('PageHeader', () => {
       const describedBy = create.getAttribute('aria-describedby') ?? '';
       expect(document.getElementById(describedBy)?.textContent).toBe('Off until the list loads');
     });
+
+    test('an inert href create action has no href to open in a new tab or drag', () => {
+      const { container } = render(PageHeader, {
+        props: {
+          title: 'Workflows',
+          createAction: {
+            label: 'New workflow',
+            href: '/workflows/new',
+            inertReason: 'Off until the list loads',
+          },
+        },
+      });
+      const create = requiredInstance(
+        container.querySelector('.cinder-page-header__create'),
+        HTMLAnchorElement,
+      );
+      expect(create.hasAttribute('href')).toBe(false);
+      expect(create.getAttribute('aria-disabled')).toBe('true');
+    });
   });
 
   describe('long title', () => {

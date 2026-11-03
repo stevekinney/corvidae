@@ -320,6 +320,17 @@ describe('Button inert (aria-disabled) state', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(onclick).not.toHaveBeenCalled();
   });
+
+  test('a consumer aria-disabled link drops its href but stays a focusable link', () => {
+    const { container } = render(Button, {
+      props: { label: 'Go', href: '/x', 'aria-disabled': 'true' },
+    });
+    const anchor = container.querySelector('a')!;
+    expect(anchor.hasAttribute('href')).toBe(false);
+    expect(anchor.getAttribute('role')).toBe('link');
+    expect(anchor.getAttribute('tabindex')).toBe('0');
+    expect(anchor.getAttribute('aria-disabled')).toBe('true');
+  });
 });
 
 describe('Button ghost-danger disabled state', () => {

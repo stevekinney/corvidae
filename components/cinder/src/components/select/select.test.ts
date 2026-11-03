@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import * as matchers from '@testing-library/jest-dom/matchers';
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, mock, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
@@ -39,7 +39,7 @@ function idsIn(container: Element): string[] {
 
 describe('Select', () => {
   test('a native pick the request hook refuses is put back on the control', async () => {
-    const onValueChange = (() => {}) as (value: string) => void;
+    const onValueChange = mock((_value: string) => {});
     const { container } = render(Select, {
       props: {
         id: 'native-refuse',
@@ -54,6 +54,7 @@ describe('Select', () => {
     select.value = 'c';
     await fireEvent.change(select);
     expect(select.value).toBe('a');
+    expect(onValueChange).not.toHaveBeenCalled();
   });
 
   test('renders <select id={id}> with one <option> per option in options array', () => {

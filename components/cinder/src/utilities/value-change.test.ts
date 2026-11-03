@@ -69,4 +69,43 @@ describe('commitValue', () => {
     expect(committed).toBeNull();
     expect(value).toBeNull();
   });
+
+  test('does not notify when the request hook returns the previous value', () => {
+    const notifications: string[] = [];
+    commitValue(
+      'next',
+      () => 'before',
+      () => {},
+      (next) => notifications.push(next),
+      { value: 'before' },
+    );
+
+    expect(notifications).toEqual([]);
+  });
+
+  test('notifies when the final value differs from the previous one', () => {
+    const notifications: string[] = [];
+    commitValue(
+      'next',
+      undefined,
+      () => {},
+      (next) => notifications.push(next),
+      { value: 'before' },
+    );
+
+    expect(notifications).toEqual(['next']);
+  });
+
+  test('a refusal that returns null does not notify when null was already held', () => {
+    const notifications: Array<string | null> = [];
+    commitValue<string | null>(
+      'next',
+      () => null,
+      () => {},
+      (next) => notifications.push(next),
+      { value: null },
+    );
+
+    expect(notifications).toEqual([]);
+  });
 });

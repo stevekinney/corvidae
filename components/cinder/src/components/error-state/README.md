@@ -19,7 +19,7 @@ The words follow one rule on every page: say what failed in plain words, whether
 />
 ```
 
-The retry button is the primary action, with a refresh glyph, and the only primary on the page. Add a second action with the `secondaryAction` snippet, and a line of progress with `retryStatus` (it is not a live region, so a countdown never announces itself every second):
+The retry button is the primary action, with a refresh glyph, and the only primary on the page. When the primary action is not a retry (a "New chat" button on a not-found page), give it its own words with `retryLabel` and its own glyph with the `retryIcon` snippet. Add a second action with the `secondaryAction` snippet, and a line of progress with `retryStatus` (it is not a live region, so a countdown never announces itself every second):
 
 ```svelte
 <script lang="ts">
@@ -90,6 +90,7 @@ Flat — no disc and no padding of its own, for a card or tab whose container al
 | `variant` | `"default"` \| `"flat"` | no | `"default"` | Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title, the description, the progress line, then the actions, centred in the region it fills. `'flat'` renders the same text as a start-aligned block with no disc and no padding of its own, for a card or tab whose container already pads it. |
 | `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. The default is a warning triangle for the `'danger'` tone and a magnifying glass for `'neutral'`. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetry` | `(opaque)` | no | — | Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action. Not expressible in JSON Schema; see the component types for the signature. |
+| `retryIcon` | `(opaque)` | no | — | Replaces the refresh glyph on the primary button. Use it when the primary action is not a retry, such as a "New chat" button with a pencil on a not-found page. Decorative. Not expressible in JSON Schema; see the component types for the signature. |
 | `secondaryAction` | `(opaque)` | no | — | A second action rendered after the retry button, such as an "Open Health" link or a "Back to chats" button. Give it the secondary or ghost button variant so the retry button stays the only primary on the page. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

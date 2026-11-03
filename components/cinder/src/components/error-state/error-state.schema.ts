@@ -72,6 +72,12 @@ const schema = {
           "Called when the retry button is activated. The retry button renders only when this is given. It is the page's primary action.",
       },
       {
+        name: 'retryIcon',
+        reason: 'function-or-snippet',
+        description:
+          'Replaces the refresh glyph on the primary button. Use it when the primary action is not a\nretry, such as a "New chat" button with a pencil on a not-found page. Decorative.',
+      },
+      {
         name: 'secondaryAction',
         reason: 'function-or-snippet',
         description:
