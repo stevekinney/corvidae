@@ -1,6 +1,6 @@
 # Corvidae
 
-Corvidae is an internal [Bun](https://bun.sh/) workspace for agent runtimes, durable workflows, and [Svelte](https://svelte.dev/) interfaces. [Turborepo](https://turborepo.com/docs) coordinates local quality checks and application builds. The libraries are private, consume one another through `workspace:*` (Bun's protocol for linking another local workspace), and export [TypeScript](https://www.typescriptlang.org/) source directly.
+Corvidae is a public [Bun](https://bun.sh/) workspace for agent runtimes, durable workflows, and [Svelte](https://svelte.dev/) interfaces. [Turborepo](https://turborepo.com/docs) coordinates local quality checks and application builds. The libraries are private, consume one another through `workspace:*` (Bun's protocol for linking another local workspace), and export [TypeScript](https://www.typescriptlang.org/) source directly.
 
 ## Working locally
 
@@ -11,7 +11,7 @@ bun install --frozen-lockfile
 bun run validate
 ```
 
-The local quality commands are `bun run lint`, `bun run typecheck`, `bun run test`, `bun run build`, and `bun run format:check`. `bun run audit` checks high-severity dependency advisories through `scripts/check-audit-exceptions.ts`. The only tolerated advisories are the entries in `scripts/audit-exceptions.ts`; each needs an owner decision, a tracking issue, a review-by date, and the exact dependency chains that may reach the package. The guard fails when an advisory stops reporting, when the package becomes reachable any other way, or when the review-by date passes, so never add a bare `--ignore` to the audit command. The internal workspace has no release or deployment pipeline and installs no Git hooks. The tooling that transforms source for the public repositories lives in the separate private `stevekinney/corvidae-mirror` repository, not here.
+The local quality commands are `bun run lint`, `bun run typecheck`, `bun run test`, `bun run build`, and `bun run format:check`. `bun run audit` checks high-severity dependency advisories through `scripts/check-audit-exceptions.ts`. The only tolerated advisories are the entries in `scripts/audit-exceptions.ts`; each needs an owner decision, a tracking issue, a review-by date, and the exact dependency chains that may reach the package. The guard fails when an advisory stops reporting, when the package becomes reachable any other way, or when the review-by date passes, so never add a bare `--ignore` to the audit command. Corvidae owns its application release workflows and can publish verified application archives through GitHub Releases. The workspace installs no Git hooks. The separate private `stevekinney/corvidae-mirror` repository owns the source transforms for the public package mirrors.
 
 Weft's [PostgreSQL](https://www.postgresql.org/) integration tests start and dispose local clusters. Install PostgreSQL and make `initdb` and `pg_ctl` available on `PATH` before running the complete repository test suite. Those tests use temporary loopback-only databases and require no external credentials.
 
@@ -62,7 +62,7 @@ Turbo hashes upstream library source through transit tasks—dependency-only tas
 
 The root browser fixtures and Weft UI's browser host share `buildBrowser` and the Svelte compiler from `@lostgradient/testing`, while each host owns its own server and routes. Chat-room checks generate and cache their SvelteKit configuration and types. Root browser fixture tests generate and cache a manifest plus the explicit list of fixture modules they can load lazily; no upstream library build is required.
 
-`bun run test:self` checks the workspace architecture, including source exports, dependency cycles, declared imports, catalog use, cache invalidation, build ownership, and the absence of publishing and hook installation. These checks keep the consolidation rules executable.
+`bun run test:self` checks the workspace architecture, including source exports, dependency cycles, declared imports, catalog use, cache invalidation, build ownership, and the absence of publishing and hook setup during dependency installation. These checks keep the consolidation rules executable.
 
 The [migration inventory](./MIGRATION.md) records source revisions, package mappings, dependency edges, removal decisions, and validation evidence. It is the completion record for this consolidation.
 
