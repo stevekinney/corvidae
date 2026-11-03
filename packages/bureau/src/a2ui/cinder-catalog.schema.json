@@ -41,6 +41,10 @@
             "indeterminate": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Bound indeterminate state. Mutually exclusive with `checked` visually."
+            },
+            "mutating": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Marks a checkbox that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, a press is undone, and the region's reason describes it.\nIt returns by itself when the region stops being stale."
             }
           },
           "required": ["component", "label"]
@@ -358,6 +362,10 @@
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Whether the toggle is currently checked. Bindable — defaults to false."
             },
+            "description": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Short visible text beside the label that describes the switch, such as the file that defines\nit (\"Defined in workflows/release-notes.json\"). It is wired into `aria-describedby`."
+            },
             "disabled": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Prevents interaction when true. Sets `disabled` attribute."
@@ -365,6 +373,14 @@
             "labelVisible": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Whether the label is visibly rendered. Set `false` for icon-only or\ninline contexts — it stays the accessible name."
+            },
+            "mutating": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, ignoring the press, and described by the region's reason.\nIt returns by itself when the region stops being stale."
+            },
+            "readonly": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Shows the setting without letting a press change it, for a value that something else owns,\nsuch as a schedule defined in a file. The switch stays focusable, announces\n`aria-readonly=\"true\"`, ignores a press on the track or the label, and still submits its value\nwith a native form (unlike `disabled`)."
             }
           },
           "required": ["component", "label"]
