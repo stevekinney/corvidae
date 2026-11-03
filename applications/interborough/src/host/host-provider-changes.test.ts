@@ -882,6 +882,23 @@ describe('disconnecting a provider', () => {
     ]);
   });
 
+  test('passes its storage size report interval to the Bureau’s engine (COR-2009)', async () => {
+    const directory = await home();
+    await storeKey(directory, 'anthropic-api-key', KEY_A);
+    // A report every 10 ms, where the engine's own default is a minute, shows the setting arrived.
+    const host = await startAt(directory, { storageSizeReportIntervalMilliseconds: 10 });
+    const engine = host.bureau.durableEngine();
+    if (engine === undefined) throw new Error('The host composed no durable engine.');
+    const reported: number[] = [];
+    engine.addEventListener(StorageSizeReportedEvent.type, (event) => {
+      if (event instanceof StorageSizeReportedEvent) reported.push(event.sizeBytes);
+    });
+
+    await waitUntil(() => reported.length >= 2);
+
+    expect(reported.every((size) => size > 0)).toBe(true);
+  });
+
   test('connecting again brings the models back with the edits that were kept', async () => {
     const { host } = await startConnected();
     await host.providers.disconnect('anthropic');

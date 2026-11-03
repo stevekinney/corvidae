@@ -1,16 +1,17 @@
 /**
- * Every route in the route table, and the states the showcase seed gives a few of them, at 375, 768
- * and 1280 pixels, holding believable content (`fixtures/showcase-seed.ts`) instead of the stress
- * seed's 300-character words (`responsive.spec.ts`). The design review (`.agents/skills/design-review`)
- * captures these screens for layout, hierarchy and density.
+ * Every route in the route table, and the states the sample world gives a few of them, at 375, 768
+ * and 1280 pixels, holding the sample world (`fixtures/sample-world-seed.ts`, which the end-to-end
+ * server seeds before the showcase host listens) instead of the stress seed's 300-character words
+ * (`responsive.spec.ts`). The design review (`.agents/skills/design-review`) captures these screens
+ * for layout, hierarchy and density.
  *
- * The specification seeds the host once, opens each address, waits until the page's frame is `ready`
- * and the outlet has stopped changing, asserts no frame is `empty`, and captures the page
- * (`design-review-capture.ts`) when a capture directory is set. It removes what it seeded afterwards.
+ * The specification reads the sample world's identifiers once, opens each address, waits until the
+ * page's frame is `ready` and the outlet has stopped changing, asserts no frame is `empty`, and
+ * captures the page (`design-review-capture.ts`) when a capture directory is set.
  */
 import type { Page } from '@playwright/test';
 
-import { removeShowcase, seedShowcase, type ShowcaseSeed } from '../../fixtures/showcase-seed.ts';
+import { readSampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 import { routes } from '../../src/app/routes.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
@@ -20,7 +21,6 @@ import { showcaseAddresses, showcaseVariantNames, showcaseVariants } from './sho
 const WIDTHS = [375, 768, 1280] as const;
 const HEIGHT = 900;
 
-let seed: ShowcaseSeed;
 let addresses: Readonly<Record<string, string>>;
 
 /** Waits until the outlet's text and busy state have stopped changing for three reads in a row. */
@@ -44,12 +44,8 @@ async function untilQuiet(page: Page): Promise<void> {
 }
 
 test.beforeAll(async () => {
-  seed = await seedShowcase(E2E_SHOWCASE_URL);
-  addresses = { ...showcaseAddresses(seed), ...showcaseVariants(seed) };
-});
-
-test.afterAll(async () => {
-  if (seed !== undefined) await removeShowcase(E2E_SHOWCASE_URL, seed);
+  const world = await readSampleWorldRecords(E2E_SHOWCASE_URL);
+  addresses = { ...showcaseAddresses(world), ...showcaseVariants(world) };
 });
 
 test('gives every route in the table an address', () => {

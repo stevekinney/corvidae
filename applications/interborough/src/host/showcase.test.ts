@@ -1,31 +1,25 @@
 /**
- * The showcase development host's pieces (`showcase.ts`): the flag, the home it defaults to, and
- * what it writes into that home so the demo plugin is on and the model picker has models.
+ * The showcase development host's pieces (`showcase.ts`): the flag, the home it defaults to, the
+ * sample world's workflow files, and what a showcase host is started with.
  */
-import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, expect, test } from 'bun:test';
 
 import {
   SHOWCASE_ORDER_REFUND_FILE,
   SHOWCASE_ORDER_REFUND_VALID_FILE,
   SHOWCASE_RELEASE_NOTES_FILE,
   SHOWCASE_TRIAGE_INBOX_FILE,
-  SHOWCASE_WORKFLOW_FILES,
 } from '../../fixtures/showcase-content.ts';
 import { SHOWCASE_AGENT_IDENTIFIERS } from './showcase-agents.ts';
 import {
-  prepareShowcaseHome,
+  SHOWCASE_ALERTS,
   SHOWCASE_FLAG,
-  SHOWCASE_MODELS,
+  SHOWCASE_STORAGE_WARNING_BYTES,
   showcaseEnvironment,
+  showcaseHookFetch,
   showcaseHostOptions,
   splitShowcaseFlag,
 } from './showcase.ts';
-
-const scratch = await mkdtemp(join(tmpdir(), 'interborough-showcase-test-'));
-afterAll(() => rm(scratch, { recursive: true, force: true }));
 
 describe('splitShowcaseFlag', () => {
   test('finds the flag anywhere and leaves the other arguments in order', () => {
@@ -67,28 +61,7 @@ describe('showcaseEnvironment', () => {
   });
 });
 
-describe('prepareShowcaseHome', () => {
-  test('turns the demo plugin on and gives the anthropic provider its models, and is safe to repeat', async () => {
-    const home = join(scratch, 'home');
-    await prepareShowcaseHome(home);
-    await prepareShowcaseHome(home);
-    const document = JSON.parse(await readFile(join(home, 'configuration.json'), 'utf8')) as {
-      plugins: Record<string, { enabled?: boolean; configuration?: { models: string[] } }>;
-    };
-    expect(document.plugins['demo']?.enabled).toBe(true);
-    expect(document.plugins['anthropic']?.configuration?.models).toEqual([...SHOWCASE_MODELS]);
-  });
-});
-
 describe('the sample world workflow files', () => {
-  test('are written into the home, byte for byte', async () => {
-    const home = join(scratch, 'workflow-files');
-    await prepareShowcaseHome(home);
-    for (const file of SHOWCASE_WORKFLOW_FILES) {
-      expect(await readFile(join(home, 'workflows', `${file.id}.json`), 'utf8')).toBe(file.text);
-    }
-  });
-
   test('Release notes is the one file in the extended format the Code tab shows', () => {
     const file = JSON.parse(SHOWCASE_RELEASE_NOTES_FILE.text) as {
       name: string;
@@ -128,10 +101,16 @@ describe('the sample world workflow files', () => {
     });
   });
 
-  test('Triage inbox is paused, and Order refund cannot be read past line 11', () => {
+  test('Triage inbox is paused, with Inbox triage as its trigger, and Order refund cannot be read past line 11', () => {
     expect(JSON.parse(SHOWCASE_TRIAGE_INBOX_FILE.text)).toMatchObject({
       name: 'triage-inbox',
       paused: true,
+      trigger: {
+        kind: 'schedule',
+        name: 'Inbox triage',
+        spec: '0 8 * * *',
+        timezone: 'America/Chicago',
+      },
     });
     expect(() => JSON.parse(SHOWCASE_ORDER_REFUND_FILE.text)).toThrow();
     const lines = SHOWCASE_ORDER_REFUND_FILE.text.split('\n');
@@ -167,5 +146,50 @@ describe('showcaseHostOptions', () => {
       ...Object.keys(options.extraAgents?.withBureauTools ?? {}),
     ]).toEqual([...SHOWCASE_AGENT_IDENTIFIERS]);
     expect(options.resolveProviderGenerate).toBeFunction();
+  });
+
+  test('loads Guardrails, Ollama and Voyage beside the workspace’s plugins', () => {
+    const names = (showcaseHostOptions().plugins ?? []).map((entry) => entry.descriptor.name);
+    expect(names).toEqual([
+      'anthropic',
+      'openai',
+      'gemini',
+      'typesafe',
+      'inspectors',
+      'demo',
+      'guardrails',
+      'ollama',
+      'voyage',
+    ]);
+  });
+
+  test('registers the goal checks as validators', () => {
+    const validators = showcaseHostOptions().extraAgents?.validators ?? [];
+    expect(validators.map((validator) => validator.identity.name)).toEqual([
+      'reply-says-hello',
+      'notes-mention-the-staging-fix',
+      'summary-lists-every-refund-waiting-for-approval',
+    ]);
+  });
+
+  test('fires a storage alert over 1 GB, with no periodic size report to resolve it', () => {
+    const options = showcaseHostOptions();
+    expect(SHOWCASE_STORAGE_WARNING_BYTES).toBe(1024 ** 3);
+    expect(options.alerts).toBe(SHOWCASE_ALERTS);
+    expect(SHOWCASE_ALERTS.rules).toEqual([
+      { metric: 'storage.size', threshold: SHOWCASE_STORAGE_WARNING_BYTES, action: 'webhook' },
+    ]);
+    expect(SHOWCASE_ALERTS.webhooks).toBeUndefined();
+    expect(options.storageSizeReportIntervalMilliseconds).toBe(0);
+  });
+
+  test('delivers hooks through a fetch that answers 200 itself and posts nowhere', async () => {
+    expect(showcaseHostOptions().hookFetch).toBe(showcaseHookFetch);
+    const response = await showcaseHookFetch('https://events.pagerduty.com/v2/enqueue', {
+      method: 'POST',
+      body: '{}',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('ok');
   });
 });

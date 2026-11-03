@@ -169,7 +169,8 @@ export async function waitForSettledRuns(
   let found: readonly EngineRun[] = [];
   await waitUntil(
     async () => {
-      found = (await engineRuns(host)).filter((run) => matches(run) && SETTLED.has(run.status));
+      const runs = await engineRuns(host);
+      found = runs.filter((run) => matches(run) && SETTLED.has(run.status));
       return found.length >= count;
     },
     { message: what },

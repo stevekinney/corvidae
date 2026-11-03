@@ -20,7 +20,7 @@ Exit 0 means at least one capture was written, 1 means none was, and 2 means bad
 
 ## The two data sets
 
-- Showcase (`fixtures/showcase-seed.ts`) is a normal day: six agents with their own descriptions and instructions (one with memories), chats of ordinary length (one of twelve messages, tool calls, an approval waiting and two decided, a question waiting, a picture attached, a failed run), three agent-authored workflows with runs that succeeded, failed, were cancelled and are still running, three schedules in three time zones (one paused), two hooks (one delivery succeeded, one failed), two goals, and the audit entries those leave. Judge layout, hierarchy and density from it. No word in it is longer than 40 characters, by a test.
+- Showcase (`fixtures/sample-world-seed.ts`) is the boards' sample world (`tmp/design-review/decisions.md`) at Monday, Nov 2, 10:45 AM: six built-in agents, five chats (two waiting on you, one ended by a restart), Tool runner's four versions and memories, three workflow files (Order refund can't load), four schedules, the twenty runs those and three goals left, five hooks, the GitHub tool source, the plugins' states, a firing storage alert, and the audit entries those leave. Judge layout, hierarchy and density from it. No word in its workflow files is longer than 40 characters, by a test.
 - Stress (`responsive.spec.ts`) is pathological on purpose: 300-character unbroken words, a 2,000-character storage key, review titles like "Refund wwww…". Judge overflow and truncation from it, and nothing else.
 
 The same showcase content loads into a running development host with `bun run dev -- --showcase` (below).

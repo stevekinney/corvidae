@@ -1,17 +1,20 @@
 /**
- * The showcase development host (`bun run dev -- --showcase`): a development host that holds
- * believable content, so a design review or a person can look at every page with data in it.
+ * The showcase development host (`bun run dev -- --showcase`): a development host that holds the
+ * sample world (`tmp/design-review/decisions.md`), so a design review or a person can look at every
+ * page with the boards' data in it.
  *
  * With `--showcase` the host runs on a home of its own (`tmp/interborough-showcase` in the
  * repository, or the directory `INTERBOROUGH_SHOWCASE_HOME` names). It ignores `INTERBOROUGH_HOME`,
- * because preparing the showcase home replaces its `configuration.json`, and a home set for everyday
- * use must never be rewritten by a flag. The sample world's built-in agents and tools
- * (`showcase-agents.ts`: Assistant, Echo, Tool runner, Request human input, Model switcher and
- * Workflow author) are registered by this host alone, as `HostOptions.extraAgents`. The demo plugin
- * is on, so its scripted agents (`demo:assistant` and the rest) are there to chat with too. The model catalog holds the stub provider's models (`stub-provider.ts`), whose
- * client answers every model call with a fixed reply and whose key is a fixture, so no real provider
- * key is ever used or read. Once the host listens, `fixtures/showcase-seed.ts` fills it over HTTP,
- * which the end-to-end showcase specification (`tests/e2e/showcase.spec.ts`) does the same way.
+ * because the sample world's seed (`fixtures/sample-world-seed.ts`) empties the showcase home and
+ * plays its story into it on every start, and a home set for everyday use must never be rewritten by
+ * a flag. The seed leaves the host running at Monday, Nov 2, a little after 10:45 AM on its offset
+ * clock, with real timers. The sample world's built-in agents and tools (`showcase-agents.ts`:
+ * Assistant, Echo, Tool runner, Request human input, Model switcher and Workflow author) are
+ * registered by this host alone, as `HostOptions.extraAgents`; the Demo plugin is off. The model
+ * catalog holds the stub provider's models (`stub-provider.ts`), whose client answers every model
+ * call with a fixed reply and whose key is a fixture, so no real provider key is ever used or read.
+ * The end-to-end showcase specification (`tests/e2e/showcase.spec.ts`) opens a host seeded the same
+ * way.
  *
  * @module showcase
  */
@@ -22,16 +25,13 @@ import guardrails from '@lostgradient/plugin-guardrails';
 import ollama from '@lostgradient/plugin-ollama';
 import voyage from '@lostgradient/plugin-voyage';
 import type { AlertingOptions } from '@lostgradient/weft';
-import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
-import { SHOWCASE_WORKFLOW_FILES } from '../../fixtures/showcase-content.ts';
-import { enableDemoPlugin } from './demo-plugin-home.ts';
-import { WORKFLOW_DIRECTORY_NAME, type HostOptions } from './host.ts';
+import type { HostOptions } from './host.ts';
 import { workspacePlugins } from './plugins.ts';
 import { showcaseBuiltInAgents, type ShowcasePacing } from './showcase-agents.ts';
-import { fakeProvider, writeProviderHome } from './stub-provider.ts';
+import { fakeProvider } from './stub-provider.ts';
 
 /** The flag the development entry takes to run the showcase host. */
 export const SHOWCASE_FLAG = '--showcase';
@@ -83,24 +83,6 @@ export function showcaseEnvironment(
       ? named
       : join(repositoryDirectory, ...SHOWCASE_HOME_SEGMENTS);
   return { ...environment, INTERBOROUGH_HOME: home };
-}
-
-/**
- * Prepares `home` for the showcase host, before the host starts: the provider configuration and
- * its fixture key, the demo plugin switched on, and the sample world's workflow files
- * (`SHOWCASE_WORKFLOW_FILES`: Release notes, Triage inbox, and Order refund, which can't load). It
- * replaces the home's `configuration.json` and those files, so a showcase home always starts the
- * same way.
- */
-export async function prepareShowcaseHome(home: string): Promise<void> {
-  await mkdir(home, { recursive: true });
-  await writeProviderHome(home, SHOWCASE_MODELS);
-  await enableDemoPlugin(home);
-  const workflows = join(home, WORKFLOW_DIRECTORY_NAME);
-  await mkdir(workflows, { recursive: true });
-  for (const file of SHOWCASE_WORKFLOW_FILES) {
-    await writeFile(join(workflows, `${file.id}.json`), file.text);
-  }
 }
 
 /** The provider resolver the showcase host runs on: the stub provider's, which calls no model. */

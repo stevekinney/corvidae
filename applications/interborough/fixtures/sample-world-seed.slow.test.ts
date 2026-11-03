@@ -582,7 +582,8 @@ describe('the sample world, part B', () => {
       left: { at: number; workflow: string },
       right: { at: number; workflow: string },
     ) => right.at - left.at || left.workflow.localeCompare(right.workflow);
-    const rows = (await runList()).toSorted(order);
+    const listed = await runList();
+    const rows = listed.toSorted(order);
     expect(rows.map(({ seconds: _seconds, ...row }) => row)).toEqual(
       expected.toSorted(order).map(({ seconds: _seconds, ...row }) => row),
     );
@@ -625,12 +626,10 @@ describe('the sample world, part B', () => {
       runs: Array<{ id: string; status: string; error?: unknown }>;
     }>('bureau.workflows.runs.list', { workflow: 'release-notes', limit: 10 });
     expect(runs.map((run) => run.status)).toEqual(['failed']);
-    const steps = (
-      await engineCall<{ items: EngineRunRow[] }>('weft.workflows.list', {
-        limit: 500,
-        tags: [`origin-parent:${runs[0]?.id ?? ''}`],
-      })
-    ).items;
+    const { items: steps } = await engineCall<{ items: EngineRunRow[] }>('weft.workflows.list', {
+      limit: 500,
+      tags: [`origin-parent:${runs[0]?.id ?? ''}`],
+    });
     const { tasks } = await call<{ tasks: Array<TaskRow & { statusMessage: string | null }> }>(
       'bureau.tasks.list',
       { limit: 100 },
@@ -759,18 +758,13 @@ describe('the sample world, part B', () => {
       attempts: Array<{ status: string; startedAt: string }>;
     };
     const { goals } = await call<{ goals: GoalRow[] }>('bureau.goals.list', {});
-    const byAgentAndCount = goals.map((goal) => [
-      goal.agentName,
-      goal.status,
-      goal.attempts.map((attempt) => attempt.status),
+    const outcome = (goal: GoalRow) =>
+      `${goal.agentName} ${goal.status}: ${goal.attempts.map((attempt) => attempt.status).join(', ')}`;
+    expect(goals.map(outcome).toSorted((left, right) => left.localeCompare(right))).toEqual([
+      'assistant exhausted: failed, failed, failed, failed, failed',
+      'assistant succeeded: passed',
+      'tool-runner canceled: failed, aborted',
     ]);
-    expect(byAgentAndCount.toSorted()).toEqual(
-      [
-        ['assistant', 'succeeded', ['passed']],
-        ['assistant', 'exhausted', ['failed', 'failed', 'failed', 'failed', 'failed']],
-        ['tool-runner', 'canceled', ['failed', 'aborted']],
-      ].toSorted(),
-    );
     const gaveUp = goals.find((goal) => goal.status === 'exhausted');
     for (const [index, attempt] of (gaveUp?.attempts ?? []).entries()) {
       expectAt(

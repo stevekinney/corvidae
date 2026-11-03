@@ -34,7 +34,7 @@ import { createMemoryAuthority, type MemoryAuthority } from '@lostgradient/memor
 import { mkdir, rm } from 'node:fs/promises';
 
 import { setPluginsEnabled } from '../src/host/demo-plugin-home.ts';
-import { startHost, type Host } from '../src/host/host.ts';
+import { startHost, type Host, type HostOptions } from '../src/host/host.ts';
 import { createOffsetRuntime, type OffsetRuntime } from '../src/host/offset-runtime.ts';
 import type { ShowcasePacing } from '../src/host/showcase-agents.ts';
 import { SHOWCASE_MODELS, showcaseHostOptions } from '../src/host/showcase.ts';
@@ -62,6 +62,7 @@ import {
   type Director,
   type SessionContext,
 } from './sample-world-host.ts';
+import { SAMPLE_WORLD_THREADS } from './sample-world-records.ts';
 
 /**
  * The moments of the story (Central time; daylight time ends Nov 1 at 2:00 AM, so October is UTC-5
@@ -93,18 +94,18 @@ export const REFUND_4471_ASK_DELAY_MILLISECONDS = 20_000;
 /** The chats of the sample world: each thread, the agent it is with, and what you write. */
 export const SAMPLE_WORLD_CHATS = {
   billing: {
-    threadId: 'sample-chat-billing-tables',
+    threadId: SAMPLE_WORLD_THREADS.billing,
     agent: 'tool-runner',
     message: 'Rename the billing tables',
   },
-  sayHello: { threadId: 'sample-chat-say-hello', agent: 'assistant', message: 'Say hello' },
+  sayHello: { threadId: SAMPLE_WORLD_THREADS.sayHello, agent: 'assistant', message: 'Say hello' },
   release: {
-    threadId: 'sample-chat-release-notes-fix',
+    threadId: SAMPLE_WORLD_THREADS.release,
     agent: 'request-human-input',
     message: 'Ship the release notes fix.',
   },
   refund: {
-    threadId: 'sample-chat-refunds',
+    threadId: SAMPLE_WORLD_THREADS.refund,
     agent: 'tool-runner',
     /** The refund chat's two messages, and its title, which is the second (the one still waiting). */
     first: 'Please refund order 4472, $18.50.',
@@ -166,6 +167,22 @@ export const TOOL_RUNNER_CORRECTION = {
 
 /** The authorization revision the driver's direct memory writes are attributed under. */
 const SEED_AUTHORIZATION_REVISION = 'interborough:sample-world-seed';
+
+/**
+ * What the Nov 2 host the seed leaves running is started with beside the showcase's own options:
+ * the development entry's port, build directory, reload and restart, or the end-to-end host's port.
+ * Its home is always the seed's, and its runtime and showcase options are the seed's to set.
+ */
+export type SampleWorldHostOptions = Omit<
+  HostOptions,
+  'runtime' | keyof ReturnType<typeof showcaseHostOptions>
+>;
+
+/** How {@link seedSampleWorld} leaves its host. */
+export interface SampleWorldOptions {
+  /** Options for the Nov 2 host the seed leaves running; the earlier hosts listen on a free port. */
+  readonly host?: SampleWorldHostOptions;
+}
 
 /** What the seed made, by name, with the host it left running at Nov 2. */
 export interface SampleWorld {
@@ -314,13 +331,16 @@ interface Story {
   readonly director: Director;
 }
 
-/** Starts a host on the story's home at `at` on the story's clock. */
-async function startAt(story: Story, at: number): Promise<Host> {
+/**
+ * Starts a host on the story's home at `at` on the story's clock: on a free port, or, with
+ * `options`, as they say (a port they leave out is the environment's).
+ */
+async function startAt(story: Story, at: number, options?: SampleWorldHostOptions): Promise<Host> {
   const { home, runtime, holding, director } = story;
   runtime.setTime(at);
   return startHost({
-    environment: { INTERBOROUGH_HOME: home },
-    port: 0,
+    ...(options ?? { port: 0 }),
+    environment: { ...options?.environment, INTERBOROUGH_HOME: home },
     runtime,
     ...showcaseHostOptions(samplePacing(runtime, holding, director)),
   });
@@ -425,7 +445,10 @@ export const SAMPLE_WORLD_DISABLED_PLUGINS = ['demo', 'ollama', 'voyage'] as con
  * Seeds the sample world into `home`, which it empties first so every seed starts the same, and
  * answers the Nov 2 host it leaves running at a little after 10:45 AM.
  */
-export async function seedSampleWorld(home: string): Promise<SampleWorld> {
+export async function seedSampleWorld(
+  home: string,
+  options: SampleWorldOptions = {},
+): Promise<SampleWorld> {
   await rm(home, { recursive: true, force: true });
   await mkdir(home, { recursive: true });
   await writeProviderHome(home, SHOWCASE_MODELS);
@@ -479,7 +502,7 @@ export async function seedSampleWorld(home: string): Promise<SampleWorld> {
   await session(story, history.dailySummaryRan - 30_000, october29DailySummary);
   await writeFinalWorkflowFiles(home);
 
-  const host = await startAt(story, times.serverStarted);
+  const host = await startAt(story, times.serverStarted, options.host);
   try {
     const context = { host, runtime, director: story.director };
     return { host, runtime, ...(await monday(context)) };

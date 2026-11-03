@@ -50,37 +50,36 @@ export function publishWorkflowScheduleOutcomes(
   engine: WorkflowScheduleOutcomeEngine,
   publish: WorkflowScheduleOutcomeSink,
 ): () => void {
-  const settle = (workflowId: string, failed: boolean): void => {
-    void engine.getScheduleProvenance(workflowId).then(
-      (provenance) => {
-        if (provenance === null) return;
-        if (!provenance.scheduleId.startsWith(WORKFLOW_SCHEDULE_ID_PREFIX)) return;
-        publish(
-          failed
-            ? new ScheduleFailedEvent(provenance.scheduleId, workflowId)
-            : new ScheduleCompletedEvent(provenance.scheduleId, workflowId),
-        );
-      },
-      () => undefined,
+  const settle = async (workflowId: string, failed: boolean): Promise<void> => {
+    const provenance = await engine.getScheduleProvenance(workflowId);
+    if (provenance === null) return;
+    if (!provenance.scheduleId.startsWith(WORKFLOW_SCHEDULE_ID_PREFIX)) return;
+    publish(
+      failed
+        ? new ScheduleFailedEvent(provenance.scheduleId, workflowId)
+        : new ScheduleCompletedEvent(provenance.scheduleId, workflowId),
     );
+  };
+  const outcome = (workflowId: string, failed: boolean): void => {
+    settle(workflowId, failed).catch(() => undefined);
   };
   const listeners: ReadonlyArray<readonly [string, (event: Event) => void]> = [
     [
       WorkflowCompletedEvent.type,
       (event) => {
-        if (event instanceof WorkflowCompletedEvent) settle(event.workflowId, false);
+        if (event instanceof WorkflowCompletedEvent) outcome(event.workflowId, false);
       },
     ],
     [
       WorkflowFailedEvent.type,
       (event) => {
-        if (event instanceof WorkflowFailedEvent) settle(event.workflowId, true);
+        if (event instanceof WorkflowFailedEvent) outcome(event.workflowId, true);
       },
     ],
     [
       WorkflowTimedOutEvent.type,
       (event) => {
-        if (event instanceof WorkflowTimedOutEvent) settle(event.workflowId, true);
+        if (event instanceof WorkflowTimedOutEvent) outcome(event.workflowId, true);
       },
     ],
   ];
