@@ -179,32 +179,46 @@ export function parseArguments(argv: readonly string[]): Options | string {
   return { mode, rows, verdicts };
 }
 
-async function main(): Promise<void> {
-  const options = parseArguments(process.argv.slice(2));
+/** Where a check writes its report. */
+export interface RowReportStreams {
+  readonly standardOutput: (text: string) => void;
+  readonly standardError: (text: string) => void;
+}
+
+/** The process's own output streams. */
+export const hostStreams: RowReportStreams = {
+  standardOutput: process.stdout.write.bind(process.stdout),
+  standardError: process.stderr.write.bind(process.stderr),
+};
+
+/** Checks the rows and verdicts files the command line names and answers the exit code. */
+export async function checkRowFiles(
+  argv: readonly string[] = process.argv.slice(2),
+  streams: RowReportStreams = hostStreams,
+): Promise<number> {
+  const options = parseArguments(argv);
   if (typeof options === 'string') {
-    process.stderr.write(`${options}\n`);
-    process.exitCode = 2;
-    return;
+    streams.standardError(`${options}\n`);
+    return 2;
   }
   const parsed = parseRows(await readFile(options.rows, 'utf8'));
   if (!parsed.ok) {
-    process.stderr.write(`${parsed.problems.join('\n')}\n`);
-    process.exitCode = 1;
-    return;
+    streams.standardError(`${parsed.problems.join('\n')}\n`);
+    return 1;
   }
   const check = checkVerdicts(parsed.rows, await readFile(options.verdicts, 'utf8'), options.mode);
   const summary = ROW_VERDICTS.filter((verdict) => check.counts[verdict] > 0)
     .map((verdict) => `${verdict} ${check.counts[verdict]}`)
     .join(', ');
-  process.stdout.write(`design review rows: ${summary || 'no verdicts'}\n`);
+  streams.standardOutput(`design review rows: ${summary || 'no verdicts'}\n`);
   if (check.problems.length > 0) {
-    process.stderr.write(`${check.problems.join('\n')}\n`);
-    process.exitCode = 1;
-    return;
+    streams.standardError(`${check.problems.join('\n')}\n`);
+    return 1;
   }
   if (options.mode === 'implementation-review') {
-    process.stdout.write(`VERDICT: ${overallVerdict(check.counts)}\n`);
+    streams.standardOutput(`VERDICT: ${overallVerdict(check.counts)}\n`);
   }
+  return 0;
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) process.exitCode = await checkRowFiles();

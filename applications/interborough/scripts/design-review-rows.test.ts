@@ -3,10 +3,15 @@
  * it was given, once, in order, with a verdict its mode allows and evidence for anything that is not
  * a match, because the chef close gate and the design ledger read the file as the review's result.
  */
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
+  checkRowFiles,
   checkVerdicts,
+  MAXIMUM_EVIDENCE_LENGTH,
   overallVerdict,
   parseArguments,
   parseRows,
@@ -108,6 +113,31 @@ describe('checkVerdicts', () => {
   });
 });
 
+describe('the evidence limit and the line shape', () => {
+  test('fails evidence longer than the limit and accepts evidence at it', () => {
+    const verdicts = (evidence: string) =>
+      ['11a | matches |', `11b | drifted | ${evidence}`, '23j | matches |'].join('\n');
+    const long = 'e'.repeat(MAXIMUM_EVIDENCE_LENGTH + 1);
+    expect(checkVerdicts(rows(), verdicts(long), 'implementation-review').problems).toEqual([
+      `verdicts line 2: evidence is longer than ${MAXIMUM_EVIDENCE_LENGTH} characters`,
+    ]);
+    expect(
+      checkVerdicts(rows(), verdicts(long.slice(1)), 'implementation-review').problems,
+    ).toEqual([]);
+  });
+
+  test('fails a verdict line that is not three fields', () => {
+    const check = checkVerdicts(
+      rows(),
+      ['11a | matches |', '11b | drifted', '23j | matches |'].join('\n'),
+      'implementation-review',
+    );
+    expect(check.problems).toEqual([
+      'verdicts line 2: expected "row-id | verdict | evidence", got "11b | drifted"',
+    ]);
+  });
+});
+
 describe('parseArguments', () => {
   test('reads the mode and both files, and refuses the rest', () => {
     expect(
@@ -120,5 +150,84 @@ describe('parseArguments', () => {
       '--rows and --verdicts are required',
     );
     expect(parseArguments(['--color', 'x'])).toBe('unknown flag --color');
+  });
+});
+
+describe('checkRowFiles', () => {
+  let directory = '';
+  let output = '';
+  let errors = '';
+  const streams = {
+    standardOutput: (text: string) => {
+      output += text;
+    },
+    standardError: (text: string) => {
+      errors += text;
+    },
+  };
+
+  beforeEach(async () => {
+    directory = await mkdtemp(join(tmpdir(), 'design-review-rows-'));
+    output = '';
+    errors = '';
+    await writeFile(join(directory, 'rows.txt'), ROWS_TEXT);
+  });
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  async function check(mode: string, verdicts: string): Promise<number> {
+    await writeFile(join(directory, 'verdicts.txt'), verdicts);
+    return checkRowFiles(
+      [
+        '--mode',
+        mode,
+        '--rows',
+        join(directory, 'rows.txt'),
+        '--verdicts',
+        join(directory, 'verdicts.txt'),
+      ],
+      streams,
+    );
+  }
+
+  test('answers 2 and prints the usage error for a bad command line', async () => {
+    expect(await checkRowFiles(['--mode', 'sweep'], streams)).toBe(2);
+    expect(errors).toBe('--mode must be implementation-review or drift-audit\n');
+    expect(output).toBe('');
+  });
+
+  test('answers 1 and names each problem in an unreadable rows file', async () => {
+    await writeFile(join(directory, 'rows.txt'), 'broken');
+    expect(await check('drift-audit', '')).toBe(1);
+    expect(errors).toBe('rows line 1: expected "row-id | board | text", got "broken"\n');
+  });
+
+  test('answers 0 and the derived verdict for a well-formed implementation review', async () => {
+    expect(
+      await check(
+        'implementation-review',
+        ['11a | matches |', '11b | matches |', '23j | deferred | COR-1967'].join('\n'),
+      ),
+    ).toBe(0);
+    expect(output).toBe('design review rows: matches 2, deferred 1\nVERDICT: approve\n');
+    expect(errors).toBe('');
+  });
+
+  test('answers 0 without a verdict for a drift audit', async () => {
+    expect(
+      await check(
+        'drift-audit',
+        ['11a | matches |', '11b | matches |', '23j | matches |'].join('\n'),
+      ),
+    ).toBe(0);
+    expect(output).toBe('design review rows: matches 3\n');
+  });
+
+  test('answers 1 with the summary and every problem when the verdicts are wrong', async () => {
+    expect(await check('implementation-review', '')).toBe(1);
+    expect(output).toBe('design review rows: no verdicts\n');
+    expect(errors).toBe('expected 3 verdict lines, one per row, got 0\n');
   });
 });

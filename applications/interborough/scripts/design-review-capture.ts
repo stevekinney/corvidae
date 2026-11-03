@@ -113,10 +113,15 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
   return { out, schemes, specifications, grep };
 }
 
+/** The probe accepts connections only to hold the port, so it ignores whatever a client sends. */
+export const probeSocketHandlers = {
+  data(): void {},
+};
+
 /** Whether nothing listens on `port` on the loopback address, so Playwright will start its own server. */
 export function portIsFree(port: number): boolean {
   try {
-    const probe = Bun.listen({ hostname: '127.0.0.1', port, socket: { data() {} } });
+    const probe = Bun.listen({ hostname: '127.0.0.1', port, socket: probeSocketHandlers });
     probe.stop(true);
     return true;
   } catch {
@@ -125,7 +130,7 @@ export function portIsFree(port: number): boolean {
 }
 
 /** Counts the lines of the manifest, which is one capture each. */
-async function captureCount(out: string): Promise<number> {
+export async function captureCount(out: string): Promise<number> {
   try {
     const text = await readFile(join(out, 'manifest.jsonl'), 'utf8');
     return text.split('\n').filter((line) => line.trim() !== '').length;
@@ -134,20 +139,46 @@ async function captureCount(out: string): Promise<number> {
   }
 }
 
-async function main(): Promise<void> {
-  const options = parseArguments(process.argv.slice(2));
+/** What a capture needs from the host it runs on, so a test can stand in for Playwright. */
+export interface CaptureEnvironment {
+  readonly standardOutput: (text: string) => void;
+  readonly standardError: (text: string) => void;
+  readonly portIsFree: (port: number) => boolean;
+  /** Runs the capture command with the given environment variables added, answering its exit code. */
+  readonly run: (command: readonly string[], variables: Record<string, string>) => Promise<number>;
+}
+
+/** The host the command line runs on: the real port probe and a real child process. */
+export const hostEnvironment: CaptureEnvironment = {
+  standardOutput: process.stdout.write.bind(process.stdout),
+  standardError: process.stderr.write.bind(process.stderr),
+  portIsFree,
+  async run(command, variables) {
+    const child = Bun.spawn([...command], {
+      cwd: applicationDirectory,
+      env: { ...process.env, ...variables },
+      stdio: ['ignore', 'inherit', 'inherit'],
+    });
+    return child.exited;
+  },
+};
+
+/** Captures what the command line names and answers the exit code. */
+export async function captureDesignReview(
+  argv: readonly string[] = process.argv.slice(2),
+  environment: CaptureEnvironment = hostEnvironment,
+): Promise<number> {
+  const options = parseArguments(argv);
   if (typeof options === 'string') {
-    process.stderr.write(`${options}\n`);
-    process.exitCode = 2;
-    return;
+    environment.standardError(`${options}\n`);
+    return 2;
   }
   const port = endToEndPort();
-  if (!portIsFree(port)) {
-    process.stderr.write(
+  if (!environment.portIsFree(port)) {
+    environment.standardError(
       `design review: port ${port} is already in use, and Playwright would capture whatever server holds it. Set INTERBOROUGH_E2E_PORT to a free port (it uses that one and the six after it) and run again.\n`,
     );
-    process.exitCode = 2;
-    return;
+    return 2;
   }
   await mkdir(options.out, { recursive: true });
   const runs: { scheme: Scheme; exitCode: number }[] = [];
@@ -162,17 +193,14 @@ async function main(): Promise<void> {
       ...options.specifications,
       ...(options.grep === undefined ? [] : ['--grep', options.grep]),
     ];
-    process.stdout.write(`design review: capturing in ${scheme}: ${command.join(' ')}\n`);
-    const child = Bun.spawn(command, {
-      cwd: applicationDirectory,
-      env: {
-        ...process.env,
+    environment.standardOutput(`design review: capturing in ${scheme}: ${command.join(' ')}\n`);
+    runs.push({
+      scheme,
+      exitCode: await environment.run(command, {
         INTERBOROUGH_DESIGN_REVIEW_CAPTURE: options.out,
         INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME: scheme,
-      },
-      stdio: ['ignore', 'inherit', 'inherit'],
+      }),
     });
-    runs.push({ scheme, exitCode: await child.exited });
   }
   const captures = await captureCount(options.out);
   const summary = {
@@ -184,10 +212,10 @@ async function main(): Promise<void> {
     clean: runs.every((run) => run.exitCode === 0),
   };
   await writeFile(join(options.out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
-  process.stdout.write(
+  environment.standardOutput(
     `design review: ${captures} captures in ${options.out}${summary.clean ? '' : ' (a specification failed; see summary.json)'}\n`,
   );
-  process.exitCode = captures > 0 ? 0 : 1;
+  return captures > 0 ? 0 : 1;
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) process.exitCode = await captureDesignReview();
