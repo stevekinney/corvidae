@@ -67,8 +67,8 @@ export interface WorkflowListing {
   /** The `kind` of the file's trigger, for a ready file, and `null` for an invalid one. */
   readonly triggerKind: string | null;
   /**
-   * The file's trigger as written (`kind` and the keys of that kind, `timezone` and `catchUp`
-   * included), for a ready file, else `null`.
+   * The file's trigger as written (`kind` and the keys of that kind, a schedule's `timezone`,
+   * `catchUp`, `name`, and `input` included), for a ready file, else `null`.
    */
   readonly trigger: WorkflowFileTrigger | null;
   /** The file's steps as written (`title` and `review` included), for a ready file, else `null`. */

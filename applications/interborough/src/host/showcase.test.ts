@@ -103,10 +103,12 @@ describe('the sample world workflow files', () => {
     expect(file.description).toBe('Collects merged changes into a draft.');
     expect(file.trigger).toEqual({
       kind: 'schedule',
+      name: 'Release notes digest',
       spec: '0 11 * * 5',
       timezone: 'America/Chicago',
       overlap: 'skip',
       catchUp: false,
+      input: { branch: 'main' },
     });
     // The board's `input` and `output`, under the keys the file format keeps (decisions.md).
     expect(file.inputSchema.required).toEqual(['branch']);

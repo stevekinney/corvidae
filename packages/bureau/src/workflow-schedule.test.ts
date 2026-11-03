@@ -2,13 +2,20 @@
  * COR-1527 — a workflow file with a `schedule` trigger owns exactly one native schedule, and every
  * reconcile puts it back to match the file. Run against a real engine on memory storage.
  */
-import { Engine, registerWorkflowDocuments, type WorkflowDocument } from '@lostgradient/weft';
+import {
+  decode,
+  Engine,
+  KEYS,
+  registerWorkflowDocuments,
+  type WorkflowDocument,
+} from '@lostgradient/weft';
 import { MemoryStorage } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
 import {
   parseWorkflowScheduleId,
   reconcileWorkflowSchedules,
+  scheduleTrigger,
   workflowScheduleId,
   type DesiredWorkflowSchedule,
 } from './workflow-schedule';
@@ -68,6 +75,14 @@ async function statusOf(engine: Engine, id: string): Promise<string | undefined>
 async function everySchedule(engine: Engine) {
   const page = await engine.listSchedules({});
   return page.items;
+}
+
+/** The input schedule `id` starts each fire with, which Weft's summary leaves out. */
+async function inputOf(engine: Engine, id: string): Promise<unknown> {
+  const bytes = await engine.storage.get(KEYS.schedule(id));
+  return bytes === null || bytes === undefined
+    ? undefined
+    : (decode(bytes) as { input?: unknown }).input;
 }
 
 describe('workflow schedule ids', () => {
@@ -255,8 +270,10 @@ describe('reconciling workflow schedules', () => {
 
   it('cancels all but the newest live schedule of a workflow', async () => {
     await using engine = await engineWith('digest');
-    await engine.schedule('digest', null, { every: '1h' }, { id: workflowScheduleId('digest', 1) });
-    await engine.schedule('digest', null, { every: '1h' }, { id: workflowScheduleId('digest', 2) });
+    for (const generation of [1, 2]) {
+      const id = workflowScheduleId('digest', generation);
+      await engine.schedule('digest', scheduleTrigger(id), { every: '1h' }, { id });
+    }
     const result = await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
     expect(result.cancelled).toEqual([workflowScheduleId('digest', 1)]);
     expect(await liveIds(engine)).toEqual([workflowScheduleId('digest', 2)]);
@@ -267,6 +284,90 @@ describe('reconciling workflow schedules', () => {
     await engine.schedule('digest', null, { every: '1h' }, { id: 'someone-elses' });
     await reconcileWorkflowSchedules(engine, new Map());
     expect(await statusOf(engine, 'someone-elses')).toBe('active');
+  });
+
+  it("describes the schedule by the trigger's name, or by the workflow when it has none, and renames it in place (COR-2009)", async () => {
+    await using engine = await engineWith('digest');
+    await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
+    const [unnamed] = await live(engine);
+    expect(unnamed?.description).toBe('Workflow digest');
+    const named = new Map([['digest', { ...hourly, description: 'Release notes digest' }]]);
+    const renamed = await reconcileWorkflowSchedules(engine, named);
+    expect(renamed.updated).toEqual(['bureau-workflow-schedule:digest:1']);
+    expect(renamed.created).toEqual([]);
+    const [renamedSchedule] = await live(engine);
+    expect(renamedSchedule?.description).toBe('Release notes digest');
+    const again = await reconcileWorkflowSchedules(engine, named);
+    expect(again).toEqual({ created: [], updated: [], paused: [], resumed: [], cancelled: [] });
+  });
+
+  it("starts every fire with the trigger's input beside the schedule id, and with none when it gives none (COR-2009)", async () => {
+    await using engine = await engineWith('digest', 'plain');
+    await reconcileWorkflowSchedules(
+      engine,
+      new Map([
+        ['digest', { ...hourly, input: { branch: 'main' } }],
+        ['plain', hourly],
+      ]),
+    );
+    const digest = workflowScheduleId('digest', 1);
+    const plain = workflowScheduleId('plain', 1);
+    expect(await inputOf(engine, digest)).toEqual({
+      kind: 'schedule',
+      scheduleId: digest,
+      input: { branch: 'main' },
+    });
+    expect(await inputOf(engine, plain)).toEqual({ kind: 'schedule', scheduleId: plain });
+  });
+
+  it('changes nothing for the same input, whatever order its keys are written in', async () => {
+    await using engine = await engineWith('digest');
+    const input = { branch: 'main', since: '2026-10-01' };
+    await reconcileWorkflowSchedules(engine, new Map([['digest', { ...hourly, input }]]));
+    const reordered = { since: '2026-10-01', branch: 'main' };
+    const again = await reconcileWorkflowSchedules(
+      engine,
+      new Map([['digest', { ...hourly, input: reordered }]]),
+    );
+    expect(again).toEqual({ created: [], updated: [], paused: [], resumed: [], cancelled: [] });
+    expect(await everySchedule(engine)).toHaveLength(1);
+  });
+
+  it('replaces the schedule with the next generation when its input changes, which Weft cannot update (COR-2009)', async () => {
+    await using engine = await engineWith('digest');
+    await reconcileWorkflowSchedules(
+      engine,
+      new Map([['digest', { ...hourly, input: { branch: 'main' } }]]),
+    );
+    const changed = new Map([
+      ['digest', { ...hourly, paused: true, input: { branch: 'release' } }],
+    ]);
+    const result = await reconcileWorkflowSchedules(engine, changed);
+    const first = workflowScheduleId('digest', 1);
+    const second = workflowScheduleId('digest', 2);
+    expect(result).toEqual({
+      created: [second],
+      updated: [],
+      paused: [second],
+      resumed: [],
+      cancelled: [first],
+    });
+    expect(await statusOf(engine, first)).toBe('cancelled');
+    expect(await liveIds(engine)).toEqual([second]);
+    expect(await inputOf(engine, second)).toEqual({
+      kind: 'schedule',
+      scheduleId: second,
+      input: { branch: 'release' },
+    });
+    // Dropping the input is a change too, and the generation after holds none.
+    const dropped = await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
+    expect(dropped.cancelled).toEqual([second]);
+    expect(await inputOf(engine, workflowScheduleId('digest', 3))).toEqual({
+      kind: 'schedule',
+      scheduleId: workflowScheduleId('digest', 3),
+    });
+    const settled = await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
+    expect(settled).toEqual({ created: [], updated: [], paused: [], resumed: [], cancelled: [] });
   });
 
   it('keeps workflows apart', async () => {

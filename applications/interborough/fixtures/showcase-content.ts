@@ -436,7 +436,8 @@ export interface ShowcaseWorkflowFile {
 /**
  * Release notes, the sample world's healthy workflow, in the extended workflow file format
  * (`tmp/design-review/decisions.md`, "Owner answers during B01"): a workflow `title`, a schedule
- * trigger with `timezone` and `catchUp`, and a `title` on each step. It needs no model: every step is
+ * trigger with `timezone` and `catchUp`, its `name` (the Release notes digest schedule) and its fixed
+ * `input` (branch `main`, which its `inputSchema` requires), and a `title` on each step. It needs no model: every step is
  * Assistant, which is scripted. The text is the workflow page's Code tab (PageWorkflow, "Code tab"),
  * which the builder's Edit and JSON frames show too. The board's `input` and `output` are written as
  * Weft's `inputSchema` and `outputSchema`, which the file format keeps (decisions.md, "Coordinator
@@ -450,10 +451,12 @@ export const SHOWCASE_RELEASE_NOTES_FILE: ShowcaseWorkflowFile = {
   "description": "Collects merged changes into a draft.",
   "trigger": {
     "kind": "schedule",
+    "name": "Release notes digest",
     "spec": "0 11 * * 5",
     "timezone": "America/Chicago",
     "overlap": "skip",
-    "catchUp": false
+    "catchUp": false,
+    "input": { "branch": "main" }
   },
   "inputSchema": {
     "type": "object",

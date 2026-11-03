@@ -604,7 +604,8 @@ export interface WorkflowRuntimeOptions {
 }
 
 function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefined {
-  // The trigger as written: its `timezone` and `catchUp` are not in the document Weft is handed.
+  // The trigger as written: its `timezone`, `catchUp`, `name`, and `input` are not in the document
+  // Weft is handed.
   const trigger = file.trigger;
   if (trigger.kind !== 'schedule') return undefined;
   return {
@@ -615,6 +616,9 @@ function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefine
         ? trigger['timezone']
         : DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE,
     backfill: trigger['catchUp'] === true,
+    description: typeof trigger['name'] === 'string' ? trigger['name'] : undefined,
+    // `null` is the same as no input: a fire starts with `null` either way.
+    input: trigger['input'] ?? undefined,
     paused: file.paused,
   };
 }

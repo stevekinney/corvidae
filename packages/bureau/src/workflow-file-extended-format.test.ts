@@ -1,9 +1,10 @@
 /**
  * COR-2009 — the extended workflow file format: a workflow `title`, a step `title`, `review: true`
- * on an `await-signal` step, `timezone` and `catchUp` on a `schedule` trigger, and the `manual`
+ * on an `await-signal` step, `timezone`, `catchUp`, `name` and `input` on a `schedule` trigger, and the `manual`
  * trigger kind. Bureau strips every key but `manual` before Weft sees the document, so none of them
  * changes a revision's `workflowVersion`.
  */
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -18,6 +19,7 @@ import {
   workflowVersionOf,
 } from './workflow-file';
 import { createWorkflowDocumentHost } from './workflow-host';
+import { workflowScheduleId } from './workflow-schedule';
 
 const host = createWorkflowDocumentHost({
   runAgentStep: async () => ({ content: '', output: null, finishReason: 'stop-condition' }),
@@ -198,6 +200,77 @@ describe('reading the extended format', () => {
     ).toMatchObject({ catchUp: true });
   });
 
+  it('reads a schedule name and input, keeps them out of the document, and leaves the version alone', () => {
+    const named = {
+      ...MORNING_BRIEFING,
+      trigger: { ...MORNING_BRIEFING.trigger, name: 'Morning digest', input: { team: 'platform' } },
+    };
+    const file = contentsOf(named);
+    expect(file.trigger).toEqual(named.trigger);
+    expect(file.document.trigger).toEqual({
+      kind: 'schedule',
+      spec: '0 9 * * 1-5',
+      overlap: 'skip',
+    });
+    expect(workflowVersionOf(file.document)).toBe(
+      workflowVersionOf(contentsOf(MORNING_BRIEFING_PLAIN).document),
+    );
+  });
+
+  it('refuses a schedule name that is blank, too long, or not a string', () => {
+    const trigger = MORNING_BRIEFING.trigger;
+    for (const name of ['', '   ', 'x'.repeat(121), 7]) {
+      expect(issuesOf({ ...MORNING_BRIEFING, trigger: { ...trigger, name } })).toEqual([
+        { path: 'trigger', message: '"name" must be a non-empty string of at most 120 characters' },
+      ]);
+    }
+  });
+
+  it('judges the schedule input against inputSchema when the file is written', () => {
+    const inputSchema = {
+      type: 'object',
+      required: ['branch'],
+      properties: { branch: { type: 'string' } },
+    };
+    const trigger = { ...MORNING_BRIEFING.trigger, input: { branch: 'main' } };
+    expect(contentsOf({ ...MORNING_BRIEFING, inputSchema, trigger }).trigger).toMatchObject({
+      input: { branch: 'main' },
+    });
+    // An input the schema refuses is the trigger's fault, located at its input.
+    const refused = issuesOf({
+      ...MORNING_BRIEFING,
+      inputSchema,
+      trigger: { ...trigger, input: {} },
+    });
+    expect(refused.map((issue) => issue.path)).toEqual(['trigger.input']);
+    expect(refused[0]?.message).toContain(
+      'every schedule fire starts the workflow with this input',
+    );
+    // No input, and an explicit `null`, are the same: every fire starts with `null`.
+    for (const input of [undefined, null]) {
+      const issues = issuesOf({
+        ...MORNING_BRIEFING,
+        inputSchema,
+        trigger: { ...MORNING_BRIEFING.trigger, input },
+      });
+      expect(issues.map((issue) => issue.path)).toEqual(['inputSchema']);
+      expect(issues[0]?.message).toContain('give the trigger an "input" the schema accepts');
+    }
+    // A file with no schema takes any input.
+    expect(
+      contentsOf({ ...MORNING_BRIEFING, trigger: { ...trigger, input: [1, 2] } }).trigger,
+    ).toMatchObject({ input: [1, 2] });
+  });
+
+  it('refuses an input on a signal trigger, which starts with the payload it is sent', () => {
+    const parsed = parse({
+      ...MORNING_BRIEFING_PLAIN,
+      trigger: { kind: 'signal', name: 'go', input: { branch: 'main' } },
+    });
+    if (parsed.ok) throw new Error('expected a problem');
+    expect(parsed.problem.issues?.map((issue) => issue.path)).toEqual(['trigger']);
+  });
+
   it('refuses a schedule key on a trigger of another kind', () => {
     const issues = issuesOf({
       ...MORNING_BRIEFING_PLAIN,
@@ -315,6 +388,35 @@ describe('the extended format on a Bureau', () => {
       steps: SCHEDULED.steps,
     });
     expect(after.version).toBe(before.version);
+  });
+
+  it("names the schedule by the trigger's name, and starts every fire with its input, which the schema accepts", async () => {
+    const harness = await start();
+    await harness.putWorkflow('release-notes', {
+      ...SCHEDULED,
+      trigger: { ...SCHEDULED.trigger, name: 'Release notes digest', input: { branch: 'main' } },
+      inputSchema: {
+        type: 'object',
+        required: ['branch'],
+        properties: { branch: { type: 'string' } },
+      },
+      steps: [{ title: 'Draft the notes', ...AGENT_STEP }],
+    });
+    const scheduleId = workflowScheduleId('release-notes', 1);
+    expect(harness.bureau.workflows?.list()[0]?.state).toBe('ready');
+    expect(await harness.bureau.schedules.get(scheduleId)).toMatchObject({
+      description: 'Release notes digest',
+    });
+    const engine = harness.bureau.durableEngine()!;
+    await engine.triggerSchedule(scheduleId);
+    const statusOfRun = async () => {
+      const page = await engine.list({ type: 'release-notes' });
+      return page.items[0]?.status;
+    };
+    await waitUntil(async () => ['completed', 'failed'].includes((await statusOfRun()) ?? ''));
+    // The input passed the interpreter's own check, and the agent step was shown it.
+    expect(await statusOfRun()).toBe('completed');
+    expect(harness.calls.at(-1)?.message).toContain('"branch": "main"');
   });
 
   it('starts a manual workflow when someone starts it, and gives it no schedule', async () => {

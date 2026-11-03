@@ -77,8 +77,9 @@ describe('the showcase seed on a host', () => {
     expect(await counts()).toEqual({
       fileAgents: 6,
       chats: 8,
-      // The demo plugin's own schedule, and the two of the seed's workflows that run on a schedule.
-      schedules: 1 + 3 + 2,
+      // The demo plugin's own schedule, the seed's three, the two of the seed's workflows that run on
+      // a schedule, and the Release notes digest, which the sample world's Release notes file owns.
+      schedules: 1 + 3 + 2 + 1,
       hooks: 2,
       // The demo plugin's own goal.
       goals: 1 + 2,
@@ -107,11 +108,23 @@ describe('the showcase seed on a host', () => {
       title: 'Triage inbox',
       trigger: { kind: 'manual' },
     });
-    // Every extended key of Release notes reads (COR-2009); the one issue left is that its
-    // schedule fires with no input while its input requires `branch`, which is open on COR-2009.
-    expect(state('release-notes')?.problem?.issues?.map((issue) => issue.path)).toEqual([
-      'inputSchema',
-    ]);
+    // Every extended key of Release notes reads (COR-2009), its schedule's `input` included, which
+    // gives every fire the `branch` its input requires.
+    expect(state('release-notes')).toMatchObject({
+      state: 'ready',
+      title: 'Release notes',
+      trigger: { kind: 'schedule', name: 'Release notes digest', input: { branch: 'main' } },
+    });
+    expect(state('release-notes')?.problem ?? null).toBeNull();
+    // Its file owns the Release notes digest schedule, named by the trigger's `name`.
+    const schedules = await bureau<{
+      schedules: { id: string; description: string | null; timeZone: string }[];
+    }>('bureau.schedules.list', { limit: 100 });
+    expect(
+      schedules.schedules.find((schedule) =>
+        schedule.id.startsWith('bureau-workflow-schedule:release-notes:'),
+      ),
+    ).toMatchObject({ description: 'Release notes digest', timeZone: 'America/Chicago' });
   });
 
   test('puts workflow runs in each state, with the model picker and a failed chat', async () => {
@@ -170,7 +183,8 @@ describe('the showcase seed on a host', () => {
     expect(await counts()).toEqual({
       fileAgents: 0,
       chats: 0,
-      schedules: 1,
+      // The demo plugin's own schedule, and the Release notes digest, which belongs to the home.
+      schedules: 1 + 1,
       hooks: 0,
       // A goal cannot be deleted, so the two stay, cancelled.
       goals: 1 + 2,

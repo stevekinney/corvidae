@@ -143,7 +143,7 @@ export function deriveWorkflowIdentifier(
 const triggerSchema = z
   .record(z.string(), z.unknown())
   .describe(
-    'When the workflow starts: { "kind": "schedule", "spec": "0 6 * * *" } for a cron expression or a duration such as "1h", with an optional "timezone" (an IANA zone such as "America/Chicago", for a cron expression), "overlap" ("skip", "queue", "cancel-running", or "allow") and "catchUp" (true to run what was missed while Bureau was off); { "kind": "signal", "name": "..." } to start when that signal is sent; or { "kind": "manual" } for a workflow that only starts when someone starts it.',
+    'When the workflow starts: { "kind": "schedule", "spec": "0 6 * * *" } for a cron expression or a duration such as "1h", with an optional "name" (the schedule’s display name, such as "Morning digest"), "timezone" (an IANA zone such as "America/Chicago", for a cron expression), "overlap" ("skip", "queue", "cancel-running", or "allow"), "catchUp" (true to run what was missed while Bureau was off) and "input" (the fixed value every fire starts the workflow with, which inputSchema must accept); { "kind": "signal", "name": "..." } to start when that signal is sent; or { "kind": "manual" } for a workflow that only starts when someone starts it.',
   );
 
 const stepsSchema = z
@@ -170,7 +170,7 @@ const inputSchemaSchema = z
   .record(z.string(), z.unknown())
   .optional()
   .describe(
-    'A JSON Schema (draft 2020-12) for the input an instance starts with: what a signal carries as its payload or a person gives when they start it; a schedule starts with null, so a workflow with a schedule trigger needs a schema that accepts null or none at all. At most 32 KiB and 8 levels deep, with no $id, pattern, or patternProperties. Leave it out for none. An input that breaks it starts nothing.',
+    'A JSON Schema (draft 2020-12) for the input an instance starts with: what a signal carries as its payload or a person gives when they start it; a schedule starts with its trigger’s "input", or null when it gives none, and the schema must accept that. At most 32 KiB and 8 levels deep, with no $id, pattern, or patternProperties. Leave it out for none. An input that breaks it starts nothing.',
   );
 
 const outputSchemaSchema = z

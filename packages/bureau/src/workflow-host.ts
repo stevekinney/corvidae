@@ -40,7 +40,7 @@ export const validateScheduleTrigger: DocumentTriggerValidator = (trigger) => {
     (key) => key !== 'kind' && !TRIGGER_KEYS['schedule']!.includes(key),
   );
   if (extra.length > 0) {
-    return `a schedule trigger takes only "spec", "overlap", "timezone", and "catchUp"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
+    return `a schedule trigger takes only "spec", "overlap", "timezone", "catchUp", "name", and "input"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
   }
   const extension = scheduleTriggerExtensionIssue(trigger);
   if (extension !== undefined) return extension;

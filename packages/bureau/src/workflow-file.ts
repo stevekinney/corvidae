@@ -11,6 +11,7 @@
  *   "paused": false,
  *   "trigger": {
  *     "kind": "schedule",
+ *     "name": "Morning digest",
  *     "spec": "0 6 * * *",
  *     "timezone": "America/Chicago",
  *     "overlap": "skip",
@@ -40,6 +41,11 @@
  * - `timezone` (an IANA zone, cron schedules only) and `catchUp` (a boolean; `false`, the default,
  *   skips the runs missed while the host was off) on a `schedule` trigger. They configure the
  *   schedule the file owns, as Weft's `timeZone` and `backfill`.
+ * - `name` on a `schedule` trigger: the schedule's display name, such as "Release notes digest",
+ *   which the schedule carries as its Weft `description`. With none, the schedule is described as
+ *   `Workflow <identifier>`.
+ * - `input` on a `schedule` trigger: the fixed value every fire starts its instance with, judged
+ *   against `inputSchema` when the file is written. With none, a fire starts with `null`.
  *
  * The trigger kind `manual` (`{ "kind": "manual" }`) is the one extension Weft does see: a
  * workflow that only starts when someone starts it.
@@ -106,19 +112,30 @@ export const WORKFLOW_FILE_SIZE_LIMIT = 256 * 1024;
  * not know from another fault (COR-1927).
  */
 export const TRIGGER_KEYS: Readonly<Record<string, readonly string[]>> = {
-  schedule: ['spec', 'overlap', 'timezone', 'catchUp'],
+  schedule: ['spec', 'overlap', 'timezone', 'catchUp', 'name', 'input'],
   signal: ['name'],
   manual: [],
 };
 
 /** The keys of a `schedule` trigger that configure its schedule and that Bureau strips before Weft. */
-export const SCHEDULE_TRIGGER_EXTENSION_KEYS = ['timezone', 'catchUp'] as const;
+export const SCHEDULE_TRIGGER_EXTENSION_KEYS = ['timezone', 'catchUp', 'name', 'input'] as const;
 
 /** The keys of a step that are Bureau's alone and that Bureau strips before Weft (COR-2009). */
 export const STEP_EXTENSION_KEYS = ['title', 'review'] as const;
 
 /** The longest workflow or step `title`, in characters: a name for a heading, not a sentence. */
 export const WORKFLOW_TITLE_MAXIMUM_LENGTH = 120;
+
+/** Whether `value` is a usable `title`: a non-blank string of at most the limit. */
+function isTitle(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim() !== '' &&
+    value.length <= WORKFLOW_TITLE_MAXIMUM_LENGTH
+  );
+}
+
+const TITLE_MESSAGE = `must be a non-empty string of at most ${String(WORKFLOW_TITLE_MAXIMUM_LENGTH)} characters`;
 
 /** Whether `timeZone` is an IANA time zone the runtime knows, such as `America/Chicago` or `UTC`. */
 export function isKnownTimeZone(timeZone: string): boolean {
@@ -132,9 +149,12 @@ export function isKnownTimeZone(timeZone: string): boolean {
 }
 
 /**
- * Why the `timezone` or `catchUp` of a `schedule` trigger is wrong, or `undefined` when both are
- * absent or right. `timezone` names an IANA zone and needs a cron `spec`, because an interval counts
- * elapsed time and Weft refuses a zone for one; `catchUp` is `true` or `false`.
+ * Why the `timezone`, `catchUp`, or `name` of a `schedule` trigger is wrong, or `undefined` when
+ * each is absent or right. `timezone` names an IANA zone and needs a cron `spec`, because an
+ * interval counts elapsed time and Weft refuses a zone for one; `catchUp` is `true` or `false`;
+ * `name` is a non-blank string of at most {@link WORKFLOW_TITLE_MAXIMUM_LENGTH} characters. Any
+ * JSON value is an `input`; whether the file's `inputSchema` accepts it is judged with the
+ * document.
  */
 export function scheduleTriggerExtensionIssue(
   trigger: Readonly<Record<string, unknown>>,
@@ -152,6 +172,9 @@ export function scheduleTriggerExtensionIssue(
   const catchUp = trigger['catchUp'];
   if (catchUp !== undefined && typeof catchUp !== 'boolean') {
     return '"catchUp" must be true or false';
+  }
+  if (Object.hasOwn(trigger, 'name') && !isTitle(trigger['name'])) {
+    return `"name" ${TITLE_MESSAGE}`;
   }
   return undefined;
 }
@@ -204,7 +227,10 @@ export interface WorkflowFileProblem {
 /** The longest `description`, in characters: a sentence for a list row, not a document. */
 export const WORKFLOW_DESCRIPTION_MAXIMUM_LENGTH = 280;
 
-/** A file's trigger as written: `kind` and the keys of that kind, `timezone` and `catchUp` included. */
+/**
+ * A file's trigger as written: `kind` and the keys of that kind, a schedule's `timezone`,
+ * `catchUp`, `name`, and `input` included.
+ */
 export type WorkflowFileTrigger = Readonly<{ kind: string } & Record<string, unknown>>;
 
 /** One step as written in a file, its `title` and `review` included. */
@@ -231,7 +257,10 @@ export interface WorkflowFileContents {
   readonly inputSchema: Readonly<Record<string, unknown>> | null;
   /** The JSON Schema the result of an instance must satisfy, or `null` when the file declares none. */
   readonly outputSchema: Readonly<Record<string, unknown>> | null;
-  /** The trigger as written, with the `timezone` and `catchUp` that the document's trigger lacks. */
+  /**
+   * The trigger as written, with the `timezone`, `catchUp`, `name`, and `input` that the document's
+   * trigger lacks.
+   */
   readonly trigger: WorkflowFileTrigger;
   /** The steps as written, with the `title` and `review` that the document's steps lack. */
   readonly steps: readonly WorkflowFileStep[];
@@ -239,8 +268,8 @@ export interface WorkflowFileContents {
   readonly stepAnnotations: readonly WorkflowStepAnnotation[];
   /**
    * The document Weft is handed: `name`, `trigger`, `steps`, and the schemas, when there are any,
-   * as written but without the keys of the extended format (`title`, `review`, `timezone`, and
-   * `catchUp`), which are Bureau's.
+   * as written but without the keys of the extended format (`title`, `review`, and a schedule's
+   * `timezone`, `catchUp`, `name`, and `input`), which are Bureau's.
    */
   readonly document: WorkflowDocument;
 }
@@ -350,25 +379,36 @@ function agentStepIssues(document: WorkflowDocument): {
 }
 
 /**
- * The issue with a schedule-triggered file whose `inputSchema` refuses `null` (COR-1927). A fire
- * starts its instance with no input, which is `null`, so such a file would fail every fire with
- * `input-invalid`; it is refused when it is written instead. A schema the limits already refused
- * is judged by those, and a file with no schema accepts anything.
+ * The issue with a schedule-triggered file whose `inputSchema` refuses what a fire starts its
+ * instance with (COR-1927): the trigger's `input` (COR-2009), or `null` when it gives none. Such a
+ * file would fail every fire with `input-invalid`, so it is refused when it is written instead. A
+ * schema the limits already refused is judged by those, and a file with no schema accepts anything.
+ * A refused `input` is reported at `trigger.input`; a refused `null` at `inputSchema`.
  */
-function scheduleInputIssues(document: WorkflowDocument): WorkflowFileIssue[] {
+function scheduleInputIssues(
+  document: WorkflowDocument,
+  writtenTrigger: unknown,
+): WorkflowFileIssue[] {
   const schema = document.inputSchema;
   if (document.trigger.kind !== 'schedule' || schema === undefined) return [];
   if (workflowSchemaIssues('inputSchema', schema).length > 0) return [];
-  const refused = inputSchemaIssues(schema, null);
+  const input = isPlainObject(writtenTrigger) ? (writtenTrigger['input'] ?? null) : null;
+  const refused = inputSchemaIssues(schema, input);
   if (refused.length === 0) return [];
-  return [
-    {
-      path: 'inputSchema',
-      message: `a schedule fire starts the workflow with no input, which is null, and this schema refuses it (${refused
-        .map((issue) => issue.message)
-        .join('; ')}); accept null, or use another trigger`,
-    },
-  ];
+  const reasons = refused.map((issue) => issue.message).join('; ');
+  return input === null
+    ? [
+        {
+          path: 'inputSchema',
+          message: `a schedule fire starts the workflow with no input, which is null, and this schema refuses it (${reasons}); give the trigger an "input" the schema accepts, accept null, or use another trigger`,
+        },
+      ]
+    : [
+        {
+          path: 'trigger.input',
+          message: `every schedule fire starts the workflow with this input, and the inputSchema refuses it (${reasons})`,
+        },
+      ];
 }
 
 /**
@@ -401,20 +441,9 @@ function pinActivityVersions(
   return Object.keys(pins).length === 0 ? document : { ...document, activityVersions: pins };
 }
 
-/** Whether `value` is a usable `title`: a non-blank string of at most the limit. */
-function isTitle(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.trim() !== '' &&
-    value.length <= WORKFLOW_TITLE_MAXIMUM_LENGTH
-  );
-}
-
-const TITLE_MESSAGE = `must be a non-empty string of at most ${String(WORKFLOW_TITLE_MAXIMUM_LENGTH)} characters`;
-
 /**
  * `documentInput` without the keys of the extended format (COR-2009), which Weft's strict schema
- * would refuse: a `schedule` trigger's `timezone` and `catchUp`, and each step's `title` and
+ * would refuse: a `schedule` trigger's `timezone`, `catchUp`, `name`, and `input`, and each step's `title` and
  * `review`. Each is checked here first, into `issues`, and every step's annotation is returned by
  * index. Any other key is left in place, so Weft still refuses a key nobody knows.
  */
@@ -430,7 +459,7 @@ function stripExtensions(
   if (isPlainObject(trigger) && trigger['kind'] === 'schedule') {
     const issue = scheduleTriggerExtensionIssue(trigger);
     if (issue !== undefined) issues.push({ path: 'trigger', message: issue });
-    const { timezone: _timezone, catchUp: _catchUp, ...rest } = trigger;
+    const { timezone: _timezone, catchUp: _catchUp, name: _name, input: _input, ...rest } = trigger;
     stripped['trigger'] = rest;
   }
   const annotations: WorkflowStepAnnotation[] = [];
@@ -553,7 +582,7 @@ export function parseWorkflowFile(
     for (const key of ['inputSchema', 'outputSchema'] as const) {
       if (document[key] !== undefined) issues.push(...workflowSchemaIssues(key, document[key]));
     }
-    issues.push(...scheduleInputIssues(document));
+    issues.push(...scheduleInputIssues(document, written['trigger']));
   }
   if (issues.length > 0 || document === undefined) {
     return {

@@ -110,7 +110,7 @@ const workflowListingSchema = z.object({
   outputSchema: jsonSchemaField.nullable(),
   version: z.string().nullable(),
   /**
-   * The file's trigger as written, `{ kind, ... }` with a schedule's `timezone` and `catchUp`, for
+   * The file's trigger as written, `{ kind, ... }` with a schedule's `timezone`, `catchUp`, `name`, and `input`, for
    * a `ready` file, else `null`.
    */
   trigger: z.record(z.string(), z.unknown()).nullable(),
@@ -157,7 +157,7 @@ const definitionSchema = z
     inputSchema: jsonSchemaField
       .optional()
       .describe(
-        'A JSON Schema (draft 2020-12) for the input an instance starts with: the `input` of `bureau.workflows.start` or the `payload` of a signal; a schedule fire starts with `null`. At most 32 KiB, 8 levels deep, with no `$id`, `pattern`, or `patternProperties`.',
+        'A JSON Schema (draft 2020-12) for the input an instance starts with: the `input` of `bureau.workflows.start`, the `payload` of a signal, or a schedule trigger’s `input` (`null` when it gives none), which must satisfy it when the file is written. At most 32 KiB, 8 levels deep, with no `$id`, `pattern`, or `patternProperties`.',
       ),
     outputSchema: jsonSchemaField
       .optional()
@@ -167,7 +167,7 @@ const definitionSchema = z
     trigger: z
       .looseObject({ kind: z.string() })
       .describe(
-        'What starts the workflow: `{ kind: "schedule", spec, timezone?, overlap?, catchUp? }`, `{ kind: "signal", name }`, or `{ kind: "manual" }` for a workflow only a person starts. `timezone` is an IANA zone for a cron `spec`; `catchUp: true` runs what was missed while the host was off.',
+        'What starts the workflow: `{ kind: "schedule", name?, spec, timezone?, overlap?, catchUp?, input? }`, `{ kind: "signal", name }`, or `{ kind: "manual" }` for a workflow only a person starts. A schedule’s `name` is its display name; `timezone` is an IANA zone for a cron `spec`; `catchUp: true` runs what was missed while the host was off; `input` is the fixed value every fire starts with.',
       ),
     steps: z
       .array(z.record(z.string(), z.unknown()))
