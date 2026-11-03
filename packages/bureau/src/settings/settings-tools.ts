@@ -42,7 +42,7 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
     name: 'settings-get',
     version: '1.0.0',
     description:
-      "Read the deployment's runtime settings: each setting's value by dotted key, the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked (with the `lockReason`).",
+      "Read the deployment's runtime settings: each setting's value by dotted key, `effective` (the value each key applies by, set or not), the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked (with the `lockReason`).",
     input: z.object({}),
     metadata: {
       readOnly: true,
