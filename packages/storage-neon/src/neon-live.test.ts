@@ -12,6 +12,7 @@ import {
   runBasicStorageContract,
   runConcurrentConditionalBatchConformance,
   runStorageCapabilityConformance,
+  runStorageWriteTimeContract,
 } from '@lostgradient/storage/testing';
 import { NeonStorage } from './neon.ts';
 
@@ -54,8 +55,12 @@ describe.skipIf(database === null)('live Neon driver', () => {
   // and drops it in `afterAll`, so a supplied database is left as we found it.
   const LIVE_TABLE = 'weft_test_neon_kv';
 
-  async function createLiveNeonStorage(): Promise<NeonStorage> {
-    const storage = new NeonStorage({ url: live().url, table: LIVE_TABLE });
+  async function createLiveNeonStorage(now?: () => number): Promise<NeonStorage> {
+    const storage = new NeonStorage({
+      url: live().url,
+      table: LIVE_TABLE,
+      ...(now === undefined ? {} : { now }),
+    });
     // Reset the suite's own table so each case starts from an empty store. The
     // adapter's #ensureTable creates the table on first use; a put-then-delete via
     // the public surface both guarantees the table exists and clears it.
@@ -96,6 +101,10 @@ describe.skipIf(database === null)('live Neon driver', () => {
   });
 
   runBasicStorageContract('NeonStorage (live)', { create: createLiveNeonStorage });
+
+  // The only path where the batch's `$3::bigint` write time and the driver's BIGINT-as-text read
+  // cross the real Neon WebSocket driver.
+  runStorageWriteTimeContract('NeonStorage (live)', { create: createLiveNeonStorage });
 
   describe('NeonStorage (live) concurrent compare-and-swap', () => {
     it('lets exactly one of many concurrent absent-key conditionalBatch calls win', async () => {

@@ -232,13 +232,19 @@ describe.skipIf(database === null)('PostgresStorage (live pg)', () => {
   // driver for free.
   const LIVE_TABLE = 'weft_test_kv';
 
-  async function createLivePostgresStorage(): Promise<PostgresStorage> {
-    const storage = new PostgresStorage({ url: live().url, table: LIVE_TABLE });
+  async function createLivePostgresStorage(now?: () => number): Promise<PostgresStorage> {
+    const storage = new PostgresStorage({
+      url: live().url,
+      table: LIVE_TABLE,
+      ...(now === undefined ? {} : { now }),
+    });
     // Reset only this suite's table so each case starts from an empty store.
     await storage.put('__reset__', new Uint8Array([0]));
     await storage.deletePrefix('');
     return storage;
   }
+
+  runStorageWriteTimeContract('PostgresStorage (live pg)', { create: createLivePostgresStorage });
 
   it('round-trips put/get and scan over the real driver', async () => {
     await using storage = await createLivePostgresStorage();
