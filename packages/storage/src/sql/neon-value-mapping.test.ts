@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import type { BatchOperation } from '../interface.ts';
 import {
   affectedRowCount,
+  metadataFromWriteTime,
   resolveBatchNetEffect,
   toBytea,
   toStorageValue,
@@ -127,5 +128,21 @@ describe('resolveBatchNetEffect', () => {
     const { puts, deletes } = resolveBatchNetEffect([]);
     expect(puts.size).toBe(0);
     expect(deletes.size).toBe(0);
+  });
+});
+
+describe('metadataFromWriteTime', () => {
+  it('reads a NULL or missing write time as unknown', () => {
+    expect(metadataFromWriteTime(null)).toEqual({ updatedAt: null });
+    expect(metadataFromWriteTime(undefined)).toEqual({ updatedAt: null });
+  });
+
+  it('reads a BIGINT the driver returns as a string, or a number, as milliseconds', () => {
+    expect(metadataFromWriteTime('1793700000000')).toEqual({ updatedAt: 1_793_700_000_000 });
+    expect(metadataFromWriteTime(42)).toEqual({ updatedAt: 42 });
+  });
+
+  it('reads a value that is not a finite number as unknown', () => {
+    expect(metadataFromWriteTime('not a time')).toEqual({ updatedAt: null });
   });
 });
