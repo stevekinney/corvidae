@@ -59,6 +59,19 @@ describe('bannerPresetCopy: the preset table, one wording everywhere', () => {
     );
   });
 
+  test('out-of-date is the stopped banner of a read-only page: no changes sentence, retries stopped', () => {
+    expect(words('out-of-date')).toBe(
+      'Can’t reach the Interborough server. Showing what loaded as of 10:44 AM CST. Retries stopped after 8 attempts.',
+    );
+    expect(words('out-of-date', { maxAttempts: 5 })).toContain('Retries stopped after 5 attempts.');
+  });
+
+  test('a read-only page leaves the changes sentence out of unreachable with consequence false', () => {
+    expect(words('unreachable', { retryInSeconds: 8, attempt: 3, consequence: false })).toBe(
+      'Can’t reach the Interborough server. Showing what loaded as of 10:44 AM CST. Retrying in 8 s (attempt 3 of 8).',
+    );
+  });
+
   test('refresh-failed does not say changes are off', () => {
     expect(words('refresh-failed')).toBe(
       'Couldn’t refresh this page. Showing what loaded as of 10:44 AM CST.',

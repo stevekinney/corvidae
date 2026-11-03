@@ -238,6 +238,48 @@ describe('Button loading state', () => {
     }
   });
 
+  /** An `offsetWidth` that is the pin while one is set, and the words' own width when none is. */
+  function withNaturalWidths(natural: (text: string) => number, run: () => Promise<void>) {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.style.inlineSize
+          ? Number.parseFloat(this.style.inlineSize)
+          : natural(this.textContent ?? '');
+      },
+    });
+    return run().finally(() => {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', descriptor);
+      else delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    });
+  }
+
+  test('longer words that come with loading let the width go, so they never spill', async () => {
+    await withNaturalWidths(
+      (text) => (text.includes('Creating') ? 100 : 64),
+      async () => {
+        const { container, rerender } = render(Button, { props: { label: 'Create' } });
+        await rerender({ label: 'Creating…', loading: true });
+        expect(container.querySelector('button')!.style.inlineSize).toBe('');
+        await rerender({ label: 'Create', loading: false });
+        await rerender({ label: 'Create', loading: true });
+        expect(container.querySelector('button')!.style.inlineSize).toBe('64px');
+      },
+    );
+  });
+
+  test('shorter words that come with loading keep the pinned width', async () => {
+    await withNaturalWidths(
+      (text) => (text.includes('Testing') ? 94 : 121),
+      async () => {
+        const { container, rerender } = render(Button, { props: { label: 'Test connection' } });
+        await rerender({ label: 'Testing…', loading: true });
+        expect(container.querySelector('button')!.style.inlineSize).toBe('121px');
+      },
+    );
+  });
+
   test('a full-width loading button does not pin a width', async () => {
     const { container, rerender } = render(Button, { props: { label: 'Save', fullWidth: true } });
     await rerender({ label: 'Save', fullWidth: true, loading: true });

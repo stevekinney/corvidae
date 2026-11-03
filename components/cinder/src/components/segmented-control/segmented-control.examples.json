@@ -38,6 +38,12 @@
       "title": "Segments with counts",
       "description": "A segment takes a count, drawn after the label in a muted, tabular figure. The count is part of the accessible name (\"Waiting on you, 2\"), and zero still shows.",
       "code": "<script lang=\"ts\">\n  import { Segment, SegmentedControl } from '@lostgradient/cinder';\n\n  let value = $state('all');\n</script>\n\n<SegmentedControl id=\"status-filter\" selectionMode=\"single\" bind:value label=\"Status\">\n  <Segment value=\"all\" count={19}>All</Segment>\n  <Segment value=\"waiting\" count={2}>Waiting on you</Segment>\n  <Segment value=\"running\" count={0}>Running</Segment>\n  <Segment value=\"done\" count={15}>Done</Segment>\n  <Segment value=\"failed\" count={1}>Failed</Segment>\n</SegmentedControl>\n"
+    },
+    {
+      "id": "pending-counts",
+      "title": "Counts that are still loading",
+      "description": "count=\"pending\" draws a dash where the number will be (\"All –\") and reads as \"All, loading\", so the segments keep their width while the data arrives.",
+      "code": "<script lang=\"ts\">\n  import { Segment, SegmentedControl } from '@lostgradient/cinder';\n\n  let { mountIdPrefix }: { mountIdPrefix?: string } = $props();\n  const uid = $props.id();\n  let controlId = $derived(`${mountIdPrefix ?? uid}-pending-status`);\n\n  let value = $state('all');\n</script>\n\n<SegmentedControl id={controlId} selectionMode=\"single\" bind:value label=\"Status\">\n  <Segment value=\"all\" count=\"pending\">All</Segment>\n  <Segment value=\"waiting\" count=\"pending\">Waiting on you</Segment>\n  <Segment value=\"unavailable\" count=\"pending\">Unavailable</Segment>\n</SegmentedControl>\n"
     }
   ]
 }

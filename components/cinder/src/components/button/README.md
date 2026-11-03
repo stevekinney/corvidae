@@ -12,7 +12,7 @@ A clickable button or anchor with built-in loading state, icon slots, and a disc
 <Button variant="primary" size="md" label="Save" />
 ```
 
-When `href` is set, the component renders as `<a>`; otherwise it renders as `<button>`. Setting `loading` swaps in a spinner, blocks the consumer's `onclick`, forces `aria-disabled` / `aria-busy`, and strips `href` to prevent navigation.
+When `href` is set, the component renders as `<a>`; otherwise it renders as `<button>`. Setting `loading` swaps in a spinner, blocks the consumer's `onclick`, forces `aria-disabled` / `aria-busy`, and strips `href` to prevent navigation. While loading the cursor is `progress` and the button keeps full strength; a page that dims it sets `--cinder-button-loading-opacity` (for example `0.75`) on it. The width is held when the label stays or gets shorter; a longer label that arrives with `loading` ("Create", "Creating…") lets the width go so it never spills over the border.
 
 ## Sizes
 

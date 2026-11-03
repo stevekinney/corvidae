@@ -164,6 +164,8 @@ describe('ErrorState variant', () => {
     const centred = declarationsFor(css, '.cinder-error-state');
     expect(centred.get('align-items')).toBe('center');
     expect(centred.get('justify-content')).toBe('center');
+    // It fills the height left under the header, as the empty state does, so it centres there.
+    expect(centred.get('min-block-size')).toBe('100%');
   });
 
   test('the title is 16px semibold and the sentence holds a 380px measure', async () => {
@@ -203,6 +205,7 @@ describe('ErrorState variant', () => {
     const flat = declarationsFor(css, ".cinder-error-state[data-cinder-variant='flat']");
     expect(flat.get('padding')).toBe('0');
     expect(flat.get('align-items')).toBe('flex-start');
+    expect(flat.get('min-block-size')).toBe('0');
   });
 });
 

@@ -521,6 +521,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       readonly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      onValueChangeRequest: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       sheetBelow: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },

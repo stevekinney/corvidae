@@ -26,6 +26,12 @@
       "title": "Not found",
       "description": "The neutral tone for a thing that doesn’t exist: nothing failed, so it is not announced as an alert.",
       "code": "<script lang=\"ts\">\n  import { Button, ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  tone=\"neutral\"\n  title=\"This run doesn’t exist\"\n  description=\"It may have been deleted. The address might also be mistyped.\"\n>\n  {#snippet secondaryAction()}\n    <Button variant=\"secondary\" label=\"Back to Runs\" />\n  {/snippet}\n</ErrorState>\n"
+    },
+    {
+      "id": "under-header",
+      "title": "Full-page error under a header and tabs",
+      "description": "When nothing can show, the error state takes the height left under the heading and tabs, centred, with the header’s + secondary and inert (focusable, with its reason as the description) and Try again the only primary. It is never drawn with a banner.",
+      "code": "<script lang=\"ts\">\n  import { ErrorState, PageHeader, Tab, TabList, Tabs } from '@lostgradient/cinder';\n\n  let tab = $state('overview');\n</script>\n\n<div\n  style=\"display: flex; flex-direction: column; block-size: 30rem; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-lg); padding: var(--cinder-space-4)\"\n>\n  <PageHeader\n    headingLevel={2}\n    title=\"Workflows\"\n    description=\"Agent-authored workflows and their runs.\"\n    error\n    createAction={{ label: 'New workflow', inertReason: 'Off until the list loads' }}\n  />\n  <Tabs bind:value={tab}>\n    <TabList label=\"Sections\">\n      <Tab value=\"overview\">Overview</Tab>\n      <Tab value=\"workers\">Workers</Tab>\n      <Tab value=\"storage\">Storage</Tab>\n    </TabList>\n  </Tabs>\n  <div style=\"flex: 1 1 auto; min-block-size: 0; position: relative\">\n    <ErrorState\n      title=\"Couldn’t load workflows\"\n      description=\"The server answered with an error (500). Nothing you did caused it.\"\n      onRetry={() => {}}\n    />\n  </div>\n</div>\n"
     }
   ]
 }

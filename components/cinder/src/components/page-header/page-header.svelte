@@ -26,9 +26,13 @@
 
   import { setActionEmphasisContext } from '../../_internal/action-emphasis-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
   import Button from '../button/button.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import type { PageHeaderProps } from './page-header.types.ts';
+
+  const headerId = $props.id();
+  const createReasonId = `${headerId}-create-reason`;
 
   let {
     title,
@@ -54,9 +58,23 @@
   );
   const titleTag = $derived(`h${resolvedHeadingLevel}` as const);
 
-  // The title keeps two lines and then ends in an ellipsis; this is the tooltip that still shows
-  // all of it.
+  // The title keeps two lines and then ends in an ellipsis. Only a title that is actually cut
+  // off gets the Cinder tooltip with all of it, and a stop of its own so the keyboard reaches it:
+  // a native `title` attribute is neither, and would repeat every short title on hover.
   const fullTitle = $derived(typeof title === 'string' ? title : titleText);
+  let titleElement = $state<HTMLElement | null>(null);
+  let titleCutOff = $state(false);
+  function measureTitle(): void {
+    titleCutOff =
+      titleElement !== null && titleElement.scrollHeight - titleElement.clientHeight > 1;
+  }
+  const observeTitle = useResizeObserver(measureTitle);
+  $effect(() => {
+    // The words can change without the box changing size.
+    void fullTitle;
+    void title;
+    measureTitle();
+  });
 
   // While a full-page error shows under the header its primary buttons draw as secondary.
   setActionEmphasisContext({
@@ -84,6 +102,9 @@
 
 {#snippet createActionButton()}
   {#if createAction}
+    {#if createAction.inertReason}
+      <span id={createReasonId} class="cinder-sr-only">{createAction.inertReason}</span>
+    {/if}
     <Tooltip text={createAction.label} describe={false}>
       {#if createAction.href !== undefined}
         <Button
@@ -91,6 +112,8 @@
           iconOnly
           href={createAction.href}
           aria-label={createAction.label}
+          aria-disabled={createAction.inertReason ? 'true' : undefined}
+          aria-describedby={createAction.inertReason ? createReasonId : undefined}
           mutating={createAction.mutating ?? true}
           onclick={createAction.onclick}
           class="cinder-page-header__create"
@@ -102,6 +125,8 @@
           variant="secondary"
           iconOnly
           aria-label={createAction.label}
+          aria-disabled={createAction.inertReason ? 'true' : undefined}
+          aria-describedby={createAction.inertReason ? createReasonId : undefined}
           disabled={createAction.disabled}
           mutating={createAction.mutating ?? true}
           onclick={createAction.onclick}
@@ -124,13 +149,22 @@
   <div class="cinder-page-header__row">
     <div class="cinder-page-header__heading-group">
       <div class="cinder-page-header__title-line">
-        <svelte:element this={titleTag} class="cinder-page-header__title" title={fullTitle}>
+        <svelte:element
+          this={titleTag}
+          bind:this={titleElement}
+          class="cinder-page-header__title"
+          tabindex={titleCutOff && fullTitle ? 0 : undefined}
+          {@attach observeTitle}
+        >
           {#if typeof title === 'string'}
             {title}
           {:else}
             {@render title()}
           {/if}
         </svelte:element>
+        {#if titleCutOff && fullTitle}
+          <Tooltip text={fullTitle} describe={false} triggerRef={titleElement} />
+        {/if}
         {#if statusPlacement === 'inline'}
           {@render statusLine('inline')}
         {/if}

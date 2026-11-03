@@ -21,8 +21,15 @@ export type PageHeaderCreateAction = {
   href?: string;
   /** Called when the action is pressed. Not called while the action is inert. */
   onclick?: (event: MouseEvent) => void;
-  /** Disables the action. */
+  /** Disables the action: not focusable, not pressable. Prefer `inertReason`, which keeps focus. */
   disabled?: boolean;
+  /**
+   * Makes the action inert and says why: it stays focusable, ignores the press, carries
+   * `aria-disabled`, and the reason describes it ("Off until the list loads"). Use it where the
+   * page cannot create yet but should still tell a keyboard user so, such as under a full-page
+   * error. Under a stale `<StaleRegion>` the region's own reason does this.
+   */
+  inertReason?: string;
   /**
    * Whether creating changes something, so the action goes inert under a stale `<StaleRegion>`.
    * @default true

@@ -49,8 +49,11 @@
   const buttonValue = $derived(value ?? href ?? '');
 
   // Zero is a real count ("Running 0"), so only a missing or non-finite number hides it.
+  const countPending = $derived(count === 'pending');
   const countValue = $derived(
-    count !== undefined && Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : undefined,
+    typeof count === 'number' && Number.isFinite(count)
+      ? Math.max(0, Math.trunc(count))
+      : undefined,
   );
 
   const registerSegment: Attachment<HTMLButtonElement> = (node) => {
@@ -114,8 +117,13 @@
      zero-size inline box, not by `cinder-sr-only`: an absolutely positioned node is blockified,
      and a browser puts a space around a block when it builds a name from content, which would
      read "Waiting on you , 2". -->
-  {@render children?.()}{#if countValue !== undefined}<span
+  {@render children?.()}{#if countPending}<span
       class="cinder-segmented-control-option-count"
+      data-cinder-count-pending=""
+      ><span class="cinder-segmented-control-option-count-separator">, loading</span><span
+        aria-hidden="true">–</span
+      ></span
+    >{:else if countValue !== undefined}<span class="cinder-segmented-control-option-count"
       ><span class="cinder-segmented-control-option-count-separator">, </span>{countValue}</span
     >{/if}
   {#if trailing}

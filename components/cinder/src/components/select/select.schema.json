@@ -105,6 +105,11 @@
         "description": "Called with the new value when the person picks an option."
       },
       {
+        "name": "onValueChangeRequest",
+        "reason": "function-or-snippet",
+        "description": "Intercepts the option the person picked before the bindable value is written. Return a\nreplacement value to use instead, including the current value to refuse the pick; return\nnothing to accept it. The control shows what the hook returned, never the refused pick."
+      },
+      {
         "name": "options",
         "reason": "unknown-shape",
         "required": true,

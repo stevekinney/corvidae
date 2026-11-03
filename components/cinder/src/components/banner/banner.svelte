@@ -56,6 +56,12 @@
       glyph: 'connection',
       primaryRetry: true,
     },
+    'out-of-date': {
+      variant: 'warning',
+      label: 'Connection problem',
+      glyph: 'connection',
+      primaryRetry: true,
+    },
     'refresh-failed': { variant: 'warning', label: 'Refresh problem' },
     restarting: { variant: 'info', label: 'Restart status' },
     reconnecting: { variant: 'info', label: 'Restart status' },

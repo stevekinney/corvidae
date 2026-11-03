@@ -9,7 +9,7 @@
     tabindex?: number;
     disabled?: boolean;
     controls?: string;
-    count?: number;
+    count?: number | 'pending';
   };
 
   export type FixtureOption = FixtureOptionBase &

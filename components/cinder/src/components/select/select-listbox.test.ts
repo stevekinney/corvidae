@@ -150,6 +150,58 @@ describe('Select listbox presentation: opening and choosing', () => {
     expect(document.activeElement).toBe(trigger(container));
   });
 
+  test('a pick the request hook refuses never stays on the trigger', async () => {
+    const onValueChange = mock(() => {});
+    const { container } = renderListbox({
+      value: 'assistant',
+      onValueChange,
+      onValueChangeRequest: () => 'assistant',
+    });
+    await openByClick(container);
+    await fireEvent.click(options()[2]!);
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(trigger(container).textContent).toContain('Assistant');
+    expect(trigger(container).textContent).not.toContain('Echo');
+  });
+
+  test('a pick the request hook replaces is the value that is shown and announced', async () => {
+    const onValueChange = mock(() => {});
+    const { container } = renderListbox({
+      value: 'assistant',
+      onValueChange,
+      onValueChangeRequest: () => 'tool-runner',
+    });
+    await openByClick(container);
+    await fireEvent.click(options()[2]!);
+    expect(onValueChange).toHaveBeenCalledWith('tool-runner');
+    expect(trigger(container).textContent).toContain('Tool runner');
+  });
+
+  test('a suffix sits muted on the label line, and the trigger can carry its own', async () => {
+    const { container } = renderListbox({
+      value: 'sonnet',
+      options: [
+        { value: 'sonnet', label: 'Claude Sonnet 5.5', triggerSuffix: 'Anthropic' },
+        { value: 'archiver', label: 'Nightly archiver', suffix: 'no description' },
+      ],
+    });
+    expect(
+      container.querySelector('.cinder-select__value')?.textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe('Claude Sonnet 5.5 · Anthropic');
+    await openByClick(container);
+    const [sonnet, archiver] = options();
+    expect(sonnet?.querySelector('.cinder-select__option-label')?.textContent?.trim()).toBe(
+      'Claude Sonnet 5.5',
+    );
+    expect(
+      archiver
+        ?.querySelector('.cinder-select__option-label')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim(),
+    ).toBe('Nightly archiver · no description');
+    expect(archiver?.querySelector('.cinder-select__suffix')).not.toBeNull();
+  });
+
   test('a disabled option is shown with its reason and cannot be chosen', async () => {
     const onValueChange = mock(() => {});
     const { container } = renderListbox({
@@ -322,6 +374,31 @@ describe('Select listbox presentation: groups, messages and footer', () => {
     expect(group.getAttribute('aria-labelledby')).toBe(
       document.body.querySelector('.cinder-_option-group__label')!.id,
     );
+  });
+
+  test('a group message is outside role=listbox, and the listbox still owns every option', async () => {
+    const { container } = renderListbox({
+      value: 'sonnet',
+      options: grouped,
+      groups: [
+        { name: 'anthropic', heading: 'Anthropic' },
+        { name: 'openai', heading: 'OpenAI · not connected', message: messageSnippet },
+      ],
+    });
+    await openByClick(container);
+    const listbox = requiredInstance(document.body.querySelector('[role="listbox"]'), HTMLElement);
+    const link = requiredInstance(
+      document.body.querySelector('.cinder-select__group-message a'),
+      HTMLElement,
+    );
+    expect(listbox.contains(link)).toBe(false);
+    const owned = (listbox.getAttribute('aria-owns') ?? '').split(' ');
+    const reachable = options().filter((option) =>
+      owned.some(
+        (ownedId) => option.id === ownedId || document.getElementById(ownedId)?.contains(option),
+      ),
+    );
+    expect(reachable).toHaveLength(2);
   });
 
   test('a divided group carries the divider marker', async () => {

@@ -25,6 +25,7 @@ const schema = {
         'offline',
         'unreachable',
         'stopped',
+        'out-of-date',
         'refresh-failed',
         'restarting',
         'reconnecting',

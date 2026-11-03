@@ -17,6 +17,18 @@ export type SelectOption<T extends string = string> = {
    * cursor can stand on it, so its reason (`description`) can be read.
    */
   disabled?: boolean;
+  /**
+   * Listbox only: muted words on the label's own line, after a middle dot ("Nightly archiver ·
+   * no description"). Use it for a fact that belongs beside the name; a sentence goes in
+   * `description`.
+   */
+  suffix?: string;
+  /**
+   * Listbox only: muted words drawn after the value in the trigger when this option is the
+   * current one ("Claude Sonnet 5.5 · Anthropic"), while the option row keeps its plain label.
+   * Use it when a group heading names what the trigger no longer has beside it.
+   */
+  triggerSuffix?: string;
   /** Listbox only: a muted sentence under the label ("Answers every message with the same scripted reply."). */
   description?: string;
   /** Listbox only: a muted line under the description ("Needs a provider"). */
@@ -138,6 +150,12 @@ export type SelectProps<T extends string = string> = Omit<
   mutating?: boolean;
   /** Called with the new value when the person picks an option. */
   onValueChange?: (value: T) => void;
+  /**
+   * Intercepts the option the person picked before the bindable value is written. Return a
+   * replacement value to use instead, including the current value to refuse the pick; return
+   * nothing to accept it. The control shows what the hook returned, never the refused pick.
+   */
+  onValueChangeRequest?: (next: T) => T | void;
   /**
    * Listbox only: viewport width below which the options dock to the bottom edge as a sheet. A
    * simple CSS length such as `'640px'`, or `false` to always anchor.

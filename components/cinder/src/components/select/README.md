@@ -47,7 +47,7 @@ Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"
 
 ### Listbox presentation
 
-`presentation="listbox"` draws a button that opens a listbox. Options can carry a `description`, a `note` and a `group`; `groups` names the headings, divides them and can add a non-selectable `message`; `leading` draws a mark before each option; `footer` renders outside the listbox with its own keyboard stop; `placeholder` shows while no option is selected; `readonly` keeps the value focusable but not changeable. See `select.a11y.md` for the keyboard model.
+`presentation="listbox"` draws a button that opens a listbox. Options can carry a `description`, a `note` and a `group`; `groups` names the headings, divides them and can add a non-selectable `message`; `leading` draws a mark before each option; `footer` renders outside the listbox with its own keyboard stop; `placeholder` shows while no option is selected; `readonly` keeps the value focusable but not changeable. See `select.a11y.md` for the keyboard model. An option's `suffix` adds muted words on the label's own line ("Nightly archiver · no description"), and `triggerSuffix` adds muted words after the value in the trigger only ("Claude Sonnet 5.5 · Anthropic"). `onValueChangeRequest` can refuse or replace a pick before it is written, and the control shows what it returned, never the refused pick.
 
 ## Props
 
@@ -75,6 +75,7 @@ Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"
 | `groups` | `(opaque)` | no | — | Listbox only: headings, dividers and messages for the option groups. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | Listbox only: a mark drawn before each option's label and before the selected value in the trigger, such as an avatar. Decorative. Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChange` | `(opaque)` | no | — | Called with the new value when the person picks an option. Not expressible in JSON Schema; see the component types for the signature. |
+| `onValueChangeRequest` | `(opaque)` | no | — | Intercepts the option the person picked before the bindable value is written. Return a replacement value to use instead, including the current value to refuse the pick; return nothing to accept it. The control shows what the hook returned, never the refused pick. Not expressible in JSON Schema; see the component types for the signature. |
 | `options` | `(opaque)` | yes | — | Options to render as `<option>` children. The sole inference source for T. Not expressible in JSON Schema; see the component types for the signature. |
 | `value` | `(opaque)` | no | — | Bound selected value. `undefined` when nothing is selected. Not expressible in JSON Schema; see the component types for the signature. |
 

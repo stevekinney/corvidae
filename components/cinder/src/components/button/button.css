@@ -69,8 +69,10 @@
  * each variant's own colors so loading buttons don't read as permanently-disabled.
  */
   .cinder-button[data-cinder-loading] {
-    cursor: wait;
-    opacity: 1;
+    cursor: progress;
+    /* Full strength by default, as the Save in flight frame draws it. A page that dims the
+       button while it works (Connecting…) sets the token on it. */
+    opacity: var(--cinder-button-loading-opacity, 1);
   }
 
   /* Spinner — visible feedback for sighted users while `aria-busy` informs assistive tech.
@@ -80,6 +82,12 @@
  * lets the content overflow evenly into that padding. An icon-only button shows the spinner
  * in place of its icon.
  */
+  .cinder-button[data-cinder-loading] {
+    /* A tighter gap, so the spinner and an unchanged label fit the padding the pinned width
+       leaves: 10px at md, 8px at sm. */
+    gap: var(--cinder-space-1);
+  }
+
   .cinder-button[data-cinder-loading]::after {
     content: '';
     order: -1;

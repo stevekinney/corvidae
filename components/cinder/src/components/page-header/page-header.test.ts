@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import Ajv2020 from 'ajv/dist/2020';
 
-import { setupHappyDom } from '@lostgradient/testing';
+import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
 setupHappyDom();
@@ -15,7 +15,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const { createRawSnippet } = await import('svelte');
+const { createRawSnippet, flushSync } = await import('svelte');
 const { default: PageHeader } = await import('./page-header.svelte');
 const { default: Harness } = await import('./page-header-harness.test.svelte');
 const { fireEvent } = await import('@testing-library/svelte');
@@ -275,27 +275,89 @@ describe('PageHeader', () => {
     });
   });
 
-  describe('long title', () => {
-    test('clamps to two lines and carries the full title in its tooltip', () => {
-      const { container } = render(Harness, {
-        props: { title: 'Please refund order 4471, it arrived damaged, and also check the claims' },
+  describe('inert create action', () => {
+    test('inertReason keeps the + focusable, ignores the press and describes it', async () => {
+      const onclick = mock(() => {});
+      const { container } = render(PageHeader, {
+        props: {
+          title: 'Workflows',
+          createAction: { label: 'New workflow', onclick, inertReason: 'Off until the list loads' },
+        },
       });
+      const create = requiredInstance(
+        container.querySelector('.cinder-page-header__create'),
+        HTMLElement,
+      );
+      expect(create.getAttribute('aria-disabled')).toBe('true');
+      expect(create.hasAttribute('disabled')).toBe(false);
+      create.focus();
+      expect(document.activeElement).toBe(create);
+      await fireEvent.click(create);
+      expect(onclick).not.toHaveBeenCalled();
+      const describedBy = create.getAttribute('aria-describedby') ?? '';
+      expect(document.getElementById(describedBy)?.textContent).toBe('Off until the list loads');
+    });
+  });
+
+  describe('long title', () => {
+    const longTitle = 'Please refund order 4471, it arrived damaged, and also check the claims';
+
+    function withHeadingBox(scrollHeight: number, clientHeight: number, run: () => void) {
+      const scroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+      const client = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get: () => scrollHeight,
+      });
+      Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+        configurable: true,
+        get: () => clientHeight,
+      });
+      try {
+        run();
+      } finally {
+        if (scroll) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scroll);
+        else delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+        if (client) Object.defineProperty(HTMLElement.prototype, 'clientHeight', client);
+        else delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+      }
+    }
+
+    test('clamps to two lines and never uses the native title attribute', () => {
+      const { container } = render(Harness, { props: { title: longTitle } });
 
       const heading = container.querySelector('.cinder-page-header__title');
-      expect(heading?.getAttribute('title')).toBe(
-        'Please refund order 4471, it arrived damaged, and also check the claims',
-      );
+      expect(heading?.hasAttribute('title')).toBe(false);
       expect(stylesheet).toMatch(/__title\s*\{[^}]*-webkit-line-clamp:\s*2/);
     });
 
-    test('takes the tooltip from titleText when the title is a snippet', () => {
-      const { container } = render(Harness, {
-        props: { title: 'Plain title', titleText: 'Plain title' },
+    test('a title that is cut off is a keyboard stop with the Cinder tooltip, a short one is not', () => {
+      withHeadingBox(60, 40, () => {
+        const { container } = render(Harness, { props: { title: longTitle } });
+        flushSync();
+        const heading = container.querySelector('.cinder-page-header__title');
+        expect(heading?.getAttribute('tabindex')).toBe('0');
       });
+      cleanup();
+      withHeadingBox(40, 40, () => {
+        const { container } = render(Harness, { props: { title: 'Approvals' } });
+        flushSync();
+        expect(
+          container.querySelector('.cinder-page-header__title')?.hasAttribute('tabindex'),
+        ).toBe(false);
+      });
+    });
 
-      const heading = container.querySelector('.cinder-page-header__title');
-      expect(heading?.getAttribute('title')).toBe('Plain title');
-      expect(heading?.querySelector('em')?.textContent).toBe('Plain title');
+    test('takes the tooltip words from titleText when the title is a snippet', () => {
+      withHeadingBox(60, 40, () => {
+        const { container } = render(Harness, {
+          props: { title: 'Plain title', titleText: 'Plain title' },
+        });
+        flushSync();
+        const heading = container.querySelector('.cinder-page-header__title');
+        expect(heading?.querySelector('em')?.textContent).toBe('Plain title');
+        expect(heading?.getAttribute('tabindex')).toBe('0');
+      });
     });
   });
 });

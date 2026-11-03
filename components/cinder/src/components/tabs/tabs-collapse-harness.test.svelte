@@ -11,6 +11,7 @@
     collapseBelow,
     collapseLabel,
     orientation,
+    refuseTo,
   }: {
     active?: string;
     onChange?: (next: string) => void;
@@ -18,6 +19,8 @@
     collapseBelow?: string | false;
     collapseLabel?: string;
     orientation?: 'horizontal' | 'vertical';
+    /** When set, the request hook returns this tab instead of the one proposed. */
+    refuseTo?: string;
   } = $props();
 
   let value = $derived(active);
@@ -29,6 +32,7 @@
   {...collapseBelow === undefined ? {} : { collapseBelow }}
   {...collapseLabel === undefined ? {} : { collapseLabel }}
   {...orientation === undefined ? {} : { orientation }}
+  {...refuseTo === undefined ? {} : { onValueChangeRequest: () => refuseTo }}
 >
   <TabList label="Agent sections">
     <Tab value="overview" {...labelled ? { label: 'Project overview' } : {}}>Overview</Tab>

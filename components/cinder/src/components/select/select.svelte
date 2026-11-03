@@ -32,6 +32,7 @@
   } from '../../_internal/stale-region-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
+  import { commitValue } from '../../utilities/value-change.ts';
   import FormFieldFrame from '../../_internal/form-field-frame.svelte';
   import SelectListbox from './select-listbox.svelte';
 
@@ -56,6 +57,7 @@
     readonly = false,
     mutating = false,
     onValueChange,
+    onValueChangeRequest,
     sheetBelow,
     name,
     onchange: consumerOnChange,
@@ -112,7 +114,18 @@
     else (consumerOnKeyDown as ((event: KeyboardEvent) => void) | undefined)?.(event);
   }
   function handleNativeChange(event: Event & { currentTarget: HTMLSelectElement }): void {
-    onValueChange?.(event.currentTarget.value as T);
+    const element = event.currentTarget;
+    // The request hook may refuse or replace the pick. The element is put back to what was
+    // committed, so a refused choice never stays on screen.
+    commitValue(
+      element.value as T,
+      onValueChangeRequest,
+      (next) => {
+        value = next;
+        if (element.value !== next) element.value = next ?? '';
+      },
+      onValueChange,
+    );
     (consumerOnChange as ((event: Event) => void) | undefined)?.(event);
   }
 
@@ -153,6 +166,7 @@
       labelledBy={label ? `${field.id}-label` : (context?.labelId ?? undefined)}
       {sheetBelow}
       {onValueChange}
+      {onValueChangeRequest}
       {...rest as Record<string, unknown>}
     />
   {:else}
@@ -188,7 +202,7 @@
           aria-disabled={staleInert ? 'true' : undefined}
           onmousedown={blockWhenReadonly}
           onkeydown={blockKeyWhenReadonly}
-          bind:value
+          {value}
           onchange={handleNativeChange}
           {...rest}
           aria-describedby={field.describedBy}

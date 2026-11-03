@@ -329,6 +329,12 @@
     text-overflow: ellipsis;
   }
 
+  /* Muted words on the same line as a label: an option's suffix or the trigger's triggerSuffix. */
+  .cinder-select__suffix {
+    font-weight: var(--cinder-font-normal);
+    color: var(--cinder-text-muted);
+  }
+
   .cinder-select__value[data-cinder-placeholder] {
     color: var(--cinder-text-muted);
   }
@@ -361,13 +367,26 @@
     max-block-size: min(24rem, calc(100vh - var(--cinder-space-8)));
   }
 
-  /* The listbox scrolls; the footer stays put under it. */
+  /* The options scroll; the footer stays put under them. The listbox element itself owns the
+     options by id and holds no markup, so group messages can sit outside it. */
+  .cinder-select__scroll {
+    min-block-size: 0;
+    overflow-y: auto;
+  }
+
+  /* Empty, but still in the accessibility tree: `display: none` would drop what it owns. */
   .cinder-select__listbox {
     margin: 0;
     padding: 0;
+    block-size: 0;
     list-style: none;
-    min-block-size: 0;
-    overflow-y: auto;
+    overflow: hidden;
+  }
+
+  .cinder-select__options {
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
   .cinder-select__option {

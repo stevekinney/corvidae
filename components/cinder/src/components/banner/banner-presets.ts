@@ -8,6 +8,7 @@ export const BANNER_PRESETS = [
   'offline',
   'unreachable',
   'stopped',
+  'out-of-date',
   'refresh-failed',
   'restarting',
   'reconnecting',
@@ -22,6 +23,9 @@ export const BANNER_PRESETS = [
  * - `offline` (warning): the browser is offline; clears itself when the connection returns.
  * - `unreachable` (warning): the server does not answer and retries back off, up to 8 tries.
  * - `stopped` (warning): the retries ran out; Retry now is the primary action.
+ * - `out-of-date` (warning): the same stop as `stopped` for a page that is only read, such as Health:
+ *   it leads with the lost connection and ends with "Retries stopped after 8 attempts.", and says
+ *   nothing about changes being off.
  * - `refresh-failed` (warning): the server answered but this page's read failed; changes stay on.
  * - `restarting` (info): the person confirmed Restart now; no action.
  * - `reconnecting` (info): the second stage of restarting, counting the reconnect attempts.
@@ -172,6 +176,17 @@ export function bannerPresetCopy(
           'Can’t reach the Interborough server.',
           showing(facts),
           consequence(facts, 'Changes are off until it’s back.'),
+        ),
+      };
+    case 'out-of-date':
+      return {
+        title: facts.title ?? 'Can’t reach the Interborough server.',
+        text: sentences(
+          showing(facts),
+          consequence(
+            facts,
+            `Retries stopped after ${facts.maxAttempts ?? BANNER_MAX_ATTEMPTS} attempts.`,
+          ),
         ),
       };
     case 'refresh-failed':

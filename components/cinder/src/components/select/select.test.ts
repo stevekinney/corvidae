@@ -38,6 +38,24 @@ function idsIn(container: Element): string[] {
 }
 
 describe('Select', () => {
+  test('a native pick the request hook refuses is put back on the control', async () => {
+    const onValueChange = (() => {}) as (value: string) => void;
+    const { container } = render(Select, {
+      props: {
+        id: 'native-refuse',
+        label: 'Section',
+        options: defaultOptions,
+        value: 'a',
+        onValueChange,
+        onValueChangeRequest: () => 'a',
+      },
+    });
+    const select = requiredInstance(container.querySelector('select'), HTMLSelectElement);
+    select.value = 'c';
+    await fireEvent.change(select);
+    expect(select.value).toBe('a');
+  });
+
   test('renders <select id={id}> with one <option> per option in options array', () => {
     const { container } = render(Select, {
       props: { id: 'test-select', value: 'a', options: defaultOptions },

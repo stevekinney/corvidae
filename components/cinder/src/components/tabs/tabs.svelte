@@ -356,10 +356,11 @@
       valuePrefix={`${collapseLabel}:`}
       {value}
       options={collapseOptions}
+      {...onValueChangeRequest === undefined ? {} : { onValueChangeRequest }}
       onValueChange={(next) => {
         commitValue(
           next,
-          onValueChangeRequest,
+          undefined,
           (nextValue) => {
             value = nextValue;
           },

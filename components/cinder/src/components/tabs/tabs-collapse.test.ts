@@ -133,6 +133,53 @@ describe('Tabs narrow collapse', () => {
     );
   });
 
+  test('a pick the request hook refuses never stays on the select', async () => {
+    setPhone(true);
+    const changes: string[] = [];
+    const { container } = render(TabsHarness, {
+      props: {
+        active: 'access',
+        refuseTo: 'access',
+        onChange: (next: string) => changes.push(next),
+      },
+    });
+    flushSync();
+
+    await fireEvent.click(trigger(container));
+    flushSync();
+    const settings = [...document.querySelectorAll('[role="option"]')].find((option) =>
+      option.textContent?.includes('Settings'),
+    );
+    if (!settings) throw new Error('no option');
+    await fireEvent.click(settings);
+    flushSync();
+
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(
+      'Access',
+    );
+    expect(container.querySelector('.cinder-select__value')?.textContent?.trim()).toBe('Access');
+    expect(trigger(container).getAttribute('aria-activedescendant')).toBeNull();
+  });
+
+  test('a pick the request hook replaces shows the replacement', async () => {
+    setPhone(true);
+    const { container } = render(TabsHarness, {
+      props: { active: 'access', refuseTo: 'overview' },
+    });
+    flushSync();
+
+    await fireEvent.click(trigger(container));
+    flushSync();
+    const settings = [...document.querySelectorAll('[role="option"]')].find((option) =>
+      option.textContent?.includes('Settings'),
+    );
+    if (!settings) throw new Error('no option');
+    await fireEvent.click(settings);
+    flushSync();
+
+    expect(container.querySelector('.cinder-select__value')?.textContent?.trim()).toBe('Overview');
+  });
+
   test('a disabled tab is a disabled option', async () => {
     setPhone(true);
     const { container } = render(TabsHarness, { props: { active: 'access' } });

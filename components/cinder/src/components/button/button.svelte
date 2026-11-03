@@ -110,22 +110,49 @@
     loading || resolvedAriaDisabled === true || resolvedAriaDisabled === 'true',
   );
 
-  // Loading keeps the button as wide as it was just before: the spinner takes the leading
-  // icon's place (or sits ahead of the label, using the button's own padding), so the box does
-  // not grow and the layout around it does not move. `$effect.pre` runs before the DOM
-  // update, so `offsetWidth` is still the resting width on the render that flips `loading`.
+  // Loading keeps the button as wide as it was just before when its words stay the same: the
+  // spinner takes the leading icon's place (or sits ahead of the label, using the button's own
+  // padding), so the box does not grow and the layout around it does not move. `$effect.pre`
+  // runs before the DOM update, so `offsetWidth` is still the resting width on the render that
+  // flips `loading`. When the same update also changes the words and the new ones do not fit
+  // the old width ("Create" becomes "Creating…"), the pin is let go so the label never spills
+  // over the border.
   let element = $state<HTMLElement | null>(null);
   let restingWidth = $state<number | undefined>(undefined);
-  const lockedInlineSize = $derived(restingWidth === undefined ? undefined : `${restingWidth}px`);
+  let restingText: string | undefined;
+  let pinReleased = $state(false);
+  const lockedInlineSize = $derived(
+    restingWidth === undefined || pinReleased ? undefined : `${restingWidth}px`,
+  );
   $effect.pre(() => {
     if (!loading) {
       restingWidth = undefined;
+      restingText = undefined;
+      pinReleased = false;
       return;
     }
     if (restingWidth === undefined && element && !fullWidth) {
       const measured = element.offsetWidth;
-      if (measured > 0) restingWidth = measured;
+      if (measured > 0) {
+        restingWidth = measured;
+        restingText = element.textContent ?? '';
+      }
     }
+  });
+  $effect(() => {
+    // Read after the DOM has updated, and again whenever the words change while loading.
+    void label;
+    void children;
+    if (!loading || restingWidth === undefined || !element || pinReleased) return;
+    if ((element.textContent ?? '') === restingText) return;
+    // The words changed with `loading`. Shorter words (Test connection, Testing…) still fit the
+    // pinned width, so it holds; longer ones (Create, Creating…) would spill over the border, so
+    // the pin is let go and the button takes the width its content needs.
+    const pinned = element.style.inlineSize;
+    element.style.inlineSize = '';
+    const needed = element.offsetWidth;
+    element.style.inlineSize = pinned;
+    if (needed > restingWidth) pinReleased = true;
   });
   const resolvedAriaBusy = $derived(loading ? 'true' : consumerAriaBusy);
 

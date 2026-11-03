@@ -17,6 +17,7 @@
   import { PHONE_VIEWPORT_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { getSequentialFocusTargets } from '../../utilities/focus.ts';
+  import { commitValue } from '../../utilities/value-change.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import Popover from '../popover/popover.svelte';
   import type { SelectGroup, SelectOption, SelectVariant } from './select.types.ts';
@@ -53,6 +54,7 @@
     sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
     class: className,
     onValueChange,
+    onValueChangeRequest,
     ...rest
   }: {
     id: string;
@@ -77,6 +79,7 @@
     sheetBelow?: string | false | undefined;
     class?: string | undefined;
     onValueChange?: ((value: T) => void) | undefined;
+    onValueChangeRequest?: ((next: T) => T | void) | undefined;
   } & Omit<
     HTMLButtonAttributes,
     | 'class'
@@ -146,6 +149,19 @@
     }
     return built;
   });
+  // What the listbox owns: the ungrouped options by id and each group's list. They are drawn
+  // beside the (empty) listbox element so group messages stay outside it.
+  const ownedIds = $derived(
+    sections
+      .flatMap((section) =>
+        section.name === undefined
+          ? section.members.map((member) => optionId(member.index))
+          : section.members.length > 0
+            ? [`${id}-group-options-${section.sectionIndex}`]
+            : [],
+      )
+      .join(' ') || undefined,
+  );
   const flat = $derived(sections.flatMap((section) => section.members.map((m) => m.option)));
   const selectedOption = $derived(
     value === undefined || value === '' ? undefined : options.find((o) => o.value === value),
@@ -155,7 +171,7 @@
   let panelMounted = $state(false);
   let triggerElement = $state<HTMLButtonElement | null>(null);
   let contentElement = $state<HTMLElement | null>(null);
-  let listboxElement = $state<HTMLElement | null>(null);
+  let scrollElement = $state<HTMLElement | null>(null);
 
   // `navigateDisabled`: the cursor can stand on a disabled option so a keyboard user can read
   // its reason; choosing it stays refused (`commit`). `autoActivateFirst` is off because the
@@ -182,9 +198,9 @@
   // Register the rendered options with the shared command-list state, so the cursor can resolve
   // its id and scroll into view.
   $effect(() => {
-    const listbox = listboxElement;
-    if (!listbox || !open) return;
-    const nodes = listbox.querySelectorAll<HTMLElement>('[role="option"]');
+    const scroller = scrollElement;
+    if (!scroller || !open) return;
+    const nodes = scroller.querySelectorAll<HTMLElement>('[role="option"]');
     commandList.syncItems(
       flat.flatMap((option, index) => {
         const node = nodes[index];
@@ -231,11 +247,22 @@
 
   function commit(option: SelectOption<T>): void {
     if (option.disabled || readonly || disabled) return;
-    const changed = option.value !== value;
-    value = option.value;
+    const previous = value;
+    // The request hook may refuse or replace the pick. `value` is written with whatever it
+    // returns, even when that is the current value, so a one-way parent that refused the pick
+    // still reads the old one back instead of keeping a local override of the choice.
+    commitValue(
+      option.value,
+      onValueChangeRequest,
+      (next) => {
+        value = next;
+      },
+      (next) => {
+        if (next !== previous) onValueChange?.(next);
+      },
+    );
     open = false;
     triggerElement?.focus();
-    if (changed) onValueChange?.(option.value);
   }
 
   // Escape closes the list and keeps focus where it was. Popover owns Escape for its panel; this
@@ -417,7 +444,11 @@
       >
     {/if}
     <span class="cinder-select__option-text">
-      <span class="cinder-select__option-label">{option.label}</span>
+      <span class="cinder-select__option-label"
+        >{option.label}{#if option.suffix}<span class="cinder-select__suffix"
+            >{` · ${option.suffix}`}</span
+          >{/if}</span
+      >
       {#if option.description}
         <span class="cinder-select__option-description">{option.description}</span>
       {/if}
@@ -481,7 +512,11 @@
       >
     {/if}
     {#if selectedOption}
-      <span class="cinder-select__value">{selectedOption.label}</span>
+      <span class="cinder-select__value"
+        >{selectedOption.label}{#if selectedOption.triggerSuffix}<span class="cinder-select__suffix"
+            >{` · ${selectedOption.triggerSuffix}`}</span
+          >{/if}</span
+      >
     {:else if placeholder}
       <span class="cinder-select__value" data-cinder-placeholder>{placeholder}</span>
     {:else}
@@ -519,22 +554,27 @@
       data-cinder-variant={variant}
       onkeydown={handlePanelKeydown}
     >
-      <ul
-        bind:this={listboxElement}
-        id={listboxId}
-        role="listbox"
-        class="cinder-select__listbox"
-        aria-label={ariaLabel}
-        aria-labelledby={ariaLabel ? undefined : labelledBy}
-        aria-multiselectable="false"
-      >
+      <!-- The listbox owns its options by id (aria-owns) while they are drawn beside it, because
+           a group's message is plain content with links and may not sit inside role="listbox". -->
+      <div bind:this={scrollElement} class="cinder-select__scroll">
+        <ul
+          id={listboxId}
+          role="listbox"
+          class="cinder-select__listbox"
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabel ? undefined : labelledBy}
+          aria-multiselectable="false"
+          aria-owns={ownedIds}
+        ></ul>
         {#each sections as section (section.name ?? '')}
           {#if section.name === undefined}
-            {#each section.members as member (member.option.value)}
-              {@render optionRow(member.option, member.index)}
-            {/each}
+            <ul role="presentation" class="cinder-select__options">
+              {#each section.members as member (member.option.value)}
+                {@render optionRow(member.option, member.index)}
+              {/each}
+            </ul>
           {:else}
-            <li
+            <div
               role="presentation"
               class="cinder-_option-group cinder-select__group"
               data-cinder-divided={section.divided || undefined}
@@ -549,6 +589,7 @@
               {/if}
               {#if section.members.length > 0}
                 <ul
+                  id="{id}-group-options-{section.sectionIndex}"
                   role="group"
                   class="cinder-_option-group__options"
                   aria-labelledby="{id}-group-{section.sectionIndex}"
@@ -558,10 +599,10 @@
                   {/each}
                 </ul>
               {/if}
-            </li>
+            </div>
           {/if}
         {/each}
-      </ul>
+      </div>
       {#if footer}
         <div class="cinder-select__footer">{@render footer()}</div>
       {/if}

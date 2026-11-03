@@ -39,7 +39,7 @@ Individual option inside a SegmentedControl that renders either a selection butt
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Custom class merged with `.cinder-segmented-control-option`. |
 | `controls` | `string` | no | — | ID of the panel this segment controls — only meaningful when the parent `SegmentedControl` uses `variant="tablist"`. |
-| `count` | `number` | no | — | A number drawn after the label in a muted, tabular figure: "Waiting on you 2". It is part of the segment's accessible name ("Waiting on you, 2"), so it never depends on colour. Unlike a Tab's count, zero is shown ("Running 0"); only `undefined` hides it. |
+| `count` | `number` \| `"pending"` | no | — | A number drawn after the label in a muted, tabular figure: "Waiting on you 2". It is part of the segment's accessible name ("Waiting on you, 2"), so it never depends on colour. Unlike a Tab's count, zero is shown ("Running 0"); only `undefined` hides it. `'pending'` draws a dash while the number is still loading ("All –") and reads as "All, loading". |
 | `current` | `boolean` | no | — | Marks this linked segment as the current route/filter. |
 | `currentToken` | `"page"` \| `"step"` \| `"location"` \| `"date"` \| `"time"` \| `"true"` | no | — | `aria-current` token emitted while `current` is true. Defaults to `"page"`. |
 | `disabled` | `boolean` | no | — | Disable just this segment (independent of the control-level `disabled`). |

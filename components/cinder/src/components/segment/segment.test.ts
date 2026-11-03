@@ -139,6 +139,26 @@ describe('Segment', () => {
     expect(container.querySelectorAll('.cinder-segmented-control-option-count')).toHaveLength(3);
   });
 
+  test('a pending count draws a dash and reads as loading', () => {
+    const { container } = render(Fixture, {
+      props: {
+        id: 'status',
+        label: 'Status',
+        value: 'all',
+        options: [
+          { value: 'all', label: 'All', count: 'pending' },
+          { value: 'waiting', label: 'Waiting on you', count: 'pending' },
+        ],
+      },
+    });
+
+    expect(screen.getByRole('radio', { name: named('All, loading') })).toBeDefined();
+    const counts = container.querySelectorAll('[data-cinder-count-pending]');
+    expect(counts).toHaveLength(2);
+    expect(counts[0]?.textContent?.replace(/\s+/g, ' ').trim()).toBe(', loading–');
+    expect(counts[0]?.querySelector('[aria-hidden="true"]')?.textContent).toBe('–');
+  });
+
   test('a count reads the same on a navigation link', () => {
     render(Fixture, {
       props: {

@@ -35,7 +35,7 @@ A preset keeps `role="region"` and fixes the defaults: the tone, the accessible 
 
 | `preset` | Tone | Default `aria-label` |
 | --- | --- | --- |
-| `offline`, `unreachable`, `stopped` | `warning` | `Connection problem` |
+| `offline`, `unreachable`, `stopped`, `out-of-date` | `warning` | `Connection problem` |
 | `refresh-failed` | `warning` | `Refresh problem` |
 | `restarting`, `reconnecting`, `restart-failed` | `info`, `info`, `warning` | `Restart status` |
 | `back-online` | `success` | `Connection restored` |
