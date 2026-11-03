@@ -86,8 +86,11 @@ export interface EffectiveCodeAgentDeployment {
    * model, so `model`, `models` and `defaultEffort` leave the agent's own generate in place.
    */
   readonly resolveGenerate?: ((row: BackendDescriptor) => GenerateFunction) | undefined;
-  /** The deployment's tool catalog by the name an override lists a tool under. */
-  readonly toolCatalog: () => Readonly<Record<string, Tool>>;
+  /**
+   * The deployment's tool catalog by the name an override lists a tool under. Omitted, an override
+   * may allow only the agent's own tools.
+   */
+  readonly toolCatalog?: (() => Readonly<Record<string, Tool>>) | undefined;
   /** The plugin guardrails a `guardrails` override may name. Omitted, none resolves. */
   readonly contributions?: AgentContributions | undefined;
   /** The secret that signs the approvals a rebuilt toolbox raises; unsigned without one. */
@@ -254,7 +257,7 @@ export function effectiveCodeAgent(
       ownNames.includes(name)
         ? configurations.find((configuration) => namesOf(configuration).includes(name))
         : undefined;
-    const catalog = deployment.toolCatalog();
+    const catalog = deployment.toolCatalog?.() ?? {};
     const governed: Record<string, Pick<Tool, 'configuration'>> = {};
     const entries: ToolConfiguration[] = [];
     for (const name of toolNames) {

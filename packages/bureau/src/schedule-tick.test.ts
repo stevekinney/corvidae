@@ -4,7 +4,14 @@
  * started by the Bureau (tagged `origin:system`), which is how the run list shows "Schedule tick"
  * runs started by Interborough beside the runs the schedules started.
  */
-import { createAgent, isScheduleTick, stopWhen, type ScheduleTick } from '@lostgradient/operative';
+import {
+  createAgent,
+  createDefaultRuntimeServices,
+  isScheduleTick,
+  type RuntimeServices,
+  stopWhen,
+  type ScheduleTick,
+} from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createToolbox } from 'armorer';
@@ -26,8 +33,9 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
-async function openBureau(): Promise<Bureau> {
+async function openBureau(runtime?: RuntimeServices): Promise<Bureau> {
   const bureau = await createBureau<AgentDefinitions>({
+    ...(runtime === undefined ? {} : { runtime }),
     agents: {
       default: createAgent({
         generate: async () => ({ content: 'Summarized.', toolCalls: [] }),
@@ -61,6 +69,25 @@ async function completedTick(bureau: Bureau, event: ScheduleTick['event']) {
     ({ state }) =>
       state?.status === 'completed' && isScheduleTick(state.result) && state.result.event === event,
   );
+}
+
+const DAY = 24 * 60 * 60_000;
+
+/**
+ * Runtime services whose wall clock reads `offset` milliseconds from real time and is moved by
+ * `advance`, as the showcase's offset clock is; its timers stay real.
+ */
+function offsetRuntime(offset: number): RuntimeServices & { advance(milliseconds: number): void } {
+  const real = createDefaultRuntimeServices();
+  let by = offset;
+  const now = () => Date.now() + by;
+  return {
+    ...real,
+    clock: { now, nowISO: () => new Date(now()).toISOString() },
+    advance(milliseconds) {
+      by += milliseconds;
+    },
+  };
 }
 
 describe('the schedule tick', () => {
@@ -127,6 +154,38 @@ describe('the schedule tick', () => {
         count: 10,
         since: summary?.nextFireAt,
       }),
+    );
+  });
+
+  it('reads its own clock, not the real one, for missed runs and for what needs attention', async () => {
+    // A month behind real time, as the showcase's Nov 2 clock is once Nov 2 has passed.
+    const runtime = offsetRuntime(-30 * DAY);
+    const bureau = await openBureau(runtime);
+    const summary = await bureau.schedules.create({
+      agentName: 'default',
+      input: 'Summarize yesterday’s chats and open reviews.',
+      spec: '1m',
+      description: 'Daily summary',
+    });
+    const scheduleId = summary?.id ?? '';
+
+    runtime.advance(10 * 60_000);
+    await bureau.maintain(runtime.clock.now());
+    await waitUntil(async () => (await completedTick(bureau, 'missed-runs')) !== undefined);
+
+    const missed = await completedTick(bureau, 'missed-runs');
+    expect(missed?.state?.result).toMatchObject({
+      event: 'missed-runs',
+      scheduleId,
+      missedRuns: 10,
+      since: summary?.nextFireAt,
+      // The window began after this Bureau started, on its clock: it was running, only late.
+      whileStopped: false,
+    });
+    // The misses fall inside the last seven days on the Bureau's clock, whatever the real date.
+    const attention = await bureau.attention();
+    expect(attention.items).toContainEqual(
+      expect.objectContaining({ kind: 'missed-runs', scheduleId, count: 10 }),
     );
   });
 

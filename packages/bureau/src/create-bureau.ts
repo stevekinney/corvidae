@@ -2669,9 +2669,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records);
-  // COR-2009: when this Bureau started. A plugin that did not load needs attention from here, and
-  // a missed window that began before it is the catch-up after the host was off.
-  const bureauStartedAt = Date.now();
   // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
   // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
   const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
@@ -2721,7 +2718,10 @@ async function constructBureau<const D extends AgentDefinitions>(
   // (not `runtime`) to avoid colliding with the pre-existing local `runtime`
   // below, which names the unrelated `RuntimeComposition` value.
   const runtimeServices: RuntimeServices = options.runtime ?? createDefaultRuntimeServices();
-  // COR-1524: when this Bureau was built, for telling a reference left by an earlier process apart.
+  // COR-1524: when this Bureau was built, on its own clock, for telling a reference left by an
+  // earlier process apart. COR-2009: a plugin that did not load needs attention from here, and a
+  // missed window that began before it is the catch-up after the host was off. Every time it is
+  // compared with is the Bureau's clock's or the engine's, which reads the same one.
   const constructedAtMilliseconds = runtimeServices.clock.now();
   // AB-388: ONE resolver shared by `createAuditTrail` and
   // `createDurableEventProducer` below — see `event-timestamp.ts`. Declared
@@ -3184,7 +3184,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               reason: event.reason,
               since: event.windowStart,
               until: event.windowEnd,
-              whileStopped: event.windowStart < bureauStartedAt,
+              whileStopped: event.windowStart < constructedAtMilliseconds,
             }));
           },
           diagnose,
@@ -22160,13 +22160,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-2009: what needs attention, read now from the parts this Bureau has.
     attention: () =>
       readAttention({
-        now: () => Date.now(),
+        // The Bureau's clock, which the engine stamps the missed occurrences it compares with by.
+        now: runtimeServices.clock.now,
         activeAlerts: () => durableEngine()?.getActiveAlerts() ?? [],
         schedules: () => everySchedule(schedules),
         missed: (scheduleId) => schedules.missed(scheduleId),
         hooks: async () => (await hooksInstance?.hooks.list()) ?? [],
         plugins: () => pluginRegistry.plugins.list(),
-        pluginsComposedAt: bureauStartedAt,
+        pluginsComposedAt: constructedAtMilliseconds,
         ...(options.attention === undefined ? {} : { contributed: options.attention }),
       }),
     reviews,

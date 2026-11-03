@@ -466,7 +466,11 @@ export function createAgentCatalog<D extends AgentDefinitions>(
 
   const overrides = createCodeAgentOverrides({
     store:
-      options?.overrides ?? createAgentOverrideStore({ nowISO: () => new Date().toISOString() }),
+      options?.overrides ??
+      createAgentOverrideStore({
+        // COR-2009: a version is stamped on the Bureau's clock when the catalog has one.
+        nowISO: options?.codeAgentRuns?.runtime?.clock.nowISO ?? (() => new Date().toISOString()),
+      }),
     codeAgents: new Map(
       entries.map((entry) => [entry.name, { tools: codeToolNames(entry.agent) }] as const),
     ),
@@ -498,7 +502,6 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       overrides: inForce,
       descriptors: catalogNow,
       agent: effectiveCodeAgent(agent, inForce, {
-        toolCatalog: () => ({}),
         ...options?.codeAgentRuns,
         descriptors,
         modelPolicy,

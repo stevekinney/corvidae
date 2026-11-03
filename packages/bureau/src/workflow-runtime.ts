@@ -1811,7 +1811,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     async runCounts(id) {
       try {
-        const now = Date.now();
+        // The Bureau's clock, which the engine stamps each run's `createdAt` by (COR-2009).
+        const now = options.runtime.clock.now();
         // Two index-narrowed reads answer the counts. The engine intersects the type index with the
         // status or created-at index before it loads any state, so each read loads only the
         // instances it counts, and `limit: 1` bounds the reply.

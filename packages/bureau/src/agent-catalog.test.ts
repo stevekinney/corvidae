@@ -1,5 +1,6 @@
 import {
   createAgent,
+  createDefaultRuntimeServices,
   createMockGenerate,
   createModelCatalog,
   withBackendDescriptors,
@@ -382,5 +383,22 @@ describe('a disabled plugin’s code agents (COR-2009)', () => {
     expect(refused).toBeInstanceOf(AgentFileError);
     expect(refused).toMatchObject({ code: 'unknown-model' });
     expect(created).toEqual([]);
+  });
+});
+
+describe('a built-in agent’s override versions (COR-2009)', () => {
+  it('stamps a version on the clock the catalog runs on, not the real one', async () => {
+    const instant = Date.parse('2026-11-02T15:00:00.000Z');
+    const runtime = {
+      ...createDefaultRuntimeServices(),
+      clock: { now: () => instant, nowISO: () => new Date(instant).toISOString() },
+    };
+    const catalog = createAgentCatalog({ writer: agent('writer') }, { codeAgentRuns: { runtime } });
+    const { hash } = (await catalog.overrides.get('writer'))!;
+
+    await catalog.overrides.save('writer', { stepLimit: 5 }, { expectedHash: hash });
+
+    const [version] = await catalog.overrides.versions('writer');
+    expect(version?.savedAt).toBe('2026-11-02T15:00:00.000Z');
   });
 });
