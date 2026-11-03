@@ -80,13 +80,13 @@
         "colorSpace": "oklch",
         "components": [0.96, 0.008, 270]
       },
-      "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions).",
+      "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 18% lightness, between the canvas (15%) and the surface (21%), so bands step up gently instead of reading as holes.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-surface-inset",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(oklch(96% 0.008 270), oklch(11% 0.03 245))",
+          "cssRecipe": "light-dark(oklch(96% 0.008 270), oklch(18% 0.035 245))",
           "palette": {
             "family": "neutral",
             "role": "surface-inset"
@@ -129,13 +129,13 @@
         "colorSpace": "oklch",
         "components": [0.2, 0.018, 245]
       },
-      "$description": "Inverse surface, used by Tooltip to stay a dark overlay in both themes. Light arm mirrors the text/surface swap (dark bg, light fg); dark arm uses the elevated surface + near-white text so the tooltip reads as a dark elevated layer rather than inverting to light.",
+      "$description": "Inverse surface, used by Tooltip. Light arm is the default text ink (a dark chip); dark arm is the same ink at its dark value, a light chip, so a tooltip separates from the raised popovers it opens over instead of blending into them.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-surface-inverse",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(var(--cinder-text-default), var(--cinder-surface-raised))"
+          "cssRecipe": "var(--cinder-text-default)"
         }
       }
     },
@@ -237,14 +237,14 @@
           "components": [0.2, 0.02, 255],
           "alpha": 0.48
         },
-        "$description": "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. A 48% alpha step over `border.ink` that clears WCAG 1.4.11's 3:1 floor against every supported surface in both themes.",
+        "$description": "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(52% .05 248). Both clear WCAG 1.4.11's 3:1 floor against the surfaces a control sits on.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-border-control",
             "public": true,
             "category": "color",
             "contrastPairs": ["surface.base", "surface.raised"],
-            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 52%)"
+            "cssRecipe": "light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 52%), oklch(56% 0.05 248))"
           }
         }
       },
@@ -323,13 +323,13 @@
         "components": [0, 0, 0],
         "alpha": 0
       },
-      "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.",
+      "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in both themes: the inverse chip separates from its surroundings by lightness alone (a dark chip on light surfaces, a light chip on dark ones).",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-border-inverse",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(transparent, var(--cinder-border-strong))"
+          "cssRecipe": "transparent"
         }
       }
     }
@@ -502,7 +502,7 @@
           "cssProperty": "--cinder-text-inverse",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark(var(--cinder-surface), var(--cinder-text-default))"
+          "cssRecipe": "var(--cinder-surface)"
         }
       }
     },
@@ -746,15 +746,15 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.55, 0.16, 272]
+        "components": [0.62, 0.16, 272]
       },
-      "$description": "Focus ring color, relative to `accent.solid` so a consumer override re-derives the ring hue. Light arm clamps L to 0.55 for 3.56:1 against the widened ramp's darkest surface; `h` tracks the accent hue.",
+      "$description": "Focus ring color: the accent hue at 62% lightness in both themes, one quiet ring for every control, relative to `accent.solid` so a consumer override re-derives the ring hue. The 2px width and zero offset are `ring.width` and `ring.offset`; `h` tracks the accent hue.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-ring-color",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark( oklch(from var(--cinder-accent-solid) 0.55 0.16 h), oklch(from var(--cinder-accent-solid) 0.7 0.14 h) )"
+          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.62 0.16 h)"
         }
       }
     },
@@ -1057,6 +1057,45 @@
           "public": true,
           "category": "spacing",
           "cssRecipe": null
+        }
+      }
+    }
+  },
+  "skeleton": {
+    "$type": "color",
+    "$description": "Loading placeholders.",
+    "background": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.96, 0.008, 270]
+      },
+      "$description": "Fill of a skeleton bar. The inset in light mode; in dark mode the raised surface, never the plain surface, because `surface.inset` sits too close to the canvas to read as a placeholder and bars inside cards (which sit on `surface.base`) would vanish against a card-colored fill.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-skeleton-background",
+          "public": true,
+          "category": "color",
+          "cssRecipe": "light-dark(var(--cinder-surface-inset), var(--cinder-surface-raised))"
+        }
+      }
+    }
+  },
+  "list": {
+    "row": {
+      "min-height": {
+        "$type": "dimension",
+        "$value": {
+          "value": 0,
+          "unit": "px"
+        },
+        "$description": "Minimum block size of a list row (StackedListItem, DataList rows). Zero by default so a row is as tall as its content; a coarse pointer (`@media (pointer: coarse)`) raises it to `touch.target.min` (44px) so a row is never smaller than a touch target. Emitted as `0px` so it stays a length in `min-height`.",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-list-row-min-height",
+            "public": true,
+            "category": "size",
+            "cssRecipe": "0px"
+          }
         }
       }
     }

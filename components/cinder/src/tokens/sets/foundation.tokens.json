@@ -618,7 +618,7 @@
   "control": {
     "height": {
       "$type": "dimension",
-      "$description": "The one height scale every interactive control shares: Button, Input, Select, Combobox, MultiSelect, SearchField and SegmentedControl read the same step for the same `size`, so controls of one size line up in a row. `md` (32px) is the default everywhere; toolbar density uses `sm`.",
+      "$description": "The one height scale every interactive control shares: Button, Input, Select, Combobox, MultiSelect, SearchField and SegmentedControl read the same step for the same `size`, so controls of one size line up in a row. `md` (32px) is the default everywhere; toolbar density uses `sm`. Under `@media (pointer: coarse)` the `sm` and `md` steps both become `touch.target.min` (44px), so touch controls meet the target size while a fine pointer keeps 28px and 32px at every width.",
       "xs": {
         "$value": {
           "value": 1.5,

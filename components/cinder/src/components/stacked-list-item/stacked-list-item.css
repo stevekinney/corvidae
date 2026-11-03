@@ -9,6 +9,8 @@
     container-type: inline-size;
     container-name: cinder-stacked-list-item;
     padding: var(--cinder-space-3) var(--cinder-space-4);
+    /* 0 by default; 44px under a coarse pointer (foundation.css). */
+    min-block-size: var(--cinder-list-row-min-height);
     border-bottom: 1px solid var(--cinder-border-muted);
   }
 

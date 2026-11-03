@@ -107,6 +107,7 @@ export function parseResolvedColorWithAlpha(
   value: unknown,
   tokenName: string,
   arm: string,
+  allowOpaque = false,
 ): TranslucentColor {
   if (typeof value !== 'object' || value === null) {
     throw new Error(`${tokenName} (${arm}) has no object $value`);
@@ -117,6 +118,7 @@ export function parseResolvedColorWithAlpha(
   // tokens that are supposed to be translucent, so defaulting to 1 would let a
   // tier that lost its alpha channel read as opaque and quietly pass every
   // assertion below -- the drift this file exists to catch. Demand it.
+  if (alpha === undefined && allowOpaque) return { ...color, alpha: 1 };
   if (alpha === undefined) {
     throw new Error(
       `${tokenName} (${arm}) has no alpha channel. Read an opaque token with ` +
@@ -159,8 +161,18 @@ export function readOklchToken(tokenName: string): TokenArms {
   return { light: read('light'), dark: read('dark') };
 }
 
-/** As {@link readOklchToken}, for the tokens that carry an alpha channel by design. */
-export function readTranslucentToken(tokenName: string): TranslucentTokenArms {
+/**
+ * As {@link readOklchToken}, for the tokens that carry an alpha channel by design.
+ *
+ * `opaqueArms` names the arms that are deliberately opaque instead (the dark arm of
+ * `--cinder-border-control` is the opaque oklch(56% .05 248)); those read as alpha 1, so the
+ * contrast math composites them as the solid colors they are. An arm not named still demands
+ * its alpha channel, so a translucent tier that loses it still fails loudly.
+ */
+export function readTranslucentToken(
+  tokenName: string,
+  { opaqueArms = [] }: { readonly opaqueArms?: readonly ('light' | 'dark')[] } = {},
+): TranslucentTokenArms {
   const path = cssPropertyToPath[tokenName];
   if (path === undefined) {
     throw new Error(`${tokenName} has no corpus token in the generated registry`);
@@ -170,7 +182,7 @@ export function readTranslucentToken(tokenName: string): TranslucentTokenArms {
     if (value === undefined) {
       throw new Error(`${tokenName} (${path}) is absent from the resolved ${arm} context`);
     }
-    return parseResolvedColorWithAlpha(value, tokenName, arm);
+    return parseResolvedColorWithAlpha(value, tokenName, arm, opaqueArms.includes(arm));
   };
   return { light: read('light'), dark: read('dark') };
 }

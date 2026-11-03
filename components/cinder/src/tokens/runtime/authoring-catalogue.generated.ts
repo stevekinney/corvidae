@@ -5817,7 +5817,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-surface-inset',
       category: 'color',
       component: null,
-      description: 'Sunken region inside a card body (code blocks, wells, recessed sub-regions).',
+      description:
+        'Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 18% lightness, between the canvas (15%) and the surface (21%), so bands step up gently instead of reading as holes.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6075,7 +6076,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Inverse surface, used by Tooltip to stay a dark overlay in both themes. Light arm mirrors the text/surface swap (dark bg, light fg); dark arm uses the elevated surface + near-white text so the tooltip reads as a dark elevated layer rather than inverting to light.',
+        'Inverse surface, used by Tooltip. Light arm is the default text ink (a dark chip); dark arm is the same ink at its dark value, a light chip, so a tooltip separates from the raised popovers it opens over instead of blending into them.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6142,7 +6143,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'surface' },
             },
-            inputs: { aliases: ['surface.raised'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['text.default'], refs: [], extends: [], recipes: [] },
           },
         },
       ],
@@ -6552,7 +6553,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. A 48% alpha step over `border.ink` that clears WCAG 1.4.11's 3:1 floor against every supported surface in both themes.",
+        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(52% .05 248). Both clear WCAG 1.4.11's 3:1 floor against the surfaces a control sits on.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6623,12 +6624,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'border' },
             },
-            inputs: {
-              aliases: [],
-              refs: [],
-              extends: [],
-              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
-            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
           },
         },
       ],
@@ -6978,36 +6974,28 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.',
-      themeAware: true,
+        'Border for surfaces using `surface.inverse` (Tooltip). Transparent in both themes: the inverse chip separates from its surroundings by lightness alone (a dark chip on light surfaces, a light chip on dark ones).',
+      themeAware: false,
       deprecated: false,
       profile: 'color',
       palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
-        edit: 'supported',
+        edit: 'recipe',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
       },
       variants: [
         {
           contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
           provenance: {
-            winner: { document: 'themes/light.tokens.json', path: 'border.inverse' },
+            winner: { document: 'sets/semantic.tokens.json', path: 'border.inverse' },
             layers: [
               {
                 document: 'sets/semantic.tokens.json',
                 kind: 'set',
                 layer: 'sets.foundation',
-                path: 'border.inverse',
-                via: 'declared',
-              },
-              {
-                document: 'themes/light.tokens.json',
-                kind: 'modifier',
-                layer: 'theme.light',
                 path: 'border.inverse',
                 via: 'declared',
               },
@@ -7023,19 +7011,12 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
         {
           contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
           provenance: {
-            winner: { document: 'themes/dark.tokens.json', path: 'border.inverse' },
+            winner: { document: 'sets/semantic.tokens.json', path: 'border.inverse' },
             layers: [
               {
                 document: 'sets/semantic.tokens.json',
                 kind: 'set',
                 layer: 'sets.foundation',
-                path: 'border.inverse',
-                via: 'declared',
-              },
-              {
-                document: 'themes/dark.tokens.json',
-                kind: 'modifier',
-                layer: 'theme.dark',
                 path: 'border.inverse',
                 via: 'declared',
               },
@@ -7045,7 +7026,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'border' },
             },
-            inputs: { aliases: ['border.strong'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
           },
         },
       ],
@@ -7354,7 +7335,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'text' },
             },
-            inputs: { aliases: ['text.default'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['surface.base'], refs: [], extends: [], recipes: [] },
           },
         },
       ],
@@ -8456,7 +8437,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        "Focus ring color, relative to `accent.solid` so a consumer override re-derives the ring hue. Light arm clamps L to 0.55 for 3.56:1 against the widened ramp's darkest surface; `h` tracks the accent hue.",
+        'Focus ring color: the accent hue at 62% lightness in both themes, one quiet ring for every control, relative to `accent.solid` so a consumer override re-derives the ring hue. The 2px width and zero offset are `ring.width` and `ring.offset`; `h` tracks the accent hue.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -9838,6 +9819,132 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               declaredAt: { document: 'sets/semantic.tokens.json', path: 'gap' },
             },
             inputs: { aliases: ['space.2'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'skeleton.background',
+      cssProperty: '--cinder-skeleton-background',
+      category: 'color',
+      component: null,
+      description:
+        'Fill of a skeleton bar. The inset in light mode; in dark mode the raised surface, never the plain surface, because `surface.inset` sits too close to the canvas to read as a placeholder and bars inside cards (which sit on `surface.base`) would vanish against a card-colored fill.',
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'mixed',
+        reason:
+          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'skeleton.background' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'skeleton.background',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'skeleton.background',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/light.tokens.json', path: 'skeleton' },
+            },
+            inputs: { aliases: ['surface.inset'], refs: [], extends: [], recipes: [] },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'skeleton.background' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'skeleton.background',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'skeleton.background',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'skeleton' },
+            },
+            inputs: { aliases: ['surface.raised'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'list.row.min-height',
+      cssProperty: '--cinder-list-row-min-height',
+      category: 'size',
+      component: null,
+      description:
+        'Minimum block size of a list row (StackedListItem, DataList rows). Zero by default so a row is as tall as its content; a coarse pointer (`@media (pointer: coarse)`) raises it to `touch.target.min` (44px) so a row is never smaller than a touch target. Emitted as `0px` so it stays a length in `min-height`.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'height',
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'list.row.min-height' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'list.row.min-height',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'local',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'list.row.min-height' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
           },
         },
       ],

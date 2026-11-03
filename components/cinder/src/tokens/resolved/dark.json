@@ -535,7 +535,7 @@
   },
   "control.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.48 },
+    "$value": { "colorSpace": "oklch", "components": [0.56, 0.05, 248] },
     "$description": "Resting control edge; clears 3:1 against every surface.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1423,8 +1423,8 @@
     "$type": "color"
   },
   "surface.inset": {
-    "$value": { "colorSpace": "oklch", "components": [0.11, 0.03, 245] },
-    "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions).",
+    "$value": { "colorSpace": "oklch", "components": [0.18, 0.035, 245] },
+    "$description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 18% lightness, between the canvas (15%) and the surface (21%), so bands step up gently instead of reading as holes.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-inset",
@@ -1462,8 +1462,8 @@
     "$type": "color"
   },
   "surface.inverse": {
-    "$value": { "colorSpace": "oklch", "components": [0.28, 0.045, 245] },
-    "$description": "Inverse surface, used by Tooltip to stay a dark overlay in both themes. Light arm mirrors the text/surface swap (dark bg, light fg); dark arm uses the elevated surface + near-white text so the tooltip reads as a dark elevated layer rather than inverting to light.",
+    "$value": { "colorSpace": "oklch", "components": [0.92, 0.02, 245] },
+    "$description": "Inverse surface, used by Tooltip. Light arm is the default text ink (a dark chip); dark arm is the same ink at its dark value, a light chip, so a tooltip separates from the raised popovers it opens over instead of blending into them.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-inverse",
@@ -1537,17 +1537,17 @@
     "$type": "color"
   },
   "border.control": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.48 },
+    "$value": { "colorSpace": "oklch", "components": [0.56, 0.05, 248] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 52%)",
+        "cssRecipe": "oklch(56% 0.05 248)",
         "cssProperty": "--cinder-border-control",
         "public": true,
         "category": "color",
         "contrastPairs": ["surface.base", "surface.raised"]
       }
     },
-    "$description": "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. A 48% alpha step over `border.ink` that clears WCAG 1.4.11's 3:1 floor against every supported surface in both themes.",
+    "$description": "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(52% .05 248). Both clear WCAG 1.4.11's 3:1 floor against the surfaces a control sits on.",
     "$type": "color"
   },
   "border.control.hover": {
@@ -1604,13 +1604,14 @@
     "$type": "color"
   },
   "border.inverse": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.15 },
-    "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.",
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0 },
+    "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in both themes: the inverse chip separates from its surroundings by lightness alone (a dark chip on light surfaces, a light chip on dark ones).",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-border-inverse",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "cssRecipe": "transparent"
       }
     },
     "$type": "color"
@@ -1655,7 +1656,7 @@
     "$type": "color"
   },
   "text.inverse": {
-    "$value": { "colorSpace": "oklch", "components": [0.92, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.21, 0.04, 245] },
     "$description": "Text color for use on `surface.inverse` (Tooltip).",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1849,16 +1850,16 @@
   },
   "ring.color": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.7, 0.14, 270] },
+    "$value": { "colorSpace": "oklch", "components": [0.62, 0.16, 270] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.7 0.14 h)",
+        "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.62 0.16 h)",
         "cssProperty": "--cinder-ring-color",
         "public": true,
         "category": "color"
       }
     },
-    "$description": "Focus ring color, relative to `accent.solid` so a consumer override re-derives the ring hue. Light arm clamps L to 0.55 for 3.56:1 against the widened ramp's darkest surface; `h` tracks the accent hue."
+    "$description": "Focus ring color: the accent hue at 62% lightness in both themes, one quiet ring for every control, relative to `accent.solid` so a consumer override re-derives the ring hue. The 2px width and zero offset are `ring.width` and `ring.offset`; `h` tracks the accent hue."
   },
   "ring.on-accent": {
     "$type": "color",
@@ -2096,6 +2097,31 @@
       }
     },
     "$type": "dimension"
+  },
+  "skeleton.background": {
+    "$value": { "colorSpace": "oklch", "components": [0.28, 0.045, 245] },
+    "$description": "Fill of a skeleton bar. The inset in light mode; in dark mode the raised surface, never the plain surface, because `surface.inset` sits too close to the canvas to read as a placeholder and bars inside cards (which sit on `surface.base`) would vanish against a card-colored fill.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-skeleton-background",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$type": "color"
+  },
+  "list.row.min-height": {
+    "$type": "dimension",
+    "$value": { "value": 0, "unit": "px" },
+    "$description": "Minimum block size of a list row (StackedListItem, DataList rows). Zero by default so a row is as tall as its content; a coarse pointer (`@media (pointer: coarse)`) raises it to `touch.target.min` (44px) so a row is never smaller than a touch target. Emitted as `0px` so it stays a length in `min-height`.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-list-row-min-height",
+        "public": true,
+        "category": "size",
+        "cssRecipe": "0px"
+      }
+    }
   },
   "pad.control": {
     "$value": { "value": 0.625, "unit": "rem" },
@@ -3006,7 +3032,7 @@
   },
   "button.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.48 },
+    "$value": { "colorSpace": "oklch", "components": [0.56, 0.05, 248] },
     "$description": "Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3676,7 +3702,7 @@
   },
   "code-block.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.11, 0.03, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.18, 0.035, 245] },
     "$description": "Code surface background. Light arm MUST stay pure `surface-raised` (not `surface-inset`) -- Shiki's github-light token colors measure their AA contrast against that surface with almost no margin; darkening it fails the axe sweep. See code-block.css for the full rationale. Dark arm uses `surface-inset` for the deeper github-dark ground.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3773,7 +3799,7 @@
   },
   "file-upload.border-color": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.48 },
+    "$value": { "colorSpace": "oklch", "components": [0.56, 0.05, 248] },
     "$description": "Dropzone border color.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3787,7 +3813,7 @@
   },
   "file-upload.progress.background": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.11, 0.03, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.18, 0.035, 245] },
     "$description": "Progress bar track background.",
     "$extensions": {
       "com.lostgradient.cinder": {

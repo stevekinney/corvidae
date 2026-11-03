@@ -103,18 +103,6 @@
         "components": [0.92, 0.003, 255]
       }
     },
-    "inverse": {
-      "$value": {
-        "colorSpace": "oklch",
-        "components": [0, 0, 0],
-        "alpha": 0
-      },
-      "$extensions": {
-        "com.lostgradient.cinder": {
-          "cssRecipe": "transparent"
-        }
-      }
-    },
     "$root": {
       "$value": {
         "colorSpace": "oklch",
@@ -336,11 +324,11 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.55, 0.16, 272]
+        "components": [0.62, 0.16, 272]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
-          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.55 0.16 h)"
+          "cssRecipe": "oklch(from var(--cinder-accent-solid) 0.62 0.16 h)"
         }
       }
     },
@@ -1059,6 +1047,12 @@
           }
         }
       }
+    }
+  },
+  "skeleton": {
+    "$type": "color",
+    "background": {
+      "$value": "{surface.inset}"
     }
   }
 }

@@ -11,9 +11,9 @@
     border-radius: var(--cinder-radius-sm);
     background: linear-gradient(
       90deg,
-      var(--cinder-surface-inset) 0%,
-      oklch(from var(--cinder-surface-inset) calc(l + 0.06) c h) 50%,
-      var(--cinder-surface-inset) 100%
+      var(--cinder-skeleton-background) 0%,
+      oklch(from var(--cinder-skeleton-background) calc(l + 0.06) c h) 50%,
+      var(--cinder-skeleton-background) 100%
     );
     background-size: 200% 100%;
     animation: cinder-skeleton-shimmer 1.5s ease-in-out infinite;
@@ -43,7 +43,7 @@
     gap: var(--cinder-space-3);
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-surface);
   }
 
   .cinder-skeleton-heading {
@@ -78,12 +78,12 @@
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-skeleton {
       animation: none;
-      background: var(--cinder-surface-inset);
+      background: var(--cinder-skeleton-background);
     }
   }
 
   :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on']) .cinder-skeleton {
     animation: none;
-    background: var(--cinder-surface-inset);
+    background: var(--cinder-skeleton-background);
   }
 }

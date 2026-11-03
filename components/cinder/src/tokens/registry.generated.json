@@ -925,7 +925,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions)."
+      "description": "Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 18% lightness, between the canvas (15%) and the surface (21%), so bands step up gently instead of reading as holes."
     },
     {
       "path": "surface.hover",
@@ -952,7 +952,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Inverse surface, used by Tooltip to stay a dark overlay in both themes. Light arm mirrors the text/surface swap (dark bg, light fg); dark arm uses the elevated surface + near-white text so the tooltip reads as a dark elevated layer rather than inverting to light."
+      "description": "Inverse surface, used by Tooltip. Light arm is the default text ink (a dark chip); dark arm is the same ink at its dark value, a light chip, so a tooltip separates from the raised popovers it opens over instead of blending into them."
     },
     {
       "path": "surface.upcoming-marker",
@@ -1006,7 +1006,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. A 48% alpha step over `border.ink` that clears WCAG 1.4.11's 3:1 floor against every supported surface in both themes."
+      "description": "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(52% .05 248). Both clear WCAG 1.4.11's 3:1 floor against the surfaces a control sits on."
     },
     {
       "path": "border.control.hover",
@@ -1049,9 +1049,9 @@
       "cssProperty": "--cinder-border-inverse",
       "category": "color",
       "public": true,
-      "themeAware": true,
+      "themeAware": false,
       "deprecated": false,
-      "description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only."
+      "description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in both themes: the inverse chip separates from its surroundings by lightness alone (a dark chip on light surfaces, a light chip on dark ones)."
     },
     {
       "path": "text.muted",
@@ -1222,7 +1222,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Focus ring color, relative to `accent.solid` so a consumer override re-derives the ring hue. Light arm clamps L to 0.55 for 3.56:1 against the widened ramp's darkest surface; `h` tracks the accent hue."
+      "description": "Focus ring color: the accent hue at 62% lightness in both themes, one quiet ring for every control, relative to `accent.solid` so a consumer override re-derives the ring hue. The 2px width and zero offset are `ring.width` and `ring.offset`; `h` tracks the accent hue."
     },
     {
       "path": "ring.on-accent",
@@ -1394,6 +1394,24 @@
       "themeAware": false,
       "deprecated": false,
       "description": "Default inline gap."
+    },
+    {
+      "path": "skeleton.background",
+      "cssProperty": "--cinder-skeleton-background",
+      "category": "color",
+      "public": true,
+      "themeAware": true,
+      "deprecated": false,
+      "description": "Fill of a skeleton bar. The inset in light mode; in dark mode the raised surface, never the plain surface, because `surface.inset` sits too close to the canvas to read as a placeholder and bars inside cards (which sit on `surface.base`) would vanish against a card-colored fill."
+    },
+    {
+      "path": "list.row.min-height",
+      "cssProperty": "--cinder-list-row-min-height",
+      "category": "size",
+      "public": true,
+      "themeAware": false,
+      "deprecated": false,
+      "description": "Minimum block size of a list row (StackedListItem, DataList rows). Zero by default so a row is as tall as its content; a coarse pointer (`@media (pointer: coarse)`) raises it to `touch.target.min` (44px) so a row is never smaller than a touch target. Emitted as `0px` so it stays a length in `min-height`."
     },
     {
       "path": "pad.control",
@@ -3175,6 +3193,8 @@
     "chart.series.8": "--cinder-chart-series-8",
     "gap.stack": "--cinder-gap-stack",
     "gap.inline": "--cinder-gap-inline",
+    "skeleton.background": "--cinder-skeleton-background",
+    "list.row.min-height": "--cinder-list-row-min-height",
     "pad.control": "--cinder-pad-control",
     "pad.card": "--cinder-pad-card",
     "pad.page": "--cinder-pad-page",
@@ -3503,6 +3523,8 @@
     "--cinder-chart-series-8": "chart.series.8",
     "--cinder-gap-stack": "gap.stack",
     "--cinder-gap-inline": "gap.inline",
+    "--cinder-skeleton-background": "skeleton.background",
+    "--cinder-list-row-min-height": "list.row.min-height",
     "--cinder-pad-control": "pad.control",
     "--cinder-pad-card": "pad.card",
     "--cinder-pad-page": "pad.page",
@@ -3831,6 +3853,8 @@
     "--cinder-chart-series-8": ["chart.series.8"],
     "--cinder-gap-stack": ["gap.stack"],
     "--cinder-gap-inline": ["gap.inline"],
+    "--cinder-skeleton-background": ["skeleton.background"],
+    "--cinder-list-row-min-height": ["list.row.min-height"],
     "--cinder-pad-control": ["pad.control"],
     "--cinder-pad-card": ["pad.card"],
     "--cinder-pad-page": ["pad.page"],
@@ -4110,6 +4134,7 @@
       "ring.offset",
       "scrollbar.size",
       "overlay.blur",
+      "list.row.min-height",
       "density.row-height",
       "button.height.xs",
       "button.height.sm",
@@ -4181,6 +4206,7 @@
       "chart.series.6",
       "chart.series.7",
       "chart.series.8",
+      "skeleton.background",
       "status.success.contrast",
       "status.success.solid",
       "status.success.solid.active",

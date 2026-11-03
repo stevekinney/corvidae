@@ -106,8 +106,10 @@ describe('component color token contrast and alpha', () => {
   });
 
   it('keeps file-upload border translucency aligned with its resolved corpus alpha', () => {
-    const edge = readTranslucentToken('--cinder-file-upload-border-color');
-    const borderAlpha = readTranslucentToken('--cinder-border-control');
+    const edge = readTranslucentToken('--cinder-file-upload-border-color', {
+      opaqueArms: ['dark'],
+    });
+    const borderAlpha = readTranslucentToken('--cinder-border-control', { opaqueArms: ['dark'] });
     for (const arm of ['light', 'dark'] as const) {
       expect(Number.isFinite(edge[arm].l)).toBe(true);
       expect(edge[arm].alpha).toBe(borderAlpha[arm].alpha);

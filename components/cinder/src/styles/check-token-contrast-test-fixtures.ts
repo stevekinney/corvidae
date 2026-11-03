@@ -57,7 +57,11 @@ export const polarityInk = readOklchToken('--cinder-polarity-ink');
 export const borderMuted = readTranslucentToken('--cinder-border-muted');
 export const border = readTranslucentToken('--cinder-border');
 export const borderStrong = readTranslucentToken('--cinder-border-strong');
-export const borderControl = readTranslucentToken('--cinder-border-control');
+// The dark arm is the opaque oklch(56% .05 248), not a step over the ink (the dark control edge
+// is a literal so it clears 3:1 against `surface.raised`, the control's own fill).
+export const borderControl = readTranslucentToken('--cinder-border-control', {
+  opaqueArms: ['dark'],
+});
 export const borderControlHover = readTranslucentToken('--cinder-border-control-hover');
 export const opacityDisabled = readNumberToken('--cinder-opacity-disabled');
 export const opacityMuted = readNumberToken('--cinder-opacity-muted');

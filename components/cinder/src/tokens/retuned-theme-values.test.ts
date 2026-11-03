@@ -6,6 +6,10 @@
  * The dark arm keeps its palette, so it asserts the pre-retune values for every
  * surface, accent, status and control-border token, and the new alphas only for
  * the three structural tiers and the secondary-button edge.
+ *
+ * COR-2010 (the Interborough redesign's foundations) then moved four dark values on purpose: the
+ * inset band, the inverse tooltip chip, the control edge and the skeleton fill. They are pinned
+ * in their own block below instead of in the unchanged list.
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -86,20 +90,20 @@ const INK_TIERS = [
   ['--cinder-button-border', 0.48],
 ] as const;
 
+/** The two control-edge tokens whose dark arm is the opaque literal below, not a step over the ink. */
+const OPAQUE_IN_DARK = new Set<string>(['--cinder-border-control', '--cinder-button-border']);
+
 /** The dark palette as it shipped before the retune, which the retune must not move. */
 const DARK_UNCHANGED_VALUES: readonly ExpectedColor[] = [
   ['--cinder-surface', [0.21, 0.04, 245]],
   ['--cinder-surface-raised', [0.28, 0.045, 245]],
   ['--cinder-surface-raised-hover', [0.298, 0.04388, 245]],
   ['--cinder-surface-raised-pressed', [0.3232, 0.0423, 245]],
-  ['--cinder-surface-inset', [0.11, 0.03, 245]],
   ['--cinder-surface-hover', [0.22975, 0.039, 245]],
   ['--cinder-surface-pressed', [0.2574, 0.0376, 245]],
-  ['--cinder-surface-inverse', [0.28, 0.045, 245]],
   ['--cinder-surface-upcoming-marker', [0.21, 0.04, 245]],
   ['--cinder-surface-canvas', [0.15, 0.035, 245]],
   ['--cinder-border-ink', [0.86, 0.065, 250]],
-  ['--cinder-border-control', [0.86, 0.065, 250], 0.48],
   ['--cinder-border-control-hover', [0.86, 0.065, 250], 0.58],
   ['--cinder-border-faint', [0.33, 0.03, 245]],
   ['--cinder-accent-contrast', [0.15, 0.035, 245]],
@@ -170,6 +174,7 @@ describe('COR-1552: the light arm ships the retuned values', () => {
 describe('COR-1552: the structural and control border tiers', () => {
   for (const arm of ['light', 'dark'] as const) {
     for (const [property, alpha] of INK_TIERS) {
+      if (arm === 'dark' && OPAQUE_IN_DARK.has(property)) continue;
       test(`${property} is ${alpha * 100}% of the border ink in the ${arm} arm`, () => {
         const tier = contexts[arm].get(property);
         const ink = contexts[arm].get('--cinder-border-ink');
@@ -178,6 +183,34 @@ describe('COR-1552: the structural and control border tiers', () => {
       });
     }
   }
+});
+
+describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and skeleton', () => {
+  test('the inset band steps up to 18% so bands read as gentle steps, not holes', () => {
+    expectColor('dark', ['--cinder-surface-inset', [0.18, 0.035, 245]]);
+  });
+
+  test('the inverse chip is the light text ink, so a tooltip separates from raised popovers', () => {
+    expectColor('dark', ['--cinder-surface-inverse', [0.92, 0.02, 245]]);
+    expectColor('light', ['--cinder-surface-inverse', [0.2, 0.018, 245]]);
+    expectColor('dark', ['--cinder-text-inverse', [0.21, 0.04, 245]]);
+  });
+
+  test('the control edge is the opaque oklch(56% .05 248), the lightest-needed step that clears 3:1 on raised', () => {
+    for (const property of OPAQUE_IN_DARK) {
+      expectColor('dark', [property, [0.56, 0.05, 248]]);
+    }
+  });
+
+  test('the skeleton fill is the inset in light and the raised surface in dark, never the plain surface', () => {
+    expectColor('light', ['--cinder-skeleton-background', [0.96, 0.008, 270]]);
+    expectColor('dark', ['--cinder-skeleton-background', [0.28, 0.045, 245]]);
+  });
+
+  test('the focus ring is the accent hue at 62% lightness in both arms', () => {
+    expectColor('light', ['--cinder-ring-color', [0.62, 0.16, 272]]);
+    expectColor('dark', ['--cinder-ring-color', [0.62, 0.16, 270]]);
+  });
 });
 
 describe('COR-1552: the dark arm keeps its palette', () => {

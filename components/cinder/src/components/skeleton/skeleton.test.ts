@@ -71,18 +71,20 @@ describe('Skeleton', () => {
   });
 
   test('shimmer uses a small oklch relative lift instead of srgb white mix', () => {
-    expect(skeletonCss).toContain('oklch(from var(--cinder-surface-inset) calc(l + 0.06) c h) 50%');
+    expect(skeletonCss).toContain(
+      'oklch(from var(--cinder-skeleton-background) calc(l + 0.06) c h) 50%',
+    );
     expect(skeletonCss).not.toContain('color-mix(in srgb');
     expect(skeletonCss).not.toContain('white 40%');
   });
 
-  test('reduced motion falls back to the inset surface token', () => {
+  test('reduced motion falls back to the skeleton background token', () => {
     const reducedMotionBlock = skeletonCss.match(
       /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.cinder-skeleton\s*\{[\s\S]*?\}\s*\}/,
     )?.[0];
 
     expect(reducedMotionBlock).toContain('animation: none');
-    expect(reducedMotionBlock).toContain('background: var(--cinder-surface-inset);');
+    expect(reducedMotionBlock).toContain('background: var(--cinder-skeleton-background);');
   });
 });
 

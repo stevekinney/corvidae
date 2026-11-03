@@ -30,10 +30,10 @@ const {
   translucentContrastOn,
 } = values;
 describe('focus ring contrast (WCAG 1.4.11)', () => {
-  // --cinder-ring-color light arm = oklch(from accent 0.55 0.16 h); dark arm = 0.7 0.14 h.
+  // --cinder-ring-color is one quiet ring in both arms: oklch(from accent 0.62 0.16 h).
   it('ring clears 3:1 against the page background (both arms)', () => {
-    const ringLight: OklchColor = { l: 0.55, c: 0.16, h: accent.light.h };
-    const ringDark: OklchColor = { l: 0.7, c: 0.14, h: accent.dark.h };
+    const ringLight: OklchColor = { l: 0.62, c: 0.16, h: accent.light.h };
+    const ringDark: OklchColor = { l: 0.62, c: 0.16, h: accent.dark.h };
     expect(contrastRatio(wcagLuminance(ringLight), wcagLuminance(bg.light))).toBeGreaterThanOrEqual(
       NON_TEXT,
     );
@@ -121,6 +121,10 @@ describe('border-on-surface contrast', () => {
 
   for (const arm of ['light', 'dark'] as const) {
     for (const [tierName, tier] of Object.entries(allTiers)) {
+      // The dark control edge is an opaque literal, so it cannot track the surface under it: it
+      // reads 3.14:1 on raised and 4.25:1 on the canvas. Its 3:1 floor on every surface is gated
+      // by the "clears WCAG 1.4.11" tests above instead.
+      if (tierName === 'border.control' && arm === 'dark') continue;
       it(`${arm}: ${tierName} reads within ${MAX_SPREAD * 100}% across every legal surface`, () => {
         const ratios = Object.entries(surfaces).map(
           ([surfaceName, surfaceToken]) =>
@@ -156,6 +160,10 @@ describe('border-on-surface contrast', () => {
       // stops one tier from being nudged off the shared ink and quietly
       // becoming a second source.
       for (const [tierName, tier] of Object.entries(allTiers)) {
+        // The one exception is the dark control edge: an opaque oklch(56% .05 248) chosen by the
+        // design so it clears 3:1 against `surface.raised`; it is gated by the 3:1 floor above
+        // and the pinned literal in retuned-theme-values.test.ts instead.
+        if (tierName === 'border.control' && arm === 'dark') continue;
         expect(
           { l: tier[arm].l, c: tier[arm].c, h: tier[arm].h },
           `${tierName} (${arm}) must resolve to border.ink`,
@@ -174,7 +182,6 @@ describe('border-on-surface contrast', () => {
       '--cinder-border-muted': borderMuted,
       '--cinder-border': border,
       '--cinder-border-strong': borderStrong,
-      '--cinder-border-control': borderControl,
       '--cinder-border-control-hover': borderControlHover,
     } as const;
     for (const [property, tier] of Object.entries(tierProperties)) {
@@ -194,6 +201,22 @@ describe('border-on-surface contrast', () => {
         tier.light.alpha,
       );
     }
+  });
+
+  it('the control edge is the ink step in the light arm and the opaque literal in the dark arm', () => {
+    // `--cinder-border-control` is the one tier whose arms differ in kind: light is the ink at 52%
+    // transparency (about oklch(66% .006 255) over white), dark is the opaque oklch(56% .05 248).
+    const [rootDeclaration, ...blockDeclarations] = readAllTokenValues(
+      css,
+      '--cinder-border-control',
+    );
+    const lightRecipe = `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - borderControl.light.alpha) * 100)}%)`;
+    const darkLiteral = 'oklch(56% 0.05 248)';
+    expect(rootDeclaration?.replace(/\s+/g, ' ')).toBe(
+      `light-dark( ${lightRecipe}, ${darkLiteral} )`,
+    );
+    expect(blockDeclarations.sort()).toEqual([darkLiteral, lightRecipe].sort());
+    expect(borderControl.dark.alpha).toBe(1);
   });
 
   it('the polarity ink actually contrasts with the surfaces of its own arm', () => {

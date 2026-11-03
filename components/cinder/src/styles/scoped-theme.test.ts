@@ -334,7 +334,7 @@ describe('scoped theme tokens', () => {
       '--cinder-surface-inset',
       '--cinder-surface-raised',
       '--cinder-surface-hover',
-      '--cinder-surface-inverse',
+      '--cinder-surface-upcoming-marker',
     ]) {
       expect(
         lightDarkArms(rootDeclarations.get(token) ?? ''),
