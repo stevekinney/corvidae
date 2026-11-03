@@ -21,6 +21,7 @@ describe('storage REST raw operations', () => {
     const registry = createLiveOperationRegistry();
     const storageOperationNames = [
       'weft.storage.get',
+      'weft.storage.preview',
       'weft.storage.put',
       'weft.storage.delete',
       'weft.storage.scan',
@@ -63,6 +64,7 @@ describe('storage REST raw operations', () => {
     const registry = createLiveOperationRegistry();
     const storageOperationNames = [
       'weft.storage.get',
+      'weft.storage.preview',
       'weft.storage.put',
       'weft.storage.delete',
       'weft.storage.scan',

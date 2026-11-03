@@ -25,6 +25,8 @@ import {
   storageDeleteInput,
   storageGetInput,
   storageGetOutput,
+  storagePreviewInput,
+  storagePreviewOutput,
   storagePutInput,
   storageScanInput,
   storageScanOutput,
@@ -33,6 +35,7 @@ import {
   type StorageScanInput,
   type StorageScanOutput,
 } from './storage-schemas.ts';
+import { previewStorageValue } from './storage-value-preview.ts';
 
 const rawStorageAccess: AccessPolicy = {
   kind: 'scoped',
@@ -153,6 +156,34 @@ export const storageGetOperation = defineOperation({
       'get',
     ]);
     return storage.get(input.key);
+  },
+});
+
+export const storagePreviewOperation = defineOperation({
+  name: 'weft.storage.preview',
+  mcpExposable: false,
+  summary: 'Preview a raw storage value',
+  description:
+    'Read one raw value by key and describe it without returning all of it: its size in ' +
+    'bytes, whether the whole value is JSON, other UTF-8 text, or binary, and at most its ' +
+    'first 64 KB as text, cut on a character boundary (`truncated` says whether that is ' +
+    'all of it). A binary value has no preview. An absent key is answered 404. The raw ' +
+    'get still returns every byte. Read-only. Requires storage:admin and is served over ' +
+    'REST only.',
+  destructive: false,
+  tags: ['Storage'],
+  inputSchema: storagePreviewInput,
+  outputSchema: storagePreviewOutput,
+  access: rawStorageAccess,
+  discoverable: true,
+  transports: httpOnlyStorageTransports,
+  unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
+  invoke: async ({ input, host: engine, principal }) => {
+    const storage = resolveAuthorizedStorage<['get']>(engine, principal, 'weft.storage.preview', [
+      'get',
+    ]);
+    const value = await storage.get(input.key);
+    return value === null ? null : { key: input.key, ...previewStorageValue(value) };
   },
 });
 

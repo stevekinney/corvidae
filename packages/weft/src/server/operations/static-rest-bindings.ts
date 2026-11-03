@@ -76,6 +76,7 @@ import {
   storageConditionalBatchRestBinding,
   storageDeleteRestBinding,
   storageGetRestBinding,
+  storagePreviewRestBinding,
   storagePutRestBinding,
   storageScanRestBinding,
 } from './storage-rest-bindings.ts';
@@ -182,6 +183,7 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   replayWorkflowRestBinding,
   storageCapabilities.storageCapabilitiesRestBinding,
   storageGetRestBinding,
+  storagePreviewRestBinding,
   storagePutRestBinding,
   storageDeleteRestBinding,
   storageScanRestBinding,
