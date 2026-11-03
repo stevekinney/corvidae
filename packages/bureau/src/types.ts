@@ -405,15 +405,18 @@ export interface BureauRetentionOptions {
    * governed memory under this window, in place of the 90 days the memory policy's `episodic` rule
    * sets, without activating a policy revision; the sweep deletes an expired memory with a receipt
    * and a `memory.retention.swept` event, and a legal hold keeps what it holds. Leave it out and
-   * the memory policy's own rule decides. The other classes keep the policy's rules. Has effect
-   * only on a Bureau composed with `memory`. `olderThan` must be a positive integer; otherwise
+   * the memory policy's own rule decides. The other classes keep the policy's rules. Under
+   * `expiredRecords: 'on-request'` the sweep runs only in {@link Bureau.removeExpiredRecords}
+   * (COR-2009). Has effect only on a Bureau composed with `memory`. `olderThan` must be a positive integer; otherwise
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   memory?: BureauMemoryRetentionOption | undefined;
   /**
    * COR-1811 — how long a finished run's persisted `ctx.log` lines are kept after the run last
    * wrote one, swept by each maintenance pass. A run that is still active (running, suspended, or
-   * parked on a signal, a review, or a timer) keeps its lines whatever their age. Leave it out to keep them until the run is purged. Has effect
+   * parked on a signal, a review, or a timer) keeps its lines whatever their age. Leave it out to keep them until the run is purged. Under
+   * `expiredRecords: 'on-request'` the sweep runs only in {@link Bureau.removeExpiredRecords}
+   * (COR-2009). Has effect
    * only on a Bureau composed with {@link BureauOptions.logs}. `olderThan` must be a positive
    * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
@@ -421,15 +424,18 @@ export interface BureauRetentionOptions {
   /**
    * COR-1941 — how long a notification is kept after it was written, swept by each maintenance
    * pass whether or not it was read. Leave it out to keep notifications until the owner holds
-   * more than 1000, when the oldest go. `olderThan` must be a positive integer; otherwise
-   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   * more than 1000, when the oldest go. Under `expiredRecords: 'on-request'` the sweep runs only
+   * in {@link Bureau.removeExpiredRecords} (COR-2009). `olderThan` must be a positive integer;
+   * otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   notifications?: BureauNotificationsRetentionOption | undefined;
   /**
    * COR-1943 — how long a settled hook delivery record (delivered, exhausted, aborted, or failed
    * for want of a secret) is kept after it was last written, swept by each maintenance pass. A
    * pending delivery is never removed, whatever its age. Leave it out to keep delivery records until
-   * their hook is deleted. Has effect only on a Bureau composed with {@link BureauOptions.hooks}.
+   * their hook is deleted. Under `expiredRecords: 'on-request'` the sweep runs only in
+   * {@link Bureau.removeExpiredRecords} (COR-2009). Has effect only on a Bureau composed with
+   * {@link BureauOptions.hooks}.
    * `olderThan` must be a positive integer; otherwise `createBureau` throws
    * `BureauError(..., 'BAD_REQUEST')`.
    */
