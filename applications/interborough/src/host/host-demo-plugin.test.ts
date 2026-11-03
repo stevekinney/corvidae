@@ -296,6 +296,61 @@ describe('the demo schedule and goal', () => {
     expect(schedules?.items).toEqual([]);
     expect(await host.bureau.goals.list()).toEqual([]);
   });
+
+  test('Enable and restart: enabling the disabled plugin asks for a restart, and the next start runs Release helper and Changelog writer (COR-2009)', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'interborough-demo-enable-'));
+    homes.push(home);
+    const first = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
+    hosts.push(first);
+    const demoStanding = async (host: Host) => {
+      const response = await fetch(new URL('/host/plugins', host.url));
+      const body = (await response.json()) as {
+        plugins: {
+          descriptor: { name: string };
+          status: string;
+          enabled: boolean;
+          restartRequired: boolean;
+        }[];
+      };
+      return body.plugins.find((plugin) => plugin.descriptor.name === 'demo');
+    };
+    expect(await demoStanding(first)).toMatchObject({
+      status: 'disabled',
+      enabled: false,
+      restartRequired: false,
+    });
+
+    const enabled = await fetch(new URL('/host/plugins/demo', first.url), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(await enabled.json()).toEqual({
+      plugin: 'demo',
+      enabled: true,
+      configuration: {},
+      restartRequired: true,
+    });
+    // Saving never restarts: the running host still holds the plugin back until it starts again.
+    expect(await demoStanding(first)).toMatchObject({
+      status: 'disabled',
+      enabled: true,
+      restartRequired: true,
+    });
+    expect(first.bureau.agents.has('demo:release-helper')).toBe(false);
+    await first.close();
+    hosts.splice(hosts.indexOf(first), 1);
+
+    // The supervisor's restart starts the host again on the same home.
+    const second = await start(home);
+    expect(await demoStanding(second)).toMatchObject({
+      status: 'running',
+      enabled: true,
+      restartRequired: false,
+    });
+    expect(second.bureau.agents.has('demo:release-helper')).toBe(true);
+    expect(second.bureau.agents.has('demo:changelog-writer')).toBe(true);
+  });
 });
 
 async function waitForReview(host: Host, runId: string) {

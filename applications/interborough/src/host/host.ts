@@ -82,7 +82,8 @@
  *   `deployment`.
  * - `POST /host/restart`: asks the host to restart. It is registered only for a host started with
  *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
- *   the callback runs.
+ *   the callback runs. `GET /host/restart` says whether it is registered, and the terminal command
+ *   the supervisor recorded when it started this host (`launch-command.ts`), or `null`.
  * - `/assets/*` and the client routes: the built application, with `index.html` for every route
  *   the client router owns.
  *
@@ -153,6 +154,7 @@ import {
   type BureauHandler,
   type HostSocketData,
 } from './host-websocket.ts';
+import { resolveLaunchCommand } from './launch-command.ts';
 import {
   createAgentSource,
   createHostStorage,
@@ -168,6 +170,7 @@ import {
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { mcpAppRoutes } from './mcp-app-routes.ts';
 import { createHostMemory } from './memory.ts';
+import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
 import { defaultDecisionOptions, workspacePlugins } from './plugins.ts';
@@ -176,7 +179,7 @@ import { createProviderManager, type ProviderManager } from './provider-manager.
 import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
-import { HOST_RESTART_ROUTE } from './restart.ts';
+import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
@@ -354,7 +357,8 @@ export type HostOptions = {
    * the process stops the host and exits with `RESTART_EXIT_CODE`, which its supervisor answers by
    * starting the host again. The host calls it once, after it has answered the request, so a second
    * request while the first is in flight is answered and ignored. A host without it registers no
-   * such route, so the path is a 404.
+   * `POST` on the route, so a restart request is a 404, and `GET /host/restart` reports it
+   * unavailable.
    */
   readonly onRestartRequested?: () => void | Promise<void>;
   /**
@@ -634,6 +638,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The folder plugins load now, once: Bungalow's `plugins/` folder, then the development ones.
     // A folder that cannot load is reported and skipped, never a reason to stop the host.
     const content = bungalow.content(PLUGIN_FOLDER_NAME);
+    // When the host loaded its plugins: a plugin that did not load needs attention from here (COR-2009).
+    const pluginsLoadedAt = Date.now();
     const folderPlugins = await loadFolderPlugins({
       directory: content.kind === 'directory' ? content.path : undefined,
       dependencies: HOST_DEPENDENCIES,
@@ -644,6 +650,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const plugins = [BUREAU_PLUGIN_ENTRY, ...packagePlugins, ...folderPlugins.entries];
     // The plugins read their choices from the same file, before the Bureau composes them. A secret
     // the provider routes store reaches a plugin that waits on it through the same watchers.
+    const isProviderPlugin = (plugin: string): boolean =>
+      held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true;
     const pluginManager = await createPluginManager({
       bungalow,
       plugins,
@@ -660,11 +668,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       })),
       configurationQueue,
       // A provider plugin's allowlist applies without a restart: the provider manager reloads the catalog.
-      appliesConfigurationLive: (plugin) =>
-        held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true,
+      appliesConfigurationLive: isProviderPlugin,
       checkDocument: (document) => held.providers?.checkDocument(document),
       applyConfiguration: async () => {
         await held.providers?.reload();
+      },
+      // So does its key saved on the plugin's own route (Plugins › Add the key, COR-2009): the
+      // provider manager reads keys when it loads, so it loads again.
+      applySecret: async (plugin) => {
+        if (isProviderPlugin(plugin)) await held.providers?.reload();
       },
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
       reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
@@ -806,12 +818,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Bureau's events, with what a remote home needs of them (COR-1978).
       hooks: hookOptionsFor(bungalow.mode),
       ...(options.alerts === undefined ? {} : { alerts: options.alerts }),
-      // Needs attention (COR-2009): no model provider connected is the host's to see.
-      attention: () =>
-        providerAttention({
+      // Needs attention (COR-2009): no model provider connected is the host's to see, and so is a
+      // plugin the host skipped before the Bureau composed the rest.
+      attention: async () => [
+        ...(await providerAttention({
           modelCount: () => providers.current().rows.length,
           auditTrail: () => held.bureau?.internals.auditTrail,
-        }),
+        })),
+        ...pluginAttention(await pluginManager.snapshot(), pluginsLoadedAt),
+      ],
     });
     held.bureau = bureau;
     // A tool source connected from now on is loaded at once, and its tools join the Bureau's
@@ -904,6 +919,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
     const shell = shellResponder(buildDirectory, devReload !== undefined);
+    // Handed over by the supervisor when it started (`launch-command.ts`), for the page to show
+    // after a restart that does not come back.
+    const launchCommand = resolveLaunchCommand(environment);
     const restart =
       options.onRestartRequested === undefined
         ? undefined
@@ -949,11 +967,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }
           return bureauHandler(bureauRequest);
         },
-        // The restart request. The guard answers first, so a page on another origin cannot restart
-        // the host.
-        ...(restart === undefined
-          ? {}
-          : { [HOST_RESTART_ROUTE]: { POST: (request: Request) => refuse(request) ?? restart() } }),
+        // Whether the host can restart, and the command it was launched with (COR-2009), and the
+        // restart request itself. The guard answers first, so a page on another origin cannot
+        // restart the host. A host no supervisor started has no `POST`, so that path is a 404.
+        [HOST_RESTART_ROUTE]: {
+          GET: (request: Request) =>
+            refuse(request) ??
+            Response.json({
+              available: restart !== undefined,
+              launch: launchCommand ?? null,
+            } satisfies HostRestartStanding),
+          ...(restart === undefined
+            ? {}
+            : { POST: (request: Request) => refuse(request) ?? restart() }),
+        },
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
         ...providerRoutes(providers, refuse),

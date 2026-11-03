@@ -29,6 +29,11 @@ import { join, resolve as resolvePath } from 'node:path';
 
 import { DEVELOPMENT_PLUGIN_FLAG } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
+import {
+  deriveLaunchCommand,
+  launchCommandEnvironment,
+  type LaunchCommand,
+} from './launch-command.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
 import { SHOWCASE_FLAG } from './showcase.ts';
 
@@ -79,6 +84,12 @@ export type SuperviseOptions = {
   /** The child's working directory. Defaults to the package root, where `bunfig.toml` is. */
   readonly cwd?: string;
   /**
+   * The child's environment. Defaults to the supervisor's own. {@link runSupervisor} adds the
+   * launch command it recorded at startup (`launch-command.ts`), so every host it starts can say
+   * how to start it again.
+   */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
+  /**
    * Checked before every start, the first included. A message ends the supervisor with exit code 1
    * and nothing started; `undefined` lets the start go ahead.
    */
@@ -128,6 +139,7 @@ export async function supervise(options: SuperviseOptions): Promise<number> {
       }
       const running = Bun.spawn([...options.command], {
         cwd: options.cwd ?? PACKAGE_DIRECTORY,
+        ...(options.environment === undefined ? {} : { env: { ...options.environment } }),
         stdin: 'ignore',
         stdout: 'inherit',
         stderr: 'inherit',
@@ -158,8 +170,19 @@ const USAGE =
  * supervisor. `--plugin` (dev only, repeatable) names a plugin folder the development host loads
  * as a development source; a relative path is taken from the directory the command ran in.
  * `--showcase` (dev only) runs the showcase host (`showcase.ts`).
+ *
+ * `launch` is the terminal command that started the supervisor, worked out from this process by
+ * default (`launch-command.ts`). Every host it runs is handed it, so the host can report how to
+ * start it again after a restart that does not come back.
  */
-export async function runSupervisor(argumentsList: readonly string[]): Promise<number> {
+export async function runSupervisor(
+  argumentsList: readonly string[],
+  launch: LaunchCommand = deriveLaunchCommand({
+    environment: processEnvironment(),
+    argv: process.argv,
+    cwd: process.cwd(),
+  }),
+): Promise<number> {
   const [mode, ...rest] = argumentsList;
   let entry: string | undefined;
   const pluginPaths: string[] = [];
@@ -184,9 +207,12 @@ export async function runSupervisor(argumentsList: readonly string[]): Promise<n
   }
   const environment = processEnvironment();
   const command = hostCommand(mode, entry, pluginPaths, showcase);
-  if (mode === 'dev') return supervise({ command });
+  // Recorded once, when the supervisor starts, and handed to every host it runs (COR-2009).
+  const childEnvironment = { ...environment, ...launchCommandEnvironment(launch) };
+  if (mode === 'dev') return supervise({ command, environment: childEnvironment });
   return supervise({
     command,
+    environment: childEnvironment,
     prepare: () => {
       const page = join(resolveBuildDirectory(environment), 'index.html');
       return existsSync(page)

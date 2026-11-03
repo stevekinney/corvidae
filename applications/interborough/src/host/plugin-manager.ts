@@ -9,7 +9,7 @@
  *   start; the answer says so with `restartRequired`.
  * - **A secret needs no restart.** {@link PluginManager.saveSecret} writes a secret the plugin
  *   declared and tells the watchers Bureau registered, so a plugin that was `needs-setup` becomes
- *   `running` as soon as the value is stored.
+ *   `running` as soon as the value is stored, and a provider plugin's models join the catalog.
  * - **Generated secrets.** A declaration with `generated: true` is created on first enable, in
  *   local mode only. A remote home keeps secrets in the deployment's environment, which the host
  *   cannot write, so the plugin stays `needs-setup` until the deployment sets the variable.
@@ -240,6 +240,13 @@ export type PluginManagerOptions = {
    * configuration queue, to apply them (the host reloads the model catalog).
    */
   readonly applyConfiguration?: (plugin: string) => Promise<void>;
+  /**
+   * Called once a secret of `plugin` is stored, outside the configuration queue, for a reader of
+   * the secret that does not watch it: the host reloads the model catalog for a provider plugin's
+   * key, so its models are offered at once, as they are when Models › Connect stores the same key
+   * (COR-2009). Bureau's watchers have already heard by then.
+   */
+  readonly applySecret?: (plugin: string) => Promise<void>;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
   /** Secret keys the host keeps for itself: a plugin that declares one is skipped, since it would read or overwrite it. */
@@ -632,11 +639,14 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
         throw new PluginInputError('value', 'contains a line break or another control character.');
       }
-      return serialized(async () => {
+      const change = await serialized(async () => {
         assertWritable();
         writeSecret(key, trimmed);
-        return { plugin: name, key, set: true };
+        return { plugin: name, key, set: true } as const;
       });
+      // Applied outside the queue, which the work shares.
+      await options.applySecret?.(name);
+      return change;
     },
   };
 }
