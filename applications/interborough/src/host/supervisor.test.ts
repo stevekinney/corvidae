@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { processEnvironment } from './environment-configuration.ts';
 import { hostCommand, supervise, type SupervisorSignals } from './supervisor.ts';
 
 const fixture = join(import.meta.dir, 'supervisor-fixture.test-support.ts');
@@ -118,7 +119,9 @@ const launched = await runWithHangGuard(
   {
     cwd: packageDirectory,
     env: {
-      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('npm_'))),
+      ...Object.fromEntries(
+        Object.entries(processEnvironment()).filter(([key]) => !key.startsWith('npm_')),
+      ),
       INTERBOROUGH_BUILD_DIRECTORY: launchBuild,
       INTERBOROUGH_LAUNCH_FIXTURE_OUTPUT: launchOutput,
       npm_lifecycle_event: 'start',

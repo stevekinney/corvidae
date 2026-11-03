@@ -5,8 +5,10 @@
  */
 import { writeFileSync } from 'node:fs';
 
+import { processEnvironment } from './environment-configuration.ts';
 import { resolveLaunchCommand } from './launch-command.ts';
 
-const output = process.env['INTERBOROUGH_LAUNCH_FIXTURE_OUTPUT'];
+const environment = processEnvironment();
+const output = environment['INTERBOROUGH_LAUNCH_FIXTURE_OUTPUT'];
 if (output === undefined) throw new Error('The fixture needs INTERBOROUGH_LAUNCH_FIXTURE_OUTPUT.');
-writeFileSync(output, JSON.stringify(resolveLaunchCommand(process.env) ?? null));
+writeFileSync(output, JSON.stringify(resolveLaunchCommand(environment) ?? null));
