@@ -836,7 +836,12 @@ describe('a hook’s input', () => {
     ],
     ['neither a url nor an action', {}, ['action']],
     ['an unknown action type', { action: { type: 'teleport' } }, ['action', 'type']],
-    ['a webhook with no secret', { url: 'https://receiver.example/h' }, ['signingSecret']],
+    // COR-2009: a webhook with no secret gets a generated one; a secret it is given is still checked.
+    [
+      'a webhook secret under 16 characters',
+      { url: 'https://receiver.example/h', signingSecret: 'too-short' },
+      ['signingSecret'],
+    ],
     [
       'a signing secret on a notify hook',
       { action: { type: 'notify' as const }, signingSecret: SIGNING_SECRET },

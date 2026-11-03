@@ -16,13 +16,26 @@
  * @module hook-signature
  */
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 /** The header a delivery's signature travels in. */
 export const HOOK_SIGNATURE_HEADER = 'X-Signature';
 
 /** How far a signature's timestamp may be from the receiver's clock before it is rejected: five minutes. */
 export const HOOK_SIGNATURE_TOLERANCE_SECONDS = 300;
+
+/** What every signing secret the Bureau generates starts with, so a person can tell one on sight. */
+export const HOOK_SIGNING_SECRET_PREFIX = 'whsec_';
+
+/**
+ * A new signing secret (COR-2009): {@link HOOK_SIGNING_SECRET_PREFIX} and 24 lowercase hexadecimal
+ * digits, twelve bytes from the operating system's random source, such as
+ * `whsec_3f9a1c0d7e5b4a62c8d1e0f9`. The Bureau makes one when a webhook hook is created without a
+ * secret and when its secret is replaced, and shows it once.
+ */
+export function generateHookSigningSecret(): string {
+  return `${HOOK_SIGNING_SECRET_PREFIX}${randomBytes(12).toString('hex')}`;
+}
 
 /** The digest of `<timestamp>.<body>` under `secret`, as lowercase hexadecimal. */
 function digestOf(secret: string, timestampSeconds: number, body: string): string {

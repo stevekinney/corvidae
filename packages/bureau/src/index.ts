@@ -756,12 +756,16 @@ export type {
   BureauHooks,
   HookActionInput,
   HookCreateInput,
+  HookReplaceSecretOptions,
   HookUpdateInput,
+  HookWithSigningSecret,
 } from './hooks/create-hooks';
 export { HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
 export {
+  generateHookSigningSecret,
   HOOK_SIGNATURE_HEADER,
   HOOK_SIGNATURE_TOLERANCE_SECONDS,
+  HOOK_SIGNING_SECRET_PREFIX,
   signHookDelivery,
   verifyHookSignature,
 } from './hooks/hook-signature';

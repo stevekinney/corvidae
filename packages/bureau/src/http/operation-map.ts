@@ -182,6 +182,7 @@ export const OPERATION_MAP = {
 
   'bureau.hooks.create': { member: 'hooks.create' },
   'bureau.hooks.update': { member: 'hooks.update' },
+  'bureau.hooks.secret.replace': { member: 'hooks.replaceSigningSecret' },
   'bureau.hooks.delete': { member: 'hooks.delete' },
   'bureau.hooks.get': { member: 'hooks.get' },
   'bureau.hooks.list': { member: 'hooks.list' },
