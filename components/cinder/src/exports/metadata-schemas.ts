@@ -139,6 +139,7 @@ export { default as radioGroupSchema } from '../components/radio-group/radio-gro
 export { default as ratingSchema } from '../components/rating/rating.schema.ts';
 export { default as relativeTimeSchema } from '../components/relative-time/relative-time.schema.ts';
 export { default as resizablePanelsSchema } from '../components/resizable-panels/resizable-panels.schema.ts';
+export { default as restartStateSchema } from '../components/restart-state/restart-state.schema.ts';
 export { default as runStepTimelineSchema } from '../components/run-step-timeline/run-step-timeline.schema.ts';
 export { default as scheduleBuilderSchema } from '../components/schedule-builder/schedule-builder.schema.ts';
 export { default as schemaFormSchema } from '../components/schema-form/schema-form.schema.ts';

@@ -139,6 +139,7 @@ export { default as radioGroupVariables } from '../components/radio-group/radio-
 export { default as ratingVariables } from '../components/rating/rating.variables.ts';
 export { default as relativeTimeVariables } from '../components/relative-time/relative-time.variables.ts';
 export { default as resizablePanelsVariables } from '../components/resizable-panels/resizable-panels.variables.ts';
+export { default as restartStateVariables } from '../components/restart-state/restart-state.variables.ts';
 export { default as runStepTimelineVariables } from '../components/run-step-timeline/run-step-timeline.variables.ts';
 export { default as scheduleBuilderVariables } from '../components/schedule-builder/schedule-builder.variables.ts';
 export { default as schemaFormVariables } from '../components/schema-form/schema-form.variables.ts';

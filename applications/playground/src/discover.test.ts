@@ -313,6 +313,7 @@ const SIDEBAR_BASELINE = [
   'rating',
   'relative-time',
   'resizable-panels',
+  'restart-state',
   'review-editor',
   'run-step-timeline',
   'schedule-builder',

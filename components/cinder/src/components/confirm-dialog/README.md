@@ -84,19 +84,26 @@ The key distinction between ConfirmDialog and AlertDialog is _who initiates_ the
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `busy` | `boolean` | no | `false` | True while the confirmed work is in flight. The confirm button shows `busyLabel` and a spinner and ignores presses (it stays focusable), Cancel is inert, the typed field is read-only, and the dialog cannot be dismissed (Escape, the backdrop and the close button do nothing) until the work answers. Pair it with `closeOnConfirm={false}`, so the dialog stays open to show the answer. |
+| `busyLabel` | `string` | no | — | Confirm button label while `busy`, such as "Restoring…" or "Deleting…". Defaults to `confirmLabel`, so the words stay put and only the spinner shows. |
 | `cancelLabel` | `string` | no | `"Cancel"` | Label for the cancel button, which ALWAYS renders. |
 | `class` | `string` | no | — | Optional extra class on the underlying <Modal>. Destructured as `class: className` per repo convention. |
+| `closeOnConfirm` | `boolean` | no | `true` | Whether the dialog closes itself when the confirm button is pressed. Set `false` when the confirmed work can fail and the page needs the dialog to stay open to show it: the page then closes the dialog with `open = false` once the work succeeds. |
 | `confirmLabel` | `string` | yes | — | Confirm button label. Required — no default. Name the action being confirmed: - Destructive: "Delete", "Discard changes", "Remove from organization". - Non-destructive: "Save", "Continue", "Publish". Never use "OK" or "Confirm" in production — they don't describe the action. |
-| `description` | `string` | no | — | Optional body description — short, plain text only. Rendered as a single <p> and wired to aria-describedby. For rich content (markup, lists, multiple paragraphs), compose <Modal> + <Button> directly — screen readers announce aria-describedby targets as one continuous run. |
 | `destructive` | `boolean` | no | — | When true, the confirm button uses variant="danger". The cancel button still receives default focus regardless — color is never the sole destructive signal. |
+| `error` | `string` | no | — | Why the confirmed work failed, in a danger callout between the body and the actions that is announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays, and the confirm button stays armed under its own label, so pressing it again is the retry. Clear it to hide the callout. |
+| `errorTitle` | `string` | no | — | Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`. Shown only with `error`. |
 | `open` | `boolean` | yes | — | Controls visibility. Bindable. |
 | `sheetBelow` | `string` \| `false` | no | `"640px"` | Viewport width below which the dialog is a bottom sheet: a grabber, the confirmation first and Cancel under it, both full width at 44px, with Cancel keeping initial focus. A CSS length such as `"640px"`, or `false` for the centred dialog at every width. |
 | `title` | `string` | yes | — | Modal title; passed through to <Modal>. |
 | `typeToConfirm` | `string` | no | — | When set, renders a labelled text input and disables the confirm button until the trimmed input matches this value case-insensitively. |
 | `typeToConfirmLabel` | `string` | no | — | Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. |
+| `confirmIcon` | `(opaque)` | no | — | Glyph at the start of the confirm button, such as a restart, stop or trash icon. Decorative: the label names the action. Not expressible in JSON Schema; see the component types for the signature. |
+| `description` | `(opaque)` | no | — | Optional body description — a short sentence or two. Rendered as a single <p> and wired to aria-describedby. A string is plain text; a snippet may add phrasing content inside the sentence, such as a key in `<code>`. Anything bigger than a sentence (a list, a code block, a checkbox) goes in `options`, below it. Screen readers announce aria-describedby targets as one continuous run, so keep the description short either way. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when the user cancels (cancel button, Escape, or backdrop per the dialog's policy). Not expressible in JSON Schema; see the component types for the signature. |
-| `onConfirm` | `(opaque)` | yes | — | Fired when the user activates the confirm button. Required. Component closes itself after. Not expressible in JSON Schema; see the component types for the signature. |
+| `onConfirm` | `(opaque)` | yes | — | Fired when the user activates the confirm button. Required. The component closes itself after, unless `closeOnConfirm` is `false`. Not expressible in JSON Schema; see the component types for the signature. |
 | `onExitComplete` | `(opaque)` | no | — | Fired once the underlying modal's exit transition has completed. Not expressible in JSON Schema; see the component types for the signature. |
+| `options` | `(opaque)` | no | — | Content rendered below the description and above the typed confirmation: a checkbox that changes what the confirmation does, or the exact command about to run in a code block. The description says what the dialog does; the options say what each choice does. Keep the description short, and keep controls here labelled. Not expressible in JSON Schema; see the component types for the signature. |
 | `triggerRef` | `(opaque)` | no | — | Forwarded to <Modal>; focus is restored here on close. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

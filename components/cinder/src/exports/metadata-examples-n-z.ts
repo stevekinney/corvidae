@@ -21,6 +21,7 @@ import radioGroupExamplesJson from '../components/radio-group/radio-group.exampl
 import ratingExamplesJson from '../components/rating/rating.examples.json' with { type: 'json' };
 import relativeTimeExamplesJson from '../components/relative-time/relative-time.examples.json' with { type: 'json' };
 import resizablePanelsExamplesJson from '../components/resizable-panels/resizable-panels.examples.json' with { type: 'json' };
+import restartStateExamplesJson from '../components/restart-state/restart-state.examples.json' with { type: 'json' };
 import runStepTimelineExamplesJson from '../components/run-step-timeline/run-step-timeline.examples.json' with { type: 'json' };
 import scheduleBuilderExamplesJson from '../components/schedule-builder/schedule-builder.examples.json' with { type: 'json' };
 import schemaFormExamplesJson from '../components/schema-form/schema-form.examples.json' with { type: 'json' };
@@ -120,6 +121,8 @@ export const ratingExamples = ratingExamplesJson;
 export const relativeTimeExamples = relativeTimeExamplesJson;
 /** Code examples for this component. */
 export const resizablePanelsExamples = resizablePanelsExamplesJson;
+/** Code examples for this component. */
+export const restartStateExamples = restartStateExamplesJson;
 /** Code examples for this component. */
 export const runStepTimelineExamples = runStepTimelineExamplesJson;
 /** Code examples for this component. */

@@ -4274,6 +4274,36 @@
       }
     },
     {
+      "name": "RestartState",
+      "id": "restart-state",
+      "import": "@lostgradient/cinder",
+      "exportName": "RestartState",
+      "category": "overlay",
+      "status": "beta",
+      "purpose": "Modal state that takes over the page while its host restarts: progress by step, the reconnect attempt count with Retry now, and a failure that says what to check and how to start the host again.",
+      "tags": ["overlay", "restart", "progress"],
+      "useWhen": [
+        "The person confirmed a restart and the page must say what is happening while the host stops answering.",
+        "The host did not come back and the person needs the way back: what to check, the exact command, and a choice to keep waiting."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Asking whether to restart at all — use confirm-dialog first."
+        },
+        {
+          "reason": "Showing that the connection dropped on its own — use banner with the reconnecting preset."
+        }
+      ],
+      "related": ["confirm-dialog", "banner", "steps", "modal"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/restart-state/restart-state.schema.json",
+        "variables": "src/components/restart-state/restart-state.variables.json",
+        "examples": "src/components/restart-state/restart-state.examples.json"
+      }
+    },
+    {
       "name": "RunStepTimeline",
       "id": "run-step-timeline",
       "import": "@lostgradient/cinder",
