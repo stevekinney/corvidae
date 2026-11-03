@@ -528,6 +528,36 @@ describe('Combobox loading and load error', () => {
     expect(retried).toBe(1);
   });
 
+  test('a load error sits the retry below its text with the title in neutral ink (row 75j)', async () => {
+    const css = await Bun.file(new URL('./combobox.css', import.meta.url)).text();
+    const rule = (selector: string): string =>
+      css.match(new RegExp(`${selector.replaceAll('.', '\\.')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    expect(rule('.cinder-combobox__load-error')).toMatch(/flex-direction:\s*column/);
+    expect(rule('.cinder-combobox__load-error-title')).toContain('var(--cinder-text-default)');
+    expect(rule('.cinder-combobox__load-error-title')).not.toContain('danger');
+
+    render(Combobox, {
+      id: 'workflow',
+      label: 'Workflow',
+      presentation: 'picker',
+      options: [{ value: 'chat', label: 'Chat with an agent' }],
+      loadError: { title: 'Couldn’t load workflows.', description: 'Interborough didn’t answer.' },
+      onRetry: () => {},
+    });
+    await openPicker();
+    const error = requiredInstance(
+      document.body.querySelector('.cinder-combobox__load-error'),
+      HTMLElement,
+    );
+    const text = requiredInstance(
+      error.querySelector('.cinder-combobox__load-error-text'),
+      HTMLElement,
+    );
+    const retry = requiredInstance(error.querySelector('button'), HTMLButtonElement);
+    expect(text.compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(text.contains(retry)).toBe(false);
+  });
+
   test('a load error with nothing listed shows the message and no "No results" line', async () => {
     const { container } = render(Combobox, {
       id: 'workflow',

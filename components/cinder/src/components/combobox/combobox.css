@@ -248,14 +248,15 @@
     color: var(--cinder-text-muted);
   }
 
-  /* The list failed to load: what failed, what still works, and a way to try again, above the
-     options that did load. It is a message in the panel, not a banner. */
+  /* The list failed to load: what failed, what still works, and a way to try again below the
+     text, above the options that did load. It is a message in the panel, not a banner, so the
+     title reads in neutral ink and only the alert role carries the urgency. */
   .cinder-combobox__load-error {
     flex: none;
     display: flex;
+    flex-direction: column;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--cinder-space-3);
+    gap: var(--cinder-space-2);
     margin-block-end: var(--cinder-space-1);
     padding: var(--cinder-space-2);
     border-block-end: 1px solid var(--cinder-border-muted);
@@ -272,7 +273,7 @@
   .cinder-combobox__load-error-title {
     font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-semibold);
-    color: var(--cinder-status-danger-text);
+    color: var(--cinder-text-default);
   }
 
   .cinder-combobox__load-error-description {
