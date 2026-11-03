@@ -20,6 +20,8 @@ Purpose: Decorative placeholder block that reserves layout space while real cont
 
 The bars are decorative and sit in an `aria-hidden` wrapper. The "Still loading" status is a sibling of that wrapper with `role="status"`. The status element is in the DOM from the moment the skeleton appears and is empty until `stillLoadingAfter` elapses, so the text is announced politely when it is inserted. Nothing is announced when `delay` ends, because a placeholder alone carries no information for assistive technology. Give the surrounding region `aria-busy="true"` while loading if it needs a busy state.
 
+With `label` set, a visually hidden `role="status"` region carries the loading name (for example "Loading agents"). On the list variant that region is in the DOM from the first pass and gains its text when the rows appear, so the name is announced rather than inserted with its text. The list variant also sets `aria-busy` on its group while the rows are showing. No spinner is drawn: the rows are the loading indicator.
+
 The Cancel button is a native `<button>` in the normal tab order. It renders only when `onCancel` is set, and the caller owns what happens to focus once the skeleton is unmounted.
 
 ## Keyboard and focus

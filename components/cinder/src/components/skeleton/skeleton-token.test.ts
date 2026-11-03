@@ -21,7 +21,10 @@ describe('skeleton fill token', () => {
   });
 
   test('every bar paints the token, including the reduced-motion fallbacks', () => {
-    expect(skeletonCss).not.toContain('var(--cinder-surface-inset)');
+    // The inset may only tint the list's day band as a mix with the surface; no rule paints it
+    // as a plain background, which would hide a bar (the bars paint the inset in light mode).
+    expect(skeletonCss).not.toContain('background: var(--cinder-surface-inset)');
+    expect(skeletonCss).not.toContain('background-color: var(--cinder-surface-inset)');
     expect(
       skeletonCss.match(/var\(--cinder-skeleton-background\)/g)?.length,
     ).toBeGreaterThanOrEqual(4);

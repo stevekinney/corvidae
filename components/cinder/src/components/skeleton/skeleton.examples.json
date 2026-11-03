@@ -20,6 +20,12 @@
       "title": "Loading rules",
       "description": "Nothing for 300 ms, the skeleton until 10 seconds, then Still loading with Cancel.",
       "code": "<script lang=\"ts\">\n  import { Button, Skeleton } from '@lostgradient/cinder';\n\n  let loading = $state(false);\n</script>\n\n<Button label=\"Start loading\" onclick={() => (loading = true)} disabled={loading} />\n\n{#if loading}\n  <Skeleton lines={5} delay={300} stillLoadingAfter={10000} onCancel={() => (loading = false)} />\n{/if}\n"
+    },
+    {
+      "id": "list-loading",
+      "title": "List loading with a slow-loading line",
+      "description": "A status-first list placeholder in the real layout: nothing for 300 ms, rows until 10 seconds, then the page's own Still loading line with a ghost Cancel. It is not a banner and draws no spinner.",
+      "code": "<script lang=\"ts\">\n  import { Skeleton } from '@lostgradient/cinder';\n\n  let loading = $state(true);\n</script>\n\n{#if loading}\n  <Skeleton\n    variant=\"list\"\n    rows={3}\n    dayBand\n    label=\"Loading runs\"\n    delay={300}\n    stillLoadingAfter={10000}\n    stillLoadingLabel=\"Still loading runs. This is taking longer than usual.\"\n    onCancel={() => (loading = false)}\n  />\n{/if}\n"
     }
   ]
 }
