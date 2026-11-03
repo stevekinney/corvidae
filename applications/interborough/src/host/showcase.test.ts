@@ -142,7 +142,11 @@ describe('the sample world workflow files', () => {
 describe('showcaseHostOptions', () => {
   test('registers the six built-in agents and the stub provider', () => {
     const options = showcaseHostOptions();
-    expect(Object.keys(options.extraAgents?.agents ?? {})).toEqual([...SHOWCASE_AGENT_IDENTIFIERS]);
+    // Workflow author holds Bureau's own tools, so it is built from them once the Bureau has made them.
+    expect([
+      ...Object.keys(options.extraAgents?.agents ?? {}),
+      ...Object.keys(options.extraAgents?.withBureauTools ?? {}),
+    ]).toEqual([...SHOWCASE_AGENT_IDENTIFIERS]);
     expect(options.resolveProviderGenerate).toBeFunction();
   });
 });

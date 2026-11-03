@@ -242,8 +242,8 @@ const catalogSchema = z.object({
       description: z.string(),
       /** The one line a person is shown for the tool, or `null` when the tool declares none. */
       shortDescription: z.string().nullable(),
-      /** The tool's name for a person ("Issue refund"), or `null` when it has none. */
-      title: z.string().nullable(),
+      /** The tool's name for a person ("Issue refund"), or `null` when it has none or the Bureau sends none. */
+      title: z.string().nullable().default(null),
       /** What the tool takes, as a JSON Schema, or `null` when it cannot be written as one. */
       inputSchema: z.record(z.string(), z.unknown()).nullable(),
       /** What the tool may technically do, or `null` when it declares none. */
@@ -254,8 +254,8 @@ const catalogSchema = z.object({
       source: z.enum(['host', 'bureau', 'plugin', 'skill']),
       /** The plugin that contributes the tool (`source` is `plugin`, or `skill` for a plugin's skill), else `null`. */
       plugin: z.string().nullable(),
-      /** The skill that brings the tool when `source` is `skill`, else `null`. */
-      skill: z.string().nullable(),
+      /** The skill that brings the tool when `source` is `skill`, else `null` (also when the Bureau sends none). */
+      skill: z.string().nullable().default(null),
       /** The agents that use the tool now. */
       users: z.array(z.string()),
     }),
