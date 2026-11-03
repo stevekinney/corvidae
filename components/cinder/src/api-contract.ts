@@ -179,6 +179,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       loadingStatus: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      quiet: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: { children: s0(true), leadingIcon: s0(true), trailingIcon: s0(true) },

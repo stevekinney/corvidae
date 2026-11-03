@@ -8,8 +8,8 @@
    * @tag empty
    * @useWhen Communicating that a list, table, or workspace has no items yet and suggesting a next step.
    * @useWhen Replacing a primary content region after a filter or search returns no results.
-   * @useWhen Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind.
-   * @useWhen Saying that a thing doesn't exist with the not-found kind, or that a recoverable condition blocks the view with the blocked kind.
+   * @useWhen Confirming all work is finished (done kind), or that a filter hid every item (filtered kind).
+   * @useWhen Saying a thing doesn't exist (not-found kind), or that a recoverable condition blocks the view (blocked kind).
    * @useWhen Saying that a setting the person chose, such as a disabled plugin, holds content back with the disabled kind.
    * @avoidWhen Indicating that data is still loading — use skeleton or spinner instead.
    * @avoidWhen Reporting a transient error — use alert, banner, or toast-region.
