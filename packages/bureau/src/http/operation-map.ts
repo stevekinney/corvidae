@@ -118,6 +118,8 @@ export const OPERATION_MAP = {
   'bureau.workflows.get': { member: 'workflows.get' },
   'bureau.workflows.list': { member: 'workflows.list' },
   'bureau.workflows.revisions': { member: 'workflows.revisions' },
+  'bureau.workflows.history': { member: 'workflows.history' },
+  'bureau.workflows.impact': { member: 'workflows.impact' },
   'bureau.workflows.runs.list': { member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { member: 'workflows.getRun' },
   'bureau.workflows.start': { member: 'workflows.start' },

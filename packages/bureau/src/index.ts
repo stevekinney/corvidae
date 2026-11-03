@@ -145,6 +145,9 @@ export type { WorkflowRunPinProblem } from './workflow-snapshot-store';
 export { WorkflowInputInvalidError } from './workflow-schema';
 export type {
   WorkflowFileDefinition,
+  WorkflowFileStep,
+  WorkflowFileTrigger,
+  WorkflowStepAnnotation,
   WorkflowFileErrorCode,
   WorkflowFileIssue,
   WorkflowFileProblem,
@@ -184,7 +187,25 @@ export {
 } from './workflow-file';
 export type { WorkflowListing, WorkflowFileWriteResult } from './workflow-file-catalog';
 export type { WorkflowRevision } from './workflow-snapshot-store';
-export type { WorkflowRevisionReport } from './workflow-runtime';
+export type {
+  WorkflowHistoryEntry,
+  WorkflowHistoryRuns,
+  WorkflowImpact,
+  WorkflowRevisionReport,
+} from './workflow-runtime';
+export type {
+  WorkflowRevisionAttribution,
+  WorkflowRevisionChange,
+  WorkflowRevisionCompatibility,
+  WorkflowRevisionContent,
+  WorkflowRevisionPlan,
+  WorkflowRevisionRecord,
+} from './workflow-revision-ledger';
+export {
+  compareWorkflowRevisions,
+  workflowRevisionLabel,
+  WORKFLOW_REVISION_KEY_PREFIX,
+} from './workflow-revision-ledger';
 export { WorkflowAgentStepError, WorkflowHostConflictError } from './workflow-host';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
 export type {

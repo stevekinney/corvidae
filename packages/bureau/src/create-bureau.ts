@@ -442,6 +442,7 @@ import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
+import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   type AgentStepRequest,
@@ -3336,6 +3337,10 @@ async function constructBureau<const D extends AgentDefinitions>(
             }),
             contributions: workflowContributions,
             snapshotStore: createWorkflowSnapshotStore({
+              store: runtime.kv,
+              nowISO: runtimeServices.clock.nowISO,
+            }),
+            revisionLedger: createWorkflowRevisionLedger({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
