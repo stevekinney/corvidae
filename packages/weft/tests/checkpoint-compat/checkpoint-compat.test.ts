@@ -29,6 +29,16 @@
  * visibility index) and writes some they lack (`wf-gen:`), and that drift is no
  * part of this exception. An entry persisted before the field existed reads
  * without one: `engine/validation.test.ts` covers that shape.
+ *
+ * COR-2009 (Weft stamps what it stores on the engine's clock) changed two
+ * records of `sleep-and-resume.bin` in place, for the same reason: its
+ * `workflow:checkpoint` event (`ev:wf-sleep-and-resume:0000000000`) now carries
+ * the scenario clock's 100 rather than 0, the stamp its `wf:` record's
+ * `updatedAt` already had, and the stream head (`ev:wf-sleep-and-resume:head`)
+ * carries that event's new hash. Both values are the regenerated replay
+ * fixture's; no key was added, removed or reordered, and no other value moved.
+ * The record format is unchanged, so a stream persisted with the old stamp
+ * still reads.
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';
