@@ -286,6 +286,192 @@
     }
   }
 
+  /* A block that scrolls says so: the scrollbar is always painted, in the shared scrollbar tokens,
+   * rather than appearing only while the pointer is moving (the overlay scrollbar on macOS). */
+  /* Chrome and Safari draw a persistent bar only from the `::-webkit-scrollbar` rules; setting
+   * `scrollbar-width` or `scrollbar-color` there keeps the overlay bar that fades away. So the
+   * standard properties apply only where there is no such pseudo-element. */
+  @supports not selector(::-webkit-scrollbar) {
+    .cinder-code-block__viewport {
+      scrollbar-width: thin;
+      scrollbar-color: var(--cinder-scrollbar-thumb) var(--cinder-scrollbar-track);
+    }
+  }
+
+  .cinder-code-block__viewport::-webkit-scrollbar {
+    inline-size: var(--cinder-scrollbar-size);
+    block-size: var(--cinder-scrollbar-size);
+  }
+
+  .cinder-code-block__viewport::-webkit-scrollbar-track,
+  .cinder-code-block__viewport::-webkit-scrollbar-corner {
+    background: var(--cinder-scrollbar-track);
+  }
+
+  .cinder-code-block__viewport::-webkit-scrollbar-thumb {
+    background: var(--cinder-scrollbar-thumb);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-code-block__viewport::-webkit-scrollbar-thumb:hover {
+    background: var(--cinder-scrollbar-thumb-hover);
+  }
+
+  /* ── Wrapping ────────────────────────────────────────────────────────────
+   * By default a long line scrolls sideways inside the viewport. `wrap` lets it break instead. */
+  .cinder-code-block--wrap .cinder-code-block__pre,
+  .cinder-code-block--wrap :where(pre.shiki) {
+    width: auto;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+
+  /* ── Lines: numbers and notes ────────────────────────────────────────────
+   * One element per line: plain code renders them itself, highlighted code has them marked by
+   * `code-block-lines.ts`. A line is a block, so the line break between two lines is the block
+   * boundary (and is what a selection copies), and the whitespace between Shiki's line spans is
+   * collapsed instead of drawing a blank line. */
+  .cinder-code-block {
+    --_cinder-code-block-gutter: calc(var(--_cinder-code-block-digits, 2) * 1ch);
+    --_cinder-code-block-gutter-gap: var(--cinder-space-4);
+  }
+
+  .cinder-code-block :where(code):has(> .cinder-code-block__line) {
+    display: block;
+    white-space: normal;
+    counter-reset: cinder-code-line;
+  }
+
+  /* A line and its tint run edge to edge: the negative margin undoes the block's padding, and the
+   * line's own padding puts the text back. */
+  .cinder-code-block__line {
+    position: relative;
+    display: block;
+    min-block-size: 1lh;
+    margin-inline: calc(-1 * var(--cinder-code-block-padding));
+    padding-inline: var(--cinder-code-block-padding);
+    white-space: pre;
+    counter-increment: cinder-code-line;
+  }
+
+  .cinder-code-block--wrap .cinder-code-block__line {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-code-block--numbered .cinder-code-block__line {
+    padding-inline-start: calc(
+      var(--cinder-code-block-padding) + var(--_cinder-code-block-gutter) +
+        var(--_cinder-code-block-gutter-gap)
+    );
+  }
+
+  /* The number is generated content, so it is not copied; the empty alternative text keeps it out
+   * of the accessibility tree. A browser that does not know the alternative syntax drops that
+   * second declaration and keeps the plain one. */
+  .cinder-code-block--numbered .cinder-code-block__line::before {
+    content: counter(cinder-code-line);
+    content: counter(cinder-code-line) / '';
+    position: absolute;
+    inset-inline-start: var(--cinder-code-block-padding);
+    inline-size: var(--_cinder-code-block-gutter);
+    text-align: end;
+    color: var(--cinder-text-muted);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+
+  .cinder-code-block__line--danger {
+    background: var(--cinder-status-danger-background);
+  }
+
+  .cinder-code-block__line--warning {
+    background: var(--cinder-status-warning-background);
+  }
+
+  .cinder-code-block__line--info {
+    background: var(--cinder-status-info-background);
+  }
+
+  /* Shiki's lines are spans, and the rule above that clears every span's background would clear a
+   * marked line's tint too: a marked line says so with more specificity. */
+  .cinder-code-block :where(pre.shiki code) .cinder-code-block__line--danger {
+    background: var(--cinder-status-danger-background) !important;
+  }
+
+  .cinder-code-block :where(pre.shiki code) .cinder-code-block__line--warning {
+    background: var(--cinder-status-warning-background) !important;
+  }
+
+  .cinder-code-block :where(pre.shiki code) .cinder-code-block__line--info {
+    background: var(--cinder-status-info-background) !important;
+  }
+
+  .cinder-code-block--numbered .cinder-code-block__line--danger::before {
+    color: var(--cinder-status-danger-text);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-code-block--numbered .cinder-code-block__line--warning::before {
+    color: var(--cinder-status-warning-text);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-code-block--numbered .cinder-code-block__line--info::before {
+    color: var(--cinder-status-info-text);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* A note sits under its line in the same tint, so the pair reads as one marked row. It lines up
+   * with the code, not the number, and breaks onto further lines when it is long. */
+  .cinder-code-block__annotation {
+    /* Zero width with a full-width minimum (the block's content width, plus the padding the
+     * negative margin takes back), so a long note wraps inside the block instead of widening the
+     * scrolling code to fit it on one line. */
+    box-sizing: border-box;
+    inline-size: 0;
+    min-inline-size: calc(100% + 2 * var(--cinder-code-block-padding));
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-1-5);
+    margin-inline: calc(-1 * var(--cinder-code-block-padding));
+    padding-block: 0 var(--cinder-space-1);
+    padding-inline: var(--cinder-code-block-padding);
+    font-family: var(--cinder-font-sans);
+    font-size: var(--cinder-text-xs);
+    font-weight: 500;
+    line-height: var(--cinder-leading-normal);
+    white-space: normal;
+    user-select: none;
+  }
+
+  .cinder-code-block--numbered .cinder-code-block__annotation {
+    padding-inline-start: calc(
+      var(--cinder-code-block-padding) + var(--_cinder-code-block-gutter) +
+        var(--_cinder-code-block-gutter-gap)
+    );
+  }
+
+  .cinder-code-block__annotation svg {
+    flex: none;
+    margin-block-start: 0.15em;
+  }
+
+  .cinder-code-block__annotation--danger {
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-code-block__annotation--warning {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-code-block__annotation--info {
+    background: var(--cinder-status-info-background);
+    color: var(--cinder-status-info-text);
+  }
+
   /* Stable wrapper that anchors {@html highlighted} for Svelte 5 reconciliation —
    Svelte appends new nodes alongside the old when an `{@html}` value changes
    between two non-null strings unless it sits inside a stable parent element. */

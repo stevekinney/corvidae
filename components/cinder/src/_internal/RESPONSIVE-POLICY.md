@@ -9,6 +9,7 @@ Viewport queries are reserved for viewport-owned behavior: app shells, drawers, 
 - Popover's, Dropdown's, Combobox's, and MultiSelect's `sheetBelow`, which open them as bottom sheets on a phone.
 - Breadcrumbs' `collapseBelow`, which collapses a trail to a back link to the parent and the current page on a phone, and Tabs' `collapseBelow`, which turns a horizontal tab bar into one select. Both are phone-form choices made in script (`useViewportBelow`), so what is not shown is not in the page.
 - StackedListItem's phone form: below 640px a status moves to line two beside the kind and agent, and trailing `actions` collapse into one menu button. Many rows ask the same question, so they read one shared query through `phoneViewport` in `phone-viewport.svelte.ts` rather than one `MediaQuery` each.
+- JsonEditor's long lines: a line longer than the frame scrolls sideways inside the editor with the gutter fixed, and below 640px it wraps instead, because sideways scrolling is hard to use on a phone. CodeMirror's line wrapping is an editor setting rather than a stylesheet rule, so the component reads the shared `phoneViewport` and passes it in; `wrap` overrides it either way.
 
 Each reads the viewport through `useViewportBelow` in `viewport-below.svelte.ts` (or the shared `phoneViewport`, for the row), which wraps Svelte's `MediaQuery`, so none of them adds a viewport `@media` rule to component CSS.
 

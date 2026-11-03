@@ -8,6 +8,9 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
+    /* A long line scrolls inside the editor, so the control never widens its container: a grid or
+       flex parent may shrink it below the width of its widest line. */
+    min-inline-size: 0;
   }
 
   /* FormFieldFrame's fixed render order is label, control, description,
@@ -50,11 +53,120 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* The frame: one bordered, rounded box around the toolbar and the editor. It clips its
+     children, so the line-number gutter takes the frame's radius, and it carries the focus ring,
+     so the ring wraps the toolbar too. */
   .cinder-json-editor__input {
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
+    overflow: hidden;
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
+    background: var(--cinder-control-background);
+    min-inline-size: 0;
+  }
+
+  .cinder-json-editor__input--invalid {
+    border-color: var(--cinder-control-border-invalid);
+  }
+
+  /* A disabled editor is dimmed whole; the JSON tag and the status stay, so it is still readable. */
+  .cinder-json-editor__input--disabled {
+    opacity: var(--cinder-opacity-disabled);
+  }
+
+  /* The quiet focus ring (2px, accent, no offset) wraps the whole control while the editor, or the
+     textarea standing in for it, has focus. `:has` rather than `:focus-within` so the Format
+     button, which draws its own ring, does not light the frame as well. */
+  .cinder-json-editor__input:has(.cm-focused),
+  .cinder-json-editor__input:has(.cinder-json-editor__textarea:focus-visible) {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* Ring replaces the border while focused rather than stacking on it — the two
+       together read as one heavier shape than either was designed to be. */
+    border-color: transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* A slim bar inside the frame: the JSON tag at the start, the status and Format at the end. */
+  .cinder-json-editor__toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    padding: var(--cinder-space-1) var(--cinder-space-2) var(--cinder-space-1) var(--cinder-space-3);
+    border-block-end: 1px solid var(--cinder-control-border);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-json-editor__tag {
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    letter-spacing: var(--cinder-tracking-wide);
+  }
+
+  .cinder-json-editor__toolbar-end {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-json-editor__status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-json-editor__status--success {
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-json-editor__status--danger {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-json-editor__status :global(svg) {
+    flex: none;
+  }
+
+  /* The invalid message is a button that takes the caret to the marked line. It reads as a link
+     in the danger tone, not as a second Format button. */
+  .cinder-json-editor__status-action {
+    appearance: none;
+    margin: 0;
+    border: 0;
+    /* A 24px hit target that still reads as a link. */
+    min-block-size: 1.5rem;
+    padding: 0 var(--cinder-space-1);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .cinder-json-editor__status-action:disabled {
+    cursor: not-allowed;
+    text-decoration: none;
+  }
+
+  .cinder-json-editor__status-action:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    border-radius: var(--cinder-radius-sm);
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-json-editor__body {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
   }
 
   /* CodeMirror themes itself (see json-editor-enhancement.ts) because its injected rules are
@@ -63,22 +175,26 @@
     display: none;
   }
 
+  .cinder-json-editor__editor {
+    min-inline-size: 0;
+  }
+
   /* The textarea is the whole editor until CodeMirror loads, and again if it cannot. It grows
      with its content where `field-sizing` exists and otherwise keeps the native `rows` height;
-     in both cases it never opens as a large empty box. */
+     in both cases it never opens as a large empty box. It sits inside the frame, so it draws
+     neither a border nor a ring of its own. */
   .cinder-json-editor__textarea {
     display: block;
     box-sizing: border-box;
     inline-size: 100%;
-    min-block-size: calc(3 * 1.5em + 2 * var(--cinder-space-2) + 2px);
-    max-block-size: calc(
-      var(--_cinder-json-editor-rows, 8) * 1.5em + 2 * var(--cinder-space-2) + 2px
-    );
+    min-block-size: calc(3 * 1.5em + 2 * var(--cinder-space-2));
+    max-block-size: calc(var(--_cinder-json-editor-rows, 8) * 1.5em + 2 * var(--cinder-space-2));
     resize: vertical;
-    border: 1px solid var(--cinder-control-border);
-    border-radius: var(--cinder-control-radius);
+    margin: 0;
+    border: 0;
+    border-radius: 0;
     padding: var(--cinder-space-2);
-    background: var(--cinder-control-background);
+    background: transparent;
     color: var(--cinder-text-default);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
@@ -86,21 +202,49 @@
     field-sizing: content;
   }
 
+  .cinder-json-editor__textarea::-webkit-scrollbar {
+    inline-size: var(--cinder-scrollbar-size);
+    block-size: var(--cinder-scrollbar-size);
+  }
+
+  .cinder-json-editor__textarea::-webkit-scrollbar-track {
+    background: var(--cinder-scrollbar-track);
+  }
+
+  .cinder-json-editor__textarea::-webkit-scrollbar-thumb {
+    background: var(--cinder-scrollbar-thumb);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  @supports not selector(::-webkit-scrollbar) {
+    .cinder-json-editor__textarea {
+      scrollbar-width: thin;
+      scrollbar-color: var(--cinder-scrollbar-thumb) var(--cinder-scrollbar-track);
+    }
+  }
+
+  .cinder-json-editor__textarea:focus {
+    outline: none;
+  }
+
   .cinder-json-editor__textarea[hidden] {
     display: none;
   }
 
-  .cinder-json-editor__toolbar {
-    display: flex;
-    justify-content: flex-end;
+  .cinder-json-editor__textarea::placeholder {
+    color: var(--cinder-text-muted);
   }
 
-  .cinder-json-editor__textarea:focus-visible {
-    outline: var(--cinder-ring-width) solid transparent;
-    /* Ring replaces the border while focused rather than stacking on it — the two
-       together read as one heavier shape than either was designed to be. */
-    border-color: transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+  /* The caller's error, under the field, with its glyph. */
+  .cinder-json-editor__feedback {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-1-5);
+  }
+
+  .cinder-json-editor__feedback :global(svg) {
+    flex: none;
+    margin-block-start: 0.2em;
   }
 
   .cinder-json-editor__feedback--error {
@@ -108,7 +252,8 @@
   }
 
   @media (forced-colors: active) {
-    .cinder-json-editor__textarea:focus-visible {
+    .cinder-json-editor__input:has(.cm-focused),
+    .cinder-json-editor__input:has(.cinder-json-editor__textarea:focus-visible) {
       outline: var(--cinder-ring-width) solid ButtonText;
       box-shadow: none;
     }

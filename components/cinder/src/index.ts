@@ -222,7 +222,11 @@ export { default as ClickAwayListener } from './components/click-away-listener/i
 export type { ClickAwayListenerProps } from './components/click-away-listener/index.ts';
 
 export { default as CodeBlock } from './components/code-block/index.ts';
-export type { CodeBlockProps } from './components/code-block/index.ts';
+export type {
+  CodeBlockAnnotation,
+  CodeBlockAnnotationTone,
+  CodeBlockProps,
+} from './components/code-block/index.ts';
 
 export { default as Collapsible } from './components/collapsible/index.ts';
 export type {
@@ -520,7 +524,11 @@ export { default as InlineLoading } from './components/inline-loading/index.ts';
 export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
 
 export { default as JsonEditor } from './components/json-editor/index.ts';
-export type { JsonEditorProps, JsonEditorSchema } from './components/json-editor/index.ts';
+export type {
+  JsonEditorDiagnostic,
+  JsonEditorProps,
+  JsonEditorSchema,
+} from './components/json-editor/index.ts';
 
 export { default as JsonSchemaEditor } from './components/json-schema-editor/index.ts';
 export type {
