@@ -230,6 +230,8 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
 
   return {
     name: 'requestHumanInput',
+    /** The tool's name for a person (COR-2009), read with Armorer's `readToolTitle`. */
+    metadata: { title: 'Ask a person' },
     description:
       'Request human input: park this run until a human sends the named signal. ' +
       'Use when the agent needs explicit human approval or a human decision before continuing. ' +
