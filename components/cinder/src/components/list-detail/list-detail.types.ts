@@ -118,6 +118,12 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
    */
   pushBelow?: number;
   /**
+   * Removes the detail pane's inner padding, for a detail view that lays out its own header, body
+   * and footer edge to edge (an open chat, a table, a code frame).
+   * @default false
+   */
+  flushDetail?: boolean;
+  /**
    * Width in pixels of the list pane before the divider is moved.
    * @default 280
    */

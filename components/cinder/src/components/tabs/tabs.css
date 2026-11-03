@@ -57,7 +57,7 @@
      * `overflowFadeEdges`), in the page surface. Keyboard focus parks a tab at the edge it scrolls
      * to, so the scrollport keeps the fade's width clear: a focused tab is never under the fade. */
     --_cinder-scroll-fade-color: var(--cinder-surface);
-    scroll-padding-inline-end: var(--cinder-scroll-fade-size);
+    scroll-padding-inline-end: var(--cinder-space-6);
   }
 
   .cinder-tab-list[data-cinder-orientation='vertical'] {

@@ -57,12 +57,16 @@
 
   /* The detail pane keeps its own inset, so a detail view needs no compensating padding of its
    * own. A view that bleeds edge to edge (a table, a code frame) sets
-   * `--cinder-list-detail-detail-padding: 0` on the root or on an ancestor. */
+   * `flushDetail`, or `--cinder-list-detail-detail-padding: 0` on an ancestor outside Interborough. */
   .cinder-list-detail__detail-body {
     flex: 1 1 auto;
     min-block-size: 0;
     overflow-y: auto;
     padding: var(--cinder-list-detail-detail-padding, var(--cinder-space-4));
+  }
+
+  .cinder-list-detail[data-cinder-flush-detail] .cinder-list-detail__detail-body {
+    padding: 0;
   }
 
   /* A table in the list slot fills the pane edge to edge: the pane is its frame, so the table draws

@@ -85,6 +85,7 @@
     storage,
     pushBelow = 600,
     defaultListWidth = 280,
+    flushDetail = false,
     backLabel = 'Back',
     detailLabel = 'Details',
     emptyTitle = 'Nothing selected',
@@ -376,6 +377,7 @@
   {@attach resizeAttachment}
   class={classNames('cinder-list-detail', className)}
   data-cinder-layout={narrow ? 'stacked' : 'split'}
+  data-cinder-flush-detail={flushDetail ? '' : undefined}
 >
   {#if narrow}
     {#if selectedEntry}

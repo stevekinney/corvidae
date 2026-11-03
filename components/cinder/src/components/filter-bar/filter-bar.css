@@ -176,12 +176,8 @@
   }
 
   @media (hover: hover) {
-    .cinder-filter-bar__chip:not([data-cinder-disabled]):hover {
+    .cinder-filter-bar__chip:not([data-cinder-disabled], [data-cinder-applied]):hover {
       background: var(--cinder-surface-hover);
-    }
-
-    .cinder-filter-bar__chip[data-cinder-applied]:not([data-cinder-disabled]):hover {
-      background: var(--cinder-accent-background-hover, var(--cinder-accent-background));
     }
   }
 

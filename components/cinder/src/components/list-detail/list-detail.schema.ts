@@ -57,6 +57,12 @@ const schema = {
         'Width in pixels of the component below which it shows one pane at a time: the list, then the\ndetail with a Back button. It is measured on the component, not the viewport.',
       default: 600,
     },
+    flushDetail: {
+      type: 'boolean',
+      description:
+        "Removes the detail pane's inner padding, for a detail view that lays out its own header, body\nand footer edge to edge (an open chat, a table, a code frame).",
+      default: false,
+    },
     defaultListWidth: {
       type: 'number',
       description: 'Width in pixels of the list pane before the divider is moved.',

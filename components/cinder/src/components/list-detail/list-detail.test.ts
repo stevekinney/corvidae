@@ -131,6 +131,25 @@ describe('ListDetail', () => {
     expect(getByRole('heading', { name: 'Chats' })).toBeTruthy();
   });
 
+  test('flushDetail marks the root so the detail pane drops its inner padding', () => {
+    const flush = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), flushDetail: true },
+    });
+    expect(
+      flush.container
+        .querySelector('.cinder-list-detail')
+        ?.hasAttribute('data-cinder-flush-detail'),
+    ).toBe(true);
+    flush.unmount();
+
+    const padded = render(ListDetailFixture, { props: { selectionLocation: memoryLocation() } });
+    expect(
+      padded.container
+        .querySelector('.cinder-list-detail')
+        ?.hasAttribute('data-cinder-flush-detail'),
+    ).toBe(false);
+  });
+
   test('renders the list empty state and a custom empty detail title', () => {
     const { getByText } = render(ListDetailFixture, {
       props: { items: [], selectionLocation: memoryLocation(), emptyTitle: 'Pick a chat' },

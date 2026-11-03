@@ -45,6 +45,6 @@ describe('Tabs overflow fade', () => {
   test('the fade is in the page surface and the scrollport keeps its width clear of focus', () => {
     const rule = tabsCss.match(/\.cinder-tab-list \{[^}]*\}/)?.[0] ?? '';
     expect(rule).toContain('--_cinder-scroll-fade-color: var(--cinder-surface)');
-    expect(rule).toContain('scroll-padding-inline-end: var(--cinder-scroll-fade-size)');
+    expect(rule).toContain('scroll-padding-inline-end: var(--cinder-space-6)');
   });
 });

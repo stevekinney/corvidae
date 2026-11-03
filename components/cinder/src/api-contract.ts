@@ -356,6 +356,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       storage: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       pushBelow: { optional: true, type_kind: 'TSNumberKeyword', default: L(600) },
       defaultListWidth: { optional: true, type_kind: 'TSNumberKeyword', default: L(280) },
+      flushDetail: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
       loadingLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
