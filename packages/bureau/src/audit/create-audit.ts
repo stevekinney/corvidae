@@ -84,6 +84,10 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   // string is cut at the limit above.
   'affectedAgents',
   'affectedAgentCount',
+  // COR-2009: an `a2a.call` names the task a remote call started and the name the caller gave
+  // itself (`callerName`, its own claim; the record's `principal` is who authenticated).
+  'taskId',
+  'callerName',
 ];
 
 function detailOf(detail: unknown): AuditQueryRecord['detail'] {
