@@ -371,8 +371,186 @@
  * Group row (a collapsed row with a disclosure)
  * ---------------------------------------- */
 
-  .cinder-stacked-list-item[data-cinder-expanded] {
+  /* A group row is always tinted, so it reads as a different kind of row (not a run) among its
+     neighbours, open or shut. The warning tone is the amber of something that did not happen. */
+  .cinder-stacked-list-item--group.cinder-stacked-list-item--tone-neutral {
     background: color-mix(in oklch, var(--cinder-surface-inset), transparent 50%);
+  }
+
+  .cinder-stacked-list-item--group.cinder-stacked-list-item--tone-warning {
+    background: color-mix(in oklch, var(--cinder-status-warning-background), transparent 40%);
+  }
+
+  /* Open, a group row shows all of its line two instead of ending it in an ellipsis. */
+  .cinder-stacked-list-item--group[data-cinder-expanded] .cinder-stacked-list-item__description,
+  .cinder-stacked-list-item--group[data-cinder-expanded] .cinder-stacked-list-item__meta {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  /* ----------------------------------------
+ * Band group row: the missed runs among one schedule's runs. One line: the status dot, then a
+ * tinted band holding a chevron, the bold title, muted text and the disclosure label at the right.
+ * The whole band is the button, so a click anywhere on it opens the details.
+ * ---------------------------------------- */
+
+  .cinder-stacked-list-item--band,
+  .cinder-stacked-list-item--band.cinder-stacked-list-item--group {
+    padding-block: var(--cinder-space-1);
+    padding-inline: 0;
+    border-bottom: 0;
+    background: transparent;
+  }
+
+  .cinder-stacked-list-item__band-line {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-stacked-list-item__band-status {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .cinder-stacked-list-item__band-surface {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    border-radius: var(--cinder-radius-md);
+    background: color-mix(in oklch, var(--cinder-surface-inset), transparent 50%);
+  }
+
+  .cinder-stacked-list-item--tone-warning .cinder-stacked-list-item__band-surface {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-stacked-list-item__band-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-block-size: max(var(--cinder-list-row-min-height), var(--cinder-space-8));
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-2-5);
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-stacked-list-item__band-toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-stacked-list-item__band-title {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    font-weight: var(--cinder-font-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-stacked-list-item__band-meta {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--cinder-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-stacked-list-item--tone-warning .cinder-stacked-list-item__band-meta {
+    color: inherit;
+  }
+
+  .cinder-stacked-list-item__band-label {
+    flex: none;
+    margin-inline-start: auto;
+    font-weight: var(--cinder-font-semibold);
+    white-space: nowrap;
+  }
+
+  .cinder-stacked-list-item--band .cinder-stacked-list-item__details {
+    padding-inline-start: var(--cinder-space-2-5);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-stacked-list-item__band-surface {
+      border: 1px solid CanvasText;
+    }
+
+    .cinder-stacked-list-item__band-toggle:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+    }
+  }
+
+  /* ----------------------------------------
+ * The selected row (the one open in the detail beside the list) and the glyph tile
+ * ---------------------------------------- */
+
+  .cinder-stacked-list-item.cinder-stacked-list-item--selected {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  @media (hover: hover) {
+    .cinder-stacked-list-item--linked.cinder-stacked-list-item--selected:hover {
+      background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-stacked-list-item--selected {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
+
+  .cinder-stacked-list-item__leading-tile {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--cinder-space-8);
+    block-size: var(--cinder-space-8);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-status-neutral-background);
+    color: var(--cinder-status-neutral-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='info'] {
+    background: var(--cinder-status-info-background);
+    color: var(--cinder-status-info-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='success'] {
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='warning'] {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-stacked-list-item__leading-tile[data-cinder-tone='danger'] {
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+  }
+
+  /* The tile is centred on the two lines beside it. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--has-leading-tile
+    .cinder-stacked-list-item__leading {
+    align-self: center;
   }
 
   .cinder-stacked-list-item__disclosure {

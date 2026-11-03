@@ -17,9 +17,12 @@
   export type {
     StackedListItemAction,
     StackedListItemDensity,
+    StackedListItemGroupLayout,
+    StackedListItemLeadingTone,
     StackedListItemProps,
     StackedListItemStatusPlacement,
     StackedListItemTitleLines,
+    StackedListItemTone,
   } from './stacked-list-item.types.ts';
 
   // Attributes stripped from forwarded `rest` to keep the <li> non-interactive.
@@ -28,7 +31,7 @@
 </script>
 
 <script lang="ts">
-  import { ChevronDown, ChevronUp, Ellipsis } from '@lucide/svelte';
+  import { ChevronDown, ChevronRight, ChevronUp, Ellipsis } from '@lucide/svelte';
   import { getDataListContext } from '../../_internal/data-list-context.ts';
   import { phoneViewport } from '../../_internal/phone-viewport.svelte.ts';
   import type { StackedListItemProps } from './stacked-list-item.types.ts';
@@ -40,6 +43,9 @@
     density,
     class: className,
     leading,
+    leadingTone,
+    lines,
+    selected = false,
     status,
     statusColumn,
     statusPlacement = 'leading',
@@ -49,10 +55,13 @@
     time,
     description,
     meta,
+    metaTooltip,
     trailing,
     actions,
     actionsLabel = 'More actions',
     details,
+    groupLayout = 'row',
+    tone = 'neutral',
     expanded = $bindable(false),
     expandLabel = 'Show',
     collapseLabel = 'Hide',
@@ -88,7 +97,12 @@
   const reservesStatusColumn = $derived(
     status !== undefined || (statusColumn ?? dataListContext?.statusColumn ?? false),
   );
-  const isLines = $derived(reservesStatusColumn || time !== undefined || details !== undefined);
+  // A band group row is one line of its own and takes none of the two-line layout.
+  const isBand = $derived(details !== undefined && groupLayout === 'band');
+  const isLines = $derived(
+    !isBand &&
+      (reservesStatusColumn || time !== undefined || details !== undefined || lines === true),
+  );
   // A group row is not a link: its only control is the disclosure button.
   const linkHref = $derived(details === undefined ? href : undefined);
   const phone = $derived(phoneViewport.current);
@@ -139,6 +153,7 @@
       <a
         class="cinder-stacked-list-item__title-link"
         href={linkHref}
+        aria-current={selected ? 'true' : undefined}
         {target}
         rel={resolvedRel}
         {hreflang}
@@ -155,10 +170,15 @@
   class={classNames(
     'cinder-stacked-list-item',
     leading && 'cinder-stacked-list-item--has-leading',
+    leading && leadingTone && 'cinder-stacked-list-item--has-leading-tile',
     (trailing || hasActions) && 'cinder-stacked-list-item--has-trailing',
     isLines && 'cinder-stacked-list-item--lines',
     isLines && reservesStatusColumn && 'cinder-stacked-list-item--status-column',
     isLines && status && 'cinder-stacked-list-item--has-status',
+    isBand && 'cinder-stacked-list-item--band',
+    details !== undefined && 'cinder-stacked-list-item--group',
+    details !== undefined && `cinder-stacked-list-item--tone-${tone}`,
+    selected && 'cinder-stacked-list-item--selected',
     isLines && `cinder-stacked-list-item--status-${statusPlacement}`,
     linkHref !== undefined && 'cinder-stacked-list-item--linked',
     hasActions && phone && 'cinder-stacked-list-item--collapsed-actions',
@@ -167,144 +187,194 @@
   data-cinder-density={resolvedDensity}
   data-cinder-phone={phone ? '' : undefined}
   data-cinder-expanded={details !== undefined && expanded ? '' : undefined}
+  data-cinder-selected={selected ? '' : undefined}
+  aria-current={selected && linkHref === undefined ? 'true' : undefined}
   {...safeRest}
 >
-  <div class="cinder-stacked-list-item__layout">
-    {#if isLines && status}
-      <div class="cinder-stacked-list-item__status">
-        {@render status()}
-      </div>
-    {/if}
-    {#if leading}
-      <div class="cinder-stacked-list-item__leading">
-        {@render leading()}
-      </div>
-    {/if}
-    <div class="cinder-stacked-list-item__body">
-      {@render titleRegion()}
-      {#if isLines}
-        {#if time || details}
-          <div class="cinder-stacked-list-item__time">
-            {#if time}{@render time()}{/if}
-            {#if details}
-              <button
-                type="button"
-                class="cinder-stacked-list-item__disclosure"
-                aria-expanded={expanded}
-                aria-controls={detailsId}
-                onclick={() => (expanded = !expanded)}
-              >
-                {expanded ? collapseLabel : expandLabel}
-                {#if expanded}
-                  <ChevronUp size={14} aria-hidden="true" />
-                {:else}
-                  <ChevronDown size={14} aria-hidden="true" />
-                {/if}
-              </button>
-            {/if}
-          </div>
-        {/if}
-        {#if description || meta}
-          <div class="cinder-stacked-list-item__line-two">
-            {#if description}
-              <div class="cinder-stacked-list-item__description">{@render description()}</div>
-            {/if}
-            {#if meta}
-              <div class="cinder-stacked-list-item__meta">{@render meta()}</div>
-            {/if}
-          </div>
-        {/if}
-        {#if details}
-          <div id={detailsId} class="cinder-stacked-list-item__details" hidden={!expanded}>
-            {@render details()}
-          </div>
-        {/if}
-      {:else}
-        {#if description}
-          <div class="cinder-stacked-list-item__description">{@render description()}</div>
-        {/if}
-        {#if meta}
-          <div class="cinder-stacked-list-item__meta">{@render meta()}</div>
-        {/if}
+  {#if isBand}
+    <div class="cinder-stacked-list-item__band-line">
+      {#if status}
+        <div class="cinder-stacked-list-item__band-status">{@render status()}</div>
       {/if}
-    </div>
-    {#if trailing || hasActions}
-      <div class="cinder-stacked-list-item__trailing">
-        {#if trailing}{@render trailing()}{/if}
-        {#if hasActions && actions}
-          {#if phone}
-            <Dropdown id={`${generatedId}-actions`} placement="bottom-end">
-              <Dropdown.Trigger
-                class="cinder-stacked-list-item__actions-trigger"
-                caretVisible={false}
-                aria-label={actionsLabel}
-              >
-                <Ellipsis size={16} aria-hidden="true" />
-              </Dropdown.Trigger>
-              <Dropdown.Menu>
-                {#each actions as action, index (index)}
-                  {@const reasonId = `${generatedId}-action-${index}-reason`}
-                  <Dropdown.Item
-                    {...action.href !== undefined ? { href: action.href } : {}}
-                    disabled={action.disabled}
-                    title={action.disabled ? action.disabledReason : undefined}
-                    aria-describedby={action.disabled && action.disabledReason
-                      ? reasonId
-                      : undefined}
-                    onclick={action.onclick}
-                  >
-                    {action.label}
-                    {#if action.disabled && action.disabledReason}
-                      <span id={reasonId} class="cinder-stacked-list-item__reason"
-                        >{action.disabledReason}</span
-                      >
-                    {/if}
-                  </Dropdown.Item>
-                {/each}
-              </Dropdown.Menu>
-            </Dropdown>
+      <div class="cinder-stacked-list-item__band-surface">
+        <button
+          type="button"
+          class="cinder-stacked-list-item__band-toggle"
+          aria-expanded={expanded}
+          aria-controls={detailsId}
+          onclick={() => (expanded = !expanded)}
+        >
+          {#if expanded}
+            <ChevronDown size={14} aria-hidden="true" />
           {:else}
-            <span class="cinder-stacked-list-item__actions">
-              {#each actions as action, index (index)}
-                {@const reasonId = `${generatedId}-action-${index}-reason`}
-                {#if action.href !== undefined}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    href={action.href}
-                    aria-disabled={action.disabled ? 'true' : undefined}
-                    aria-describedby={action.disabled && action.disabledReason
-                      ? reasonId
-                      : undefined}
-                    title={action.disabled ? action.disabledReason : undefined}
-                    onclick={guardDisabled(action)}
-                  >
-                    {action.label}
-                  </Button>
-                {:else}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    aria-disabled={action.disabled ? 'true' : undefined}
-                    aria-describedby={action.disabled && action.disabledReason
-                      ? reasonId
-                      : undefined}
-                    title={action.disabled ? action.disabledReason : undefined}
-                    onclick={guardDisabled(action)}
-                  >
-                    {action.label}
-                  </Button>
-                {/if}
-                {#if action.disabled && action.disabledReason}
-                  <span id={reasonId} class="cinder-stacked-list-item__reason"
-                    >{action.disabledReason}</span
-                  >
-                {/if}
-              {/each}
+            <ChevronRight size={14} aria-hidden="true" />
+          {/if}
+          <span class="cinder-stacked-list-item__band-title" title={tooltip}>{@render title()}</span
+          >
+          {#if meta}
+            <span class="cinder-stacked-list-item__band-meta" title={metaTooltip}
+              >{@render meta()}</span
+            >
+          {/if}
+          <span class="cinder-stacked-list-item__band-label">
+            {expanded ? collapseLabel : expandLabel}
+          </span>
+        </button>
+      </div>
+    </div>
+    <div id={detailsId} class="cinder-stacked-list-item__details" hidden={!expanded}>
+      {#if details}{@render details()}{/if}
+    </div>
+  {:else}
+    <div class="cinder-stacked-list-item__layout">
+      {#if isLines && status}
+        <div class="cinder-stacked-list-item__status">
+          {@render status()}
+        </div>
+      {/if}
+      {#if leading}
+        <div class="cinder-stacked-list-item__leading">
+          {#if leadingTone}
+            <span
+              class="cinder-stacked-list-item__leading-tile"
+              data-cinder-tone={leadingTone}
+              aria-hidden="true"
+            >
+              {@render leading()}
             </span>
+          {:else}
+            {@render leading()}
+          {/if}
+        </div>
+      {/if}
+      <div class="cinder-stacked-list-item__body">
+        {@render titleRegion()}
+        {#if isLines}
+          {#if time || details}
+            <div class="cinder-stacked-list-item__time">
+              {#if time}{@render time()}{/if}
+              {#if details}
+                <button
+                  type="button"
+                  class="cinder-stacked-list-item__disclosure"
+                  aria-expanded={expanded}
+                  aria-controls={detailsId}
+                  onclick={() => (expanded = !expanded)}
+                >
+                  {expanded ? collapseLabel : expandLabel}
+                  {#if expanded}
+                    <ChevronUp size={14} aria-hidden="true" />
+                  {:else}
+                    <ChevronDown size={14} aria-hidden="true" />
+                  {/if}
+                </button>
+              {/if}
+            </div>
+          {/if}
+          {#if description || meta}
+            <div class="cinder-stacked-list-item__line-two" title={metaTooltip}>
+              {#if description}
+                <div class="cinder-stacked-list-item__description">{@render description()}</div>
+              {/if}
+              {#if meta}
+                <div class="cinder-stacked-list-item__meta">{@render meta()}</div>
+              {/if}
+            </div>
+          {/if}
+          {#if details}
+            <div id={detailsId} class="cinder-stacked-list-item__details" hidden={!expanded}>
+              {@render details()}
+            </div>
+          {/if}
+        {:else}
+          {#if description}
+            <div class="cinder-stacked-list-item__description" title={metaTooltip}>
+              {@render description()}
+            </div>
+          {/if}
+          {#if meta}
+            <div class="cinder-stacked-list-item__meta" title={metaTooltip}>{@render meta()}</div>
           {/if}
         {/if}
       </div>
-    {/if}
-  </div>
+      {#if trailing || hasActions}
+        <div class="cinder-stacked-list-item__trailing">
+          {#if trailing}{@render trailing()}{/if}
+          {#if hasActions && actions}
+            {#if phone}
+              <Dropdown id={`${generatedId}-actions`} placement="bottom-end">
+                <Dropdown.Trigger
+                  class="cinder-stacked-list-item__actions-trigger"
+                  caretVisible={false}
+                  aria-label={actionsLabel}
+                >
+                  <Ellipsis size={16} aria-hidden="true" />
+                </Dropdown.Trigger>
+                <Dropdown.Menu>
+                  {#each actions as action, index (index)}
+                    {@const reasonId = `${generatedId}-action-${index}-reason`}
+                    <Dropdown.Item
+                      {...action.href !== undefined ? { href: action.href } : {}}
+                      disabled={action.disabled}
+                      title={action.disabled ? action.disabledReason : undefined}
+                      aria-describedby={action.disabled && action.disabledReason
+                        ? reasonId
+                        : undefined}
+                      onclick={action.onclick}
+                    >
+                      {action.label}
+                      {#if action.disabled && action.disabledReason}
+                        <span id={reasonId} class="cinder-stacked-list-item__reason"
+                          >{action.disabledReason}</span
+                        >
+                      {/if}
+                    </Dropdown.Item>
+                  {/each}
+                </Dropdown.Menu>
+              </Dropdown>
+            {:else}
+              <span class="cinder-stacked-list-item__actions">
+                {#each actions as action, index (index)}
+                  {@const reasonId = `${generatedId}-action-${index}-reason`}
+                  {#if action.href !== undefined}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      href={action.href}
+                      aria-disabled={action.disabled ? 'true' : undefined}
+                      aria-describedby={action.disabled && action.disabledReason
+                        ? reasonId
+                        : undefined}
+                      title={action.disabled ? action.disabledReason : undefined}
+                      onclick={guardDisabled(action)}
+                    >
+                      {action.label}
+                    </Button>
+                  {:else}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      aria-disabled={action.disabled ? 'true' : undefined}
+                      aria-describedby={action.disabled && action.disabledReason
+                        ? reasonId
+                        : undefined}
+                      title={action.disabled ? action.disabledReason : undefined}
+                      onclick={guardDisabled(action)}
+                    >
+                      {action.label}
+                    </Button>
+                  {/if}
+                  {#if action.disabled && action.disabledReason}
+                    <span id={reasonId} class="cinder-stacked-list-item__reason"
+                      >{action.disabledReason}</span
+                    >
+                  {/if}
+                {/each}
+              </span>
+            {/if}
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
 </li>

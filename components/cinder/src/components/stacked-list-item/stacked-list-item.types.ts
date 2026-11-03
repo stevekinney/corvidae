@@ -10,6 +10,20 @@ export type StackedListItemDensity = 'comfortable' | 'condensed';
 export type StackedListItemStatusPlacement = 'leading' | 'line-two';
 /** How many lines a row's title may take before it ends in an ellipsis. */
 export type StackedListItemTitleLines = 1 | 2;
+/**
+ * The tint of a row. `warning` is the amber band of a group row that stands for something that
+ * did not happen (the missed runs); `neutral` is the default inset tint of a group row.
+ */
+export type StackedListItemTone = 'neutral' | 'warning';
+/**
+ * How a group row (a row with `details`) is drawn. `row` is the two-line status-first row with a
+ * disclosure at the right of line one; `band` is one line: the status dot, then a tinted band
+ * holding a chevron, the bold title, muted text and the disclosure label at the right (the
+ * missed runs among the runs of one schedule).
+ */
+export type StackedListItemGroupLayout = 'row' | 'band';
+/** The colour of the tile behind a row's `leading` glyph. */
+export type StackedListItemLeadingTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 /** A text action at the end of a row. */
 export type StackedListItemAction = {
   /** The visible text of the button, and the text of its item in the phone menu. */
@@ -40,6 +54,24 @@ type StackedListItemBase = ForwardedLiAttributes & {
   density?: StackedListItemDensity;
   /** Leading visual (avatar, icon, status dot). With a status column it follows the column. */
   leading?: Snippet;
+  /**
+   * Draws `leading` as a 32px rounded glyph tile tinted with this tone, one glyph per kind (the
+   * needs-attention rows on Health use `warning`). The glyph is decoration, so give the tile no
+   * accessible name of its own.
+   */
+  leadingTone?: StackedListItemLeadingTone;
+  /**
+   * Draws the two-line layout (bold title, one-line muted description or meta, a trailing region
+   * centred beside both lines) for a row that has no status, time or details to trigger it. A row
+   * with a `leadingTone` tile and `actions` is the usual case.
+   */
+  lines?: boolean;
+  /**
+   * Marks the row as the one open in the detail beside the list. It takes an accent tint, which
+   * stays when the pointer is over it, and sets `aria-current` on the row's link (or on the row
+   * when it is not a link).
+   */
+  selected?: boolean;
   /**
    * The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that
    * every list on every page shares, so titles start at one x position down the list; on a phone
@@ -75,6 +107,11 @@ type StackedListItemBase = ForwardedLiAttributes & {
   /** Secondary description below the title. */
   description?: Snippet;
   /**
+   * Line two as text, shown as a tooltip over line two, which ends in an ellipsis when it is long.
+   * Set it to the same text the `meta` (or `description`) snippet renders.
+   */
+  metaTooltip?: string;
+  /**
    * Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts
    * under the title (not under the status) and ends in an ellipsis rather than wrapping. A line
    * that must carry a control (an error with its own "Try again") may put one in.
@@ -96,6 +133,13 @@ type StackedListItemBase = ForwardedLiAttributes & {
    * group row is not a link.
    */
   details?: Snippet;
+  /** How a group row is drawn. Default `row`. */
+  groupLayout?: StackedListItemGroupLayout;
+  /**
+   * The tint of a group row. Default `neutral`, the inset tint every group row has; `warning` is
+   * the amber band of the missed runs.
+   */
+  tone?: StackedListItemTone;
   /** Whether a group row's `details` are showing. Bindable; default `false`. */
   expanded?: boolean;
   /** Text of the button that opens a group row. Default `Show`. */

@@ -887,9 +887,12 @@ export { default as StackedListItem } from './components/stacked-list-item/index
 export type {
   StackedListItemAction,
   StackedListItemDensity,
+  StackedListItemGroupLayout,
+  StackedListItemLeadingTone,
   StackedListItemProps,
   StackedListItemStatusPlacement,
   StackedListItemTitleLines,
+  StackedListItemTone,
 } from './components/stacked-list-item/index.ts';
 
 export { default as Stack } from './components/stack/index.ts';

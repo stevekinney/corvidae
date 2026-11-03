@@ -92,6 +92,20 @@ The title is clamped at two lines with an ellipsis; set `tooltip` to the title's
 
 A group row (`details`) is a non-link row with a real `<button>` that carries `aria-expanded` and `aria-controls`; the region is `hidden` while collapsed. Its name is the visible "Show" or "Hide", so pass `expandLabel` and `collapseLabel` that name what they open when several appear on a page.
 
+With `groupLayout="band"` the whole band is one `<button>` whose name is its content: the title, the muted text and the visible "Show each" or "Hide", so the label comes first in the name (WCAG 2.5.3). The status dot sits outside the band; give its `StatusDot` a `label`, because the band carries no word for it. The chevron is decorative and hidden. The amber tint is never the only signal: the title says what was missed.
+
+## Selected row
+
+`selected` sets `aria-current="true"` on the row's link, or on the row when it has no link, so the open item is announced and not only tinted. Under forced colors the row gets a `Highlight` outline.
+
+## Glyph tile
+
+The tile behind `leading` (`leadingTone`) is decoration and carries `aria-hidden="true"`. The glyph names the kind of row, so the title must say the same thing in words.
+
+## Line two tooltip
+
+`metaTooltip` is a native tooltip, which keyboard and touch users do not reach. It repeats text the row's page shows in full; it is never the only place the text appears.
+
 ## Trailing actions
 
 `actions` render as buttons, or on a phone as one menu button named by `actionsLabel`. A disabled action keeps `aria-disabled="true"` and stays focusable; `disabledReason` is its `aria-describedby` text and its tooltip, so the reason is reachable by keyboard and screen reader, not only by hover.

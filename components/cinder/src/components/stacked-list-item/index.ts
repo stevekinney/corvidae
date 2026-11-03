@@ -5,8 +5,11 @@ export default StackedListItem;
 export type {
   StackedListItemAction,
   StackedListItemDensity,
+  StackedListItemGroupLayout,
+  StackedListItemLeadingTone,
   StackedListItemProps,
   StackedListItemStatusPlacement,
   StackedListItemTitleLines,
+  StackedListItemTone,
 } from './stacked-list-item.types.ts';
 export { StackedListItem };
