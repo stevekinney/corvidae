@@ -116,6 +116,18 @@ describe('the schedule tick', () => {
       // The window began after this Bureau started: it was running, only late.
       whileStopped: false,
     });
+
+    // The same misses need attention, as the engine recorded them (COR-2009, Health).
+    const attention = await bureau.attention();
+    expect(attention.items).toContainEqual(
+      expect.objectContaining({
+        kind: 'missed-runs',
+        scheduleId,
+        scheduleName: 'Daily summary',
+        count: 10,
+        since: summary?.nextFireAt,
+      }),
+    );
   });
 
   it('records an agent schedule that came due, naming the run its fire started', async () => {

@@ -5,7 +5,7 @@
  * otherwise. Reviews that wait on a person are never on it: those are the person's work, not a
  * problem with the system.
  *
- * The Bureau finds five kinds itself:
+ * The Bureau finds four kinds itself:
  *
  * - `alert`: a rule of {@link BureauOptions.alerts} that is firing, since it last fired.
  * - `missed-runs`: a schedule that missed occurrences in the last seven days and has not fired
