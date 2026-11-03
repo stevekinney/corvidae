@@ -247,7 +247,7 @@ export async function enforceHistoryPolicyBeforeReplayById(
   }
   const head =
     internals.eventLogHeads.get(workflowId) ??
-    (await new EventLog(internals.storage, workflowId).loadHead());
+    (await new EventLog(internals.storage, workflowId, internals.options.getNow).loadHead());
   return enforceHistoryPolicyBeforeReplay(internals, workflowId, head, callbacks);
 }
 

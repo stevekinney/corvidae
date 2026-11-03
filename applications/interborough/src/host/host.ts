@@ -107,7 +107,7 @@ import {
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
-import { type GenerateFunction } from '@lostgradient/operative';
+import { type GenerateFunction, type RuntimeServices } from '@lostgradient/operative';
 import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
@@ -375,6 +375,20 @@ export type HostOptions = {
    */
   readonly alerts?: AlertingOptions;
   /**
+   * The runtime services the host and its Bureau run on, passed through as `BureauOptions.runtime`
+   * (COR-2009): its clock stamps every record the Bureau and its engine write, and the host's own
+   * times (when its plugins loaded, its workers' ages, the nightly clean-up) read it too. The
+   * showcase runs its sample world on an offset clock this way. Omitted, the process's own clock and
+   * timers.
+   */
+  readonly runtime?: RuntimeServices;
+  /**
+   * The HTTP client hook deliveries send with, passed through as `BureauOptions.webhooks.fetch`
+   * (COR-2009). The showcase answers every delivery itself, so its sample hooks keep delivery
+   * records without ever posting to the real addresses they name. Omitted, the global `fetch`.
+   */
+  readonly hookFetch?: typeof fetch;
+  /**
    * The nightly clean-up of expired records (COR-2009): the IANA time zone its 3:00 AM is in, which
    * defaults to the process's, and the clock it reads, which defaults to `Date.now`. The showcase
    * pins both to its sample world.
@@ -605,6 +619,8 @@ type EngineUpstream = { readonly url: string; readonly key: string };
 
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
+  // The clock the host's own times are read from: its runtime's, so they agree with its Bureau's.
+  const clock = options.runtime?.clock ?? { now: () => Date.now() };
   // The demo plugin's agents are named `demo:<name>`, and Bureau skips a plugin whose contribution
   // takes a name a host option already holds. That is a mistake in whoever named the extra agent,
   // so it stops the host before anything opens, rather than silently dropping the plugin.
@@ -656,7 +672,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // A folder that cannot load is reported and skipped, never a reason to stop the host.
     const content = bungalow.content(PLUGIN_FOLDER_NAME);
     // When the host loaded its plugins: a plugin that did not load needs attention from here (COR-2009).
-    const pluginsLoadedAt = Date.now();
+    const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
       directory: content.kind === 'directory' ? content.path : undefined,
       dependencies: HOST_DEPENDENCIES,
@@ -777,6 +793,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     const bureau = await createBureau({
       id: bungalow.deploymentId,
+      ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       agents: { ...options.extraAgents?.agents },
       ...(options.extraAgents?.withBureauTools === undefined
         ? {}
@@ -837,6 +854,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
       hooks: hookOptionsFor(bungalow.mode),
+      ...(options.hookFetch === undefined
+        ? {}
+        : { webhooks: { targets: [], fetch: options.hookFetch } }),
       ...(options.alerts === undefined ? {} : { alerts: options.alerts }),
       // Needs attention (COR-2009): no model provider connected is the host's to see, and so is a
       // plugin the host skipped before the Bureau composed the rest.
@@ -854,6 +874,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const nightlyCleanUp = startNightlyCleanUp({
       storage,
       removeExpiredRecords: () => bureau.removeExpiredRecords(),
+      now: clock.now,
       ...options.nightlyCleanUp,
       warn: options.warn ?? ((message) => console.warn(message)),
     });
@@ -1182,7 +1203,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         bureau: bureau.internals.diagnostics(),
         weft: {
           lease: engine.getLeaseHealth(),
-          workers: server.registry.getWorkerSummaries(Date.now()),
+          workers: server.registry.getWorkerSummaries(clock.now()),
           connections: server.connections(),
         },
         build: buildDiagnostics(buildDirectory),

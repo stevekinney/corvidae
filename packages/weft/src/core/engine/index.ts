@@ -845,7 +845,7 @@ export class Engine<
     getInternals(this).interceptors = resolveEngineInterceptors(options);
     getInternals(this).composedWorkflowInterceptor = undefined;
     getInternals(this).composedActivityInterceptor = undefined;
-    getInternals(this).updateCoordinator = new UpdateCoordinator(storage);
+    getInternals(this).updateCoordinator = new UpdateCoordinator(storage, getNow);
     getInternals(this).activityRegistry = new ActivityRegistry();
     getInternals(this).activityRegistriesByWorkflow = new Map();
     getInternals(this).workflowDefinitionsByName = new Map();

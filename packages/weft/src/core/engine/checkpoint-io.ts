@@ -686,7 +686,7 @@ function appendCheckpointEventLog(
   workflowId: string,
   commit: CheckpointCommit,
 ): ReturnType<EventLog['appendToBatch']> {
-  const eventLog = new EventLog(internals.storage, workflowId);
+  const eventLog = new EventLog(internals.storage, workflowId, internals.options.getNow);
   return eventLog.appendToBatch(
     {
       type: 'workflow:checkpoint',
