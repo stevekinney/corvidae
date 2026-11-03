@@ -145,7 +145,7 @@ describe('showcaseHostOptions', () => {
       ...Object.keys(options.extraAgents?.agents ?? {}),
       ...Object.keys(options.extraAgents?.withBureauTools ?? {}),
     ]).toEqual([...SHOWCASE_AGENT_IDENTIFIERS]);
-    expect(options.resolveProviderGenerate).toBeFunction();
+    expect(options.resolveProviderGenerateFor).toBeFunction();
   });
 
   test('loads Guardrails, Ollama and Voyage beside the workspace’s plugins', () => {

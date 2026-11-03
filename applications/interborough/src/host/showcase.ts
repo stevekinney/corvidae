@@ -12,7 +12,9 @@
  * Assistant, Echo, Tool runner, Request human input, Model switcher and Workflow author) are
  * registered by this host alone, as `HostOptions.extraAgents`; the Demo plugin is off. The model
  * catalog holds the stub provider's models (`stub-provider.ts`), whose client answers every model
- * call with a fixed reply and whose key is a fixture, so no real provider key is ever used or read.
+ * call with a fixed reply and whose key is a fixture, so no real provider key is ever used or read;
+ * a built-in agent's step that a model override sends to that provider answers from the agent's
+ * script instead ({@link showcaseProviderResolver}).
  * The end-to-end showcase specification (`tests/e2e/showcase.spec.ts`) opens a host seeded the same
  * way.
  *
@@ -21,6 +23,11 @@
 
 import type { BungalowEnvironment } from '@lostgradient/bungalow';
 import type { BureauPluginEntry } from '@lostgradient/bureau';
+import {
+  readBackendDescriptors,
+  withBackendDescriptors,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import guardrails from '@lostgradient/plugin-guardrails';
 import ollama from '@lostgradient/plugin-ollama';
 import voyage from '@lostgradient/plugin-voyage';
@@ -28,9 +35,14 @@ import type { AlertingOptions } from '@lostgradient/weft';
 import { join } from 'node:path';
 
 import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
-import type { HostOptions } from './host.ts';
+import type { HostOptions, RunAgentLookup } from './host.ts';
 import { workspacePlugins } from './plugins.ts';
-import { showcaseBuiltInAgents, type ShowcasePacing } from './showcase-agents.ts';
+import {
+  showcaseAgentScripts,
+  showcaseBuiltInAgents,
+  type ShowcaseAgentIdentifier,
+  type ShowcasePacing,
+} from './showcase-agents.ts';
 import { fakeProvider } from './stub-provider.ts';
 
 /** The flag the development entry takes to run the showcase host. */
@@ -85,9 +97,32 @@ export function showcaseEnvironment(
   return { ...environment, INTERBOROUGH_HOME: home };
 }
 
-/** The provider resolver the showcase host runs on: the stub provider's, which calls no model. */
-export function showcaseProviderResolver(): NonNullable<HostOptions['resolveProviderGenerate']> {
-  return fakeProvider(SHOWCASE_MODEL_REPLY).resolver;
+/**
+ * The provider resolver the showcase host runs on: the stub provider's, which calls no model, with
+ * one exception. A step of a built-in agent's run reaches the provider when a person saved a model
+ * override on the agent (decisions.md, "B01 fix round, Nov 3"), and that step answers from the
+ * agent's own entry in `scripts`, so Tool runner still looks an order up and asks to refund it on
+ * the model a person chose. Whose run a step belongs to is read per call through `agentOfRun`, the
+ * host's lookup in its own Bureau; a step of any other agent, or of a run the lookup does not know,
+ * gets the stub's reply.
+ */
+export function showcaseProviderResolver(
+  agentOfRun: RunAgentLookup,
+  scripts: Readonly<Record<ShowcaseAgentIdentifier, GenerateFunction>>,
+): NonNullable<HostOptions['resolveProviderGenerate']> {
+  const stub = fakeProvider(SHOWCASE_MODEL_REPLY).resolver;
+  const scriptOf = new Map<string, GenerateFunction>(Object.entries(scripts));
+  return (definitions, provider, streamEventTarget, streaming) => {
+    const provided = stub(definitions, provider, streamEventTarget, streaming);
+    const generate: GenerateFunction = async (context) => {
+      const agent = context.runId === undefined ? undefined : await agentOfRun(context.runId);
+      const script = agent === undefined ? undefined : scriptOf.get(agent);
+      return (script ?? provided)(context);
+    };
+    // The provider's generate may carry its catalog row, which a run reads its model from.
+    const attached = readBackendDescriptors(provided);
+    return attached.length === 0 ? generate : withBackendDescriptors(generate, attached);
+  };
 }
 
 /**
@@ -128,8 +163,9 @@ export const SHOWCASE_ALERTS: AlertingOptions = {
 };
 
 /**
- * What a showcase host is started with beside its environment: the stub provider's resolver, the
- * sample world's built-in agents, tools and goal checks as extra agents, its plugins, hooks that
+ * What a showcase host is started with beside its environment: the stub provider's resolver (built
+ * from the host's run lookup, over the same scripts the built-in agents answer from), the sample
+ * world's built-in agents, tools and goal checks as extra agents, its plugins, hooks that
  * deliver without posting, its storage alert rule with no periodic size report to resolve it, and its nightly clean-up in the sample world's Central time, whatever
  * zone the machine is in. The development entry (`dev.ts`), the end-to-end showcase host and the
  * showcase host test all start it with these; the sample world's seed passes `pacing` to pace the
@@ -140,16 +176,17 @@ export function showcaseHostOptions(
 ): Pick<
   HostOptions,
   | 'extraAgents'
-  | 'resolveProviderGenerate'
+  | 'resolveProviderGenerateFor'
   | 'nightlyCleanUp'
   | 'plugins'
   | 'hookFetch'
   | 'alerts'
   | 'storageSizeReportIntervalMilliseconds'
 > {
+  const scripts = showcaseAgentScripts(pacing);
   return {
-    extraAgents: showcaseBuiltInAgents(pacing),
-    resolveProviderGenerate: showcaseProviderResolver(),
+    extraAgents: showcaseBuiltInAgents(pacing, scripts),
+    resolveProviderGenerateFor: (agentOfRun) => showcaseProviderResolver(agentOfRun, scripts),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
     plugins: showcasePlugins(),
     hookFetch: showcaseHookFetch,

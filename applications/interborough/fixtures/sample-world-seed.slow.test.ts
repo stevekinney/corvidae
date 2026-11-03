@@ -738,7 +738,8 @@ describe('the sample world, part B', () => {
     ]);
     const [provider, alert, missed] = attention.items;
     expectAt(new Date(provider?.at ?? 0).toISOString(), SAMPLE_WORLD_TIMES.anthropicKeyRemoved);
-    expect(alert?.at).toBe(SAMPLE_WORLD_HISTORY_TIMES.storageAlertFired);
+    // The offset clock runs on between the seed setting it and the alert firing, as every moment does.
+    expectAt(new Date(alert?.at ?? 0).toISOString(), SAMPLE_WORLD_HISTORY_TIMES.storageAlertFired);
     expect(formatBytes(SAMPLE_WORLD_STORAGE_BYTES)).toBe('1.6 GB');
     expectAt(new Date(missed?.at ?? 0).toISOString(), SAMPLE_WORLD_TIMES.serverStarted);
     expect(missed).toMatchObject({ since: Date.parse('2026-10-30T09:00:00Z') });

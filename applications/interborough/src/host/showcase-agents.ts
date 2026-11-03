@@ -45,6 +45,9 @@ export const SHOWCASE_AGENT_IDENTIFIERS = [
   'workflow-author',
 ] as const;
 
+/** The identifier of one of the six built-in agents of {@link SHOWCASE_AGENT_IDENTIFIERS}. */
+export type ShowcaseAgentIdentifier = (typeof SHOWCASE_AGENT_IDENTIFIERS)[number];
+
 /** The built-in agents that are scripted in the sample world, so no provider gates them. */
 export const SHOWCASE_SCRIPTED_AGENTS = ['assistant', 'echo'] as const;
 
@@ -464,13 +467,41 @@ export function createShowcaseToolRunnerToolbox() {
   });
 }
 
+/** Workflow author's script: it says {@link SHOWCASE_WORKFLOW_AUTHOR_REPLY} to every message. */
+export function showcaseWorkflowAuthorGenerate(): GenerateFunction {
+  return createScriptedGenerate(repeatedReply(SHOWCASE_WORKFLOW_AUTHOR_REPLY));
+}
+
+/**
+ * The scripts of the six built-in agents, by identifier, fresh, each paced by `pacing`. The agents
+ * of {@link showcaseBuiltInAgents} answer from them, and so does the showcase's provider resolver
+ * (`showcase.ts`) for a step of one of them that a model override sent to the provider, so a
+ * built-in agent answers from its script on whatever model a person chose. One set serves both,
+ * because a scripted reply keeps its position and a pace is awaited once per answer.
+ */
+export function showcaseAgentScripts(
+  pacing: ShowcasePacing = {},
+): Readonly<Record<ShowcaseAgentIdentifier, GenerateFunction>> {
+  return {
+    assistant: showcaseAssistantGenerate(pacing),
+    echo: showcaseEchoGenerate(),
+    'tool-runner': showcaseToolRunnerGenerate(pacing),
+    'request-human-input': showcaseHumanInputGenerate(),
+    'model-switcher': showcaseModelSwitcherGenerate(),
+    'workflow-author': showcaseWorkflowAuthorGenerate(),
+  };
+}
+
 /**
  * Workflow author, built from the Bureau's own tools: it holds Create workflow and Discover agents
  * ({@link SHOWCASE_WORKFLOW_AUTHOR_TOOLS}), which only the Bureau can make, so the showcase host
  * passes it as `ExtraAgents.withBureauTools`. A tool the Bureau does not offer (Create workflow
  * without a workflow directory) is left out.
  */
-export function showcaseWorkflowAuthor(tools: BureauOwnTools) {
+export function showcaseWorkflowAuthor(
+  tools: BureauOwnTools,
+  generate: GenerateFunction = showcaseWorkflowAuthorGenerate(),
+) {
   const held = Object.fromEntries(
     Object.keys(SHOWCASE_WORKFLOW_AUTHOR_TOOLS).flatMap((name) => {
       const tool = Object.hasOwn(tools, name) ? tools[name] : undefined;
@@ -481,7 +512,7 @@ export function showcaseWorkflowAuthor(tools: BureauOwnTools) {
     name: 'workflow-author',
     description: 'Drafts a workflow from a description, and asks before it creates the file.',
     examples: ['Help me build a workflow that…'],
-    generate: createScriptedGenerate(repeatedReply(SHOWCASE_WORKFLOW_AUTHOR_REPLY)),
+    generate,
     // Keyed by the names an agent file uses, so the catalog counts Workflow author among their users.
     tools: held,
     toolboxOptions: () => ({
@@ -496,30 +527,36 @@ export function showcaseWorkflowAuthor(tools: BureauOwnTools) {
  * The six built-in agents, fresh, so no two hosts share a script's position. The showcase host
  * passes them as `HostOptions.extraAgents`: Workflow author among those built from the Bureau's
  * own tools, and the goal checks as validators. `pacing` paces the scripts and checks (the sample
- * world's seed passes it).
+ * world's seed passes it). Each agent answers from its entry in `scripts`, which a caller that
+ * answers from the same scripts elsewhere (the showcase's provider resolver) passes.
  */
-export function showcaseBuiltInAgents(pacing: ShowcasePacing = {}): ExtraAgents {
+export function showcaseBuiltInAgents(
+  pacing: ShowcasePacing = {},
+  scripts: Readonly<Record<ShowcaseAgentIdentifier, GenerateFunction>> = showcaseAgentScripts(
+    pacing,
+  ),
+): ExtraAgents {
   return {
     agents: {
       assistant: createAgent({
         name: 'assistant',
         description: 'Answers every message with the same scripted reply.',
         examples: ['Say hello'],
-        generate: showcaseAssistantGenerate(pacing),
+        generate: scripts.assistant,
         stopWhen: stopWhen.noToolCalls(),
       }),
       echo: createAgent({
         name: 'echo',
         description: 'Repeats the last message it was sent.',
         examples: ['Hello echo, say this back'],
-        generate: showcaseEchoGenerate(),
+        generate: scripts.echo,
         stopWhen: stopWhen.noToolCalls(),
       }),
       'tool-runner': createAgent({
         name: 'tool-runner',
         description: 'Looks an order up, then asks for approval to refund it.',
         examples: ['Please refund order 4471, it arrived damaged.'],
-        generate: showcaseToolRunnerGenerate(pacing),
+        generate: scripts['tool-runner'],
         toolbox: createShowcaseToolRunnerToolbox(),
         stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       }),
@@ -527,7 +564,7 @@ export function showcaseBuiltInAgents(pacing: ShowcasePacing = {}): ExtraAgents 
         name: 'request-human-input',
         description: 'Asks a human which environment the release should go to.',
         examples: ['Ship the release notes fix.'],
-        generate: showcaseHumanInputGenerate(),
+        generate: scripts['request-human-input'],
         // The run ends on the request so it parks; once a person answers it continues to the
         // reply, which has no tool call.
         stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],
@@ -536,12 +573,14 @@ export function showcaseBuiltInAgents(pacing: ShowcasePacing = {}): ExtraAgents 
         name: 'model-switcher',
         description: 'Names the model it answers as, and can be switched between two.',
         examples: ['Which model are you?'],
-        generate: showcaseModelSwitcherGenerate(),
+        generate: scripts['model-switcher'],
         allowedCandidates: SHOWCASE_MODEL_SWITCHER_MODELS,
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
-    withBureauTools: { 'workflow-author': showcaseWorkflowAuthor },
+    withBureauTools: {
+      'workflow-author': (tools) => showcaseWorkflowAuthor(tools, scripts['workflow-author']),
+    },
     validators: createShowcaseValidators(pacing),
   };
 }

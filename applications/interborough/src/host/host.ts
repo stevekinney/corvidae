@@ -292,6 +292,13 @@ export type ExtraAgents = {
 };
 
 /**
+ * The agent a run belongs to, by the run's id, read from the host's Bureau: its name, or
+ * `undefined` for a run the Bureau holds no task of (one it never started, one recovered before the
+ * Bureau finished starting, or one whose record has expired).
+ */
+export type RunAgentLookup = (runId: string) => Promise<string | undefined>;
+
+/**
  * What `startHost` reads to start a host. Every field is optional and defaults to the environment
  * and the checked-in build.
  */
@@ -347,6 +354,15 @@ export type HostOptions = {
    * definitions and the provider, model, and API key from Bungalow's secret. For tests that stand a fake client in for the SDK.
    */
   readonly resolveProviderGenerate?: typeof resolveProviderGenerate;
+  /**
+   * Builds the provider resolver from the host's {@link RunAgentLookup}, in place of
+   * {@link HostOptions.resolveProviderGenerate}, for a resolver whose generate answers by whose run
+   * it is. The showcase host passes it, so a built-in agent's step that a model override sent to the
+   * provider still answers from the agent's script (`showcase.ts`).
+   */
+  readonly resolveProviderGenerateFor?: (
+    agentOfRun: RunAgentLookup,
+  ) => typeof resolveProviderGenerate;
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
   /**
@@ -733,6 +749,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.plugins = pluginManager;
     await pluginManager.ensureGeneratedSecrets();
+    // The Bureau is built after the providers, so a run's agent is read through `held`.
+    const agentOfRun: RunAgentLookup = async (runId) => {
+      const bureau = held.bureau;
+      if (bureau === undefined) return undefined;
+      // A run this process holds answers at once; any other is read from the task registry.
+      const live = bureau.tasks.detail(runId)?.agentName;
+      if (live !== undefined) return live;
+      const recorded = await bureau.tasks.get(runId);
+      return recorded?.agentName ?? undefined;
+    };
     const providers = createProviderManager({
       bungalow: {
         mode: bungalow.mode,
@@ -745,7 +771,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       configurationQueue,
       afterConfigurationWrite: () => pluginManager.reload(),
       warn: options.warn ?? ((message) => console.warn(message)),
-      resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
+      resolveProviderGenerate:
+        options.resolveProviderGenerateFor?.(agentOfRun) ??
+        options.resolveProviderGenerate ??
+        resolveProviderGenerate,
       // The Bureau is built after the providers, so the trail is read through `held`.
       audit: async (entry) => {
         await held.bureau?.internals.auditTrail?.record(entry);
