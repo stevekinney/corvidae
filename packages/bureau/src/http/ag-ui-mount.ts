@@ -75,7 +75,12 @@ import { readContextTombstone } from '../context-tombstone.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau, BureauReviews, BureauInternals, BureauTasks } from '../types.ts';
 import type { TaskState } from '../task-registry.ts';
-import { managedAssetIdsOf, rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
+import {
+  managedAssetIdsOf,
+  rowsAddedBy,
+  snapshotMessages,
+  withDetectedMediaTypes,
+} from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { settledOutcomeOf } from './ag-ui-peer-stream.ts';
 import { createResume } from './ag-ui-resume.ts';
@@ -699,10 +704,11 @@ export function createAgUiMount(
         }
 
         // An asset the start names is the caller's to use and `available`, or the start is refused
-        // before anything is added to the thread or any run is created.
-        let unusable: string | undefined;
+        // before anything is added to the thread or any run is created. Each part that names one
+        // is stored with the asset's detected media type, which the thread's snapshot replays.
+        let named: NamedAssets;
         try {
-          unusable = await firstUnusableAsset(
+          named = await inspectNamedAssets(
             bureau,
             owner,
             appendMessages,
@@ -711,11 +717,12 @@ export function createAgUiMount(
         } catch {
           return { response: refuse('RUN_FAILED', 'The run could not be started') };
         }
-        if (unusable !== undefined) {
+        if (named.unusable !== undefined) {
           return {
-            response: refuse('INVALID_INPUT', unusable),
+            response: refuse('INVALID_INPUT', named.unusable),
           };
         }
+        appendMessages = withDetectedMediaTypes(appendMessages, named.mediaTypes);
 
         // A start the thread already holds the rows of is the retry of one that
         // created them: it attaches to the run that did, rather than starting
@@ -915,35 +922,48 @@ function holdsPendingApproval(
 }
 
 /**
- * Why the first managed asset `rows` name cannot be used by `owner`, as the message the start is
- * refused with, or `undefined` when every one can. An asset another owner holds and one that does
- * not exist read alike, as `was not found`, so no caller learns whether another owner's asset
- * exists, and a caller without `bureau.assets:read` reads every asset alike, whoever holds it. An asset the owner holds that is not `available` (pending, rejected, quarantined,
- * expired or deleted) is named by its state: a run resolves every asset in the thread on every
- * turn, so a row that names one is committed only to fail the thread's every later turn.
+ * What the door learned of the managed assets a start's rows name: why the first one cannot be
+ * used, when one cannot, and otherwise the detected media type of each one that has one.
  */
-async function firstUnusableAsset(
+type NamedAssets =
+  | { readonly unusable: string; readonly mediaTypes?: undefined }
+  | { readonly unusable?: undefined; readonly mediaTypes: ReadonlyMap<string, string> };
+
+/**
+ * Why the first managed asset `rows` name cannot be used by `owner`, as the message the start is
+ * refused with, or, when every one can, each asset's detected media type. An asset another owner
+ * holds and one that does not exist read alike, as `was not found`, so no caller learns whether
+ * another owner's asset exists, and a caller without `bureau.assets:read` reads every asset alike,
+ * whoever holds it. An asset the owner holds that is not `available` (pending, rejected,
+ * quarantined, expired or deleted) is named by its state: a run resolves every asset in the thread
+ * on every turn, so a row that names one is committed only to fail the thread's every later turn.
+ */
+async function inspectNamedAssets(
   bureau: Pick<AgUiBureau, 'assets'>,
   owner: string,
   rows: Parameters<typeof managedAssetIdsOf>[0],
   mayReadAssets: boolean,
-): Promise<string | undefined> {
+): Promise<NamedAssets> {
+  const mediaTypes = new Map<string, string>();
   const assets = bureau.assets;
-  if (assets === undefined) return undefined;
+  if (assets === undefined) return { mediaTypes };
   for (const assetId of managedAssetIdsOf(rows)) {
     // Naming an asset in a chat is reading it: the model reads it. A credential without the read
     // scope is answered as for a missing asset, before the asset is looked up, so neither its
     // existence nor its state is disclosed.
-    if (!mayReadAssets) return `Asset "${assetId}" was not found`;
+    if (!mayReadAssets) return { unusable: `Asset "${assetId}" was not found` };
     try {
-      const { state } = await assets.inspect(assetId, { id: owner });
-      if (state !== 'available') return `Asset "${assetId}" is ${state}`;
+      const { state, mediaType } = await assets.inspect(assetId, { id: owner });
+      if (state !== 'available') return { unusable: `Asset "${assetId}" is ${state}` };
+      if (mediaType !== undefined && mediaType !== '') mediaTypes.set(assetId, mediaType);
     } catch (error) {
-      if (error instanceof AssetNotFoundError) return `Asset "${assetId}" was not found`;
+      if (error instanceof AssetNotFoundError) {
+        return { unusable: `Asset "${assetId}" was not found` };
+      }
       throw error;
     }
   }
-  return undefined;
+  return { mediaTypes };
 }
 
 /** How a failure to create the run is told to the client, as a code and a message. */
