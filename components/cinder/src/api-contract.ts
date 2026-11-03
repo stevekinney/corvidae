@@ -260,6 +260,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       align: { optional: true, type_kind: 'TSTypeReference', default: L('center') },
       kind: { optional: true, type_kind: 'TSTypeReference', default: L('first-use') },
       size: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      bordered: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onClearFilters: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       clearFiltersLabel: {
         optional: true,

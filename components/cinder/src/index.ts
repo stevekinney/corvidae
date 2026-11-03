@@ -1005,6 +1005,7 @@ export type {
   StepItemState,
   StepsOrientation,
   StepsProps,
+  StepsVariant,
 } from './components/steps/index.ts';
 
 export { default as Statistic } from './components/statistic/index.ts';

@@ -8,6 +8,7 @@
    * @tag notice
    * @useWhen Drawing attention to tangential information nested inside prose, documentation, or article content.
    * @useWhen Calling out a tip, note, or caveat that belongs next to the content it qualifies.
+   * @useWhen Explaining a state in a quiet neutral note that is not a problem, with one link or button at its end.
    * @avoidWhen Announcing a transient or urgent status — use alert or banner instead.
    * @avoidWhen Communicating a page-wide system message — use banner so it reads as a landmark region.
    * @related alert, banner
@@ -26,6 +27,7 @@
     semantic = 'aside',
     title,
     icon,
+    action,
     class: className,
     children,
     ...rest
@@ -61,8 +63,8 @@
     {...restWithoutForbidden}
     class={classNames(
       'cinder-callout',
-      'cinder-_status-surface',
-      'cinder-_status-surface-border',
+      variant !== 'neutral' && 'cinder-_status-surface',
+      variant !== 'neutral' && 'cinder-_status-surface-border',
       className,
     )}
     data-cinder-variant={variant}
@@ -81,14 +83,20 @@
       {/if}
       {@render children()}
     </div>
+
+    {#if action}
+      <div class="cinder-callout__action">
+        {@render action()}
+      </div>
+    {/if}
   </div>
 {:else}
   <aside
     {...restWithoutForbidden}
     class={classNames(
       'cinder-callout',
-      'cinder-_status-surface',
-      'cinder-_status-surface-border',
+      variant !== 'neutral' && 'cinder-_status-surface',
+      variant !== 'neutral' && 'cinder-_status-surface-border',
       className,
     )}
     data-cinder-variant={variant}
@@ -106,5 +114,11 @@
       {/if}
       {@render children()}
     </div>
+
+    {#if action}
+      <div class="cinder-callout__action">
+        {@render action()}
+      </div>
+    {/if}
   </aside>
 {/if}

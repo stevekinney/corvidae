@@ -43,6 +43,16 @@ const semanticNoteAccepted: CalloutProps = { children: noopChildren, semantic: '
 // @ts-expect-error - only the supported semantic modes are accepted
 const invalidSemanticRejected: CalloutProps = { children: noopChildren, semantic: 'alert' };
 
+// The neutral variant and an action snippet are supported.
+const neutralAccepted: CalloutProps = {
+  children: noopChildren,
+  variant: 'neutral',
+  action: noopChildren,
+};
+
+// @ts-expect-error - only the supported variants are accepted
+const invalidVariantRejected: CalloutProps = { children: noopChildren, variant: 'error' };
+
 void roleRejected;
 void ariaLiveRejected;
 void ariaAtomicRejected;
@@ -52,3 +62,5 @@ void ariaLabelAccepted;
 void ariaLabelledByAccepted;
 void semanticNoteAccepted;
 void invalidSemanticRejected;
+void neutralAccepted;
+void invalidVariantRejected;

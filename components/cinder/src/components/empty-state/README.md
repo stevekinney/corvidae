@@ -10,9 +10,12 @@ Placeholder layout for zero-data views, with optional illustration, heading, and
   import { EmptyState } from '@lostgradient/cinder';
 </script>
 
-<EmptyState title="No results found" description="Try adjusting your filters or search query.">
+<EmptyState
+  title="No hooks yet"
+  description="A hook does something when an event happens: send a webhook, start a workflow, or notify you."
+>
   {#snippet action()}
-    <Button variant="primary" label="Clear filters" />
+    <Button variant="primary" label="New hook" />
   {/snippet}
 </EmptyState>
 ```
@@ -26,29 +29,47 @@ Start-aligned — the content reads from the inline start instead of the centre,
 
 <EmptyState
   align="start"
-  title="No provider is configured"
+  title="No provider is connected"
   description="Add a model provider to create an agent."
 />
 ```
 
-Pick the `kind` that says why the view is empty. `first-use` is the default and shows the `action` snippet. `filtered` means a filter or search hid items that exist, so it offers a Clear filters button from `onClearFilters`. `done` means the work is finished, so it shows no action at all:
+Pick the `kind` that says why the view is empty. It sets the tint of the 48px disc, and the glyph it shows when you pass no `icon`:
+
+- `first-use`: nothing exists yet. An accent disc that holds the view's own icon, and a primary button as the action. There is no default glyph, so pass the `icon`.
+- `filtered`: a filter or search hid items that exist. A neutral disc with a funnel, and a secondary "Clear filters" button from `onClearFilters`, which is the only action.
+- `done`: the work is finished. A green disc with a check, and optionally a quiet link as the action.
+- `blocked`: something the person can fix keeps the view empty. An amber disc with a warning glyph.
+- `not-found`: the thing asked for doesn't exist. A neutral disc with a magnifying glass.
+
+A title says what is missing or what happened, never an instruction ("No hooks yet", not "Build your first hook"), and the sentence under it is one sentence of at most 380px, with contractions.
 
 ```svelte
 <script lang="ts">
-  import { EmptyState } from '@lostgradient/cinder';
+  import { EmptyState, Link } from '@lostgradient/cinder';
 
   let query = $state('overdue');
 </script>
 
 <EmptyState
   kind="filtered"
-  title="No runs match"
-  description="Nothing matches the current filters. Clear them to see every run."
+  title="No runs match these filters"
+  description="Model switcher has no runs. Try another agent."
   onClearFilters={() => (query = '')}
 />
 
-<EmptyState kind="done" title="Inbox zero" description="Every approval has been answered." />
+<EmptyState
+  kind="done"
+  title="All caught up"
+  description="Nothing is waiting on you. When an agent asks for approval, it shows up here."
+>
+  {#snippet action()}
+    <Link href="/reviews/done">See past decisions</Link>
+  {/snippet}
+</EmptyState>
 ```
+
+The state centres itself in the height it is given, with 8px of extra bottom padding for the optical centre, so give it the height left under the page header and filters. Add `bordered` when the list or page body has no container of its own and the state should draw one.
 
 Use `size="compact"` inside a tab or a panel, where the default page-region padding and disc are too large:
 
@@ -60,7 +81,7 @@ Use `size="compact"` inside a tab or a panel, where the default page-region padd
 <EmptyState size="compact" title="No comments yet" description="Replies appear here." />
 ```
 
-The icon snippet renders inside a tinted disc: neutral for `filtered`, accented for `first-use`, and success-tinted for `done`. The description keeps a readable measure of about 42 characters however wide the region is, and the action row wraps with even spacing.
+The `icon` snippet replaces the glyph in the disc. The description keeps a measure of 380px however wide the region is, and the action row wraps with even spacing.
 
 ## Props
 
@@ -69,15 +90,16 @@ The icon snippet renders inside a tinted disc: neutral for `filtered`, accented 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `align` | `"center"` \| `"start"` | no | `"center"` | Alignment of the content. `'center'` centres the icon, text, and action in the region; `'start'` aligns them to the inline start, for a state that reads as instructions rather than a placeholder. |
+| `bordered` | `boolean` | no | `false` | Draws the state inside a bordered, rounded box, for a list or page body that has no container of its own. Leave it off when a card or panel already surrounds the state. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-empty-state` root element. |
 | `clearFiltersLabel` | `string` | no | `"Clear filters"` | Label of the "Clear filters" button. |
 | `description` | `string` | no | — | Secondary descriptive text rendered as a paragraph below the title. |
 | `headingLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the title element. |
-| `kind` | `"first-use"` \| `"filtered"` \| `"done"` | no | `"first-use"` | Why the view is empty. `'first-use'` shows the `action` snippet, `'filtered'` adds a "Clear filters" button when `onClearFilters` is set, and `'done'` shows no action at all, even when `action` is passed, because there is nothing left to do. |
+| `kind` | `"first-use"` \| `"filtered"` \| `"done"` \| `"blocked"` \| `"not-found"` | no | `"first-use"` | Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked or not found). Every kind renders the `action` snippet; `'filtered'` also adds a secondary "Clear filters" button before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'` a quiet `Link`, and `'filtered'` the Clear filters button alone. |
 | `size` | `"default"` \| `"compact"` | no | `"default"` | Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a tab or a panel rather than a whole page region. |
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
-| `action` | `(opaque)` | no | — | Call-to-action content rendered below the description, after the "Clear filters" button when both exist. Not expressible in JSON Schema; see the component types for the signature. |
-| `icon` | `(opaque)` | no | — | Icon rendered above the title, centred in a tinted disc. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
+| `action` | `(opaque)` | no | — | Call-to-action content rendered below the description, after the "Clear filters" button when both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for done, and a secondary button for a not-found or blocked state. Not expressible in JSON Schema; see the component types for the signature. |
+| `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. First use shows the view's own icon; every other kind has a default glyph. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `onClearFilters` | `(opaque)` | no | — | Called when the "Clear filters" button of a `'filtered'` state is pressed. The button renders only when this is set. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

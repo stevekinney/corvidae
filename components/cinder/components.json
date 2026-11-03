@@ -823,7 +823,8 @@
       "tags": ["feedback", "notice"],
       "useWhen": [
         "Drawing attention to tangential information nested inside prose, documentation, or article content.",
-        "Calling out a tip, note, or caveat that belongs next to the content it qualifies."
+        "Calling out a tip, note, or caveat that belongs next to the content it qualifies.",
+        "Explaining a state in a quiet neutral note that is not a problem, with one link or button at its end."
       ],
       "avoidWhen": [
         {
@@ -2131,7 +2132,8 @@
       "useWhen": [
         "Communicating that a list, table, or workspace has no items yet and suggesting a next step.",
         "Replacing a primary content region after a filter or search returns no results.",
-        "Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind."
+        "Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind.",
+        "Saying that a thing doesn't exist with the not-found kind, or that a recoverable condition blocks the view with the blocked kind."
       ],
       "avoidWhen": [
         {
@@ -5446,7 +5448,9 @@
       "tags": ["navigation", "progress"],
       "useWhen": [
         "Walking the user through a multi-step wizard or checkout flow with strict ordering.",
-        "Showing how far the user has advanced through a known number of stages."
+        "Showing how far the user has advanced through a known number of stages.",
+        "Showing a first-run checklist whose steps complete in any order, each with its own action, with the checklist variant.",
+        "Reporting the progress of a short job, such as a restart, as a list of what is done, running and waiting, with the status variant."
       ],
       "avoidWhen": [
         {

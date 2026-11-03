@@ -7,8 +7,12 @@ import type { HTMLAttributes } from 'svelte/elements';
  * tokens (`--cinder-status-info-solid`, `--cinder-status-success-solid`, `--cinder-status-warning-solid`,
  * `--cinder-status-danger-solid`). `alert.svelte` uses `error` instead of `danger`;
  * that divergence is tracked in `banner.a11y.md`.
+ *
+ * `'neutral'` is a plain note that is not a status: a quiet panel for explaining a state, such as
+ * why a goal ended, with the neutral tokens instead of a status tint. Its row is vertically
+ * centred, so an `icon` and an `action` sit beside the text.
  */
-export type CalloutVariant = 'info' | 'success' | 'warning' | 'danger';
+export type CalloutVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 /**
  * Root semantics for {@link Callout}.
  *
@@ -53,7 +57,7 @@ export type CalloutProps = Omit<
   HTMLAttributes<HTMLElement>,
   'children' | 'class' | 'role' | 'aria-live' | 'aria-atomic' | 'aria-relevant' | 'aria-busy'
 > & {
-  /** Visual + semantic variant. Default `'info'`. */
+  /** Visual + semantic variant. Default `'info'`; `'neutral'` is a plain note with no status tint. */
   variant?: CalloutVariant;
   /** Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark. */
   semantic?: CalloutSemantic;
@@ -81,6 +85,12 @@ export type CalloutProps = Omit<
    * carrier of information.
    */
   icon?: Snippet;
+  /**
+   * Optional action rendered at the inline end of the row, usually one `Link` or `Button`, such
+   * as "Open attempt 5". It is interactive content, so it is the one part of a callout a person
+   * can act on; the callout itself stays static.
+   */
+  action?: Snippet;
   /** Callout body content. */
   children: Snippet;
   /**

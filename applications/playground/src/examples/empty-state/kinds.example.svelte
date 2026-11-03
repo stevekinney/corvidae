@@ -1,11 +1,11 @@
 <script lang="ts" module>
-  export const title = 'First use, filtered, and done';
+  export const title = 'Every kind';
   export const description =
-    'Three reasons a view is empty: nothing yet, a filter hid everything, and all work finished.';
+    'Why a view is empty sets the disc: first use is accent with a primary button, filtered is neutral with a secondary Clear filters, done is green with a quiet link, blocked is amber and not-found is neutral.';
 </script>
 
 <script lang="ts">
-  import { Button, EmptyState } from '@lostgradient/cinder';
+  import { Button, EmptyState, Link } from '@lostgradient/cinder';
 
   let cleared = $state(0);
 </script>
@@ -22,10 +22,28 @@
   </EmptyState>
   <EmptyState
     kind="filtered"
-    title="No runs match"
-    description="Nothing matches the current filters. Clear them to see every run."
+    title="No runs match these filters"
+    description="Model switcher has no runs. Try another agent."
     onClearFilters={() => (cleared += 1)}
   />
   <p>Filters cleared {cleared} times.</p>
-  <EmptyState kind="done" title="All caught up" description="Every approval has been answered." />
+  <EmptyState
+    kind="done"
+    title="All caught up"
+    description="Nothing is waiting on you. When an agent asks for approval, it shows up here."
+  >
+    {#snippet action()}
+      <Link href="#past-decisions">See past decisions</Link>
+    {/snippet}
+  </EmptyState>
+  <EmptyState
+    kind="blocked"
+    title="2 agents are unavailable"
+    description="Their plugin, Demo, is disabled. Enable it and restart to chat with them."
+  />
+  <EmptyState
+    kind="not-found"
+    title="This run doesn't exist"
+    description="It may have been deleted. The address might also be mistyped."
+  />
 </div>

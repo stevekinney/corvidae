@@ -4,16 +4,28 @@
  * EMPTY STATE
  * ======================================== */
 
+  /* The state is centred both ways in the region it is given, with 8px of extra bottom padding
+   * so the content sits at the optical centre. `min-block-size: 100%` makes it fill a region of
+   * known height; in an auto-height parent it is ignored and the padding alone spaces it. */
   .cinder-empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     inline-size: 100%;
+    min-block-size: 100%;
+    box-sizing: border-box;
     text-align: center;
-    padding-block: var(--cinder-space-12);
+    padding-block: var(--cinder-space-12) calc(var(--cinder-space-12) + var(--cinder-space-2));
     padding-inline: var(--cinder-space-8);
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
+  }
+
+  /* A bordered state draws its own box, for a list or page body with no container. */
+  .cinder-empty-state[data-cinder-bordered] {
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
   }
 
   .cinder-empty-state[data-cinder-align='start'] {
@@ -21,24 +33,25 @@
     text-align: start;
   }
 
-  /* The icon sits in a tinted disc. The disc is neutral by default, accented for a first-use
-   * state that invites an action, and success-tinted once everything is done. */
+  /* The glyph sits in a 48px tinted disc. The disc is neutral by default (a filtered or
+   * not-found state), accented for a first-use state that invites an action, success-tinted once
+   * everything is done, and amber for a blocked state the person can recover from. */
   .cinder-empty-state-icon {
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    inline-size: var(--cinder-space-16);
-    block-size: var(--cinder-space-16);
-    margin-block-end: var(--cinder-space-2);
+    inline-size: var(--cinder-space-12);
+    block-size: var(--cinder-space-12);
+    margin-block-end: var(--cinder-space-2-5);
     border-radius: var(--cinder-radius-full);
     background: var(--cinder-surface-inset);
-    color: var(--cinder-text-subtle);
+    color: var(--cinder-text-muted);
   }
 
   .cinder-empty-state-icon > svg {
-    inline-size: var(--cinder-space-8);
-    block-size: var(--cinder-space-8);
+    inline-size: 1.375rem;
+    block-size: 1.375rem;
   }
 
   .cinder-empty-state[data-cinder-kind='first-use'] .cinder-empty-state-icon {
@@ -51,17 +64,23 @@
     color: var(--cinder-status-success-text);
   }
 
+  .cinder-empty-state[data-cinder-kind='blocked'] .cinder-empty-state-icon {
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  /* The title is 16px semibold: it says what is missing or what happened. */
   .cinder-empty-state-title {
-    font-size: var(--cinder-text-xl);
+    font-size: var(--cinder-text-lg);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
     color: var(--cinder-text-default);
     margin: 0;
   }
 
-  /* The description keeps a readable measure however wide the region is. */
+  /* The sentence holds a 380px measure however wide the region is. */
   .cinder-empty-state-description {
-    max-inline-size: 42ch;
+    max-inline-size: 23.75rem;
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
@@ -73,8 +92,8 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
-    gap: var(--cinder-space-3);
-    margin-block-start: var(--cinder-space-4);
+    gap: var(--cinder-space-2);
+    margin-block-start: var(--cinder-space-3);
   }
 
   .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-action {
@@ -85,6 +104,7 @@
   .cinder-empty-state[data-cinder-size='compact'] {
     padding-block: var(--cinder-space-6);
     padding-inline: var(--cinder-space-4);
+    gap: var(--cinder-space-2);
   }
 
   .cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-icon {

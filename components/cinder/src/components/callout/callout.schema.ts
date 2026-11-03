@@ -10,8 +10,9 @@ const schema = {
         'Optional title rendered as a `<p class="cinder-callout__title">`.\n\nRendered as a paragraph rather than a heading element so the\ncallout does not inject an entry into the document outline. If a\ncallout genuinely participates in the outline (e.g. it titles a\nstandalone section), wrap it in a `<section>` with its own heading\nrather than promoting this prop to `<h*>`.\n\nWhen supplied and no `aria-label` or `aria-labelledby` is passed\non rest props, the title also becomes the `aria-label` of the\nroot element so the landmark or note has an accessible name.',
     },
     variant: {
-      enum: ['info', 'success', 'warning', 'danger'],
-      description: "Visual + semantic variant. Default `'info'`.",
+      enum: ['neutral', 'info', 'success', 'warning', 'danger'],
+      description:
+        "Visual + semantic variant. Default `'info'`; `'neutral'` is a plain note with no status tint.",
     },
     semantic: {
       enum: ['aside', 'note'],
@@ -27,6 +28,12 @@ const schema = {
   additionalProperties: false,
   metadata: {
     unsupportedProps: [
+      {
+        name: 'action',
+        reason: 'function-or-snippet',
+        description:
+          'Optional action rendered at the inline end of the row, usually one `Link` or `Button`, such\nas "Open attempt 5". It is interactive content, so it is the one part of a callout a person\ncan act on; the callout itself stays static.',
+      },
       {
         name: 'children',
         reason: 'function-or-snippet',

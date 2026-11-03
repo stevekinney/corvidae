@@ -29,9 +29,9 @@ const schema = {
       default: 'center',
     },
     kind: {
-      enum: ['first-use', 'filtered', 'done'],
+      enum: ['first-use', 'filtered', 'done', 'blocked', 'not-found'],
       description:
-        "Why the view is empty. `'first-use'` shows the `action` snippet, `'filtered'` adds a\n\"Clear filters\" button when `onClearFilters` is set, and `'done'` shows no action at all,\neven when `action` is passed, because there is nothing left to do.",
+        "Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked or not found).\nEvery kind renders the `action` snippet; `'filtered'` also adds a secondary \"Clear filters\"\nbutton before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'`\na quiet `Link`, and `'filtered'` the Clear filters button alone.",
       default: 'first-use',
     },
     size: {
@@ -39,6 +39,12 @@ const schema = {
       description:
         "Scale of the state. `'compact'` tightens the padding, disc, and type so the state fits a\ntab or a panel rather than a whole page region.",
       default: 'default',
+    },
+    bordered: {
+      type: 'boolean',
+      description:
+        'Draws the state inside a bordered, rounded box, for a list or page body that has no\ncontainer of its own. Leave it off when a card or panel already surrounds the state.',
+      default: false,
     },
     clearFiltersLabel: {
       type: 'string',
@@ -54,13 +60,13 @@ const schema = {
         name: 'action',
         reason: 'function-or-snippet',
         description:
-          'Call-to-action content rendered below the description, after the "Clear filters" button when both exist.',
+          'Call-to-action content rendered below the description, after the "Clear filters" button when\nboth exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for\ndone, and a secondary button for a not-found or blocked state.',
       },
       {
         name: 'icon',
         reason: 'function-or-snippet',
         description:
-          'Icon rendered above the title, centred in a tinted disc. Decorative, so it is hidden from assistive technology.',
+          "Replaces the glyph in the disc. First use shows the view's own icon; every other kind has a\ndefault glyph. Decorative, so it is hidden from assistive technology.",
       },
       {
         name: 'onClearFilters',

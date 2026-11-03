@@ -77,6 +77,19 @@
   }
 
   /* ----------------------------------------
+ * Action
+ * One link or button at the inline end of the row.
+ * ---------------------------------------- */
+
+  .cinder-callout__action {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    margin-inline-start: auto;
+  }
+
+  /* ----------------------------------------
  * Status variants
  *
  * The soft-surface color algebra (background, border, foreground) lives
@@ -91,6 +104,22 @@
  * the surface here (28% L vs 20% L), exceeding the audit's 0.02 ΔL threshold.
  * See documentation/css-audit/status-triple-equivalence.md for the full table.
  * ---------------------------------------- */
+
+  /* Neutral is a note, not a status, so it takes the neutral tokens instead of the status-surface
+   * recipe, which tints from a status hue. Its row is centred, so the icon and the action line up
+   * with the text however many lines it wraps to. */
+  .cinder-callout[data-cinder-variant='neutral'] {
+    align-items: center;
+    border-color: var(--cinder-status-neutral-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-status-neutral-background);
+    color: var(--cinder-status-neutral-text);
+  }
+
+  .cinder-callout[data-cinder-variant='neutral'] .cinder-callout__icon {
+    margin-block-start: 0;
+    color: var(--cinder-text-subtle);
+  }
 
   .cinder-callout[data-cinder-variant='info'] {
     --_cinder-status-base: var(--cinder-status-info-solid);
