@@ -23,6 +23,61 @@ const solidAlias = /(--[\w-]+)\s*:\s*var\(\s*--cinder-status-[a-z]+-solid\s*[,)]
 const foregroundDeclaration =
   /(?<![\w-])(?:color|outline-color|--cinder-focus-ring-color)\s*:\s*var\(\s*(--[\w-]+)(?![\w-])/g;
 
+/** A `--cinder-status-*-solid` fill, however it is reached. */
+const statusSolidToken = /^--cinder-status-[a-z]+-solid$/;
+
+/** Every declaration the guard judges in a component's own sheet, in source order. */
+function declarations(css: string): Array<{ property: string; value: string }> {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...withoutComments.matchAll(/(?<![\w-])(-{0,2}[\w-]+)\s*:\s*([^;{}]+)[;}]/g)].map(
+    (match) => ({ property: match[1] ?? '', value: (match[2] ?? '').trim() }),
+  );
+}
+
+/** A property that paints something a reader must see: text, an icon, an outline, or a ring. */
+function isForegroundProperty(property: string): boolean {
+  return (
+    property === 'color' ||
+    property === 'outline-color' ||
+    property === '--cinder-focus-ring-color' ||
+    /^--_cinder-[\w-]*-ring$/.test(property)
+  );
+}
+
+/**
+ * The tokens a foreground declaration finally paints with. A `var(--x)` that the same sheet
+ * declares as a custom property is followed to what that property holds, any number of aliases
+ * deep, so a ring routed through `--_cinder-*-ring`, a fallback, or a `color-mix` still reaches its
+ * leaf. A name the sheet never declares is a leaf: a global token, or `currentColor`.
+ */
+function foregroundLeaves(css: string): { leaves: Set<string>; foregroundCount: number } {
+  const all = declarations(css);
+  const byName = new Map<string, string[]>();
+  for (const { property, value } of all) {
+    if (!property.startsWith('--')) continue;
+    byName.set(property, [...(byName.get(property) ?? []), value]);
+  }
+  const leaves = new Set<string>();
+  const visited = new Set<string>();
+  const follow = (value: string): void => {
+    if (/\bcurrentColor\b/i.test(value)) leaves.add('currentColor');
+    for (const match of value.matchAll(/var\(\s*(--[\w-]+)/g)) {
+      const name = match[1];
+      if (name === undefined) continue;
+      const held = byName.get(name);
+      if (held === undefined) {
+        leaves.add(name);
+      } else if (!visited.has(name)) {
+        visited.add(name);
+        held.forEach(follow);
+      }
+    }
+  };
+  const foreground = all.filter(({ property }) => isForegroundProperty(property));
+  foreground.forEach(({ value }) => follow(value));
+  return { leaves, foregroundCount: foreground.length };
+}
+
 async function sourceFiles(): Promise<string[]> {
   const glob = new Bun.Glob(
     `${directoryGlob(workspaceParentDirectories)}/**/*.{css,svelte,ts,tsx,html}`,
@@ -86,33 +141,45 @@ describe('status fills as foreground colors', () => {
     expect([...css.matchAll(foregroundDeclaration)].map((match) => match[1])).toEqual(['--x']);
   });
 
-  test('the alert, banner, and dropdown rings take status text tokens, not fills', async () => {
-    const ring = (property: string, text: string) =>
-      [...text.matchAll(new RegExp(`${property}:\\s*var\\(([^)]+)\\)`, 'g'))].map(
-        (match) => match[1],
+  test('the alert, banner, and dropdown foregrounds and rings never resolve to a status fill', async () => {
+    // The components were redesigned (neutral banner, `--cinder-alert-info`'s own contrast-checked
+    // pair), so this pins the guard's purpose, not the old implementation: whatever a ring,
+    // outline, focus-ring colour, or `color` finally resolves to, it is never a `-solid` token.
+    // The minimum counts keep the scan from passing on a sheet it no longer finds anything in.
+    const sheets = [
+      ['alert/alert.css', 4],
+      ['banner/banner.css', 5],
+      ['dropdown/dropdown.css', 3],
+    ] as const;
+    for (const [sheet, minimum] of sheets) {
+      const css = await Bun.file(join(root, 'components/cinder/src/components', sheet)).text();
+      const { leaves, foregroundCount } = foregroundLeaves(css);
+      expect(foregroundCount).toBeGreaterThanOrEqual(minimum);
+      expect([...leaves].filter((leaf) => statusSolidToken.test(leaf))).toEqual([]);
+    }
+  });
+
+  test('the status rings still resolve to text tokens', async () => {
+    const read = (sheet: string) =>
+      Bun.file(join(root, 'components/cinder/src/components', sheet)).text();
+    const ringLeaves = (css: string, property: RegExp): string[] =>
+      declarations(css)
+        .filter((declaration) => property.test(declaration.property))
+        .flatMap((declaration) => [...declaration.value.matchAll(/var\(\s*(--[\w-]+)/g)])
+        .map((match) => match[1] ?? '');
+    for (const status of ['success', 'warning', 'danger']) {
+      const text = `--cinder-status-${status}-text`;
+      expect(ringLeaves(await read('alert/alert.css'), /^--_cinder-alert-ring$/)).toContain(text);
+      expect(ringLeaves(await read('banner/banner.css'), /^--_cinder-banner-ring$/)).toContain(
+        text,
       );
-    const alert = await Bun.file(
-      join(root, 'components/cinder/src/components/alert/alert.css'),
-    ).text();
-    expect(ring('--_cinder-alert-ring', alert)).toEqual([
-      '--cinder-alert-info',
-      '--cinder-status-success-text',
-      '--cinder-status-warning-text',
-      '--cinder-status-danger-text',
-    ]);
-    const banner = await Bun.file(
-      join(root, 'components/cinder/src/components/banner/banner.css'),
-    ).text();
-    expect(ring('--_cinder-banner-ring', banner)).toEqual([
+    }
+    expect(ringLeaves(await read('banner/banner.css'), /^--_cinder-banner-ring$/)).toContain(
       '--cinder-status-info-text',
-      '--cinder-status-success-text',
-      '--cinder-status-warning-text',
-      '--cinder-status-danger-text',
-    ]);
-    const dropdown = await Bun.file(
-      join(root, 'components/cinder/src/components/dropdown/dropdown.css'),
-    ).text();
-    expect(ring('--_cinder-dropdown-item-ring', dropdown)).toEqual(['--cinder-status-danger-text']);
+    );
+    expect(
+      ringLeaves(await read('dropdown/dropdown.css'), /^--_cinder-dropdown-item-ring$/),
+    ).toEqual(['--cinder-status-danger-text']);
   });
 
   test('the diff summary bar and the export confirmation use the status text tokens', async () => {
@@ -131,12 +198,26 @@ describe('status fills as foreground colors', () => {
     );
   });
 
-  test('the toast icon takes its colour from a text token, not the stripe fill', async () => {
+  test('the toast icon and chip text take a foreground, never the stripe fill', async () => {
+    // The toast is an inverse chip: its text is `--cinder-text-inverse`, and its icon, spinner and
+    // dismiss button inherit that through `currentColor`. A status fill can tint the chip's
+    // surface (the danger toast), but it is not a foreground.
     const css = await Bun.file(
       join(root, 'components/cinder/src/components/toast-region/toast-region.css'),
     ).text();
-    expect(css).not.toMatch(/color:\s*var\(--_cinder-toast-accent,/);
-    expect(css).toContain('--_cinder-toast-accent-text: var(--cinder-status-warning-text)');
+    const rule = (selector: string): string => {
+      const escaped = selector.replace(/[.[\]'=-]/g, '\\$&');
+      const match = css
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .match(new RegExp(`^\\s*${escaped}\\s*\\{([^}]*)\\}`, 'm'));
+      return match?.[1] ?? '';
+    };
+    expect(rule('.cinder-toast__icon')).toMatch(/(?<![\w-])color:\s*currentColor\s*;/);
+    expect(rule('.cinder-toast')).toMatch(/(?<![\w-])color:\s*var\(--cinder-text-inverse\)/);
+    expect(css).not.toContain('--_cinder-toast-accent');
+    const { leaves, foregroundCount } = foregroundLeaves(css);
+    expect(foregroundCount).toBeGreaterThanOrEqual(5);
+    expect([...leaves].filter((leaf) => statusSolidToken.test(leaf))).toEqual([]);
   });
 
   test('hit-target expansions react to any coarse pointer, so hybrid devices get them too', async () => {
