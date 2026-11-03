@@ -172,19 +172,34 @@ export type PostgresKeyValueQueries = {
   readonly tableReference: string;
   readonly createTable: string;
   readonly selectKeyCollation: string;
+  /**
+   * Whether the configured table has the `updated_at` column yet: `to_regclass($1)`, one row when
+   * it does. A table created before write times were recorded has no such column.
+   */
+  readonly selectWriteTimeColumn: string;
+  /** Adds the nullable `updated_at BIGINT` column (milliseconds since the Unix epoch). */
+  readonly addWriteTimeColumn: string;
   readonly selectValueByKey: string;
+  /** Writes one value (`$2`) and its write time (`$3`) at a key (`$1`). */
   readonly upsertValueByKey: string;
+  /** Reads one key's write time; no row means the key is absent. */
+  readonly selectWriteTimeByKey: string;
   readonly deleteValueByKey: string;
   readonly selectKeyPresence: string;
   countKeysByPrefix(prefix: string): PostgresBuiltQuery;
   deleteKeysByPrefix(prefix: string): PostgresBuiltQuery;
   /** One-statement condition read for `conditionalBatch`: `key = ANY($1)`. */
   readonly selectValuesByKeys: string;
-  /** One-statement multi-row upsert for `batch`: `unnest($1::text[], $2::bytea[])`. */
+  /**
+   * One-statement multi-row upsert for `batch`: `unnest($1::text[], $2::bytea[])`, every row
+   * stamped with the one write time `$3`.
+   */
   readonly upsertValuesByKeys: string;
   /** One-statement delete for `batch`: `key = ANY($1)`. */
   readonly deleteValuesByKeys: string;
   keyValueRangeSelect(prefix: string, options?: ScanOptions): PostgresBuiltQuery;
+  /** The `SELECT key, value, updated_at` a metadata scan of `prefix` runs. */
+  keyValueMetadataRangeSelect(prefix: string, options?: ScanOptions): PostgresBuiltQuery;
   keyRangeSelect(prefix: string, options?: ScanOptions): PostgresBuiltQuery;
   keyRangeDelete(prefix: string, options: NormalizedDeleteRangeOptions): PostgresBuiltQuery;
 };
@@ -221,8 +236,13 @@ export function buildPostgresKeyValueQueries(tableReference: string): PostgresKe
     tableReference,
     createTable,
     selectKeyCollation,
+    selectWriteTimeColumn: `SELECT 1 AS present FROM pg_attribute WHERE attrelid = to_regclass($1) AND attname = 'updated_at' AND attnum > 0 AND NOT attisdropped`,
+    // `IF NOT EXISTS` as well as the column check: a table another tool altered between the two
+    // still adds nothing twice.
+    addWriteTimeColumn: `ALTER TABLE ${tableReference} ADD COLUMN IF NOT EXISTS updated_at BIGINT`,
     selectValueByKey: `SELECT value FROM ${tableReference} WHERE key = $1`,
-    upsertValueByKey: `INSERT INTO ${tableReference} (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    upsertValueByKey: `INSERT INTO ${tableReference} (key, value, updated_at) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+    selectWriteTimeByKey: `SELECT updated_at FROM ${tableReference} WHERE key = $1`,
     deleteValueByKey: `DELETE FROM ${tableReference} WHERE key = $1`,
     selectKeyPresence: `SELECT 1 AS present FROM ${tableReference} WHERE key = $1 LIMIT 1`,
     countKeysByPrefix(prefix) {
@@ -239,11 +259,18 @@ export function buildPostgresKeyValueQueries(tableReference: string): PostgresKe
       return { parameters, sql: `DELETE FROM ${tableReference} WHERE ${condition}` };
     },
     selectValuesByKeys: `SELECT key, value FROM ${tableReference} WHERE key = ANY($1)`,
-    upsertValuesByKeys: `INSERT INTO ${tableReference} (key, value) SELECT * FROM unnest($1::text[], $2::bytea[]) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    upsertValuesByKeys: `INSERT INTO ${tableReference} (key, value, updated_at) SELECT entry.key, entry.value, $3::bigint FROM unnest($1::text[], $2::bytea[]) AS entry(key, value) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
     deleteValuesByKeys: `DELETE FROM ${tableReference} WHERE key = ANY($1)`,
     keyValueRangeSelect(prefix, options = {}) {
       const { parameters, whereOrderLimit } = buildPostgresKeyRangeQuery(prefix, options);
       return { parameters, sql: `SELECT key, value FROM ${tableReference} ${whereOrderLimit}` };
+    },
+    keyValueMetadataRangeSelect(prefix, options = {}) {
+      const { parameters, whereOrderLimit } = buildPostgresKeyRangeQuery(prefix, options);
+      return {
+        parameters,
+        sql: `SELECT key, value, updated_at FROM ${tableReference} ${whereOrderLimit}`,
+      };
     },
     keyRangeSelect(prefix, options = {}) {
       const { parameters, whereOrderLimit } = buildPostgresKeyRangeQuery(prefix, options);

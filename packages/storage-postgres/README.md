@@ -1,6 +1,6 @@
 # @lostgradient/storage-postgres
 
-The Postgres storage adapter. `PostgresStorage` is a `Storage` over a standard Postgres server, spoken to through the `pg` (node-postgres) driver. It keeps every key in one `kv(key TEXT COLLATE "C", value BYTEA)` table, commits a batch in one `SERIALIZABLE` transaction (retrying serialization failures), and reports `readAfterWrite: 'linearizable'`, which holds for a primary endpoint. The SQL it runs lives in `@lostgradient/storage/sql`, shared with the Neon adapter; this package supplies the `pg` pool and nothing else. Its dependencies are `@lostgradient/storage` and `pg`.
+The Postgres storage adapter. `PostgresStorage` is a `Storage` over a standard Postgres server, spoken to through the `pg` (node-postgres) driver. It keeps every key in one `kv(key TEXT COLLATE "C", value BYTEA, updated_at BIGINT)` table, records each write's time (from the `now` option, `Date.now` by default) for `stat` and `scanWithMetadata` to read, adds the `updated_at` column to a table created before it existed, commits a batch in one `SERIALIZABLE` transaction (retrying serialization failures), and reports `readAfterWrite: 'linearizable'`, which holds for a primary endpoint. The SQL it runs lives in `@lostgradient/storage/sql`, shared with the Neon adapter; this package supplies the `pg` pool and nothing else. Its dependencies are `@lostgradient/storage` and `pg`.
 
 | Entry                            | What it holds                                   |
 | -------------------------------- | ----------------------------------------------- |

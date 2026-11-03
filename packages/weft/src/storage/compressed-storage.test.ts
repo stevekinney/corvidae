@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { CompressedStorage } from './compressed-storage.ts';
 
@@ -302,5 +303,30 @@ describe('Symbol.dispose', () => {
 
     // MemoryStorage.dispose clears the map
     expect(inner.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Write times
+// ---------------------------------------------------------------------------
+
+describe('write times', () => {
+  it('reports the inner store’s write time and the decompressed value in a metadata scan', async () => {
+    using inner = new BunSQLiteStorage(':memory:', { now: () => 4_200 });
+    const storage = new CompressedStorage(inner, { algorithm: 'gzip', threshold: 8 });
+    const value = new TextEncoder().encode('a value long enough to compress');
+    await storage.put('log:server', value);
+
+    expect(await storage.stat('log:server')).toEqual({ updatedAt: 4_200 });
+    expect(await storage.stat('log:absent')).toBeNull();
+    const entries: unknown[] = [];
+    for await (const entry of storage.scanWithMetadata('log:')) entries.push(entry);
+    expect(entries).toEqual([['log:server', value, { updatedAt: 4_200 }]]);
+  });
+
+  it('answers an unknown write time over a store that records none', async () => {
+    const { storage } = createStorage();
+    await storage.put('key', new Uint8Array([1]));
+    expect(await storage.stat('key')).toEqual({ updatedAt: null });
   });
 });

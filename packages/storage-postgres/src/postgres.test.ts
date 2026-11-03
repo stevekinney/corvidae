@@ -6,11 +6,14 @@ import { afterAll, describe, expect, it, spyOn } from 'bun:test';
 import { EventEmitter } from 'node:events';
 import { Pool, type PoolClient } from 'pg';
 
+import { storageScanWithMetadata, storageStat } from '@lostgradient/storage';
 import { type PostgresPool } from '@lostgradient/storage/sql';
 import {
+  collect,
   bytes as encode,
   runBasicStorageContract,
   runStorageCapabilityConformance,
+  runStorageWriteTimeContract,
 } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createPGliteTestFixture } from './pglite.test-support.ts';
@@ -44,6 +47,50 @@ runStorageCapabilityConformance('PostgresStorage', {
 });
 
 runBasicStorageContract('PostgresStorage', { create: createPgliteBackedPostgresStorage });
+
+// The fixture's reset creates the table in its older two-column shape when it is absent, so the
+// first case here also proves the adapter adds `updated_at` to a table that lacks it.
+runStorageWriteTimeContract('PostgresStorage', {
+  create: async (now) => {
+    await pgliteFixture.reset();
+    return new PostgresStorage({ pool: pgliteFixture.pool, now });
+  },
+});
+
+describe('PostgresStorage write times', () => {
+  it('opens a table written before write times, keeps its rows readable, and stamps new writes', async () => {
+    const database = pgliteFixture.database;
+    await database.query('DROP TABLE IF EXISTS legacy_kv');
+    await database.query(
+      'CREATE TABLE legacy_kv (key TEXT COLLATE "C" PRIMARY KEY, value BYTEA NOT NULL)',
+    );
+    await database.query("INSERT INTO legacy_kv (key, value) VALUES ('memory:goals', 'old')");
+
+    await using storage = new PostgresStorage({
+      pool: pgliteFixture.pool,
+      table: 'legacy_kv',
+      now: () => 9_000,
+    });
+    expect(new TextDecoder().decode((await storage.get('memory:goals'))!)).toBe('old');
+    expect(await storageStat(storage, 'memory:goals')).toEqual({ updatedAt: null });
+
+    await storage.put('memory:preferences', encode('new'));
+    const entries = await collect(storageScanWithMetadata(storage, 'memory:'));
+    expect(entries.map(([key, , metadata]) => [key, metadata.updatedAt])).toEqual([
+      ['memory:goals', null],
+      ['memory:preferences', 9_000],
+    ]);
+
+    // A second adapter over the same table finds the column and keeps every recorded time.
+    await using reopened = new PostgresStorage({
+      pool: pgliteFixture.pool,
+      table: 'legacy_kv',
+      now: () => 10_000,
+    });
+    expect(await storageStat(reopened, 'memory:preferences')).toEqual({ updatedAt: 9_000 });
+    await database.query('DROP TABLE legacy_kv');
+  });
+});
 
 describe('PostgresStorage', () => {
   it('rejects PGlite fixture access outside its registered lifecycle', async () => {
@@ -204,6 +251,26 @@ describe.skipIf(database === null)('PostgresStorage (live pg)', () => {
     }
     expect(keys).toEqual(['live:a', 'live:b']);
     await storage.deletePrefix('live:');
+  });
+
+  it('records and reads write times over the real driver, which returns BIGINT as text', async () => {
+    let clock = 1_762_101_900_000;
+    await using storage = new PostgresStorage({
+      url: live().url,
+      table: LIVE_TABLE,
+      now: () => clock,
+    });
+    await storage.put('time:a', encode('a'));
+    clock += 60_000;
+    await storage.batch([{ type: 'put', key: 'time:b', value: encode('b') }]);
+
+    expect(await storageStat(storage, 'time:a')).toEqual({ updatedAt: 1_762_101_900_000 });
+    const entries = await collect(storageScanWithMetadata(storage, 'time:'));
+    expect(entries.map(([key, , metadata]) => [key, metadata.updatedAt])).toEqual([
+      ['time:a', 1_762_101_900_000],
+      ['time:b', 1_762_101_960_000],
+    ]);
+    await storage.deletePrefix('time:');
   });
 
   it('applies a mixed batch as one atomic transaction over the real driver', async () => {

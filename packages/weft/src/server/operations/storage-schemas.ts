@@ -108,6 +108,14 @@ export const storagePreviewOutput = z
         'The value as text, at most its first 64 KB cut on a character boundary, or null for a binary value.',
       ),
     truncated: z.boolean().describe('True when `preview` is shorter than the value.'),
+    updatedAt: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        'When the key was last written, in milliseconds since the Unix epoch, or null when the storage backend does not record write times.',
+      ),
   })
   .nullable();
 
@@ -117,7 +125,11 @@ export type StorageDeleteInput = z.infer<typeof storageDeleteInput>;
 export type StorageScanInput = z.infer<typeof storageScanInput>;
 export type StoragePreviewInput = z.infer<typeof storagePreviewInput>;
 export type StoragePreviewOutput = z.infer<typeof storagePreviewOutput>;
-type StorageScanEntry = { readonly key: string; readonly value: string };
+type StorageScanEntry = {
+  readonly key: string;
+  readonly value: string;
+  readonly updatedAt: number | null;
+};
 export type StorageScanOutput = AsyncIterable<StorageScanEntry>;
 export type StorageBatchInput = z.infer<typeof storageBatchInput>;
 export type StorageConditionalBatchInput = z.infer<typeof storageConditionalBatchInput>;

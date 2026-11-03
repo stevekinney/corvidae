@@ -9,7 +9,8 @@ import {
   runBinaryAndLargeScanStorageConformance,
   runStorageCapabilityConformance,
 } from '../testing/storage-contract.ts';
-import { PostgresKeyValueStorage, type PostgresPool } from './postgres-key-value-storage.ts';
+import { PostgresKeyValueStorage } from './postgres-key-value-storage.ts';
+import type { PostgresPool } from './postgres-pool.ts';
 
 let database: PGlite | undefined;
 

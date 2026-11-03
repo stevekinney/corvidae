@@ -10,6 +10,8 @@ import {
   type ScanOptions,
   type Storage,
   type StorageCapabilities,
+  type StorageEntryMetadata,
+  type StorageScanEntryWithMetadata,
 } from '@lostgradient/storage';
 import {
   assertReadOnlyQuery,
@@ -17,17 +19,47 @@ import {
   buildSqliteDeleteKeysByPrefix,
   buildSqliteKeyRangeDelete,
   buildSqliteKeyRangeSelect,
+  buildSqliteKeyValueMetadataRangeSelect,
   buildSqliteKeyValueRangeSelect,
   runConditionalBatchBody,
+  SQLITE_ADD_UPDATED_AT_COLUMN,
   SQLITE_BUSY_TIMEOUT_MS,
   SQLITE_CREATE_KEY_VALUE_TABLE,
   SQLITE_DELETE_VALUE_BY_KEY,
   SQLITE_SELECT_KEY_PRESENCE,
+  SQLITE_SELECT_KEY_VALUE_COLUMNS,
   SQLITE_SELECT_VALUE_BY_KEY,
-  SQLITE_UPSERT_VALUE_BY_KEY,
+  SQLITE_SELECT_WRITE_TIME_BY_KEY,
+  SQLITE_UPSERT_VALUE_WITH_WRITE_TIME,
 } from '@lostgradient/storage/sql';
 
 type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence']>;
+
+type KeyValueMetadataRow = { key: string; value: Uint8Array; updated_at: number | null };
+
+/**
+ * Options for {@link BunSQLiteStorage}.
+ *
+ * @example
+ * ```ts
+ * import { BunSQLiteStorage, type BunSQLiteStorageOptions } from '@lostgradient/storage-bun-sqlite';
+ *
+ * const options: BunSQLiteStorageOptions = { now: () => Date.UTC(2026, 10, 2, 16, 45) };
+ * using storage = new BunSQLiteStorage(':memory:', options);
+ * ```
+ */
+export interface BunSQLiteStorageOptions {
+  /**
+   * The clock each write's time is read from, in milliseconds since the Unix epoch. Defaults to
+   * `Date.now`. Every put in one batch or conditional batch shares one reading.
+   */
+  readonly now?: () => number;
+}
+
+/** The metadata a row's `updated_at` gives: its write time, or unknown for `NULL`. */
+function metadataFromWriteTime(updatedAt: number | null | undefined): StorageEntryMetadata {
+  return { updatedAt: typeof updatedAt === 'number' ? updatedAt : null };
+}
 
 /**
  * SQLite-backed {@link Storage} using Bun's built-in `bun:sqlite` module.
@@ -36,6 +68,11 @@ type BunSQLiteStoragePersistence = NonNullable<StorageCapabilities['persistence'
  * `get`/`put`/`batch` paths pay zero per-call `prepare()` cost.  Pass
  * `':memory:'` (the default) for ephemeral storage, or a file path for durable
  * persistence across restarts.
+ *
+ * Every write records its time in the table's `updated_at` column, which {@link
+ * BunSQLiteStorage.stat} and {@link BunSQLiteStorage.scanWithMetadata} read. A database file
+ * written before the column existed opens unchanged: the column is added on open, and the rows
+ * already in it read back an unknown (`null`) write time until they are written again.
  *
  * `query<T>(sql, params?)` runs read-only SQL against the underlying database
  * after validation with `assertReadOnlyQuery`. It is intended for dashboards or
@@ -60,10 +97,12 @@ export class BunSQLiteStorage implements Storage {
   // the start/complete benchmarks make 2-3 storage calls per workflow, and
   // re-preparing the same SQL on every call drops throughput by roughly 2x.
   #getStatement: Statement<{ value: Uint8Array }, [string]>;
-  #putStatement: Statement<unknown, [string, Uint8Array]>;
+  #putStatement: Statement<unknown, [string, Uint8Array, number]>;
   #deleteStatement: Statement<unknown, [string]>;
   #hasStatement: Statement<{ present: number }, [string]>;
-  #batchTransaction: { immediate: (entries: BatchOperation[]) => void };
+  #statStatement: Statement<{ updated_at: number | null }, [string]>;
+  #batchTransaction: { immediate: (entries: BatchOperation[], writtenAt: number) => void };
+  #now: () => number;
   // Cache prepared statements for scan() keyed by the fully-built SQL string.
   // The set of SQL variants is bounded by the structural shape of the scan
   // arguments (presence of gt/gte/lt/lte/reverse/limit), not by their
@@ -76,6 +115,9 @@ export class BunSQLiteStorage implements Storage {
   #scanStatements: Map<string, Statement<{ key: string; value: Uint8Array }, SQLQueryBindings[]>> =
     new Map();
   #keyStatements: Map<string, Statement<{ key: string }, SQLQueryBindings[]>> = new Map();
+  // Same bounded shape set as #scanStatements: only the selected columns differ.
+  #metadataScanStatements: Map<string, Statement<KeyValueMetadataRow, SQLQueryBindings[]>> =
+    new Map();
   // deleteRange SQL varies only by bound shape and limit-presence (LIMIT is a
   // bound parameter), so the cache is bounded the same way as #scanStatements.
   #deleteRangeStatements: Map<string, Statement<unknown, SQLQueryBindings[]>> = new Map();
@@ -93,7 +135,8 @@ export class BunSQLiteStorage implements Storage {
     return this.#scanStatements.size;
   }
 
-  constructor(path: string = ':memory:') {
+  constructor(path: string = ':memory:', options: BunSQLiteStorageOptions = {}) {
+    this.#now = options.now ?? Date.now;
     this.#persistence = path === ':memory:' ? 'ephemeral' : 'local';
     this.#database = new Database(path);
 
@@ -108,28 +151,58 @@ export class BunSQLiteStorage implements Storage {
     this.#database.exec('PRAGMA wal_autocheckpoint = 10000');
 
     this.#database.exec(SQLITE_CREATE_KEY_VALUE_TABLE);
+    this.#addWriteTimeColumn();
 
     this.#getStatement = this.#database.prepare<{ value: Uint8Array }, [string]>(
       SQLITE_SELECT_VALUE_BY_KEY,
     );
-    this.#putStatement = this.#database.prepare<unknown, [string, Uint8Array]>(
-      SQLITE_UPSERT_VALUE_BY_KEY,
+    this.#putStatement = this.#database.prepare<unknown, [string, Uint8Array, number]>(
+      SQLITE_UPSERT_VALUE_WITH_WRITE_TIME,
     );
     this.#deleteStatement = this.#database.prepare<unknown, [string]>(SQLITE_DELETE_VALUE_BY_KEY);
     this.#hasStatement = this.#database.prepare<{ present: number }, [string]>(
       SQLITE_SELECT_KEY_PRESENCE,
     );
+    this.#statStatement = this.#database.prepare<{ updated_at: number | null }, [string]>(
+      SQLITE_SELECT_WRITE_TIME_BY_KEY,
+    );
     // Build the transaction wrapper once; bun:sqlite memoizes the compiled
     // transaction so subsequent calls just run the prepared statements.
-    this.#batchTransaction = this.#database.transaction((entries: BatchOperation[]) => {
-      for (const entry of entries) {
-        if (entry.type === 'put') {
-          this.#putStatement.run(entry.key, entry.value);
-        } else {
-          this.#deleteStatement.run(entry.key);
+    this.#batchTransaction = this.#database.transaction(
+      (entries: BatchOperation[], writtenAt: number) => {
+        for (const entry of entries) {
+          if (entry.type === 'put') {
+            this.#putStatement.run(entry.key, entry.value, writtenAt);
+          } else {
+            this.#deleteStatement.run(entry.key);
+          }
         }
+      },
+    );
+  }
+
+  /**
+   * Add the `updated_at` column to a table created before this adapter recorded write times. The
+   * check and the change run in one immediate transaction, so two processes opening the same old
+   * file cannot both add it.
+   */
+  #addWriteTimeColumn(): void {
+    const addWhenMissing = this.#database.transaction(() => {
+      // Prepared and finalized here rather than cached by `query()`, so no statement outlives it.
+      const statement = this.#database.prepare<{ name: string }, []>(
+        SQLITE_SELECT_KEY_VALUE_COLUMNS,
+      );
+      let columns: string[];
+      try {
+        columns = statement.all().map((column) => column.name);
+      } finally {
+        statement.finalize();
+      }
+      if (!columns.includes('updated_at')) {
+        this.#database.exec(SQLITE_ADD_UPDATED_AT_COLUMN);
       }
     });
+    addWhenMissing.immediate();
   }
 
   capabilities(): StorageCapabilities {
@@ -154,7 +227,7 @@ export class BunSQLiteStorage implements Storage {
   }
 
   async put(key: string, value: Uint8Array): Promise<void> {
-    this.#putStatement.run(key, value);
+    this.#putStatement.run(key, value, this.#now());
   }
 
   async delete(key: string): Promise<void> {
@@ -163,6 +236,30 @@ export class BunSQLiteStorage implements Storage {
 
   async has(key: string): Promise<boolean> {
     return this.#hasStatement.get(key) != null;
+  }
+
+  /** When `key` was last written, or `null` when it is absent. */
+  async stat(key: string): Promise<StorageEntryMetadata | null> {
+    const row = this.#statStatement.get(key);
+    return row ? metadataFromWriteTime(row.updated_at) : null;
+  }
+
+  /** {@link BunSQLiteStorage.scan} with each entry's write time, read in the same statement. */
+  async *scanWithMetadata(
+    prefix: string,
+    options: ScanOptions = {},
+  ): AsyncIterable<StorageScanEntryWithMetadata> {
+    const { parameters, sql } = buildSqliteKeyValueMetadataRangeSelect(prefix, options);
+
+    let statement = this.#metadataScanStatements.get(sql);
+    if (!statement) {
+      statement = this.#database.prepare<KeyValueMetadataRow, SQLQueryBindings[]>(sql);
+      this.#metadataScanStatements.set(sql, statement);
+    }
+
+    for (const row of statement.all(...parameters)) {
+      yield [row.key, new Uint8Array(row.value), metadataFromWriteTime(row.updated_at)];
+    }
   }
 
   async deletePrefix(prefix: string): Promise<number> {
@@ -240,7 +337,7 @@ export class BunSQLiteStorage implements Storage {
     if (operations.length === 0) return;
     // A batch writes first, so a deferred transaction would also wait under the busy timeout;
     // `.immediate` keeps it in step with `conditionalBatch`, which reads before it writes.
-    this.#batchTransaction.immediate(operations);
+    this.#batchTransaction.immediate(operations, this.#now());
   }
 
   async conditionalBatch(
@@ -250,6 +347,7 @@ export class BunSQLiteStorage implements Storage {
     assertStorageBatchOperationCount('conditionalBatch conditions', conditions.length);
     assertStorageBatchOperationCount('conditionalBatch operations', operations.length);
 
+    const writtenAt = this.#now();
     const conditionalTransaction = this.#database.transaction(
       (pendingConditions: ConditionalBatchCondition[], pendingOperations: BatchOperation[]) =>
         runConditionalBatchBody(pendingConditions, pendingOperations, {
@@ -258,7 +356,7 @@ export class BunSQLiteStorage implements Storage {
             return row ? new Uint8Array(row.value) : null;
           },
           put: (key, value) => {
-            this.#putStatement.run(key, value);
+            this.#putStatement.run(key, value, writtenAt);
           },
           delete: (key) => {
             this.#deleteStatement.run(key);
@@ -303,6 +401,7 @@ export class BunSQLiteStorage implements Storage {
     this.#putStatement.finalize();
     this.#deleteStatement.finalize();
     this.#hasStatement.finalize();
+    this.#statStatement.finalize();
     for (const statement of this.#countStatements.values()) {
       statement.finalize();
     }
@@ -319,6 +418,10 @@ export class BunSQLiteStorage implements Storage {
       statement.finalize();
     }
     this.#keyStatements.clear();
+    for (const statement of this.#metadataScanStatements.values()) {
+      statement.finalize();
+    }
+    this.#metadataScanStatements.clear();
     for (const statement of this.#deleteRangeStatements.values()) {
       statement.finalize();
     }

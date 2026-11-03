@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { Engine } from '../../core/engine.ts';
 import { handleRequest } from '../handler.ts';
 import { previewStorageValue, STORAGE_VALUE_PREVIEW_BYTES } from './storage-value-preview.ts';
@@ -65,6 +66,78 @@ describe('weft.storage.preview', () => {
       format: 'json',
       preview: value,
       truncated: false,
+      updatedAt: null,
+    });
+  });
+
+  it('carries the key’s write time, so an editor refused for a newer write can say when the app wrote it', async () => {
+    // Central time on Mon, Nov 2, 2026: the editor opens the key at 10:42 AM, and the app
+    // rewrites it at 10:45 AM while the edit is open.
+    let clock = Date.UTC(2026, 10, 2, 16, 42);
+    using storage = new BunSQLiteStorage(':memory:', { now: () => clock });
+    await storage.put('memory:preferences', encode('{"tone":"short"}'));
+    await storage.put('agent-session:summary-index', encode('{"sessions":[]}'));
+    using engine = new Engine({ storage });
+
+    const opened = await preview(engine, 'memory:preferences');
+    expect(await opened.json()).toMatchObject({ updatedAt: Date.UTC(2026, 10, 2, 16, 42) });
+
+    clock = Date.UTC(2026, 10, 2, 16, 45);
+    await storage.put('memory:preferences', encode('{"tone":"long"}'));
+
+    // The editor saves only over the value it read, so the app's newer value is never overwritten.
+    const save = await handleRequest(
+      request('/v1/storage/-/conditional-batch', {
+        method: 'POST',
+        body: JSON.stringify({
+          conditions: [{ key: 'memory:preferences', expectedValue: btoa('{"tone":"short"}') }],
+          operations: [{ type: 'put', key: 'memory:preferences', value: btoa('{"tone":"mine"}') }],
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      engine,
+      adminStorageOptions(),
+    );
+    expect(await save.json()).toEqual({ applied: false });
+
+    const response = await preview(engine, 'memory:preferences');
+    expect(await response.json()).toEqual({
+      key: 'memory:preferences',
+      byteLength: 15,
+      format: 'json',
+      preview: '{"tone":"long"}',
+      truncated: false,
+      updatedAt: Date.UTC(2026, 10, 2, 16, 45),
+    });
+
+    const scan = await handleRequest(
+      request('/v1/storage?prefix=', { method: 'GET' }),
+      engine,
+      adminStorageOptions(),
+    );
+    const body = await scan.text();
+    const rows = body
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { key: string; updatedAt: number | null });
+    expect(rows.map(({ key, updatedAt }) => [key, updatedAt])).toEqual([
+      ['agent-session:summary-index', Date.UTC(2026, 10, 2, 16, 42)],
+      ['memory:preferences', Date.UTC(2026, 10, 2, 16, 45)],
+    ]);
+  });
+
+  it('previews exactly the named key, never a longer key it prefixes', async () => {
+    using storage = new BunSQLiteStorage(':memory:', { now: () => 1_000 });
+    await storage.put('memory:goalsx', encode('other'));
+    using engine = new Engine({ storage });
+
+    const absent = await preview(engine, 'memory:goals');
+    expect(absent.status).toBe(404);
+    await storage.put('memory:goals', encode('mine'));
+    const present = await preview(engine, 'memory:goals');
+    expect(await present.json()).toMatchObject({
+      preview: 'mine',
+      updatedAt: 1_000,
     });
   });
 
