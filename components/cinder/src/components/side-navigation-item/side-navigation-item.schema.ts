@@ -28,6 +28,46 @@ const schema = {
       type: 'string',
       description: 'Additional class merged onto the `.cinder-navigation-item` root element.',
     },
+    label: {
+      type: 'string',
+      description:
+        'The row\'s name as plain text ("Health", "Reviews"). It names the row when a count is\npresent ("Health, 3 need attention") and is the first part of the tooltip\n("Reviews · 2 need you"). Without it the row has no composed name and no tooltip.',
+    },
+    count: {
+      type: 'number',
+      description:
+        'A count of things that want attention. Zero, a negative number and `undefined` show nothing.\nShown as a pill beside the label (or on the icon when collapsed) unless `dot` is set, and\nalways part of the accessible name when `label` is given.',
+    },
+    countLabel: {
+      type: 'string',
+      description:
+        'The words that follow the count in the accessible name and tooltip: "need you" gives\n"Reviews, 2 need you". The pill\'s own name is the count plus these words.',
+    },
+    countTone: {
+      enum: ['neutral', 'success', 'warning', 'danger', 'info', 'accent'],
+      description:
+        "Tone of the count pill. Defaults to `'warning'`, the amber of a count that needs attention.",
+    },
+    dot: {
+      enum: [
+        'neutral',
+        'success',
+        'warning',
+        'danger',
+        'info',
+        'accent',
+        'online',
+        'offline',
+        'pending',
+      ],
+      description:
+        'A status dot shown beside the label (or on the icon when collapsed) in place of the numeric\npill, for a row whose state is a signal and not a figure. The dot is hidden from assistive\ntechnology, so a row that sets it should also set `count` and `countLabel`, which carry\nthe meaning in the accessible name.',
+    },
+    collapsed: {
+      type: 'boolean',
+      description:
+        "Whether the row is drawn as an icon-rail entry. Defaults to the enclosing `Sidebar`'s collapsed\nstate, so a row follows its sidebar without being told.",
+    },
     listItemClass: {
       type: 'string',
       description: 'Class merged onto the outer <li>.',
@@ -40,6 +80,14 @@ const schema = {
         name: 'children',
         reason: 'function-or-snippet',
         required: true,
+        description:
+          "The row's label, rendered after `icon`. When `icon` is also given, a collapsed row (an icon\nrail) hides this label visually and keeps it in the accessible name.",
+      },
+      {
+        name: 'icon',
+        reason: 'function-or-snippet',
+        description:
+          "The row's icon. Giving it lets the row collapse to an icon rail: the icon stays, the label\nstays in the accessible name, and the count or dot moves onto the icon's corner. The wrapper\nis `aria-hidden`, so the icon is decoration and the label names the row.",
       },
       {
         name: 'onclick',

@@ -55,7 +55,7 @@ describe('no accent stripe remains on the listed components', () => {
   test('a vertical NavigationItem marks the active row with a tint, never a stripe', () => {
     expect(stripeRules(navigationItem)).toEqual([]);
     expect(navigationItem).toMatch(
-      /\[data-variant='vertical'\]\[data-active='true'\]\s*\{[^}]*background-color:\s*var\(--cinder-surface-inset\)/s,
+      /\[data-variant='vertical'\]\[data-active='true'\]\s*\{[^}]*background-color:\s*var\(--cinder-accent-background\)/s,
     );
   });
 

@@ -1,3 +1,4 @@
+import './side-navigation-item.css';
 import SideNavigationItem from './side-navigation-item.svelte';
 
 export default SideNavigationItem;

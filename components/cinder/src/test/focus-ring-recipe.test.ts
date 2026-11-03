@@ -457,7 +457,8 @@ describe('vertical navigation-item geometry lives on the item', () => {
     const root = parse(navigationItemCss);
     const rule = findRule(root, ".cinder-navigation-item[data-variant='vertical']");
     expect(rule).toBeDefined();
-    expect(declValue(rule!, 'border-radius')).toBe('0');
+    // The row is a 6px-rounded control (COR-2010, row 02m), not a square flush edge.
+    expect(declValue(rule!, 'border-radius')).toBe('var(--cinder-radius-sm)');
     expect(declValue(rule!, 'border-bottom')).toBe('none');
   });
 
@@ -468,7 +469,8 @@ describe('vertical navigation-item geometry lives on the item', () => {
       ".cinder-navigation-item[data-variant='vertical'][data-active='true']",
     );
     expect(rule).toBeDefined();
-    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-surface-inset)');
+    // The current page is an accent tint (Sweep S13, row 02p), visible on any sidebar paint.
+    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-accent-background)');
     // A selected row is a tint, never an accent stripe (COR-1821).
     expect(declValue(rule!, 'border-inline-start-color')).toBeUndefined();
     expect(rule!.toString()).not.toContain('color-mix(');
