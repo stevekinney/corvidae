@@ -312,7 +312,7 @@ function createOperationTool(options: CreateOperationToolOptions): Tool {
     ...(version === undefined ? {} : { version }),
     input: z.object(inputShape),
     tags: ['openapi', method, ...extraTags],
-    metadata: metadataForMethod(method),
+    metadata: { ...metadataForMethod(method), ...titleMetadata(operation) },
     async execute(params) {
       const record = isRecord(params) ? params : {};
       const url = buildRequestUrl(baseUrl, path, pathParameterKeys, record);
@@ -436,6 +436,15 @@ function metadataForMethod(method: OpenAPIHttpMethod): ToolMetadata {
     return { readOnly: true, mutates: false, dangerous: false };
   }
   return { readOnly: false, mutates: true, dangerous: method === 'delete' };
+}
+
+/**
+ * The operation's `summary` as the tool's `title` ("List refunds"), the name a screen shows for it.
+ * It is not part of a tool's version (`tool-version.ts`), so a reworded summary keeps approvals.
+ */
+function titleMetadata(operation: OpenAPIOperation): ToolMetadata {
+  const title = operation.summary?.trim();
+  return title === undefined || title === '' ? {} : { title };
 }
 
 function toToolName(

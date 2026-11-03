@@ -1,4 +1,5 @@
 import type { AgentContributions } from './agent-contributions';
+import type { AgentWithBureauTools } from './agents-with-bureau-tools';
 import type { BureauWorkflows } from './workflow-runtime';
 import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
@@ -499,6 +500,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `BureauError` (`BAD_REQUEST`).
    */
   agents?: D;
+  /**
+   * COR-2009 — code-defined agents that hold Bureau's own tools, which an entry of
+   * {@link BureauOptions.agents} cannot: those tools read the Bureau, so they exist only once
+   * `createBureau` has started. Each key is an agent's name and each value builds the agent from
+   * the tools, by the name an agent file uses (`bureau:discover-agents`, and with an
+   * {@link BureauOptions.workflowSource} `bureau:workflows-create` and the other workflow tools).
+   * The function is called once, while the Bureau is built, and the agent it returns joins the
+   * catalog under its key as an entry of `agents` does. A key `agents` already holds, or the
+   * reserved `bureau`, is refused with `BureauError` (`BAD_REQUEST`).
+   */
+  agentsWithBureauTools?: Readonly<Record<string, AgentWithBureauTools>>;
   /**
    * COR-1702 — where agent definitions are loaded from, watched in, and written back to. Pass
    * `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources` for a directory of

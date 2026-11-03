@@ -1121,16 +1121,20 @@ const catalogOutput = z.object({
       description: z.string(),
       /** The one line a screen shows for the tool, or `null` when it declares none. */
       shortDescription: z.string().nullable(),
+      /** The tool's name for a person ("Issue refund"), or `null` when it has none and a screen shows `name`. */
+      title: z.string().nullable(),
       /** What the tool takes, as a JSON Schema; `null` when its schema cannot be written as one. */
       inputSchema: z.record(z.string(), z.unknown()).nullable(),
       /** What the tool may technically do; `null` when it declares none, which is never read as read-only. */
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool: the `on-changes` rule applied to the tier. */
       defaultApproval: z.enum(['allow', 'ask']),
-      /** `bureau` for a tool Bureau adds itself, `plugin` for one a plugin contributes, `host` for one the host passed in. */
-      source: z.enum(['host', 'bureau', 'plugin']),
-      /** The plugin that contributes the tool when `source` is `plugin`, else `null`. */
+      /** `skill` for a tool a skill brings, else `bureau` for a tool Bureau adds itself, `plugin` for one a plugin contributes, `host` for one the host passed in. */
+      source: z.enum(['host', 'bureau', 'plugin', 'skill']),
+      /** The plugin that contributes the tool (`source` is `plugin`, or `skill` for a plugin's skill), else `null`. */
       plugin: z.string().nullable(),
+      /** The skill that brings the tool when `source` is `skill`, else `null`. */
+      skill: z.string().nullable(),
       /** The agents that use the tool now: ready agent files that list it, and code agents that name it. */
       users: z.array(z.string()),
     }),
@@ -1146,7 +1150,7 @@ export const agentsCatalogOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the models and tools an agent may name',
   description:
-    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: the `on-changes` rule a file agent’s tool follows when its `toolApproval` says nothing (COR-1913), applied to the tier; a file’s own `toolApproval` entry replaces it for that agent), its `source` (`bureau` for the settings and workflow tools Bureau adds, `plugin` for a tool a plugin contributes, with that plugin’s name as `plugin`, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+    'Returns the deployment’s selectable `models`, the rows of its model catalog unfiltered and each reduced to the `general` audience whoever asks (pricing and `endpointAmbiguous` are never returned), and its `tools`, by the name an agent file lists them under, each with its model-facing `description`, a `shortDescription` (one line for a person, or `null` when the tool declares none), its `title` (the tool’s name for a person, such as “Issue refund”, from `metadata.title` or an MCP tool’s own title; `null` when it has none), its `inputSchema` (JSON Schema, or `null`), its capability `tier` (`read-only`, `mutating` or `dangerous`; `null` when it declares none), its `defaultApproval` (`allow` for a read-only tool, `ask` for a tool that changes something, is dangerous or is unclassified: the `on-changes` rule a file agent’s tool follows when its `toolApproval` says nothing (COR-1913), applied to the tier; a file’s own `toolApproval` entry replaces it for that agent), its `source` (`skill` for a tool a skill brings, whose `metadata.skill` names it, with that skill as `skill`; otherwise `bureau` for the settings and workflow tools Bureau adds, `plugin` for a tool a plugin contributes, with that plugin’s name as `plugin`, `host` for tools the host provides) and its `users`, the identifiers of the agents that use it now. A definition’s `model` is written `<provider>/<model-or-alias>` and its `tools` are names from this list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: catalogInput,

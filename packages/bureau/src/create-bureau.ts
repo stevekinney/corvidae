@@ -157,6 +157,7 @@ import {
   validateBuiltInPluginOptions,
   withBuiltInPlugin,
 } from './plugins/bureau-plugin';
+import { bureauOwnTools, withAgentsBuiltFromBureauTools } from './agents-with-bureau-tools';
 import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createPluginRegistry } from './plugins/plugin-registry';
@@ -2593,6 +2594,16 @@ async function constructBureau<const D extends AgentDefinitions>(
           }),
         )),
   ];
+  // COR-2009 — the code-defined agents built from Bureau's own tools join `agents` before any
+  // plugin is composed, so a plugin agent of the same name is a clash, as with any host agent.
+  const agentsWithOwnTools = withAgentsBuiltFromBureauTools(
+    options.agents,
+    options.agentsWithBureauTools,
+    bureauOwnTools(bureauTools),
+    BUREAU_AGENT_NAME,
+    toBadRequest,
+  );
+  if (agentsWithOwnTools !== undefined) options = { ...options, agents: agentsWithOwnTools };
   // COR-1879 — plugin setup runs once the caller's options are known to be usable, and what the
   // running plugins contribute is folded into the options the rest of construction reads.
   const composedPlugins = await composePlugins({

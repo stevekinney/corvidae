@@ -14,7 +14,11 @@
  * @module showcase-agents
  */
 
-import { createToolApprovalHooks, type ToolApprovalMode } from '@lostgradient/bureau';
+import {
+  createToolApprovalHooks,
+  type BureauOwnTools,
+  type ToolApprovalMode,
+} from '@lostgradient/bureau';
 import {
   createAgent,
   createModelCatalog,
@@ -76,6 +80,15 @@ export const SHOWCASE_MODEL_SWITCHER_MODELS = [
 ] as const;
 
 /**
+ * The Bureau tools Workflow author holds, by the name an agent file uses, and how it asks for each:
+ * Create workflow On changes, and Discover agents, which only reads, Never.
+ */
+export const SHOWCASE_WORKFLOW_AUTHOR_TOOLS: Readonly<Record<string, ToolApprovalMode>> = {
+  'bureau:workflows-create': 'on-changes',
+  'bureau:discover-agents': 'never',
+};
+
+/**
  * The orders the sample world knows: each total, in cents, and the day it was delivered. Lookup
  * order answers from it, and Tool runner refunds an order's whole total.
  */
@@ -104,7 +117,7 @@ export function createShowcaseLookupOrderTool() {
     version: '1.0.0',
     description: 'Look up an order by its number.',
     input: z.object({ orderId: z.string() }),
-    metadata: { readOnly: true },
+    metadata: { readOnly: true, title: 'Lookup order' },
     execute: async ({ orderId }) => {
       const order = SHOWCASE_ORDERS[orderId];
       return order === undefined
@@ -114,14 +127,22 @@ export function createShowcaseLookupOrderTool() {
   });
 }
 
-/** The mutating tool: refunds an order. It can't be undone, so a person approves every call. */
+/**
+ * The dangerous tool: refunds an order. Money leaves and it can't be undone, so its risk is
+ * Dangerous wherever it shows (sweep S64), and a person approves every call.
+ */
 export function createShowcaseIssueRefundTool() {
   return createTool({
     name: 'issue-refund',
     version: '1.0.0',
     description: 'Refund an order to the original card. A person approves every refund.',
     input: z.object({ orderId: z.string(), cents: z.number(), reason: z.string() }),
-    metadata: { mutates: true, summary: 'Refund order {orderId} for {cents:usd-cents}?' },
+    metadata: {
+      mutates: true,
+      dangerous: true,
+      title: 'Issue refund',
+      summary: 'Refund order {orderId} for {cents:usd-cents}?',
+    },
     execute: async ({ orderId, cents }) => ({ orderId, refundedCents: cents }),
   });
 }
@@ -133,7 +154,7 @@ export function createShowcaseTriageRefundsTool() {
     version: '1.0.0',
     description: 'Sort the refunds that are still waiting into the right queue.',
     input: z.object({ since: z.string().optional() }),
-    metadata: { mutates: true },
+    metadata: { mutates: true, title: 'Triage refunds' },
     execute: async () => ({ triaged: 0 }),
   });
 }
@@ -303,8 +324,37 @@ export function createShowcaseToolRunnerToolbox() {
 }
 
 /**
+ * Workflow author, built from the Bureau's own tools: it holds Create workflow and Discover agents
+ * ({@link SHOWCASE_WORKFLOW_AUTHOR_TOOLS}), which only the Bureau can make, so the showcase host
+ * passes it as `ExtraAgents.withBureauTools`. A tool the Bureau does not offer (Create workflow
+ * without a workflow directory) is left out.
+ */
+export function showcaseWorkflowAuthor(tools: BureauOwnTools) {
+  const held = Object.fromEntries(
+    Object.keys(SHOWCASE_WORKFLOW_AUTHOR_TOOLS).flatMap((name) => {
+      const tool = Object.hasOwn(tools, name) ? tools[name] : undefined;
+      return tool === undefined ? [] : [[name, tool] as const];
+    }),
+  );
+  return createAgent({
+    name: 'workflow-author',
+    description: 'Drafts a workflow from a description, and asks before it creates the file.',
+    examples: ['Help me build a workflow that…'],
+    generate: createScriptedGenerate(repeatedReply(SHOWCASE_WORKFLOW_AUTHOR_REPLY)),
+    // Keyed by the names an agent file uses, so the catalog counts Workflow author among their users.
+    tools: held,
+    toolboxOptions: () => ({
+      approvalSecret: SHOWCASE_APPROVAL_SECRET,
+      policy: createToolApprovalHooks(SHOWCASE_WORKFLOW_AUTHOR_TOOLS, { tools: held }),
+    }),
+    stopWhen: stopWhen.noToolCalls(),
+  });
+}
+
+/**
  * The six built-in agents, fresh, so no two hosts share a script's position. The showcase host
- * passes them as `HostOptions.extraAgents`.
+ * passes them as `HostOptions.extraAgents`: Workflow author among those built from the Bureau's
+ * own tools.
  */
 export function showcaseBuiltInAgents(): ExtraAgents {
   return {
@@ -348,13 +398,7 @@ export function showcaseBuiltInAgents(): ExtraAgents {
         allowedCandidates: SHOWCASE_MODEL_SWITCHER_MODELS,
         stopWhen: stopWhen.noToolCalls(),
       }),
-      'workflow-author': createAgent({
-        name: 'workflow-author',
-        description: 'Drafts a workflow from a description, and asks before it creates the file.',
-        examples: ['Help me build a workflow that…'],
-        generate: createScriptedGenerate(repeatedReply(SHOWCASE_WORKFLOW_AUTHOR_REPLY)),
-        stopWhen: stopWhen.noToolCalls(),
-      }),
     },
+    withBureauTools: { 'workflow-author': showcaseWorkflowAuthor },
   };
 }

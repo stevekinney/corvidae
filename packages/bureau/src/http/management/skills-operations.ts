@@ -60,6 +60,12 @@ export type BureauSkillsOperationHost = BureauOwnershipHost & {
   readonly skills: {
     /** The host's current standing, or `undefined` when the host discovers no skills. */
     readonly standing: () => SkillsStanding | Promise<SkillsStanding> | undefined;
+    /**
+     * The deployment's tool catalog (COR-2009): each tool by the name an agent file uses, with the
+     * skill that brings it (`skill`, from the tool's `metadata.skill`) or `null`. A skill lists the
+     * tools that name it. Omitted, no skill brings tools.
+     */
+    readonly tools?: () => readonly { readonly name: string; readonly skill: string | null }[];
   };
 };
 
@@ -86,6 +92,11 @@ const skillSchema = z.object({
   unavailableReason: z.string().nullable(),
   /** The tools the skill's `allowed-tools` asks to keep; empty when it states none. A request, never a grant. */
   allowedTools: z.array(z.string()),
+  /**
+   * The tools the skill brings, by the name an agent file uses, sorted: the catalog tools whose
+   * `metadata.skill` names it. Empty for a skill of instructions only.
+   */
+  tools: z.array(z.string()),
 });
 
 const sourceSchema = z.object({
@@ -120,7 +131,7 @@ export const skillsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the executable skills and their sources',
   description:
-    'Returns the executable Agent Skills the host discovered, ordered by name, each with its `name`, `description`, `source` (`id`, `kind`, `location`, and `plugin`, the plugin that ships a `plugin` skill, or `null`), `trust` (`trusted`, `untrusted` or `revoked`, with the `trustReason`), whether an agent may activate it (`available`, and `unavailableReason` when not) and the tools its `allowed-tools` asks to keep (`allowedTools`, a request and never a grant). A skill from an untrusted source is listed, and an activation of it is refused with `source-untrusted`. `sources` lists every configured source with its trust and how many skills it contributed, so a source that holds none is still visible; `trustLocked` is the reason the host refuses to change trust (`deployment` for a remote host), or `null`. These are not the descriptive skills an agent file declares (`skillDescriptors`). A host that discovers no skills answers an empty list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
+    'Returns the executable Agent Skills the host discovered, ordered by name, each with its `name`, `description`, `source` (`id`, `kind`, `location`, and `plugin`, the plugin that ships a `plugin` skill, or `null`), `trust` (`trusted`, `untrusted` or `revoked`, with the `trustReason`), whether an agent may activate it (`available`, and `unavailableReason` when not) the tools its `allowed-tools` asks to keep (`allowedTools`, a request and never a grant) and the tools it brings (`tools`: the catalog tools whose `metadata.skill` names it, by the name an agent file uses, which `bureau.agents.catalog` lists with `source: "skill"`; empty for a skill of instructions only). A skill from an untrusted source is listed, and an activation of it is refused with `source-untrusted`. `sources` lists every configured source with its trust and how many skills it contributed, so a source that holds none is still visible; `trustLocked` is the reason the host refuses to change trust (`deployment` for a remote host), or `null`. These are not the descriptive skills an agent file declares (`skillDescriptors`). A host that discovers no skills answers an empty list. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is refused with `Forbidden`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: listInput,
@@ -142,6 +153,11 @@ export const skillsListOperation = defineOperation<
     if (standing === undefined) {
       return { revision: null, skills: [], sources: [], trustLocked: null };
     }
+    const brought = new Map<string, string[]>();
+    for (const tool of host.skills.tools?.() ?? []) {
+      if (tool.skill === null) continue;
+      brought.set(tool.skill, [...(brought.get(tool.skill) ?? []), tool.name]);
+    }
     const counts = new Map<string, number>();
     for (const record of standing.catalog.records) {
       counts.set(record.sourceId, (counts.get(record.sourceId) ?? 0) + 1);
@@ -162,6 +178,7 @@ export const skillsListOperation = defineOperation<
         available: record.available,
         unavailableReason: record.unavailableReason ?? null,
         allowedTools: [...record.allowedTools],
+        tools: (brought.get(record.name) ?? []).toSorted(),
       })),
       sources: standing.sources.map((source) => ({
         id: source.id,

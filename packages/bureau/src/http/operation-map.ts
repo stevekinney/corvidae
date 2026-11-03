@@ -162,6 +162,9 @@ export const OPERATION_MAP = {
   'bureau.agents.list': { member: 'agents.list' },
   // Describes one catalog agent against the models catalog (COR-1708).
   'bureau.agents.models': { member: 'agents.models' },
+  'bureau.agents.references': {
+    exempt: 'composed from the catalog, the schedules, the workflow files, and the hooks',
+  },
   'bureau.agents.try': { member: 'agents.try' },
   'bureau.agents.definitions.create': { member: 'agents.create' },
   'bureau.agents.definitions.update': { member: 'agents.update' },

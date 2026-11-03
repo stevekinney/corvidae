@@ -102,6 +102,11 @@ import {
   agentsModelsOperation,
 } from './management/agents-models-operation.ts';
 import {
+  type BureauAgentReferencesOperationHost,
+  agentsReferencesOperation,
+} from './management/agent-references-operation.ts';
+import { findAgentReferences } from '../agent-references.ts';
+import {
   type BureauContextsInputOperationHost,
   contextsInputOperation,
 } from './management/contexts-input-operation.ts';
@@ -355,6 +360,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsRenameOperationHost &
   BureauContextsWindowOperationHost &
   BureauAgentModelsOperationHost &
+  BureauAgentReferencesOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
   BureauWorkerDeploymentsOperationHost &
@@ -744,6 +750,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   diagnosticsGetOperation,
   agentsListOperation,
   agentsModelsOperation,
+  agentsReferencesOperation,
   tasksListOperation,
   tasksGetOperation,
   tasksInspectOperation,
@@ -1146,6 +1153,28 @@ function createPushSupport(
   return { delivery, checkpoints, projector, ready };
 }
 
+/** How many schedules one page of {@link scheduleReferencesOf} reads. */
+const SCHEDULE_REFERENCE_PAGE = 100;
+
+/** Every schedule of the Bureau with the agent it runs and its name, for `bureau.agents.references`. */
+async function scheduleReferencesOf(
+  bureau: BureauHandlerSource,
+): Promise<{ id: string; agentName: string | undefined; name: string | null }[]> {
+  const found: { id: string; agentName: string | undefined; name: string | null }[] = [];
+  for (let offset = 0; ; offset += SCHEDULE_REFERENCE_PAGE) {
+    const page = await bureau.schedules.list({ limit: SCHEDULE_REFERENCE_PAGE, offset });
+    if (page === undefined) return found;
+    for (const summary of page.items) {
+      found.push({
+        id: summary.id,
+        agentName: await bureau.schedules.agentName(summary.id),
+        name: summary.description ?? null,
+      });
+    }
+    if (offset + page.items.length >= page.total || page.items.length === 0) return found;
+  }
+}
+
 /** How many of an opted-out agent's tasks one tombstone check reads at a time. */
 const TOMBSTONE_SCAN_PAGE = 50;
 
@@ -1198,6 +1227,23 @@ export function buildBureauHandlerHost(
     agentModels: {
       describe: (agentName) => bureau.agents.models(agentName),
     },
+    agentReferences: {
+      has: (agentName) => bureau.agents.list().some((agent) => agent.id === agentName),
+      find: (agentName) =>
+        findAgentReferences(agentName, {
+          schedules: () => scheduleReferencesOf(bureau),
+          ...(bureau.workflows === undefined
+            ? {}
+            : {
+                workflows: () => bureau.workflows?.list() ?? [],
+                workflowText: async (id) => {
+                  const detail = await bureau.workflows?.get(id);
+                  return detail?.text;
+                },
+              }),
+          ...(bureau.hooks === undefined ? {} : { hooks: () => bureau.hooks?.list() ?? [] }),
+        }),
+    },
     agentDefinitions: {
       agents: bureau.agents,
       optsCodeAgentIntoA2A: (id) => a2aAgents.includes(id),
@@ -1206,7 +1252,7 @@ export function buildBureauHandlerHost(
         await bureau.internals.auditTrail?.record(entry);
       },
     },
-    skills: { standing: () => skills?.standing() },
+    skills: { standing: () => skills?.standing(), tools: () => bureau.agents.tools() },
     workflows: bureau.workflows,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);

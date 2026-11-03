@@ -214,8 +214,10 @@ function namesAnAgent(operation: CatalogOperation): boolean {
 
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
 function definitionParameters(operation: CatalogOperation) {
-  // The one agent operation that names an agent and nothing else (COR-1559).
-  if (operation.name === 'bureau.agents.models') return { agentName: 'x' };
+  // The agent operations that name an agent and nothing else (COR-1559, COR-2009).
+  if (operation.name === 'bureau.agents.models' || operation.name === 'bureau.agents.references') {
+    return { agentName: 'x' };
+  }
   // COR-1709: a complete request, so the call reaches its own check instead of failing validation.
   if (operation.name === 'bureau.decisions.decide') return { kind: 'boolean', question: 'Is it?' };
   // COR-1710: a complete patch, so the call reaches its own check instead of failing validation.

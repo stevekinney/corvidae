@@ -101,6 +101,7 @@ import {
   createDurableAssetStorage,
   resolveProviderGenerate,
   type AgentDefinitions,
+  type AgentWithBureauTools,
   type Bureau,
   type BureauPluginEntry,
   type SettingsOptions,
@@ -264,7 +265,14 @@ export const BUREAU_PATH_PREFIX = '/bureau';
 
 /** Agents a host serves beside the ones its plugins contribute. */
 export type ExtraAgents = {
+  /** The agents, by name. */
   readonly agents: Readonly<Record<string, AgentDefinitions[string]>>;
+  /**
+   * Agents that hold Bureau's own tools (COR-2009), by name: each function builds its agent from
+   * them (`bureau:workflows-create`, `bureau:discover-agents`, …), once the Bureau has made them.
+   * They are served as {@link ExtraAgents.agents} are, and a name may be in only one of the two.
+   */
+  readonly withBureauTools?: Readonly<Record<string, AgentWithBureauTools>>;
 };
 
 /**
@@ -573,7 +581,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   // so it stops the host before anything opens, rather than silently dropping the plugin.
   for (const name of DEMO_AGENT_NAMES) {
     const id = `demo:${name}`;
-    if (options.extraAgents?.agents !== undefined && id in options.extraAgents.agents) {
+    const extra = { ...options.extraAgents?.agents, ...options.extraAgents?.withBureauTools };
+    if (Object.hasOwn(extra, id)) {
       throw new Error(
         `The extra agent "${id}" has the name of an agent the demo plugin contributes, which would clash with it. Give it another name.`,
       );
@@ -732,6 +741,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: { ...options.extraAgents?.agents },
+      ...(options.extraAgents?.withBureauTools === undefined
+        ? {}
+        : { agentsWithBureauTools: { ...options.extraAgents.withBureauTools } }),
       // The default of the `decisions.model` setting is the plugin's Jev model, while that plugin
       // is loaded and enabled; the other choice is Bureau's own `catalog`, the language-model fallback.
       ...defaultDecisionOptions(pluginManager.loadable(), pluginManager.settings()),

@@ -328,6 +328,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     input: createInput,
     metadata: {
       mutates: true,
+      title: 'Create workflow',
       shortDescription: 'Create a workflow Bureau runs on a schedule or a signal.',
     },
     execute: async (input, context): Promise<WorkflowToolResult> => {
@@ -364,7 +365,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description:
       'Replace a workflow with a new trigger and steps, if its file still has the `hash` bureau__workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `title`, `description`, `inputSchema`, and `outputSchema` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
-    metadata: { mutates: true, shortDescription: 'Replace a workflow’s trigger and steps.' },
+    metadata: {
+      mutates: true,
+      title: 'Update workflow',
+      shortDescription: 'Replace a workflow’s trigger and steps.',
+    },
     execute: async (input, context): Promise<WorkflowToolResult> => {
       const calling = await caller(context, input.id);
       if ('refusal' in calling) return calling.refusal;
@@ -394,6 +399,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       input: guardedInput,
       metadata: {
         mutates: true,
+        title: paused ? 'Pause workflow' : 'Resume workflow',
         shortDescription: paused
           ? 'Pause a workflow so it starts nothing new.'
           : 'Resume a paused workflow.',
@@ -426,7 +432,11 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description:
       'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its title and description, and its `inputSchema` and `outputSchema` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
     input: z.object({}),
-    metadata: { readOnly: true, shortDescription: 'List the workflows and their state.' },
+    metadata: {
+      readOnly: true,
+      title: 'List workflows',
+      shortDescription: 'List the workflows and their state.',
+    },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
       const calling = await caller(context, '');
       if ('refusal' in calling) {

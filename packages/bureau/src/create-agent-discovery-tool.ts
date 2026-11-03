@@ -45,7 +45,11 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
     description:
       'Discover available agents on this bureau by searching their names, descriptions, and skills.',
     // Read-only, so an agent file that lists it runs it without asking (COR-1890).
-    metadata: { readOnly: true, shortDescription: 'Find the agents on this Bureau.' },
+    metadata: {
+      readOnly: true,
+      title: 'Discover agents',
+      shortDescription: 'Find the agents on this Bureau.',
+    },
     input: z.object({
       text: z
         .string()

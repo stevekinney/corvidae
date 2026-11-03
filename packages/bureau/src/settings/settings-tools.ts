@@ -44,7 +44,11 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
     description:
       "Read the deployment's runtime settings: each setting's value by dotted key, the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked (with the `lockReason`).",
     input: z.object({}),
-    metadata: { readOnly: true, shortDescription: "Read the deployment's runtime settings." },
+    metadata: {
+      readOnly: true,
+      title: 'Read settings',
+      shortDescription: "Read the deployment's runtime settings.",
+    },
     execute: async (): Promise<SettingsSnapshot> => host.settings().get(),
   });
 
@@ -61,7 +65,11 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
         .nonnegative()
         .describe('The revision settings-get returned.'),
     }),
-    metadata: { mutates: true, shortDescription: "Change the deployment's runtime settings." },
+    metadata: {
+      mutates: true,
+      title: 'Change settings',
+      shortDescription: "Change the deployment's runtime settings.",
+    },
     execute: async (input, context): Promise<SettingsUpdateResult> => {
       const runId = runIdOf(context);
       const principal = runId === undefined ? undefined : await host.ownerOf(runId);

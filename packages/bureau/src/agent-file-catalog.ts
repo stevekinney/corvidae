@@ -73,6 +73,7 @@ import {
   type ApprovalStatus,
   type CapabilityTier,
   readToolShortDescription,
+  readToolTitle,
   resolveCapabilityTier,
   type Tool,
   type ToolSecretResolver,
@@ -194,6 +195,12 @@ export interface AgentToolDescription {
    */
   readonly shortDescription: string | null;
   /**
+   * The tool's name for a person ("Issue refund" for `issue-refund`): its `metadata.title`, or the
+   * `title` an MCP server gave it, or `null` when it has neither, in which case a screen shows the
+   * identifier (COR-2009).
+   */
+  readonly title: string | null;
+  /**
    * The tool's input as a JSON Schema (draft 2020-12, the `input` side), or `null` when the schema
    * cannot be written as one. Another process never receives a function, so a screen that shows
    * what the tool takes reads this.
@@ -214,13 +221,20 @@ export interface AgentToolDescription {
    */
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
-   * Where the tool comes from: `bureau` for a tool Bureau adds itself (the settings and workflow
-   * tools, and the built-in `bureau` plugin's), `plugin` for a tool another plugin contributes
-   * (`plugin:name`, COR-1892), `host` for a tool the host passed in `agentSource.tools`.
+   * Where the tool comes from: `skill` for a tool a skill brings (its `metadata.skill` names the
+   * skill, COR-2009), whoever registered it; otherwise `bureau` for a tool Bureau adds itself (the
+   * settings and workflow tools, and the built-in `bureau` plugin's), `plugin` for a tool another
+   * plugin contributes (`plugin:name`, COR-1892), `host` for a tool the host passed in
+   * `agentSource.tools`.
    */
-  readonly source: 'host' | 'bureau' | 'plugin';
-  /** The plugin that contributes the tool when {@link AgentToolDescription.source} is `plugin`, else `null`. */
+  readonly source: 'host' | 'bureau' | 'plugin' | 'skill';
+  /**
+   * The plugin that contributes the tool: set when it comes from a plugin other than the built-in
+   * one, whether {@link AgentToolDescription.source} is `plugin` or `skill`, else `null`.
+   */
   readonly plugin: string | null;
+  /** The skill that brings the tool when {@link AgentToolDescription.source} is `skill`, else `null`. */
+  readonly skill: string | null;
   /**
    * The identifiers of the agents that use the tool now, sorted: a ready agent file that lists it
    * in `tools`, and a code-defined agent that names it. Read from the definitions as they stand,
@@ -251,16 +265,32 @@ export function describeToolCapability(
   };
 }
 
-/** Where the tool `name` comes from, and the plugin that contributes it. */
+/**
+ * The skill a tool belongs to: its `metadata.skill`, the name of the skill that brings it, when that
+ * is a non-blank string (COR-2009), else `undefined`.
+ */
+export function readToolSkill(metadata: Tool['metadata']): string | undefined {
+  const value = metadata?.['skill'];
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
+/** Where the tool `name` comes from, the plugin that contributes it, and the skill that brings it. */
 function toolOrigin(
   name: string,
+  tool: Pick<Tool, 'metadata'>,
   options: Pick<AgentFileCatalogOptions, 'bureauToolNames' | 'pluginToolNames'>,
-): Pick<AgentToolDescription, 'source' | 'plugin'> {
-  if (options.bureauToolNames?.has(name) === true) return { source: 'bureau', plugin: null };
-  if (options.pluginToolNames?.has(name) === true) {
-    return { source: 'plugin', plugin: name.slice(0, name.indexOf(':')) };
+): Pick<AgentToolDescription, 'source' | 'plugin' | 'skill'> {
+  const plugin =
+    options.pluginToolNames?.has(name) === true ? name.slice(0, name.indexOf(':')) : null;
+  const skill = readToolSkill(tool.metadata);
+  if (skill !== undefined) return { source: 'skill', plugin, skill };
+  if (options.bureauToolNames?.has(name) === true) {
+    return { source: 'bureau', plugin: null, skill: null };
   }
-  return { source: 'host', plugin: null };
+  if (plugin !== null) return { source: 'plugin', plugin, skill: null };
+  return { source: 'host', plugin: null, skill: null };
 }
 
 /** The reserved name of the implicit Bureau-wide agent, which no longer exists. No file may take its name. */
@@ -1595,8 +1625,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           name,
           description: tool.description,
           shortDescription: readToolShortDescription(tool.metadata) ?? null,
+          title: readToolTitle(tool.metadata) ?? null,
           ...describeToolCapability(tool),
-          ...toolOrigin(name, options),
+          ...toolOrigin(name, tool, options),
           users: (users.get(name) ?? []).toSorted(),
         }))
         .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));

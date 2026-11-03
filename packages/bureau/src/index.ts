@@ -38,6 +38,7 @@ export type {
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
 export { createAgentContributions, NO_AGENT_CONTRIBUTIONS } from './agent-contributions';
+export type { AgentWithBureauTools, BureauOwnTools } from './agents-with-bureau-tools';
 export type {
   BureauMemoryFactory,
   BureauPluginEntry,

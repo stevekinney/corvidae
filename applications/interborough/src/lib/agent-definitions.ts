@@ -242,16 +242,20 @@ const catalogSchema = z.object({
       description: z.string(),
       /** The one line a person is shown for the tool, or `null` when the tool declares none. */
       shortDescription: z.string().nullable(),
+      /** The tool's name for a person ("Issue refund"), or `null` when it has none. */
+      title: z.string().nullable(),
       /** What the tool takes, as a JSON Schema, or `null` when it cannot be written as one. */
       inputSchema: z.record(z.string(), z.unknown()).nullable(),
       /** What the tool may technically do, or `null` when it declares none. */
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool (Armorer's tier rule). */
       defaultApproval: z.enum(['allow', 'ask']),
-      /** `bureau` for a tool Bureau adds, `plugin` for one a plugin contributes, `host` for one the host provides (an MCP server's). */
-      source: z.enum(['host', 'bureau', 'plugin']),
-      /** The plugin that contributes the tool when `source` is `plugin`, else `null`. */
+      /** `skill` for a tool a skill brings, else `bureau` for a tool Bureau adds, `plugin` for one a plugin contributes, `host` for one the host provides (an MCP server's). */
+      source: z.enum(['host', 'bureau', 'plugin', 'skill']),
+      /** The plugin that contributes the tool (`source` is `plugin`, or `skill` for a plugin's skill), else `null`. */
       plugin: z.string().nullable(),
+      /** The skill that brings the tool when `source` is `skill`, else `null`. */
+      skill: z.string().nullable(),
       /** The agents that use the tool now. */
       users: z.array(z.string()),
     }),

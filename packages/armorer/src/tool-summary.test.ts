@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createApprovalPolicyHooks, withToolSummary } from './approval-policy';
 import { createTool, createToolCall } from './create-tool';
 import type { ToolPolicyContext } from './is-tool';
-import { readToolShortDescription, renderToolSummary } from './tool-summary';
+import { readToolShortDescription, readToolTitle, renderToolSummary } from './tool-summary';
 
 const metadata = { mutates: true, summary: 'Refund order {orderId} for {cents:usd-cents}' };
 
@@ -96,5 +96,24 @@ describe('readToolShortDescription', () => {
       execute: async ({ orderId }) => ({ orderId }),
     });
     expect(readToolShortDescription(tool.metadata)).toBe('Look up an order by its identifier.');
+  });
+});
+
+describe('readToolTitle', () => {
+  it('returns the trimmed title a tool declares', () => {
+    expect(readToolTitle({ title: '  Issue refund ' })).toBe('Issue refund');
+  });
+
+  it('falls back to the title an MCP server gave the tool', () => {
+    expect(readToolTitle({ mcp: { title: 'List issues' } })).toBe('List issues');
+    expect(readToolTitle({ title: 'Own title', mcp: { title: 'List issues' } })).toBe('Own title');
+  });
+
+  it('returns undefined when the tool has no title, a blank one, or one that is not text', () => {
+    expect(readToolTitle(undefined)).toBeUndefined();
+    expect(readToolTitle({ readOnly: true })).toBeUndefined();
+    expect(readToolTitle({ title: '   ', mcp: { title: ' ' } })).toBeUndefined();
+    expect(readToolTitle({ title: 4 } as never)).toBeUndefined();
+    expect(readToolTitle({ mcp: ['List issues'] })).toBeUndefined();
   });
 });
