@@ -102,11 +102,11 @@
       onkeydown={handleKeydown}
     >
       {#if position.value === 'light'}
-        <Sun class="cinder-icon-sm" aria-hidden="true" />
+        <Sun class="cinder-theme-switch__icon" aria-hidden="true" />
       {:else if position.value === 'system'}
-        <Monitor class="cinder-icon-sm" aria-hidden="true" />
+        <Monitor class="cinder-theme-switch__icon" aria-hidden="true" />
       {:else}
-        <Moon class="cinder-icon-sm" aria-hidden="true" />
+        <Moon class="cinder-theme-switch__icon" aria-hidden="true" />
       {/if}
     </button>
   {/each}
