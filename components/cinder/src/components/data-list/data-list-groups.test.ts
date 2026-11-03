@@ -130,6 +130,33 @@ describe('DataList live insertion', () => {
   });
 });
 
+describe('DataList live insertion status strip', () => {
+  test('draws nothing until rows arrive, then marks the live region as the visible strip', async () => {
+    const { container, rerender } = render(StatusListFixture, {
+      props: { announce: true, grouped: true, rows: [row('a', 'Today')] },
+    });
+    const live = container.querySelector('.cinder-data-list-live');
+    expect(live?.hasAttribute('data-announced')).toBe(false);
+
+    await rerender({ rows: [row('n', 'Today', 'Look up order 4475'), row('a', 'Today')] });
+    expect(live?.hasAttribute('data-announced')).toBe(true);
+    // The drawn text and the spoken text are the same polite region.
+    expect(live?.querySelector('[role="status"]')?.textContent?.trim()).toBe('1 new run');
+    expect(live?.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
+  });
+
+  test('an announced strip is drawn in flow as the accent band above the first group', () => {
+    const rule = stylesheet.match(/\.cinder-data-list-live\[data-announced\]\s*\{([^}]*)\}/)?.[1];
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/position:\s*static/);
+    expect(rule).toMatch(/clip-path:\s*none/);
+    expect(rule).toMatch(/overflow:\s*visible/);
+    expect(rule).toMatch(/background:\s*var\(--cinder-accent-background\)/);
+    expect(rule).toMatch(/color:\s*var\(--cinder-accent-text\)/);
+    expect(rule).not.toMatch(/display:\s*none/);
+  });
+});
+
 describe('scroll anchor', () => {
   function listWithRows(tops: number[]) {
     const scroller = document.createElement('div');

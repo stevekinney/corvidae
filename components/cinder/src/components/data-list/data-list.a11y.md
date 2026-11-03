@@ -21,7 +21,7 @@ With `groupBy` each group is an `<li>` that holds a header (`<div id>`) and a ne
 
 ## Live insertion
 
-With `insertionAnnouncement` the list holds one extra `<li role="presentation">` that contains a polite live region (`role="status"`, `aria-live="polite"`, `aria-atomic="true"`). The element is not drawn and takes no space. It speaks the text you return when rows that were not in the previous render appear (`1 new run`); the first render and removed or reordered rows are not announced. Do not also announce the same change elsewhere on the page.
+With `insertionAnnouncement` the list holds one extra `<li role="presentation">` that contains a polite live region (`role="status"`, `aria-live="polite"`, `aria-atomic="true"`). Until rows arrive the element is not drawn and takes no space; once it announces it is drawn as an accent status strip above the first group, with the same text. It speaks the text you return when rows that were not in the previous render appear (`1 new run`); the first render and removed or reordered rows are not announced. Do not also announce the same change elsewhere on the page.
 
 ## Accessible naming
 

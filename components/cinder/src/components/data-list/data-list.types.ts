@@ -56,9 +56,9 @@ export type DataListProps<T> = Omit<
   groupBy?: (item: T) => DataListGroup;
   /**
    * Announce rows inserted while the list is on screen. Called with the number of new rows; the
-   * returned text (`1 new run`) is spoken politely through a live region that takes no space.
-   * The first render announces nothing. Rows inserted above the viewport do not move what the
-   * reader is looking at.
+   * returned text (`1 new run`) is spoken politely through a live region that is also drawn as a
+   * status strip above the first group. The first render announces nothing. Rows inserted above
+   * the viewport do not move what the reader is looking at.
    */
   insertionAnnouncement?: (count: number) => string;
   /** Additional class merged onto the `.cinder-data-list` root element. */

@@ -45,7 +45,7 @@ const schema = {
         name: 'insertionAnnouncement',
         reason: 'function-or-snippet',
         description:
-          'Announce rows inserted while the list is on screen. Called with the number of new rows; the\nreturned text (`1 new run`) is spoken politely through a live region that takes no space.\nThe first render announces nothing. Rows inserted above the viewport do not move what the\nreader is looking at.',
+          'Announce rows inserted while the list is on screen. Called with the number of new rows; the\nreturned text (`1 new run`) is spoken politely through a live region that is also drawn as a status strip above the first group.\nThe first render announces nothing. Rows inserted above the viewport do not move what the\nreader is looking at.',
       },
       {
         name: 'items',

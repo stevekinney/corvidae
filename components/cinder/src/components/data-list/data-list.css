@@ -71,7 +71,9 @@
     border-block-end: 0;
   }
 
-  /* The live region for inserted rows takes no space and is not drawn. */
+  /* The live region for inserted rows. Until rows arrive it takes no space and is not drawn. Once
+   * it holds an announcement it is the accent status strip of the design, "1 new run", above the
+   * first group; the text stays in the same polite region, so it is spoken and drawn as one. */
   .cinder-data-list-live {
     position: absolute;
     inline-size: 1px;
@@ -79,6 +81,19 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+
+  .cinder-data-list-live[data-announced] {
+    position: static;
+    inline-size: auto;
+    block-size: auto;
+    overflow: visible;
+    clip-path: none;
+    padding: var(--cinder-space-1-5) var(--cinder-space-3-5);
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
   }
 
   /* Empty state: a single `<li>` so the `<ul>` stays valid. Component-owned

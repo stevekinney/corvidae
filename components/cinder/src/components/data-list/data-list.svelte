@@ -18,6 +18,7 @@
 </script>
 
 <script lang="ts" generics="T">
+  import { tick } from 'svelte';
   import { setDataListContext } from '../../_internal/data-list-context.ts';
   import { captureScrollAnchor } from '../../_internal/scroll-anchor.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -96,16 +97,23 @@
     const previous = previousKeys;
     previousKeys = currentKeys;
 
-    restoreScroll?.();
+    const restore = restoreScroll;
     restoreScroll = undefined;
 
-    if (previous === undefined || insertionAnnouncement === undefined) return;
     let added = 0;
-    for (const entryKey of currentKeys) if (!previous.has(entryKey)) added += 1;
-    if (added === 0) return;
+    if (previous !== undefined && insertionAnnouncement !== undefined) {
+      for (const entryKey of currentKeys) if (!previous.has(entryKey)) added += 1;
+    }
+    if (added === 0) {
+      restore?.();
+      return;
+    }
     announcementSequence += 1;
-    announcementText = insertionAnnouncement(added);
+    announcementText = insertionAnnouncement?.(added) ?? '';
     announcementId = announcementSequence;
+    // The announcement draws a status strip above the first group the first time it appears, so
+    // hold the reader's place once that strip is in the page, not before.
+    void tick().then(() => restore?.());
   });
 </script>
 
@@ -116,11 +124,16 @@
   the empty state is itself wrapped in an `<li>` so the list stays valid HTML.
   With `groupBy`, each group is an `<li>` holding a header and a nested list named
   by that header. The live region, when there is one, is an `<li role="presentation">`
-  that takes no space, so the list still holds only list items.
+  that takes no space until it announces and is then the status strip, so the list still holds
+  only list items.
 -->
 <ul {...rest} bind:this={listElement} class={classNames('cinder-data-list', className)} role="list">
   {#if insertionAnnouncement !== undefined}
-    <li class="cinder-data-list-live" role="presentation">
+    <li
+      class="cinder-data-list-live"
+      role="presentation"
+      data-announced={announcementText === '' ? undefined : ''}
+    >
       <span role="status" aria-live="polite" aria-atomic="true">
         {#key announcementId}{announcementText}{/key}
       </span>
