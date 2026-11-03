@@ -102,6 +102,19 @@ describe('the sample world, part A', () => {
     });
     expectAt(release?.createdAt, SAMPLE_WORLD_TIMES.releaseAsked);
 
+    // Each message you sent is stamped at its moment, as the run that answered it is.
+    const session = await world.host.bureau.contexts.get(SAMPLE_WORLD_CHATS.refund.threadId);
+    const history = session?.conversationHistory;
+    const sent = (history?.ids ?? [])
+      .map((id) => history?.messages[id])
+      .filter((message) => message?.role === 'user');
+    expect(sent.map((message) => message?.content)).toEqual([
+      SAMPLE_WORLD_CHATS.refund.first,
+      SAMPLE_WORLD_CHATS.refund.second,
+    ]);
+    expectAt(sent[0]?.createdAt, SAMPLE_WORLD_TIMES.refund4472Asked);
+    expectAt(sent[1]?.createdAt, SAMPLE_WORLD_TIMES.refund4471Started);
+
     const hello = byId.get(SAMPLE_WORLD_CHATS.sayHello.threadId);
     expect(hello).toMatchObject({
       title: 'Say hello',
@@ -126,7 +139,13 @@ describe('the sample world, part A', () => {
 
   test('has two reviews waiting on you: the 4471 refund and the release question', async () => {
     const { reviews } = await call<{
-      reviews: Array<{ id: string; kind: string; sessionId?: string; prompt?: string | null }>;
+      reviews: Array<{
+        id: string;
+        kind: string;
+        sessionId?: string;
+        prompt?: string | null;
+        requestedAt: number;
+      }>;
     }>('bureau.reviews.list', {});
     expect(reviews.map((review) => review.id).toSorted()).toEqual(
       [world.reviews.refund4471, world.reviews.release].toSorted(),
@@ -141,6 +160,14 @@ describe('the sample world, part A', () => {
       sessionId: SAMPLE_WORLD_CHATS.refund.threadId,
     });
     expect(world.reviews.refund4471).toStartWith(`approval:${world.runs.refund4471}:`);
+    // Asked at 10:42:20 AM and at 9:46 AM ("4 min ago" and "1 hr ago" at 10:46 AM).
+    const requestedAt = (id: string) =>
+      new Date(reviews.find((review) => review.id === id)?.requestedAt ?? 0).toISOString();
+    expectAt(
+      requestedAt(world.reviews.refund4471),
+      SAMPLE_WORLD_TIMES.refund4471Started + REFUND_4471_ASK_DELAY_MILLISECONDS,
+    );
+    expectAt(requestedAt(world.reviews.release), SAMPLE_WORLD_TIMES.releaseAsked);
 
     // The 4472 refund was approved by you at 10:33 AM.
     const decided = await call<{ reviews: Array<{ id: string; sessionId?: string }> }>(

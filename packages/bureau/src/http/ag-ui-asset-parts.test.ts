@@ -122,4 +122,14 @@ describe('the rows a start adds', () => {
       },
     ]);
   });
+
+  it('stamps each added row on the clock it is given (COR-2009)', () => {
+    const at = '2026-11-02T16:30:00.000Z';
+    const [row] = rowsAddedBy(
+      createConversationHistory({ id: 'thread-1' }),
+      userWith('bureau'),
+      () => at,
+    );
+    expect(row?.createdAt).toBe(at);
+  });
 });

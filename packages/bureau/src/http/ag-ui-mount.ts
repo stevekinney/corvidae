@@ -145,7 +145,9 @@ const SETTLED_TASK_STATES: ReadonlySet<TaskState> = new Set(['completed', 'faile
 /** What the mount reads from the Bureau. */
 export type AgUiBureau = Pick<Bureau, 'addEventListener' | 'removeEventListener'> &
   AgUiStreamBureau &
-  Pick<Bureau, 'assets'> & {
+  Pick<Bureau, 'assets'> &
+  // The clock a message a person sends is stamped on (COR-2009); the process's own when absent.
+  Partial<Pick<Bureau, 'runtimeServices'>> & {
     readonly tasks: Pick<
       BureauTasks,
       'cancel' | 'detail' | 'get' | 'receipt' | 'start' | 'workflow'
@@ -182,6 +184,12 @@ function notFound(resource: string, identifier: string): Response {
     },
     404,
   );
+}
+
+/** The clock a message a person sends through `bureau` is stamped on, when the Bureau names one. */
+function stampedOn(bureau: AgUiBureau): (() => string) | undefined {
+  const clock = bureau.runtimeServices?.clock;
+  return clock === undefined ? undefined : () => clock.nowISO();
 }
 
 /** Whether the session's own owner of record is `owner`. An unreadable owner is nobody's. */
@@ -693,6 +701,7 @@ export function createAgUiMount(
           appendMessages = rowsAddedBy(
             session?.conversationHistory ?? createConversationHistory({ id: input.threadId }),
             input.messages,
+            stampedOn(bureau),
           );
         } catch (error) {
           return {

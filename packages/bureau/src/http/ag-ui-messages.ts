@@ -211,14 +211,22 @@ function withManagedAssetSources(row: Message): Message {
  * The rows `messages` adds to `history`: every message whose id `history` lacks.
  * A client sends its whole thread with each start, so the rows it already holds
  * are skipped, not refused. A part that names a managed asset arrives as one
- * (`managed-asset` source), so the run resolves it as the thread's owner.
+ * (`managed-asset` source), so the run resolves it as the thread's owner. Each row is stamped
+ * `createdAt` with `nowISO` when it is given (the Bureau's clock, COR-2009), so a message a person
+ * sent reads the same clock as the run that answers it.
  */
-export function rowsAddedBy(history: ConversationHistory, messages: ReadonlyArray<AgUiMessage>) {
+export function rowsAddedBy(
+  history: ConversationHistory,
+  messages: ReadonlyArray<AgUiMessage>,
+  nowISO?: () => string,
+) {
   const merged = mergeAGUIMessages(history, messages);
   const known = new Set(history.ids);
+  const createdAt = nowISO?.();
   return merged.ids
     .filter((id) => !known.has(id))
-    .map((id) => withoutReservedMetadata(withManagedAssetSources(getOwn(merged.messages, id)!)));
+    .map((id) => withoutReservedMetadata(withManagedAssetSources(getOwn(merged.messages, id)!)))
+    .map((row) => (createdAt === undefined ? row : { ...row, createdAt }));
 }
 
 /**
