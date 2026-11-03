@@ -27,6 +27,19 @@ export type ToggleProps = {
   /** Prevents interaction when true. Sets `disabled` attribute. */
   disabled?: boolean;
   /**
+   * Shows the setting without letting a press change it, for a value that something else owns,
+   * such as a schedule defined in a file. The switch stays focusable, announces
+   * `aria-readonly="true"`, ignores a press on the track or the label, and still submits its value
+   * with a native form (unlike `disabled`).
+   * @default false
+   */
+  readonly?: boolean;
+  /**
+   * Short visible text beside the label that describes the switch, such as the file that defines
+   * it ("Defined in workflows/release-notes.json"). It is wired into `aria-describedby`.
+   */
+  description?: string;
+  /**
    * Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:
    * `aria-disabled`, still focusable, ignoring the press, and described by the region's reason.
    * It returns by itself when the region stops being stale.

@@ -419,6 +419,15 @@ export type { DropdownSeparatorProps } from './components/dropdown-separator/ind
 export { default as DropdownTrigger } from './components/dropdown-trigger/index.ts';
 export type { DropdownTriggerProps } from './components/dropdown-trigger/index.ts';
 
+export {
+  DURATION_UNITS,
+  default as DurationField,
+  durationUnitFor,
+  fromMilliseconds,
+  toMilliseconds,
+} from './components/duration-field/index.ts';
+export type { DurationFieldProps, DurationUnit } from './components/duration-field/index.ts';
+
 export { default as EmptyState } from './components/empty-state/index.ts';
 export type {
   EmptyStateAlign,
@@ -482,7 +491,9 @@ export type {
 export { default as FocusTrap, createFocusTrap } from './components/focus-trap/index.ts';
 export type { FocusTrapOptions, FocusTrapProps } from './components/focus-trap/index.ts';
 
-export { default as Form } from './components/form/index.ts';
+export { default as FormActions } from './components/form-actions/index.ts';
+export type { FormActionsProps } from './components/form-actions/index.ts';
+export { default as Form, focusFirstProblem } from './components/form/index.ts';
 export type { FormProps, FormSubmitContext } from './components/form/index.ts';
 
 export { default as FormField } from './components/form-field/index.ts';
@@ -890,7 +901,7 @@ export type {
 } from './components/selection-popover/index.ts';
 
 export { default as SettingRow } from './components/setting-row/index.ts';
-export type { SettingRowProps } from './components/setting-row/index.ts';
+export type { SettingRowProps, SettingRowStatus } from './components/setting-row/index.ts';
 
 export { default as ShareCard } from './components/share-card/index.ts';
 export type { ShareCardAction, ShareCardProps } from './components/share-card/index.ts';

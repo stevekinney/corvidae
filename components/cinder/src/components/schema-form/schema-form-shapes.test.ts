@@ -9,7 +9,7 @@ const { cleanup, fireEvent, render, screen, within } = await import('@testing-li
 const { default: SchemaForm } = await import('./schema-form.svelte');
 const { createSchemaFormModel } = await import('./schema-form-model.ts');
 const { DURATION_UNITS, durationUnitFor, fromMilliseconds, toMilliseconds } =
-  await import('./schema-form-duration.ts');
+  await import('../duration-field/duration-units.ts');
 
 // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
 function flush(): Promise<void> {
@@ -399,11 +399,13 @@ describe('SchemaForm shapes: literal-or-object as a choice then fields', () => {
 describe('SchemaForm shapes: milliseconds as a number plus unit', () => {
   afterEach(() => cleanup());
 
-  test('detects durations by format or by name suffix, and nothing else', () => {
+  test('detects durations by format, by the schema unit keyword, or by name suffix, and nothing else', () => {
     const model = createSchemaFormModel({
       type: 'object',
       properties: {
         delay: { type: 'number', format: 'duration-ms' },
+        claimRenewInterval: { type: 'integer', unit: 'milliseconds' },
+        pollSeconds: { type: 'integer', unit: 'seconds' },
         timeoutMs: { type: 'integer' },
         retry_ms: { type: 'integer' },
         elapsedMilliseconds: { type: 'number' },
@@ -414,6 +416,8 @@ describe('SchemaForm shapes: milliseconds as a number plus unit', () => {
     });
     expect(model.field.fields.map((field) => [field.key, field.unit ?? null])).toEqual([
       ['delay', 'milliseconds'],
+      ['claimRenewInterval', 'milliseconds'],
+      ['pollSeconds', null],
       ['timeoutMs', 'milliseconds'],
       ['retry_ms', 'milliseconds'],
       ['elapsedMilliseconds', 'milliseconds'],

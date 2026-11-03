@@ -67,6 +67,7 @@ export { default as dropdownMenuSchema } from '../components/dropdown-menu/dropd
 export { default as dropdownSeparatorSchema } from '../components/dropdown-separator/dropdown-separator.schema.ts';
 export { default as dropdownTriggerSchema } from '../components/dropdown-trigger/dropdown-trigger.schema.ts';
 export { default as dropdownSchema } from '../components/dropdown/dropdown.schema.ts';
+export { default as durationFieldSchema } from '../components/duration-field/duration-field.schema.ts';
 export { default as emptyStateSchema } from '../components/empty-state/empty-state.schema.ts';
 export { default as errorStateSchema } from '../components/error-state/error-state.schema.ts';
 export { default as feedBoundarySchema } from '../components/feed-boundary/feed-boundary.schema.ts';
@@ -78,6 +79,7 @@ export { default as findBarSchema } from '../components/find-bar/find-bar.schema
 export { default as floatingActionSchema } from '../components/floating-action/floating-action.schema.ts';
 export { default as focusTrapSchema } from '../components/focus-trap/focus-trap.schema.ts';
 export { default as footerSchema } from '../components/footer/footer.schema.ts';
+export { default as formActionsSchema } from '../components/form-actions/form-actions.schema.ts';
 export { default as formFieldSchema } from '../components/form-field/form-field.schema.ts';
 export { default as formSectionSchema } from '../components/form-section/form-section.schema.ts';
 export { default as formSchema } from '../components/form/form.schema.ts';

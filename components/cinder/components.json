@@ -2151,6 +2151,36 @@
       }
     },
     {
+      "name": "DurationField",
+      "id": "duration-field",
+      "import": "@lostgradient/cinder",
+      "exportName": "DurationField",
+      "category": "form",
+      "status": "beta",
+      "purpose": "Number plus unit for a duration that is stored in milliseconds, so a person types 30 and picks seconds while the value stays one number.",
+      "tags": ["form", "duration", "numeric"],
+      "useWhen": [
+        "A setting or schema field holds a length of time in milliseconds and the person should not have to count zeros.",
+        "A setting always counts in one unit and should show it beside the number (\"30 seconds\") — set `unitSelectable` to `false`."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Collecting a clock time or a calendar date — use time-field or date-picker."
+        },
+        {
+          "reason": "Showing a duration read-only — format it with `formatDuration`."
+        }
+      ],
+      "related": ["number-input", "select", "time-field"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/duration-field/duration-field.schema.json",
+        "variables": "src/components/duration-field/duration-field.variables.json",
+        "examples": "src/components/duration-field/duration-field.examples.json"
+      }
+    },
+    {
       "name": "EmptyState",
       "id": "empty-state",
       "import": "@lostgradient/cinder",
@@ -2488,6 +2518,36 @@
         "schema": "src/components/form/form.schema.json",
         "variables": "src/components/form/form.variables.json",
         "examples": "src/components/form/form.examples.json"
+      }
+    },
+    {
+      "name": "FormActions",
+      "id": "form-actions",
+      "import": "@lostgradient/cinder",
+      "exportName": "FormActions",
+      "category": "form",
+      "status": "beta",
+      "purpose": "Action bar for the end of a form: a summary on the left, the secondary then primary buttons on the right, an optional failed-save alert above them, and an option to stay at the bottom of a long form.",
+      "tags": ["form", "actions", "sticky"],
+      "useWhen": [
+        "A form's Save and Cancel belong in one bar with a line of status beside them, such as \"N unsaved changes\" or what saving will do.",
+        "A long form's Save must stay in reach, with the effect of saving named beside it."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The bar belongs to a page that is not a form, such as a run's Send a message and Cancel run — use docked-action-bar."
+        },
+        {
+          "reason": "The actions belong to a dialog or drawer — use the overlay's own footer."
+        }
+      ],
+      "related": ["form", "button", "docked-action-bar", "alert"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/form-actions/form-actions.schema.json",
+        "variables": "src/components/form-actions/form-actions.variables.json",
+        "examples": "src/components/form-actions/form-actions.examples.json"
       }
     },
     {
@@ -4744,9 +4804,12 @@
       "exportName": "SettingRow",
       "category": "form",
       "status": "beta",
-      "purpose": "Settings-page row that publishes form-field context to its control and supports managed-policy and disclosure details.",
+      "purpose": "Settings-page row: label, raw key and description on the left with the setting's save status, error and managed line under them, and the control on the right; it stacks below a container width.",
       "tags": ["form", "settings"],
-      "useWhen": ["Pairing a setting label and guidance with an Input, Toggle, or Select control."],
+      "useWhen": [
+        "Pairing a setting label and guidance with an Input, Toggle, or Select control that saves as the person leaves it.",
+        "A setting needs to say where its save has got to (Saving, Saved, Applies after restart) or that it is locked by policy."
+      ],
       "avoidWhen": [
         {
           "reason": "The control belongs in a conventional stacked form field."

@@ -614,6 +614,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // through FormField context (`disabled ?? context?.disabled ?? false`), so
       // the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      readonly: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onValueChangeRequest: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },

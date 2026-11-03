@@ -28,6 +28,14 @@
     cursor: not-allowed;
   }
 
+  /* The text that describes the switch, such as the file that defines it: muted, small, on the
+ * label's line. It never takes the label's pointer cursor, because a press on it does nothing. */
+  .cinder-toggle-field__description {
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+  }
+
   /* labelVisible: keep the label as the accessible name, remove it from layout.
  * Same recipe as the global .cinder-sr-only utility, inlined here so the
  * per-component sidecar (dist/components/toggle/toggle.css) is self-sufficient. */
@@ -148,6 +156,30 @@
     .cinder-toggle[data-cinder-checked]:hover:not(:disabled):not([aria-disabled='true']) {
       background-color: var(--cinder-toggle-track-on-hover, var(--cinder-accent-solid-hover));
     }
+  }
+
+  /* ----------------------------------------
+ * Read-only
+ * ---------------------------------------- */
+
+  /* A read-only switch is drawn as it is set, still focusable, with no hover step and no pointer
+   * cursor, because a press changes nothing. */
+  .cinder-toggle[data-cinder-readonly] {
+    cursor: default;
+  }
+
+  .cinder-toggle[data-cinder-readonly]:hover:not(:disabled):not([aria-disabled='true']) {
+    background-color: var(--cinder-toggle-track-off, var(--cinder-toggle-track-off-resting));
+  }
+
+  .cinder-toggle[data-cinder-readonly][data-cinder-checked]:hover:not(:disabled):not(
+      [aria-disabled='true']
+    ) {
+    background-color: var(--cinder-toggle-track-on, var(--cinder-accent-solid));
+  }
+
+  .cinder-toggle[data-cinder-readonly] ~ .cinder-toggle-field__label {
+    cursor: default;
   }
 
   /* ----------------------------------------

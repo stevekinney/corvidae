@@ -214,7 +214,13 @@
   const describedBy = $derived(
     composeDescribedBy(descriptionId, statusId, feedbackId, consumerDescribedBy),
   );
-  const ariaInvalid = $derived(feedbackIsError ? 'true' : normalizedConsumerInvalid);
+  // A document that parses but has a line the caller marked is still a problem the person has to
+  // fix, so the field reports it (and a form's Save can move focus here) while the toolbar keeps
+  // saying what the editor itself knows.
+  const hasDiagnostics = $derived((diagnostics?.length ?? 0) > 0);
+  const ariaInvalid = $derived(
+    feedbackIsError || hasDiagnostics ? 'true' : normalizedConsumerInvalid,
+  );
   const placeholderText = $derived(placeholder ?? `e.g. ${example}`);
   // The frame goes red for what the caller says is wrong; a parse problem is marked at its line.
   const frameInvalid = $derived(Boolean(externalError) || consumerMarksInvalid);

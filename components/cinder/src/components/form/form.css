@@ -4,6 +4,10 @@
   .cinder-form {
     inline-size: 100%;
   }
+  /* A single reading column (row 68a: up to 720px, drawn at 640). */
+  .cinder-form[data-cinder-reading-column] {
+    max-inline-size: var(--cinder-form-reading-column-width, 45rem);
+  }
   .cinder-form[data-cinder-submitting] {
     cursor: progress;
   }

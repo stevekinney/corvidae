@@ -3,13 +3,204 @@
 @import '../form-field/form-field.css';
 
 @layer cinder.components {
+  /* ========================================
+ * SETTING ROW
+ *
+ * Label, raw key and description on the left, with the save status, the error and the managed line
+ * under them; the control on the right in a fixed column (rows 47i–47n). Below a container width
+ * (row 50i) the control stacks under the label and the row reads as one column.
+ * ======================================== */
+
   .cinder-setting-row {
+    container-type: inline-size;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-4);
+    flex-direction: column;
+    gap: var(--cinder-space-2);
   }
-  .cinder-setting-row > .cinder-form-field {
-    flex: 1;
+
+  .cinder-setting-row__field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--cinder-setting-row-control-width, 15rem);
+    column-gap: var(--cinder-space-6);
+    /* The control spans every row of the left column, so rows add no gap of their own and each
+       line sets its own space above it. */
+    row-gap: 0;
+    align-items: start;
+  }
+
+  .cinder-setting-row__field > * {
+    grid-column: 1;
+    min-inline-size: 0;
+  }
+
+  /* The control is whichever child is not one of the text lines. */
+  .cinder-setting-row__field
+    > :not(
+      .cinder-form-field__label,
+      .cinder-form-field__label-row,
+      .cinder-form-field__description,
+      .cinder-form-field__note,
+      .cinder-form-field__warning,
+      .cinder-form-field__managed,
+      .cinder-form-field__error,
+      .cinder-setting-row__status
+    ) {
+    grid-column: 2;
+    grid-row: 1 / span 8;
+    justify-self: end;
+    align-self: center;
+    inline-size: auto;
+    max-inline-size: 100%;
+  }
+
+  .cinder-setting-row__field .cinder-form-field__label {
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-setting-row__field .cinder-form-field__label-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    column-gap: var(--cinder-space-2);
+  }
+
+  .cinder-setting-row__identifier {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-setting-row__field .cinder-form-field__description,
+  .cinder-setting-row__field .cinder-form-field__note,
+  .cinder-setting-row__field .cinder-form-field__warning {
+    margin-block-start: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* The status, managed and error lines sit one step under the description. */
+  .cinder-setting-row__status:empty {
+    display: none;
+  }
+
+  .cinder-setting-row__field .cinder-form-field__managed,
+  .cinder-setting-row__field .cinder-form-field__error[data-cinder-error],
+  .cinder-setting-row__status {
+    margin-block-start: var(--cinder-space-1-5);
+  }
+
+  .cinder-setting-row__field .cinder-form-field__managed {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-setting-row__status {
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-setting-row__status-line {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+  }
+
+  .cinder-setting-row__status-line[data-cinder-status='saved'] {
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-setting-row__status-line[data-cinder-status='saved-restart'] {
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-setting-row__glyph {
+    flex: none;
+  }
+
+  .cinder-setting-row__glyph--spinning {
+    animation: cinder-setting-row-spin 1.2s linear infinite;
+  }
+
+  @keyframes cinder-setting-row-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-setting-row__glyph--spinning {
+      animation: none;
+    }
+  }
+
+  /* The amber dot of "Saved, waiting for a restart": the word stays neutral. */
+  .cinder-setting-row__dot {
+    flex: none;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-status-warning-solid);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-setting-row__dot {
+      background: Highlight;
+    }
+  }
+
+  /* A quiet Retry beside a failed save: the error's colour, semibold, underlined, no chrome. */
+  .cinder-setting-row__retry {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-weight: var(--cinder-font-semibold);
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    cursor: pointer;
+  }
+
+  .cinder-setting-row__retry:focus-visible {
+    outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
+    outline-offset: 2px;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  /* Narrow: the control stacks under the label, ahead of the description, as the markup orders them. */
+  @container (inline-size < 30rem) {
+    .cinder-setting-row__field {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      row-gap: var(--cinder-space-1-5);
+    }
+
+    .cinder-setting-row__field
+      > :not(
+        .cinder-form-field__label,
+        .cinder-form-field__label-row,
+        .cinder-form-field__description,
+        .cinder-form-field__note,
+        .cinder-form-field__warning,
+        .cinder-form-field__managed,
+        .cinder-form-field__error,
+        .cinder-setting-row__status
+      ) {
+      align-self: stretch;
+      justify-self: auto;
+    }
+
+    /* The row gap spaces the lines now, so they add none of their own. */
+    .cinder-setting-row__field .cinder-form-field__description,
+    .cinder-setting-row__field .cinder-form-field__note,
+    .cinder-setting-row__field .cinder-form-field__warning,
+    .cinder-setting-row__field .cinder-form-field__managed,
+    .cinder-setting-row__field .cinder-form-field__error[data-cinder-error],
+    .cinder-setting-row__status {
+      margin-block-start: 0;
+    }
   }
 }
