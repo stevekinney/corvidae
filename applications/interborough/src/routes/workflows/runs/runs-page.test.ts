@@ -136,7 +136,7 @@ describe('the runs list', () => {
   });
 
   test('asks the Bureau for the status and the agent, and keeps every agent to choose from', async () => {
-    const { container, findByLabelText } = open('/runs?status=failed&agent=echo', {
+    const { container, findAllByRole, findByRole } = open('/runs?status=failed&agent=echo', {
       world: {
         tasks: [
           taskFixture({ id: 'run-1', agentName: 'echo', status: 'failed' }),
@@ -159,14 +159,13 @@ describe('the runs list', () => {
     const asked = stub?.callsTo('bureau.tasks.list').filter((call) => call.params['limit'] === 100);
     expect(asked?.[0]?.params).toMatchObject({ status: 'failed', agentName: 'echo' });
     // The list is narrowed to one agent, and the others are still there to choose.
-    const agent = await findByLabelText(TASK_COPY.agentLabel);
-    await waitFor(() =>
-      expect([...agent.querySelectorAll('option')].map((option) => option.value)).toEqual([
-        '',
-        'assistant',
-        'echo',
-      ]),
-    );
+    await fireEvent.click(await findByRole('combobox', { name: TASK_COPY.agentLabel }));
+    const options = await findAllByRole('option');
+    expect(options.map((option) => option.textContent?.trim())).toEqual([
+      TASK_COPY.anyAgent,
+      'assistant',
+      'echo',
+    ]);
   });
 
   test('is an error with a retry, and not a list of runs that lost their chats, when the sessions could not be read', async () => {

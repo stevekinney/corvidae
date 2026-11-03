@@ -4,7 +4,7 @@
 
 `FilterBar` is a composed filter surface, not a single widget. It uses the `role="search"` landmark to group the filtering controls, and every control inside follows its own pattern: a radio group of segments, listbox selects, popover dialogs for the choice facets, toggle buttons, and a search input.
 
-Roving-tabindex Toolbar semantics are intentionally NOT applied to the outer container: the search input and selects own their own arrow-key semantics (text cursor, option navigation), which conflict with the toolbar pattern's arrow-key model. Normal Tab order is used throughout. The bar has one row and the DOM order is the visual order, except that an applied chip is drawn after the chips still waiting for a value; its place in the Tab order is its facet's.
+Roving-tabindex Toolbar semantics are intentionally NOT applied to the outer container: the search input and selects own their own arrow-key semantics (text cursor, option navigation), which conflict with the toolbar pattern's arrow-key model. Normal Tab order is used throughout. The bar has one row, and the DOM order is the visual order: an applied choice chip follows the chips still waiting for a value, and an applied filter that no facet draws follows the facets.
 
 ## Roles names states
 
@@ -17,6 +17,7 @@ Roving-tabindex Toolbar semantics are intentionally NOT applied to the outer con
 | Choice chip (label) | `button`, `aria-haspopup="dialog"`, `aria-expanded` | Opens a dialog named by the facet's title. An applied chip reads "Started by: Chats, Goals". |
 | Choice chip (x) | `button` | `aria-label="Remove filter: Started by: Chats, Goals"`. Focus returns to the facet's chip after removal. |
 | Choice options | `group` of checkboxes, or a `radiogroup` | Each count is the checkbox's or radio's `aria-describedby`. |
+| Applied filter without a facet | `span` with a `button` | A chip that reads "Updated: Last 24 hours" with the same Remove button. In the narrow form it is a row in the Filter menu. |
 | Toggle chip | `button`, `aria-pressed` | Name includes the count ("Missed runs 1"). The dot is decorative. |
 | Search | `type="search"` | Provided by `SearchField`. In the medium layout an icon button named "Search" opens it in a dialog; in the narrow layout it is the Filter menu's Search row. |
 | Filter button | `button`, `aria-haspopup="dialog"`, `aria-expanded` | Named "Filter", or "Filter, 2 applied" while filters are applied. |

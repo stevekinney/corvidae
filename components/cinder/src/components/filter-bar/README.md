@@ -25,7 +25,7 @@ The layout is chosen in script, because the controls that disappear move into a 
 
 The bar also measures its own width, so a wide viewport beside a wide sidebar steps down instead of overflowing: it takes the narrower of what the viewport asks for and what its controls need. Pass `layout` to force one. A bar with no segments, chips or toggles (selects and a search field alone) has nothing to fold, so it keeps one form and stacks its controls in one column inside a narrow container, as a list pane's filters do.
 
-An applied chip sits after the chips still waiting for a value, whatever order the facets are listed in, so a chip never jumps while its own popover is open.
+An applied choice chip is drawn after the chips still waiting for a value, whatever order the facets are listed in, in the DOM as well as on screen. The facets are one keyed list, so a chip that gains a value moves without remounting and its popover stays open. An applied filter that no facet draws (a window a link put in the address) still gets a removable chip, and in the narrow form a row in the Filter menu.
 
 ## Usage
 

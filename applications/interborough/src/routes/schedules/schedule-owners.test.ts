@@ -14,6 +14,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
 import { SCHEDULE_COPY } from '../../app/copy.ts';
 import { router } from '../../lib/router.svelte.ts';
 import {
@@ -702,23 +703,23 @@ describe('a schedule is named by what it does', () => {
   });
 
   test('the agent in the address narrows the list to that agent’s schedules, and the filter says so', async () => {
-    const { container, findByRole } = open('/schedules?agent=assistant');
+    const view = open('/schedules?agent=assistant');
+    const { container } = view;
 
     // Only the agent's schedule is left of the three.
     await waitFor(() => expect(container.querySelectorAll('tr[data-schedule]').length).toBe(1));
     expect(row(container, AGENT_SCHEDULE)).not.toBeNull();
-    await fireEvent.click(await findByRole('button', { name: 'Clear all filters' }));
+    await chooseFilterOption(view, 'Agent', SCHEDULE_COPY.anyAgent);
     await waitFor(() => expect(router.search.get('agent')).toBeNull());
     await waitFor(() => expect(container.querySelectorAll('tr[data-schedule]').length).toBe(3));
   });
 
   test('choosing an agent puts it in the address', async () => {
-    const { container, findByRole } = open('/schedules');
+    const view = open('/schedules');
+    const { container } = view;
     await listed(container);
 
-    await fireEvent.change(await findByRole('combobox', { name: 'Agent' }), {
-      target: { value: 'assistant' },
-    });
+    await chooseFilterOption(view, 'Agent', 'assistant');
 
     await waitFor(() => expect(router.search.get('agent')).toBe('assistant'));
     await waitFor(() => expect(container.querySelectorAll('tr[data-schedule]').length).toBe(1));

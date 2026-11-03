@@ -436,13 +436,65 @@ describe('FilterBar choice chips (rows 10e 52l 52m 53i 53j)', () => {
     expect(removed).toEqual(['startedBy']);
   });
 
-  test('applied chips are tinted with the accent and sit after the add chips', () => {
+  test('applied chips are tinted with the accent and drawn after the add chips, in the DOM too', () => {
     const chip =
       filterBarCss.match(/\.cinder-filter-bar__chip\[data-cinder-applied\] \{[^}]*\}/)?.[0] ?? '';
-    expect(chip).toContain('order: 1');
     expect(chip).toContain('var(--cinder-accent-background)');
+    expect(chip).not.toContain('order:');
     const base = filterBarCss.match(/\.cinder-filter-bar__chip \{[^}]*\}/)?.[0] ?? '';
     expect(base).toContain('1px dashed');
+  });
+
+  test('an applied chip follows the add chips whatever order the facets are listed in (row 53i)', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, WORKFLOW, AGENT],
+      appliedFilters: [
+        { key: 'workflow', value: 'release-notes', label: 'Workflow', values: ['release-notes'] },
+      ],
+    });
+    const chips = [...container.querySelectorAll('.cinder-filter-bar__chip-trigger')].map(
+      (trigger) => textOf(trigger),
+    );
+    expect(chips).toEqual(['Started by', 'Agent', 'Workflow: Release notes']);
+  });
+
+  test('an applied filter no facet draws still gets a chip that removes it', async () => {
+    const removed: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      facets: [AGENT],
+      appliedFilters: [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }],
+      onFilterRemove: (key: string) => removed.push(key),
+    });
+    const chip = container.querySelector('.cinder-filter-bar__chip[data-cinder-static]')!;
+    expect(textOf(chip)).toBe('Updated: Last 24 hours');
+    await fireEvent.click(chip.querySelector('.cinder-filter-bar__chip-remove')!);
+    expect(removed).toEqual(['updated']);
+    await waitFor(() =>
+      expect(textOf(container.querySelector('[role="status"]'))).toBe(
+        '1 active filter: Updated: Last 24 hours',
+      ),
+    );
+  });
+
+  test('in the narrow form that filter is a row in the Filter menu with its own Remove', async () => {
+    const removed: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      appliedFilters: [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }],
+      onFilterRemove: (key: string) => removed.push(key),
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__menu-button')!);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    const remove = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Remove filter: Updated: Last 24 hours"]',
+    )!;
+    await fireEvent.click(remove);
+    expect(removed).toEqual(['updated']);
   });
 
   test('focus lands on the add chip after the consumer clears the filter on remove', async () => {

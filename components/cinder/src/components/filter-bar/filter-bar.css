@@ -36,7 +36,6 @@
    * stops growing at 20rem. At the end of the row it is pushed to the inline end. */
   .cinder-filter-bar__row > .cinder-filter-bar__search {
     flex: 1 1 11rem;
-    order: 2;
     min-inline-size: 0;
     max-inline-size: 20rem;
   }
@@ -48,18 +47,6 @@
     > .cinder-filter-bar__search,
   .cinder-filter-bar[data-cinder-search-position='end'] .cinder-filter-bar__search-button {
     margin-inline-start: auto;
-  }
-
-  /* An applied chip (order 1) sits after the chips still waiting for a value, and the search field
-   * after both. A search field at the start of the row keeps its place at order 0. */
-  .cinder-filter-bar[data-cinder-search-position='end'] .cinder-filter-bar__search-button {
-    order: 2;
-  }
-
-  .cinder-filter-bar[data-cinder-search-position='start']
-    .cinder-filter-bar__row
-    > .cinder-filter-bar__search {
-    order: 0;
   }
 
   /* A Select is a form field, which fills its container. In the row each one takes the width of its
@@ -134,9 +121,8 @@
   }
 
   /* An applied facet is a tinted chip with a solid edge: the accent fill says it filters now. It
-   * moves to the end of the chips, after the ones still waiting for a value. */
+   * is drawn after the chips still waiting for a value (the bar orders them). */
   .cinder-filter-bar__chip[data-cinder-applied] {
-    order: 1;
     border-style: solid;
     border-color: var(--cinder-accent-border);
     background: var(--cinder-accent-background);
@@ -170,6 +156,11 @@
     padding-inline-end: var(--cinder-space-1);
     border-start-end-radius: 0;
     border-end-end-radius: 0;
+  }
+
+  /* An applied filter with no facet has a label that is not a button. */
+  .cinder-filter-bar__chip[data-cinder-static] .cinder-filter-bar__chip-trigger {
+    cursor: default;
   }
 
   .cinder-filter-bar__chip-value {

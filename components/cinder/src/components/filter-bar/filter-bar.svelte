@@ -32,6 +32,7 @@
   import type { Attachment } from 'svelte/attachments';
   import Funnel from '@lucide/svelte/icons/funnel';
   import Search from '@lucide/svelte/icons/search';
+  import X from '@lucide/svelte/icons/x';
 
   import { useViewportBelow } from '../../_internal/viewport-below.svelte.ts';
   import VisuallyHiddenLiveRegion from '../_visually-hidden-live-region.svelte';
@@ -183,18 +184,33 @@
     return applied.value;
   }
 
-  const activeSummaries = $derived(
-    facets.flatMap((facet) => {
+  // An applied filter no facet draws, such as a window a link put in the address, still gets a chip
+  // so the person can see it and remove it.
+  const orphanFilters = $derived(
+    appliedFilters.filter((filter) => !facets.some((facet) => facet.key === filter.key)),
+  );
+
+  const activeSummaries = $derived([
+    ...facets.flatMap((facet) => {
       const summary = facetSummary(facet);
       return summary === '' ? [] : [`${facet.label}: ${summary}`];
     }),
-  );
+    ...orphanFilters.map((filter) => `${filter.label}: ${appliedValues(filter).join(', ')}`),
+  ]);
   // Live region summary message — always in DOM, content changes when filters change.
   const summaryMessage = $derived(
     activeSummaries.length === 0
       ? ''
       : `${activeSummaries.length} active filter${activeSummaries.length === 1 ? '' : 's'}: ${activeSummaries.join(', ')}`,
   );
+
+  // An applied choice chip is drawn after the chips still waiting for a value, so a facet's place
+  // does not depend on the order the consumer listed them in. The facets are one keyed list, so a
+  // chip that gains a value moves instead of remounting, and its open popover stays with it.
+  const orderedFacets = $derived([
+    ...facets.filter((facet) => !(facet.type === 'choice' && appliedFilterFor(facet.key))),
+    ...facets.filter((facet) => facet.type === 'choice' && appliedFilterFor(facet.key)),
+  ]);
 
   function handleSegmentChange(next: string): void {
     if (segmentValue === undefined) internalSegment = next;
@@ -403,6 +419,24 @@
           {/if}
         </div>
       {/each}
+      {#each orphanFilters as filter (filter.key)}
+        {@const summary = appliedValues(filter).join(', ')}
+        <div class="cinder-filter-bar__menu-section">
+          <div class="cinder-filter-bar__menu-row" data-cinder-static="">
+            <span class="cinder-filter-bar__menu-label">{filter.label}</span>
+            <span class="cinder-filter-bar__menu-value">{summary}</span>
+            <button
+              type="button"
+              class="cinder-filter-bar__chip-remove"
+              {disabled}
+              aria-label={`Remove filter: ${filter.label}: ${summary}`}
+              onclick={() => handleFilterRemove(filter.key)}
+            >
+              <X class="cinder-icon-xs" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      {/each}
       {#if searchVisible}
         <div class="cinder-filter-bar__menu-section">
           <button
@@ -454,7 +488,7 @@
 {/snippet}
 
 {#snippet facetControls()}
-  {#each facets as facet (facet.key)}
+  {#each orderedFacets as facet (facet.key)}
     {#if facet.type === 'select'}
       <div class="cinder-filter-bar__facet">{@render selectControl(facet)}</div>
     {:else if facet.type === 'choice'}
@@ -472,6 +506,29 @@
     {:else}
       <div class="cinder-filter-bar__facet">{@render customControl(facet)}</div>
     {/if}
+  {/each}
+  {#each orphanFilters as filter (filter.key)}
+    {@const summary = appliedValues(filter).join(', ')}
+    <span
+      class="cinder-filter-bar__chip"
+      data-cinder-applied=""
+      data-cinder-static=""
+      data-cinder-disabled={disabled ? '' : undefined}
+    >
+      <span class="cinder-filter-bar__chip-trigger">
+        <span class="cinder-filter-bar__chip-label">{filter.label}:</span>
+        <span class="cinder-filter-bar__chip-value">{summary}</span>
+      </span>
+      <button
+        type="button"
+        class="cinder-filter-bar__chip-remove"
+        {disabled}
+        aria-label={`Remove filter: ${filter.label}: ${summary}`}
+        onclick={() => handleFilterRemove(filter.key)}
+      >
+        <X class="cinder-icon-xs" aria-hidden="true" />
+      </button>
+    </span>
   {/each}
 {/snippet}
 
