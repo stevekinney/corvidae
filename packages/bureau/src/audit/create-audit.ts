@@ -107,6 +107,11 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   // (`late` or `dst-gap`; not `reason`, which on a review decision is a person's note).
   'missedCount',
   'missedReason',
+  // COR-2009: a `memory.corrected` record names the memory the correction wrote, the one it
+  // replaced, and whether a person or the agent wrote the correction; never the memory's text.
+  'memoryId',
+  'correctsId',
+  'writer',
 ];
 
 /** A scalar the projection keeps: a string cut to the limit, a number, or a boolean. */

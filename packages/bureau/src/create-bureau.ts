@@ -236,6 +236,7 @@ import {
   forwardMissedFires,
   subscribeEventFeed,
 } from './bureau-event-forwarders.ts';
+import { auditMemoryCorrections } from './memory-correction-audit.ts';
 import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
 import {
   createSessionPersistence,
@@ -3145,6 +3146,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (runtime.memory !== undefined) {
       stopForwarding.push(
         forwardMemoryGovernance(runtime.memory, (event) => emitter.dispatch(event), diagnose),
+      );
+      // COR-2009 — every correction, a person's or an agent's, as the audit log's "Corrected a memory".
+      stopForwarding.push(
+        auditMemoryCorrections(
+          runtime.memory,
+          (entry) => auditTrailInstance?.record(entry),
+          diagnose,
+        ),
       );
     }
     if (runtime.durable !== undefined) {

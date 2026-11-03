@@ -33,6 +33,8 @@ async function recordForgetting(
   operationId: string,
   mode: MemoryForgetMode,
   recordIds: readonly string[],
+  /** What a supersession also records: the collection and source of the successor it admitted. */
+  successor?: { readonly collection: string; readonly source: string },
 ): Promise<void> {
   await context.recordEvent({
     tenantId: authority.tenantId,
@@ -40,7 +42,10 @@ async function recordForgetting(
     outcome: 'applied',
     attribution: context.attribution(authority, operationId),
     recordIds,
-    details: { mode },
+    details:
+      successor === undefined
+        ? { mode }
+        : { mode, collection: successor.collection, source: successor.source },
   });
 }
 
@@ -192,10 +197,16 @@ async function supersede(
       ? { mode: request.mode, operationId, status: 'rejected', reason: 'superseded' }
       : { mode: request.mode, operationId, status: 'not-found' };
   }
-  await recordForgetting(context, authority, operationId, request.mode, [
-    request.locator.id,
-    write.recordId!,
-  ]);
+  // The correction belongs to the same correlated operation as the successor's admission, so a
+  // host can say which run or chat corrected the memory (COR-2009).
+  await recordForgetting(
+    correlated(context, request.successor) ?? context,
+    authority,
+    operationId,
+    request.mode,
+    [request.locator.id, write.recordId!],
+    { collection: options.collection, source: options.source },
+  );
   return {
     mode: request.mode,
     operationId,

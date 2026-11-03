@@ -28,6 +28,7 @@ import {
   principalFromJwtClaims,
 } from '@lostgradient/weft';
 import { MemoryStorage } from '@lostgradient/storage';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';
@@ -1391,6 +1392,65 @@ describe('the Memory tab’s contract (COR-2009)', () => {
     expect(detail['history']).toEqual([
       expect.objectContaining({ id: written.id, writer: 'person', trust: 'verified' }),
     ]);
+  });
+
+  it('records every correction in the audit log, a person’s and an agent’s, with no memory text (COR-2009)', async () => {
+    const { bureau, handler, memory } = await open();
+    const written = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.remember',
+        { agentId: 'assistant', content: 'Refund updates go by phone.' },
+        'operator-key',
+      ),
+    )['memory'];
+    const byPerson = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.correct',
+        { agentId: 'assistant', id: written.id, content: 'Refund updates go by post.' },
+        'alice-key',
+      ),
+    )['memory'];
+    const byAgent = await memory!.forget(runOver(ALICE), {
+      mode: 'supersession',
+      locator: { id: byPerson.id, collection: 'assistant' },
+      successor: {
+        content: 'Refund updates go by email, not by phone.',
+        collection: 'assistant',
+        source: 'model-tool',
+        memoryClass: 'semantic',
+        correlation: { runId: 'run-correcting', sessionId: 'refund-chat' },
+      },
+    });
+    const agentCorrectionId = byAgent.write?.recordId;
+
+    await waitUntil(
+      async () => {
+        const page = await bureau.audit.query({ type: 'memory.corrected' });
+        return page.records.length === 2;
+      },
+      { message: 'both corrections to be audited' },
+    );
+    const { records } = await bureau.audit.query({ type: 'memory.corrected' });
+    const details = records.map((record) => record.detail);
+    const byWriter = details.toSorted((left, right) =>
+      String(right?.['writer']).localeCompare(String(left?.['writer'])),
+    );
+    expect(byWriter).toEqual([
+      { agentName: 'assistant', memoryId: byPerson.id, correctsId: written.id, writer: 'person' },
+      {
+        agentName: 'assistant',
+        memoryId: agentCorrectionId ?? '',
+        correctsId: byPerson.id,
+        writer: 'agent',
+        sessionId: 'refund-chat',
+      },
+    ]);
+    // The agent's correction is filed under the run that made it.
+    const underRun = await bureau.audit.query({ runId: 'run-correcting' });
+    expect(underRun.records.map((record) => record.type)).toEqual(['memory.corrected']);
+    expect(JSON.stringify(records)).not.toContain('Refund updates');
   });
 
   it('exports one JSON file named for the agent, each memory with its text, kind, writer, trust and history', async () => {

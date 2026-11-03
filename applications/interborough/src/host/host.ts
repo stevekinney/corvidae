@@ -832,7 +832,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       logs: { maximumLinesPerRun: WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
-      memory: (contributions) => createHostMemory(storage, contributions),
+      memory: (contributions) => createHostMemory(storage, contributions, options.runtime),
       // Managed assets (COR-1547): the handler serves uploads and an asset's content, and a chat
       // attachment is one, so the Bureau keeps them in the same database as everything else.
       assets: { storage: createDurableAssetStorage(storage) },
