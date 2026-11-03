@@ -23,7 +23,7 @@
  * Exit 0 when every board rendered, 1 when one logged a page error, never mounted or clipped its
  * content (each named), 2 on bad usage or a missing `support.js`.
  */
-import { chromium, type Page } from '@playwright/test';
+import { chromium } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
@@ -115,8 +115,93 @@ export function parseArguments(argv: readonly string[]): Options | string {
   return { boards, out: out ?? boards, names };
 }
 
+/**
+ * Whether the canvas runtime has mounted the board in the current document: it consumes every `x-dc`
+ * element it renders, so none remains, and the page holds at least `minimum` characters of text.
+ * Runs inside the page, so it reads only the page's own globals.
+ */
+export function boardHasMounted(minimum: number): boolean {
+  return document.querySelector('x-dc') === null && document.body.innerText.length >= minimum;
+}
+
+/** Resolves once the current document's fonts have loaded. Runs inside the page. */
+export function fontsHaveLoaded(): Promise<unknown> {
+  return document.fonts.ready;
+}
+
+/**
+ * Measures the current document's layout for {@link layoutProblem}: the containers that hide
+ * content below their bottom edge and the rightmost edge of anything drawn. Runs inside the page,
+ * so it reads only the page's own globals.
+ */
+export function measureBoardLayout(request: {
+  readonly minimum: number;
+  readonly boardWidth: number;
+}): BoardLayout {
+  const elements = [...document.body.querySelectorAll<HTMLElement>('*')];
+  const clipped = elements
+    .filter((element) => {
+      const overflow = getComputedStyle(element).overflowY;
+      return (
+        (overflow === 'hidden' || overflow === 'clip') &&
+        element.clientHeight >= request.minimum &&
+        element.scrollHeight > element.clientHeight + 4
+      );
+    })
+    .map((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+  const rightmostEdge = Math.max(
+    0,
+    ...elements.map((element) => element.getBoundingClientRect().right),
+  );
+  return { clipped, rightmostEdge, width: request.boardWidth };
+}
+
+/** The scrolled height of the current document. Runs inside the page. */
+export function documentHeight(): number {
+  return document.documentElement.scrollHeight;
+}
+
+/** The part of a Playwright page the renderer drives, so a test can stand in for a browser. */
+export interface BoardPage {
+  on(event: 'pageerror', listener: (error: Error) => void): unknown;
+  on(event: 'console', listener: (message: { type(): string; text(): string }) => void): unknown;
+  goto(url: string): Promise<unknown>;
+  waitForFunction(
+    pageFunction: (argument: number) => boolean,
+    argument: number,
+    options: { timeout: number },
+  ): Promise<unknown>;
+  evaluate(pageFunction: () => unknown): Promise<unknown>;
+  evaluate(
+    pageFunction: (request: { minimum: number; boardWidth: number }) => BoardLayout,
+    request: { minimum: number; boardWidth: number },
+  ): Promise<BoardLayout>;
+  screenshot(options: {
+    path: string;
+    fullPage: true;
+    clip?: { x: number; y: number; width: number; height: number };
+  }): Promise<unknown>;
+  viewportSize(): { width: number; height: number } | null;
+}
+
+/** What rendering one board produced. */
+export interface BoardResult {
+  readonly stem: string;
+  readonly height: number;
+  readonly slices: number;
+  readonly problem: string | undefined;
+}
+
 /** Renders one board and answers the problem, if any. */
-async function renderBoard(page: Page, origin: string, name: string, out: string) {
+export async function renderBoard(
+  page: BoardPage,
+  origin: string,
+  name: string,
+  out: string,
+): Promise<BoardResult> {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -124,18 +209,13 @@ async function renderBoard(page: Page, origin: string, name: string, out: string
   });
   await page.goto(`${origin}/${encodeURIComponent(name)}`);
   const mounted = await page
-    .waitForFunction(
-      (minimum) =>
-        document.querySelector('x-dc') === null && document.body.innerText.length >= minimum,
-      MINIMUM_TEXT_LENGTH,
-      { timeout: HANG_GUARD_MILLISECONDS },
-    )
+    .waitForFunction(boardHasMounted, MINIMUM_TEXT_LENGTH, { timeout: HANG_GUARD_MILLISECONDS })
     .then(() => true)
     .catch(() => false);
-  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(fontsHaveLoaded);
   const stem = name.replace(/\.dc\.html$/, '');
   await page.screenshot({ path: join(out, `${stem}.png`), fullPage: true });
-  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  const height = Number(await page.evaluate(documentHeight));
   const width = page.viewportSize()?.width ?? DEFAULT_PREVIEW.width;
   const slices = sliceOffsets(height);
   for (const [index, slice] of slices.entries()) {
@@ -145,30 +225,10 @@ async function renderBoard(page: Page, origin: string, name: string, out: string
       clip: { x: 0, y: slice.top, width, height: slice.height },
     });
   }
-  const layout = await page.evaluate(
-    ({ minimum, boardWidth }) => {
-      const elements = [...document.body.querySelectorAll<HTMLElement>('*')];
-      const clipped = elements
-        .filter((element) => {
-          const overflow = getComputedStyle(element).overflowY;
-          return (
-            (overflow === 'hidden' || overflow === 'clip') &&
-            element.clientHeight >= minimum &&
-            element.scrollHeight > element.clientHeight + 4
-          );
-        })
-        .map((element) => ({
-          clientHeight: element.clientHeight,
-          scrollHeight: element.scrollHeight,
-        }));
-      const rightmostEdge = Math.max(
-        0,
-        ...elements.map((element) => element.getBoundingClientRect().right),
-      );
-      return { clipped, rightmostEdge, width: boardWidth };
-    },
-    { minimum: CLIP_MINIMUM_HEIGHT, boardWidth: width },
-  );
+  const layout = await page.evaluate(measureBoardLayout, {
+    minimum: CLIP_MINIMUM_HEIGHT,
+    boardWidth: width,
+  });
   const problem = !mounted
     ? 'never mounted (an x-dc element remained, or the board held no text)'
     : errors.length > 0
@@ -177,19 +237,56 @@ async function renderBoard(page: Page, origin: string, name: string, out: string
   return { stem, height, slices: slices.length, problem };
 }
 
-async function main(): Promise<void> {
-  const options = parseArguments(process.argv.slice(2));
+/** A page the renderer can close, as a browser opens it. */
+export interface BoardBrowserPage extends BoardPage {
+  close(): Promise<void>;
+}
+
+/** The part of a Playwright browser the renderer drives. */
+export interface BoardBrowser {
+  newPage(options: {
+    viewport: { width: number; height: number };
+    deviceScaleFactor: number;
+  }): Promise<BoardBrowserPage>;
+  close(): Promise<void>;
+}
+
+/** Where a render writes its report, and how it starts a browser. */
+export interface RenderEnvironment {
+  readonly standardOutput: (text: string) => void;
+  readonly standardError: (text: string) => void;
+  readonly launchBrowser: () => Promise<BoardBrowser>;
+}
+
+/** Answers a request for a file below `root`, or 404 for anything that resolves outside it. */
+export function boardResponse(root: string, request: Request): Response {
+  const path = resolve(root, `.${decodeURIComponent(new URL(request.url).pathname)}`);
+  if (relative(root, path).startsWith('..')) return new Response('Not found', { status: 404 });
+  return new Response(Bun.file(path));
+}
+
+/** The process's own output streams and Chromium. */
+export const hostEnvironment: RenderEnvironment = {
+  standardOutput: process.stdout.write.bind(process.stdout),
+  standardError: process.stderr.write.bind(process.stderr),
+  launchBrowser: chromium.launch.bind(chromium),
+};
+
+/** Renders the boards the command line names and answers the exit code. */
+export async function renderBoards(
+  argv: readonly string[] = process.argv.slice(2),
+  environment: RenderEnvironment = hostEnvironment,
+): Promise<number> {
+  const options = parseArguments(argv);
   if (typeof options === 'string') {
-    process.stderr.write(`${options}\n`);
-    process.exitCode = 2;
-    return;
+    environment.standardError(`${options}\n`);
+    return 2;
   }
   if (!existsSync(join(options.boards, 'support.js'))) {
-    process.stderr.write(
+    environment.standardError(
       `${options.boards} has no support.js: save the canvas's artifact-type/dc-runtime.js there under that name.\n`,
     );
-    process.exitCode = 2;
-    return;
+    return 2;
   }
   const files = await readdir(options.boards);
   const names =
@@ -201,13 +298,9 @@ async function main(): Promise<void> {
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
-    fetch(request) {
-      const path = resolve(root, `.${decodeURIComponent(new URL(request.url).pathname)}`);
-      if (relative(root, path).startsWith('..')) return new Response('Not found', { status: 404 });
-      return new Response(Bun.file(path));
-    },
+    fetch: (request) => boardResponse(root, request),
   });
-  const browser = await chromium.launch();
+  const browser = await environment.launchBrowser();
   let failures = 0;
   try {
     for (const name of names) {
@@ -216,7 +309,7 @@ async function main(): Promise<void> {
       const result = await renderBoard(page, `http://127.0.0.1:${server.port}`, name, options.out);
       await page.close();
       if (result.problem !== undefined) failures += 1;
-      process.stdout.write(
+      environment.standardOutput(
         `${result.stem}: ${result.height}px${result.slices > 0 ? `, ${result.slices} slices` : ''}${result.problem === undefined ? '' : `; ${result.problem}`}\n`,
       );
     }
@@ -224,7 +317,7 @@ async function main(): Promise<void> {
     await browser.close();
     await server.stop(true);
   }
-  process.exitCode = failures > 0 ? 1 : 0;
+  return failures > 0 ? 1 : 0;
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) process.exitCode = await renderBoards();
