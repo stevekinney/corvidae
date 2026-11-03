@@ -4192,7 +4192,7 @@
       "exportName": "RelativeTime",
       "category": "data-display",
       "status": "beta",
-      "purpose": "Localized, live-updating relative date label for timestamps.",
+      "purpose": "Live-updating relative or absolute time label in the viewer's zone, with the other reading in a tooltip.",
       "tags": ["relative-time"],
       "useWhen": ["Showing when a message, issue, or event happened."],
       "avoidWhen": [

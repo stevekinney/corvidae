@@ -5,8 +5,17 @@ import type { HTMLTimeAttributes } from 'svelte/elements';
 export type RelativeTimeProps = Omit<HTMLTimeAttributes, 'class' | 'datetime'> & {
   /** Custom class merged with `.cinder-relative-time`. */
   class?: string;
+  /** The moment to show: a `Date`, an ISO string or epoch milliseconds. Defaults to now. */
   date?: Date | string | number;
+  /** Locale for the label. Defaults to the surrounding locale context, then the browser's language. */
   locale?: string | string[];
+  /** IANA time zone the label is read in. Defaults to the viewer's zone. */
+  timeZone?: string;
+  /**
+   * `relative` reads "4 min ago", "1 h ago", then "Yesterday, 4:12 PM". `absolute` always reads
+   * the clock ("Today, 10:44 AM", "Sun Nov 1, 4:12 PM"). The tooltip carries the other reading.
+   */
+  format?: 'relative' | 'absolute';
   /** Recalculate the label on an interval. Set false to disable ticking. */
   tick?: boolean;
   children?: Snippet;

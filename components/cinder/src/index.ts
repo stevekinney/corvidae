@@ -275,6 +275,23 @@ export type { CopyButtonProps } from './components/copy-button/index.ts';
 
 export { copyToClipboard } from './utilities/clipboard.ts';
 
+export {
+  formatDate,
+  formatDateTime,
+  formatDayHeading,
+  formatRelativeTime,
+  formatScheduleTime,
+  formatTimeOfDay,
+  formatTimeZoneLabel,
+  formatTimestamp,
+} from './utilities/format-date.ts';
+export type {
+  DateFormatOptions,
+  DateInput,
+  DayHeadingOptions,
+  TimeZoneLabelOptions,
+} from './utilities/format-date.ts';
+
 export { default as DataList } from './components/data-list/index.ts';
 export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
 

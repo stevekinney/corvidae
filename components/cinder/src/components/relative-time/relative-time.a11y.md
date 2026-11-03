@@ -7,7 +7,7 @@ Complete this record before merge. Automated checks can detect malformed APIs, m
 - Reviewer: Cinder maintainers
 - Review outcome: Final review complete—approved.
 - Nearest neighbours: TimeField, Tooltip.
-- Why this component exists: It owns Intl.RelativeTimeFormat semantics and live ticking.
+- Why this component exists: It owns the shared date format (relative and absolute, in the viewer's zone) and live ticking.
 - Findings and resolutions: Uses a native time element, renders `Invalid date` safely for invalid inputs, and has no interactive behavior.
 
 ## Novel interaction accessibility review
@@ -30,4 +30,4 @@ Not applicable; the component is not focusable or interactive.
 
 ### Assistive-technology announcements
 
-The native `time` element exposes the machine-readable timestamp through `datetime`; its localized text is the accessible content and does not use a live region.
+The native `time` element exposes the machine-readable timestamp through `datetime`; its localized text is the accessible content and does not use a live region. The tooltip is a native `title` that repeats the same moment in the other reading, so nothing is conveyed only by hover.
