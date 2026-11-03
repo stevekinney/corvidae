@@ -84,6 +84,7 @@ function bureau(
         : {
             'bureau.settings.get': () => ({
               values: { modelPolicy: options.modelPolicy },
+              effective: { modelPolicy: options.modelPolicy },
               revision: 1,
               persisted: true,
               keys: {},

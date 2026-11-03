@@ -146,7 +146,7 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   }
   if (call !== undefined && call.method === 'bureau.settings.get') {
     // The settings are never empty: the probe only asks whether the Bureau answers them.
-    const result = { values: {}, revision: 0, persisted: true, keys: {} };
+    const result = { values: {}, effective: {}, revision: 0, persisted: true, keys: {} };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   if (call !== undefined && call.method === 'bureau.goals.list') {

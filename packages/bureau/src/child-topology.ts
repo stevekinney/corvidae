@@ -120,6 +120,7 @@ import {
 import { ownerOrLocal, principalDefect } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
+import { DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS } from './settings/setting-defaults';
 import type { AgentTaskOrigin } from './task-origin';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
@@ -418,7 +419,6 @@ export const CHILD_AGENT_RUN_WORKFLOW_TYPE = 'agentRun';
 /** The longest `toolCallId` a dispatch may name, in UTF-8 bytes. */
 const MAX_TOOL_CALL_ID_BYTES = 256;
 const DEFAULT_POLICY_VERSION = 'bureau-delegation/1';
-const DEFAULT_TIME_TO_LIVE_MILLISECONDS = 60 * 60 * 1000;
 const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<string> = new Set([
   'completed',
   'failed',
@@ -610,7 +610,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   const defaultTimeToLive = (): number =>
     dependencies.defaultTimeToLiveMilliseconds?.() ??
     delegation?.defaultTimeToLiveMilliseconds ??
-    DEFAULT_TIME_TO_LIVE_MILLISECONDS;
+    DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS;
 
   const tracked = new Map<string, TrackedChild>();
   const inFlight = new Set<Promise<unknown>>();

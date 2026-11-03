@@ -458,6 +458,10 @@ export {
 export type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 export type { RecoverAllOptions, RecoveredWorkflowInfo } from './lifecycle.ts';
 export {
+  DEFAULT_WORKFLOW_CLAIM_RENEW_INTERVAL_MS,
+  DEFAULT_WORKFLOW_CLAIM_TTL_MS,
+} from './ownership-options.ts';
+export {
   EagerRecoveryRevisionRefusedError,
   WorkflowRevisionUnavailableError,
 } from './revision-errors.ts';

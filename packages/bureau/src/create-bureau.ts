@@ -317,6 +317,11 @@ import {
 } from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
+import {
+  builtInSettingDefaults,
+  DEFAULT_EVENT_RETENTION_MS,
+  DEFAULT_TASK_RETENTION_MS,
+} from './settings/setting-defaults';
 import type { SettingsValues } from './settings/settings-schema';
 import { summarizerFailures } from './settings/settings-validation';
 import { createMemoryEmbedderSetting, type MemoryEmbedderSetting } from './memory-embedder-setting';
@@ -2174,12 +2179,6 @@ function rejectOptInToolOption(name: 'humanInput' | 'wakeup' | 'decide', value: 
   );
 }
 
-/** COR-1477 — {@link BureauRetentionOptions.events}'s default window: 7 days. */
-const DEFAULT_EVENT_RETENTION_MS = 7 * 86_400_000;
-
-/** COR-1477 — {@link BureauRetentionOptions.tasks}'s default window: 30 days. */
-const DEFAULT_TASK_RETENTION_MS = 30 * 86_400_000;
-
 /** {@link BureauRetentionOptions.tasks}, or its default window when none was given. */
 function taskRetentionOf(values: SettingsValues) {
   return values['retention.tasks'] ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
@@ -3190,6 +3189,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       store: runtime.kv,
       persisted: booted.persisted,
       defaults: settingsDefaults,
+      builtInDefaults: builtInSettingDefaults({ persistentStorage: booted.persisted }),
       locked: settingsLocked,
       decisionModels: decisionModelNames(options.decisions),
       // A summarizer must name a row of the catalog as it is at the write (COR-1899), and an
