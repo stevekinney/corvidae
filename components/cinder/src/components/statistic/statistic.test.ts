@@ -373,3 +373,43 @@ describe('Statistic', () => {
     expect(css).toContain('font-size: var(--cinder-statistic-change-font-size,');
   });
 });
+
+const statisticCss = await Bun.file(new URL('./statistic.css', import.meta.url)).text();
+
+describe('Statistic attention dot', () => {
+  test('draws no dot by default, so a zero or healthy count stays plain', () => {
+    const { container } = render(Statistic, { label: 'Failed in 24 hours', value: 0 });
+    expect(container.querySelector('.cinder-statistic__attention')).toBeNull();
+    expect(
+      container.querySelector('.cinder-statistic')?.hasAttribute('data-cinder-attention'),
+    ).toBe(false);
+  });
+
+  test('attention draws one decorative dot before the label text', () => {
+    const { container } = render(Statistic, { label: 'Needs you', value: 2, attention: true });
+    const label = container.querySelector('.cinder-statistic__label');
+    const dot = label?.querySelector('.cinder-statistic__attention');
+    expect(dot).not.toBeNull();
+    expect(dot?.getAttribute('aria-hidden')).toBe('true');
+    expect(label?.firstElementChild).toBe(dot as Element);
+    expect(label?.textContent).toBe('Needs you');
+    expect(
+      container.querySelector('.cinder-statistic')?.hasAttribute('data-cinder-attention'),
+    ).toBe(true);
+  });
+
+  test('the dot does not change the accessible name', () => {
+    const { getByRole } = render(Statistic, { label: 'Needs you', value: 2, attention: true });
+    expect(getByRole('group').getAttribute('aria-labelledby')).toContain('-label');
+    expect(getByRole('group', { name: 'Needs you 2' })).not.toBeNull();
+  });
+
+  test('the dot is an 8px amber dot, Highlight under forced colors', () => {
+    const dot = statisticCss.match(/\.cinder-statistic__attention \{([^}]*)\}/);
+    expect(dot?.[1]).toContain('inline-size: 0.5rem');
+    expect(dot?.[1]).toContain('block-size: 0.5rem');
+    expect(dot?.[1]).toContain('background: var(--cinder-status-warning-solid)');
+    const forced = statisticCss.slice(statisticCss.indexOf('@media (forced-colors: active)'));
+    expect(forced).toContain('background: Highlight');
+  });
+});

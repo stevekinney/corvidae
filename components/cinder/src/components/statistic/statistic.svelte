@@ -34,6 +34,7 @@
   let {
     label,
     value,
+    attention = false,
     change,
     icon,
     theme,
@@ -117,6 +118,7 @@
   role="group"
   aria-labelledby={`${labelId} ${valueId}`}
   data-cinder-has-icon={icon ? '' : undefined}
+  data-cinder-attention={attention ? '' : undefined}
   style:--_cinder-chart-foreground={resolvedTheme.foreground}
   style:--_cinder-chart-muted={resolvedTheme.muted}
   style:--_cinder-chart-background={resolvedTheme.background}
@@ -124,7 +126,10 @@
   {#if icon}
     <span class="cinder-statistic__icon" aria-hidden="true">{@render icon()}</span>
   {/if}
-  <span id={labelId} class="cinder-statistic__label">{label}</span>
+  <span id={labelId} class="cinder-statistic__label"
+    >{#if attention}<span class="cinder-statistic__attention" aria-hidden="true"
+      ></span>{/if}{label}</span
+  >
   <span id={valueId} class="cinder-statistic__value">{displayValue}</span>
   {#if change}
     <span class="cinder-statistic__change" data-cinder-direction={change.direction}>

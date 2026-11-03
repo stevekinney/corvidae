@@ -19,6 +19,11 @@ const schema = {
       ],
       description: 'The statistic. Strings rendered verbatim; numbers formatted via formatNumber.',
     },
+    attention: {
+      type: 'boolean',
+      description:
+        'Draws an amber attention dot before the label. Set it only when the value is a non-zero bad count (such as missed runs or items waiting on you), never on a zero or a healthy count. The dot is decorative: the label wording carries the meaning.',
+    },
     theme: {
       type: 'object',
       properties: {

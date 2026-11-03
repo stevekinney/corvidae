@@ -947,12 +947,18 @@ export type {
   StatisticGroupVariant,
 } from './components/statistic-group/index.ts';
 
-export { default as StatusDot } from './components/status-dot/index.ts';
+export {
+  default as StatusDot,
+  statusDotWordTones,
+  statusForStatusDotWord,
+} from './components/status-dot/index.ts';
 export type {
   StatusDotConnectionState,
   StatusDotProps,
   StatusDotSize,
   StatusDotStatus,
+  StatusDotWord,
+  StatusDotWordLabel,
 } from './components/status-dot/index.ts';
 
 export { default as Surface } from './components/surface/index.ts';

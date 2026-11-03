@@ -112,7 +112,7 @@ Thirteen sites (fourteen declarations: the ColorField hatch has two stops) are a
 | `slider` tick | `border.control` | 2 × 8px, undiluted — the redundant `opacity: 0.6` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `color-field` empty hatch | `border.control` | a 6px `linear-gradient` repeat across the swatch |
 | `feed-event` dot | `border.control` (was `border.strong`) | 8 × 8px |
-| `status-dot` neutral indicator | `border.control` (was `border.strong`) | `--cinder-status-dot-size` |
+| `status-dot` neutral indicator, and the `pending` hollow ring | `border.control` (was `border.strong`) | `--cinder-status-dot-size` |
 | `rating` empty star | `border.control` (was `border.strong`) | a 1.5rem masked glyph |
 | `resizable-panels` grip | `border.control` (was `border.strong`) | `color:`, inherited by a child, undiluted — the child's `opacity: 0.5` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `entry-frame` busy dot (Chat) | `border.control` | 8 × 8px |

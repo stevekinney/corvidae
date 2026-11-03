@@ -34,6 +34,28 @@
     grid-column: 2;
   }
 
+  /* An attention dot sits before the label: an amber 8px dot, only for a non-zero bad count. */
+  .cinder-statistic[data-cinder-attention] .cinder-statistic__label {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2, 0.5rem);
+  }
+
+  .cinder-statistic__attention {
+    flex: none;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-status-warning-solid);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-statistic__attention {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+  }
+
   .cinder-statistic__value {
     font-size: var(--cinder-statistic-value-font-size, var(--cinder-text-4xl));
     font-weight: var(--cinder-statistic-value-font-weight, var(--cinder-font-semibold));

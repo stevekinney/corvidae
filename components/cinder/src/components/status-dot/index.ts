@@ -8,4 +8,10 @@ export type {
   StatusDotSize,
   StatusDotStatus,
 } from './status-dot.types.ts';
+export {
+  statusDotWordTones,
+  statusForStatusDotWord,
+  type StatusDotWord,
+  type StatusDotWordLabel,
+} from './status-dot.words.ts';
 export { StatusDot };
