@@ -815,8 +815,6 @@
     ". WorkflowFileDefinition.agent",
     ". WorkflowFileDefinition.description",
     ". WorkflowFileDefinition.paused",
-    ". WorkflowFileDefinition.steps",
-    ". WorkflowFileDefinition.trigger",
     ". WorkflowFileError.code",
     ". WorkflowFileError.problem",
     ". WorkflowFileProblem.code",

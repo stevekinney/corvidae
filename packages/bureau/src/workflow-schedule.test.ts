@@ -26,7 +26,13 @@ function document(name: string): WorkflowDocument {
   };
 }
 
-const hourly: DesiredWorkflowSchedule = { spec: '1h', overlap: 'skip', paused: false };
+const hourly: DesiredWorkflowSchedule = {
+  spec: '1h',
+  overlap: 'skip',
+  timeZone: 'UTC',
+  backfill: false,
+  paused: false,
+};
 
 async function engineWith(...names: string[]): Promise<Engine> {
   const engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
@@ -94,7 +100,18 @@ describe('reconciling workflow schedules', () => {
     await using engine = await engineWith('digest');
     const result = await reconcileWorkflowSchedules(
       engine,
-      new Map([['digest', { spec: '*/5 * * * *', overlap: 'queue', paused: false }]]),
+      new Map([
+        [
+          'digest',
+          {
+            spec: '*/5 * * * *',
+            overlap: 'queue',
+            timeZone: 'UTC',
+            backfill: false,
+            paused: false,
+          },
+        ],
+      ]),
     );
     expect(result.created).toEqual(['bureau-workflow-schedule:digest:1']);
     const [schedule] = await live(engine);
@@ -123,12 +140,67 @@ describe('reconciling workflow schedules', () => {
     await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
     const result = await reconcileWorkflowSchedules(
       engine,
-      new Map([['digest', { spec: '30m', overlap: 'allow', paused: false }]]),
+      new Map([
+        [
+          'digest',
+          { spec: '30m', overlap: 'allow', timeZone: 'UTC', backfill: false, paused: false },
+        ],
+      ]),
     );
     expect(result.updated).toEqual(['bureau-workflow-schedule:digest:1']);
     const [schedule] = await live(engine);
     expect(schedule).toMatchObject({ intervalMs: 30 * 60_000, overlap: 'allow' });
     expect(await live(engine)).toHaveLength(1);
+  });
+
+  it("creates a cron schedule in the trigger's time zone, catching up only when asked (COR-2009)", async () => {
+    await using engine = await engineWith('digest');
+    await reconcileWorkflowSchedules(
+      engine,
+      new Map([
+        [
+          'digest',
+          {
+            spec: '0 11 * * 5',
+            overlap: 'skip',
+            timeZone: 'America/Chicago',
+            backfill: false,
+            paused: false,
+          },
+        ],
+      ]),
+    );
+    const [schedule] = await live(engine);
+    expect(schedule).toMatchObject({
+      cronExpression: '0 11 * * 5',
+      timeZone: 'America/Chicago',
+      backfill: false,
+    });
+  });
+
+  it('updates a changed time zone or catch-up in place, and changes nothing once they match', async () => {
+    await using engine = await engineWith('digest');
+    const cron = { spec: '0 9 * * 1-5', overlap: 'skip', paused: false } as const;
+    await reconcileWorkflowSchedules(
+      engine,
+      new Map([['digest', { ...cron, timeZone: 'UTC', backfill: false }]]),
+    );
+    const changed = new Map([['digest', { ...cron, timeZone: 'America/Chicago', backfill: true }]]);
+    const result = await reconcileWorkflowSchedules(engine, changed);
+    expect(result.updated).toEqual(['bureau-workflow-schedule:digest:1']);
+    const [schedule] = await live(engine);
+    expect(schedule).toMatchObject({ timeZone: 'America/Chicago', backfill: true });
+    const again = await reconcileWorkflowSchedules(engine, changed);
+    expect(again.updated).toEqual([]);
+  });
+
+  it('gives an interval schedule no time zone, so a UTC default never refuses it', async () => {
+    await using engine = await engineWith('digest');
+    await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
+    const again = await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
+    expect(again.updated).toEqual([]);
+    const [schedule] = await live(engine);
+    expect(schedule).toMatchObject({ intervalMs: 3_600_000, backfill: false });
   });
 
   it('pauses when the file says paused and resumes when it does not', async () => {

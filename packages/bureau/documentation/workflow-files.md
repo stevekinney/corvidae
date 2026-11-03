@@ -9,24 +9,33 @@ Bureau does not know where the directory lives. The host passes a workflow sourc
 ```json
 {
   "name": "nightly-digest",
+  "title": "Nightly digest",
   "description": "Writes and edits the morning digest.",
   "agent": "writer",
   "paused": false,
+  "trigger": {
+    "kind": "schedule",
+    "spec": "0 6 * * *",
+    "timezone": "America/Chicago",
+    "overlap": "skip",
+    "catchUp": false
+  },
   "inputSchema": { "type": "null" },
   "outputSchema": {
     "type": "object",
     "properties": { "content": { "type": "string" } },
     "required": ["content"]
   },
-  "trigger": { "kind": "schedule", "spec": "0 6 * * *", "overlap": "skip" },
   "steps": [
     {
+      "title": "Write the digest",
       "kind": "activity",
       "handler": "agent",
       "input": { "agent": "writer", "message": "Write the digest." }
     },
-    { "kind": "sleep", "duration": "5m" },
+    { "title": "Approve it", "kind": "await-signal", "signal": "digest-approved", "review": true },
     {
+      "title": "Edit it",
       "kind": "activity",
       "handler": "agent",
       "input": { "agent": "editor", "message": "Edit it." }
@@ -35,17 +44,18 @@ Bureau does not know where the directory lives. The host passes a workflow sourc
 }
 ```
 
-The file is Weft's workflow document (`packages/weft/src/document-workflow`, including its optional `inputSchema` and `outputSchema`) plus three Bureau fields, and nothing else: an unknown key makes the file `invalid`, because the document schema is strict.
+The file is Weft's workflow document (`packages/weft/src/document-workflow`, including its optional `inputSchema` and `outputSchema`) plus Bureau's own fields, and nothing else: an unknown key makes the file `invalid`, because the document schema is strict. Bureau's fields are `title`, `description`, `agent` and `paused` at the top, `title` and `review` on a step, and `timezone` and `catchUp` on a `schedule` trigger (the extended format of COR-2009, which the workflow builder writes).
 
 - `name`: must equal the identifier. The filename without `.json` is the identifier, so this file is `nightly-digest.json`. An identifier matches `^[a-z](?:[a-z0-9-]*[a-z0-9])?$` and is at most 64 characters, because Bureau derives ids from it that must stay inside Weft's 128.
+- `title`: optional. The name a person reads, shown as the workflow's heading with the identifier beside it: a non-empty string of at most 120 characters. With none, the identifier is the heading.
 - `description`: optional. A sentence on what the workflow is for: a non-empty string of at most 280 characters, shown beside the workflow in lists. A description of another type, an empty one, or a longer one makes the file `invalid`.
 - `agent`: optional. The identifier of the agent that wrote the file. It is only recorded; it is not checked against the agent catalog, so deleting that agent leaves the workflow valid.
 - `paused`: optional boolean, default `false`. A paused workflow starts nothing new. See [Pausing and deleting](#pausing-and-deleting).
 - `inputSchema`, `outputSchema`: optional JSON Schemas (draft 2020-12). See [Input and output schemas](#input-and-output-schemas). A file with a `schedule` trigger whose `inputSchema` refuses `null` is `invalid` (the issue is at `inputSchema`), because a schedule fire starts its instance with no input, which is `null`, so every fire would fail with `input-invalid`.
-- `trigger`: `{ kind: 'schedule', spec, overlap? }` or `{ kind: 'signal', name }`. `spec` is a cron expression (five or six fields) or a duration such as `1h` or `30 seconds`, exactly as `DurableScheduleDefinition.spec` accepts. `overlap` is `skip` (the default), `queue`, `cancel-running`, or `allow`. `name` is a non-empty string of at most 256 characters, the longest signal name `bureau.workflows.signal` admits. Any other field, a malformed `spec`, a missing, empty, or longer `name`, or any other `kind` makes the file `invalid`. See [Signals](#signals).
-- `steps`: Weft's steps, run in order: `activity`, `sleep`, and `await-signal`. The only activity is `agent`.
+- `trigger`: `{ kind: 'schedule', spec, timezone?, overlap?, catchUp? }`, `{ kind: 'signal', name }`, or `{ kind: 'manual' }`. `spec` is a cron expression (five or six fields) or a duration such as `1h` or `30 seconds`, exactly as `DurableScheduleDefinition.spec` accepts. `timezone` is the IANA zone a cron `spec` is read in (`UTC` when absent); a zone on a duration is `invalid`, because an interval counts elapsed time. `overlap` is `skip` (the default), `queue`, `cancel-running`, or `allow`. `catchUp` is `true` to run what the schedule missed while the host was off, and `false` (the default) to skip it; it is Weft's `backfill`. A `manual` workflow has no schedule and no signal: it starts only through `bureau.workflows.start`. `name` is a non-empty string of at most 256 characters, the longest signal name `bureau.workflows.signal` admits. Any other field, a malformed `spec`, a missing, empty, or longer `name`, or any other `kind` makes the file `invalid`. See [Signals](#signals).
+- `steps`: Weft's steps, run in order: `activity`, `sleep`, and `await-signal`. The only activity is `agent`. Any step may carry a `title`, the step's name (the same limits as the workflow's). An `await-signal` step with `review: true` waits for a person: the waiting instance shows in Reviews. Without it the step waits for an outside signal and does not. `review` on another kind of step, or with any value but `true`, makes the file `invalid`.
 
-Only files ending exactly in `.json` count: dotfiles, `.JSON`, other extensions, and directories are ignored. A symbolic link to a file is followed. A file larger than 256 KiB is invalid. `description`, `agent`, and `paused` are stripped before the document is handed to Weft, so none is part of a revision.
+Only files ending exactly in `.json` count: dotfiles, `.JSON`, other extensions, and directories are ignored. A symbolic link to a file is followed. A file larger than 256 KiB is invalid. `title`, `description`, `agent`, and `paused`, each step's `title` and `review`, and a schedule trigger's `timezone` and `catchUp` are stripped before the document is handed to Weft, so none is part of a revision's Weft `workflowVersion`; `bureau.workflows.list` and `get` return the trigger and the steps as written.
 
 ## What is invalid
 
@@ -157,7 +167,7 @@ Two steps, deliberately separate:
 
 Each workflow with a `schedule` trigger has exactly one live native schedule, whose id is `bureau-workflow-schedule:<identifier>:<generation>`. Weft keeps a cancelled schedule's record and refuses to create another under its id, so the generation is one more than the highest generation among every schedule of that identifier, cancelled ones included, read from the engine each time. "Exactly one" means one that is not cancelled.
 
-Every startup, every rescan that finds a change, and every rescan after a failed apply puts the schedule back to match the file (a schedule changed through Weft's own console is corrected at the next of these, not at once): it is created if missing, its `spec` and `overlap` are updated, it is paused when the file says `paused: true` and resumed when it does not, and it is cancelled when the file is deleted or becomes `invalid`, except that the schedule of a file with an unrecognized key (see the problem codes above) is left exactly as it is. Fixing the file creates a new generation. The schedule always resolves the active revision at the moment it fires (`active-at-fire`), and its input, which is the instance's `trigger`, is the static `{ kind: 'schedule', scheduleId }`; when it fired is the instance's own `createdAt`.
+Every startup, every rescan that finds a change, and every rescan after a failed apply puts the schedule back to match the file (a schedule changed through Weft's own console is corrected at the next of these, not at once): it is created if missing, its `spec`, `overlap`, time zone (`timezone`) and `backfill` (`catchUp`) are updated, it is paused when the file says `paused: true` and resumed when it does not, and it is cancelled when the file is deleted or becomes `invalid`, except that the schedule of a file with an unrecognized key (see the problem codes above) is left exactly as it is. Fixing the file creates a new generation. The schedule always resolves the active revision at the moment it fires (`active-at-fire`), and its input, which is the instance's `trigger`, is the static `{ kind: 'schedule', scheduleId }`; when it fired is the instance's own `createdAt`.
 
 `bureau.schedules.*` (the in-process `bureau.schedules.get` and `bureau.schedules.list`) reads these schedules, and `ownerOf` answers them with the deployment's owner. `bureau.schedules.pause`, `bureau.schedules.resume`, `bureau.schedules.cancel`, `bureau.schedules.skipnext`, and `bureau.schedules.runnow` refuse them with `BureauError` (`NOT_FOUND`), as if they did not exist: the workflow's own operations are the only way to change one.
 

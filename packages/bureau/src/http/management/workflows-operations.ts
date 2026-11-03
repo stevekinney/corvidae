@@ -99,6 +99,8 @@ const workflowListingSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   owner: z.string(),
   hash: z.string().nullable(),
+  /** The workflow's `title`, the name a person reads, or `null` when the file gives none. */
+  title: z.string().nullable(),
   description: z.string().nullable(),
   agent: z.string().nullable(),
   paused: z.boolean(),
@@ -107,8 +109,13 @@ const workflowListingSchema = z.object({
   /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none. */
   outputSchema: jsonSchemaField.nullable(),
   version: z.string().nullable(),
-  /** The file's trigger as written, `{ kind, ... }`, for a `ready` file, else `null`. */
+  /**
+   * The file's trigger as written, `{ kind, ... }` with a schedule's `timezone` and `catchUp`, for
+   * a `ready` file, else `null`.
+   */
   trigger: z.record(z.string(), z.unknown()).nullable(),
+  /** The file's steps as written, each step's `title` and `review` included, for a `ready` file. */
+  steps: z.array(z.record(z.string(), z.unknown())).nullable(),
   problem: problemSchema.nullable(),
 });
 
@@ -138,6 +145,12 @@ const workflowDetailSchema = workflowListingSchema.extend({
  */
 const definitionSchema = z
   .strictObject({
+    title: z
+      .string()
+      .optional()
+      .describe(
+        'The name a person reads, shown as the heading with the identifier beside it. Bureau strips it before Weft sees the document.',
+      ),
     description: z.string().optional(),
     agent: z.string().optional(),
     paused: z.boolean().optional(),
@@ -151,11 +164,19 @@ const definitionSchema = z
       .describe(
         'A JSON Schema (draft 2020-12) for the value an instance finishes with, under the same limits. An instance whose result breaks it fails with `output-invalid`.',
       ),
-    trigger: z.looseObject({ kind: z.string() }),
-    steps: z.array(z.record(z.string(), z.unknown())),
+    trigger: z
+      .looseObject({ kind: z.string() })
+      .describe(
+        'What starts the workflow: `{ kind: "schedule", spec, timezone?, overlap?, catchUp? }`, `{ kind: "signal", name }`, or `{ kind: "manual" }` for a workflow only a person starts. `timezone` is an IANA zone for a cron `spec`; `catchUp: true` runs what was missed while the host was off.',
+      ),
+    steps: z
+      .array(z.record(z.string(), z.unknown()))
+      .describe(
+        'The steps, run in order. Any step may carry a `title`; an `await-signal` step with `review: true` waits for a person and shows in Reviews.',
+      ),
   })
   .describe(
-    'The workflow file’s contents: an optional `description`, `agent` and `paused`, optional `inputSchema` and `outputSchema`, the `trigger` (an object with a `kind`), and the `steps`.',
+    'The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.',
   );
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
@@ -245,6 +266,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     state: listing.state,
     owner: listing.owner,
     hash: listing.hash ?? null,
+    title: listing.title,
     description: listing.description,
     agent: listing.agent,
     paused: listing.paused,
@@ -252,6 +274,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     outputSchema: listing.outputSchema === null ? null : { ...listing.outputSchema },
     version: listing.version ?? null,
     trigger: listing.trigger === null ? null : { ...listing.trigger },
+    steps: listing.steps === null ? null : listing.steps.map((step) => ({ ...step })),
     problem:
       listing.problem === undefined
         ? null

@@ -68,6 +68,7 @@ import {
   type ScheduleOverlapPolicy,
 } from './workflow-host';
 import {
+  DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE,
   type DesiredWorkflowSchedule,
   parseWorkflowScheduleId,
   reconcileWorkflowSchedules,
@@ -537,11 +538,17 @@ export interface WorkflowRuntimeOptions {
 }
 
 function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefined {
-  const trigger = file.document.trigger;
+  // The trigger as written: its `timezone` and `catchUp` are not in the document Weft is handed.
+  const trigger = file.trigger;
   if (trigger.kind !== 'schedule') return undefined;
   return {
     spec: typeof trigger['spec'] === 'string' ? trigger['spec'] : '',
     overlap: (trigger['overlap'] ?? 'skip') as ScheduleOverlapPolicy,
+    timeZone:
+      typeof trigger['timezone'] === 'string'
+        ? trigger['timezone']
+        : DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE,
+    backfill: trigger['catchUp'] === true,
     paused: file.paused,
   };
 }

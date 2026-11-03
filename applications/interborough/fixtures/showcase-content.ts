@@ -438,7 +438,9 @@ export interface ShowcaseWorkflowFile {
  * (`tmp/design-review/decisions.md`, "Owner answers during B01"): a workflow `title`, a schedule
  * trigger with `timezone` and `catchUp`, and a `title` on each step. It needs no model: every step is
  * Assistant, which is scripted. The text is the workflow page's Code tab (PageWorkflow, "Code tab"),
- * which the builder's Edit and JSON frames show too.
+ * which the builder's Edit and JSON frames show too. The board's `input` and `output` are written as
+ * Weft's `inputSchema` and `outputSchema`, which the file format keeps (decisions.md, "Coordinator
+ * calls during B01").
  */
 export const SHOWCASE_RELEASE_NOTES_FILE: ShowcaseWorkflowFile = {
   id: 'release-notes',
@@ -453,7 +455,7 @@ export const SHOWCASE_RELEASE_NOTES_FILE: ShowcaseWorkflowFile = {
     "overlap": "skip",
     "catchUp": false
   },
-  "input": {
+  "inputSchema": {
     "type": "object",
     "required": ["branch"],
     "properties": {
@@ -463,7 +465,7 @@ export const SHOWCASE_RELEASE_NOTES_FILE: ShowcaseWorkflowFile = {
         "description": "Only include changes merged after this date. Defaults to the last release." }
     }
   },
-  "output": {
+  "outputSchema": {
     "type": "object",
     "required": ["notes"],
     "properties": {

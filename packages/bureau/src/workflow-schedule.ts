@@ -51,12 +51,34 @@ export interface DesiredWorkflowSchedule {
   /** The trigger's `spec`: a cron expression or a duration. */
   readonly spec: string;
   readonly overlap: ScheduleOverlapPolicy;
+  /** The IANA zone a cron `spec` is read in: the trigger's `timezone`, or `UTC` when it has none. */
+  readonly timeZone: string;
+  /** Whether runs missed while the host was off are caught up: the trigger's `catchUp`, Weft's `backfill`. */
+  readonly backfill: boolean;
   readonly paused: boolean;
 }
+
+/** The zone a schedule whose trigger names none runs in, which is Weft's default. */
+export const DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE = 'UTC';
 
 /** The trigger a fire starts the instance with. Static: a schedule's input is fixed at creation. */
 export function scheduleTrigger(scheduleId: string): { kind: 'schedule'; scheduleId: string } {
   return { kind: 'schedule', scheduleId };
+}
+
+/** The Weft options for `want`: its overlap and backfill, and its zone when the spec is a cron one. */
+function scheduleOptionsOf(want: DesiredWorkflowSchedule): {
+  overlap: ScheduleOverlapPolicy;
+  backfill: boolean;
+  timeZone?: string;
+} {
+  // Weft refuses a zone for an interval, which counts elapsed time.
+  const cron = 'cron' in toScheduleSpec(want.spec);
+  return {
+    overlap: want.overlap,
+    backfill: want.backfill,
+    ...(cron ? { timeZone: want.timeZone } : {}),
+  };
 }
 
 function sameCadence(summary: ScheduleSummary, wanted: NormalizedScheduleSpec): boolean {
@@ -97,7 +119,7 @@ export interface ScheduleReconciliation {
 
 /**
  * Put every Bureau workflow schedule in `engine` back to match `desired`, keyed by workflow
- * identifier: create what is missing, update a changed `spec` or `overlap`, pause or resume to match
+ * identifier: create what is missing, update a changed `spec`, `overlap`, `timeZone`, or `backfill`, pause or resume to match
  * `paused`, and cancel a schedule whose file is gone, invalid, or has no `schedule` trigger, along
  * with any extra live schedule of a workflow. Idempotent: a second call changes nothing.
  *
@@ -133,8 +155,13 @@ export async function reconcileWorkflowSchedules(
     }
     if (want === undefined || keep === undefined) continue;
     const wanted = normalizeScheduleSpec(toScheduleSpec(want.spec));
-    if (!sameCadence(keep, wanted) || keep.overlap !== want.overlap) {
-      await engine.updateSchedule(keep.id, toScheduleSpec(want.spec), { overlap: want.overlap });
+    if (
+      !sameCadence(keep, wanted) ||
+      keep.overlap !== want.overlap ||
+      keep.backfill !== want.backfill ||
+      (wanted.kind === 'cron' && keep.timeZone !== want.timeZone)
+    ) {
+      await engine.updateSchedule(keep.id, toScheduleSpec(want.spec), scheduleOptionsOf(want));
       updated.push(keep.id);
     }
     if (want.paused && keep.status === 'active') {
@@ -155,7 +182,7 @@ export async function reconcileWorkflowSchedules(
     const id = workflowScheduleId(identifier, generation);
     await engine.schedule(weftNameOf(identifier), scheduleTrigger(id), toScheduleSpec(want.spec), {
       id,
-      overlap: want.overlap,
+      ...scheduleOptionsOf(want),
       description: `Workflow ${identifier}`,
     });
     created.push(id);

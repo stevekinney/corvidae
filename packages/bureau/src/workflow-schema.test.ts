@@ -91,7 +91,7 @@ describe('a workflow file with schemas', () => {
     expect(parsed.outputSchema).toEqual(OUTPUT_SCHEMA);
   });
 
-  it('is written with the schemas after paused and before the trigger, and reads back the same', () => {
+  it('is written with the schemas after the trigger and before the steps, and reads back the same', () => {
     const definition: WorkflowFileDefinition = {
       description: 'Digest.',
       agent: 'writer',
@@ -109,9 +109,9 @@ describe('a workflow file with schemas', () => {
       'description',
       'agent',
       'paused',
+      'trigger',
       'inputSchema',
       'outputSchema',
-      'trigger',
       'steps',
     ]);
     const parsed = parseWorkflowFile('digest', text, host);

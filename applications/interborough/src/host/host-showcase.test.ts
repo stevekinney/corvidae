@@ -87,20 +87,31 @@ describe('the showcase seed on a host', () => {
     });
   });
 
-  test('lists the sample world files: Order refund cannot be read, and the extended format waits on Bureau', async () => {
+  test('lists the sample world files in the extended format: Order refund cannot be read', async () => {
     const listed = await bureau<{
-      workflows: { id: string; state: string; problem?: { code: string } }[];
+      workflows: {
+        id: string;
+        state: string;
+        title: string | null;
+        trigger: Record<string, unknown> | null;
+        problem?: { code: string; issues: { path: string }[] | null };
+      }[];
     }>('bureau.workflows.list');
     const state = (id: string) => listed.workflows.find((workflow) => workflow.id === id);
     expect(state('order-refund')).toMatchObject({
       state: 'invalid',
       problem: { code: 'invalid-json' },
     });
-    // Bureau accepts the extended keys (`title`, `timezone`, `catchUp`, `manual`) once the format
-    // grows (COR-2009 piece 3); until then it refuses the two files that use them.
-    for (const id of ['release-notes', 'triage-inbox']) {
-      expect(state(id)).toMatchObject({ state: 'invalid', problem: { code: 'invalid-document' } });
-    }
+    expect(state('triage-inbox')).toMatchObject({
+      state: 'ready',
+      title: 'Triage inbox',
+      trigger: { kind: 'manual' },
+    });
+    // Every extended key of Release notes reads (COR-2009); the one issue left is that its
+    // schedule fires with no input while its input requires `branch`, which is open on COR-2009.
+    expect(state('release-notes')?.problem?.issues?.map((issue) => issue.path)).toEqual([
+      'inputSchema',
+    ]);
   });
 
   test('puts workflow runs in each state, with the model picker and a failed chat', async () => {

@@ -27,7 +27,7 @@ import { isMappedWeftName, isNamespacedIdentifier } from './namespaced-identifie
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import { toScheduleSpec } from './schedule-spec';
 import { toWeftDocumentInput } from './workflow-document-handlers';
-import { AGENT_STEP_HANDLER, TRIGGER_KEYS } from './workflow-file';
+import { AGENT_STEP_HANDLER, scheduleTriggerExtensionIssue, TRIGGER_KEYS } from './workflow-file';
 import { checkWorkflowSchema } from './workflow-schema';
 
 /** The overlap policies a `schedule` trigger may name; `skip` when it names none. */
@@ -40,8 +40,10 @@ export const validateScheduleTrigger: DocumentTriggerValidator = (trigger) => {
     (key) => key !== 'kind' && !TRIGGER_KEYS['schedule']!.includes(key),
   );
   if (extra.length > 0) {
-    return `a schedule trigger takes only "spec" and "overlap"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
+    return `a schedule trigger takes only "spec", "overlap", "timezone", and "catchUp"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
   }
+  const extension = scheduleTriggerExtensionIssue(trigger);
+  if (extension !== undefined) return extension;
   const spec = trigger['spec'];
   if (typeof spec !== 'string' || spec.trim() === '') {
     return 'a schedule trigger needs a "spec": a cron expression or a duration such as "1h"';
@@ -87,11 +89,24 @@ export const validateSignalTrigger: DocumentTriggerValidator = (trigger) => {
 };
 
 /**
+ * Why `trigger` is not a valid `manual` trigger (COR-2009), or `undefined` when it is. A manual
+ * trigger is exactly `{ kind: 'manual' }`: the workflow starts only when someone starts it.
+ */
+export const validateManualTrigger: DocumentTriggerValidator = (trigger) => {
+  const extra = Object.keys(trigger).filter((key) => key !== 'kind');
+  if (extra.length > 0) {
+    return `a manual trigger takes no other key; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
+  }
+  return undefined;
+};
+
+/**
  * The trigger kinds a workflow file may use; a kind that is not here makes the file `invalid`.
  */
 export const WORKFLOW_TRIGGER_KINDS: Readonly<Record<string, DocumentTriggerValidator>> = {
   schedule: validateScheduleTrigger,
   signal: validateSignalTrigger,
+  manual: validateManualTrigger,
 };
 
 /** What an `agent` step's run returns, and what the next step receives as `previous`. */

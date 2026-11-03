@@ -41,7 +41,7 @@ const SCHEDULE_ID = 'bureau-workflow-schedule:digest:1';
 /** The ways a file can carry a key this host does not know. */
 const UNRECOGNIZED: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['a top-level key', { ...HOURLY, futureOption: { anything: true } }],
-  ['a key on the schedule trigger', { trigger: { kind: 'schedule', spec: '1h', timezone: 'UTC' } }],
+  ['a key on the schedule trigger', { trigger: { kind: 'schedule', spec: '1h', jitter: '5m' } }],
   [
     'a key on a step',
     {
@@ -251,7 +251,7 @@ describe('an instance in flight on a revision with an unrecognized key', () => {
   }
 
   for (const [label, trigger] of [
-    ['a key on a schedule trigger', { kind: 'schedule', spec: '1h', timezone: 'UTC' }],
+    ['a key on a schedule trigger', { kind: 'schedule', spec: '1h', jitter: '5m' }],
     ['a key on a signal trigger', { kind: 'signal', name: 'go', replay: true }],
   ] as const) {
     it(`is left as it is at startup when its revision has ${label}`, async () => {
@@ -346,7 +346,7 @@ describe('what marks a file as unrecognized', () => {
 
   it('includes a key on a schedule or signal trigger, which Weft’s schema leaves open', () => {
     for (const trigger of [
-      { kind: 'schedule', spec: '1h', timezone: 'UTC' },
+      { kind: 'schedule', spec: '1h', jitter: '5m' },
       { kind: 'signal', name: 'go', replay: true },
     ]) {
       const parsed = parse(trigger);
