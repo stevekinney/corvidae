@@ -190,7 +190,10 @@ describe('probing an MCP server', () => {
 
 describe('probing an OpenAPI service', () => {
   test('lists the operations of an embedded document, tiered by method', async () => {
-    const { manager } = await managerOver();
+    // The probe calls List pets with the key (COR-2009), so the service answers it here.
+    const { manager } = await managerOver('local', {
+      fetch: (async () => Response.json([])) as unknown as typeof fetch,
+    });
 
     const probe = await manager.probe({
       id: 'pets',
