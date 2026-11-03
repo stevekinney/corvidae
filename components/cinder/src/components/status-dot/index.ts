@@ -7,6 +7,7 @@ export type {
   StatusDotProps,
   StatusDotSize,
   StatusDotStatus,
+  StatusDotWordTone,
 } from './status-dot.types.ts';
 export {
   statusDotWordTones,

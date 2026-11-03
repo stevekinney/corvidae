@@ -413,3 +413,53 @@ describe('Statistic attention dot', () => {
     expect(forced).toContain('background: Highlight');
   });
 });
+
+describe('Statistic caption', () => {
+  test('draws no caption by default', () => {
+    const { container } = render(Statistic, { label: 'Running now', value: 0 });
+    expect(container.querySelector('.cinder-statistic__caption')).toBeNull();
+    expect(container.querySelector('.cinder-statistic')?.hasAttribute('aria-describedby')).toBe(
+      false,
+    );
+  });
+
+  test('a caption sits under the value and describes the group', () => {
+    const { container, getByRole } = render(Statistic, {
+      label: 'Running now',
+      value: 0,
+      caption: 'Nothing is running',
+    });
+    const caption = container.querySelector('.cinder-statistic__caption');
+    expect(caption?.textContent).toBe('Nothing is running');
+    const value = container.querySelector('.cinder-statistic__value');
+    expect(value?.nextElementSibling).toBe(caption as Element);
+    const group = getByRole('group', { name: 'Running now 0' });
+    expect(group.getAttribute('aria-describedby')).toBe(caption?.id ?? '');
+    expect(caption?.id).toContain('-caption');
+  });
+
+  test('a blank caption draws nothing', () => {
+    const { container } = render(Statistic, { label: 'Running now', value: 0, caption: '   ' });
+    expect(container.querySelector('.cinder-statistic__caption')).toBeNull();
+  });
+
+  test('a caption composes with the attention dot and a change line', () => {
+    const { container } = render(Statistic, {
+      label: 'Needs you',
+      value: 2,
+      attention: true,
+      caption: 'An approval and a question',
+      change: { value: '1', direction: 'up' },
+    });
+    expect(container.querySelector('.cinder-statistic__attention')).not.toBeNull();
+    expect(container.querySelector('.cinder-statistic__caption')?.textContent).toBe(
+      'An approval and a question',
+    );
+    expect(container.querySelector('.cinder-statistic__change')).not.toBeNull();
+  });
+
+  test('the caption is muted text', () => {
+    const rule = statisticCss.match(/\.cinder-statistic__caption \{([^}]*)\}/);
+    expect(rule?.[1]).toContain('color: var(--_cinder-chart-muted, currentColor)');
+  });
+});

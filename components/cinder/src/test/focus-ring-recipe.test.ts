@@ -1039,3 +1039,24 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
     );
   });
 });
+
+describe('COR-2010 row 05k: the global focus ring names the system focus color under forced colors', () => {
+  const foundationRoot = parsePostcss(loadCss('../styles/foundation.css'));
+
+  test('a forced-colors rule repaints the bare :focus-visible outline with Highlight', () => {
+    const rules = findRulesByNormalizedSelector(foundationRoot, ':focus-visible').filter((rule) =>
+      isUnderForcedColors(rule),
+    );
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.map((rule) => declValue(rule, 'outline-color'))).toContain('Highlight');
+  });
+
+  test('the base rule stays the quiet accent ring outside forced colors', () => {
+    const rules = findRulesByNormalizedSelector(foundationRoot, ':focus-visible').filter(
+      (rule) => !isUnderForcedColors(rule),
+    );
+    expect(rules.map((rule) => declValue(rule, 'outline'))).toContain(
+      'var(--cinder-ring-width) solid var(--cinder-ring-color)',
+    );
+  });
+});

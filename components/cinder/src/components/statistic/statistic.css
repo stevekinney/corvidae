@@ -67,6 +67,15 @@
     grid-column: 2;
   }
 
+  .cinder-statistic__caption {
+    font-size: var(--cinder-statistic-caption-font-size, var(--cinder-text-sm));
+    color: var(--_cinder-chart-muted, currentColor);
+  }
+
+  .cinder-statistic[data-cinder-has-icon] .cinder-statistic__caption {
+    grid-column: 2;
+  }
+
   .cinder-statistic__change {
     display: inline-flex;
     align-items: center;

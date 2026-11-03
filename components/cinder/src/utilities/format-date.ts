@@ -13,6 +13,22 @@ export type DateFormatOptions = {
   timeZone?: string | undefined;
   /** The reference time for "today" and "ago" (a `Date` or epoch milliseconds). Defaults to now. */
   now?: Date | number | undefined;
+  /**
+   * Whether {@link formatDateTime} may say "Today", "Yesterday" and "Tomorrow". Defaults to true.
+   * Set it to false for a schedule or an occurrence that must always name its calendar day
+   * ("Tue Nov 3, 3:00 AM"), even when that day is tomorrow.
+   */
+  dayWords?: boolean | undefined;
+};
+
+/** Options for {@link formatRelativeTime}. */
+export type RelativeTimeFormatOptions = DateFormatOptions & {
+  /**
+   * `compact` (the default) reads "4 min ago" and "1 h ago" within today and falls back to the
+   * absolute form on any other day. `spelled` writes the unit out and reaches across days:
+   * "in 16 hours", "in 2 days", "3 days ago", falling back to the absolute form beyond a week.
+   */
+  units?: 'compact' | 'spelled' | undefined;
 };
 
 /** Options for {@link formatTimeZoneLabel}. */
@@ -155,7 +171,8 @@ function shortDayLabel(date: Date, now: Date, options: DateFormatOptions): strin
 /**
  * An absolute date and time in the viewer's zone on one 12-hour clock: "Today, 10:44 AM",
  * "Yesterday, 4:12 PM", "Sun Nov 1, 4:12 PM". Never relative; pair it with
- * {@link formatRelativeTime} in a tooltip.
+ * {@link formatRelativeTime} in a tooltip. Pass `dayWords: false` to always name the calendar day
+ * ("Tue Nov 3, 3:00 AM" rather than "Tomorrow, 3:00 AM").
  */
 export function formatDateTime(input: DateInput, options: DateFormatOptions = {}): string {
   const date = toDate(input);
@@ -164,7 +181,7 @@ export function formatDateTime(input: DateInput, options: DateFormatOptions = {}
   const time = formatTimeOfDay(date, options);
   const offset = daysBefore(date, now, options.timeZone);
   const label =
-    offset === 0 || offset === 1 || offset === -1
+    options.dayWords !== false && (offset === 0 || offset === 1 || offset === -1)
       ? dayWord(offset, options.locale)
       : shortDayLabel(date, now, options);
   return `${label}, ${time}`;
@@ -189,15 +206,21 @@ function relativeUnit(
 /**
  * Format a moment relative to now: "just now", "4 min ago", "1 h ago" within today, then the
  * absolute form from {@link formatDateTime} ("Yesterday, 4:12 PM", "Sun Nov 1, 4:12 PM"). A moment
- * in the near future reads "in 4 min" or "in 2 h".
+ * in the near future reads "in 4 min" or "in 2 h". With `units: 'spelled'` the unit is written out
+ * and days are reachable: "in 16 hours", "in 2 days", "3 days ago".
  */
-export function formatRelativeTime(input: DateInput, options: DateFormatOptions = {}): string {
+export function formatRelativeTime(
+  input: DateInput,
+  options: RelativeTimeFormatOptions = {},
+): string {
   const date = toDate(input);
   if (Number.isNaN(date.getTime())) return 'Invalid date';
   const now = resolveNow(options.now);
   const elapsed = now.getTime() - date.getTime();
   const distance = Math.abs(elapsed);
   const past = elapsed >= 0;
+
+  if (options.units === 'spelled') return formatSpelledRelativeTime(date, now, elapsed, options);
 
   if (distance < MINUTE)
     return isEnglish(options.locale) ? 'just now' : relativeNow(options.locale);
@@ -208,8 +231,51 @@ export function formatRelativeTime(input: DateInput, options: DateFormatOptions 
   return relativeUnit(Math.floor(distance / HOUR), 'hour', past, options.locale);
 }
 
+/** The `spelled` reading: minutes, hours, then whole days up to a week, then the absolute form. */
+function formatSpelledRelativeTime(
+  date: Date,
+  now: Date,
+  elapsed: number,
+  options: RelativeTimeFormatOptions,
+): string {
+  const distance = Math.abs(elapsed);
+  const sign = elapsed >= 0 ? -1 : 1;
+  if (distance < MINUTE) {
+    return isEnglish(options.locale) ? 'just now' : relativeNow(options.locale);
+  }
+  const formatter = new Intl.RelativeTimeFormat(options.locale, {
+    numeric: 'always',
+    style: 'long',
+  });
+  if (distance < HOUR) return formatter.format(sign * Math.floor(distance / MINUTE), 'minute');
+  if (distance < DAY) return formatter.format(sign * Math.floor(distance / HOUR), 'hour');
+  const days = Math.round(distance / DAY);
+  if (days <= 7) return formatter.format(sign * days, 'day');
+  return formatDateTime(date, { ...options, now });
+}
+
 function relativeNow(locale: Intl.LocalesArgument | undefined): string {
   return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(0, 'second');
+}
+
+/**
+ * A calendar day and a clock time joined by a middle dot, for a detail line that carries more
+ * facts after it: "Mon, Nov 2 · 9:20 AM". It always names the day, even when that day is today, and
+ * adds the year when it is not this year.
+ */
+export function formatDayAndTime(input: DateInput, options: DateFormatOptions = {}): string {
+  const date = toDate(input);
+  if (Number.isNaN(date.getTime())) return 'Invalid date';
+  const now = resolveNow(options.now);
+  const withYear = calendarYear(date, options.timeZone) !== calendarYear(now, options.timeZone);
+  const day = formatDate(date, options.locale ?? 'en-US', {
+    timeZone: options.timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(withYear ? { year: 'numeric' } : {}),
+  });
+  return `${day} · ${formatTimeOfDay(date, options)}`;
 }
 
 /**

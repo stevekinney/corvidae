@@ -5,22 +5,30 @@
 </script>
 
 <script lang="ts">
-  import { Button, Timeline } from '@lostgradient/cinder';
+  import { Button, Timeline, formatDateTime, formatRelativeTime } from '@lostgradient/cinder';
   import type { TimelineEntry } from '@lostgradient/cinder';
 
+  // The sample world: now is Mon Nov 2, 10:46 AM Central. Upcoming runs name their calendar day
+  // (never "Tomorrow") and say how far away they are in spelled-out units.
+  const now = Date.parse('2026-11-02T16:46:00Z');
+  const clock = { timeZone: 'America/Chicago', now, dayWords: false } as const;
+  const upcoming = (id: string, datetime: string): TimelineEntry => ({
+    id,
+    datetime,
+    timestamp: formatDateTime(datetime, clock),
+    title: formatRelativeTime(datetime, { ...clock, units: 'spelled' }),
+    tone: 'pending',
+  });
+
   const entries: TimelineEntry[] = [
-    {
-      id: 'nov-3',
-      datetime: '2026-11-03T09:00:00Z',
-      timestamp: 'Tue Nov 3, 3:00 AM',
-      title: 'in 16 hours',
-      tone: 'pending',
-    },
+    upcoming('nov-5', '2026-11-05T09:00:00Z'),
+    upcoming('nov-4', '2026-11-04T09:00:00Z'),
+    upcoming('nov-3', '2026-11-03T09:00:00Z'),
     {
       id: 'now',
       kind: 'now',
       datetime: '2026-11-02T16:46:00Z',
-      timestamp: 'Mon Nov 2, 10:46 AM',
+      timestamp: formatDateTime(now, clock),
       title: 'Now',
     },
     {

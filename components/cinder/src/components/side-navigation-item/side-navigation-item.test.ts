@@ -409,4 +409,21 @@ describe('SideNavigationItem collapsed rail', () => {
       true,
     );
   });
+
+  test('a legacy row keeps its own icon and label as direct children of the link when collapsed', async () => {
+    // A shell that styles the link's direct children (the Interborough rail hides every child that
+    // is not an svg, an img or aria-hidden) must keep finding the consumer's icon where it always
+    // was, so a row without an `icon` snippet gets no wrapper around its children.
+    const { default: Harness } = await import('./side-navigation-item-legacy-rail.test.svelte');
+    for (const collapsed of [false, true]) {
+      const { container, unmount } = render(Harness, { props: { collapsed } });
+      const anchor = container.querySelector('a');
+      expect(anchor?.hasAttribute('data-cinder-collapsed')).toBe(collapsed);
+      expect(anchor?.querySelector('.cinder-side-navigation-item__label')).toBeNull();
+      const children = [...(anchor?.children ?? [])];
+      expect(children.map((child) => child.tagName.toLowerCase())).toEqual(['svg', 'span']);
+      expect(children[0]?.parentElement).toBe(anchor);
+      unmount();
+    }
+  });
 });

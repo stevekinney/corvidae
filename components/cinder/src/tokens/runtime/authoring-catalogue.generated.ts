@@ -6154,7 +6154,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), but lifts to surface in dark mode where surface-inset is nearly invisible against the dark stage.',
+        'Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), but lifts to surface in dark mode, where the 18% inset sits only three lightness points above the 15% canvas a marker is drawn on and would read as a hole rather than a marker; the surface (21%) steps up from the canvas.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6553,7 +6553,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(52% .05 248). Both clear WCAG 1.4.11's 3:1 floor against the surfaces a control sits on.",
+        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(56% .05 248). The design draws 52% here, but at 52% the edge reads 2.65:1 on `surface.raised` (the ground of a popover or dialog), below WCAG 1.4.11's 3:1 floor, which the contrast pairs `surface.base` and `surface.raised` hold it to; 56% is the nearest step that clears the floor on both (3.82:1 on the surface, 3.14:1 on raised). Both arms clear 3:1 against the surfaces a control sits on.",
       themeAware: true,
       deprecated: false,
       profile: 'color',

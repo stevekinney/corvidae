@@ -34,7 +34,7 @@ Use when:
 
 `outline-offset` may be a fixed pixel value when a specific nudge is needed — some call sites use `2px` or `3px`. The rule against hard-coding applies to **ring thickness** (`--cinder-ring-width`) and **ring color** (`--cinder-ring-color`) only.
 
-Strategy A does **not** need a `@media (forced-colors: active)` override. A solid `outline` is already preserved by forced-colors mode (the system substitutes a system color). Adding a redundant override is unnecessary.
+Strategy A needs no per-component `@media (forced-colors: active)` override: a solid `outline` is already preserved by forced-colors mode. The one global default in `foundation.css` names the system focus color (`Highlight`) itself under forced colors, so the ring never depends on how a browser substitutes the author's color.
 
 **Representative call site:**
 

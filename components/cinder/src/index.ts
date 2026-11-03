@@ -278,6 +278,7 @@ export { copyToClipboard } from './utilities/clipboard.ts';
 export {
   formatDate,
   formatDateTime,
+  formatDayAndTime,
   formatDayHeading,
   formatRelativeTime,
   formatScheduleTime,
@@ -289,6 +290,7 @@ export type {
   DateFormatOptions,
   DateInput,
   DayHeadingOptions,
+  RelativeTimeFormatOptions,
   TimeZoneLabelOptions,
 } from './utilities/format-date.ts';
 
@@ -995,6 +997,7 @@ export type {
   StatusDotStatus,
   StatusDotWord,
   StatusDotWordLabel,
+  StatusDotWordTone,
 } from './components/status-dot/index.ts';
 
 export { default as Surface } from './components/surface/index.ts';

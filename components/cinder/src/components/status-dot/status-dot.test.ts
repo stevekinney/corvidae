@@ -330,6 +330,38 @@ describe('StatusDot connection preset', () => {
   });
 });
 
+describe('StatusDot wordTone (row 33h)', () => {
+  test('the default leaves the word muted and stamps no word-tone attribute', () => {
+    const { container } = render(StatusDot, {
+      props: { status: 'success', label: 'Found 3 tools' },
+    });
+    expect(
+      container.querySelector('.cinder-status-dot')?.hasAttribute('data-cinder-word-tone'),
+    ).toBe(false);
+  });
+
+  test('status paints a success word in the success text colour and keeps the dot', async () => {
+    const { container } = render(StatusDot, {
+      props: { status: 'success', label: 'Found 3 tools', wordTone: 'status' },
+    });
+    const root = container.querySelector('.cinder-status-dot');
+    expect(root?.getAttribute('data-cinder-word-tone')).toBe('status');
+    expect(root?.getAttribute('data-cinder-status')).toBe('success');
+    expect(root?.textContent).toContain('Found 3 tools');
+    const css = await Bun.file(new URL('./status-dot.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\[data-cinder-word-tone='status'\]\[data-cinder-status='success'\][^{]*\{[^}]*--_cinder-status-dot-word-color:\s*var\(--cinder-status-success-text\)/s,
+    );
+  });
+
+  test('a word from the table stays muted for success unless the caller asks for status', () => {
+    const { container } = render(StatusDot, { props: { word: 'Connected' } });
+    expect(
+      container.querySelector('.cinder-status-dot')?.hasAttribute('data-cinder-word-tone'),
+    ).toBe(false);
+  });
+});
+
 describe('StatusDot CSS contract', () => {
   test('connection presets tint the root text with their semantic state colors', async () => {
     const css = await Bun.file(new URL('./status-dot.css', import.meta.url)).text();

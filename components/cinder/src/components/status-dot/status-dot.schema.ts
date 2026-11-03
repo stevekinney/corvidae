@@ -44,6 +44,12 @@ const schema = {
       description: 'Dot size.',
       default: 'md',
     },
+    wordTone: {
+      enum: ['muted', 'status'],
+      description:
+        'How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status\'s text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured.',
+      default: 'muted',
+    },
     class: {
       type: 'string',
       description: 'Extra classes appended to the root element.',

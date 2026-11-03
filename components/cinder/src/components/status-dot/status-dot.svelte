@@ -63,6 +63,7 @@
     live,
     labelVisible = true,
     size = 'md',
+    wordTone = 'muted',
     class: className,
     'aria-label': ariaLabel,
     ...rest
@@ -129,6 +130,7 @@
   data-cinder-status={resolvedStatus}
   data-cinder-state={connectionState}
   data-cinder-size={size}
+  data-cinder-word-tone={wordTone === 'status' ? 'status' : undefined}
   role={resolvedLive ? 'status' : 'img'}
   aria-live={resolvedLive ? 'polite' : undefined}
   aria-atomic={resolvedLive ? 'true' : undefined}

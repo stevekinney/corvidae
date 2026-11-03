@@ -55,9 +55,10 @@ export type StatusDotWord = keyof typeof statusDotWordTones;
 
 /**
  * A status word with an optional qualifier after a middle dot, such as
- * `'Running · checking the result'` or `'Missed runs · 4'`. A qualifier does not change the tone
- * unless the table lists the qualified phrase itself (`'Done · refund not issued'` is neutral,
- * because the task was not achieved, while a plain `'Done'` is green).
+ * `'Running · checking the result'` or `'Missed runs · 4'`. A qualifier does not change the tone,
+ * with one exception: a qualifier on `Done` always names what was not achieved
+ * (`'Done · refund not issued'`), so a qualified `Done` is neutral and never green, while a plain
+ * `'Done'` is green.
  */
 export type StatusDotWordLabel = StatusDotWord | `${StatusDotWord} · ${string}`;
 
@@ -71,9 +72,10 @@ const qualifierSeparator = ' · ';
  * Looks a status word up in the word-to-tone table and returns its status, or `undefined` for a
  * word the table does not know.
  *
- * The phrase is tried whole first, so `'Done · refund not issued'` finds its own neutral entry;
- * otherwise the part before the first ` · ` is tried, so `'Running · checking the result'` and
- * `'Missed runs · 4'` resolve to their base word. A typographic apostrophe is read as a straight
+ * The phrase is tried whole first; otherwise the part before the first ` · ` is tried, so
+ * `'Running · checking the result'` and `'Missed runs · 4'` resolve to their base word. A
+ * qualifier on `Done` is the one qualifier that moves the tone: a finished run whose task was not
+ * achieved (`'Done · refund not issued'`, or any other `'Done · …'`) is neutral, never green. A typographic apostrophe is read as a straight
  * one, so `'Can’t load'` finds `'Can't load'`.
  */
 export function statusForStatusDotWord(word: string): StatusDotStatus | undefined {
@@ -82,5 +84,9 @@ export function statusForStatusDotWord(word: string): StatusDotStatus | undefine
   if (whole !== undefined) return whole;
   const separatorIndex = phrase.indexOf(qualifierSeparator);
   if (separatorIndex === -1) return undefined;
-  return toneByWord.get(phrase.slice(0, separatorIndex).trimEnd());
+  const base = phrase.slice(0, separatorIndex).trimEnd();
+  if (base === 'Done' && phrase.slice(separatorIndex + qualifierSeparator.length).trim() !== '') {
+    return 'neutral';
+  }
+  return toneByWord.get(base);
 }

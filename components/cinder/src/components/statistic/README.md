@@ -50,6 +50,7 @@ Set `attention` to draw an amber dot before the label when the value is a non-ze
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `attention` | `boolean` | no | — | Draws an amber attention dot before the label. Set it only when the value is a non-zero bad count (such as missed runs or items waiting on you), never on a zero or a healthy count. The dot is decorative: the label wording carries the meaning. |
+| `caption` | `string` | no | — | A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-statistic`. |
 | `label` | `string` | yes | — | Short label describing the metric, e.g. "Monthly Revenue". |
 | `style` | `string` | no | — | Inline style string applied to the `.cinder-statistic` root. |

@@ -244,3 +244,44 @@ describe('StackedListItem actions', () => {
     expect(container.querySelector('.cinder-stacked-list-item__trailing')).toBeNull();
   });
 });
+
+describe('status and time sit on the title baseline (rows 09d, 09f, 15r)', () => {
+  const rule = (selector: string): string => {
+    const index = stylesheet.indexOf(`${selector} {`);
+    expect(index, selector).toBeGreaterThan(-1);
+    return stylesheet.slice(stylesheet.indexOf('{', index) + 1, stylesheet.indexOf('}', index));
+  };
+
+  test('the status and time cells align their contents on a baseline, not their centres', () => {
+    expect(rule('.cinder-stacked-list-item--lines .cinder-stacked-list-item__status')).toContain(
+      'align-items: baseline;',
+    );
+    expect(rule('.cinder-stacked-list-item--lines .cinder-stacked-list-item__time')).toContain(
+      'align-items: baseline;',
+    );
+  });
+
+  test('each cell opens with a zero-width strut in the title type, so the baseline is the title first line', () => {
+    const strut = rule(
+      `.cinder-stacked-list-item--lines .cinder-stacked-list-item__status::before,\n  .cinder-stacked-list-item--lines .cinder-stacked-list-item__time::before`,
+    );
+    expect(strut).toContain('font-size: var(--cinder-text-base);');
+    expect(strut).toContain('line-height: var(--cinder-leading-snug);');
+    expect(strut).toContain('inline-size: 0;');
+  });
+
+  test('the dot centres on the word while the word keeps the baseline', () => {
+    expect(rule('.cinder-stacked-list-item__status .cinder-status-dot')).toContain(
+      'align-items: center;',
+    );
+    expect(rule('.cinder-stacked-list-item__status .cinder-status-dot__label')).toContain(
+      'align-self: baseline;',
+    );
+  });
+
+  test('a status on line two has no strut', () => {
+    expect(stylesheet).toMatch(
+      /status-line-two\s+\.cinder-stacked-list-item__status::before,[^{]*\{\s*display: none;/,
+    );
+  });
+});

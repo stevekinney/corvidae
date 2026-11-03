@@ -145,10 +145,16 @@
     <span class="cinder-side-navigation-item__icon" aria-hidden="true">
       {@render props.icon()}
     </span>
-  {/if}
-  <span class="cinder-side-navigation-item__label">
+    <span class="cinder-side-navigation-item__label">
+      {@render props.children()}
+    </span>
+  {:else}
+    <!-- Legacy shape, kept for a row that draws its own icon inside `children`: the consumer's
+         nodes stay direct children of the link, so a shell that styles the link's children (the
+         Interborough rail hides every direct child except an svg or an aria-hidden node when
+         collapsed) keeps finding its icon where it always did. -->
     {@render props.children()}
-  </span>
+  {/if}
   {@render indicator()}
 {/snippet}
 

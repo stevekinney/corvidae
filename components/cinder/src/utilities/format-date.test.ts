@@ -4,6 +4,7 @@ import { environmentConfiguration } from '../../scripts/environment-configuratio
 import {
   formatDate,
   formatDateTime,
+  formatDayAndTime,
   formatDayHeading,
   formatRelativeTime,
   formatScheduleTime,
@@ -278,5 +279,74 @@ describe('formatTimestamp', () => {
   test('accepts ISO string input', () => {
     const result = formatTimestamp('2026-04-15T12:34:56.000Z');
     expect(result.length).toBeGreaterThan(0);
+  });
+});
+
+describe('COR-2010 board forms', () => {
+  // The design's sample world: now is Mon Nov 2, 10:46 AM Central.
+  const nowCentral = Date.UTC(2026, 10, 2, 16, 46);
+  const options = { timeZone: CENTRAL, now: nowCentral };
+
+  describe('formatDateTime with dayWords: false (row 70g)', () => {
+    test('names tomorrow by its calendar day, not "Tomorrow"', () => {
+      const dailySummary = Date.UTC(2026, 10, 3, 9, 0);
+      expect(formatDateTime(dailySummary, options)).toBe('Tomorrow, 3:00 AM');
+      expect(formatDateTime(dailySummary, { ...options, dayWords: false })).toBe(
+        'Tue Nov 3, 3:00 AM',
+      );
+    });
+
+    test('names today and yesterday by their calendar day too', () => {
+      expect(formatDateTime(Date.UTC(2026, 10, 2, 16, 44), { ...options, dayWords: false })).toBe(
+        'Mon Nov 2, 10:44 AM',
+      );
+      expect(formatDateTime(Date.UTC(2026, 10, 1, 22, 12), { ...options, dayWords: false })).toBe(
+        'Sun Nov 1, 4:12 PM',
+      );
+    });
+
+    test('keeps the Nov 6 form of a later day', () => {
+      expect(formatDateTime(Date.UTC(2026, 10, 6, 17, 0), { ...options, dayWords: false })).toBe(
+        'Fri Nov 6, 11:00 AM',
+      );
+    });
+  });
+
+  describe('formatDayAndTime (row 56p)', () => {
+    test('writes the run-detail form even when the day is today', () => {
+      expect(formatDayAndTime(Date.UTC(2026, 10, 2, 15, 20), options)).toBe('Mon, Nov 2 · 9:20 AM');
+    });
+
+    test('adds the year for another year and rejects an invalid date', () => {
+      expect(formatDayAndTime(Date.UTC(2025, 10, 2, 15, 20), options)).toBe(
+        'Sun, Nov 2, 2025 · 9:20 AM',
+      );
+      expect(formatDayAndTime('nope', options)).toBe('Invalid date');
+    });
+  });
+
+  describe("formatRelativeTime with units: 'spelled' (row 72h)", () => {
+    const spelled = { ...options, units: 'spelled' as const };
+
+    test('reads the upcoming occurrences of the schedule detail', () => {
+      expect(formatRelativeTime(Date.UTC(2026, 10, 3, 9, 0), spelled)).toBe('in 16 hours');
+      expect(formatRelativeTime(Date.UTC(2026, 10, 4, 9, 0), spelled)).toBe('in 2 days');
+      expect(formatRelativeTime(Date.UTC(2026, 10, 5, 9, 0), spelled)).toBe('in 3 days');
+    });
+
+    test('spells minutes and past moments the same way', () => {
+      expect(formatRelativeTime(nowCentral + 4 * 60_000, spelled)).toBe('in 4 minutes');
+      expect(formatRelativeTime(nowCentral - 3 * 3_600_000, spelled)).toBe('3 hours ago');
+      expect(formatRelativeTime(nowCentral - 3 * DAY_MILLISECONDS, spelled)).toBe('3 days ago');
+      expect(formatRelativeTime(nowCentral + 20_000, spelled)).toBe('just now');
+    });
+
+    test('falls back to the absolute form beyond a week', () => {
+      expect(formatRelativeTime(Date.UTC(2026, 10, 12, 9, 0), spelled)).toBe('Thu Nov 12, 3:00 AM');
+    });
+
+    test('leaves the compact default untouched', () => {
+      expect(formatRelativeTime(nowCentral + 2 * 3_600_000, options)).toBe('in 2 h');
+    });
   });
 });

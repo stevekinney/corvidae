@@ -29,7 +29,7 @@ Pass `status` (a [`StatusDot`](../status-dot/README.md) with its word), `time`, 
 - **line one**: the status dot and word in a fixed 128px leading column, a bold title, and the time right-aligned at the edge;
 - **line two**: muted `meta`, kind first, then agent, then detail, joined by middots. It starts under the title, not under the status, and ends in an ellipsis rather than wrapping.
 
-The column is the same 128px on every page, so titles start at one x position down the list. The dot and word are centred on the first line of the title and the time is aligned to the top of it, so both stay beside the first line when a title clamps to two lines with an ellipsis. Pass `tooltip` with the title's text so the full title is the row's tooltip.
+The column is the same 128px on every page, so titles start at one x position down the list. The dot and word sit on the baseline of the first line of the title and the time shares that baseline, so both stay beside the first line when a title clamps to two lines with an ellipsis. Pass `tooltip` with the title's text so the full title is the row's tooltip.
 
 ```svelte
 <script lang="ts">

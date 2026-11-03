@@ -121,6 +121,13 @@
     --cinder-status-dot-color: var(--cinder-accent-solid);
   }
 
+  /* `wordTone="status"`: a result sentence next to a success dot reads in the success text colour
+     instead of the muted word every list row uses. */
+  .cinder-status-dot[data-cinder-word-tone='status'][data-cinder-status='success'],
+  .cinder-status-dot[data-cinder-word-tone='status'][data-cinder-status='online'] {
+    --_cinder-status-dot-word-color: var(--cinder-status-success-text);
+  }
+
   .cinder-status-dot[data-cinder-status='pending'] .cinder-status-dot__indicator {
     box-sizing: border-box;
     border: 0.09375rem solid var(--cinder-status-dot-color); /* 1.5px */

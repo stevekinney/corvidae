@@ -69,11 +69,13 @@ describe('statusForStatusDotWord', () => {
 
   test('a qualifier rides along on its base word', () => {
     expect(statusForStatusDotWord('Missed runs · 12')).toBe('warning');
-    expect(statusForStatusDotWord('Done · 3 files changed')).toBe('success');
+    expect(statusForStatusDotWord('Running · checking the result')).toBe('info');
   });
 
-  test('a phrase the table lists whole wins over its base word', () => {
+  test('a qualifier on Done always means the task was not achieved, so the dot is never green', () => {
     expect(statusForStatusDotWord('Done · refund not issued')).toBe('neutral');
+    expect(statusForStatusDotWord('Done · no tickets found')).toBe('neutral');
+    expect(statusForStatusDotWord('Done · approval denied')).toBe('neutral');
     expect(statusForStatusDotWord('Done')).toBe('success');
   });
 

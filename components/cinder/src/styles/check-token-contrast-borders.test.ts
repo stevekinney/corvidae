@@ -43,6 +43,22 @@ describe('focus ring contrast (WCAG 1.4.11)', () => {
   });
 });
 
+describe('focus ring contrast on the sidebar and the canvas (COR-2010 row 02o)', () => {
+  // The sidebar paints `--cinder-surface` (sidebar.css) beside the page canvas, and the design asks
+  // the shared quiet ring to read at 3.6:1 against both, in light and dark.
+  const SIDEBAR_RING_FLOOR = 3.6;
+  for (const arm of ['light', 'dark'] as const) {
+    for (const [groundName, ground] of Object.entries({ sidebar: surface, canvas: bg })) {
+      it(`${arm}: the ring reads at least ${SIDEBAR_RING_FLOOR}:1 on the ${groundName}`, () => {
+        const ring: OklchColor = { l: 0.62, c: 0.16, h: accent[arm].h };
+        expect(
+          contrastRatio(wcagLuminance(ring), wcagLuminance(ground[arm])),
+        ).toBeGreaterThanOrEqual(SIDEBAR_RING_FLOOR);
+      });
+    }
+  }
+});
+
 describe('border-on-surface contrast', () => {
   // The neutral tiers do two jobs. STRUCTURAL tiers (muted, border, strong)
   // separate regions and outline containers; the region is identified by its
@@ -201,6 +217,25 @@ describe('border-on-surface contrast', () => {
         tier.light.alpha,
       );
     }
+  });
+
+  it('the dark control edge is held at 56% because the design value of 52% fails 3:1 on raised', () => {
+    // The Interborough design draws the dark control edge at oklch(52% .05 248) and also requires
+    // it to clear 3:1. Those two cannot both hold on `surface.raised` (the ground of a popover or
+    // dialog): 52% reads 2.65:1 there. The token ships the nearest step that clears the floor on
+    // both contrast pairs, and this test fails if either the shipped edge or the design value
+    // changes meaning.
+    const designEdge: OklchColor = { l: 0.52, c: 0.05, h: 248 };
+    expect(
+      contrastRatio(wcagLuminance(designEdge), wcagLuminance(surfaceRaised.dark)),
+    ).toBeLessThan(NON_TEXT);
+    expect(
+      contrastRatio(wcagLuminance(designEdge), wcagLuminance(surface.dark)),
+    ).toBeGreaterThanOrEqual(NON_TEXT);
+    expect(borderControl.dark.l).toBeCloseTo(0.56, 5);
+    expect(
+      contrastRatio(wcagLuminance(borderControl.dark), wcagLuminance(surfaceRaised.dark)),
+    ).toBeGreaterThanOrEqual(NON_TEXT);
   });
 
   it('the control edge is the ink step in the light arm and the opaque literal in the dark arm', () => {

@@ -214,8 +214,8 @@
  * Line one: a status dot and word in a fixed 128px leading column (the same on every page, so
  * titles start at one x position down the list), a bold title, and the time at the right edge.
  * Line two: muted meta, which starts under the title and not under the status. The status and the
- * time sit on the first line of the title (they are centred in its line box) and stay there when
- * the title clamps to a second line.
+ * time sit on the baseline of the first line of the title (a title-sized strut gives each cell that
+ * baseline) and stay there when the title clamps to a second line.
  *
  * The body is flattened into the layout grid so the status can lead the row, sit under the title
  * on a phone, or sit at the start of line two (the chat list), from one DOM order.
@@ -257,12 +257,45 @@
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__status {
     grid-area: status;
     display: flex;
-    align-items: center;
+    align-items: baseline;
     min-block-size: var(--_cinder-line-one-height);
     min-inline-size: 0;
     padding-inline-end: var(--cinder-space-3);
     overflow: hidden;
     white-space: nowrap;
+  }
+
+  /* The status word and the time sit on the baseline of the title's first line. Each cell opens
+     with a zero-width strut set in the title's type (the same size and line height, so its baseline
+     is the title's), and the flex line aligns the word or the time to it. The negative end margin
+     takes back the cell's gap so the strut moves nothing. The status dot stays centred on the word
+     (see the dot rule below), so the dot and the word keep one optical line. */
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__status::before,
+  .cinder-stacked-list-item--lines .cinder-stacked-list-item__time::before {
+    content: '\200b' / '';
+    flex: none;
+    inline-size: 0;
+    margin-inline-end: calc(var(--_cinder-strut-gap, 0px) * -1);
+    font-size: var(--cinder-text-base);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* Status on line two (the chat list, or a phone) sits beside 12px preview text, not the title,
+     so it has no strut. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two
+    .cinder-stacked-list-item__status::before,
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    .cinder-stacked-list-item__status::before {
+    display: none;
+  }
+
+  /* The dot centres on the word's line box while the word's baseline is the flex baseline. */
+  .cinder-stacked-list-item__status .cinder-status-dot {
+    align-items: center;
+  }
+
+  .cinder-stacked-list-item__status .cinder-status-dot__label {
+    align-self: baseline;
   }
 
   /* A status in the column is a small dot (8px) and a 12px semibold word, so the longest word
@@ -289,8 +322,9 @@
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__time {
     grid-area: time;
     display: flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
+    align-items: baseline;
+    --_cinder-strut-gap: var(--cinder-space-2);
+    gap: var(--_cinder-strut-gap);
     min-block-size: var(--_cinder-line-one-height);
     margin-inline-start: var(--cinder-space-3);
     font-size: var(--cinder-text-xs);
@@ -344,6 +378,7 @@
 
   .cinder-stacked-list-item--lines.cinder-stacked-list-item--status-line-two
     .cinder-stacked-list-item__status {
+    align-items: center;
     min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
     padding-inline-end: var(--cinder-space-2);
   }
@@ -355,6 +390,7 @@
 
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
     .cinder-stacked-list-item__status {
+    align-items: center;
     min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
     padding-inline-end: 0;
   }

@@ -31,6 +31,14 @@ export type StatusDotStatus =
 
 export type StatusDotSize = 'sm' | 'md';
 
+/**
+ * How the visible word is coloured. `muted` (the default) leaves a success, neutral or pending word
+ * muted so the dot carries the tone, as every status word on a list row does. `status` also paints
+ * the word in its status's text colour, for a result sentence beside the dot, such as a green
+ * "Found 3 tools" after a successful connection test.
+ */
+export type StatusDotWordTone = 'muted' | 'status';
+
 /** Realtime connection states that StatusDot can render as a live-region preset. */
 export type StatusDotConnectionState = 'connected' | 'connecting' | 'disconnected' | 'error';
 
@@ -61,6 +69,8 @@ export type StatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   labelVisible?: boolean;
   /** Dot size. Default `'md'`. */
   size?: StatusDotSize;
+  /** How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured. */
+  wordTone?: StatusDotWordTone;
   /** Extra classes appended to the root element. */
   class?: string;
 };
@@ -83,6 +93,8 @@ export interface StatusDotSchemaProps {
   live?: boolean;
   /** Dot size. @default "md" */
   size?: StatusDotSize;
+  /** How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured. @default "muted" */
+  wordTone?: StatusDotWordTone;
   /** Extra classes appended to the root element. */
   class?: string;
 }

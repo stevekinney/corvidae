@@ -168,6 +168,16 @@
   outline-offset: var(--cinder-ring-offset);
 }
 
+/* Under forced colors the system repaints the author's ring color, so the global default names the
+   system focus color itself (`Highlight`, the color the browser's own focus ring uses) and the ring
+   survives with the contrast the user chose. Components that paint a box-shadow ring keep their own
+   forced-colors outline (focus-ring-policy.md). */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+}
+
 :focus:not(:focus-visible) {
   /* This resets the legacy `:focus` ring when the element is NOT focus-visible;
      it is not a focus-visible indicator, so the colored-outline rule does not

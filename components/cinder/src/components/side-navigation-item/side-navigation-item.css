@@ -27,8 +27,8 @@
   }
 
   /* The label never wraps, so a long name cannot make the row taller than 30px, and it gives up
-   * room before the indicator does. A legacy item that puts its own icon inside `children` still
-   * lays out as before: the label is a flex row. */
+   * room before the indicator does. It exists only on a row that passes `icon`; a legacy item that
+   * puts its own icon inside `children` renders them as direct children of the link, as before. */
   .cinder-side-navigation-item__label {
     display: inline-flex;
     flex: 0 1 auto;
