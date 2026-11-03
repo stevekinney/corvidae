@@ -68,6 +68,7 @@ import {
   type WorkflowListing,
 } from './workflow-file-catalog';
 import type { ScheduleHookOrigins } from './hooks/schedule-hook-origins';
+import type { WorkflowRevisionSteps } from './workflow-review-waits';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { bureauNameOf, weftNameOf } from './namespaced-identifier';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
@@ -550,6 +551,19 @@ export interface WorkflowRuntime {
   readonly pruneSnapshots: (cutoff: number) => Promise<number>;
   /** When the workflow directory was last scanned and the message of that scan's error (COR-1731). */
   readonly health: () => DefinitionScannerHealth;
+  /**
+   * COR-2009 — the steps as written of the revision an instance runs on: `type` is the instance's
+   * engine type and `workflowVersion` the Weft revision it is pinned to. Read from the current file
+   * when it is that revision, else from the newest saved version that registered as it (titles and
+   * `review` leave the Weft revision unchanged, so the newest wins). `undefined` when `type` is no
+   * workflow file's, or no file or saved version is that revision.
+   */
+  readonly revisionSteps: (
+    type: string,
+    workflowVersion: string,
+  ) => Promise<WorkflowRevisionSteps | undefined>;
+  /** COR-2009 — the ids of every instance of a workflow file that has not finished. */
+  readonly inFlightRunIds: () => Promise<string[]>;
   /** Stop watching and wait for work in flight. */
   readonly close: () => Promise<void>;
 }
@@ -1941,6 +1955,29 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     isWorkflowType,
     isRegisteredType: (type) => registeredTypes.has(bureauNameOf(type)),
+
+    async revisionSteps(type, workflowVersion) {
+      if (!(await isWorkflowType(type))) return undefined;
+      const id = bureauNameOf(type);
+      const file = catalog.find(id);
+      if (file?.version === workflowVersion) {
+        return { workflow: id, title: file.title, steps: file.steps };
+      }
+      const records = await revisionLedger.list(id);
+      const saved = records.findLast((record) => record.workflowVersion === workflowVersion);
+      return saved === undefined
+        ? undefined
+        : { workflow: id, title: saved.content.title, steps: saved.content.steps };
+    },
+
+    async inFlightRunIds() {
+      const runIds: string[] = [];
+      for (const id of await knownTypes()) {
+        const byVersion = await inFlightRuns(id);
+        for (const { runIds: ofVersion } of byVersion.values()) runIds.push(...ofVersion);
+      }
+      return runIds;
+    },
 
     health: catalog.health,
 

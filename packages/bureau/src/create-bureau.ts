@@ -516,6 +516,7 @@ import {
   humanWaitDecisionRequest,
   humanWaitDeliveryId,
 } from './run-human-waits';
+import { createWorkflowReviewWaits } from './workflow-review-waits';
 import {
   countCheckpointParks,
   humanWaitParkOrdinal as sharedHumanWaitParkOrdinal,
@@ -19034,6 +19035,9 @@ async function constructBureau<const D extends AgentDefinitions>(
    * {@link Bureau.pendingHumanWaitsOfRun} doc comment.
    */
   async function pendingHumanWaitsOfRun(runId: string): Promise<PendingHumanWaitReview[]> {
+    // COR-2009: a workflow file's instance waiting at a review step.
+    const workflowWaits = workflowReviewWaits.ofRun(runId);
+    if (workflowWaits.length > 0) return workflowWaits;
     if (store.getRun(runId) !== undefined || runHumanWaits.holds(runId)) {
       const local: PendingReview[] = [...listPendingReviews(), ...runHumanWaits.list()];
       return local.filter(
@@ -19197,6 +19201,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
       return runHumanWaits.resolve(input);
     }
+    // COR-2009: a workflow file's review step resolves through the engine by run id, fenced and
+    // audited as a run's park is.
+    const workflowWait = await workflowReviewOf(input.id);
+    if (workflowWait !== undefined) {
+      assertExpectedReviewRound(input, workflowWait);
+      return resolveWorkflowReview(input, workflowWait);
+    }
     const derived = await derivedHumanWait(input.id);
     // COR-1613: a schedule fire's wait goes through the engine by run id, as a catalog run's does,
     // though it names the session the fire runs in; a session run's keeps the session path.
@@ -19214,6 +19225,41 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-2009 — the workflow review `id` names. A review the session index lists, or one of a run
+   * this process holds in its run store, is never a workflow's, and is answered without reading the
+   * engine: an extra read would let the index hear of a settlement before its own path decides.
+   */
+  async function workflowReviewOf(id: string): Promise<PendingHumanWaitReview | undefined> {
+    const held = workflowReviewWaits.find(id);
+    if (held !== undefined) return held;
+    const runId = reviewRunId(id);
+    if (runId === undefined || store.getRun(runId) !== undefined) return undefined;
+    if (listPendingReviews().some((review) => review.id === id)) return undefined;
+    return workflowReviewWaits.lookup(id);
+  }
+
+  /**
+   * COR-2009 — resolves the review of a workflow file's review step. The decision is claimed,
+   * delivered on the step's signal, and audited by `runHumanWaits.resolve`, as a run's park is;
+   * once it lands the review leaves the list, and a refusal reads the instance again, since the
+   * engine then says the wait is over or the review was decided elsewhere.
+   */
+  async function resolveWorkflowReview(
+    input: ResolveReviewInput,
+    review: PendingHumanWaitReview,
+  ): Promise<ResolveReviewResult> {
+    let result: ResolveReviewResult;
+    try {
+      result = await runHumanWaits.resolve(input, review);
+    } catch (error) {
+      await workflowReviewWaits.refresh(review.runId).catch(() => undefined);
+      throw error;
+    }
+    workflowReviewWaits.markResolved(review.id);
+    return result;
+  }
+
+  /**
    * Look up one review by id, live or resolved (AB-46). See the
    * {@link Bureau.getReview} doc comment.
    */
@@ -19225,6 +19271,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
     const runWait = runHumanWaits.find(id);
     if (runWait) return runWait;
+    // COR-2009: a workflow file's instance waiting at a review step.
+    const workflowWait = await workflowReviewOf(id);
+    if (workflowWait) return workflowWait;
     // COR-1579: the park of a run another process holds.
     const derived = await derivedHumanWait(id);
     if (derived) return derived;
@@ -21110,6 +21159,32 @@ async function constructBureau<const D extends AgentDefinitions>(
     diagnose,
   });
 
+  // COR-2009 — the reviews of workflow files: an instance waiting at an `await-signal` step its file
+  // writes with `"review": true`. They list beside the run human waits, waiting on the workflow's
+  // owner, and resolve through `runHumanWaits.resolve` by run id: the same decision-record fence,
+  // delivery and audit entry as a `bureau.run()` run's park.
+  const workflowReviewWaits = createWorkflowReviewWaits({
+    engine: () => (workflowRuntime === undefined ? undefined : runtime.durable?.engine),
+    revisionSteps: async (type, workflowVersion) =>
+      workflowRuntime?.revisionSteps(type, workflowVersion),
+    inFlightRunIds: async () => (await workflowRuntime?.inFlightRunIds()) ?? [],
+    now: runtimeServices.clock.now,
+    announce: (review) => {
+      emitter.dispatch(
+        new ReviewRequestedEvent(
+          review.id,
+          review.runId,
+          workflowRuntime?.workflows.owner ?? ANONYMOUS_LOCAL_OWNER,
+          'human-wait',
+          { signalName: review.signalName },
+        ),
+      );
+    },
+    released: (runId) => runHumanWaits.forget(runId),
+    track: (promise, label) => runtimeServices.deferred.track(promise, label),
+    diagnose,
+  });
+
   /**
    * COR-1596 — registers a schedule fire's human waits and tool approvals as pending reviews,
    * live and recovered alike: the composition builds a fire's services the same way for a tick
@@ -21591,7 +21666,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         .toSorted((a, b) => b.decidedAt - a.decidedAt || (a.review.id < b.review.id ? -1 : 1));
     },
     listSessionReviews: listPendingReviews,
-    listRunHumanWaits: () => runHumanWaits.list(),
+    listRunHumanWaits: () => [...runHumanWaits.list(), ...workflowReviewWaits.list()],
     get: getReview,
     pendingOf: pendingHumanWaitsOfRun,
     resolve: resolveAnyReview,
@@ -22408,6 +22483,10 @@ async function constructBureau<const D extends AgentDefinitions>(
   // `startScheduler` in `runtime-composition.ts`) and starts as soon as it is done.
   if (workflowRuntime !== undefined) {
     await workflowRuntime.start();
+    // COR-2009 — after registration, so the sweep reads each in-flight instance against its
+    // revision; before recovery, so no wait that begins from here on goes unheard.
+    await workflowReviewWaits.start();
+    stopForwarding.push(() => workflowReviewWaits.close());
     // COR-1721 — after the first scan `start()` made, as for the agent files.
     stopForwarding.push(
       forwardDefinitionChanges('workflows', workflowRuntime.workflows, (event) =>

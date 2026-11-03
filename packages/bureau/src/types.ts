@@ -1147,12 +1147,30 @@ export interface PendingHumanWaitReview {
    * schema, so a retry after the review closed can still tell which fields to keep out of a digest.
    */
   secretFields?: readonly string[] | undefined;
+  /**
+   * COR-2009 — the workflow step that asks, for the review of a workflow file's `await-signal` step
+   * written with `"review": true`; absent for every other human wait. `runId` is then the
+   * workflow's instance.
+   */
+  workflow?: WorkflowReviewOrigin | undefined;
   /** Epoch-ms timestamp the run parked. */
   requestedAt: number;
   /** Milliseconds elapsed since `requestedAt`, computed at read time. */
   ageMilliseconds: number;
   /** The review's current lifecycle status (AB-46). See {@link ReviewStatus}. */
   status: ReviewStatus;
+}
+
+/** COR-2009 — the workflow step a workflow review was asked by. */
+export interface WorkflowReviewOrigin {
+  /** The workflow's identifier. */
+  readonly id: string;
+  /** The workflow's `title`, when its file gives one. */
+  readonly title?: string | undefined;
+  /** The step's position in the file, counted from 1. */
+  readonly step: number;
+  /** The step's `title`, when it has one. */
+  readonly stepTitle?: string | undefined;
 }
 
 /** A single item in the gateway's review queue (AB-20). */
