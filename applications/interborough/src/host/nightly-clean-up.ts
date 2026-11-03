@@ -296,6 +296,7 @@ export function startNightlyCleanUp(options: NightlyCleanUpOptions): NightlyClea
   function arm(): void {
     if (closed) return;
     const delay = Math.max(0, cleanUpTimeAfter(now(), timeZone) - now());
+    // poll-reason: time-derived
     timer = setTimeout(() => void nightly(), delay);
     // The timer keeps no process alive on its own: the host's listener does.
     timer.unref?.();
