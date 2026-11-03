@@ -308,6 +308,7 @@ export type BureauHandlerSource = Pick<
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'blocker'
   >;
 } & {
   readonly internals: Pick<
@@ -1287,6 +1288,7 @@ export function buildBureauHandlerHost(
       owner: (scheduleId) => bureau.ownerOf({ kind: 'schedule', id: scheduleId }),
       agentName: bureau.schedules.agentName,
       inputPreview: bureau.schedules.inputPreview,
+      blocker: bureau.schedules.blocker,
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,

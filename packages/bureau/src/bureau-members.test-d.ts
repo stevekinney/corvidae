@@ -156,6 +156,7 @@ export type SchedulesMembers = AssertNever<
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'blocker'
     | 'events'
     | 'subscribeEvents'
   >

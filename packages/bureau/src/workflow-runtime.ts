@@ -69,6 +69,7 @@ import {
 } from './workflow-file-catalog';
 import type { ScheduleHookOrigins } from './hooks/schedule-hook-origins';
 import type { WorkflowRevisionSteps } from './workflow-review-waits';
+import { createWorkflowScheduleHolds, type WorkflowScheduleHolds } from './workflow-schedule-holds';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { bureauNameOf, weftNameOf } from './namespaced-identifier';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
@@ -527,6 +528,21 @@ interface Unrecoverable {
 }
 
 /** What {@link createWorkflowRuntime} builds. */
+/** Why a workflow file's schedule won't start (COR-2009): its file can't load. */
+export interface WorkflowScheduleBlocker {
+  /** What blocks it: the workflow's file is there but does not parse. */
+  readonly kind: 'workflow-cannot-load';
+  /** The workflow's identifier. */
+  readonly workflow: string;
+  /** What is wrong with the file, as its listing says. */
+  readonly message: string;
+  /**
+   * The status the schedule holds while it is blocked: `active` when Bureau paused it for the file
+   * problem (it was active, and resumes once the file parses), else the engine's own status.
+   */
+  readonly status: 'active' | 'paused';
+}
+
 export interface WorkflowRuntime {
   readonly workflows: BureauWorkflows;
   /**
@@ -547,6 +563,12 @@ export interface WorkflowRuntime {
   readonly isRegisteredType: (type: string) => boolean;
   /** Whether `scheduleId` is a Bureau workflow schedule that exists. */
   readonly scheduleExists: (scheduleId: string) => Promise<boolean>;
+  /**
+   * COR-2009 — why Bureau workflow schedule `scheduleId` won't start: its workflow's file is there
+   * but does not parse, so the schedule is kept from the last good version and held. `undefined`
+   * when it is no workflow file's schedule or its file loads.
+   */
+  readonly scheduleBlocker: (scheduleId: string) => Promise<WorkflowScheduleBlocker | undefined>;
   /** Delete the stored revisions nothing holds and nothing used since `cutoff` (epoch milliseconds). */
   readonly pruneSnapshots: (cutoff: number) => Promise<number>;
   /** When the workflow directory was last scanned and the message of that scan's error (COR-1731). */
@@ -585,6 +607,11 @@ export interface WorkflowRuntimeOptions {
    * the process when omitted.
    */
   readonly revisionLedger?: WorkflowRevisionLedger | undefined;
+  /**
+   * Where the schedules held for a file that stopped parsing are recorded (COR-2009); one that
+   * lasts as long as the process when omitted.
+   */
+  readonly scheduleHolds?: WorkflowScheduleHolds | undefined;
   readonly runtime: RuntimeServices;
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -644,6 +671,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   const revisionLedger =
     options.revisionLedger ??
     createWorkflowRevisionLedger({ nowISO: () => options.runtime.clock.nowISO() });
+  const scheduleHolds =
+    options.scheduleHolds ??
+    createWorkflowScheduleHolds({ nowISO: () => options.runtime.clock.nowISO() });
   /** The host a file is read against: a trigger kind a file names must be loaded. */
   const host = bridgeEngineActivities(engine, options.host);
   /** The host a revision is registered against, whether it is a file's or has instances (COR-1874). */
@@ -736,10 +766,30 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return unreadable;
   }
 
-  /** Put the schedules in line with the files, leaving the unreadable ones as they are. */
+  /**
+   * The workflows whose file is there but does not parse (COR-2009): any problem but a key this
+   * host does not know, which {@link unreadableWorkflows} answers for.
+   */
+  function brokenWorkflows(): Set<string> {
+    const broken = new Set<string>();
+    for (const listing of catalog.list()) {
+      if (listing.problem !== undefined && listing.problem.unrecognizedKeys !== true) {
+        broken.add(listing.id);
+      }
+    }
+    return broken;
+  }
+
+  /**
+   * Put the schedules in line with the files, leaving the unreadable ones as they are and holding
+   * the schedule of a file that stopped parsing.
+   */
   async function reconcileSchedules(): Promise<void> {
     const unreadable = unreadableWorkflows();
-    await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadable);
+    await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadable, {
+      broken: brokenWorkflows(),
+      holds: scheduleHolds,
+    });
     await triggers.reconcile(desiredTriggers(), unreadable);
     await forgetVanishedHookOrigins();
   }
@@ -1984,6 +2034,23 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     async scheduleExists(scheduleId) {
       if (parseWorkflowScheduleId(scheduleId) === undefined) return false;
       return (await engine.getSchedule(scheduleId)) !== null;
+    },
+
+    async scheduleBlocker(scheduleId) {
+      const identifier = parseWorkflowScheduleId(scheduleId)?.identifier;
+      if (identifier === undefined) return undefined;
+      const listing = catalog.list().find((entry) => entry.id === identifier);
+      const problem = listing?.problem;
+      if (problem === undefined || problem.unrecognizedKeys === true) return undefined;
+      const summary = await engine.getSchedule(scheduleId);
+      if (summary === null || summary.status === 'cancelled') return undefined;
+      const hold = await scheduleHolds.held(identifier);
+      return {
+        kind: 'workflow-cannot-load',
+        workflow: identifier,
+        message: problem.message,
+        status: hold?.scheduleId === scheduleId ? 'active' : summary.status,
+      };
     },
 
     async pruneSnapshots(cutoff) {

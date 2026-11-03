@@ -135,13 +135,14 @@ describe('a file with an unrecognized key and a schedule', () => {
     ['is not JSON', '{'],
     ['has a bad agent', workflowFileText('digest', { ...HOURLY, agent: 7 })],
   ] as const) {
-    it(`still cancels the schedule of a file that ${label}`, async () => {
+    it(`still holds the schedule of a file that ${label}, which it can judge (COR-2009)`, async () => {
       const harness = await startWorkflowBureau();
       cleanups.push(() => harness.dispose());
       await harness.putWorkflow('digest', HOURLY);
       await harness.put('digest.json', broken);
       await harness.bureau.workflows?.refresh();
-      expect(await schedulesOf(harness.bureau)).toEqual([{ id: SCHEDULE_ID, status: 'cancelled' }]);
+      // Kept from the last good version and paused, so it starts nothing until the file parses.
+      expect(await schedulesOf(harness.bureau)).toEqual([{ id: SCHEDULE_ID, status: 'paused' }]);
     });
   }
 

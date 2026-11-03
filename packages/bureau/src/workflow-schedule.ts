@@ -1,6 +1,8 @@
 /**
  * The native schedule a workflow file with a `schedule` trigger owns (COR-1527). The file is the
- * only source of truth: every scan and every startup puts the schedule back to match it.
+ * only source of truth: every scan and every startup puts the schedule back to match it. A file
+ * that stops parsing keeps the schedule its last good version made, held so it starts nothing
+ * until the file parses again (COR-2009, `workflow-schedule-holds.ts`).
  *
  * ## The id
  *
@@ -30,6 +32,7 @@ import { toScheduleSpec } from './schedule-spec';
 import { weftNameOf } from './namespaced-identifier';
 import { WORKFLOW_IDENTIFIER_PATTERN } from './workflow-file';
 import type { ScheduleOverlapPolicy } from './workflow-host';
+import type { WorkflowScheduleHolds } from './workflow-schedule-holds';
 
 export const WORKFLOW_SCHEDULE_ID_PREFIX = 'bureau-workflow-schedule:';
 
@@ -175,13 +178,27 @@ export interface ScheduleReconciliation {
   readonly paused: readonly string[];
   readonly resumed: readonly string[];
   readonly cancelled: readonly string[];
+  /** The schedules held because their workflow file stopped parsing (paused, and recorded). */
+  readonly held: readonly string[];
+}
+
+/**
+ * The workflows whose file is there but does not parse (COR-2009), and where a hold is recorded.
+ * Their schedules are kept from the last good version and held: see `workflow-schedule-holds.ts`.
+ */
+export interface BrokenWorkflowFiles {
+  /** The identifiers whose file has a problem other than a key this host does not know. */
+  readonly broken: ReadonlySet<string>;
+  /** The hold records. */
+  readonly holds: WorkflowScheduleHolds;
 }
 
 /**
  * Put every Bureau workflow schedule in `engine` back to match `desired`, keyed by workflow
  * identifier: create what is missing, update a changed `spec`, `overlap`, `timeZone`, `backfill`, or
- * `description`, pause or resume to match `paused`, and cancel a schedule whose file is gone,
- * invalid, or has no `schedule` trigger, along with any extra live schedule of a workflow. A
+ * `description`, pause or resume to match `paused`, and cancel a schedule whose file is gone or
+ * has no `schedule` trigger, along with any extra live schedule of a workflow. A file that no
+ * longer parses keeps its schedule, held (`files` below), when the caller names it. A
  * changed `input` cannot be updated, because Weft fixes a schedule's input when it is created, so
  * the schedule is cancelled and the next generation created with the new one. Idempotent: a second
  * call changes nothing.
@@ -190,13 +207,21 @@ export interface ScheduleReconciliation {
  * not know, which a newer Bureau wrote (COR-1927). Their schedules are not this host's to judge, so
  * none is created, updated, paused, resumed, or cancelled: the file is neither wanting a schedule
  * nor refusing one as far as this host can tell.
+ *
+ * `files.broken` names the workflows whose file is there but does not parse (COR-2009). Their
+ * schedule is the one the last good version made, so it is kept: never cancelled, created, or
+ * updated. An active one is held: the hold is recorded, then the schedule paused, so it starts
+ * nothing until the file parses again. Once it does, the file wants its schedule again and the
+ * paused schedule is resumed as any other is, and the hold record goes.
  */
 export async function reconcileWorkflowSchedules(
   engine: Engine,
   desired: ReadonlyMap<string, DesiredWorkflowSchedule>,
   unreadable: ReadonlySet<string> = new Set(),
+  files?: BrokenWorkflowFiles,
 ): Promise<ScheduleReconciliation> {
   const created: string[] = [];
+  const held: string[] = [];
   const updated: string[] = [];
   const paused: string[] = [];
   const resumed: string[] = [];
@@ -211,6 +236,22 @@ export async function reconcileWorkflowSchedules(
     const live = group
       .filter((summary) => summary.status !== 'cancelled')
       .toSorted((left, right) => generationOf(right) - generationOf(left));
+    if (files?.broken.has(identifier) === true) {
+      const kept = live[0];
+      if (kept?.status === 'active') {
+        // Recorded first: a pause with no record would read as the file's own `paused`.
+        await files.holds.hold(identifier, kept.id);
+        await engine.pauseSchedule(kept.id);
+        paused.push(kept.id);
+        held.push(kept.id);
+      }
+      continue;
+    }
+    // The file parses again, or is gone: a hold, if there was one, is over. The paused schedule is
+    // resumed below when the file wants it active, and cancelled when the file no longer wants it.
+    if (files !== undefined && (await files.holds.held(identifier)) !== undefined) {
+      await files.holds.release(identifier);
+    }
     // The newest live schedule is the one that stays, and only when the file still wants one.
     const keep = want === undefined ? undefined : live[0];
     const extras = want === undefined ? live : live.slice(1);
@@ -271,5 +312,5 @@ export async function reconcileWorkflowSchedules(
       paused.push(id);
     }
   }
-  return { created, updated, paused, resumed, cancelled };
+  return { created, updated, paused, resumed, cancelled, held };
 }

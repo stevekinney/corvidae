@@ -3,6 +3,8 @@
  * predicate and the operator scopes (read and write apart), `expectedRevision`, and a workflow
  * file's schedule, which belongs to its file.
  */
+import { join } from 'node:path';
+
 import { createAgent } from '@lostgradient/operative';
 import { handleRequest, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -681,6 +683,53 @@ describe('a workflow file’s schedule', () => {
     }
     const awaited4 = await served.bureau.schedules.get(id);
     expect(awaited4?.status).toBe('active');
+  });
+
+  it('reads as active with its blocker while its file can’t load, and is listed under that status (COR-2009)', async () => {
+    const served = await serveWorkflows(cleanups);
+    await served.bureau.workflows!.create('digest', {
+      agent: 'writer',
+      trigger: { kind: 'schedule', spec: '1h' },
+      steps: [AGENT_STEP],
+    });
+    const id = 'bureau-workflow-schedule:digest:1';
+    const read = async () => {
+      const body = await rpc(
+        served.keyed,
+        'bureau.schedules.get',
+        { scheduleId: id },
+        'operator-key',
+      );
+      return body.result;
+    };
+    const listedIds = async (filter: object) => {
+      const listed = await rpc(served.keyed, 'bureau.schedules.list', filter, 'operator-key');
+      return (listed.result!['schedules'] as Array<{ id: string }>).map((entry) => entry.id);
+    };
+    expect(await read()).toMatchObject({ status: 'active', blocker: null });
+
+    await Bun.write(join(served.directory, 'digest.json'), '{');
+    await served.bureau.workflows!.refresh();
+    const held = await read();
+    expect(held).toMatchObject({
+      status: 'active',
+      blocker: { kind: 'workflow-cannot-load', workflow: 'digest' },
+    });
+    expect(held!['nextFireAt']).not.toBeNull();
+    expect(await listedIds({ status: 'active' })).toEqual([id]);
+    expect(await listedIds({ status: 'paused' })).toEqual([]);
+
+    await Bun.write(
+      join(served.directory, 'digest.json'),
+      JSON.stringify({
+        name: 'digest',
+        agent: 'writer',
+        trigger: { kind: 'schedule', spec: '1h' },
+        steps: [AGENT_STEP],
+      }),
+    );
+    await served.bureau.workflows!.refresh();
+    expect(await read()).toMatchObject({ status: 'active', blocker: null });
   });
 });
 

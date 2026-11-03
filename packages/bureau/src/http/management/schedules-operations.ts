@@ -47,6 +47,7 @@ import {
 } from '../../create-bureau.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
 import type { BureauSchedules } from '../../types.ts';
+import type { WorkflowScheduleBlocker } from '../../workflow-runtime.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
@@ -75,6 +76,7 @@ export type BureauSchedulesOperationHost = BureauOwnershipHost &
       | 'missed'
       | 'agentName'
       | 'inputPreview'
+      | 'blocker'
     > & {
       /** The owner of record of a schedule, or `undefined` when it is not a Bureau schedule. */
       readonly owner: (scheduleId: string) => Promise<string | undefined>;
@@ -124,6 +126,21 @@ const scheduleViewSchema = z.object({
   skippedCount: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * Why the schedule won't start (COR-2009), or `null` when nothing blocks it: a workflow file's
+   * schedule whose file stopped parsing is kept from the file's last good version and starts nothing
+   * until the file parses again. `status` then reads as the schedule holds it (`active` when it was
+   * active), and `nextFireAt` is the fire it won't start.
+   */
+  blocker: z
+    .object({
+      kind: z.literal('workflow-cannot-load'),
+      /** The workflow whose file can't load. */
+      workflow: z.string(),
+      /** What is wrong with the file. */
+      message: z.string(),
+    })
+    .nullable(),
 });
 
 const receiptSchema = z.object({
@@ -144,6 +161,7 @@ function viewOf(
   owner: string,
   agentName: string | undefined,
   inputPreview: string | undefined,
+  blocker: WorkflowScheduleBlocker | undefined,
 ): z.infer<typeof scheduleViewSchema> {
   return {
     id: summary.id,
@@ -155,7 +173,7 @@ function viewOf(
     cronExpression: summary.cronExpression ?? null,
     intervalMs: summary.intervalMs ?? null,
     timeZone: summary.timeZone,
-    status: summary.status,
+    status: blocker?.status ?? summary.status,
     overlap: summary.overlap,
     revision: summary.revision,
     nextFireAt: iso(summary.nextFireAt),
@@ -165,6 +183,10 @@ function viewOf(
     skippedCount: summary.skippedCount,
     createdAt: iso(summary.createdAt)!,
     updatedAt: iso(summary.updatedAt)!,
+    blocker:
+      blocker === undefined
+        ? null
+        : { kind: blocker.kind, workflow: blocker.workflow, message: blocker.message },
   };
 }
 
@@ -346,23 +368,21 @@ export const schedulesListOperation = defineOperation<
     if (!everyOwner && caller === undefined) return { schedules: [], nextOffset: null };
     const visible: z.infer<typeof scheduleViewSchema>[] = [];
     for (let offset = 0; ; offset += SCAN_PAGE_SIZE) {
-      const page = await host.schedules.list({
-        ...(input.status === undefined ? {} : { status: input.status }),
-        limit: SCAN_PAGE_SIZE,
-        offset,
-      });
+      // Every status is read and the filter applied to the view: a schedule held for its file reads
+      // as `active` although the engine holds it paused (COR-2009).
+      const page = await host.schedules.list({ limit: SCAN_PAGE_SIZE, offset });
       if (page === undefined) throw unsupported();
       for (const summary of page.items) {
         const owner = await host.schedules.owner(summary.id);
         if (owner !== undefined && (everyOwner || owner === caller)) {
-          visible.push(
-            viewOf(
-              summary,
-              owner,
-              await host.schedules.agentName(summary.id),
-              await host.schedules.inputPreview(summary.id),
-            ),
+          const view = viewOf(
+            summary,
+            owner,
+            await host.schedules.agentName(summary.id),
+            await host.schedules.inputPreview(summary.id),
+            await host.schedules.blocker(summary.id),
           );
+          if (input.status === undefined || view.status === input.status) visible.push(view);
         }
       }
       if (offset + page.items.length >= page.total || page.items.length === 0) break;
@@ -408,6 +428,7 @@ export const schedulesGetOperation = defineOperation<
       owner,
       await host.schedules.agentName(input.scheduleId),
       await host.schedules.inputPreview(input.scheduleId),
+      await host.schedules.blocker(input.scheduleId),
     );
   },
 });
@@ -492,7 +513,7 @@ export const schedulesCreateOperation = defineOperation<
       if (summary === undefined) throw unsupported();
       // The preview comes from the request's own text, never a second read of storage: a read that
       // failed after the schedule was made would hide the schedule from a retry (COR-411).
-      return viewOf(summary, owner, input.agentName, scheduleInputPreview(input.input));
+      return viewOf(summary, owner, input.agentName, scheduleInputPreview(input.input), undefined);
     } catch (error) {
       return faultOf(error, input.agentName);
     }

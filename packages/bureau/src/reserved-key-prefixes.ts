@@ -161,6 +161,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'bureau-workflow-revision:v1:',
     'a workflow’s saved version (its file content, who saved it, and what changed), not a chat’s',
   ),
+  kept(
+    'bureau-workflow-schedule-hold:v1:',
+    'a workflow schedule’s hold while its file can’t load (the schedule id and when), not a chat’s',
+  ),
   kept('bureau-workflow-schedule:', 'a workflow’s schedule, not a chat’s'),
   kept('bureau-workflow-snapshot:v1:', 'a workflow’s definition snapshot, not a chat’s'),
   contentFree(

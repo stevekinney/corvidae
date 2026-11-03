@@ -194,6 +194,7 @@ export type {
   WorkflowHistoryRuns,
   WorkflowImpact,
   WorkflowRevisionReport,
+  WorkflowScheduleBlocker,
 } from './workflow-runtime';
 export type {
   WorkflowRevisionAttribution,

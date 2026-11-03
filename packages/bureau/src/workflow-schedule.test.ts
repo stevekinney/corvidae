@@ -145,7 +145,14 @@ describe('reconciling workflow schedules', () => {
     await reconcileWorkflowSchedules(engine, desired);
     const second = await reconcileWorkflowSchedules(engine, desired);
     await reconcileWorkflowSchedules(engine, desired);
-    expect(second).toEqual({ created: [], updated: [], paused: [], resumed: [], cancelled: [] });
+    expect(second).toEqual({
+      created: [],
+      updated: [],
+      paused: [],
+      resumed: [],
+      cancelled: [],
+      held: [],
+    });
     expect(await live(engine)).toHaveLength(1);
     expect(await everySchedule(engine)).toHaveLength(1);
   });
@@ -298,7 +305,14 @@ describe('reconciling workflow schedules', () => {
     const [renamedSchedule] = await live(engine);
     expect(renamedSchedule?.description).toBe('Release notes digest');
     const again = await reconcileWorkflowSchedules(engine, named);
-    expect(again).toEqual({ created: [], updated: [], paused: [], resumed: [], cancelled: [] });
+    expect(again).toEqual({
+      created: [],
+      updated: [],
+      paused: [],
+      resumed: [],
+      cancelled: [],
+      held: [],
+    });
   });
 
   it("starts every fire with the trigger's input beside the schedule id, and with none when it gives none (COR-2009)", async () => {
@@ -329,7 +343,14 @@ describe('reconciling workflow schedules', () => {
       engine,
       new Map([['digest', { ...hourly, input: reordered }]]),
     );
-    expect(again).toEqual({ created: [], updated: [], paused: [], resumed: [], cancelled: [] });
+    expect(again).toEqual({
+      created: [],
+      updated: [],
+      paused: [],
+      resumed: [],
+      cancelled: [],
+      held: [],
+    });
     expect(await everySchedule(engine)).toHaveLength(1);
   });
 
@@ -351,6 +372,7 @@ describe('reconciling workflow schedules', () => {
       paused: [second],
       resumed: [],
       cancelled: [first],
+      held: [],
     });
     expect(await statusOf(engine, first)).toBe('cancelled');
     expect(await liveIds(engine)).toEqual([second]);
@@ -367,7 +389,14 @@ describe('reconciling workflow schedules', () => {
       scheduleId: workflowScheduleId('digest', 3),
     });
     const settled = await reconcileWorkflowSchedules(engine, new Map([['digest', hourly]]));
-    expect(settled).toEqual({ created: [], updated: [], paused: [], resumed: [], cancelled: [] });
+    expect(settled).toEqual({
+      created: [],
+      updated: [],
+      paused: [],
+      resumed: [],
+      cancelled: [],
+      held: [],
+    });
   });
 
   it('keeps workflows apart', async () => {

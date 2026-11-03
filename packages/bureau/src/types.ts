@@ -1,6 +1,6 @@
 import type { AgentContributions } from './agent-contributions';
 import type { AgentWithBureauTools } from './agents-with-bureau-tools';
-import type { BureauWorkflows } from './workflow-runtime';
+import type { BureauWorkflows, WorkflowScheduleBlocker } from './workflow-runtime';
 import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
 import type { VersionedCatalog } from './versioned-catalog';
@@ -2244,6 +2244,16 @@ export interface BureauSchedules {
    * {@link Bureau.ownerOf} first.
    */
   inputPreview(scheduleId: string): Promise<string | undefined>;
+
+  /**
+   * COR-2009 — why a workflow file's schedule won't start: its file is there but stopped parsing,
+   * so Bureau keeps the schedule its last good version made and holds it until the file parses
+   * again. The answer names the workflow, the file's problem, and the status the schedule holds
+   * meanwhile (`active` for one Bureau paused for the problem). `undefined` for any other schedule,
+   * one whose file loads, and when no durable engine is composed. It does not check who may see the
+   * schedule, so a caller answers to {@link Bureau.ownerOf} first.
+   */
+  blocker(scheduleId: string): Promise<WorkflowScheduleBlocker | undefined>;
 
   /**
    * One page of the schedule definition's durable event history (`schedule.created`, paused,

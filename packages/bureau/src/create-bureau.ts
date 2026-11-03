@@ -443,6 +443,7 @@ import {
   payloadMaximumBytesOf,
   type BureauWorkflows,
   type WorkflowRuntime,
+  type WorkflowScheduleBlocker,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
@@ -452,6 +453,7 @@ import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
+import { createWorkflowScheduleHolds } from './workflow-schedule-holds';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   type AgentStepRequest,
@@ -3445,6 +3447,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               nowISO: runtimeServices.clock.nowISO,
             }),
             revisionLedger: createWorkflowRevisionLedger({
+              store: runtime.kv,
+              nowISO: runtimeServices.clock.nowISO,
+            }),
+            scheduleHolds: createWorkflowScheduleHolds({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
@@ -11564,6 +11570,13 @@ async function constructBureau<const D extends AgentDefinitions>(
    * {@link scheduleInputPreview}); an input of media alone has none, and its schedule has no
    * preview.
    */
+  /** COR-2009 — why a workflow file's schedule won't start: its file stopped parsing. */
+  async function getScheduleBlocker(
+    scheduleId: string,
+  ): Promise<WorkflowScheduleBlocker | undefined> {
+    return workflowRuntime?.scheduleBlocker(scheduleId);
+  }
+
   async function getScheduleInputPreview(scheduleId: string): Promise<string | undefined> {
     const stored = await readScheduledAgentInput(scheduleId);
     if (stored === undefined) return undefined;
@@ -22011,6 +22024,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     missed: listScheduleMissed,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
+    blocker: getScheduleBlocker,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
   });
