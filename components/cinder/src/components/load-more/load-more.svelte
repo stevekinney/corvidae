@@ -29,8 +29,12 @@
     root = null,
     rootMargin = '200px 0px',
     buttonLabel = 'Load more',
-    retryLabel = 'Retry loading',
+    retryLabel = 'Try again',
     endOfListMessage = 'End of list',
+    loadedCount,
+    totalCount,
+    itemLabel = 'items',
+    errorMessage,
     maxRetries = 5,
     class: customClassName,
   }: LoadMoreProps = $props();
@@ -67,6 +71,23 @@
   const buttonDisabled = $derived(busy && !errorState);
   // End-of-list message is a pure function of `hasMore`; no sentinel effect needed.
   const statusText = $derived(hasMore ? '' : endOfListMessage);
+  // "Showing 10 of 19": drawn only when the page says both numbers, and always while the list has
+  // more to give, so the footer keeps the rows' count next to its button.
+  const progressText = $derived(
+    isCount(loadedCount) && isCount(totalCount)
+      ? `Showing ${Math.trunc(loadedCount)} of ${Math.trunc(totalCount)}`
+      : undefined,
+  );
+  // After a failed load the footer keeps the count and says what went wrong, once, in words:
+  // "Couldn’t load more runs. Showing 10 of 19."
+  const failureText = $derived(
+    errorMessage ??
+      `Couldn’t load more ${itemLabel}.${progressText === undefined ? '' : ` ${progressText}.`}`,
+  );
+
+  function isCount(value: number | undefined): value is number {
+    return value !== undefined && Number.isFinite(value) && value >= 0;
+  }
 
   // The only remaining effect: re-arm the sentinel when the parent flips
   // `hasMore` back to true (a fresh page arrived). This is a genuine reaction to
@@ -183,6 +204,12 @@
 <div class={mergedClassName} aria-busy={busy}>
   {#if hasMore && !errorState}
     <div aria-hidden="true" class="cinder-load-more__sentinel" {@attach sentinelIntersection}></div>
+  {/if}
+
+  {#if errorState}
+    <span class="cinder-load-more__summary" data-cinder-error="" role="alert">{failureText}</span>
+  {:else if progressText !== undefined}
+    <span class="cinder-load-more__summary">{progressText}</span>
   {/if}
 
   {#if hasMore}

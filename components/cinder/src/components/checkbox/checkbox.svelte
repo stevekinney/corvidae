@@ -20,6 +20,11 @@
   import CheckboxIndicatorShell from '../_internal/checkbox-indicator-shell.svelte';
   import { resolveFieldControl } from '../../_internal/field-control.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
+  import {
+    getStaleRegionContext,
+    isStaleInert,
+    mergeDescribedBy,
+  } from '../../_internal/stale-region-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { commitValue } from '../../utilities/value-change.ts';
@@ -36,6 +41,7 @@
     description,
     error,
     disabled,
+    mutating = false,
     required,
     class: className,
     'aria-describedby': consumerDescribedBy,
@@ -50,6 +56,10 @@
   // undefined for an unlabeled standalone checkbox, breaking for=/id=/describedby.
   const generatedId = $props.id();
   const context = getFormFieldContext();
+  // A checkbox that changes something (`mutating`) under a stale `<StaleRegion>` is inert but
+  // still focusable: `aria-disabled`, described by the region's reason, and a toggle is undone.
+  const staleRegion = getStaleRegionContext();
+  const staleInert = $derived(isStaleInert(staleRegion, mutating));
   const field = $derived(
     resolveFieldControl({
       // Conditionally spread `id` so `id: undefined` isn't passed (exactOptionalPropertyTypes);
@@ -60,7 +70,10 @@
       hasDescription: !!description,
       hasError: !!error,
       localIdNamespace: 'checkbox',
-      consumerDescribedBy,
+      consumerDescribedBy: mergeDescribedBy(
+        consumerDescribedBy,
+        staleInert ? staleRegion?.reasonId : undefined,
+      ),
       consumerInvalid,
       disabled,
       // HTMLInputAttributes types `required` as boolean | null | undefined; the helper
@@ -118,6 +131,12 @@
 
   function handleChange(event: Event & { currentTarget: EventTarget & HTMLInputElement }): void {
     const target = event.currentTarget;
+    if (staleInert) {
+      // The press is ignored: put the native state back and report nothing.
+      target.checked = checked;
+      target.indeterminate = indeterminate && !checked;
+      return;
+    }
     const rawChecked = target.checked;
     // Forward the raw native event before Cinder's veto/commit machinery runs, so
     // consumers observe the browser's actual value rather than a post-veto value
@@ -152,6 +171,7 @@
           class={classNames('cinder-checkbox', className)}
           aria-invalid={field.ariaInvalid}
           aria-describedby={field.describedBy}
+          aria-disabled={staleInert ? 'true' : undefined}
         />
       {/snippet}
     </CheckboxIndicatorShell>

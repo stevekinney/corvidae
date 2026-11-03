@@ -27,6 +27,13 @@ export type ToggleProps = {
   /** Prevents interaction when true. Sets `disabled` attribute. */
   disabled?: boolean;
   /**
+   * Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:
+   * `aria-disabled`, still focusable, ignoring the press, and described by the region's reason.
+   * It returns by itself when the region stops being stale.
+   * @default false
+   */
+  mutating?: boolean;
+  /**
    * Whether the label is visibly rendered. Set `false` for icon-only or
    * inline contexts — it stays the accessible name.
    * @default true

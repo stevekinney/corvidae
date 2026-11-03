@@ -29,6 +29,7 @@
 <div
   {...rest}
   role="tablist"
+  hidden={tabs.collapsed}
   class={classNames('cinder-tab-list', className)}
   data-cinder-orientation={tabs.orientation}
   aria-label={label}

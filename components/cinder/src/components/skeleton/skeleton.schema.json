@@ -24,9 +24,23 @@
       "default": 1
     },
     "variant": {
-      "enum": ["row", "card"],
-      "description": "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card.",
+      "enum": ["row", "card", "list"],
+      "description": "Shape of the group. `'row'` stacks the bars directly; `'card'` wraps a heading bar and the\n`lines` bars in a bordered card; `'list'` draws `rows` status-first list rows.",
       "default": "row"
+    },
+    "rows": {
+      "type": "number",
+      "description": "Number of list rows to draw when `variant` is `'list'`. Each row keeps the 8rem status\ncolumn reserved, then shows two text bars and a time bar, with no leading circle, so\nnothing shifts when data arrives. Clamped to between 1 and 20. Ignored by other variants.",
+      "default": 3
+    },
+    "dayBand": {
+      "type": "boolean",
+      "description": "Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`,\nthe placeholder for a list that groups its rows by day. Ignored by other variants.",
+      "default": false
+    },
+    "label": {
+      "type": "string",
+      "description": "Accessible name of the loading region, announced politely once the placeholder appears\n(for example `'Loading agents'`). The placeholder bars stay hidden from assistive\ntechnology and no spinner is drawn. Applies to the grouped variants; omit it when the\nsurrounding region already says what is loading."
     },
     "delay": {
       "type": "number",
@@ -39,8 +53,8 @@
     },
     "stillLoadingLabel": {
       "type": "string",
-      "description": "Text of the \"Still loading\" status.",
-      "default": "Still loading…"
+      "description": "Text of the \"Still loading\" status. Pages replace the default with their own noun, for\nexample `'Still loading runs. This is taking longer than usual.'`.",
+      "default": "Still loading. This is taking longer than usual."
     },
     "cancelLabel": {
       "type": "string",

@@ -12,7 +12,7 @@ A clickable button or anchor with built-in loading state, icon slots, and a disc
 <Button variant="primary" size="md" label="Save" />
 ```
 
-When `href` is set, the component renders as `<a>`; otherwise it renders as `<button>`. Setting `loading` swaps in a spinner, blocks the consumer's `onclick`, forces `aria-disabled` / `aria-busy`, and strips `href` to prevent navigation.
+When `href` is set, the component renders as `<a>`; otherwise it renders as `<button>`. Setting `loading` swaps in a spinner, blocks the consumer's `onclick`, forces `aria-disabled` / `aria-busy`, and strips `href` to prevent navigation. While loading the cursor is `progress` and the button keeps full strength; a page that dims it sets `--cinder-button-loading-opacity` (for example `0.75`) on it. The width is held when the label stays or gets shorter; a longer label that arrives with `loading` ("Create", "Creating…") lets the width go so it never spills over the border.
 
 ## Sizes
 
@@ -33,7 +33,10 @@ A disabled button looks the same in every variant: a neutral surface (or none, f
 | `href` | `string` | no | — | Render as an anchor `<a>` element with this href. |
 | `iconOnly` | `boolean` | no | `false` | Render the button with only an icon. Requires an accessible name source. |
 | `label` | `string` | no | — | Visible text label. Must be non-empty if provided. |
-| `loading` | `boolean` | no | `false` | Disable the button and show a spinner. |
+| `loading` | `boolean` | no | `false` | Show a spinner and make the button inert (`aria-disabled`, still focusable) while work is in flight; the label stays and the width holds. |
+| `loadingStatus` | `string` | no | — | Text a polite, visually hidden status announces while `loading`, rendered beside the button. |
+| `mutating` | `boolean` | no | `false` | Marks a button that changes something. Inside a stale `<StaleRegion>` it goes inert (`aria-disabled`, still focusable) and is described by the region's reason. |
+| `quiet` | `boolean` | no | `false` | Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`. |
 | `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size of the button. `lg` is for page-level primary actions only; inline actions use `md`. |
 | `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` | no | `"secondary"` | Visual style. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

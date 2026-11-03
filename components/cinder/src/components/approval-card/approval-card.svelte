@@ -303,6 +303,7 @@
           type="button"
           variant="secondary"
           size="sm"
+          mutating
           onclick={() => resolveIfActionable({ decision: 'deny', remember: false })}
         >
           Deny
@@ -311,6 +312,7 @@
           type="button"
           variant="primary"
           size="sm"
+          mutating
           onclick={() => resolveIfActionable({ decision: 'approve', remember: false })}
         >
           Approve

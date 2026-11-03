@@ -27,6 +27,20 @@ describe('Button iconOnly', () => {
     expect(container.querySelector('button')?.getAttribute('data-cinder-icon-only')).toBe('');
   });
 
+  test('quiet marks only an icon-only ghost button', () => {
+    const marked = (props: Record<string, unknown>) => {
+      const { container } = render(Button, { props: props as never });
+      const present = container.querySelector('button')?.hasAttribute('data-cinder-quiet');
+      cleanup();
+      return present;
+    };
+    const iconOnly = { iconOnly: true, leadingIcon: leadingIconSnippet, 'aria-label': 'Close' };
+    expect(marked({ ...iconOnly, variant: 'ghost', quiet: true })).toBe(true);
+    expect(marked({ ...iconOnly, variant: 'ghost' })).toBe(false);
+    expect(marked({ ...iconOnly, variant: 'secondary', quiet: true })).toBe(false);
+    expect(marked({ label: 'Save', variant: 'ghost', quiet: true })).toBe(false);
+  });
+
   test('iconOnly=false does not apply data-cinder-icon-only', () => {
     const { container } = render(Button, { props: { label: 'Save', iconOnly: false } });
     expect(container.querySelector('button')?.hasAttribute('data-cinder-icon-only')).toBe(false);

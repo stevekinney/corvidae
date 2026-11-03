@@ -138,14 +138,14 @@
  * ---------------------------------------- */
 
   @media (hover: hover) {
-    .cinder-toggle:hover:not(:disabled) {
+    .cinder-toggle:hover:not(:disabled):not([aria-disabled='true']) {
       background-color: var(
         --cinder-toggle-track-off-hover,
         var(--cinder-toggle-track-off-hover-resting)
       );
     }
 
-    .cinder-toggle[data-cinder-checked]:hover:not(:disabled) {
+    .cinder-toggle[data-cinder-checked]:hover:not(:disabled):not([aria-disabled='true']) {
       background-color: var(--cinder-toggle-track-on-hover, var(--cinder-accent-solid-hover));
     }
   }
@@ -154,7 +154,9 @@
  * Disabled
  * ---------------------------------------- */
 
-  .cinder-toggle:disabled {
+  /* `aria-disabled` is an inert switch that keeps focus (a stale region's mutating switch). */
+  .cinder-toggle:disabled,
+  .cinder-toggle[aria-disabled='true'] {
     cursor: not-allowed;
     /* opacity centralized in foundation.css disabled-visual rule (0.6) */
     /* Preserve the current track color via grayscale so on/off is still readable. */

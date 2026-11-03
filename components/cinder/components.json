@@ -130,7 +130,7 @@
       "exportName": "AccessGate",
       "category": "feedback",
       "status": "alpha",
-      "purpose": "Authorization-scope gate that keeps unavailable actions visible with an accessible reason or replaces locked sections with a scope-required placeholder.",
+      "purpose": "Authorization-scope gate that keeps unavailable actions visible with a reason, or replaces a locked section or page with a neutral disc, title, reason, missing scope and actions.",
       "tags": ["feedback", "authorization", "permission"],
       "useWhen": [
         "Showing a mutating action that the current user cannot activate because an application authorization scope is missing.",
@@ -643,7 +643,7 @@
       "tags": ["feedback", "notice"],
       "useWhen": [
         "Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.",
-        "Reporting that the server or connection is unreachable with the unreachable preset, a Retry action, and the age of the data still shown.",
+        "Reporting that the browser is offline, the server is unreachable, a refresh failed or a restart is running, using a connection preset.",
         "Pinning a non-urgent message above page content that should remain readable until acknowledged."
       ],
       "avoidWhen": [
@@ -823,7 +823,8 @@
       "tags": ["feedback", "notice"],
       "useWhen": [
         "Drawing attention to tangential information nested inside prose, documentation, or article content.",
-        "Calling out a tip, note, or caveat that belongs next to the content it qualifies."
+        "Calling out a tip, note, or caveat that belongs next to the content it qualifies.",
+        "Explaining a state in a quiet neutral note that is not a problem, with one link or button at its end."
       ],
       "avoidWhen": [
         {
@@ -1846,6 +1847,36 @@
       }
     },
     {
+      "name": "DockedActionBar",
+      "id": "docked-action-bar",
+      "import": "@lostgradient/cinder",
+      "exportName": "DockedActionBar",
+      "category": "layout",
+      "status": "beta",
+      "purpose": "Bar that docks a page's main actions to the bottom of its scrolling area, above the safe area and the on-screen keyboard, while the page scrolls behind it.",
+      "tags": ["docked", "actions", "sticky"],
+      "useWhen": [
+        "Actions must never scroll away: a live run's Send a message and Cancel run, or a review's Deny and Approve on a phone.",
+        "The actions can go off together for one stated reason, such as a dropped connection."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The actions belong to a form inside a dialog or drawer — use the modal or drawer footer."
+        },
+        {
+          "reason": "A banner states a page-level condition — use banner so it sits above the content instead."
+        }
+      ],
+      "related": ["stale-region", "toast-region", "button"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/docked-action-bar/docked-action-bar.schema.json",
+        "variables": "src/components/docked-action-bar/docked-action-bar.variables.json",
+        "examples": "src/components/docked-action-bar/docked-action-bar.examples.json"
+      }
+    },
+    {
       "name": "DonutChart",
       "id": "donut-chart",
       "import": "@lostgradient/cinder",
@@ -2131,7 +2162,9 @@
       "useWhen": [
         "Communicating that a list, table, or workspace has no items yet and suggesting a next step.",
         "Replacing a primary content region after a filter or search returns no results.",
-        "Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind."
+        "Confirming all work is finished (done kind), or that a filter hid every item (filtered kind).",
+        "Saying a thing doesn't exist (not-found kind), or that a recoverable condition blocks the view (blocked kind).",
+        "Saying that a setting the person chose, such as a disabled plugin, holds content back with the disabled kind."
       ],
       "avoidWhen": [
         {
@@ -2157,11 +2190,12 @@
       "exportName": "ErrorState",
       "category": "feedback",
       "status": "stable",
-      "purpose": "Error placeholder, centered in an alert or flat on the surrounding surface, with a title, description, optional detail, and optional retry button for a region whose data failed to load.",
+      "purpose": "Centred error placeholder with a disc, title, description, progress line, retry, secondary action and details disclosure for a failed load, or a neutral not-found state.",
       "tags": ["feedback", "error"],
       "useWhen": [
         "Replacing a primary content region after its query or request failed, so the failure never looks like an empty result.",
-        "Offering the user a retry for a region that can be reloaded."
+        "Offering the user a retry for a region that can be reloaded, with the retry as the only primary action on the page.",
+        "Telling a person that the thing they asked for doesn't exist, using the neutral tone."
       ],
       "avoidWhen": [
         {
@@ -5314,6 +5348,36 @@
       }
     },
     {
+      "name": "StaleRegion",
+      "id": "stale-region",
+      "import": "@lostgradient/cinder",
+      "exportName": "StaleRegion",
+      "category": "feedback",
+      "status": "beta",
+      "purpose": "Wrapper for a page whose data may be old that keeps that data at full contrast and turns off only the controls that change something, each described by why.",
+      "tags": ["stale", "offline", "inert"],
+      "useWhen": [
+        "The server is unreachable or a refresh failed and the page keeps showing what it loaded, with a banner above it.",
+        "Turning off a page's writing controls (Edit, Save, Delete, a switch) while its reading controls (links, filters, tabs, Retry) stay live."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Disabling one control for its own reason, such as a missing provider — set aria-disabled on that control and describe it."
+        },
+        {
+          "reason": "Showing the connection state itself — use banner with a connection preset."
+        }
+      ],
+      "related": ["banner", "button", "toggle", "checkbox", "select"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/stale-region/stale-region.schema.json",
+        "variables": "src/components/stale-region/stale-region.variables.json",
+        "examples": "src/components/stale-region/stale-region.examples.json"
+      }
+    },
+    {
       "name": "Statistic",
       "id": "statistic",
       "import": "@lostgradient/cinder",
@@ -5415,7 +5479,9 @@
       "tags": ["navigation", "progress"],
       "useWhen": [
         "Walking the user through a multi-step wizard or checkout flow with strict ordering.",
-        "Showing how far the user has advanced through a known number of stages."
+        "Showing how far the user has advanced through a known number of stages.",
+        "Showing a first-run checklist whose steps complete in any order, each with its own action, with the checklist variant.",
+        "Reporting the progress of a short job, such as a restart, as a list of what is done, running and waiting, with the status variant."
       ],
       "avoidWhen": [
         {

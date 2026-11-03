@@ -121,18 +121,20 @@
       <Button
         type="button"
         variant="ghost"
+        mutating
         class="cinder-approval-card__dismiss"
         onclick={() => emitResolution('cancel')}
       >
         Dismiss
       </Button>
-      <Button type="button" variant="soft-danger" onclick={() => emitResolution('deny')}>
+      <Button type="button" variant="soft-danger" mutating onclick={() => emitResolution('deny')}>
         Deny
       </Button>
       {#if canEditArguments}
         <Button
           type="button"
           variant="secondary"
+          mutating
           onclick={toggleEditingArguments}
           aria-expanded={editingArguments}
           aria-controls={editingArguments ? editRegionId : undefined}
@@ -140,7 +142,7 @@
           Approve with edits
         </Button>
       {/if}
-      <Button type="button" variant="primary" onclick={() => emitResolution('approve')}>
+      <Button type="button" variant="primary" mutating onclick={() => emitResolution('approve')}>
         Approve
       </Button>
     </div>
@@ -163,6 +165,7 @@
         <Button
           type="button"
           variant="primary"
+          mutating
           onclick={handleConfirmEditedApproval}
           disabled={!editParseResult.ok}
         >

@@ -23,13 +23,15 @@
 
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import type { Attachment } from 'svelte/attachments';
 
+  import CircleAlert from '@lucide/svelte/icons/circle-alert';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
-  import CircleX from '@lucide/svelte/icons/circle-x';
   import Info from '@lucide/svelte/icons/info';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
+  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
   import { setToastContext } from '../../_internal/toast-context.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { waitForTransitionCompletion } from '../../_internal/transition-completion.ts';
@@ -77,11 +79,22 @@
   // Shared reduced-motion preference (OVERLAY-POLICY: use the shared hook, not inline matchMedia).
   const reducedMotion = useReducedMotion();
 
+  // On a phone the region spans the screen between two 12px gutters (design row 04w). The width is
+  // Cinder's phone breakpoint (PHONE_VIEWPORT_BREAKPOINT in viewport-below.svelte.ts, which a test
+  // keeps equal); it is spelled out here because the server-render test of this component loads
+  // the file without a Svelte plugin, and that module uses runes.
+  const phone =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? new MediaQuery('(width < 640px)', false)
+      : undefined;
+
   // Hydration gate — toast live regions are client-only, but wrapped app
   // content and the context provider still render during SSR.
   let hydrated = $state(false);
   onMount(() => {
     hydrated = true;
+    // A toast anchored to the bottom rides above the on-screen keyboard, like the docked bar.
+    return trackKeyboardInset();
   });
 
   // Two regions, two stacks. Polite for non-urgent feedback; assertive for danger.
@@ -166,8 +179,13 @@
   function upsertToast(message: string, options: InternalShowOptions = {}): InternalToastItem {
     const id = getNextToastId(options);
     const variant = options.variant ?? 'info';
-    const duration = options.duration ?? defaultDuration;
-    const dismissible = options.dismissible ?? true;
+    const undo = options.undo !== undefined && options.action === undefined;
+    const action = undo ? { label: 'Undo', onAction: options.undo as () => void } : options.action;
+    // A failure and an Undo stay until the person acts; everything else dismisses itself.
+    const duration = options.duration ?? (undo || variant === 'danger' ? 0 : defaultDuration);
+    // An Undo toast has no close button, so Undo is not lost to a stray click.
+    const dismissible = options.dismissible ?? !undo;
+    const showIcon = options.showIcon ?? variant === 'danger';
     if (!canMutateToasts()) {
       return {
         id,
@@ -175,13 +193,14 @@
         variant,
         duration,
         dismissible,
-        showIcon: options.showIcon ?? false,
+        showIcon,
         generation: 0,
         pending: options.pending ?? false,
         leaving: false,
         swiping: false,
         ...(options.icon ? { icon: options.icon } : {}),
-        ...(options.action ? { action: options.action } : {}),
+        ...(action ? { action } : {}),
+        ...(undo ? { undo } : {}),
       };
     }
     clearTimer(id);
@@ -194,13 +213,14 @@
       variant,
       duration,
       dismissible,
-      showIcon: options.showIcon ?? false,
+      showIcon,
       generation: nextGeneration(id),
       pending: options.pending ?? false,
       leaving: false,
       swiping: false,
       ...(options.icon ? { icon: options.icon } : {}),
-      ...(options.action ? { action: options.action } : {}),
+      ...(action ? { action } : {}),
+      ...(undo ? { undo } : {}),
     };
 
     setCurrentStack(variant, [...getCurrentStack(variant), item]);
@@ -232,6 +252,14 @@
     if (!canMutateToasts()) return;
     const ids = [...politeStack, ...assertiveStack]
       .filter((toast) => !toast.leaving)
+      .map((toast) => toast.id);
+    for (const id of ids) beginDismiss(id, 'dismissAll');
+  }
+
+  function dismissUndo(): void {
+    if (!canMutateToasts()) return;
+    const ids = [...politeStack, ...assertiveStack]
+      .filter((toast) => toast.undo && !toast.leaving)
       .map((toast) => toast.id);
     for (const id of ids) beginDismiss(id, 'dismissAll');
   }
@@ -577,7 +605,7 @@
     };
   }
 
-  setToastContext({ show, dismiss, dismissAll, promise });
+  setToastContext({ show, dismiss, dismissAll, dismissUndo, promise });
 
   // The dismiss button's accessible name embeds the message so stacked toasts
   // have distinguishable controls ("Dismiss: File saved" vs "Dismiss: Upload
@@ -623,6 +651,7 @@
       role="group"
       aria-label="Notification"
       data-cinder-variant={toast.variant}
+      data-cinder-undo={toast.undo ? '' : undefined}
       data-cinder-toast-id={toast.id}
       data-cinder-pending={toast.pending ? 'true' : undefined}
       data-cinder-leaving={toast.leaving ? 'true' : undefined}
@@ -637,9 +666,9 @@
           {#if toast.variant === 'success'}
             <CircleCheck aria-hidden="true" />
           {:else if toast.variant === 'warning'}
-            <TriangleAlert aria-hidden="true" />
+            <CircleAlert aria-hidden="true" />
           {:else if toast.variant === 'danger'}
-            <CircleX aria-hidden="true" />
+            <TriangleAlert aria-hidden="true" />
           {:else}
             <Info aria-hidden="true" />
           {/if}
@@ -684,6 +713,7 @@
     class={classNames('cinder-toast-region', className)}
     role="presentation"
     data-cinder-position={position}
+    data-cinder-phone={phone?.current ? '' : undefined}
     onpointerenter={() => setRegionPointerInside(true)}
     onpointerleave={() => setRegionPointerInside(false)}
     onfocusin={handleRegionFocusIn}

@@ -19,6 +19,22 @@ const schema = {
       description:
         'Optional supporting text rendered below the title; the runtime API also accepts a template-only snippet.',
     },
+    error: {
+      type: 'boolean',
+      description:
+        'A full-page error state shows under this header, so its primary buttons draw as secondary.',
+      default: false,
+    },
+    statusPlacement: {
+      enum: ['inline', 'below'],
+      description:
+        'Where `status` sits: `inline` beside the title on its first line, or `below` the title.',
+      default: 'below',
+    },
+    titleText: {
+      type: 'string',
+      description: "The title's plain text, for the full-title tooltip when `title` is a snippet.",
+    },
     class: {
       type: 'string',
       description: 'Additional class names merged with `.cinder-page-header`.',
@@ -37,6 +53,12 @@ const schema = {
         name: 'breadcrumbs',
         reason: 'function-or-snippet',
         description: 'Optional breadcrumb navigation rendered above the heading row.',
+      },
+      {
+        name: 'status',
+        reason: 'function-or-snippet',
+        description:
+          'The page\'s status, such as a dot and "Waiting on you". It is a snippet so the page owns the\nwords and the tone; see `statusPlacement` for where it sits.',
       },
     ],
   },

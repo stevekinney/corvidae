@@ -16,19 +16,61 @@
 </script>
 
 <script lang="ts">
+  import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+
+  import {
+    PHONE_VIEWPORT_BREAKPOINT,
+    readViewportBreakpoint,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import Popover from '../popover/popover.svelte';
   import type { BreadcrumbsProps } from './breadcrumbs.types.ts';
 
   let {
     items,
     separator = '/',
     label = 'Breadcrumb',
+    collapseBelow = PHONE_VIEWPORT_BREAKPOINT,
+    backLabel = 'Back to {label}',
     class: className,
     ...rest
   }: BreadcrumbsProps = $props();
+
+  // Below `collapseBelow` the trail is a back link to the parent plus the current page. The
+  // choice is made in script, not in CSS, so the ancestors that are not shown are not in the
+  // page at all; server markup is always the whole trail.
+  const collapseBreakpoint = $derived(
+    readViewportBreakpoint(collapseBelow, 'Breadcrumbs', 'collapseBelow'),
+  );
+  const viewport = useViewportBelow(() => collapseBreakpoint);
+  const collapsed = $derived(viewport.current);
+
+  const current = $derived(items.at(-1));
+  const parent = $derived(items.length > 1 ? items[items.length - 2] : undefined);
+  const shownItems = $derived(collapsed && current !== undefined ? [current] : items);
+  const backName = $derived(
+    parent === undefined ? undefined : backLabel.replaceAll('{label}', parent.label),
+  );
+
+  // The current entry opens a popover when it asks for one, such as a long title's full text.
+  let popoverOpen = $state(false);
+  let triggerElement = $state<HTMLButtonElement | null>(null);
 </script>
 
-<nav {...rest} class={classNames('cinder-breadcrumbs', className)} aria-label={label}>
+<nav
+  {...rest}
+  class={classNames('cinder-breadcrumbs', className)}
+  aria-label={label}
+  data-cinder-collapsed={collapsed ? '' : undefined}
+>
+  {#if collapsed && parent?.href !== undefined}
+    <a class="cinder-breadcrumbs__back" href={parent.href} aria-label={backName}>
+      <ChevronLeft class="cinder-breadcrumbs__back-icon" aria-hidden="true" />
+      <span class="cinder-breadcrumbs__back-label">{parent.label}</span>
+    </a>
+  {/if}
   <ol class="cinder-breadcrumbs__list">
     <!--
       Key is `href`/`label` (the closest thing to a stable identity a breadcrumb
@@ -38,10 +80,35 @@
       including two entries that legitimately share an `href` (e.g. repeated
       section-landing links) or the href-less current-page entry.
     -->
-    {#each items as item, index (`${index}:${item.href ?? item.label}`)}
-      {@const isLast = index === items.length - 1}
+    {#each shownItems as item, index (`${index}:${item.href ?? item.label}`)}
+      {@const isLast = index === shownItems.length - 1}
       <li class="cinder-breadcrumbs__item">
-        {#if isLast}
+        {#if isLast && item.popover !== undefined}
+          <!-- Current page with a popover: the label truncates inside the button, so the full
+             text lives in the popover. -->
+          <button
+            type="button"
+            bind:this={triggerElement}
+            aria-current="page"
+            class="cinder-breadcrumbs__current cinder-breadcrumbs__trigger"
+            onclick={() => (popoverOpen = !popoverOpen)}
+          >
+            <span class="cinder-breadcrumbs__trigger-label">{item.label}</span>
+            <ChevronDown class="cinder-breadcrumbs__trigger-icon" aria-hidden="true" />
+          </button>
+          <Popover
+            bind:open={popoverOpen}
+            triggerRef={triggerElement}
+            label={item.label}
+            focusManagement="preserve"
+          >
+            {#if item.popover === true}
+              <p class="cinder-breadcrumbs__popover-text">{item.label}</p>
+            {:else}
+              {@render item.popover()}
+            {/if}
+          </Popover>
+        {:else if isLast}
           <!-- Current page: rendered as plain text, not a link. -->
           <span aria-current="page" class="cinder-breadcrumbs__current">{item.label}</span>
         {:else}

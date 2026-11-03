@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "stale": {
+      "type": "boolean",
+      "description": "Whether the data under the region is old. While it is, every control inside that opted in with\n`mutating` goes inert; when it turns false they return by themselves. Defaults to `true`, so a\npage mounts the region only while it is stale or binds this to its connection state.",
+      "default": true
+    },
+    "reason": {
+      "type": "string",
+      "description": "The reason an inert control is off, read as its description. Pages word it for what they\nshow: \"Off until storage answers\", \"Approving is off until Interborough is reachable\".",
+      "default": "Off until it’s back"
+    },
+    "describedBy": {
+      "type": "string",
+      "description": "The id of an element that already says why, such as the page's banner. Inert controls list it\nin `aria-describedby` instead of the region's own reason, which is then not rendered."
+    },
+    "class": {
+      "type": "string",
+      "description": "Custom class merged with `.cinder-stale-region`."
+    }
+  },
+  "additionalProperties": false,
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "children",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "The page or section whose data may be old."
+      }
+    ]
+  }
+}

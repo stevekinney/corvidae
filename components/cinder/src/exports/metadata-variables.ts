@@ -57,6 +57,7 @@ export { default as dateRangeFieldVariables } from '../components/date-range-fie
 export { default as descriptionListVariables } from '../components/description-list/description-list.variables.ts';
 export { default as diffStatisticsVariables } from '../components/diff-statistics/diff-statistics.variables.ts';
 export { default as dividerVariables } from '../components/divider/divider.variables.ts';
+export { default as dockedActionBarVariables } from '../components/docked-action-bar/docked-action-bar.variables.ts';
 export { default as donutChartVariables } from '../components/donut-chart/donut-chart.variables.ts';
 export { default as drawerVariables } from '../components/drawer/drawer.variables.ts';
 export { default as dropdownGroupVariables } from '../components/dropdown-group/dropdown-group.variables.ts';
@@ -172,6 +173,7 @@ export { default as speedDialVariables } from '../components/speed-dial/speed-di
 export { default as spinnerVariables } from '../components/spinner/spinner.variables.ts';
 export { default as stackVariables } from '../components/stack/stack.variables.ts';
 export { default as stackedListItemVariables } from '../components/stacked-list-item/stacked-list-item.variables.ts';
+export { default as staleRegionVariables } from '../components/stale-region/stale-region.variables.ts';
 export { default as statisticGroupVariables } from '../components/statistic-group/statistic-group.variables.ts';
 export { default as statisticVariables } from '../components/statistic/statistic.variables.ts';
 export { default as statusDotVariables } from '../components/status-dot/status-dot.variables.ts';

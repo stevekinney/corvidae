@@ -7,13 +7,14 @@
    * @tag feedback
    * @tag notice
    * @useWhen Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.
-   * @useWhen Reporting that the server or connection is unreachable with the unreachable preset, a Retry action, and the age of the data still shown.
+   * @useWhen Reporting that the browser is offline, the server is unreachable, a refresh failed or a restart is running, using a connection preset.
    * @useWhen Pinning a non-urgent message above page content that should remain readable until acknowledged.
    * @avoidWhen Announcing an urgent, time-sensitive message — use alert so assistive tech reads it immediately.
    * @avoidWhen Highlighting an inline aside next to related prose — use callout instead.
    * @related alert, callout, toast-region
    */
   const VARIANT_LABEL = {
+    neutral: 'Notice',
     info: 'Information',
     success: 'Success',
     warning: 'Warning',
@@ -24,14 +25,52 @@
 </script>
 
 <script lang="ts">
-  import type { BannerProps } from './banner.types.ts';
+  import type { BannerProps, BannerVariant } from './banner.types.ts';
+  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+  import Unplug from '@lucide/svelte/icons/unplug';
+  import WifiOff from '@lucide/svelte/icons/wifi-off';
   import { tick } from 'svelte';
   import Button from '../button/button.svelte';
+  import { bannerPresetCopy, type BannerPreset } from './banner-presets.ts';
   import RelativeTime from '../relative-time/relative-time.svelte';
   import { classNames } from '../../utilities/class-names.ts';
 
   const FOCUSABLE_SELECTOR =
     'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  /** The tone, accessible name, glyph and retry prominence each preset fixes. */
+  const PRESETS: Record<
+    BannerPreset,
+    {
+      variant: BannerVariant;
+      label: string;
+      glyph?: 'offline' | 'connection';
+      primaryRetry?: boolean;
+    }
+  > = {
+    offline: { variant: 'warning', label: 'Connection problem', glyph: 'offline' },
+    unreachable: { variant: 'warning', label: 'Connection problem', glyph: 'connection' },
+    stopped: {
+      variant: 'warning',
+      label: 'Connection problem',
+      glyph: 'connection',
+      primaryRetry: true,
+    },
+    'out-of-date': {
+      variant: 'warning',
+      label: 'Connection problem',
+      glyph: 'connection',
+      primaryRetry: true,
+    },
+    'refresh-failed': { variant: 'warning', label: 'Refresh problem' },
+    restarting: { variant: 'info', label: 'Restart status' },
+    reconnecting: { variant: 'info', label: 'Restart status' },
+    'restart-failed': { variant: 'warning', label: 'Restart status' },
+    'back-online': { variant: 'success', label: 'Connection restored' },
+  };
+
+  /** Presets that never offer Retry now, with or without `onRetry`. */
+  const WITHOUT_RETRY: readonly BannerPreset[] = ['restarting', 'restart-failed', 'back-online'];
 
   let {
     variant = 'info',
@@ -39,9 +78,23 @@
     onDismiss,
     preset,
     onRetry,
-    retryLabel = 'Retry',
+    retryLabel,
+    retryVariant,
     dataUpdatedAt,
     staleDataLabel = 'Showing data from',
+    subject,
+    retryInSeconds,
+    attempt,
+    maxAttempts,
+    consequence,
+    timeZone,
+    title,
+    titleLayout,
+    icon,
+    sticky = false,
+    onRestart,
+    onOpenHealth,
+    healthHref,
     class: className,
     children,
     actions,
@@ -111,17 +164,51 @@
     return filtered;
   });
 
-  const unreachable = $derived(preset === 'unreachable');
-  const resolvedVariant = $derived(unreachable ? 'warning' : variant);
+  const presetConfiguration = $derived(preset ? PRESETS[preset] : undefined);
+  const resolvedVariant = $derived(presetConfiguration?.variant ?? variant);
   const ariaLabel = $derived(
     rest['aria-labelledby']
       ? undefined
       : (rest['aria-label'] ??
-          (unreachable
-            ? 'Connection problem'
-            : (VARIANT_LABEL[resolvedVariant] ?? VARIANT_LABEL.info))),
+          presetConfiguration?.label ??
+          VARIANT_LABEL[resolvedVariant] ??
+          VARIANT_LABEL.info),
   );
+
+  // A preset writes its own words unless the page passes children, which replace them.
+  const generated = $derived(
+    preset !== undefined && children === undefined
+      ? bannerPresetCopy(preset, {
+          asOf: dataUpdatedAt,
+          subject,
+          retryInSeconds,
+          attempt,
+          maxAttempts,
+          consequence,
+          timeZone,
+          title,
+        })
+      : undefined,
+  );
+  const resolvedTitle = $derived(generated?.title ?? title);
+  const resolvedTitleLayout = $derived(titleLayout ?? (preset ? 'inline' : 'stacked'));
+  // The age of the data reads as a relative notice only where the words are the page's own.
+  const showsStaleNotice = $derived(dataUpdatedAt !== undefined && generated === undefined);
+  const resolvedDismissible = $derived(preset ? false : dismissible);
+  const resolvedRetryLabel = $derived(retryLabel ?? (preset ? 'Retry now' : 'Retry'));
+  const resolvedRetryVariant = $derived(
+    retryVariant ?? (presetConfiguration?.primaryRetry ? 'primary' : 'secondary'),
+  );
+  const showsRetry = $derived(
+    onRetry !== undefined && (preset === undefined || !WITHOUT_RETRY.includes(preset)),
+  );
+  const showsRestartActions = $derived(preset === 'restart-failed');
+  const hasActions = $derived(showsRetry || showsRestartActions || actions !== undefined);
 </script>
+
+{#snippet retryIcon()}
+  <RefreshCw size={14} aria-hidden="true" />
+{/snippet}
 
 {#if visible}
   <div
@@ -129,28 +216,71 @@
     {...restWithoutLiveRegion}
     class={classNames(
       'cinder-banner',
-      'cinder-_status-surface',
-      'cinder-_status-surface-border',
+      resolvedVariant !== 'neutral' && 'cinder-_status-surface',
+      resolvedVariant !== 'neutral' && 'cinder-_status-surface-border',
       className,
     )}
     data-cinder-variant={resolvedVariant}
-    data-cinder-preset={unreachable ? 'unreachable' : undefined}
+    data-cinder-preset={preset}
+    data-cinder-sticky={sticky ? 'true' : undefined}
     role="region"
     aria-label={ariaLabel}
   >
+    {#if icon || presetConfiguration?.glyph}
+      <span class="cinder-banner__icon" aria-hidden="true">
+        {#if icon}
+          {@render icon()}
+        {:else if presetConfiguration?.glyph === 'offline'}
+          <WifiOff size={16} aria-hidden="true" />
+        {:else}
+          <Unplug size={16} aria-hidden="true" />
+        {/if}
+      </span>
+    {/if}
+
     <div class="cinder-banner__content">
-      {@render children()}
-      {#if dataUpdatedAt !== undefined}
+      {#if resolvedTitle}
+        <strong class="cinder-banner__title" data-cinder-title-layout={resolvedTitleLayout}
+          >{resolvedTitle}</strong
+        >{' '}
+      {/if}
+      {#if generated}
+        <span class="cinder-banner__text">{generated.text}</span>
+      {:else if children && resolvedTitle}
+        <span class="cinder-banner__text">{@render children()}</span>
+      {:else if children}
+        {@render children()}
+      {/if}
+      {#if showsStaleNotice && dataUpdatedAt !== undefined}
         <span class="cinder-banner__stale"
           >{staleDataLabel} <RelativeTime date={dataUpdatedAt} /></span
         >
       {/if}
     </div>
 
-    {#if onRetry || actions}
+    {#if hasActions}
       <div class="cinder-banner__actions">
-        {#if onRetry}
-          <Button variant="secondary" size="sm" label={retryLabel} onclick={() => onRetry()} />
+        {#if showsRetry}
+          <Button
+            variant={resolvedRetryVariant}
+            size="sm"
+            label={resolvedRetryLabel}
+            leadingIcon={retryIcon}
+            onclick={() => onRetry?.()}
+          />
+        {/if}
+        {#if showsRestartActions}
+          {#if healthHref}
+            <Button variant="secondary" size="sm" label="Open Health" href={healthHref} />
+          {:else}
+            <Button
+              variant="secondary"
+              size="sm"
+              label="Open Health"
+              onclick={() => onOpenHealth?.()}
+            />
+          {/if}
+          <Button variant="primary" size="sm" label="Restart again" onclick={() => onRestart?.()} />
         {/if}
         {#if actions}
           {@render actions()}
@@ -158,7 +288,7 @@
       </div>
     {/if}
 
-    {#if dismissible}
+    {#if resolvedDismissible}
       <button
         type="button"
         class="cinder-_dismiss-button cinder-banner__dismiss"

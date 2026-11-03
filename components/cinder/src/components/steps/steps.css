@@ -357,6 +357,228 @@
     border-width: 0;
   }
 
+  /* ----------------------------------------
+ * Checklist variant
+ * A bordered card: a header row (heading at the start, "N of M done" at the end), then one row
+ * per step with a 24px marker, the label and description, and the action at the row's end. Steps
+ * complete in any order, so the marker says which are done and which is next: a green check, an
+ * accent number, or a neutral number.
+ * ---------------------------------------- */
+
+  .cinder-steps[data-cinder-variant='checklist'] {
+    border: 1px solid var(--cinder-border-faint);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+    overflow: hidden;
+  }
+
+  .cinder-steps__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+    min-block-size: var(--cinder-space-10);
+    box-sizing: border-box;
+    padding-block: var(--cinder-space-1-5);
+    padding-inline: var(--cinder-space-3-5);
+    background: var(--cinder-surface-inset);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-steps__heading {
+    margin: 0;
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-steps__progress {
+    flex: none;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__list {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-3-5);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item:last-child {
+    border-block-end: 0;
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__body {
+    flex: 1;
+    min-inline-size: 0;
+    padding: 0;
+    gap: 0;
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__interactive.cinder-steps__body {
+    padding: 0;
+    inline-size: auto;
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__label {
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-steps[data-cinder-variant='checklist']
+    [data-cinder-state='complete']
+    .cinder-steps__label {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__description {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-steps[data-cinder-variant='checklist']
+    [data-cinder-state='complete']
+    .cinder-steps__marker {
+    background: var(--cinder-status-success-background);
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-steps[data-cinder-variant='checklist']
+    [data-cinder-state='current']
+    .cinder-steps__marker {
+    background: var(--cinder-accent-solid);
+    box-shadow: none;
+    color: var(--cinder-accent-contrast);
+  }
+
+  .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__index {
+    font-weight: var(--cinder-font-bold);
+  }
+
+  /* The action sits at the row's end and never shrinks; on a narrow container it drops under
+   * the text and starts where the text does. */
+  .cinder-steps__action {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--cinder-space-2);
+  }
+
+  @container cinder-steps (max-width: 28rem) {
+    .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__item {
+      flex-wrap: wrap;
+    }
+
+    .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__action {
+      flex-basis: 100%;
+      justify-content: flex-start;
+      padding-inline-start: calc(var(--_marker-size) + var(--cinder-space-3));
+    }
+  }
+
+  /* ----------------------------------------
+ * Status variant
+ * Progress by step: no card, no numbers. A green check for what is done, a spinner for what is
+ * running and a hollow circle for what is waiting, in 16px marks beside the text.
+ * ---------------------------------------- */
+
+  .cinder-steps[data-cinder-variant='status'] {
+    --_marker-size: 1rem;
+  }
+
+  .cinder-steps[data-cinder-variant='status'] .cinder-steps__list {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-steps[data-cinder-variant='status'] .cinder-steps__item {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2-5);
+  }
+
+  .cinder-steps[data-cinder-variant='status'] .cinder-steps__marker {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .cinder-steps[data-cinder-variant='status'] [data-cinder-state='complete'] .cinder-steps__marker {
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-steps[data-cinder-variant='status'] [data-cinder-state='current'] .cinder-steps__marker {
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-steps[data-cinder-variant='status'] .cinder-steps__body {
+    padding: 0;
+    gap: 0;
+  }
+
+  .cinder-steps[data-cinder-variant='status'] .cinder-steps__label {
+    font-size: var(--cinder-text-base);
+    line-height: var(--cinder-leading-normal);
+    font-weight: var(--cinder-font-normal);
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-steps[data-cinder-variant='status'] [data-cinder-state='complete'] .cinder-steps__label {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-steps[data-cinder-variant='status'] [data-cinder-state='current'] .cinder-steps__label {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-steps__spinner {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    box-sizing: border-box;
+    border: 2px solid currentColor;
+    border-inline-end-color: transparent;
+    border-radius: var(--cinder-radius-full);
+    animation: cinder-steps-spin var(--cinder-duration-spin) linear infinite;
+  }
+
+  .cinder-steps__pending {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    box-sizing: border-box;
+    border: 1.5px solid currentColor;
+    border-radius: var(--cinder-radius-full);
+  }
+
+  @keyframes cinder-steps-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-steps[data-cinder-variant='checklist'] {
+      border-color: CanvasText;
+    }
+
+    .cinder-steps[data-cinder-variant='checklist'] .cinder-steps__marker {
+      border: 1px solid CanvasText;
+    }
+  }
+
   @container cinder-steps (max-width: 32rem) {
     .cinder-steps[data-cinder-orientation='horizontal'] .cinder-steps__list {
       flex-direction: column;

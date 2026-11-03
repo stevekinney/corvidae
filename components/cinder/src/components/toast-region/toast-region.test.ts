@@ -1124,7 +1124,7 @@ describe('toast variant icons', () => {
     });
   });
 
-  test('warning toast renders its distinct triangle icon when showIcon=true', async () => {
+  test('warning toast renders its distinct alert circle when showIcon=true', async () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {
       props: {
@@ -1141,11 +1141,11 @@ describe('toast variant icons', () => {
       expect(polite).not.toBeNull();
       const iconWrapper = polite!.querySelector('.cinder-toast__icon');
       expect(iconWrapper).not.toBeNull();
-      expect(iconWrapper?.querySelectorAll('svg.lucide-triangle-alert').length).toBe(1);
+      expect(iconWrapper?.querySelectorAll('svg.lucide-circle-alert').length).toBe(1);
     });
   });
 
-  test('danger toast renders its distinct X-circle icon when showIcon=true', async () => {
+  test('danger toast renders the warning triangle when showIcon=true', async () => {
     let api: ToastApi | null = null;
     const { container } = render(Wrapper, {
       props: {
@@ -1161,7 +1161,7 @@ describe('toast variant icons', () => {
       const assertive = container.querySelector('[role="alert"]');
       const iconWrapper = assertive?.querySelector('.cinder-toast__icon');
       expect(iconWrapper).not.toBeNull();
-      expect(iconWrapper?.querySelectorAll('svg.lucide-circle-x').length).toBe(1);
+      expect(iconWrapper?.querySelectorAll('svg.lucide-triangle-alert').length).toBe(1);
     });
   });
 

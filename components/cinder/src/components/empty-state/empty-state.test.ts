@@ -134,10 +134,10 @@ describe('EmptyState rendering', () => {
     }
   });
 
-  test('icon uses subtle text rather than disabled text', () => {
+  test('icon uses muted text rather than disabled text', () => {
     const iconRule = emptyStateCss.match(/\.cinder-empty-state-icon\s*\{[^}]*\}/)?.[0];
 
-    expect(iconRule).toContain('color: var(--cinder-text-subtle);');
+    expect(iconRule).toContain('color: var(--cinder-text-muted);');
     expect(iconRule).not.toContain('var(--cinder-text-disabled)');
   });
 });
@@ -177,11 +177,12 @@ describe('EmptyState native attribute passthrough', () => {
   });
 });
 
-test('uses the container gap as the sole vertical spacing mechanism', async () => {
+test('spaces the stack with the container gap and logical margins only', async () => {
   const css = await Bun.file(new URL('./empty-state.css', import.meta.url)).text();
-  expect(css).toContain('gap: var(--cinder-space-2);');
-  expect(css).not.toContain('margin-bottom: var(--cinder-space-2);');
-  expect(css).not.toContain('margin-top: var(--cinder-space-4);');
+  const root = declarationsFor(css, '.cinder-empty-state');
+  expect(root.get('gap')).toBe('var(--cinder-space-1)');
+  expect(css).not.toContain('margin-bottom:');
+  expect(css).not.toContain('margin-top:');
 });
 
 describe('EmptyState align', () => {
@@ -261,13 +262,34 @@ describe('EmptyState kind', () => {
     expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Reset', 'Add item']);
   });
 
-  test('done renders no action even when action and onClearFilters are passed', () => {
-    const { container } = render(EmptyState, {
-      props: { title: 'All done', kind: 'done', action: actionSnippet, onClearFilters: () => {} },
+  test('done renders its action, so a quiet link can follow the confirmation', () => {
+    const linkAction = createRawSnippet(() => ({
+      render: () => `<a class="cinder-link" href="/reviews/done">See past decisions</a>`,
+    }));
+    const { container, getByRole } = render(EmptyState, {
+      props: { title: 'All caught up', kind: 'done', action: linkAction },
     });
     expect(rootOf(container)?.getAttribute('data-cinder-kind')).toBe('done');
-    expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
+    expect(getByRole('link', { name: 'See past decisions' })).not.toBeNull();
     expect(container.querySelector('button')).toBeNull();
+  });
+
+  test('done ignores onClearFilters, which belongs to the filtered kind', () => {
+    const { container } = render(EmptyState, {
+      props: { title: 'All done', kind: 'done', onClearFilters: () => {} },
+    });
+    expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
+  });
+
+  test('blocked, not-found and disabled mark the root and render their action', () => {
+    for (const kind of ['blocked', 'not-found', 'disabled'] as const) {
+      const { container } = render(EmptyState, {
+        props: { title: 'Nope', kind, action: actionSnippet },
+      });
+      expect(rootOf(container)?.getAttribute('data-cinder-kind')).toBe(kind);
+      expect(container.querySelector('[data-testid="custom-action"]')).not.toBeNull();
+      cleanup();
+    }
   });
 
   test('an unknown kind falls back to first-use', () => {
@@ -289,8 +311,77 @@ describe('EmptyState kind', () => {
     );
     expect(firstUse.get('background')).toBe('var(--cinder-accent-background)');
     expect(done.get('background')).toBe('var(--cinder-status-success-background)');
+    expect(done.get('color')).toBe('var(--cinder-status-success-text)');
+    const blocked = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-kind='blocked'] .cinder-empty-state-icon",
+    );
+    expect(blocked.get('background')).toBe('var(--cinder-status-warning-background)');
+    expect(blocked.get('color')).toBe('var(--cinder-status-warning-text)');
     const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');
     expect(disc.get('border-radius')).toBe('var(--cinder-radius-full)');
+  });
+
+  test('neutral kinds keep the neutral disc, which is the base rule', () => {
+    const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');
+    expect(disc.get('background')).toBe('var(--cinder-surface-inset)');
+    for (const kind of ['filtered', 'not-found', 'disabled']) {
+      expect(emptyStateCss).not.toContain(`data-cinder-kind='${kind}'`);
+    }
+  });
+});
+
+describe('EmptyState default glyphs', () => {
+  const glyphKinds = ['done', 'filtered', 'not-found', 'blocked', 'disabled'] as const;
+
+  test('every kind except first-use shows a glyph in its disc when no icon is passed', () => {
+    for (const kind of glyphKinds) {
+      const { container } = render(EmptyState, { props: { title: 'State', kind } });
+      const disc = container.querySelector('.cinder-empty-state-icon');
+      expect(disc, kind).not.toBeNull();
+      expect(disc?.getAttribute('aria-hidden')).toBe('true');
+      expect(disc?.querySelector('svg'), kind).not.toBeNull();
+      cleanup();
+    }
+  });
+
+  test('first-use draws no disc until the view passes its own icon', () => {
+    const { container } = render(EmptyState, { props: { title: 'No agents yet' } });
+    expect(container.querySelector('.cinder-empty-state-icon')).toBeNull();
+  });
+
+  test('the glyphs are distinct per kind', () => {
+    const markup = new Set<string>();
+    for (const kind of glyphKinds) {
+      const { container } = render(EmptyState, { props: { title: 'State', kind } });
+      markup.add(container.querySelector('.cinder-empty-state-icon svg')?.innerHTML ?? '');
+      cleanup();
+    }
+    expect(markup.size).toBe(glyphKinds.length);
+  });
+
+  test('a passed icon replaces the default glyph', () => {
+    const own = createRawSnippet(() => ({
+      render: () => `<svg data-testid="own-glyph" viewBox="0 0 24 24"></svg>`,
+    }));
+    const { container } = render(EmptyState, {
+      props: { title: 'No matches', kind: 'filtered', icon: own },
+    });
+    expect(container.querySelectorAll('.cinder-empty-state-icon svg')).toHaveLength(1);
+    expect(container.querySelector('[data-testid="own-glyph"]')).not.toBeNull();
+  });
+});
+
+describe('EmptyState bordered', () => {
+  test('is off by default and marks the root when on', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty' } });
+    expect(rootOf(container)?.hasAttribute('data-cinder-bordered')).toBe(false);
+    cleanup();
+    const bordered = render(EmptyState, { props: { title: 'Empty', bordered: true } });
+    expect(rootOf(bordered.container)?.hasAttribute('data-cinder-bordered')).toBe(true);
+    const rule = declarationsFor(emptyStateCss, '.cinder-empty-state[data-cinder-bordered]');
+    expect(rule.get('border')).toBe('1px solid var(--cinder-border)');
+    expect(rule.get('border-radius')).toBe('var(--cinder-radius-lg)');
   });
 });
 
@@ -306,7 +397,9 @@ describe('EmptyState size', () => {
     const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-size='compact']");
     expect(root.get('padding-block')).toBe('var(--cinder-space-6)');
     const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
-    expect(base.get('padding-block')).toBe('var(--cinder-space-12)');
+    expect(base.get('padding-block')).toBe(
+      'var(--cinder-space-12) calc(var(--cinder-space-12) + var(--cinder-space-2))',
+    );
     const title = declarationsFor(
       emptyStateCss,
       ".cinder-empty-state[data-cinder-size='compact'] .cinder-empty-state-title",
@@ -330,14 +423,23 @@ describe('EmptyState size', () => {
 });
 
 describe('EmptyState restyle', () => {
-  test('title is larger and semibold, description has a measure and the actions row is spaced', () => {
+  test('disc is 48px, title is 16px semibold, the sentence holds 380px and the actions row is spaced', () => {
+    const disc = declarationsFor(emptyStateCss, '.cinder-empty-state-icon');
+    expect(disc.get('inline-size')).toBe('var(--cinder-space-12)');
+    expect(disc.get('block-size')).toBe('var(--cinder-space-12)');
     const title = declarationsFor(emptyStateCss, '.cinder-empty-state-title');
-    expect(title.get('font-size')).toBe('var(--cinder-text-xl)');
+    expect(title.get('font-size')).toBe('var(--cinder-text-lg)');
     expect(title.get('font-weight')).toBe('var(--cinder-font-semibold)');
     const description = declarationsFor(emptyStateCss, '.cinder-empty-state-description');
-    expect(description.get('max-inline-size')).toBe('42ch');
+    expect(description.get('max-inline-size')).toBe('23.75rem');
     const action = declarationsFor(emptyStateCss, '.cinder-empty-state-action');
-    expect(action.get('gap')).toBe('var(--cinder-space-3)');
+    expect(action.get('gap')).toBe('var(--cinder-space-2)');
     expect(action.get('flex-wrap')).toBe('wrap');
+  });
+
+  test('is centred in the height it is given, with 8px extra bottom padding for optical centre', () => {
+    const base = declarationsFor(emptyStateCss, '.cinder-empty-state');
+    expect(base.get('justify-content')).toBe('center');
+    expect(base.get('min-block-size')).toBe('100%');
   });
 });

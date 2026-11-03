@@ -45,6 +45,7 @@
     <Button
       variant="ghost"
       iconOnly
+      quiet
       class="weft-shell-topbar-control"
       aria-label={QUICK_SETTINGS_COPY.trigger}
       title={QUICK_SETTINGS_COPY.trigger}

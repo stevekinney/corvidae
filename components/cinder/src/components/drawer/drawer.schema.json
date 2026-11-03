@@ -35,8 +35,8 @@
     },
     "dragHandleVisible": {
       "type": "boolean",
-      "description": "When `true` and `placement=\"bottom\"`, render a decorative drag handle\nabove the header. Swipe-to-close gesture is a stretch goal not\nimplemented in MVP — the handle is purely a visual affordance.\nIgnored for `left`/`right` placements.\n\nNamed `dragHandleVisible` (not `draggable`) to avoid colliding with the\nnative HTML `draggable` attribute on the underlying `<dialog>`.",
-      "default": false
+      "description": "Whether a `placement=\"bottom\"` drawer shows the grabber, the small pill above the header that\nmarks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance\nonly. Ignored for `left`/`right` placements.\n\nNamed `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML\n`draggable` attribute on the underlying `<dialog>`.",
+      "default": true
     }
   },
   "additionalProperties": false,

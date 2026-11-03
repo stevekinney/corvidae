@@ -5,6 +5,12 @@
  * Two stacked aria-live regions (polite + assertive) anchored to the
  * bottom-right of the viewport. Toast.svelte owns the visual treatment of
  * individual toasts via the .cinder-toast class.
+ *
+ * A bottom-anchored region sits above whatever is docked to the bottom of the page and inside
+ * the bottom safe area (design rows 04w, 06x, 15g): its offset is the on-screen keyboard
+ * (`--_cinder-keyboard-inset`, 0 without one) plus the docked action bar's height
+ * (`--_cinder-docked-action-bar-height`, which already includes the bar's own safe-area padding)
+ * or, with no bar, `env(safe-area-inset-bottom)`, plus the gutter.
  * ======================================== */
 
   .cinder-toast-region {
@@ -20,11 +26,35 @@
   }
 
   .cinder-toast-region[data-cinder-position^='top'] {
-    top: var(--cinder-space-4);
+    top: max(var(--cinder-space-4), env(safe-area-inset-top));
   }
 
   .cinder-toast-region[data-cinder-position^='bottom'] {
-    bottom: var(--cinder-space-4);
+    bottom: calc(
+      var(--_cinder-keyboard-inset, 0px) +
+        var(--_cinder-docked-action-bar-height, env(safe-area-inset-bottom, 0px)) +
+        var(--cinder-space-4)
+    );
+  }
+
+  /* On a phone the region spans the screen between two 12px gutters and its toasts fill it. */
+  .cinder-toast-region[data-cinder-phone][data-cinder-position] {
+    inset-inline: var(--cinder-space-3);
+    align-items: stretch;
+    transform: none;
+  }
+
+  .cinder-toast-region[data-cinder-phone][data-cinder-position^='bottom'] {
+    bottom: calc(
+      var(--_cinder-keyboard-inset, 0px) +
+        var(--_cinder-docked-action-bar-height, env(safe-area-inset-bottom, 0px)) +
+        var(--cinder-space-3)
+    );
+  }
+
+  .cinder-toast-region[data-cinder-phone] .cinder-toast {
+    min-inline-size: 0;
+    max-inline-size: none;
   }
 
   .cinder-toast-region[data-cinder-position$='left'] {
@@ -74,24 +104,28 @@
  * Individual toast
  * ---------------------------------------- */
 
+  /* An inverse chip, as the design draws it: a dark chip on a light page and a light one on a dark
+   * page. A danger toast mixes in the danger hue and carries the warning triangle. */
   .cinder-toast {
+    --_cinder-toast-surface: var(--cinder-surface-inverse);
+
     pointer-events: auto;
     position: relative;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--cinder-space-3);
     min-width: 18rem;
     max-width: 28rem;
-    padding: var(--cinder-space-3) var(--cinder-space-4);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
-    box-shadow:
-      inset 0 1px 0 light-dark(transparent, oklch(100% 0 0 / 0.06)),
-      0 1px 2px oklch(0% 0 0 / 0.04),
-      0 4px 12px oklch(0% 0 0 / 0.08);
+    min-block-size: var(--cinder-touch-target-min);
+    box-sizing: border-box;
+    padding-block: 0;
+    padding-inline: var(--cinder-space-4) var(--cinder-space-3);
+    background: var(--_cinder-toast-surface);
+    border: 1px solid var(--cinder-border-inverse);
+    border-radius: var(--cinder-radius-lg);
+    box-shadow: 0 8px 24px oklch(0% 0 0 / 0.25);
     font-size: var(--cinder-text-sm);
-    color: var(--cinder-text-default);
+    color: var(--cinder-text-inverse);
     touch-action: pan-y;
     transform: translateX(var(--cinder-toast-swipe-x, 0))
       translateY(calc(var(--cinder-toast-stack-index, 0) * -2px));
@@ -133,42 +167,14 @@
     }
   }
 
-  /* Variant accent stripe — drawn as a ::before pseudo so it sits inside the
- * toast's border-radius without fighting border-left's miter corners. The
- * stripe rounds its own start-side corners (matching the toast's outer
- * radius minus the 1px border) so the parent toast does not need
- * `overflow: hidden`, which would clip the dismiss button's 44×44 ::after
- * hit-area pseudo-element. */
-  .cinder-toast[data-cinder-variant]::before {
-    content: '';
-    position: absolute;
-    /* Sit just inside the toast's 1px border so the stripe doesn't cover it. */
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: 3px;
-    background: var(--_cinder-toast-accent, transparent);
-    border-start-start-radius: calc(var(--cinder-radius-md) - 1px);
-    border-end-start-radius: calc(var(--cinder-radius-md) - 1px);
-  }
-
-  .cinder-toast[data-cinder-variant='info'] {
-    --_cinder-toast-accent: var(--cinder-status-info-solid);
-    --_cinder-toast-accent-text: var(--cinder-status-info-text);
-  }
-
-  .cinder-toast[data-cinder-variant='success'] {
-    --_cinder-toast-accent: var(--cinder-status-success-solid);
-    --_cinder-toast-accent-text: var(--cinder-status-success-text);
-  }
-
-  .cinder-toast[data-cinder-variant='warning'] {
-    --_cinder-toast-accent: var(--cinder-status-warning-solid);
-    --_cinder-toast-accent-text: var(--cinder-status-warning-text);
-  }
-
+  /* The variants differ in tone only where it carries meaning: a danger toast is a dark red chip.
+   * Info, success and warning share the inverse chip, so a page words them rather than tints them. */
   .cinder-toast[data-cinder-variant='danger'] {
-    --_cinder-toast-accent: var(--cinder-status-danger-solid);
-    --_cinder-toast-accent-text: var(--cinder-status-danger-text);
+    --_cinder-toast-surface: color-mix(
+      in oklab,
+      var(--cinder-surface-inverse) 65%,
+      var(--cinder-status-danger-solid)
+    );
   }
 
   .cinder-toast__icon {
@@ -176,7 +182,7 @@
     align-items: center;
     flex-shrink: 0;
     line-height: 0;
-    color: var(--_cinder-toast-accent-text, var(--cinder-text-muted));
+    color: currentColor;
   }
 
   .cinder-toast__spinner {
@@ -187,25 +193,47 @@
     border: 1.5px solid color-mix(in srgb, currentColor 25%, transparent);
     border-top-color: currentColor;
     border-radius: 50%;
-    color: var(--_cinder-toast-accent-text, var(--cinder-text-muted));
+    color: currentColor;
     animation: cinder-toast-spinner-spin var(--cinder-duration-spin) linear infinite;
   }
 
   .cinder-toast__message {
     flex: 1 1 auto;
+    padding-block: var(--cinder-space-2-5);
     line-height: var(--cinder-leading-normal);
   }
 
+  /* The action reads as a link on the chip: the accent lightened toward the chip's text, so it
+   * clears 4.5:1 on the dark chip. A full 44px target on touch and on a phone (row 06x). */
   .cinder-toast__action {
     appearance: none;
     background: none;
     border: none;
-    padding: 0;
+    padding: 0 var(--cinder-space-1);
+    min-block-size: var(--cinder-control-height-md);
     font: inherit;
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-accent-text);
+    font-weight: var(--cinder-font-semibold);
+    color: color-mix(in oklab, var(--cinder-accent-solid) 35%, var(--cinder-text-inverse));
     cursor: pointer;
     border-radius: var(--cinder-radius-sm);
+    flex-shrink: 0;
+  }
+
+  .cinder-toast[data-cinder-variant='danger'] .cinder-toast__action {
+    color: var(--cinder-text-inverse);
+    text-decoration: underline;
+  }
+
+  @media (pointer: coarse) {
+    .cinder-toast__action {
+      min-block-size: var(--cinder-touch-target-min);
+      padding-inline: var(--cinder-space-2);
+    }
+  }
+
+  .cinder-toast-region[data-cinder-phone] .cinder-toast__action {
+    min-block-size: var(--cinder-touch-target-min);
+    padding-inline: var(--cinder-space-2);
   }
 
   .cinder-toast__action:focus-visible {
@@ -219,7 +247,8 @@
     border: none;
     padding: var(--cinder-space-0-5);
     margin: 0;
-    color: var(--cinder-text-muted);
+    color: currentColor;
+    opacity: 0.8;
     cursor: pointer;
     border-radius: var(--cinder-radius-sm);
     flex-shrink: 0;
@@ -250,8 +279,8 @@
 
   @media (hover: hover) {
     .cinder-toast__dismiss:hover {
-      color: var(--cinder-text-default);
-      background: var(--cinder-surface-hover);
+      opacity: 1;
+      background: color-mix(in oklch, currentColor 16%, transparent);
     }
   }
 

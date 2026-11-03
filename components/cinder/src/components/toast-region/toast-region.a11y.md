@@ -54,3 +54,9 @@ The slide-in and exit animations are disabled under `prefers-reduced-motion: red
 ## Teardown
 
 When the region unmounts, all auto-dismiss timers are cleared (`onDestroy`). Tests using the lifecycle helper from `src/test/lifecycle.ts` should observe no leaked timers after region unmount.
+
+## Undo, failure and phone placement
+
+- An Undo toast (`undo`) has no timer and no close button, so a person who has not reached it yet never loses the Undo to a timeout or a stray click. It is announced politely like any other `info` toast, and its action is a real button reachable by Tab. `dismissUndo()` removes it when the page changes.
+- A `danger` toast has no timer, keeps its dismiss button, and is announced assertively; the warning triangle is decorative (`aria-hidden`) and the message carries the meaning.
+- On a phone, and with a coarse pointer, the action is a 44px target. The region sits inside the bottom safe area and above a docked action bar, so a toast never covers the controls it describes.

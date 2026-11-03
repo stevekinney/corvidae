@@ -41,6 +41,10 @@
             "indeterminate": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Bound indeterminate state. Mutually exclusive with `checked` visually."
+            },
+            "mutating": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Marks a checkbox that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, a press is undone, and the region's reason describes it.\nIt returns by itself when the region stops being stale."
             }
           },
           "required": ["component", "label"]
@@ -365,6 +369,10 @@
             "labelVisible": {
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
               "description": "Whether the label is visibly rendered. Set `false` for icon-only or\ninline contexts — it stays the accessible name."
+            },
+            "mutating": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicBoolean",
+              "description": "Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, ignoring the press, and described by the region's reason.\nIt returns by itself when the region stops being stale."
             }
           },
           "required": ["component", "label"]

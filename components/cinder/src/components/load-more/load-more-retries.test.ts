@@ -58,11 +58,11 @@ describe('LoadMore', () => {
     record.callback([createEntry(sentinel, true)], record.observer);
 
     await waitFor(() => {
-      expect(rendered.getByRole('button', { name: 'Retry loading' })).toBeDefined();
+      expect(rendered.getByRole('button', { name: 'Try again' })).toBeDefined();
     });
 
     shouldFail = false;
-    await fireEvent.click(rendered.getByRole('button', { name: 'Retry loading' }));
+    await fireEvent.click(rendered.getByRole('button', { name: 'Try again' }));
 
     await waitFor(() => {
       expect(calls).toBe(2);
@@ -258,10 +258,10 @@ describe('LoadMore', () => {
     record.callback([createEntry(initialSentinel, true)], record.observer);
 
     await waitFor(() => {
-      expect(rendered.getByRole('button', { name: 'Retry loading' })).toBeDefined();
+      expect(rendered.getByRole('button', { name: 'Try again' })).toBeDefined();
     });
 
-    await fireEvent.click(rendered.getByRole('button', { name: 'Retry loading' }));
+    await fireEvent.click(rendered.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(calls).toBe(2));
 
     const retrySentinel = requiredInstance(
@@ -308,10 +308,10 @@ describe('LoadMore', () => {
     rejectInitial?.(new Error('network'));
 
     await waitFor(() => {
-      expect(rendered.getByRole('button', { name: 'Retry loading' })).toBeDefined();
+      expect(rendered.getByRole('button', { name: 'Try again' })).toBeDefined();
     });
 
-    await fireEvent.click(rendered.getByRole('button', { name: 'Retry loading' }));
+    await fireEvent.click(rendered.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(calls).toBe(2));
 
     const retrySentinel = requiredInstance(

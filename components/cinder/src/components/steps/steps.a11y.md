@@ -56,3 +56,12 @@ The step markers (24px × 24px) are non-interactive display elements. Touch targ
 ## No keyboard interaction
 
 This component is read-only — steps are not clickable or focusable. If a future use case requires navigating backward through completed steps, an optional `onSelect` callback should be added to render completed steps as `<button>` elements.
+
+## Checklist and status variants
+
+The `checklist` and `status` variants are not navigation, so they do not use `<nav>`.
+
+- `checklist` renders a `<section>` named by its heading (`aria-labelledby`), or by `label` when it has no heading. The rows stay an ordered list, `aria-current="step"` marks the first step that isn't done, and a done step announces `completedLabel` before its label. The action snippet is a sibling of the body, never inside the marker or the body, so a button in it is not part of the step's name.
+- `status` renders a `<div role="status">` named by `label`. The marks are decorative (`aria-hidden`), so every row writes its state out: `completedLabel`, `currentLabel` or `pendingLabel` is read before the label. Because the region is a polite live region with the default atomic behavior, a change to one step announces the whole list in order, which is the "progress by step" reading the design wants. The spinner is a CSS ring driven by `--cinder-duration-spin`, which the reduced-motion rules set to zero.
+
+State is carried by the written state, the check glyph and the marker shape, never by color alone.

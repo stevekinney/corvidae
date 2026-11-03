@@ -16,6 +16,21 @@ Compact segmented selector for a small fixed set of options, including bindable 
 </SegmentedControl>
 ```
 
+## Counts
+
+A `Segment` takes a `count`, drawn after its label in a muted, tabular figure ("Waiting on you 2"). The count is part of the segment's accessible name ("Waiting on you, 2"), and zero still shows ("Running 0"). Only `undefined` hides it.
+
+```svelte
+<script lang="ts">
+  import { Segment, SegmentedControl } from '@lostgradient/cinder';
+</script>
+
+<SegmentedControl id="status" label="Status" selectionMode="single" value="all">
+  <Segment value="all" count={19}>All</Segment>
+  <Segment value="waiting" count={2}>Waiting on you</Segment>
+</SegmentedControl>
+```
+
 ## Props
 
 <!-- generated:props:start -->

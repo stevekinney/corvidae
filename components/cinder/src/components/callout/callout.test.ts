@@ -1,12 +1,13 @@
 /// <reference lib="dom" />
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { declarationsFor } from '../../test/css.ts';
 
 setupHappyDom();
 
-const { render } = await import('@testing-library/svelte');
+const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Callout } = await import('./callout.svelte');
 
 function textSnippet(text: string) {
@@ -15,6 +16,10 @@ function textSnippet(text: string) {
     setup: () => {},
   }));
 }
+
+afterEach(() => {
+  cleanup();
+});
 
 const emptySnippet = createRawSnippet(() => ({
   render: () => `<span></span>`,
@@ -87,7 +92,7 @@ describe('Callout rendering', () => {
 });
 
 describe('Callout variants', () => {
-  for (const variant of ['info', 'success', 'warning', 'danger'] as const) {
+  for (const variant of ['neutral', 'info', 'success', 'warning', 'danger'] as const) {
     test(`applies data-cinder-variant for variant "${variant}"`, () => {
       const { container } = render(Callout, {
         props: { variant, children: emptySnippet },
@@ -105,6 +110,64 @@ describe('Callout variants', () => {
     expect(container.querySelector('.cinder-callout')?.getAttribute('data-cinder-variant')).toBe(
       'info',
     );
+  });
+});
+
+describe('Callout neutral variant and action', () => {
+  test('neutral does not take the status-surface classes, so it reads as a note, not a status', () => {
+    const { container } = render(Callout, {
+      props: { variant: 'neutral', children: emptySnippet },
+    });
+    const root = container.querySelector('.cinder-callout');
+    expect(root?.classList.contains('cinder-_status-surface')).toBe(false);
+    expect(root?.classList.contains('cinder-_status-surface-border')).toBe(false);
+    cleanup();
+    const warning = render(Callout, { props: { variant: 'warning', children: emptySnippet } });
+    expect(
+      warning.container
+        .querySelector('.cinder-callout')
+        ?.classList.contains('cinder-_status-surface'),
+    ).toBe(true);
+  });
+
+  test('renders the action after the content, in both semantics, and omits it when absent', () => {
+    const action = createRawSnippet(() => ({
+      render: () => `<a href="/goals/draft/attempts/5">Open attempt 5</a>`,
+      setup: () => {},
+    }));
+    for (const semantic of ['aside', 'note'] as const) {
+      const { container } = render(Callout, {
+        props: {
+          variant: 'neutral',
+          semantic,
+          action,
+          icon: textSnippet('i'),
+          children: textSnippet('Gave up after 5 attempts.'),
+        },
+      });
+      const root = container.querySelector('.cinder-callout');
+      const children = [...(root?.children ?? [])].map((child) => child.className);
+      expect(children).toEqual([
+        'cinder-callout__icon',
+        'cinder-callout__content',
+        'cinder-callout__action',
+      ]);
+      expect(root?.querySelector('.cinder-callout__action a')?.textContent).toBe('Open attempt 5');
+      // The action is outside the content, so it never joins the callout's accessible text.
+      expect(root?.querySelector('.cinder-callout__content a')).toBeNull();
+      cleanup();
+    }
+    const bare = render(Callout, { props: { children: emptySnippet } });
+    expect(bare.container.querySelector('.cinder-callout__action')).toBeNull();
+  });
+
+  test('the stylesheet centres the neutral row and pushes the action to the inline end', async () => {
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    const neutral = declarationsFor(css, ".cinder-callout[data-cinder-variant='neutral']");
+    expect(neutral.get('align-items')).toBe('center');
+    expect(neutral.get('background')).toBe('var(--cinder-status-neutral-background)');
+    expect(neutral.get('border-color')).toBe('var(--cinder-status-neutral-border)');
+    expect(declarationsFor(css, '.cinder-callout__action').get('margin-inline-start')).toBe('auto');
   });
 });
 

@@ -18,6 +18,7 @@
 <script lang="ts">
   import type { SkeletonProps } from './skeleton.types.ts';
   import Button from '../button/button.svelte';
+  import VisuallyHidden from '../visually-hidden/visually-hidden.svelte';
   import { classNames } from '../../utilities/class-names.ts';
 
   let {
@@ -27,10 +28,13 @@
     class: className,
     lines = 1,
     variant = 'row',
+    rows = 3,
+    dayBand = false,
+    label,
     delay = 0,
     stillLoadingAfter,
     onCancel,
-    stillLoadingLabel = 'Still loading…',
+    stillLoadingLabel = 'Still loading. This is taking longer than usual.',
     cancelLabel = 'Cancel',
   }: SkeletonProps = $props();
 
@@ -80,10 +84,12 @@
     const whole = Math.trunc(Number(lines));
     return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 1;
   });
-  const shape = $derived(variant === 'card' ? 'card' : 'row');
-  const grouped = $derived(
-    lineCount > 1 || shape === 'card' || stillLoadingThreshold !== undefined,
-  );
+  const shape = $derived(variant === 'card' ? 'card' : variant === 'list' ? 'list' : 'row');
+  const rowCount = $derived.by(() => {
+    const whole = Math.trunc(Number(rows));
+    return Number.isFinite(whole) ? Math.min(MAXIMUM_LINES, Math.max(1, whole)) : 3;
+  });
+  const grouped = $derived(lineCount > 1 || shape !== 'row' || stillLoadingThreshold !== undefined);
 
   const style = $derived(
     [
@@ -96,9 +102,61 @@
   );
 </script>
 
-{#if visible}
+{#snippet stillLoadingStatus()}
+  {#if stillLoadingThreshold !== undefined}
+    <div class="cinder-skeleton-status" role="status">
+      {#if stillLoading}
+        <span class="cinder-skeleton-status-label">{stillLoadingLabel}</span>
+        {#if onCancel}
+          <Button variant="ghost" size="sm" label={cancelLabel} onclick={() => onCancel()} />
+        {/if}
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
+{#if shape === 'list'}
+  <!-- The region is in the DOM from the first pass so its name is announced when the rows
+       appear at the end of `delay`, not inserted together with its text. -->
+  <div
+    class={classNames('cinder-skeleton-group', className)}
+    data-cinder-variant="list"
+    aria-busy={visible ? 'true' : undefined}
+  >
+    {#if label}
+      <VisuallyHidden role="status">{visible ? label : ''}</VisuallyHidden>
+    {/if}
+    {#if visible}
+      <div class="cinder-skeleton-list" aria-hidden="true">
+        {#if dayBand}
+          <div class="cinder-skeleton-day-band">
+            <div class="cinder-skeleton cinder-skeleton-day-bar"></div>
+          </div>
+        {/if}
+        {#each { length: rowCount } as _, index (index)}
+          <div class="cinder-skeleton-row">
+            <div class="cinder-skeleton-row-status">
+              <div class="cinder-skeleton cinder-skeleton-status-bar"></div>
+            </div>
+            <div class="cinder-skeleton-row-text">
+              <div class="cinder-skeleton cinder-skeleton-title-bar"></div>
+              <div class="cinder-skeleton cinder-skeleton-meta-bar"></div>
+            </div>
+            <div class="cinder-skeleton-row-time">
+              <div class="cinder-skeleton cinder-skeleton-time-bar"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+      {@render stillLoadingStatus()}
+    {/if}
+  </div>
+{:else if visible}
   {#if grouped}
     <div class={classNames('cinder-skeleton-group', className)} data-cinder-variant={shape}>
+      {#if label}
+        <VisuallyHidden role="status">{label}</VisuallyHidden>
+      {/if}
       <div class="cinder-skeleton-lines" aria-hidden="true">
         {#if shape === 'card'}
           <div class="cinder-skeleton cinder-skeleton-heading"></div>
@@ -113,16 +171,7 @@
           ></div>
         {/each}
       </div>
-      {#if stillLoadingThreshold !== undefined}
-        <div class="cinder-skeleton-status" role="status">
-          {#if stillLoading}
-            <span class="cinder-skeleton-status-label">{stillLoadingLabel}</span>
-            {#if onCancel}
-              <Button variant="ghost" size="sm" label={cancelLabel} onclick={() => onCancel()} />
-            {/if}
-          {/if}
-        </div>
-      {/if}
+      {@render stillLoadingStatus()}
     </div>
   {:else}
     <div class={classNames('cinder-skeleton', className)} aria-hidden="true" {style}></div>

@@ -2,6 +2,12 @@
 @import '../input/input.css';
 
 @layer cinder.components {
+  /* As a sheet the dialog has the grabber, the confirmation and Cancel; the corner close button is
+   * a second way out that the sheet does not draw (row 05d). Escape and Cancel still close it. */
+  .cinder-modal[data-cinder-sheet='docked'].cinder-confirm-dialog .cinder-modal__close {
+    display: none;
+  }
+
   .cinder-confirm-dialog__description {
     margin: 0;
     color: var(--cinder-text-muted);

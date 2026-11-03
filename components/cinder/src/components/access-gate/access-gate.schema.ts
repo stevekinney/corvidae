@@ -20,7 +20,23 @@ const schema = {
     requirement: {
       type: 'string',
       description:
-        'Named scope, permission, or policy requirement shown in the section placeholder.',
+        'Named scope, permission, or policy requirement. A section gate shows it small and monospaced on its own line, as "requires <requirement>".',
+    },
+    title: {
+      type: 'string',
+      description:
+        "Heading of a denied `'section'` gate, in the person's words, such as \"Your sign-in can't\nopen Hooks\". Ignored by the inline variant.",
+      default: 'Section locked',
+    },
+    headingLevel: {
+      enum: [1, 2, 3, 4, 5, 6],
+      description: 'Heading level of the section title.',
+      default: 3,
+    },
+    layout: {
+      enum: ['inline', 'page'],
+      description: "Layout of a denied `'section'` gate. Ignored by the inline variant.",
+      default: 'inline',
     },
     class: {
       type: 'string',
@@ -31,6 +47,12 @@ const schema = {
   required: ['granted', 'reason'],
   metadata: {
     unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description:
+          'Actions rendered under a denied `\'section\'` gate, such as "See your scopes" or "Back to\nHome". Give them the secondary button variant: a gate has no primary action.',
+      },
       {
         name: 'children',
         reason: 'function-or-snippet',

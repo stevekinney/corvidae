@@ -1,7 +1,11 @@
 import './styles/index.css';
 
 export { default as AccessGate } from './components/access-gate/index.ts';
-export type { AccessGateProps, AccessGateVariant } from './components/access-gate/index.ts';
+export type {
+  AccessGateLayout,
+  AccessGateProps,
+  AccessGateVariant,
+} from './components/access-gate/index.ts';
 
 export { default as AccordionItem } from './components/accordion-item/index.ts';
 export type { AccordionItemProps } from './components/accordion-item/index.ts';
@@ -95,8 +99,21 @@ export type {
 export { default as Backdrop } from './components/backdrop/index.ts';
 export type { BackdropProps } from './components/backdrop/index.ts';
 
-export { default as Banner } from './components/banner/index.ts';
-export type { BannerPreset, BannerProps, BannerVariant } from './components/banner/index.ts';
+export {
+  BANNER_BACK_ONLINE_COPY,
+  BANNER_MAX_ATTEMPTS,
+  BANNER_PRESETS,
+  default as Banner,
+  bannerPresetCopy,
+  formatBannerAsOf,
+} from './components/banner/index.ts';
+export type {
+  BannerPreset,
+  BannerPresetCopy,
+  BannerPresetFacts,
+  BannerProps,
+  BannerVariant,
+} from './components/banner/index.ts';
 
 export { default as BarChart } from './components/bar-chart/index.ts';
 export type {
@@ -231,7 +248,13 @@ export type {
 } from './components/color-swatch-picker/index.ts';
 
 export { default as Combobox } from './components/combobox/index.ts';
-export type { ComboboxOption, ComboboxProps } from './components/combobox/index.ts';
+export type {
+  ComboboxFooterContext,
+  ComboboxLoadError,
+  ComboboxOption,
+  ComboboxPresentation,
+  ComboboxProps,
+} from './components/combobox/index.ts';
 
 export { default as CommandItem } from './components/command-item/index.ts';
 export type { CommandItemProps } from './components/command-item/index.ts';
@@ -353,6 +376,12 @@ export type {
 export { default as Divider } from './components/divider/index.ts';
 export type { DividerOrientation, DividerProps, DividerTone } from './components/divider/index.ts';
 
+export { default as DockedActionBar } from './components/docked-action-bar/index.ts';
+export type {
+  DockedActionBarProps,
+  DockedActionBarVariant,
+} from './components/docked-action-bar/index.ts';
+
 export { default as Drawer } from './components/drawer/index.ts';
 export type { DrawerPlacement, DrawerProps, DrawerSize } from './components/drawer/index.ts';
 
@@ -395,7 +424,11 @@ export type {
 } from './components/empty-state/index.ts';
 
 export { default as ErrorState } from './components/error-state/index.ts';
-export type { ErrorStateProps, ErrorStateVariant } from './components/error-state/index.ts';
+export type {
+  ErrorStateProps,
+  ErrorStateTone,
+  ErrorStateVariant,
+} from './components/error-state/index.ts';
 
 export { default as FilterBar } from './components/filter-bar/index.ts';
 export type {
@@ -818,7 +851,13 @@ export { default as SegmentedControl } from './components/segmented-control/inde
 export type { SegmentedControlProps } from './components/segmented-control/index.ts';
 
 export { default as Select } from './components/select/index.ts';
-export type { SelectOption, SelectProps } from './components/select/index.ts';
+export type {
+  SelectGroup,
+  SelectOption,
+  SelectPresentation,
+  SelectProps,
+  SelectVariant,
+} from './components/select/index.ts';
 
 export { default as SelectableRow } from './components/selectable-row/index.ts';
 export type {
@@ -903,6 +942,7 @@ export type {
 } from './components/source-diff-viewer/index.ts';
 
 export { default as StackedListItem } from './components/stacked-list-item/index.ts';
+
 export type {
   StackedListItemAction,
   StackedListItemDensity,
@@ -913,6 +953,8 @@ export type {
   StackedListItemTitleLines,
   StackedListItemTone,
 } from './components/stacked-list-item/index.ts';
+export { default as StaleRegion } from './components/stale-region/index.ts';
+export type { StaleRegionProps } from './components/stale-region/index.ts';
 
 export { default as Stack } from './components/stack/index.ts';
 export type {
@@ -969,6 +1011,7 @@ export type {
   StepItemState,
   StepsOrientation,
   StepsProps,
+  StepsVariant,
 } from './components/steps/index.ts';
 
 export { default as Statistic } from './components/statistic/index.ts';

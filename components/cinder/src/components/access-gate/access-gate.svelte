@@ -3,7 +3,7 @@
    * @cinder
    * @category feedback
    * @status alpha
-   * @purpose Authorization-scope gate that keeps unavailable actions visible with an accessible reason or replaces locked sections with a scope-required placeholder.
+   * @purpose Authorization-scope gate that keeps unavailable actions visible with a reason, or replaces a locked section or page with a neutral disc, title, reason, missing scope and actions.
    * @tag feedback
    * @tag authorization
    * @tag permission
@@ -14,7 +14,11 @@
    * @related capability-gate, button, callout, empty-state
    * @a11yNote Denied inline gates render content inert before hydration, then disable controls, remove them from sequential focus, and wire the reason through aria-describedby.
    */
-  export type { AccessGateProps, AccessGateVariant } from './access-gate.types.ts';
+  export type {
+    AccessGateLayout,
+    AccessGateProps,
+    AccessGateVariant,
+  } from './access-gate.types.ts';
 </script>
 
 <script lang="ts">
@@ -30,7 +34,11 @@
     variant = 'inline',
     reason,
     requirement,
+    title = 'Section locked',
+    headingLevel = 3,
+    layout = 'inline',
     children,
+    actions,
     class: customClassName,
     ...rest
   }: AccessGateProps = $props();
@@ -42,6 +50,13 @@
   const sectionDescriptionIds = $derived(
     requirement ? `${sectionReasonId} ${sectionRequirementId}` : sectionReasonId,
   );
+  // Coerce + clamp at runtime: <h0>/<hNaN> is invalid markup however the prop was typed.
+  const safeLevel = $derived(
+    Number.isFinite(Math.trunc(Number(headingLevel)))
+      ? Math.min(6, Math.max(1, Math.trunc(Number(headingLevel))))
+      : 3,
+  );
+  const headingTag = $derived(`h${safeLevel}`);
   const passthroughAttributes = $derived(
     stripOwnedAccessibilityAttributes(rest as Record<string, unknown>),
   );
@@ -72,26 +87,33 @@
     {...passthroughAttributes}
     class={classNames('cinder-access-gate', customClassName)}
     data-cinder-variant="section"
+    data-cinder-layout={layout === 'page' ? 'page' : 'inline'}
     aria-labelledby={sectionTitleId}
     aria-describedby={sectionDescriptionIds}
   >
     <span class="cinder-access-gate__section-icon" aria-hidden="true">
-      <Lock size={20} strokeWidth={2} />
+      <Lock />
     </span>
-    <span class="cinder-access-gate__section-copy">
-      <span id={sectionTitleId} class="cinder-access-gate__section-title cinder-_label-text"
-        >Section locked</span
-      >
-      <span id={sectionReasonId} class="cinder-access-gate__section-reason cinder-_value-text"
-        >{reason}</span
-      >
-      {#if requirement}
-        <span id={sectionRequirementId} class="cinder-access-gate__requirement">
-          <span class="cinder-access-gate__requirement-label">Required permission</span>
-          <code class="cinder-access-gate__requirement-value">{requirement}</code>
-        </span>
-      {/if}
-    </span>
+    <svelte:element
+      this={headingTag}
+      id={sectionTitleId}
+      class="cinder-access-gate__section-title cinder-_label-text"
+    >
+      {title}
+    </svelte:element>
+    <p id={sectionReasonId} class="cinder-access-gate__section-reason cinder-_value-text">
+      {reason}
+    </p>
+    {#if requirement}
+      <p id={sectionRequirementId} class="cinder-access-gate__requirement">
+        <code class="cinder-access-gate__requirement-value">requires {requirement}</code>
+      </p>
+    {/if}
+    {#if actions}
+      <div class="cinder-access-gate__actions">
+        {@render actions()}
+      </div>
+    {/if}
   </section>
 {:else}
   <AccessGateInline {...passthroughAttributes} class={customClassName} {reason}>

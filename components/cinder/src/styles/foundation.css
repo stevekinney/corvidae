@@ -373,7 +373,9 @@
   .cinder-button:disabled:not([data-cinder-loading]),
   .cinder-button[aria-disabled='true']:not([data-cinder-loading]),
   .cinder-dropdown-item[data-disabled],
+  .cinder-dropdown-trigger[aria-disabled='true'],
   .cinder-toggle:disabled,
+  .cinder-toggle[aria-disabled='true'],
   .cinder-segmented-control[aria-disabled='true'],
   .cinder-segmented-control-option:disabled,
   .cinder-segmented-control-option[aria-disabled='true']

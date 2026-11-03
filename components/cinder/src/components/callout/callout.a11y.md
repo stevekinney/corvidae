@@ -43,7 +43,11 @@ When supplied, the `icon` snippet renders inside a wrapper with `aria-hidden="tr
 
 ## Variant vocabulary
 
-`CalloutVariant` is `'info' | 'success' | 'warning' | 'danger'`, sharing the semantic tokens (`--cinder-status-info-solid`, `--cinder-status-success-solid`, `--cinder-status-warning-solid`, `--cinder-status-danger-solid`) and visual algebra with `banner.svelte`. `alert.svelte` uses `'error'` instead of `'danger'`; the divergence is tracked in `banner.a11y.md`. Callout aligns with banner because both are landmark-class components that draw from the same design-token surface; alert remains separate because its `error` vocabulary aligns with form-validation conventions.
+`CalloutVariant` is `'neutral' | 'info' | 'success' | 'warning' | 'danger'`. `neutral` is a plain note with no status tint, so it takes the neutral tokens and its icon (when given) carries no status meaning. The others share the semantic tokens (`--cinder-status-info-solid`, `--cinder-status-success-solid`, `--cinder-status-warning-solid`, `--cinder-status-danger-solid`) and visual algebra with `banner.svelte`. `alert.svelte` uses `'error'` instead of `'danger'`; the divergence is tracked in `banner.a11y.md`. Callout aligns with banner (which also has `neutral`) because both are landmark-class components that draw from the same design-token surface; alert remains separate because its `error` vocabulary aligns with form-validation conventions.
+
+## Action
+
+The optional `action` snippet renders after the content inside the root, as a sibling of `.cinder-callout__content`, so its link or button is never part of the callout's text. It is the only interactive part of a callout; a callout stays static content, not a live region. The action must have its own accessible name ("Open attempt 5").
 
 ## Forced-colors mode
 

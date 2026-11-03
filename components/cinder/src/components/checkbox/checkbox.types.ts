@@ -34,6 +34,13 @@ export type CheckboxProps = Omit<HTMLInputAttributes, 'class'> & {
   error?: string;
   /** Disables the checkbox. */
   disabled?: boolean;
+  /**
+   * Marks a checkbox that changes something. Inside a stale `<StaleRegion>` it goes inert:
+   * `aria-disabled`, still focusable, a press is undone, and the region's reason describes it.
+   * It returns by itself when the region stops being stale.
+   * @default false
+   */
+  mutating?: boolean;
   /** Extra class names merged with `.cinder-checkbox`. */
   class?: string;
 };

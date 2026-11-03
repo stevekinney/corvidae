@@ -57,6 +57,13 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
   typeToConfirmLabel?: string;
   /** Fired when the user activates the confirm button. Required. Component closes itself after. */
   onConfirm: () => void;
+  /**
+   * Viewport width below which the dialog is a bottom sheet: a grabber, the confirmation first and
+   * Cancel under it, both full width at 44px, with Cancel keeping initial focus. A CSS length such
+   * as `"640px"`, or `false` for the centred dialog at every width.
+   * @default "640px"
+   */
+  sheetBelow?: string | false;
   /** Fired once the underlying modal's exit transition has completed. */
   onExitComplete?: () => void;
   /** Forwarded to <Modal>; focus is restored here on close. */

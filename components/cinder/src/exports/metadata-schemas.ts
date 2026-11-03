@@ -57,6 +57,7 @@ export { default as dateRangeFieldSchema } from '../components/date-range-field/
 export { default as descriptionListSchema } from '../components/description-list/description-list.schema.ts';
 export { default as diffStatisticsSchema } from '../components/diff-statistics/diff-statistics.schema.ts';
 export { default as dividerSchema } from '../components/divider/divider.schema.ts';
+export { default as dockedActionBarSchema } from '../components/docked-action-bar/docked-action-bar.schema.ts';
 export { default as donutChartSchema } from '../components/donut-chart/donut-chart.schema.ts';
 export { default as drawerSchema } from '../components/drawer/drawer.schema.ts';
 export { default as dropdownGroupSchema } from '../components/dropdown-group/dropdown-group.schema.ts';
@@ -172,6 +173,7 @@ export { default as speedDialSchema } from '../components/speed-dial/speed-dial.
 export { default as spinnerSchema } from '../components/spinner/spinner.schema.ts';
 export { default as stackSchema } from '../components/stack/stack.schema.ts';
 export { default as stackedListItemSchema } from '../components/stacked-list-item/stacked-list-item.schema.ts';
+export { default as staleRegionSchema } from '../components/stale-region/stale-region.schema.ts';
 export { default as statisticGroupSchema } from '../components/statistic-group/statistic-group.schema.ts';
 export { default as statisticSchema } from '../components/statistic/statistic.schema.ts';
 export { default as statusDotSchema } from '../components/status-dot/status-dot.schema.ts';

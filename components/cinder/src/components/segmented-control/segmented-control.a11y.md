@@ -96,3 +96,7 @@ The distinction matters for assistive technology:
 - `button-group` is a visual affordance only. Screen readers traverse the buttons individually as ordinary interactive controls with no implied relationship between them.
 
 If you find yourself wanting selection state on a `button-group`, you want `segmented-control`. If you find yourself wanting independent actions in a `segmented-control`, you want `button-group`.
+
+## Counts
+
+A segment's `count` is rendered as text after the label, so it is part of the segment's accessible name ("Waiting on you, 2") for radios, tabs, toggles and navigation links alike. Do not pass the same number again in `trailing`, which is `aria-hidden`.

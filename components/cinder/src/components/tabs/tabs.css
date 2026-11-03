@@ -31,6 +31,17 @@
     flex-direction: row;
   }
 
+  /* The narrow form's select, drawn in place of the hidden tab bar: one full-width control above
+     the panels. */
+  .cinder-tabs__collapse {
+    inline-size: 100%;
+  }
+
+  /* It stands in for the tab bar on a phone, so it is a touch target. */
+  .cinder-tabs__collapse .cinder-select {
+    min-block-size: var(--cinder-touch-target-min);
+  }
+
   /* ----------------------------------------
  * Tab list
  * ---------------------------------------- */

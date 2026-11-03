@@ -26,6 +26,24 @@
       "title": "Grouped options",
       "description": "Give options a group to render them under headings with counts. Typing filters across groups and keeps the headings of groups that still match.",
       "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n\n  const workflows = [\n    { value: 'chat', label: 'Chat with an agent', group: 'Built in' },\n    { value: 'digest', label: 'Daily digest', group: 'Recent' },\n    { value: 'triage', label: 'Triage issues', group: 'Built in' },\n    { value: 'release', label: 'Release notes', group: 'All workflows' },\n    { value: 'review', label: 'Review a pull request', group: 'Recent' },\n    { value: 'backup', label: 'Nightly backup', group: 'All workflows' },\n  ];\n\n  let selected = $state('');\n</script>\n\n<Combobox\n  id=\"workflow\"\n  label=\"Workflow\"\n  placeholder=\"Search workflows…\"\n  options={workflows}\n  bind:value={selected}\n/>\n"
+    },
+    {
+      "id": "picker",
+      "title": "Picker with search, footer and descriptions",
+      "description": "`presentation=\"picker\"` is a button that opens a panel with its own search field. Rows carry a description, the chosen row is checked, and the footer stays below the list, also when nothing matches.",
+      "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n\n  const workflows = [\n    { value: 'chat', label: 'Chat with an agent', description: 'Send a message to an agent each time it runs.', group: 'Built in' },\n    { value: 'release', label: 'Release notes', description: 'Collects merged changes into a draft.', group: 'Recent' },\n    { value: 'refund', label: 'Order refund', description: 'Looks up an order, waits for approval, then refunds it.', group: 'Recent' },\n    { value: 'triage', label: 'Triage inbox', description: 'Sorts new messages and flags anything urgent.', group: 'All workflows' },\n  ];\n\n  let selected = $state('chat');\n</script>\n\n<Combobox\n  id=\"workflow-picker\"\n  label=\"Workflow\"\n  required\n  presentation=\"picker\"\n  placeholder=\"Pick a workflow\"\n  searchPlaceholder=\"Search workflows\"\n  options={workflows}\n  groupCountVisible={false}\n  noMatchLabel={(query) => `No workflows match “${query}”.`}\n  bind:value={selected}\n>\n  {#snippet footer()}\n    No match? <a href=\"/workflows/new\">Create one</a>\n  {/snippet}\n</Combobox>\n"
+    },
+    {
+      "id": "event-picker",
+      "title": "Event picker with code and meta",
+      "description": "A raw identifier beside the name, what the event narrows by at the trailing edge, a check before the text, and the match count beside the search field.",
+      "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n\n  const events = [\n    { value: 'run.error', label: 'A run fails', code: 'run.error', meta: 'any workflow', group: 'Runs' },\n    { value: 'review.requested', label: 'A review is requested', code: 'review.requested', meta: 'any agent', group: 'Reviews' },\n    { value: 'goal.failed', label: 'A goal fails', code: 'goal.failed', meta: 'any agent', group: 'Goals' },\n    { value: 'schedule.missed', label: 'A schedule misses a run', code: 'schedule.missed', meta: 'any schedule', group: 'Schedules' },\n  ];\n</script>\n\n<Combobox\n  id=\"event-picker\"\n  label=\"Event\"\n  presentation=\"picker\"\n  placeholder=\"Pick an event\"\n  searchPlaceholder=\"Search events\"\n  options={events}\n  selectedIndicator=\"start\"\n  matchCountVisible\n  value=\"run.error\"\n>\n  {#snippet footer(context)}\n    Showing {context.matchCount} of {context.totalCount} events.\n  {/snippet}\n</Combobox>\n"
+    },
+    {
+      "id": "loading-and-error",
+      "title": "Loading and a failed load",
+      "description": "While loading the field stays a combobox and shows its loading label; after the threshold Skeleton's status line offers Cancel. A failed load shows its message and a retry above the options that did load.",
+      "code": "<script lang=\"ts\">\n  import { Combobox } from '@lostgradient/cinder';\n</script>\n\n<Combobox\n  id=\"workflow-loading\"\n  label=\"Workflow\"\n  required\n  options={[]}\n  loading\n  loadingLabel=\"Loading workflows…\"\n  stillLoadingAfter={10000}\n  onCancel={() => {}}\n/>\n\n<Combobox\n  id=\"workflow-failed\"\n  label=\"Workflow\"\n  required\n  presentation=\"picker\"\n  placeholder=\"Pick a workflow\"\n  options={[{ value: 'chat', label: 'Chat with an agent', suffix: 'built in' }]}\n  loadError={{\n    title: 'Couldn’t load workflows.',\n    description: 'Interborough didn’t answer. Chat with an agent is built in and still works.',\n  }}\n  onRetry={() => {}}\n/>\n"
     }
   ]
 }

@@ -26,12 +26,15 @@ afterEach(() => {
   resetEscapeStack();
 });
 describe('Drawer', () => {
-  test('drawer.css disables panel and backdrop transitions under prefers-reduced-motion: reduce', async () => {
+  test('drawer.css stops the slide and the CSS transitions under prefers-reduced-motion: reduce', async () => {
     const cssText = drawerCss;
     expect(cssText).toContain('prefers-reduced-motion: reduce');
     expect(cssText).toContain('.cinder-drawer__panel');
     expect(cssText).toContain('.cinder-drawer::backdrop');
     expect(cssText).toContain('transition: none');
+    // The panel stays where it is: the cross-fade (reduced-motion-fade.ts) plays from script.
+    expect(cssText).toMatch(/--_cinder-drawer-slide:\s*none;/);
+    expect(cssText).toMatch(/:root\[data-reduced-motion='on'\] \.cinder-drawer__panel\s*\{/);
   });
 
   // Regression guard: the backdrop faded OUT on close (via the

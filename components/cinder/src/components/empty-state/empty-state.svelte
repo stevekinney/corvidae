@@ -8,7 +8,9 @@
    * @tag empty
    * @useWhen Communicating that a list, table, or workspace has no items yet and suggesting a next step.
    * @useWhen Replacing a primary content region after a filter or search returns no results.
-   * @useWhen Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind.
+   * @useWhen Confirming all work is finished (done kind), or that a filter hid every item (filtered kind).
+   * @useWhen Saying a thing doesn't exist (not-found kind), or that a recoverable condition blocks the view (blocked kind).
+   * @useWhen Saying that a setting the person chose, such as a disabled plugin, holds content back with the disabled kind.
    * @avoidWhen Indicating that data is still loading — use skeleton or spinner instead.
    * @avoidWhen Reporting a transient error — use alert, banner, or toast-region.
    * @related skeleton, spinner
@@ -23,6 +25,8 @@
 
 <script lang="ts">
   import type { EmptyStateProps } from './empty-state.types.ts';
+  import { Check, Funnel, Plug, Search, TriangleAlert } from '@lucide/svelte';
+
   import Button from '../button/button.svelte';
   import { classNames } from '../../utilities/class-names.ts';
 
@@ -34,6 +38,7 @@
     align = 'center',
     kind = 'first-use',
     size = 'default',
+    bordered = false,
     onClearFilters,
     clearFiltersLabel = 'Clear filters',
     icon,
@@ -56,10 +61,21 @@
 
   // Normalise at runtime: an unknown kind or size behaves as the default rather than
   // producing a root attribute no stylesheet rule matches.
-  const safeKind = $derived(kind === 'filtered' || kind === 'done' ? kind : 'first-use');
+  const safeKind = $derived(
+    kind === 'filtered' ||
+      kind === 'done' ||
+      kind === 'blocked' ||
+      kind === 'not-found' ||
+      kind === 'disabled'
+      ? kind
+      : 'first-use',
+  );
   const safeSize = $derived(size === 'compact' ? 'compact' : 'default');
   const showClearFilters = $derived(safeKind === 'filtered' && onClearFilters !== undefined);
-  const showAction = $derived(safeKind !== 'done' && action !== undefined);
+  const showAction = $derived(action !== undefined);
+  // First use shows the view's own icon, so it has no default glyph; every other kind is a state
+  // with a glyph of its own, used when the consumer does not pass one.
+  const hasDisc = $derived(icon !== undefined || safeKind !== 'first-use');
 </script>
 
 <div
@@ -69,11 +85,24 @@
   data-cinder-align={align === 'start' ? 'start' : undefined}
   data-cinder-kind={safeKind}
   data-cinder-size={safeSize}
+  data-cinder-bordered={bordered ? '' : undefined}
   aria-labelledby={titleId}
 >
-  {#if icon}
+  {#if hasDisc}
     <div class="cinder-empty-state-icon" aria-hidden="true">
-      {@render icon()}
+      {#if icon}
+        {@render icon()}
+      {:else if safeKind === 'done'}
+        <Check />
+      {:else if safeKind === 'filtered'}
+        <Funnel />
+      {:else if safeKind === 'not-found'}
+        <Search />
+      {:else if safeKind === 'disabled'}
+        <Plug />
+      {:else}
+        <TriangleAlert />
+      {/if}
     </div>
   {/if}
   <svelte:element this={tag} id={titleId} class="cinder-empty-state-title">

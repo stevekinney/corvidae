@@ -11,6 +11,7 @@ Purpose: Centered placeholder with optional icon, title, description, and call-t
 - Communicating that a list, table, or workspace has no items yet and suggesting a next step.
 - Replacing a primary content region after a filter or search returns no results.
 - Confirming that all work is finished with the done kind, or that a filter hid every item with the filtered kind.
+- Saying that a thing doesn't exist with the not-found kind, or that a recoverable condition blocks the view with the blocked kind.
 
 ## Avoid when
 
@@ -21,7 +22,9 @@ Purpose: Centered placeholder with optional icon, title, description, and call-t
 
 The root is a `role="group"` named by its title, whatever the `kind` or `size`. The kind is conveyed by the title and description text, never by the disc color alone, so write the title to say why the view is empty ("No runs match", "Inbox zero"). The icon sits in an `aria-hidden` wrapper and is decorative.
 
-The `filtered` kind renders a real `<button>` named "Clear filters" (or `clearFiltersLabel`) before any `action` content. The `done` kind renders no action region at all, so there is no control to reach. `size="compact"` changes spacing and type only, and the Clear filters button drops to the small size.
+The `filtered` kind renders a real `<button>` named "Clear filters" (or `clearFiltersLabel`) before any `action` content. Every kind renders its `action` snippet, so a `done` state can carry a quiet link such as "See past decisions" and a `not-found` or `blocked` state a secondary button; the caller owns the semantics of what it passes. A state with no action has no action region, so there is no control to reach. The default glyphs (funnel, check, magnifying glass, warning triangle) are decorative and aria-hidden, as is a passed `icon`. `size="compact"` changes spacing and type only, and the Clear filters button drops to the small size.
+
+The disc tints are `--cinder-accent-background` with `--cinder-accent-text` (first use), `--cinder-status-success-background` with `--cinder-status-success-text` (done), `--cinder-status-warning-background` with `--cinder-status-warning-text` (blocked) and the neutral inset surface with `--cinder-text-muted` (filtered and not found); each is an existing contrast-checked pairing.
 
 ## Keyboard and focus
 

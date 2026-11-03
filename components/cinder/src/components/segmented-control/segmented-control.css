@@ -294,6 +294,24 @@
     opacity: 0.9;
   }
 
+  /* The count after a label ("Waiting on you 2"): regular weight and tabular figures, in the
+     colour the segment already has, so it reads on the selected fill as well as at rest. The
+     option's own gap spaces it from the label; the screen-reader comma is out of flow. */
+  .cinder-segmented-control-option-count {
+    font-weight: var(--cinder-font-normal);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+  }
+
+  /* The comma that makes the name read "Waiting on you, 2". A zero-size inline box rather than
+     the visually-hidden utility, which is absolutely positioned and so is read as a block. */
+  .cinder-segmented-control-option-count-separator {
+    display: inline-block;
+    inline-size: 0;
+    block-size: 0;
+    overflow: hidden;
+  }
+
   /* ── Pressed (multiple mode) ────────────────────────────────────────────── */
 
   .cinder-segmented-control-option[data-cinder-pressed] {

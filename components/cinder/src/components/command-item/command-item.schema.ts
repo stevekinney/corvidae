@@ -25,6 +25,14 @@ const schema = {
       type: 'string',
       description: 'Keyboard shortcut exposed through `aria-keyshortcuts`, e.g. `Meta+N`.',
     },
+    keys: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description:
+        'A key sequence shown at the end of the row, read as "G then H": each key in a `Kbd`, with "then"\nbetween them. One key shows alone ("C"). It is text in the row, so it joins the option\'s\naccessible name unless `accessibleLabel` is set; it does not set `aria-keyshortcuts`, which\ndescribes a chord, not a sequence. Pass `keyboardShortcut` as well for a chord.',
+    },
     class: {
       type: 'string',
       description: 'Class merged with `.cinder-command-item`.',

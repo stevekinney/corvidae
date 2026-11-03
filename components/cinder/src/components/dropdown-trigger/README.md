@@ -14,6 +14,7 @@ Activates the associated dropdown menu on click or keyboard interaction.
 | --- | --- | --- | --- | --- |
 | `caretVisible` | `boolean` | no | — | Render the trailing disclosure caret. Defaults to true. |
 | `class` | `string` | no | — | Additional class names merged with the component's root class. |
+| `mutating` | `boolean` | no | `false` | Marks a menu of actions that change something. Inside a stale `<StaleRegion>` the trigger goes inert: it keeps focus and carries `aria-disabled`, the menu does not open, and the region's reason describes it. It returns by itself when the region stops being stale. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 
 <!-- generated:props:end -->

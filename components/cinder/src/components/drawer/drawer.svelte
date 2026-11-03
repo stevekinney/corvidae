@@ -21,7 +21,9 @@
   import { onDestroy, untrack } from 'svelte';
   import type { HTMLAttributes } from 'svelte/elements';
 
+  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
+  import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
   import { overflowFade } from '../../utilities/attachments.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { restoreFocusTo } from '../../utilities/focus.ts';
@@ -41,7 +43,7 @@
     class: className,
     triggerRef = null,
     ariaLabelledby,
-    dragHandleVisible = false,
+    dragHandleVisible = true,
     header,
     children,
     footer,
@@ -88,6 +90,8 @@
     getDialogElement: () => dialogElement,
     getPanelElement: () => panelElement,
     getReducedMotion: () => reducedMotion.current,
+    // A drawer slides in with motion, so with less motion it cross-fades instead of vanishing.
+    getFadeOnReducedMotion: () => true,
     getTriggerRef: () => triggerRef,
     onClosed: () => {
       activePlacement = undefined;
@@ -106,6 +110,12 @@
 
   $effect(() => {
     dialogState.markHydrated();
+  });
+
+  // A bottom sheet rides above the on-screen keyboard and scrolls inside itself (rows 05d, 05j).
+  $effect(() => {
+    if (!open || (activePlacement ?? placement) !== 'bottom') return;
+    return trackKeyboardInset();
   });
 
   $effect.pre(() => {
@@ -237,6 +247,7 @@
           data-cinder-size={size}
           data-cinder-closing={dialogState.isClosing ? '' : undefined}
           inert={dialogState.isClosing}
+          {@attach reducedMotionFadeIn(() => reducedMotion.current)}
           {@attach createFocusTrap({
             active: () => open && !dialogState.isClosing,
             restoreFocus: false,
@@ -310,6 +321,7 @@
         class="cinder-drawer__panel"
         data-cinder-placement={placement}
         data-cinder-size={size}
+        {@attach reducedMotionFadeIn(() => reducedMotion.current)}
       >
         {#if dragHandleVisible && placement === 'bottom'}
           <div class="cinder-drawer__drag-handle" aria-hidden="true">

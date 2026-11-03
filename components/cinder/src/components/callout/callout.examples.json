@@ -14,6 +14,12 @@
       "title": "Callout variants",
       "description": "All four semantic variant styles for inline callouts.",
       "code": "<script lang=\"ts\">\n  import { Callout } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: flex; flex-direction: column; gap: 0.75rem;\">\n  <Callout variant=\"info\" title=\"Info\">Keyboard shortcuts are available for most actions.</Callout>\n  <Callout variant=\"success\" title=\"Success\">Your configuration has been validated.</Callout>\n  <Callout variant=\"warning\" title=\"Warning\">This action cannot be undone once confirmed.</Callout>\n  <Callout variant=\"danger\" title=\"Danger\">Deleting this record cannot be undone.</Callout>\n</div>\n"
+    },
+    {
+      "id": "neutral-with-action",
+      "title": "Neutral note with an action",
+      "description": "A plain note that explains a state, with an icon and one link at the inline end.",
+      "code": "<script lang=\"ts\">\n  import { Callout, Link } from '@lostgradient/cinder';\n  import { Info } from '@lucide/svelte';\n</script>\n\n<Callout variant=\"neutral\" semantic=\"note\">\n  {#snippet icon()}\n    <Info size={16} />\n  {/snippet}\n  Gave up after 5 attempts. The check was never met.\n  {#snippet action()}\n    <Link href=\"/goals/draft-release-notes/attempts/5\">Open attempt 5</Link>\n  {/snippet}\n</Callout>\n"
     }
   ]
 }

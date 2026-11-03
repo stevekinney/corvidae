@@ -35,7 +35,7 @@ const ALL_STATUSES = [
 ] as const;
 
 /** The two states whose glyph is drawn by CSS (a dot, a ring) and not by an icon. */
-const SHAPE_STATUSES = ['live', 'out-of-date'] as const;
+const SHAPE_STATUSES = ['live', 'reconnecting', 'out-of-date'] as const;
 
 describe('ConnectionIndicator', () => {
   afterEach(() => {
@@ -161,8 +161,10 @@ describe('ConnectionIndicator', () => {
     expect(dot?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  test('only live renders the dot', () => {
-    for (const status of ALL_STATUSES.filter((value) => value !== 'live')) {
+  test('only live and reconnecting render the dot', () => {
+    for (const status of ALL_STATUSES.filter(
+      (value) => value !== 'live' && value !== 'reconnecting',
+    )) {
       const { container } = render(ConnectionIndicator, { status });
       expect(container.querySelector('.cinder-connection-indicator__dot')).toBeNull();
       cleanup();
@@ -187,6 +189,19 @@ describe('ConnectionIndicator', () => {
       expect(container.querySelector('.cinder-connection-indicator__ring'), status).toBeNull();
       cleanup();
     }
+  });
+
+  test('reconnecting is a still neutral dot, not a spinning icon, and carries no attempt count', () => {
+    const { container } = render(ConnectionIndicator, { status: 'reconnecting' });
+    expect(container.querySelector('.cinder-connection-indicator__dot')).not.toBeNull();
+    expect(container.querySelector('.cinder-connection-indicator__icon')).toBeNull();
+    expect(container.querySelector('.cinder-connection-indicator__attempt')).toBeNull();
+    const css = readFileSync(new URL('./connection-indicator.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\[data-cinder-status='reconnecting'\]\s+\.cinder-connection-indicator__dot\s*\{\s*--_cinder-connection-indicator-dot-color: var\(--cinder-border-control\);/,
+    );
+    // Only live pulses; the reconnecting dot is neither green nor animated.
+    expect(css).not.toMatch(/reconnecting'\][^{]*\{[^}]*animation/);
   });
 
   test('reconnecting renders the attempt snippet content', () => {
@@ -271,7 +286,9 @@ describe('ConnectionIndicator', () => {
       const dot = block('.cinder-connection-indicator__dot');
       expect(dot).toContain('inline-size: 0.5rem');
       expect(dot).toContain('block-size: 0.5rem');
-      expect(dot).toContain('background: var(--cinder-status-success-solid)');
+      expect(dot).toContain(
+        'background: var(--_cinder-connection-indicator-dot-color, var(--cinder-status-success-solid))',
+      );
     });
 
     test('out of date is an 8px hollow ring in the pending colour, never green', () => {

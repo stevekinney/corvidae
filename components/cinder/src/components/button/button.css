@@ -69,17 +69,29 @@
  * each variant's own colors so loading buttons don't read as permanently-disabled.
  */
   .cinder-button[data-cinder-loading] {
-    cursor: wait;
-    opacity: 1;
+    cursor: progress;
+    /* Full strength by default, as the Save in flight frame draws it. A page that dims the
+       button while it works (Connecting…) sets the token on it. */
+    opacity: var(--cinder-button-loading-opacity, 1);
   }
 
   /* Spinner — visible feedback for sighted users while `aria-busy` informs assistive tech.
- * No `margin-inline-start` here: the parent `.cinder-button` has `gap: var(--cinder-space-1-5)`
- * which already separates the pseudo-element from the preceding label/children. Adding margin
- * too would double-count the gap.
+ * It leads the label (`order: -1`), as the design draws it, and the leading icon steps aside
+ * for it. The button script pins `inline-size` to the resting width while loading, so the
+ * spinner is fitted into the button's own padding rather than growing the box; flex centering
+ * lets the content overflow evenly into that padding. An icon-only button shows the spinner
+ * in place of its icon.
  */
+  .cinder-button[data-cinder-loading] {
+    /* A tighter gap, so the spinner and an unchanged label fit the padding the pinned width
+       leaves: 10px at md, 8px at sm. */
+    gap: var(--cinder-space-1);
+  }
+
   .cinder-button[data-cinder-loading]::after {
     content: '';
+    order: -1;
+    flex: none;
     display: inline-block;
     width: 0.75em;
     height: 0.75em;
@@ -87,6 +99,10 @@
     border-inline-end-color: transparent;
     border-radius: 50%;
     animation: cinder-button-spin var(--cinder-duration-spin) linear infinite;
+  }
+
+  .cinder-button[data-cinder-loading] > .cinder-button__icon {
+    display: none;
   }
 
   /* At `xs` size the button is ~24px tall and the spinner ends up ~9px square; a 2px border
@@ -297,6 +313,13 @@
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-disabled);
     border-color: var(--cinder-border-muted);
+  }
+
+  /* quiet — an icon-only ghost button that rests as the bare glyph, for a toolbar (the shell's
+ * top bar). Hover, pressed and focus still paint; a disabled one keeps the disabled chrome. */
+  .cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'][data-cinder-quiet] {
+    background: transparent;
+    border-color: transparent;
   }
 
   /* soft — tinted accent background, accent foreground, no border.

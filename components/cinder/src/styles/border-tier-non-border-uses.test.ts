@@ -224,6 +224,16 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     { declaration: 'background-color: var(--cinder-border-muted);', category: 'hairline' },
     { declaration: 'background-color: var(--cinder-border-strong);', category: 'hairline' },
   ],
+  'components/cinder/src/components/command-palette/command-palette.css': [
+    {
+      declaration: 'background: var(--cinder-border-control);',
+      category: 'area',
+      audit: 'command-palette',
+    },
+  ],
+  'components/cinder/src/components/modal/modal.css': [
+    { declaration: 'background: var(--cinder-border-control);', category: 'area', audit: 'modal' },
+  ],
   'components/cinder/src/components/drawer/drawer.css': [
     { declaration: 'background: var(--cinder-border-control);', category: 'area', audit: 'drawer' },
   ],
@@ -286,6 +296,13 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       declaration: '--_cinder-attempts-indicator-fill: var(--cinder-border-control);',
       category: 'area',
       audit: 'attempts-indicator',
+    },
+  ],
+  'components/cinder/src/components/connection-indicator/connection-indicator.css': [
+    {
+      declaration: '--_cinder-connection-indicator-dot-color: var(--cinder-border-control);',
+      category: 'area',
+      audit: 'connection-indicator',
     },
   ],
   'components/cinder/src/components/slider/slider.css': [

@@ -34,6 +34,7 @@
     value,
     id,
     controls,
+    label,
     disabled = false,
     class: className,
     children,
@@ -127,6 +128,34 @@
       });
     };
   });
+
+  // The label this tab has in the narrow form's select: the explicit `label`, else the tab's own
+  // text without its count pill and trailing content. Read once the button is on the page, and
+  // again when the label or the count's words change.
+  $effect(() => {
+    const button = buttonElement;
+    if (!button) return;
+    const name = label?.trim() || readTabText(button) || registeredValue;
+    const note = countPhrase;
+    untrack(() => {
+      tabs.setLabel(registeredValue, name, note);
+    });
+  });
+
+  function readTabText(button: HTMLElement): string {
+    let text = '';
+    for (const node of button.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) text += node.textContent ?? '';
+      else if (
+        node instanceof HTMLElement &&
+        !node.classList.contains('cinder-tab__count') &&
+        !node.classList.contains('cinder-tab__trailing')
+      ) {
+        text += node.textContent ?? '';
+      }
+    }
+    return text.replace(/\s+/g, ' ').trim();
+  }
 
   // Effect B — sync subsequent `disabled` prop changes to the registry
   // without re-registering. Subscribes only to `disabled`; the mutation

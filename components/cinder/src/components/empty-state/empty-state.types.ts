@@ -5,10 +5,20 @@ import type { HTMLAttributes } from 'svelte/elements';
 export type EmptyStateAlign = 'center' | 'start';
 
 /**
- * Why a view is empty: `'first-use'` nothing has been created yet, `'filtered'` a filter or
- * search hid everything that exists, and `'done'` the work is finished and nothing is left.
+ * Why a view is empty, which sets the tint of the disc and the glyph it shows when no `icon` is
+ * passed:
+ *
+ * - `'first-use'`: nothing has been created yet. An accent disc; the view's own icon goes in it.
+ * - `'filtered'`: a filter or search hid everything that exists. A neutral disc with a funnel.
+ * - `'done'`: the work is finished and nothing is left. A green disc with a check.
+ * - `'blocked'`: a condition the person can fix keeps the view from showing anything. An amber
+ *   disc with a warning glyph.
+ * - `'not-found'`: the thing asked for doesn't exist. A neutral disc with a magnifying glass.
+ * - `'disabled'`: a setting the person chose (a disabled plugin) holds the content back, which is
+ *   not a warning. A neutral disc with a plug.
  */
-export type EmptyStateKind = 'first-use' | 'filtered' | 'done';
+export type EmptyStateKind =
+  'first-use' | 'filtered' | 'done' | 'blocked' | 'not-found' | 'disabled';
 
 /** Scale of an empty state: `'default'` fills a page region, `'compact'` fits a tab or panel. */
 export type EmptyStateSize = 'default' | 'compact';
@@ -33,9 +43,10 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   align?: EmptyStateAlign;
   /**
-   * Why the view is empty. `'first-use'` shows the `action` snippet, `'filtered'` adds a
-   * "Clear filters" button when `onClearFilters` is set, and `'done'` shows no action at all,
-   * even when `action` is passed, because there is nothing left to do.
+   * Why the view is empty. It sets the disc tint and the default glyph (first use, filtered, done, blocked, not found or disabled).
+   * Every kind renders the `action` snippet; `'filtered'` also adds a secondary "Clear filters"
+   * button before it when `onClearFilters` is set. Give `'first-use'` a primary button, `'done'`
+   * a quiet `Link`, and `'filtered'` the Clear filters button alone.
    * @default 'first-use'
    */
   kind?: EmptyStateKind;
@@ -45,6 +56,12 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * @default 'default'
    */
   size?: EmptyStateSize;
+  /**
+   * Draws the state inside a bordered, rounded box, for a list or page body that has no
+   * container of its own. Leave it off when a card or panel already surrounds the state.
+   * @default false
+   */
+  bordered?: boolean;
   /** Called when the "Clear filters" button of a `'filtered'` state is pressed. The button renders only when this is set. */
   onClearFilters?: () => void;
   /**
@@ -52,8 +69,15 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    * @default 'Clear filters'
    */
   clearFiltersLabel?: string;
-  /** Icon rendered above the title, centred in a tinted disc. Decorative, so it is hidden from assistive technology. */
+  /**
+   * Replaces the glyph in the disc. First use shows the view's own icon; every other kind has a
+   * default glyph. Decorative, so it is hidden from assistive technology.
+   */
   icon?: Snippet;
-  /** Call-to-action content rendered below the description, after the "Clear filters" button when both exist. */
+  /**
+   * Call-to-action content rendered below the description, after the "Clear filters" button when
+   * both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for
+   * done, and a secondary button for a not-found or blocked state.
+   */
   action?: Snippet;
 };

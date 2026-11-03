@@ -93,6 +93,13 @@ export type SegmentProps = SharedHtmlAttributes &
     class?: string | undefined;
     /** Disable just this segment (independent of the control-level `disabled`). */
     disabled?: boolean | undefined;
+    /**
+     * A number drawn after the label in a muted, tabular figure: "Waiting on you 2". It is part of
+     * the segment's accessible name ("Waiting on you, 2"), so it never depends on colour. Unlike
+     * a Tab's count, zero is shown ("Running 0"); only `undefined` hides it. `'pending'` draws a
+     * dash while the number is still loading ("All –") and reads as "All, loading".
+     */
+    count?: number | 'pending' | undefined;
     /** Optional decorative content rendered before the label, inside `aria-hidden`. */
     leading?: Snippet | undefined;
     /** Optional decorative content rendered after the label, inside `aria-hidden`. */
@@ -105,6 +112,13 @@ export type SegmentProps = SharedHtmlAttributes &
 export interface SegmentSchemaProps {
   /** Custom class merged with `.cinder-segmented-control-option`. */
   class?: string | undefined;
+  /**
+   * A number drawn after the label in a muted, tabular figure: "Waiting on you 2". It is part of
+   * the segment's accessible name ("Waiting on you, 2"), so it never depends on colour. Unlike
+   * a Tab's count, zero is shown ("Running 0"); only `undefined` hides it. `'pending'` draws a
+   * dash while the number is still loading ("All –") and reads as "All, loading".
+   */
+  count?: number | 'pending' | undefined;
   /** Disable just this segment (independent of the control-level `disabled`). */
   disabled?: boolean | undefined;
   /** Render this segment as a real link inside `SegmentedControl variant="navigation"`. */

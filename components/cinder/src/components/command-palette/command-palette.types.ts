@@ -25,6 +25,21 @@ export type CommandPaletteProps = {
   empty?: Snippet;
   /** Optional footer, e.g. for keybinding hints. Not part of the listbox. */
   footer?: Snippet;
+  /**
+   * Viewport width below which the palette opens as a bottom sheet instead of a centred panel: it
+   * docks to the bottom edge with a grabber, a search field with a Close button, 44px rows, and a
+   * height capped so the list scrolls inside it. It rides above the on-screen keyboard and
+   * respects the bottom safe area. A CSS length such as `"640px"`, or `false` to keep the centred
+   * panel at every width.
+   * @default "640px"
+   */
+  sheetBelow?: string | false;
+  /**
+   * Accessible name and visible text of the Close button the sheet form shows beside the search
+   * field.
+   * @default "Close"
+   */
+  closeLabel?: string;
   /** Class merged onto the palette panel. */
   class?: string;
 };

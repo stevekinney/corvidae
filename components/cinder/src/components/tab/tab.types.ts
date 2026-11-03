@@ -23,6 +23,12 @@ export type TabProps = Omit<
    * at the matching TabPanel id (`${baseId}-panel-${value}`).
    */
   controls?: string;
+  /**
+   * The plain-text name this tab has in the narrow form's select. By default it is read from the
+   * tab's own text once it is on the page, without the count and trailing content; pass it when
+   * the label changes after the first render.
+   */
+  label?: string;
   /** Disables this single tab and removes it from keyboard activation. @default false */
   disabled?: boolean;
   /** Additional class names merged with `.cinder-tab`. */

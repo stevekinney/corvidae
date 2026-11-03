@@ -22,6 +22,12 @@
       "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n  import { ToastRegion, useToast } from '@lostgradient/cinder';\n</script>\n\n<ToastRegion>\n  {#snippet children()}\n    {@const toast = useToast()}\n    <div class=\"example-preview-row\">\n      <Button\n        label=\"Show sticky warning\"\n        variant=\"secondary\"\n        onclick={() =>\n          toast.show('Your session expires in 5 minutes.', {\n            variant: 'warning',\n            duration: 0,\n            dismissible: true,\n          })}\n      />\n    </div>\n  {/snippet}\n</ToastRegion>\n"
     },
     {
+      "id": "failure",
+      "title": "Failure toast",
+      "description": "A danger toast stays until it is dismissed, shows the warning triangle, and keeps its dismiss button next to the action.",
+      "code": "<script lang=\"ts\">\n  import { Button, ToastRegion, useToast } from '@lostgradient/cinder';\n  let attempts = $state(0);\n</script>\n\n<ToastRegion>\n  {#snippet children()}\n    {@const toast = useToast()}\n    <Button\n      variant=\"secondary\"\n      label=\"Export memories\"\n      onclick={() =>\n        toast.show(\"Couldn't export memories\", {\n          variant: 'danger',\n          action: { label: 'Try again', onAction: () => (attempts += 1) },\n        })}\n    />\n    <p style=\"margin-top: 0.75rem; font-size: 0.875rem;\">Tried again: {attempts}</p>\n  {/snippet}\n</ToastRegion>\n"
+    },
+    {
       "id": "keyboard",
       "title": "Keyboard dismiss",
       "description": "Focus a toast control and press Escape to dismiss the active notification.",
@@ -70,10 +76,22 @@
       "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n  import { ToastRegion, useToast } from '@lostgradient/cinder';\n</script>\n\n<ToastRegion>\n  {#snippet children()}\n    {@const toast = useToast()}\n    <Button\n      label=\"Show swipe toast\"\n      onclick={() =>\n        toast.show('Drag this notification left or right to dismiss it.', {\n          duration: 0,\n        })}\n    />\n  {/snippet}\n</ToastRegion>\n"
     },
     {
+      "id": "undo",
+      "title": "Undo toast",
+      "description": "An Undo toast stays until the person presses Undo or leaves the page, and has no close button, so Undo is not lost to a stray click. Other toasts dismiss themselves. Call dismissUndo() when the page changes.",
+      "code": "<script lang=\"ts\">\n  import { Button, ToastRegion, useToast } from '@lostgradient/cinder';\n  let restored = $state(0);\n</script>\n\n<ToastRegion>\n  {#snippet children()}\n    {@const toast = useToast()}\n    <div class=\"example-preview-row\">\n      <Button\n        label=\"Forget a memory\"\n        onclick={() => toast.show('Memory forgotten.', { undo: () => (restored += 1) })}\n      />\n      <Button variant=\"secondary\" label=\"Leave the page\" onclick={() => toast.dismissUndo()} />\n    </div>\n    <p style=\"margin-top: 0.75rem; font-size: 0.875rem;\">Restored: {restored}</p>\n  {/snippet}\n</ToastRegion>\n"
+    },
+    {
       "id": "variants",
       "title": "All four variants",
       "description": "info, success, and warning route to the polite (status) region; danger routes to the assertive (alert) region.",
       "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n  import { ToastRegion, useToast } from '@lostgradient/cinder';\n</script>\n\n<ToastRegion>\n  {#snippet children()}\n    {@const toast = useToast()}\n    <div class=\"example-preview-row\">\n      <Button\n        label=\"Info\"\n        onclick={() => toast.show('A new version is available.', { variant: 'info' })}\n      />\n      <Button\n        label=\"Success\"\n        onclick={() => toast.show('Saved your changes.', { variant: 'success' })}\n      />\n      <Button\n        variant=\"secondary\"\n        label=\"Warning\"\n        onclick={() => toast.show('Your session expires in 5 minutes.', { variant: 'warning' })}\n      />\n      <Button\n        variant=\"danger\"\n        label=\"Danger\"\n        onclick={() => toast.show('Failed to save your changes.', { variant: 'danger' })}\n      />\n    </div>\n  {/snippet}\n</ToastRegion>\n"
+    },
+    {
+      "id": "over-docked-bar",
+      "title": "Toasts above a docked bar",
+      "description": "The region lifts above a docked action bar by its height and the safe area, so a toast never covers Send or Cancel run. Pin the bar to the screen to see it at the bottom edge, as it sits on a page. The Undo toast has no timer; the success toast dismisses itself.",
+      "code": "<script lang=\"ts\">\n  import { Button, DockedActionBar, ToastRegion, useToast } from '@lostgradient/cinder';\n\n  let pinned = $state(false);\n</script>\n\n<ToastRegion>\n  {#snippet children()}\n    {@const toast = useToast()}\n    <div class=\"example-preview-row\">\n      <Button\n        label=\"Forget a memory\"\n        onclick={() => toast.show('Memory forgotten.', { undo: () => {} })}\n      />\n      <Button\n        variant=\"ghost\"\n        label={pinned ? 'Release the bar' : 'Pin the bar to the screen'}\n        onclick={() => (pinned = !pinned)}\n      />\n      <Button\n        variant=\"secondary\"\n        label=\"Come back online\"\n        onclick={() => toast.show('Back online. Updated just now.', { variant: 'success' })}\n      />\n    </div>\n    <DockedActionBar\n      label=\"Run actions\"\n      style={pinned\n        ? 'position: fixed; inset-inline: var(--cinder-space-3); inset-block-end: 0; margin: 0'\n        : undefined}\n    >\n      {#snippet actions()}\n        <Button variant=\"secondary\">Send a message</Button>\n        <Button variant=\"secondary\">Cancel run</Button>\n      {/snippet}\n    </DockedActionBar>\n  {/snippet}\n</ToastRegion>\n"
     }
   ]
 }

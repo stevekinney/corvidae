@@ -52,7 +52,7 @@ describe('Banner unreachable preset', () => {
     expect(root?.getAttribute('aria-label')).toBe('Error');
   });
 
-  test('renders a Retry button only when onRetry is set, and calls it', async () => {
+  test('renders a Retry now button only when onRetry is set, and calls it', async () => {
     const without = render(Banner, {
       props: { preset: 'unreachable', children: textSnippet('Down') },
     });
@@ -63,7 +63,7 @@ describe('Banner unreachable preset', () => {
     const { getByRole } = render(Banner, {
       props: { preset: 'unreachable', onRetry, dismissible: false, children: textSnippet('Down') },
     });
-    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    await fireEvent.click(getByRole('button', { name: 'Retry now' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 

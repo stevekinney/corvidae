@@ -42,6 +42,19 @@ const schema = {
       description:
         'Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`.',
     },
+    sheetBelow: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          const: false,
+        },
+      ],
+      description:
+        'Viewport width below which the dialog is a bottom sheet: a grabber, the confirmation first and\nCancel under it, both full width at 44px, with Cancel keeping initial focus. A CSS length such\nas `"640px"`, or `false` for the centred dialog at every width.',
+      default: '640px',
+    },
     class: {
       type: 'string',
       description:

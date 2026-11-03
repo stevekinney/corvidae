@@ -462,7 +462,7 @@ describe('AccessGate', () => {
     expect(queryByText('Delete bucket')).toBeNull();
     expect(getByText('Section locked')).not.toBeNull();
     expect(getByText('Requires scope: storage:admin')).not.toBeNull();
-    expect(getByText('storage:admin')).not.toBeNull();
+    expect(getByText('requires storage:admin')).not.toBeNull();
     expect(requirement).not.toBeNull();
     expect(section).not.toBeNull();
     expect(section?.getAttribute('data-cinder-variant')).toBe('section');

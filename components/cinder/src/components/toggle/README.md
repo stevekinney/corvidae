@@ -25,6 +25,7 @@ On/off switch input for binary settings, presented as a sliding pill control.
 | `id` | `string` | yes | — | Native id placed on the `<button>`; the rendered label uses `aria-labelledby` to name it (label id is derived as `${id}-label`). |
 | `label` | `string` | yes | — | Visible label text. Always the accessible name, even when `labelVisible` is set. Required. |
 | `labelVisible` | `boolean` | no | `true` | Whether the label is visibly rendered. Set `false` for icon-only or inline contexts — it stays the accessible name. |
+| `mutating` | `boolean` | no | `false` | Marks a switch that changes something. Inside a stale `<StaleRegion>` it goes inert: `aria-disabled`, still focusable, ignoring the press, and described by the region's reason. It returns by itself when the region stops being stale. |
 | `name` | `string` | no | — | Form field name. When set, a hidden checkbox mirrors `checked` so the toggle participates in native form submission. Omit for purely client-side toggles (no hidden input is rendered, so there is zero overhead). |
 | `value` | `string` | no | — | Value submitted for the hidden checkbox when `checked` and `name` is set. Mirrors native checkbox semantics: the pair `name=value` is sent only while checked. Defaults to `'on'`. Ignored when `name` is unset. |
 | `onValueChange` | `(opaque)` | no | — | Notify after the bindable value has been committed. Not expressible in JSON Schema; see the component types for the signature. |

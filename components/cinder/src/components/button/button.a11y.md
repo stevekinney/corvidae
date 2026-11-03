@@ -40,9 +40,17 @@ A [Playwright](https://playwright.dev/) check for rendered `md`/`lg` heights is 
 
 ## Loading state
 
-The spinner is a CSS `::after` pseudo-element—not a DOM node. Pseudo-elements are excluded from the accessibility tree per the ARIA specification, so no explicit `aria-hidden` is needed on a spinner element.
+The spinner is a CSS `::after` pseudo-element—not a DOM node. Pseudo-elements are excluded from the accessibility tree per the ARIA specification, so no explicit `aria-hidden` is needed on a spinner element. It leads the label, and a leading icon steps aside for it.
 
-The button's label text (`label` prop or `children`) remains in the DOM throughout the loading state and continues to serve as the accessible name. `aria-busy="true"` communicates the loading state to assistive technology. `aria-disabled="true"` signals that the button is not interactive during loading.
+The button's label text (`label` prop or `children`) remains in the DOM throughout the loading state and continues to serve as the accessible name. `aria-busy="true"` communicates the loading state to assistive technology, and `aria-disabled="true"` signals that the button is not interactive. The native `disabled` attribute is deliberately not set: a disabled button drops out of the tab order and loses focus, so the person who pressed Save would be dropped onto the page. An `aria-disabled` button keeps focus, and the component ignores the press itself (the consumer's `onclick` does not run, and a link does not navigate).
+
+While loading, the button keeps the width it had at rest, so the row it sits in does not move.
+
+Pass `loadingStatus` (for example `Saving…`) to have a polite status announced while loading. The status is a visually hidden `role="status"` node rendered as a sibling right after the button, never inside it, so it does not become part of the button's accessible name. It is mounted as soon as the prop is given and only filled while `loading`, because a live region that is created already holding text is not reliably announced. Without `loadingStatus` no node is rendered, which keeps a button inside a `ButtonGroup` free of extra siblings.
+
+## Inert buttons
+
+A button that is `aria-disabled="true"` is dimmed, stays in the tab order and ignores the press. Use it, instead of the native `disabled`, for an action that is off for a reason the person can read: point `aria-describedby` at the reason (or wrap the button in a Tooltip that carries it), so a keyboard user who lands on the button hears why it does nothing.
 
 ## Forced-colors ([Windows High Contrast](https://learn.microsoft.com/en-us/windows/apps/design/accessibility/high-contrast-themes))
 

@@ -10,22 +10,26 @@
  * ======================================== */
 
   .cinder-theme-switch {
-    /* Each position is a square; the thumb is one position wide and the track pads it evenly. */
-    --_cinder-theme-switch-segment: 1.75rem;
+    /* Each position is 34px by 26px; the thumb is one position and the track pads it evenly, so
+     * the whole switch is 32px high. */
+    --_cinder-theme-switch-segment-inline: 2.125rem;
+    --_cinder-theme-switch-segment-block: 1.625rem;
     --_cinder-theme-switch-inset: 0.125rem;
     --_cinder-theme-switch-position: 1;
 
     /* The sky and night tracks keep their own lightness in both themes: a sky is pale and a
-     * night is dark whichever theme the page is in, so the icons on them use fixed contrast
+     * night is dark whichever theme the page is in, so the icons and the thumb on them use fixed
      * ramps too. System uses the page's own tokens. */
     --_cinder-theme-switch-track: var(--cinder-surface-inset);
     --_cinder-theme-switch-icon: var(--cinder-text-muted);
     --_cinder-theme-switch-icon-hover: var(--cinder-text-default);
+    --_cinder-theme-switch-icon-selected: var(--cinder-text-default);
+    --_cinder-theme-switch-thumb: var(--cinder-surface-raised);
 
     position: relative;
     display: inline-grid;
     grid-auto-flow: column;
-    grid-auto-columns: var(--_cinder-theme-switch-segment);
+    grid-auto-columns: var(--_cinder-theme-switch-segment-inline);
     flex-shrink: 0;
     box-sizing: border-box;
     padding: var(--_cinder-theme-switch-inset);
@@ -33,15 +37,19 @@
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-full);
     background-color: var(--_cinder-theme-switch-track);
-    transition: background-color var(--cinder-duration-fast, 150ms)
-      var(--cinder-ease-standard, ease);
+    transition:
+      background-color var(--cinder-duration-fast, 150ms) var(--cinder-ease-standard, ease),
+      border-color var(--cinder-duration-fast, 150ms) var(--cinder-ease-standard, ease);
   }
 
   .cinder-theme-switch[data-cinder-value='light'] {
     --_cinder-theme-switch-position: 0;
-    --_cinder-theme-switch-track: oklch(from var(--cinder-status-info-solid) 93% 0.035 h);
-    --_cinder-theme-switch-icon: oklch(from var(--cinder-status-info-solid) 38% 0.09 h);
-    --_cinder-theme-switch-icon-hover: oklch(from var(--cinder-status-info-solid) 25% 0.09 h);
+    --_cinder-theme-switch-track: oklch(93% 0.04 235);
+    border-color: oklch(84% 0.05 235);
+    --_cinder-theme-switch-icon: oklch(32% 0.014 245);
+    --_cinder-theme-switch-icon-hover: oklch(20% 0.018 245);
+    --_cinder-theme-switch-icon-selected: oklch(20% 0.018 245);
+    --_cinder-theme-switch-thumb: oklch(100% 0 255);
   }
 
   .cinder-theme-switch[data-cinder-value='system'] {
@@ -50,9 +58,12 @@
 
   .cinder-theme-switch[data-cinder-value='dark'] {
     --_cinder-theme-switch-position: 2;
-    --_cinder-theme-switch-track: oklch(from var(--cinder-status-info-solid) 27% 0.06 h);
-    --_cinder-theme-switch-icon: oklch(from var(--cinder-status-info-solid) 82% 0.05 h);
-    --_cinder-theme-switch-icon-hover: oklch(from var(--cinder-status-info-solid) 95% 0.03 h);
+    --_cinder-theme-switch-track: oklch(25% 0.05 265);
+    border-color: oklch(38% 0.05 265);
+    --_cinder-theme-switch-icon: oklch(80% 0.03 265);
+    --_cinder-theme-switch-icon-hover: oklch(97% 0.01 265);
+    --_cinder-theme-switch-icon-selected: oklch(97% 0.01 265);
+    --_cinder-theme-switch-thumb: oklch(42% 0.06 265);
   }
 
   /* ----------------------------------------
@@ -66,12 +77,12 @@
      * page as well. */
     inset-inline-start: calc(
       var(--_cinder-theme-switch-inset) + var(--_cinder-theme-switch-position) *
-        var(--_cinder-theme-switch-segment)
+        var(--_cinder-theme-switch-segment-inline)
     );
-    inline-size: var(--_cinder-theme-switch-segment);
+    inline-size: var(--_cinder-theme-switch-segment-inline);
     border-radius: var(--cinder-radius-full);
-    background-color: var(--cinder-surface-raised);
-    box-shadow: var(--cinder-shadow-sm);
+    background-color: var(--_cinder-theme-switch-thumb);
+    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.25);
     pointer-events: none;
     transition: inset-inline-start var(--cinder-duration-fast, 150ms)
       var(--cinder-ease-standard, ease);
@@ -86,8 +97,8 @@
     display: grid;
     place-items: center;
     box-sizing: border-box;
-    inline-size: var(--_cinder-theme-switch-segment);
-    block-size: var(--_cinder-theme-switch-segment);
+    inline-size: var(--_cinder-theme-switch-segment-inline);
+    block-size: var(--_cinder-theme-switch-segment-block);
     padding: 0;
     border: none;
     border-radius: var(--cinder-radius-full);
@@ -97,9 +108,16 @@
     transition: color var(--cinder-duration-fast, 150ms) var(--cinder-ease-standard, ease);
   }
 
-  /* The selected icon sits on the raised thumb, which is a page surface in either theme. */
+  /* The selected icon sits on the thumb: the raised page surface on Light and System, a lifted
+   * night blue on Dark. */
   .cinder-theme-switch__option[aria-checked='true'] {
-    color: var(--cinder-text-default);
+    color: var(--_cinder-theme-switch-icon-selected);
+  }
+
+  .cinder-theme-switch__icon {
+    flex: none;
+    inline-size: 0.9375rem;
+    block-size: 0.9375rem;
   }
 
   @media (hover: hover) {
@@ -160,12 +178,13 @@
   }
 
   /* ----------------------------------------
- * Coarse pointer: the 28px positions stay, and the hit area grows to 44px
+ * Coarse pointer: the 34px by 26px positions grow to a 44px hit area
  * ---------------------------------------- */
 
   @media (any-pointer: coarse) {
     .cinder-theme-switch {
-      --_cinder-theme-switch-segment: 2.75rem;
+      --_cinder-theme-switch-segment-inline: 2.75rem;
+      --_cinder-theme-switch-segment-block: 2.75rem;
     }
   }
 

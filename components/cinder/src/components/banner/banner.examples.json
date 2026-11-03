@@ -18,8 +18,26 @@
     {
       "id": "unreachable",
       "title": "Unreachable preset",
-      "description": "The server is down: a Retry action and the age of the data still shown.",
-      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/cinder';\n\n  let updatedAt = $state(new Date(Date.now() - 120_000));\n</script>\n\n<Banner\n  preset=\"unreachable\"\n  dismissible={false}\n  dataUpdatedAt={updatedAt}\n  onRetry={() => (updatedAt = new Date())}\n>\n  Can't reach the server. Retrying in 8 seconds.\n</Banner>\n"
+      "description": "The server is down: the preset writes the sentence, the absolute as-of time, the countdown and Retry now.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/cinder';\n\n  let loadedAt = new Date(Date.now() - 120_000);\n  let seconds = $state(4);\n</script>\n\n<Banner\n  preset=\"unreachable\"\n  dataUpdatedAt={loadedAt}\n  retryInSeconds={seconds}\n  attempt={3}\n  onRetry={() => (seconds = 4)}\n/>\n"
+    },
+    {
+      "id": "restart-needed",
+      "title": "Title and actions",
+      "description": "A warning banner with a bold title, a line of detail and two secondary actions.",
+      "code": "<script lang=\"ts\">\n  import { Banner, Button } from '@lostgradient/cinder';\n</script>\n\n<Banner variant=\"warning\" dismissible={false} title=\"1 change waits for a restart\">\n  Workflow claim renew interval. Running work picks up where it stopped; reviews stay waiting.\n  {#snippet actions()}\n    <Button variant=\"secondary\" size=\"sm\" label=\"Revert 1 change\" />\n    <Button variant=\"secondary\" size=\"sm\" label=\"Restart now\" />\n  {/snippet}\n</Banner>\n"
+    },
+    {
+      "id": "presets",
+      "title": "Every connection preset",
+      "description": "The presets in the order the design lists them: offline, unreachable (with and without the changes sentence), stopped, out of date, refresh failed, restarting, reconnecting, restart failed and back online. Each fixes its tone, glyph, copy and actions, and none is dismissible.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/cinder';\n\n  // The time the data on screen was loaded, written as an absolute time with its zone.\n  const loadedAt = new Date(Date.now() - 120_000);\n  const common = {\n    dataUpdatedAt: loadedAt,\n    timeZone: 'America/Chicago',\n    onRetry: () => {},\n  };\n</script>\n\n<div class=\"example-preview-column\" style=\"gap: var(--cinder-space-3)\">\n  <Banner preset=\"offline\" {...common} retryInSeconds={8} />\n  <Banner preset=\"unreachable\" {...common} retryInSeconds={4} attempt={3} />\n  <Banner preset=\"unreachable\" {...common} retryInSeconds={8} attempt={3} consequence={false} />\n  <Banner preset=\"stopped\" {...common} />\n  <Banner preset=\"out-of-date\" {...common} />\n  <Banner preset=\"refresh-failed\" {...common} />\n  <Banner preset=\"restarting\" />\n  <Banner preset=\"reconnecting\" attempt={2} onRetry={() => {}} />\n  <Banner preset=\"restart-failed\" onRestart={() => {}} onOpenHealth={() => {}} />\n  <Banner preset=\"back-online\" />\n</div>\n"
+    },
+    {
+      "id": "neutral",
+      "title": "Neutral banner",
+      "description": "The neutral variant for a page-wide note that is not a warning or a success: a stacked bold title over the sentence, with no status colour.",
+      "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/cinder';\n</script>\n\n<Banner variant=\"neutral\" dismissible={false} title=\"This agent has no memory yet\">\n  Memory is written when the agent learns a fact about you. Nothing has been written.\n</Banner>\n"
     }
   ]
 }

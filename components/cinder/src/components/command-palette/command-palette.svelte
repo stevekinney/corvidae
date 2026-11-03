@@ -19,8 +19,16 @@
   import type { CommandPaletteProps } from './command-palette.types.ts';
   import { onDestroy, tick } from 'svelte';
 
+  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
+  import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
+  import {
+    PHONE_VIEWPORT_BREAKPOINT,
+    readViewportBreakpoint,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
+  import Button from '../button/button.svelte';
   import { setCommandListContext } from '../_internal/command-list-context.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import { createSlidingDialogState } from '../_internal/create-sliding-dialog-state.svelte.ts';
@@ -35,6 +43,8 @@
     items,
     empty,
     footer,
+    sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
+    closeLabel = 'Close',
     class: className,
   }: CommandPaletteProps = $props();
 
@@ -49,6 +59,15 @@
   let inputElement: HTMLInputElement | undefined = $state();
 
   const reducedMotion = useReducedMotion();
+
+  // Below `sheetBelow` the palette is a bottom sheet (rows 05d, 06c). It reads the viewport through
+  // the shared hook, like Popover, so server markup is always the centred panel.
+  const sheetBreakpoint = $derived(
+    readViewportBreakpoint(sheetBelow, 'CommandPalette', 'sheetBelow'),
+  );
+  const narrowViewport = useViewportBelow(() => sheetBreakpoint);
+  const sheet = $derived(narrowViewport.current);
+
   const commandList = createCommandListState(listboxId);
 
   $effect(() => {
@@ -77,6 +96,8 @@
     getDialogElement: () => dialogElement,
     getPanelElement: () => panelElement,
     getReducedMotion: () => reducedMotion.current,
+    // A sheet slides in with motion, so with less motion it cross-fades instead of vanishing.
+    getFadeOnReducedMotion: () => sheet,
     getTriggerRef: () => triggerRef,
     onOpen: () => {
       query = '';
@@ -95,6 +116,12 @@
 
   $effect(() => {
     dialogState.markHydrated();
+  });
+
+  // The sheet rides above the on-screen keyboard and scrolls inside itself (row 05j).
+  $effect(() => {
+    if (!open || !sheet) return;
+    return trackKeyboardInset();
   });
 
   $effect(() => {
@@ -165,6 +192,7 @@
     oncancel={handleCancel}
     onclose={handleClose}
     onclick={handleBackdropClick}
+    data-cinder-sheet={sheet ? 'docked' : undefined}
   >
     {#if dialogState.renderPanel}
       <div
@@ -172,7 +200,11 @@
         class={classNames('cinder-command-palette__panel', className)}
         data-cinder-closing={dialogState.isClosing ? '' : undefined}
         inert={dialogState.isClosing}
+        {@attach reducedMotionFadeIn(() => reducedMotion.current && sheet)}
       >
+        {#if sheet}
+          <div class="cinder-command-palette__grabber" aria-hidden="true"></div>
+        {/if}
         <div class="cinder-command-palette__search">
           <svg
             class="cinder-command-palette__search-icon"
@@ -206,6 +238,15 @@
             oninput={handleInput}
             onkeydown={handleKeydown}
           />
+          {#if sheet}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="cinder-command-palette__close"
+              label={closeLabel}
+              onclick={() => dialogState.requestClose()}
+            />
+          {/if}
         </div>
 
         <ul id={listboxId} role="listbox" class="cinder-command-palette__listbox">

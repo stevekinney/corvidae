@@ -59,7 +59,7 @@
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
  * "stick" after tap on touch devices that emulate :hover. */
   @media (hover: hover) {
-    .cinder-checkbox:hover:not(:disabled) {
+    .cinder-checkbox:hover:not(:disabled):not([aria-disabled='true']) {
       border-color: var(--cinder-control-border-hover);
     }
   }
@@ -146,6 +146,8 @@
 
   .cinder-checkbox:disabled:checked + .cinder-checkbox-field__indicator,
   .cinder-checkbox:disabled:indeterminate + .cinder-checkbox-field__indicator,
+  .cinder-checkbox[aria-disabled='true']:checked + .cinder-checkbox-field__indicator,
+  .cinder-checkbox[aria-disabled='true']:indeterminate + .cinder-checkbox-field__indicator,
   .cinder-checkbox--indicator[data-cinder-disabled][data-cinder-checked]
     + .cinder-checkbox-field__indicator {
     color: var(--cinder-text-disabled);
@@ -157,7 +159,8 @@
   }
 
   /* Disabled state */
-  .cinder-checkbox:disabled {
+  .cinder-checkbox:disabled,
+  .cinder-checkbox[aria-disabled='true'] {
     cursor: not-allowed;
     background: var(--cinder-control-background-disabled);
     border-color: var(--cinder-control-border-disabled);
@@ -170,7 +173,9 @@
   }
 
   .cinder-checkbox:disabled:checked,
-  .cinder-checkbox:disabled:indeterminate {
+  .cinder-checkbox:disabled:indeterminate,
+  .cinder-checkbox[aria-disabled='true']:checked,
+  .cinder-checkbox[aria-disabled='true']:indeterminate {
     background-color: var(--cinder-fill-disabled);
     border-color: var(--cinder-fill-disabled);
   }

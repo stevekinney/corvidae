@@ -14,6 +14,12 @@
       "title": "Disabled theme switch",
       "description": "A disabled switch keeps its selection and ignores the pointer and the keyboard.",
       "code": "<script lang=\"ts\">\n  import { ThemeSwitch } from '@lostgradient/cinder';\n</script>\n\n<ThemeSwitch value=\"dark\" label=\"Color theme\" disabled />\n"
+    },
+    {
+      "id": "all-values",
+      "title": "All three values",
+      "description": "The switch with Light, System and Dark selected in turn: a sky track with a raised thumb on the left, a neutral track in the middle and a night track on the right.",
+      "code": "<script lang=\"ts\">\n  import { ThemeSwitch, type ThemeSwitchValue } from '@lostgradient/cinder';\n\n  let light = $state<ThemeSwitchValue>('light');\n  let system = $state<ThemeSwitchValue>('system');\n  let dark = $state<ThemeSwitchValue>('dark');\n</script>\n\n<div class=\"example-preview-row\">\n  <ThemeSwitch bind:value={light} label=\"Color theme, light\" />\n  <ThemeSwitch bind:value={system} label=\"Color theme, system\" />\n  <ThemeSwitch bind:value={dark} label=\"Color theme, dark\" />\n</div>\n"
     }
   ]
 }

@@ -53,6 +53,7 @@ import dateRangeFieldExamplesJson from '../components/date-range-field/date-rang
 import descriptionListExamplesJson from '../components/description-list/description-list.examples.json' with { type: 'json' };
 import diffStatisticsExamplesJson from '../components/diff-statistics/diff-statistics.examples.json' with { type: 'json' };
 import dividerExamplesJson from '../components/divider/divider.examples.json' with { type: 'json' };
+import dockedActionBarExamplesJson from '../components/docked-action-bar/docked-action-bar.examples.json' with { type: 'json' };
 import donutChartExamplesJson from '../components/donut-chart/donut-chart.examples.json' with { type: 'json' };
 import drawerExamplesJson from '../components/drawer/drawer.examples.json' with { type: 'json' };
 import dropdownExamplesJson from '../components/dropdown/dropdown.examples.json' with { type: 'json' };
@@ -207,6 +208,8 @@ export const descriptionListExamples = descriptionListExamplesJson;
 export const diffStatisticsExamples = diffStatisticsExamplesJson;
 /** Code examples for this component. */
 export const dividerExamples = dividerExamplesJson;
+/** Code examples for this component. */
+export const dockedActionBarExamples = dockedActionBarExamplesJson;
 /** Code examples for this component. */
 export const donutChartExamples = donutChartExamplesJson;
 /** Code examples for this component. */

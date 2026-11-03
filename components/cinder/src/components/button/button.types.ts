@@ -125,8 +125,34 @@ export type ButtonProps = SharedHtmlAttributes &
     size?: ButtonSize;
     /** Expand to container width. */
     fullWidth?: boolean;
-    /** Disable the button and show a spinner. */
+    /**
+     * Show a spinner and make the button inert while work is in flight. The button gets
+     * `aria-disabled` and `aria-busy` (not the native `disabled`, so it keeps focus), keeps its
+     * label, ignores further presses, and holds the width it had at rest.
+     */
     loading?: boolean;
+    /**
+     * Text a polite, visually hidden status announces while `loading` (for example `Saving…`).
+     * The status node is rendered beside the button, so it never joins the button's accessible
+     * name, and it is mounted from the start so the announcement is not lost. Omit it and no
+     * status node is rendered.
+     */
+    loadingStatus?: string;
+    /**
+     * Marks a button that changes something (Edit, Save, Delete, a header "+"). Inside a stale
+     * `<StaleRegion>` it goes inert: `aria-disabled`, still focusable, ignoring the press, and
+     * described by the region's reason ("Off until it’s back"). It returns by itself when the
+     * region stops being stale. A button that only reads (a link, Retry now) leaves this off and
+     * stays live.
+     */
+    mutating?: boolean;
+    /**
+     * Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button
+     * otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still
+     * paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`.
+     * @default false
+     */
+    quiet?: boolean;
     /** DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.
      *  If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. */
     leadingIcon?: Snippet;
@@ -159,15 +185,33 @@ export interface ButtonSchemaProps {
    */
   fullWidth?: boolean;
   /**
-   * Disable the button and show a spinner.
+   * Show a spinner and make the button inert (`aria-disabled`, still focusable) while work is
+   * in flight; the label stays and the width holds.
    * @default false
    */
   loading?: boolean;
+  /**
+   * Text a polite, visually hidden status announces while `loading`, rendered beside the button.
+   */
+  loadingStatus?: string;
+  /**
+   * Marks a button that changes something. Inside a stale `<StaleRegion>` it goes inert
+   * (`aria-disabled`, still focusable) and is described by the region's reason.
+   * @default false
+   */
+  mutating?: boolean;
   /**
    * Render the button with only an icon. Requires an accessible name source.
    * @default false
    */
   iconOnly?: boolean;
+  /**
+   * Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button
+   * otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still
+   * paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`.
+   * @default false
+   */
+  quiet?: boolean;
   /** Render as an anchor `<a>` element with this href. */
   href?: string;
   /** Visible text label. Must be non-empty if provided. */

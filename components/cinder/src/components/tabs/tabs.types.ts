@@ -16,6 +16,12 @@ export type TabsContext = {
   readonly value: string;
   /** Layout orientation, forwarded to TabList for `aria-orientation`. */
   readonly orientation: TabsOrientation;
+  /**
+   * Whether the tabs are in their narrow form, where a select stands in for the tab bar and the
+   * TabList is hidden. The tab buttons stay mounted, so they keep registering and naming their
+   * panels.
+   */
+  readonly collapsed: boolean;
   /** Whether focus movement also activates a tab (per WAI-ARIA pattern). */
   readonly activateOnFocus: boolean;
   /**
@@ -35,6 +41,11 @@ export type TabsContext = {
   attachButton: (value: string, button: HTMLButtonElement) => void;
   /** Remove a tab from the registry on unmount. */
   unregister: (value: string) => void;
+  /**
+   * Record the label (and an optional muted note, such as a count) a registered tab shows in the
+   * narrow form's select. Safe no-op for an unregistered tab.
+   */
+  setLabel: (value: string, label: string, note?: string) => void;
   /**
    * Sync the disabled state for a registered tab. Safe no-op when called
    * before `register` has run (e.g., during the first paint of a Tab whose
@@ -66,6 +77,18 @@ export type TabsProps = {
    * @default false
    */
   fill?: boolean;
+  /**
+   * Viewport width below which a horizontal tab bar collapses to a select reading "Tab: Access",
+   * so a phone shows one full-width control instead of a bar that scrolls sideways. The tabs stay
+   * in the page, hidden, and the panels keep their names. A simple CSS length such as `'640px'`,
+   * or `false` to always show the tab bar. Vertical tabs never collapse. Default `'640px'`.
+   */
+  collapseBelow?: string | false;
+  /**
+   * The select's accessible name and the prefix before the current tab's label in its trigger.
+   * Default `"Tab"`.
+   */
+  collapseLabel?: string;
   /**
    * When true (default for horizontal), focusing a tab also activates it
    * (the panel updates immediately). Vertical defaults to manual activation

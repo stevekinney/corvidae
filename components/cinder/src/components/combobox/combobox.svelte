@@ -12,22 +12,32 @@
    * @avoidWhen Querying remote data or accepting free-text submissions — use search-field instead.
    * @related select, search-field, dropdown
    */
-  export type { ComboboxOption, ComboboxProps } from './combobox.types.ts';
+  export type {
+    ComboboxFooterContext,
+    ComboboxLoadError,
+    ComboboxOption,
+    ComboboxPresentation,
+    ComboboxProps,
+  } from './combobox.types.ts';
 </script>
 
 <script lang="ts" generics="T extends string = string, AllowCustom extends boolean = false">
-  import type { ComboboxOption, ComboboxProps } from './combobox.types.ts';
-  import { untrack } from 'svelte';
+  import type { ComboboxFooterContext, ComboboxOption, ComboboxProps } from './combobox.types.ts';
+  import { tick, untrack } from 'svelte';
 
   import { composeDescribedBy, resolveFieldControl } from '../../_internal/field-control.ts';
   import { getFormFieldContext } from '../../_internal/form-field-context.ts';
   import FormFieldFrame from '../../_internal/form-field-frame.svelte';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { classNames } from '../../utilities/class-names.ts';
+  import { getSequentialFocusTargets } from '../../utilities/focus.ts';
   import { rowDividerAttachment } from '../../utilities/row-divider.ts';
   import { createCommandListState } from '../_internal/create-command-list-state.svelte.ts';
   import { groupOptions, hasGroupedOptions } from '../_internal/group-options.ts';
+  import Button from '../button/button.svelte';
   import Popover from '../popover/popover.svelte';
+  import ComboboxSearch from './combobox-search.svelte';
+  import Skeleton from '../skeleton/skeleton.svelte';
   import { PHONE_VIEWPORT_BREAKPOINT } from '../../_internal/viewport-below.svelte.ts';
 
   let {
@@ -49,6 +59,20 @@
     customValueAllowed = false as AllowCustom,
     size = 'md',
     sheetBelow = PHONE_VIEWPORT_BREAKPOINT,
+    presentation = 'input',
+    searchPlaceholder = 'Search',
+    loading = false,
+    loadingLabel = 'Loading…',
+    stillLoadingAfter,
+    onCancel,
+    loadError,
+    onRetry,
+    noMatchLabel = 'No results',
+    footer,
+    optionMeta,
+    groupCountVisible = true,
+    matchCountVisible = false,
+    selectedIndicator = 'end',
     class: className,
     'aria-describedby': consumerDescribedBy,
   }: ComboboxProps<T, AllowCustom> = $props();
@@ -105,22 +129,50 @@
   // below render it in the same order. With groups, the cap applies after the
   // ungrouped-first, group-by-group ordering so which options survive it is
   // predictable.
-  const filteredOptions = $derived.by(() => {
+  const isPicker = $derived(presentation === 'picker');
+  const panelLabel = $derived(label ?? (ariaLabel?.trim() || undefined));
+  // A picker has no text of its own: what is typed in the panel's search field narrows the list
+  // and nothing else, so the committed value's label is never disturbed by searching.
+  let searchQuery = $state('');
+  const query = $derived(isPicker ? searchQuery : textInputValue);
+  // Committing arbitrary text needs a text field to type it into.
+  const customValueCommittable = $derived(!!customValueAllowed && !isPicker);
+  const interactive = $derived(!resolvedDisabled && !loading);
+
+  const matchedOptions = $derived.by(() => {
     const fn = filter ?? defaultFilter;
+    return options.filter((option) => fn(option, query));
+  });
+  const filteredOptions = $derived.by(() => {
     const grouped = hasGroupedOptions(options, groupOf);
-    const matches: ComboboxOption<T>[] = [];
-    for (const option of options) {
-      if (fn(option, textInputValue)) {
-        matches.push(option);
-        if (!grouped && matches.length >= maxVisibleOptions) break;
-      }
-    }
-    return grouped ? groupOptions(matches, groupOf).ordered.slice(0, maxVisibleOptions) : matches;
+    return grouped
+      ? groupOptions(matchedOptions, groupOf).ordered.slice(0, maxVisibleOptions)
+      : matchedOptions.slice(0, maxVisibleOptions);
   });
   const optionSections = $derived(groupOptions(filteredOptions, groupOf).sections);
+  const selectedOption = $derived(
+    value ? options.find((option) => option.value === value) : undefined,
+  );
+  const footerContext = $derived<ComboboxFooterContext>({
+    query,
+    matchCount: matchedOptions.length,
+    totalCount: options.length,
+  });
+  // The message under the search field when nothing matches. It is not drawn when the list failed
+  // to load and there is nothing to search: the load error already says why the list is empty.
+  const noMatchText = $derived(
+    typeof noMatchLabel === 'function' ? noMatchLabel(query) : noMatchLabel,
+  );
+  const emptyListed = $derived(
+    filteredOptions.length === 0 && !(loadError && options.length === 0),
+  );
 
   let open = $state(false);
   let inputElement = $state<HTMLInputElement | null>(null);
+  let triggerElement = $state<HTMLButtonElement | null>(null);
+  let contentElement = $state<HTMLElement | null>(null);
+  let loadErrorElement = $state<HTMLElement | null>(null);
+  let footerElement = $state<HTMLElement | null>(null);
   let hiddenInputElement = $state<HTMLInputElement | null>(null);
   let listboxElement = $state<HTMLElement | null>(null);
   let committedLabel = $state('');
@@ -187,8 +239,9 @@
   function handleEscape(event: KeyboardEvent | undefined = undefined): void {
     const wasOpen = open;
     open = false;
-    // Restore the committed label whenever the live text drifted from it.
-    if (textInputValue !== committedLabel) {
+    // Restore the committed label whenever the live text drifted from it. A picker never edits
+    // that text, so there is nothing to restore.
+    if (!isPicker && textInputValue !== committedLabel) {
       textInputValue = committedLabel;
       if (inputElement) inputElement.value = committedLabel;
     }
@@ -204,8 +257,11 @@
     return releaseEscape;
   });
 
-  const listboxVisible = $derived(open && filteredOptions.length > 0);
-  const emptyVisible = $derived(open && filteredOptions.length === 0);
+  // The panel is shown whenever the field is open and can be used: even with no options it holds
+  // the search field (picker), the empty message, the load error and the footer.
+  const panelVisible = $derived(open && interactive);
+  const listboxVisible = $derived(panelVisible && filteredOptions.length > 0);
+  const emptyVisible = $derived(panelVisible && emptyListed);
   // COR-499: the status paragraph that names the empty result set — rendered
   // outside the listbox (see comboboxControl below), never as a fake
   // role="option" child, matching CommandMenu's empty-state pattern
@@ -217,26 +273,25 @@
 
   /**
    * Whether the composed Popover instance should stay MOUNTED (CIN-376
-   * round 20 review). `listboxVisible`/`emptyVisible` are both derived
-   * directly from `open`, so the instant `open` flips false they both go
-   * false in the SAME update — the `{#if listboxVisible}`/`{#if emptyVisible}`
-   * below would destroy the whole composed Popover instance immediately,
-   * before Popover's OWN retained-exit lifecycle (which keeps its panel
-   * mounted through `data-cinder-closing`, not an `{#if}` gate around its
-   * own root) ever gets a chance to run — the listbox would still snap
-   * closed instead of fading. `panelMounted` mirrors either becoming true,
+   * round 20 review). `panelVisible` is derived directly from `open`, so the
+   * instant `open` flips false it goes false in the SAME update — an `{#if
+   * panelVisible}` around the Popover would destroy the whole composed
+   * instance immediately, before Popover's OWN retained-exit lifecycle (which
+   * keeps its panel mounted through `data-cinder-closing`, not an `{#if}` gate
+   * around its own root) ever gets a chance to run — the listbox would still
+   * snap closed instead of fading. `panelMounted` mirrors it becoming true,
    * but only clears via Popover's `onExitComplete` once its exit genuinely
-   * finishes. `mountedIsEmpty` remembers which of the two variants (results
-   * vs. "No results") was active, so the retained Popover keeps rendering
-   * the same content through its own exit rather than switching mid-fade.
+   * finishes. What the panel draws (options or the empty message) depends on
+   * the filtered list, not on `open`, so it keeps rendering the same content
+   * through its own exit rather than switching mid-fade.
    */
   let panelMounted = $state(false);
-  let mountedIsEmpty = $state(false);
   $effect(() => {
-    if (listboxVisible || emptyVisible) {
-      panelMounted = true;
-      mountedIsEmpty = emptyVisible;
-    }
+    if (panelVisible) panelMounted = true;
+  });
+  // The field cannot stay open once it is disabled or loading.
+  $effect(() => {
+    if (!interactive) open = false;
   });
   const activeOptionId = $derived(
     listboxVisible ? (commandList.activeItemId ?? undefined) : undefined,
@@ -328,15 +383,15 @@
   });
 
   function findCommittedOption(rawValue: string): ComboboxOption<T> | undefined {
-    const query = rawValue.trim();
-    if (!query) return undefined;
+    const typed = rawValue.trim();
+    if (!typed) return undefined;
     let labelMatch: ComboboxOption<T> | undefined;
     for (const option of options) {
       if (option.disabled) continue;
-      if (option.value === query) return option;
+      if (option.value === typed) return option;
       // Keep scanning after the first label match so an exact value match later
       // in the list still wins over a human-readable label collision.
-      if (labelMatch === undefined && option.label === query) {
+      if (labelMatch === undefined && option.label === typed) {
         labelMatch = option;
       }
     }
@@ -345,27 +400,50 @@
 
   function handleInput(event: Event) {
     const target = event.target as HTMLInputElement;
-    textInputValue = target.value;
+    if (isPicker) searchQuery = target.value;
+    else textInputValue = target.value;
+    if (!interactive) return;
     open = true;
     setActiveIndex(firstEnabledFilteredIndex());
     hasExplicitNavigation = false;
   }
 
+  /** The search field's value changed (picker): the same narrowing as typing into the input. */
+  function handleSearchChange(nextQuery: string): void {
+    searchQuery = nextQuery;
+    setActiveIndex(firstEnabledFilteredIndex());
+    hasExplicitNavigation = false;
+  }
+
   function handleFocus() {
-    if (!resolvedDisabled) open = true;
+    if (interactive) open = true;
+  }
+
+  /** Opens a picker's panel with the search cleared and the cursor on the chosen option. */
+  function openPicker(): void {
+    if (!interactive) return;
+    searchQuery = '';
+    hasExplicitNavigation = false;
+    open = true;
+    const chosen = value ? options.findIndex((option) => option.value === value) : -1;
+    setActiveIndex(chosen);
   }
 
   function handleBlur(event: FocusEvent) {
     // Defer close so a click on a listbox option can complete first. Use a DOM
     // containment check rather than a `#${listboxId}` selector so ids with
-    // CSS-special characters (colons, dots, leading digits) don't throw.
+    // CSS-special characters (colons, dots, leading digits) don't throw. Anything in the
+    // panel counts as inside, so a footer link or the retry button keeps the list open, and so
+    // does the picker's own trigger, whose click closes the list itself.
     const next = event.relatedTarget as Node | null;
-    if (next && listboxElement?.contains(next)) return;
-    if (customValueAllowed && textInputValue.trim() && textInputValue !== committedLabel) {
+    if (next && contentElement?.contains(next)) return;
+    if (next && isPicker && next === triggerElement) return;
+    if (customValueCommittable && textInputValue.trim() && textInputValue !== committedLabel) {
       commitCustomValue();
       return;
     }
     open = false;
+    if (isPicker) return;
     // Restore the committed label if the live text drifted from it. Leaving the
     // field on a stale edit (without selecting an option) would desync the
     // visible text from the unchanged `value` — the same mismatch Escape fixes.
@@ -387,7 +465,7 @@
 
   function commitCustomValue(): void {
     const nextValue = textInputValue.trim();
-    if (!customValueAllowed || !nextValue) return;
+    if (!customValueCommittable || !nextValue) return;
     if (
       options.some(
         (option) => option.disabled && (option.value === nextValue || option.label === nextValue),
@@ -458,7 +536,41 @@
     );
   });
 
+  /**
+   * The keyboard stops inside the panel that are not options: the retry button and any link or
+   * button in the footer. Options are never tab stops, so the search field and the clear button
+   * inside it are deliberately not counted.
+   */
+  function panelStops(): HTMLElement[] {
+    return [
+      ...getSequentialFocusTargets(loadErrorElement),
+      ...getSequentialFocusTargets(footerElement),
+    ] as HTMLElement[];
+  }
+
+  /** The element that holds focus while the list is open: the input, or the picker's search field. */
+  function focusOwner(): HTMLElement | null {
+    if (!isPicker) return inputElement;
+    return contentElement?.querySelector<HTMLInputElement>('input') ?? null;
+  }
+
   function handleKeydown(event: KeyboardEvent) {
+    if (!interactive || event.isComposing) return;
+    if (event.key === 'Tab') {
+      if (!open) return;
+      const stops = panelStops();
+      if (!event.shiftKey && stops.length > 0) {
+        // The retry button and the footer are stops of their own after the options: the first
+        // Tab from the field lands on them.
+        event.preventDefault();
+        stops[0]?.focus();
+      } else if (isPicker) {
+        // Focus moves back to the trigger first so the browser carries on from there.
+        open = false;
+        triggerElement?.focus();
+      }
+      return;
+    }
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       open = true;
@@ -483,7 +595,7 @@
       hasExplicitNavigation = true;
     } else if (event.key === 'Enter' && open) {
       const option = filteredOptions[activeIndex];
-      if (customValueAllowed && !(hasExplicitNavigation && option)) {
+      if (customValueCommittable && !(hasExplicitNavigation && option)) {
         event.preventDefault();
         commitCustomValue();
       } else if (option) {
@@ -501,7 +613,124 @@
       handleEscape(event);
     }
   }
+
+  /** Keys on the picker's closed trigger: the ones that open a select-only combobox. */
+  function handleTriggerKeydown(event: KeyboardEvent): void {
+    if (!interactive || event.isComposing) return;
+    if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+      event.preventDefault();
+      if (!open) openPicker();
+    }
+  }
+
+  function handleTriggerClick(): void {
+    if (open) open = false;
+    else openPicker();
+  }
+
+  function handleTriggerMousedown(event: MouseEvent): void {
+    // While open, focus is in the search field: keep it there so the click that follows can
+    // close the list instead of the blur doing it and the click opening it again.
+    if (open) event.preventDefault();
+  }
+
+  // Focus follows the open state: into the picker's search field when its panel opens, and back
+  // onto the field that owns it when the list closes while focus was inside the panel (the search
+  // field or a footer link is about to unmount).
+  $effect(() => {
+    if (!panelVisible || !isPicker) return;
+    const content = contentElement;
+    if (!content) return;
+    const panel = content.closest<HTMLElement>('.cinder-popover');
+    let observer: MutationObserver | undefined;
+    let cancelled = false;
+    // The panel is hidden until it has been positioned, and a hidden control cannot take focus,
+    // so focus lands as soon as Popover marks the panel ready.
+    const focusSearch = (): boolean => {
+      if (cancelled) return true;
+      if (panel?.getAttribute('data-cinder-position-ready') === 'false') return false;
+      const search = content.querySelector<HTMLInputElement>('input');
+      if (!search) return false;
+      if (document.activeElement !== search) search.focus();
+      return document.activeElement === search;
+    };
+    void (async () => {
+      // The search input mounts after the panel does.
+      await tick();
+      if (focusSearch() || !panel) return;
+      observer = new MutationObserver(() => {
+        if (focusSearch()) observer?.disconnect();
+      });
+      observer.observe(panel, {
+        attributes: true,
+        attributeFilter: ['data-cinder-position-ready'],
+      });
+    })();
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+    };
+  });
+  $effect(() => {
+    if (open) return;
+    const active = typeof document === 'undefined' ? null : document.activeElement;
+    if (active && contentElement?.contains(active)) {
+      (isPicker ? triggerElement : inputElement)?.focus();
+    }
+  });
+
+  // Tab from the panel: the last stop hands focus back to the field and lets the browser carry
+  // on to the next control; Shift+Tab from the first stop goes back to the search field.
+  function handlePanelKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Tab') return;
+    const stops = panelStops();
+    const index = stops.indexOf(event.target as HTMLElement);
+    if (index < 0) return;
+    if (event.shiftKey && index === 0) {
+      event.preventDefault();
+      focusOwner()?.focus();
+    } else if (!event.shiftKey && index === stops.length - 1) {
+      open = false;
+      (isPicker ? triggerElement : inputElement)?.focus();
+    }
+  }
+
+  // A press on the panel's text or padding must not pull focus off the field (the panel root is
+  // focusable, so the browser would move it there and the list would close on the blur). Controls
+  // inside it, the retry button and footer links, still take focus.
+  function handlePanelMousedown(event: MouseEvent): void {
+    const target = event.target;
+    if (target instanceof Element && target.closest('input, button, a, select, textarea')) return;
+    event.preventDefault();
+  }
+
+  /** Accessible name of an option: its text lines joined, so a reader hears the reason a row is off. */
+  function optionName(option: ComboboxOption<T>): string | undefined {
+    const parts = [
+      option.suffix ? `${option.label} · ${option.suffix}` : option.label,
+      option.code,
+      option.description,
+      option.meta,
+    ].filter(Boolean);
+    return parts.length > 1 ? parts.join(', ') : undefined;
+  }
 </script>
+
+{#snippet checkMark(visible: boolean)}
+  <svg
+    class="cinder-combobox__option-check"
+    data-cinder-visible={visible || undefined}
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+  >
+{/snippet}
 
 {#snippet optionRow(option: ComboboxOption<T>, index: number)}
   <li
@@ -511,7 +740,7 @@
     class="cinder-_option-row cinder-combobox__option"
     aria-selected={value === option.value}
     aria-disabled={option.disabled || undefined}
-    aria-label={option.description ? `${option.label}, ${option.description}` : undefined}
+    aria-label={optionName(option)}
     data-cinder-active={index === activeIndex || undefined}
     onmousedown={(event) => {
       // mousedown rather than click so the option fires before the
@@ -527,48 +756,236 @@
       setActiveIndex(index);
     }}
   >
+    {#if selectedIndicator === 'start'}
+      {@render checkMark(value === option.value)}
+    {/if}
     {#if option.avatar?.trim()}
       <img class="cinder-combobox__option-avatar" src={option.avatar} alt="" loading="lazy" />
     {/if}
     <span class="cinder-combobox__option-text">
-      <span class="cinder-combobox__option-label">{option.label}</span>
+      <span class="cinder-combobox__option-heading">
+        <span class="cinder-combobox__option-label"
+          >{option.label}{#if option.suffix}<span class="cinder-combobox__option-suffix"
+              >{` · ${option.suffix}`}</span
+            >{/if}</span
+        >
+        {#if option.code}
+          <code class="cinder-combobox__option-code">{option.code}</code>
+        {/if}
+      </span>
       {#if option.description}
-        <span class="cinder-combobox__option-description">{option.description}</span>
+        <span
+          class="cinder-combobox__option-description"
+          data-cinder-tone={option.descriptionTone === 'danger' ? 'danger' : undefined}
+          >{option.description}</span
+        >
       {/if}
     </span>
+    {#if optionMeta}
+      <span class="cinder-combobox__option-meta">{@render optionMeta(option)}</span>
+    {:else if option.meta}
+      <span class="cinder-combobox__option-meta">{option.meta}</span>
+    {/if}
+    {#if selectedIndicator === 'end' && value === option.value}
+      {@render checkMark(true)}
+    {/if}
   </li>
+{/snippet}
+
+{#snippet optionList()}
+  <ul
+    bind:this={listboxElement}
+    id={listboxId}
+    role="listbox"
+    class="cinder-combobox__listbox"
+    aria-label={label ?? (ariaLabel?.trim() || undefined)}
+    hidden={filteredOptions.length === 0 || undefined}
+  >
+    {#each optionSections as section (section.group ?? '')}
+      {#if section.group === undefined}
+        {#each section.members as member (member.option.value)}
+          {@render optionRow(member.option, member.index)}
+        {/each}
+      {:else}
+        <li role="presentation" class="cinder-_option-group">
+          <div role="presentation" class="cinder-_option-group__heading">
+            <span id="{id}-group-{section.sectionIndex}" class="cinder-_option-group__label"
+              >{section.group}</span
+            >
+            {#if groupCountVisible}
+              <span class="cinder-_option-group__count" aria-hidden="true"
+                >{section.members.length}</span
+              >
+            {/if}
+          </div>
+          <ul
+            role="group"
+            class="cinder-_option-group__options"
+            aria-labelledby="{id}-group-{section.sectionIndex}"
+          >
+            {#each section.members as member (member.option.value)}
+              {@render optionRow(member.option, member.index)}
+            {/each}
+          </ul>
+        </li>
+      {/if}
+    {/each}
+  </ul>
+{/snippet}
+
+{#snippet panelBody()}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    bind:this={contentElement}
+    class="cinder-combobox__content"
+    data-cinder-presentation={presentation}
+    onkeydown={handlePanelKeydown}
+    onmousedown={handlePanelMousedown}
+  >
+    {#if isPicker}
+      <div class="cinder-combobox__search">
+        <ComboboxSearch
+          id="{id}-search"
+          class="cinder-combobox__search-field"
+          value={searchQuery}
+          placeholder={searchPlaceholder}
+          aria-label={searchPlaceholder}
+          role="combobox"
+          autocomplete="off"
+          aria-autocomplete="list"
+          aria-expanded={true}
+          aria-controls={listboxId}
+          aria-activedescendant={activeOptionId}
+          onValueChange={handleSearchChange}
+          onkeydown={handleKeydown}
+          onblur={handleBlur}
+        />
+        {#if matchCountVisible && searchQuery}
+          <span class="cinder-combobox__match-count" role="status"
+            >{matchedOptions.length} of {options.length}</span
+          >
+        {/if}
+      </div>
+    {/if}
+    {#if loadError}
+      <div bind:this={loadErrorElement} class="cinder-combobox__load-error" role="alert">
+        <div class="cinder-combobox__load-error-text">
+          <span class="cinder-combobox__load-error-title">{loadError.title}</span>
+          {#if loadError.description}
+            <span class="cinder-combobox__load-error-description">{loadError.description}</span>
+          {/if}
+        </div>
+        {#if onRetry}
+          <Button
+            variant="secondary"
+            size="sm"
+            label={loadError.retryLabel ?? 'Try again'}
+            onclick={() => onRetry()}
+          />
+        {/if}
+      </div>
+    {/if}
+    {@render optionList()}
+    {#if emptyListed}
+      <!--
+        COR-499: plain, non-interactive visible copy — no role="option" (this
+        is not a selectable/fake option), no aria-disabled, no aria-selected.
+        Zero role="option" elements exist anywhere while the result set is
+        empty; the associated status description lives outside the panel, in
+        `.cinder-combobox__empty-status` below.
+      -->
+      <div class="cinder-combobox__empty" data-cinder-active>{noMatchText}</div>
+    {/if}
+    {#if footer}
+      <div bind:this={footerElement} class="cinder-combobox__footer">
+        {@render footer(footerContext)}
+      </div>
+    {/if}
+  </div>
 {/snippet}
 
 {#snippet comboboxControl()}
   <div class="cinder-combobox__control" data-cinder-open={open || undefined}>
-    <input
-      bind:this={inputElement}
-      {id}
-      type="text"
-      role="combobox"
-      class="cinder-combobox__input"
-      data-cinder-size={size}
-      autocomplete="off"
-      autocorrect="off"
-      spellcheck="false"
-      disabled={resolvedDisabled}
-      required={resolvedRequired}
-      {placeholder}
-      value={textInputValue}
-      aria-autocomplete="list"
-      aria-label={ariaLabel?.trim() || undefined}
-      aria-expanded={open}
-      aria-controls={open ? listboxId : undefined}
-      aria-activedescendant={activeOptionId}
-      aria-invalid={field.ariaInvalid}
-      aria-required={resolvedRequired || undefined}
-      aria-describedby={composeDescribedBy(describedBy, emptyVisible ? emptyStatusId : undefined)}
-      oninput={handleInput}
-      onfocus={handleFocus}
-      onblur={handleBlur}
-      onkeydown={handleKeydown}
-    />
+    {#if isPicker}
+      <button
+        bind:this={triggerElement}
+        {id}
+        type="button"
+        role="combobox"
+        class="cinder-combobox__input cinder-combobox__trigger"
+        data-cinder-size={size}
+        data-cinder-open={open || undefined}
+        disabled={resolvedDisabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        aria-label={ariaLabel?.trim() || undefined}
+        aria-invalid={field.ariaInvalid}
+        aria-required={resolvedRequired || undefined}
+        aria-busy={loading || undefined}
+        aria-describedby={describedBy}
+        onclick={handleTriggerClick}
+        onmousedown={handleTriggerMousedown}
+        onkeydown={handleTriggerKeydown}
+      >
+        {#if loading}
+          <span class="cinder-combobox__trigger-value" data-cinder-placeholder>{loadingLabel}</span>
+        {:else if selectedOption}
+          <span class="cinder-combobox__trigger-heading">
+            <span class="cinder-combobox__trigger-value">{selectedOption.label}</span>
+            {#if selectedOption.code}
+              <code class="cinder-combobox__option-code">{selectedOption.code}</code>
+            {/if}
+          </span>
+          {#if selectedOption.description}
+            <span class="cinder-combobox__trigger-description">{selectedOption.description}</span>
+          {/if}
+        {:else}
+          <span class="cinder-combobox__trigger-value" data-cinder-placeholder
+            >{placeholder ?? ''}</span
+          >
+        {/if}
+      </button>
+    {:else}
+      <input
+        bind:this={inputElement}
+        {id}
+        type="text"
+        role="combobox"
+        class="cinder-combobox__input"
+        data-cinder-size={size}
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        disabled={resolvedDisabled}
+        readonly={loading || undefined}
+        required={resolvedRequired}
+        placeholder={loading ? loadingLabel : placeholder}
+        value={textInputValue}
+        aria-autocomplete="list"
+        aria-label={ariaLabel?.trim() || undefined}
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        aria-activedescendant={activeOptionId}
+        aria-invalid={field.ariaInvalid}
+        aria-required={resolvedRequired || undefined}
+        aria-busy={loading || undefined}
+        aria-describedby={composeDescribedBy(describedBy, emptyVisible ? emptyStatusId : undefined)}
+        oninput={handleInput}
+        onfocus={handleFocus}
+        onblur={handleBlur}
+        onkeydown={handleKeydown}
+      />
+    {/if}
+    <span class="cinder-combobox__chevron" aria-hidden="true"></span>
   </div>
+
+  {#if loading && stillLoadingAfter !== undefined}
+    <!-- Skeleton's own status line, drawn alone: the field above is the placeholder. -->
+    <div class="cinder-combobox__still-loading">
+      <Skeleton {stillLoadingAfter} {...onCancel ? { onCancel } : {}} />
+    </div>
+  {/if}
 
   {#if name}
     <input
@@ -580,12 +997,13 @@
     />
   {/if}
 
-  {#if panelMounted && !mountedIsEmpty}
+  {#if panelMounted}
     <Popover
       bind:open
-      id={listboxId}
-      triggerRef={inputElement}
-      role="listbox"
+      id="{id}-panel"
+      triggerRef={isPicker ? triggerElement : inputElement}
+      role="group"
+      {...panelLabel ? { label: panelLabel } : {}}
       focusManagement="preserve"
       wireTriggerAria={false}
       closeOnEscape={false}
@@ -597,75 +1015,18 @@
         panelMounted = false;
       }}
     >
-      <ul bind:this={listboxElement} role="presentation" class="cinder-combobox__listbox">
-        {#each optionSections as section (section.group ?? '')}
-          {#if section.group === undefined}
-            {#each section.members as member (member.option.value)}
-              {@render optionRow(member.option, member.index)}
-            {/each}
-          {:else}
-            <li role="presentation" class="cinder-_option-group">
-              <div role="presentation" class="cinder-_option-group__heading">
-                <span id="{id}-group-{section.sectionIndex}" class="cinder-_option-group__label"
-                  >{section.group}</span
-                >
-                <span class="cinder-_option-group__count" aria-hidden="true"
-                  >{section.members.length}</span
-                >
-              </div>
-              <ul
-                role="group"
-                class="cinder-_option-group__options"
-                aria-labelledby="{id}-group-{section.sectionIndex}"
-              >
-                {#each section.members as member (member.option.value)}
-                  {@render optionRow(member.option, member.index)}
-                {/each}
-              </ul>
-            </li>
-          {/if}
-        {/each}
-      </ul>
-    </Popover>
-  {/if}
-
-  {#if panelMounted && mountedIsEmpty}
-    <Popover
-      bind:open
-      id={listboxId}
-      triggerRef={inputElement}
-      role="listbox"
-      focusManagement="preserve"
-      wireTriggerAria={false}
-      closeOnEscape={false}
-      widthMode="match-anchor"
-      {sheetBelow}
-      portalScopeClass={classNames('cinder-combobox', className)}
-      class="cinder-combobox__empty-panel"
-      onExitComplete={() => {
-        panelMounted = false;
-      }}
-    >
-      <!--
-        COR-499: plain, non-interactive visible copy — no role="option" (this
-        is not a selectable/fake option), no aria-disabled, no aria-selected.
-        Zero role="option" elements exist anywhere while the result set is
-        empty; the associated status description lives outside this listbox,
-        in `.cinder-combobox__empty-status` below.
-      -->
-      <div class="cinder-combobox__empty" data-cinder-active>No results</div>
+      {@render panelBody()}
     </Popover>
   {/if}
 
   <!-- The one status description for the empty result set, kept outside the
-       listbox (never a descendant of the `role="listbox"` Popover panels
-       above) and referenced from the input's aria-describedby — the same
-       describedby-based association CommandMenu uses from its own
-       `role="listbox"` element (command-menu.svelte's `emptyStateId`). Always
-       mounted, like FormFieldFrame's error region, so aria-live is registered
-       before text is injected. -->
+       panel and referenced from the input's aria-describedby — the same
+       describedby-based association CommandMenu uses from its `role="listbox"`
+       element (command-menu.svelte's `emptyStateId`). Always mounted, like
+       FormFieldFrame's error region, so aria-live is registered before text is
+       injected. -->
   <div id={emptyStatusId} class="cinder-combobox__empty-status" role="status">
-    {emptyVisible ? 'No results' : ''}
+    {emptyVisible ? noMatchText : ''}
   </div>
 {/snippet}
 

@@ -6,8 +6,8 @@
     {
       "id": "basic",
       "title": "Basic empty state",
-      "description": "Title, description, and an action button.",
-      "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n  import { EmptyState } from '@lostgradient/cinder';\n</script>\n\n<EmptyState title=\"No results found\" description=\"Try adjusting your filters or search query.\">\n  {#snippet action()}\n    <Button variant=\"primary\" label=\"Clear filters\" />\n  {/snippet}\n</EmptyState>\n"
+      "description": "A first-use state: title, one sentence and a primary button.",
+      "code": "<script lang=\"ts\">\n  import { Button, EmptyState } from '@lostgradient/cinder';\n</script>\n\n<EmptyState\n  title=\"No hooks yet\"\n  description=\"A hook does something when an event happens: send a webhook, start a workflow, or notify you.\"\n>\n  {#snippet action()}\n    <Button variant=\"primary\" label=\"New hook\" />\n  {/snippet}\n</EmptyState>\n"
     },
     {
       "id": "with-icon",
@@ -17,9 +17,9 @@
     },
     {
       "id": "kinds",
-      "title": "First use, filtered, and done",
-      "description": "Three reasons a view is empty: nothing yet, a filter hid everything, and all work finished.",
-      "code": "<script lang=\"ts\">\n  import { Button, EmptyState } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: grid; gap: 1.5rem;\">\n  <EmptyState kind=\"first-use\" title=\"No runs yet\" description=\"Start a workflow to see its runs here.\">\n    {#snippet action()}\n      <Button variant=\"primary\" label=\"Start a run\" />\n    {/snippet}\n  </EmptyState>\n  <EmptyState\n    kind=\"filtered\"\n    title=\"No runs match\"\n    description=\"Nothing matches the current filters. Clear them to see every run.\"\n    onClearFilters={() => {}}\n  />\n  <EmptyState kind=\"done\" title=\"All caught up\" description=\"Every approval has been answered.\" />\n</div>\n"
+      "title": "Every kind",
+      "description": "Why a view is empty sets the disc: first use is accent with a primary button, filtered is neutral with a secondary Clear filters, done is green with a quiet link, blocked is amber, not-found is neutral and disabled is neutral with a plug, for content a setting you chose holds back.",
+      "code": "<script lang=\"ts\">\n  import { Button, EmptyState, Link } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: grid; gap: 1.5rem;\">\n  <EmptyState kind=\"first-use\" title=\"No runs yet\" description=\"Start a workflow to see its runs here.\">\n    {#snippet action()}\n      <Button variant=\"primary\" label=\"Start a run\" />\n    {/snippet}\n  </EmptyState>\n  <EmptyState\n    kind=\"filtered\"\n    title=\"No runs match these filters\"\n    description=\"Model switcher has no runs. Try another agent.\"\n    onClearFilters={() => {}}\n  />\n  <EmptyState\n    kind=\"done\"\n    title=\"All caught up\"\n    description=\"Nothing is waiting on you. When an agent asks for approval, it shows up here.\"\n  >\n    {#snippet action()}\n      <Link href=\"/reviews/done\">See past decisions</Link>\n    {/snippet}\n  </EmptyState>\n  <EmptyState\n    kind=\"blocked\"\n    title=\"Connect a model provider\"\n    description=\"Model agents can't answer until one is connected.\"\n  />\n  <EmptyState\n    kind=\"disabled\"\n    title=\"2 agents are unavailable\"\n    description=\"Their plugin, Demo, is disabled. Enable it and restart to chat with them.\"\n  />\n  <EmptyState\n    kind=\"not-found\"\n    title=\"This run doesn't exist\"\n    description=\"It may have been deleted. The address might also be mistyped.\"\n  />\n</div>\n"
     },
     {
       "id": "compact",

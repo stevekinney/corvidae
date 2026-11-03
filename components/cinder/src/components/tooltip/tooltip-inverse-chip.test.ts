@@ -28,3 +28,16 @@ describe('tooltip inverse chip tokens', () => {
     expect(tokens).not.toContain('--cinder-border-inverse: var(--cinder-border-strong)');
   });
 });
+
+describe('tooltip text wrapping', () => {
+  const stylesheet = Bun.file(new URL('./tooltip.css', import.meta.url)).text();
+
+  test('a long label wraps inside the max width instead of running past the chip', async () => {
+    const css = await stylesheet;
+    const block = css.match(/\.cinder-tooltip\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(block).toContain('max-width: 16rem');
+    expect(block).toContain('white-space: normal');
+    expect(block).toContain('overflow-wrap: anywhere');
+    expect(block).not.toContain('nowrap');
+  });
+});

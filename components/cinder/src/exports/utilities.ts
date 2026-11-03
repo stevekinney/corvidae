@@ -26,6 +26,8 @@ export { useResizeObserver } from '../utilities/use-resize-observer.svelte.ts';
 
 export { useToast } from '../utilities/use-toast.ts';
 
+export { parseCommandQuery } from '../utilities/command-query.ts';
+export type { CommandQueryScope, ParsedCommandQuery } from '../utilities/command-query.ts';
 export {
   dragRegionClass,
   dragRegionProps,

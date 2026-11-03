@@ -22,7 +22,24 @@
     "retryLabel": {
       "type": "string",
       "description": "Visible label for the retry button after a load error.",
-      "default": "Retry loading"
+      "default": "Try again"
+    },
+    "loadedCount": {
+      "type": "number",
+      "description": "How many items the list shows now. With `totalCount` the footer reads \"Showing 10 of 19\" next\nto its button, and keeps that count when a load fails."
+    },
+    "totalCount": {
+      "type": "number",
+      "description": "How many items exist in all; pairs with `loadedCount`."
+    },
+    "itemLabel": {
+      "type": "string",
+      "description": "What the list holds, in the plural, for the failure message: \"runs\" gives \"Couldn’t load more\nruns.\"",
+      "default": "items"
+    },
+    "errorMessage": {
+      "type": "string",
+      "description": "Replaces the whole failure message shown after `onLoadMore` rejects. By default it reads\n\"Couldn’t load more {itemLabel}.\" followed by the count when `loadedCount` and `totalCount`\nare set."
     },
     "endOfListMessage": {
       "type": "string",

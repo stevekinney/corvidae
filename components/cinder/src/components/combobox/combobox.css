@@ -30,7 +30,8 @@
     display: block;
     width: 100%;
     min-height: var(--cinder-control-height-md);
-    padding: var(--cinder-space-1) var(--cinder-space-3);
+    padding-block: var(--cinder-space-1);
+    padding-inline: var(--cinder-space-3) var(--cinder-space-8);
     font-size: var(--cinder-text-sm);
     font-family: inherit;
     line-height: var(--cinder-leading-normal);
@@ -53,6 +54,92 @@
   .cinder-combobox__input[data-cinder-size='lg'] {
     min-height: var(--cinder-control-height-lg);
     padding-block: var(--cinder-space-2);
+  }
+
+  .cinder-combobox__input::placeholder {
+    color: var(--cinder-text-subtle);
+  }
+
+  /* The trigger of a picker is a button: it reads like the input and fills the field. */
+  .cinder-combobox__trigger {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  /* Two lines when the chosen option has a description: its name, then the sentence. */
+  .cinder-combobox__trigger-heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-combobox__trigger-value {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-combobox__trigger-heading .cinder-combobox__trigger-value {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-combobox__trigger-value[data-cinder-placeholder] {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-combobox__trigger-description {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-combobox__trigger:disabled {
+    cursor: not-allowed;
+  }
+
+  .cinder-combobox__trigger:disabled .cinder-combobox__trigger-value,
+  .cinder-combobox__trigger:disabled .cinder-combobox__trigger-description {
+    color: var(--cinder-text-disabled);
+  }
+
+  /* Decorative chevron, painted with a mask so it follows the text colour through themes. The
+     control keeps it in every state: loading, error, open. */
+  .cinder-combobox__chevron {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: var(--cinder-space-2);
+    inline-size: 1rem;
+    block-size: 1rem;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--cinder-text-muted);
+    background-color: currentColor;
+
+    --_cinder-combobox-chevron-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+
+    -webkit-mask-image: var(--_cinder-combobox-chevron-mask);
+    mask-image: var(--_cinder-combobox-chevron-mask);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: 1rem 1rem;
+    mask-size: 1rem 1rem;
+  }
+
+  .cinder-combobox__input:disabled + .cinder-combobox__chevron {
+    color: var(--cinder-text-disabled);
   }
 
   /* Sticky-hover suppression on touch. */
@@ -89,49 +176,135 @@
     cursor: not-allowed;
   }
 
-  /* COR-1981: the panel is the `role="listbox"` the input's `aria-controls`
-     names, and it is the scroller. axe's `scrollable-region-focusable` exempts
-     a scroller that is itself a combobox's popup and fails a presentational
-     wrapper that scrolls with nothing in the tab order; a tab stop on the
-     scroller would instead compete with the input, which keeps focus.
+  /* COR-1981: the `role="listbox"` element the input's `aria-controls` names is the scroller.
+     axe's `scrollable-region-focusable` exempts a scroller that is itself a combobox's popup and
+     fails a presentational wrapper that scrolls with nothing in the tab order; a tab stop on
+     the scroller would instead compete with the field, which keeps focus. The search field, the
+     load error and the footer sit outside the listbox, so they stay put while it scrolls and
+     are never inside a `role="listbox"` that may hold only options.
 
-     The list stays 16rem tall, as it was when the list inside the panel was the
-     scroller, so the cap is 16rem plus the panel's own padding and border. The
-     padding is stated here (it is the Popover surface's `space-3`) so the cap
-     cannot drift from it. The surface's own viewport limit stays in force, so on a
-     short screen the panel is no taller than the viewport and still scrolls. */
+     The list stays 16rem tall; the panel's own viewport limit stays in force, so on a short
+     screen the panel is no taller than the viewport and the list still scrolls. */
   .cinder-combobox__panel.cinder-popover {
     margin: var(--cinder-space-1) 0 0 0;
-    padding: var(--cinder-space-3);
+    padding: var(--cinder-space-1);
     min-inline-size: 0;
     max-inline-size: min(32rem, calc(100vw - var(--cinder-space-4)));
-    max-block-size: min(
-      calc(16rem + 2 * var(--cinder-space-3) + 2px),
-      calc(100vh - var(--cinder-space-4))
-    );
-    overflow-y: auto;
+    overflow: hidden;
   }
 
-  /* Docked sheet: the sheet's own 90dvh cap would let a long list fill the
-     sheet. The list was 16rem there too, so this keeps it, and 90dvh stays the
-     upper bound: the sheet is anchored to the bottom edge, so a taller one would
-     push its first rows above a short viewport. The sheet's border is the top
-     edge alone and its bottom padding clears the safe area. */
+  .cinder-combobox__content {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    max-block-size: min(28rem, calc(100vh - var(--cinder-space-8)));
+  }
+
+  /* Docked sheet: the sheet's own 90dvh cap would let a long list fill the sheet, so it keeps
+     the same cap, and 90dvh stays the upper bound. The sheet's border is the top edge alone and
+     its bottom padding clears the safe area. */
   .cinder-combobox__panel.cinder-popover[data-cinder-sheet='docked'] {
     padding-block-end: max(var(--cinder-space-1), env(safe-area-inset-bottom));
-    max-block-size: min(
-      calc(
-        16rem + 1px + var(--cinder-space-3) +
-          max(var(--cinder-space-1), env(safe-area-inset-bottom))
-      ),
-      90dvh
-    );
   }
 
   .cinder-combobox__listbox {
     margin: 0;
     padding: 0;
     list-style: none;
+    min-block-size: 0;
+    max-block-size: 16rem;
+    overflow-y: auto;
+  }
+
+  /* The picker's rows are two lines tall, so its list shows a little more before it scrolls. */
+  .cinder-combobox__content[data-cinder-presentation='picker'] .cinder-combobox__listbox {
+    max-block-size: 20rem;
+  }
+
+  .cinder-combobox__listbox[hidden] {
+    display: none;
+  }
+
+  /* The picker's search field sits above the options with its match count beside it. */
+  .cinder-combobox__search {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-1) var(--cinder-space-1) var(--cinder-space-2);
+    border-block-end: 1px solid var(--cinder-border-muted);
+    margin-block-end: var(--cinder-space-1);
+  }
+
+  .cinder-combobox__search-field {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-combobox__match-count {
+    flex: none;
+    font-size: var(--cinder-text-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--cinder-text-muted);
+  }
+
+  /* The list failed to load: what failed, what still works, and a way to try again below the
+     text, above the options that did load. It is a message in the panel, not a banner, so the
+     title reads in neutral ink and only the alert role carries the urgency. */
+  .cinder-combobox__load-error {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    margin-block-end: var(--cinder-space-1);
+    padding: var(--cinder-space-2);
+    border-block-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-combobox__load-error-text {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-combobox__load-error-title {
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-combobox__load-error-description {
+    color: var(--cinder-text-muted);
+  }
+
+  /* Content under the options that stays put while they scroll: "No match? Create one". */
+  .cinder-combobox__footer {
+    flex: none;
+    margin-block-start: var(--cinder-space-1);
+    padding: var(--cinder-space-2) var(--cinder-space-2) var(--cinder-space-1);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-muted);
+  }
+
+  /* A link in the footer reads as an accent word, not as underlined body text. */
+  .cinder-combobox__footer a {
+    color: var(--cinder-accent-text);
+    font-weight: var(--cinder-font-semibold);
+    text-decoration: none;
+  }
+
+  .cinder-combobox__footer a:hover {
+    text-decoration: underline;
+  }
+
+  /* Skeleton's status line, drawn alone under the field: its placeholder bars are the field. */
+  .cinder-combobox__still-loading .cinder-skeleton-lines {
+    display: none;
   }
 
   /* Geometry, padding, active fill, keyboard cursor ring, and disabled state
@@ -152,30 +325,104 @@
   }
 
   .cinder-combobox__option-text {
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    min-width: 0;
+    min-inline-size: 0;
+  }
+
+  /* The label, with a raw identifier beside it when the option has one. */
+  .cinder-combobox__option-heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
   }
 
   .cinder-combobox__option-label {
+    flex: 1 1 auto;
+    min-inline-size: 0;
     line-height: inherit;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-combobox__option-code {
+    flex: none;
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-default);
+  }
+
+  /* Muted words after the name on its own line (an option's suffix), plain even in the chosen row. */
+  .cinder-combobox__option-suffix {
+    font-weight: var(--cinder-font-normal);
+    color: var(--cinder-text-muted);
   }
 
   .cinder-combobox__option-description {
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
     line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
   }
 
-  .cinder-combobox__option[aria-selected='true'] {
-    font-weight: var(--cinder-font-medium);
+  /* A reason the row is wrong: the words carry it, the colour agrees. */
+  .cinder-combobox__option-description[data-cinder-tone='danger'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-combobox__option-meta {
+    flex: none;
+    min-inline-size: 5.25rem;
+    text-align: end;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  /* A row with lines under the label keeps its trailing text on the label's line. */
+  .cinder-combobox__option:has(.cinder-combobox__option-description) {
+    align-items: flex-start;
+  }
+
+  .cinder-combobox__option:has(.cinder-combobox__option-description) .cinder-combobox__option-meta {
+    line-height: var(--cinder-leading-normal);
+  }
+
+  /* The chosen option: the accent tint and a check, the same current-item look the sidebar uses.
+     The keyboard cursor keeps its inset ring on top. */
+  .cinder-_option-row.cinder-combobox__option[aria-selected='true'] {
+    background: var(--cinder-accent-background);
+  }
+
+  .cinder-combobox__option[aria-selected='true'] .cinder-combobox__option-label {
+    font-weight: var(--cinder-font-semibold);
     color: var(--cinder-accent-text);
   }
 
-  .cinder-combobox__empty-panel {
-    margin: var(--cinder-space-1) 0 0 0;
-    min-inline-size: 0;
-    max-inline-size: unset;
+  .cinder-combobox__option-check {
+    flex: none;
+    align-self: center;
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-combobox__option-check:not([data-cinder-visible]) {
+    visibility: hidden;
+  }
+
+  /* After the text, the check sits at the trailing edge. */
+  .cinder-combobox__option-text ~ .cinder-combobox__option-check {
+    margin-inline-start: auto;
+  }
+
+  .cinder-combobox__option[aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  .cinder-combobox__option[aria-disabled='true']
+    .cinder-combobox__option-description:not([data-cinder-tone]),
+  .cinder-combobox__option[aria-disabled='true'] .cinder-combobox__option-meta {
+    color: var(--cinder-text-muted);
   }
 
   .cinder-combobox__empty {

@@ -19,6 +19,12 @@
   import type { TabsProps } from './tabs.types.ts';
   import { setTabsContext } from './tabs-context.ts';
 
+  import {
+    PHONE_VIEWPORT_BREAKPOINT,
+    readViewportBreakpoint,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
+  import Select from '../select/select.svelte';
   import { handleRovingKeydown, isRovingKey } from '../../utilities/roving-tabindex.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { commitValue } from '../../utilities/value-change.ts';
@@ -30,6 +36,8 @@
     onValueChangeRequest,
     onValueChange,
     orientation = 'horizontal',
+    collapseBelow = PHONE_VIEWPORT_BREAKPOINT,
+    collapseLabel = 'Tab',
     fill = false,
     activateOnFocus,
     class: className,
@@ -42,7 +50,14 @@
   // panel content too).
   const effectiveActivateOnFocus = $derived(activateOnFocus ?? orientation === 'horizontal');
 
-  type RegistryEntry = { button: HTMLButtonElement | undefined; disabled: boolean };
+  type RegistryEntry = {
+    button: HTMLButtonElement | undefined;
+    disabled: boolean;
+    /** Plain-text name in the narrow form's select; `undefined` until the tab is on the page. */
+    label: string | undefined;
+    /** Muted line under the name in that select, such as "1 needs attention". */
+    note: string | undefined;
+  };
 
   /**
    * Registry of tab buttons keyed by their `value`. Order of registration
@@ -74,6 +89,26 @@
 
   $effect(() => {
     mounted = true;
+  });
+
+  // Below `collapseBelow` a horizontal tab bar becomes one select. The choice is made in script,
+  // not CSS, and the viewport reads wide on the server, so server markup is always the tab bar.
+  const collapseBreakpoint = $derived(
+    orientation === 'horizontal'
+      ? readViewportBreakpoint(collapseBelow, 'Tabs', 'collapseBelow')
+      : undefined,
+  );
+  const viewport = useViewportBelow(() => collapseBreakpoint);
+  const collapsed = $derived(viewport.current);
+
+  const collapseOptions = $derived.by(() => {
+    void version;
+    return [...buttons].map(([registeredValue, entry]) => ({
+      value: registeredValue,
+      label: entry.label ?? registeredValue,
+      disabled: entry.disabled,
+      ...(entry.note === undefined ? {} : { note: entry.note }),
+    }));
   });
 
   const focusableValue = $derived.by(() => {
@@ -203,6 +238,9 @@
     get orientation() {
       return orientation;
     },
+    get collapsed() {
+      return collapsed;
+    },
     get activateOnFocus() {
       return effectiveActivateOnFocus;
     },
@@ -229,7 +267,15 @@
       // rerun, so a rerun that finds the entry already present is a no-op
       // rather than clobbering the seeded `disabled` state.
       if (buttons.has(target)) return;
-      buttons.set(target, { button: undefined, disabled });
+      buttons.set(target, { button: undefined, disabled, label: undefined, note: undefined });
+      version += 1;
+    },
+    setLabel(target, nextLabel, note) {
+      const existing = buttons.get(target);
+      if (!existing) return;
+      if (existing.label === nextLabel && existing.note === note) return;
+      existing.label = nextLabel;
+      existing.note = note;
       version += 1;
     },
     attachButton(target, button) {
@@ -296,6 +342,32 @@
   class={classNames('cinder-tabs', className)}
   data-cinder-orientation={orientation}
   data-cinder-fill={fill ? '' : undefined}
+  data-cinder-collapsed={collapsed ? '' : undefined}
 >
+  {#if collapsed}
+    <!-- The narrow form: one full-width select reading "Tab: Access". The tab bar below it is
+       hidden, not removed, so every tab still registers and still names its panel. -->
+    <Select
+      id={`${baseId}-collapse`}
+      class="cinder-tabs__collapse"
+      presentation="listbox"
+      label={collapseLabel}
+      labelVisible={false}
+      valuePrefix={`${collapseLabel}:`}
+      {value}
+      options={collapseOptions}
+      {...onValueChangeRequest === undefined ? {} : { onValueChangeRequest }}
+      onValueChange={(next) => {
+        commitValue(
+          next,
+          undefined,
+          (nextValue) => {
+            value = nextValue;
+          },
+          onValueChange,
+        );
+      }}
+    />
+  {/if}
   {@render children()}
 </div>

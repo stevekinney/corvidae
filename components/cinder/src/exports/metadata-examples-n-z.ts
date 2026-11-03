@@ -51,6 +51,7 @@ import speedDialExamplesJson from '../components/speed-dial/speed-dial.examples.
 import spinnerExamplesJson from '../components/spinner/spinner.examples.json' with { type: 'json' };
 import stackExamplesJson from '../components/stack/stack.examples.json' with { type: 'json' };
 import stackedListItemExamplesJson from '../components/stacked-list-item/stacked-list-item.examples.json' with { type: 'json' };
+import staleRegionExamplesJson from '../components/stale-region/stale-region.examples.json' with { type: 'json' };
 import statisticGroupExamplesJson from '../components/statistic-group/statistic-group.examples.json' with { type: 'json' };
 import statusDotExamplesJson from '../components/status-dot/status-dot.examples.json' with { type: 'json' };
 import stepsExamplesJson from '../components/steps/steps.examples.json' with { type: 'json' };
@@ -179,6 +180,8 @@ export const spinnerExamples = spinnerExamplesJson;
 export const stackExamples = stackExamplesJson;
 /** Code examples for this component. */
 export const stackedListItemExamples = stackedListItemExamplesJson;
+/** Code examples for this component. */
+export const staleRegionExamples = staleRegionExamplesJson;
 /** Code examples for this component. */
 export const statisticGroupExamples = statisticGroupExamplesJson;
 /** Code examples for this component. */

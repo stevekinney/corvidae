@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -173,30 +173,60 @@ describe('ThemeSwitch — disabled', () => {
 });
 
 describe('ThemeSwitch — quiet sky and night track', () => {
-  test('the track is derived from tokens, never a literal color', () => {
+  test('colors are oklch values or tokens, never hex or legacy color functions', () => {
     expect(themeSwitchCss).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(themeSwitchCss).not.toMatch(/\b(?:rgb|rgba|hsl|hsla|hwb|lab|lch)\(/);
-    const all = themeSwitchCss.match(/oklch\(/g) ?? [];
-    const derived =
-      themeSwitchCss.match(/oklch\(from var\(--cinder-[a-z-]+\) [\d.]+% [\d.]+ h\)/g) ?? [];
-    expect(all.length).toBeGreaterThan(0);
-    expect(derived.length).toBe(all.length);
   });
 
-  test('each position paints its own track', () => {
-    const track = (value: string) =>
-      new RegExp(
-        `\\.cinder-theme-switch\\[data-cinder-value='${value}'\\]\\s*\\{[^}]*--_cinder-theme-switch-track:\\s*([^;]+);`,
-      ).exec(themeSwitchCss)?.[1];
-    expect(track('light')).toContain('oklch(from var(--cinder-status-info-solid) 93%');
-    expect(track('dark')).toContain('oklch(from var(--cinder-status-info-solid) 27%');
-    expect(track('system')).toBeUndefined();
+  function declaration(value: string, property: string): string | undefined {
+    return new RegExp(
+      `\\.cinder-theme-switch\\[data-cinder-value='${value}'\\]\\s*\\{[^}]*${property}:\\s*([^;]+);`,
+    ).exec(themeSwitchCss)?.[1];
+  }
+
+  test('each position paints the agreed track and border: pale sky, neutral, deep night', () => {
+    const track = '--_cinder-theme-switch-track';
+    const border = 'border-color';
+    expect(declaration('light', track)).toBe('oklch(93% 0.04 235)');
+    expect(declaration('light', border)).toBe('oklch(84% 0.05 235)');
+    expect(declaration('dark', track)).toBe('oklch(25% 0.05 265)');
+    expect(declaration('dark', border)).toBe('oklch(38% 0.05 265)');
+    expect(declaration('system', track)).toBeUndefined();
     expect(themeSwitchCss).toContain('--_cinder-theme-switch-track: var(--cinder-surface-inset);');
+    expect(themeSwitchCss).toContain('border: 1px solid var(--cinder-border);');
+  });
+
+  test('the raised thumb is white behind Light and a lifted night blue behind Dark', () => {
+    expect(declaration('light', '--_cinder-theme-switch-thumb')).toBe('oklch(100% 0 255)');
+    expect(declaration('dark', '--_cinder-theme-switch-thumb')).toBe('oklch(42% 0.06 265)');
+    expect(declaration('dark', '--_cinder-theme-switch-icon-selected')).toBe('oklch(97% 0.01 265)');
+    expect(declaration('dark', '--_cinder-theme-switch-icon')).toBe('oklch(80% 0.03 265)');
+  });
+
+  test('each position is 34px by 26px with a 15px icon, in a 32px track', () => {
+    expect(themeSwitchCss).toContain('--_cinder-theme-switch-segment-inline: 2.125rem;');
+    expect(themeSwitchCss).toContain('--_cinder-theme-switch-segment-block: 1.625rem;');
+    expect(themeSwitchCss).toMatch(/\.cinder-theme-switch__icon\s*\{[^}]*inline-size: 0\.9375rem/);
   });
 
   test('the thumb slides by a logical offset and honours reduced motion and forced colors', () => {
     expect(themeSwitchCss).toContain('inset-inline-start: calc(');
     expect(themeSwitchCss).toContain('@media (prefers-reduced-motion: reduce)');
     expect(themeSwitchCss).toContain('@media (forced-colors: active)');
+  });
+});
+
+describe('ThemeSwitch element references', () => {
+  test('binds its option buttons through reactive state, so Svelte raises no non-reactive binding warning', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(ThemeSwitch, { props: { value: 'system', onValueChange: () => {} } });
+      const messages = warn.mock.calls.map((call) => String(call[0]));
+      expect(
+        messages.filter((message) => message.includes('binding_property_non_reactive')),
+      ).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

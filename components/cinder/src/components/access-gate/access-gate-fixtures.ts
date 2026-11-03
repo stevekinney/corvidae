@@ -30,4 +30,11 @@ export default [
       variant: 'section',
     },
   },
+  {
+    name: 'page-denied',
+    host: './access-gate.fixture.svelte',
+    props: {
+      variant: 'page',
+    },
+  },
 ];

@@ -35,6 +35,7 @@
     currentToken = 'page',
     disabled = false,
     controls,
+    count,
     leading,
     trailing,
     children,
@@ -46,6 +47,14 @@
   const context = getSegmentedControlContext();
 
   const buttonValue = $derived(value ?? href ?? '');
+
+  // Zero is a real count ("Running 0"), so only a missing or non-finite number hides it.
+  const countPending = $derived(count === 'pending');
+  const countValue = $derived(
+    typeof count === 'number' && Number.isFinite(count)
+      ? Math.max(0, Math.trunc(count))
+      : undefined,
+  );
 
   const registerSegment: Attachment<HTMLButtonElement> = (node) => {
     // Attachments run inside a tracked effect. Wrap the call to register() in
@@ -104,7 +113,19 @@
   <!-- children: Snippet is required in TypeScript but the optional-chain is a
      JS-caller safety net. Segment requires SegmentedControl's group context to
      render so it can't be tested standalone; the guard is verified at code level. -->
-  {@render children?.()}
+  <!-- The count follows the label with no whitespace between them. Its comma is hidden by a
+     zero-size inline box, not by `cinder-sr-only`: an absolutely positioned node is blockified,
+     and a browser puts a space around a block when it builds a name from content, which would
+     read "Waiting on you , 2". -->
+  {@render children?.()}{#if countPending}<span
+      class="cinder-segmented-control-option-count"
+      data-cinder-count-pending=""
+      ><span class="cinder-segmented-control-option-count-separator">, loading</span><span
+        aria-hidden="true">–</span
+      ></span
+    >{:else if countValue !== undefined}<span class="cinder-segmented-control-option-count"
+      ><span class="cinder-segmented-control-option-count-separator">, </span>{countValue}</span
+    >{/if}
   {#if trailing}
     <span class="cinder-segmented-control-option-trailing" aria-hidden="true">
       {@render trailing()}

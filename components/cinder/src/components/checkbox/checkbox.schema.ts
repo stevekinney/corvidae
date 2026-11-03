@@ -33,6 +33,12 @@ const schema = {
       type: 'string',
       description: 'Validation error message; sets `aria-invalid="true"` and `aria-describedby`.',
     },
+    mutating: {
+      type: 'boolean',
+      description:
+        "Marks a checkbox that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, a press is undone, and the region's reason describes it.\nIt returns by itself when the region stops being stale.",
+      default: false,
+    },
     class: {
       type: 'string',
       description: 'Extra class names merged with `.cinder-checkbox`.',

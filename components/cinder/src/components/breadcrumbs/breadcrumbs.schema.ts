@@ -14,6 +14,25 @@ const schema = {
       description: 'Accessible name for the nav landmark.',
       default: 'Breadcrumb',
     },
+    collapseBelow: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          const: false,
+        },
+      ],
+      description:
+        "Viewport width below which the trail collapses to a back link and the current page. A simple\nCSS length such as `'640px'`, or `false` to always show the whole trail.",
+      default: '640px',
+    },
+    backLabel: {
+      type: 'string',
+      description:
+        "Accessible name of the phone back link; `{label}` is replaced by the parent's label.",
+      default: 'Back to {label}',
+    },
     class: {
       type: 'string',
       description: 'Additional class names merged with `.cinder-breadcrumbs`.',

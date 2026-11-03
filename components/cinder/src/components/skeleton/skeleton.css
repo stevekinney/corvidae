@@ -46,6 +46,105 @@
     background: var(--cinder-surface);
   }
 
+  /* List variant: the placeholder for a status-first list. A bordered surface holds an optional
+   * day band and rows of a fixed 8rem status column (the stacked-list-item column), two text
+   * bars and a time bar. No leading circle or avatar is drawn, so nothing shifts when the real
+   * rows arrive. The group is a size container so a phone drops the status under the text. */
+  .cinder-skeleton-group[data-cinder-variant='list'] {
+    container-type: inline-size;
+    container-name: cinder-skeleton;
+  }
+
+  .cinder-skeleton-list {
+    overflow: hidden;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+  }
+
+  .cinder-skeleton-day-band {
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3-5);
+    /* A tint toward the inset, never the inset itself: the bars paint the inset in light mode
+     * and would vanish on it. */
+    background: color-mix(in oklch, var(--cinder-surface), var(--cinder-surface-inset) 40%);
+    border-block-end: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-skeleton-row {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr) auto;
+    grid-template-areas: 'status text time';
+    align-items: start;
+    column-gap: var(--cinder-space-3);
+    padding-block: var(--cinder-space-2-5);
+    padding-inline: var(--cinder-space-3-5);
+  }
+
+  .cinder-skeleton-row + .cinder-skeleton-row {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-skeleton-row-status {
+    grid-area: status;
+  }
+
+  .cinder-skeleton-row-text {
+    grid-area: text;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-skeleton-row-time {
+    grid-area: time;
+  }
+
+  .cinder-skeleton-row-status,
+  .cinder-skeleton-row-text,
+  .cinder-skeleton-row-time {
+    padding-block-start: var(--cinder-space-1);
+  }
+
+  .cinder-skeleton-day-bar {
+    height: 0.625rem;
+    width: 8.75rem;
+  }
+
+  .cinder-skeleton-status-bar {
+    height: 0.625rem;
+    width: 4rem;
+  }
+
+  .cinder-skeleton-title-bar {
+    height: 0.625rem;
+    width: 55%;
+  }
+
+  .cinder-skeleton-meta-bar {
+    height: 0.5rem;
+    width: 80%;
+  }
+
+  .cinder-skeleton-time-bar {
+    height: 0.625rem;
+    width: 2.75rem;
+  }
+
+  @container cinder-skeleton (max-width: 448px) {
+    .cinder-skeleton-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'text time'
+        'status .';
+      row-gap: var(--cinder-space-2);
+    }
+  }
+
+  .cinder-skeleton-group[data-cinder-variant='list'] > .cinder-skeleton-status {
+    justify-content: center;
+  }
+
   .cinder-skeleton-heading {
     height: 1.25em;
     width: 40%;

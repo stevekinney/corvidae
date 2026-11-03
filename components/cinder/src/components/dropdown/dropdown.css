@@ -31,6 +31,11 @@
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* Inert (a stale region's mutating menu): muted like a disabled button, but it keeps focus. */
+  .cinder-dropdown-trigger[aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
   .cinder-dropdown-trigger:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow:
@@ -188,7 +193,7 @@
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
  * "stick" after tap. Placed before :active rules so press feedback wins on tap. */
   @media (hover: hover) {
-    .cinder-dropdown-trigger:hover:not([aria-expanded='true']) {
+    .cinder-dropdown-trigger:hover:not([aria-expanded='true']):not([aria-disabled='true']) {
       background: var(--cinder-surface-hover);
     }
 

@@ -56,17 +56,20 @@ describe('Modal', () => {
     expect(panelRule).toContain('transition:');
     expect(css).toContain('.cinder-modal__panel[data-cinder-closing]');
 
-    // Modal declares two separate `@starting-style` blocks (backdrop, then
-    // panel) — assert each independently rather than assuming they're
-    // adjacent in the source.
+    // Modal declares three `@starting-style` blocks (backdrop, panel, and the
+    // bottom sheet's panel) — assert each independently rather than assuming
+    // they're adjacent in the source.
     const startingStyleBlocks = Array.from(
       css.matchAll(/@starting-style\s*\{[\s\S]*?\n {2}\}/g),
     ).map((match) => match[0]);
-    expect(startingStyleBlocks.length).toBe(2);
+    expect(startingStyleBlocks.length).toBe(3);
     expect(startingStyleBlocks.some((block) => block.includes('.cinder-modal::backdrop'))).toBe(
       true,
     );
     expect(startingStyleBlocks.some((block) => block.includes('.cinder-modal__panel'))).toBe(true);
+    expect(
+      startingStyleBlocks.some((block) => block.includes("[data-cinder-sheet='docked']")),
+    ).toBe(true);
   });
   test('dialog is in the DOM but has no open attribute when open=false (client-side)', () => {
     // In a browser context $effect runs, setting mounted=true, so the <dialog> is always

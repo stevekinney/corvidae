@@ -505,3 +505,34 @@ describe('SearchField form reset behavior', () => {
     expect(input.value).toBe('second');
   });
 });
+
+describe('SearchField as the top bar trigger', () => {
+  test('reads "Search everything" with its "⌘K" hint inside one bordered field', () => {
+    const { container } = render(SearchField, {
+      props: { id: 'top-bar-search', placeholder: 'Search everything', shortcut: '⌘K' },
+    });
+    const input = requiredInstance(container.querySelector('#top-bar-search'), HTMLInputElement);
+
+    expect(input.getAttribute('placeholder')).toBe('Search everything');
+    expect(container.querySelector('.cinder-search-field__shortcut')?.textContent).toBe('⌘K');
+    // The icon, the input and the hint share one group, so one border and one ring surround them.
+    const group = input.closest('.cinder-input-group');
+    expect(group).not.toBeNull();
+    expect(group?.querySelector('.cinder-search-field__shortcut')).not.toBeNull();
+    expect(group?.querySelector('.cinder-search-field__icon')).not.toBeNull();
+  });
+
+  test('the shared quiet focus ring wraps the whole field, not the inner input', () => {
+    const inputStyles = readFileSync(new URL('../input/input.css', import.meta.url), 'utf8');
+    const rule = inputStyles.match(/\.cinder-input-group:focus-within\s*\{([^}]*)\}/)?.[1] ?? '';
+
+    // The same two-stop ring every control paints (2px, no offset, accent at 62% lightness)…
+    expect(rule).toContain('var(--cinder-ring-width)');
+    expect(rule).toContain('var(--cinder-ring-offset)');
+    expect(rule).toContain('var(--cinder-ring-color)');
+    // …painted on the group, so it surrounds the icon and the hint as well as the input.
+    expect(inputStyles).toMatch(
+      /\.cinder-input-group > \.cinder-input\s*\{[^}]*clip-path:\s*inset\(0\)/,
+    );
+  });
+});

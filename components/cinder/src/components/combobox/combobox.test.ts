@@ -625,7 +625,10 @@ describe('Combobox filtering', () => {
       expect(emptyState?.hasAttribute('role')).toBe(false);
       expect(emptyState?.hasAttribute('aria-selected')).toBe(false);
       expect(emptyState?.hasAttribute('aria-disabled')).toBe(false);
-      expect(emptyState?.closest('[role="listbox"]')?.id).toBe('fruit-listbox');
+      // The message sits in the panel beside the (hidden, empty) listbox the input controls,
+      // never inside it: a listbox holds only options.
+      expect(emptyState?.closest('[role="listbox"]') === null).toBe(true);
+      expect(document.getElementById('fruit-listbox')?.hasAttribute('hidden')).toBe(true);
       // The portaled empty panel preserves the `.cinder-combobox` root-scoped
       // styling hook (AGENTS.md § Conventions), so a consumer override such as
       // `.cinder-combobox.compact .cinder-combobox__empty` keeps matching even
@@ -723,7 +726,7 @@ describe('Combobox filtering', () => {
     flushSync();
     const emptyState = container.querySelector('.cinder-combobox__empty');
     const scopedPanel = document.body.querySelector(
-      '.cinder-combobox.compact .cinder-combobox__empty-panel',
+      '.cinder-combobox.compact .cinder-combobox__panel',
     );
     // Documents the AGENTS.md override hook: `.cinder-combobox.compact
     // .cinder-combobox__empty` must keep matching after the empty panel is
@@ -935,22 +938,19 @@ describe('Combobox keyboard', () => {
   test('the listbox the input controls is the scrolling surface (axe scrollable-region-focusable)', () => {
     // axe's `scrollable-region-focusable` exempts a scroller that is itself the
     // combobox's popup (`role="listbox"` named by the input's `aria-controls`),
-    // and fails a presentational wrapper inside it that scrolls with nothing
-    // focusable. The scroll therefore lives on the panel, never on the list
-    // inside it; a tab stop on the scroller would compete with the input.
+    // and fails a presentational wrapper that scrolls with nothing focusable. The
+    // scroll therefore lives on the listbox, never on the panel around it, so the
+    // search field, load error and footer stay put and are never inside a listbox.
     const styles = readComboboxStyles();
     const rule = (selector: string): string =>
       styles.match(new RegExp(`(?:^|\\n)\\s*${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
-    const panel = rule('\\.cinder-combobox__panel\\.cinder-popover');
-    expect(panel).toMatch(/overflow(-y)?:\s*auto/);
-    // The list is 16rem tall in the docked sheet too, not the sheet's 90dvh.
-    expect(panel).toMatch(/max-block-size:\s*min\(\s*calc\(16rem/);
-    // The surface's viewport limit is kept, so a short screen still scrolls the panel.
-    expect(panel).toMatch(/100vh/);
-    expect(
-      rule("\\.cinder-combobox__panel\\.cinder-popover\\[data-cinder-sheet='docked'\\]"),
-    ).toMatch(/max-block-size:\s*min\(\s*calc\(\s*16rem[\s\S]*90dvh/);
-    expect(rule('\\.cinder-combobox__listbox')).not.toMatch(/overflow/);
+    const listbox = rule('\\.cinder-combobox__listbox');
+    expect(listbox).toMatch(/overflow-y:\s*auto/);
+    // The list is 16rem tall, in the docked sheet too, not the sheet's 90dvh.
+    expect(listbox).toMatch(/max-block-size:\s*16rem/);
+    expect(rule('\\.cinder-combobox__panel\\.cinder-popover')).not.toMatch(/overflow(-y)?:\s*auto/);
+    // The surface's viewport limit is kept, so a short screen still fits the panel.
+    expect(rule('\\.cinder-combobox__content')).toMatch(/100vh/);
   });
 
   test('hovering a disabled option does not clear the keyboard-active option', async () => {

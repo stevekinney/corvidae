@@ -1,4 +1,5 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../kbd/kbd.css';
 @layer cinder.components {
   /* ========================================
  * COMMAND ITEM
@@ -24,6 +25,13 @@
     transition:
       background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* In the palette's bottom sheet a row is a full 44px target with softer corners (row 06c). */
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-item {
+    min-block-size: var(--cinder-touch-target-min);
+    padding-inline: var(--cinder-space-3);
+    border-radius: var(--cinder-radius-md);
   }
 
   .cinder-command-item[data-cinder-active] {
@@ -88,6 +96,21 @@
   }
 
   .cinder-command-item[data-cinder-active] .cinder-command-item__description {
+    color: currentColor;
+  }
+
+  /* A key sequence: "G then H". The keys are Kbd chips; "then" is muted text between them. */
+  .cinder-command-item__keys {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: var(--cinder-space-1);
+    margin-inline-start: auto;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-command-item[data-cinder-active] .cinder-command-item__keys {
     color: currentColor;
   }
 

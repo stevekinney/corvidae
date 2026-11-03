@@ -14,6 +14,12 @@
       "title": "Retry after a failed request",
       "description": "Rejected requests switch the button into retry mode so the user can recover explicitly.",
       "code": "<script lang=\"ts\">\n  import { LoadMore } from '@lostgradient/cinder';\n\n  let items = $state(['Alpha', 'Bravo', 'Charlie']);\n  let loading = $state(false);\n  let hasMore = $state(true);\n  let attempts = $state(0);\n\n  async function fetchNext() {\n    loading = true;\n    await new Promise<void>((resolve) =>\n      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),\n    );\n    attempts += 1;\n    loading = false;\n    if (attempts === 1) {\n      throw new Error('Temporary network failure');\n    }\n    items = [...items, 'Delta', 'Echo'];\n    hasMore = false;\n  }\n</script>\n\n<ul aria-busy={loading}>\n  {#each items as item}\n    <li>{item}</li>\n  {/each}\n</ul>\n\n<LoadMore onLoadMore={fetchNext} bind:loading bind:hasMore retryLabel=\"Try again\" />\n"
+    },
+    {
+      "id": "footer-count",
+      "title": "Footer with a count",
+      "description": "With loadedCount and totalCount the footer reads \"Showing 10 of 19\" beside its button. When a load fails it keeps the rows and the count, says \"Couldn’t load more runs. Showing 10 of 19.\", and offers Try again.",
+      "code": "<script lang=\"ts\">\n  import { LoadMore } from '@lostgradient/cinder';\n\n  const total = 19;\n  let loaded = $state(10);\n  let loading = $state(false);\n  let attempts = $state(0);\n  const hasMore = $derived(loaded < total);\n\n  async function fetchNext() {\n    loading = true;\n    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));\n    attempts += 1;\n    loading = false;\n    // The first press fails, so the retry state shows.\n    if (attempts === 1) throw new Error('Temporary network failure');\n    loaded = Math.min(total, loaded + 10);\n  }\n</script>\n\n<ul aria-busy={loading} style=\"margin: 0; padding-inline-start: 1.25rem;\">\n  {#each Array.from({ length: loaded }, (_, index) => index + 1) as run (run)}\n    <li>Run {run}</li>\n  {/each}\n</ul>\n\n<LoadMore\n  onLoadMore={fetchNext}\n  {hasMore}\n  bind:loading\n  loadedCount={loaded}\n  totalCount={total}\n  itemLabel=\"runs\"\n/>\n"
     }
   ]
 }

@@ -23,12 +23,18 @@ export type ToastPosition =
 export type ToastOptions = {
   /** Visual + live-region variant. Defaults to `info`. */
   variant?: ToastVariant;
-  /** Auto-dismiss after this many milliseconds. 0 = sticky. Defaults to 5000. */
+  /**
+   * Auto-dismiss after this many milliseconds. 0 = sticky. Defaults to the region's
+   * `defaultDuration` (5000), except that a `danger` toast, and an {@link ToastOptions.undo | undo}
+   * toast, default to sticky: a failure and an Undo stay until the person acts.
+   */
   duration?: number;
   /**
    * When true, user dismissal affordances are enabled (X button, Escape,
    * swipe). Programmatic removal via `dismiss`, `dismissAll`, overflow, and
-   * action default-dismiss still works when this is false.
+   * action default-dismiss still works when this is false. Defaults to true,
+   * except for an {@link ToastOptions.undo | undo} toast, which has no close
+   * button so the Undo is not lost to a stray click.
    */
   dismissible?: boolean;
   /** Stable id for deduplication / programmatic dismiss. Auto-generated otherwise. */
@@ -53,6 +59,12 @@ export type ToastOptions = {
    * is false.
    */
   action?: { label: string; onAction: () => void; keepOpen?: boolean };
+  /**
+   * Makes this an Undo toast: its action reads "Undo" and calls this function, and the toast
+   * stays until the person presses Undo or the page is left (`dismissUndo`), with no close button
+   * and no timer. Other toasts dismiss themselves. Ignored when `action` is also given.
+   */
+  undo?: () => void;
 };
 
 /** A single toast as tracked by the region. */
@@ -66,6 +78,8 @@ export type ToastItem = {
   showIcon: boolean;
   icon?: Snippet;
   action?: { label: string; onAction: () => void; keepOpen?: boolean };
+  /** Whether this is an Undo toast, which `dismissUndo` removes. */
+  undo?: boolean;
 };
 
 /** Imperative API exposed via Svelte context. */
@@ -76,6 +90,12 @@ export type ToastApi = {
   dismiss: (id: string) => void;
   /** Dismiss every active toast; ignores `dismissible`. */
   dismissAll: () => void;
+  /**
+   * Dismiss every active Undo toast and leave the rest. An Undo toast stays until the person acts
+   * or leaves the page, so a router calls this when the page changes; an Undo must not outlive
+   * the page it would undo a change on.
+   */
+  dismissUndo: () => void;
   /**
    * Show a sticky loading toast while a promise is pending, then replace it
    * with success or danger output when the promise settles. Late settlements

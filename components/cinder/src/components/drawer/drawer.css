@@ -144,36 +144,40 @@
 
     left: 0;
     right: 0;
-    bottom: 0;
+    /* A sheet rides above the on-screen keyboard: `--_cinder-keyboard-inset` is published while a
+     bottom drawer is open (keyboard-inset.ts) and is 0 without a keyboard. */
+    bottom: var(--_cinder-keyboard-inset, 0px);
     /* Declared after the size tokens so this always wins: the bottom
      placement spans the full viewport width regardless of `size`. */
     width: 100%;
     /* Physically bottom-anchored, so the viewport cap, the exposed edge's
      border, and the rounded corners all stay physical too — logical
      properties would rotate away from the top edge in vertical writing
-     modes while the panel itself stays pinned to the bottom. */
-    max-height: 90dvh;
+     modes while the panel itself stays pinned to the bottom. The cap shrinks by the keyboard, so
+     on a short viewport the body scrolls inside the sheet instead of the sheet outgrowing the
+     screen (row 05j). */
+    max-height: calc(90dvh - var(--_cinder-keyboard-inset, 0px));
     border-top: 1px solid var(--cinder-border);
     border-top-left-radius: var(--cinder-radius-lg);
     border-top-right-radius: var(--cinder-radius-lg);
   }
 
+  /* The grabber: a 36 by 4 pill in a 20px band (design row 05d). Decorative until swipe-to-close
+   ships, so no grab cursor. */
   .cinder-drawer__drag-handle {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    /* 44px minimum touch target. */
-    min-height: var(--cinder-touch-target-min);
+    min-height: var(--cinder-space-5);
     flex-shrink: 0;
-    /* The handle is decorative until swipe-to-close ships — no grab cursor. */
     cursor: default;
     user-select: none;
   }
 
   .cinder-drawer__drag-handle-pill {
     display: block;
-    width: 2.5rem;
+    width: 2.25rem;
     height: 0.25rem;
     border-radius: var(--cinder-radius-full);
     background: var(--cinder-border-control);
@@ -302,9 +306,15 @@
     }
   }
 
+  /* Reduced motion: no slide, a cross-fade instead (design row 05d). The fade itself is played from
+   * script (reduced-motion-fade.ts), because foundation.css forces every CSS transition and
+   * animation to 0.01ms under reduced motion. What CSS owes it is a panel that stays where it is:
+   * the slide vector is `none`, so the closing panel does not jump off screen before it fades. */
   @media (prefers-reduced-motion: reduce) {
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-drawer__panel {
+      --_cinder-drawer-slide: none;
+
       transition: none;
     }
 
@@ -312,5 +322,9 @@
       .cinder-drawer::backdrop {
       transition: none;
     }
+  }
+
+  :root[data-reduced-motion='on'] .cinder-drawer__panel {
+    --_cinder-drawer-slide: none;
   }
 }

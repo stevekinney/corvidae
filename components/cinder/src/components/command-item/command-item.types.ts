@@ -11,6 +11,13 @@ type CommandItemBaseProps = {
   accessibleLabel?: string | undefined;
   /** Keyboard shortcut exposed through `aria-keyshortcuts`, e.g. `Meta+N`. */
   keyboardShortcut?: string | undefined;
+  /**
+   * A key sequence shown at the end of the row, read as "G then H": each key in a `Kbd`, with "then"
+   * between them. One key shows alone ("C"). It is text in the row, so it joins the option's
+   * accessible name unless `accessibleLabel` is set; it does not set `aria-keyshortcuts`, which
+   * describes a chord, not a sequence. Pass `keyboardShortcut` as well for a chord.
+   */
+  keys?: readonly string[] | undefined;
   /** Leading content (icon, avatar). Rendered with aria-hidden. */
   leading?: Snippet;
   /** Trailing content (kbd hint, badge). Rendered with aria-hidden. */
