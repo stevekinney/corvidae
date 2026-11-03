@@ -94,8 +94,8 @@ describe('the sample world workflow files', () => {
       title: string;
       description: string;
       trigger: Record<string, unknown>;
-      input: { required: string[]; properties: Record<string, Record<string, unknown>> };
-      output: { required: string[] };
+      inputSchema: { required: string[]; properties: Record<string, Record<string, unknown>> };
+      outputSchema: { required: string[] };
       steps: Record<string, unknown>[];
     };
     expect(file.name).toBe('release-notes');
@@ -108,9 +108,10 @@ describe('the sample world workflow files', () => {
       overlap: 'skip',
       catchUp: false,
     });
-    expect(file.input.required).toEqual(['branch']);
-    expect(file.input.properties['since']?.['format']).toBe('date');
-    expect(file.output.required).toEqual(['notes']);
+    // The board's `input` and `output`, under the keys the file format keeps (decisions.md).
+    expect(file.inputSchema.required).toEqual(['branch']);
+    expect(file.inputSchema.properties['since']?.['format']).toBe('date');
+    expect(file.outputSchema.required).toEqual(['notes']);
     expect(file.steps.map((step) => step['title'])).toEqual([
       'Find the last release',
       'Collect merged changes',
