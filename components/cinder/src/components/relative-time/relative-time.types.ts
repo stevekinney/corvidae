@@ -16,6 +16,12 @@ export type RelativeTimeProps = Omit<HTMLTimeAttributes, 'class' | 'datetime'> &
    * the clock ("Today, 10:44 AM", "Sun Nov 1, 4:12 PM"). The tooltip carries the other reading.
    */
   format?: 'relative' | 'absolute';
+  /**
+   * Which days the label may name with a word. `true` says "Today", "Yesterday" and "Tomorrow";
+   * `'today'` says only "Today" and names every other day ("Sun Nov 1, 4:12 PM"); `false` always
+   * names the calendar day. Defaults to `'today'` for `format="absolute"` and `true` for `relative`.
+   */
+  dayWords?: boolean | 'today';
   /** Recalculate the label on an interval. Set false to disable ticking. */
   tick?: boolean;
   children?: Snippet;

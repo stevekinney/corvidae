@@ -83,19 +83,13 @@ A title clamps at two lines (`titleLines`) and an unbroken value, such as a long
 
 ### A row that fails
 
-A row that cannot load its details is an ordinary row with no `href`: it keeps its status, title and time on line one, and its `meta` carries the message with its own secondary button. The rest of the list stays live; there is no banner and no full-page error.
+A row that cannot load its details passes `error`: it keeps its status, title and time on line one, and line two says the message beside a warning glyph, in the danger text colour, with the row's own secondary "Try again" button when you pass `onRetryClick` (rename it with `retryLabel`). The rest of the list stays live; there is no banner and no full-page error. A row with an `error` is not a link, and the message replaces `meta`.
 
 ```svelte
-<StackedListItem>
+<StackedListItem error="Couldn't load this run's details." onRetryClick={retry}>
   {#snippet status()}<StatusDot word="Waiting on you" />{/snippet}
   {#snippet title()}Refund order 4471{/snippet}
   {#snippet time()}10:42 AM{/snippet}
-  {#snippet meta()}
-    <span class="failure">
-      <span>Couldn't load this run's details.</span>
-      <Button size="sm" onclick={retry}>Try again</Button>
-    </span>
-  {/snippet}
 </StackedListItem>
 ```
 
@@ -133,6 +127,7 @@ Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each i
 | `class` | `string` | no | — | Merged with `cinder-stacked-list-item`. |
 | `collapseLabel` | `string` | no | — | Text of the button that closes a group row. Default `Hide`. |
 | `density` | `"comfortable"` \| `"condensed"` | no | — | Density token surfaced as `data-cinder-density`. When omitted, inherits the enclosing DataList's list-level `density` (if any), then falls back to `comfortable`. An explicit value here always overrides the list default. |
+| `error` | `string` | no | — | A row whose own details failed to load: line two says this message beside a warning glyph, in the danger text colour, in place of `meta`, and the rest of the list stays live (there is no banner and no full-page error). Pass `onRetryClick` for the secondary "Try again" button that belongs to the row. A row with an `error` is not a link. |
 | `expanded` | `boolean` | no | — | Whether a group row's `details` are showing. Bindable; default `false`. |
 | `expandLabel` | `string` | no | — | Text of the button that opens a group row. Default `Show`. |
 | `groupLayout` | `"row"` \| `"band"` | no | — | How a group row is drawn. Default `row`. |
@@ -142,6 +137,7 @@ Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each i
 | `lines` | `boolean` | no | — | Draws the two-line layout (bold title, one-line muted description or meta, a trailing region centred beside both lines) for a row that has no status, time or details to trigger it. A row with a `leadingTone` tile and `actions` is the usual case. |
 | `metaTooltip` | `string` | no | — | Line two as text, shown as a tooltip over line two, which ends in an ellipsis when it is long. Set it to the same text the `meta` (or `description`) snippet renders. |
 | `rel` | `string` \| `null` | no | — | `rel` attribute forwarded to the title anchor; `noopener noreferrer` is merged automatically when `target="_blank"`. |
+| `retryLabel` | `string` | no | — | Text of the error's retry button. Default `Try again`. |
 | `selected` | `boolean` | no | — | Marks the row as the one open in the detail beside the list. It takes an accent tint, which stays when the pointer is over it, and sets `aria-current` on the row's link (or on the row when it is not a link). |
 | `statusColumn` | `boolean` | no | — | Keep the status column's width even when this row has no `status` (a workflow or an agent with nothing to report), so titles line up. Inherits the enclosing DataList's `statusColumn`. Setting it on a row that has a `status` has no effect. |
 | `statusPlacement` | `"leading"` \| `"line-two"` | no | — | Where the status sits. Default `leading`. |
@@ -153,6 +149,7 @@ Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each i
 | `details` | `(opaque)` | no | — | Turns the row into a collapsed group row (the missed runs on Runs): a "Show" / "Hide" button at the right of line one reveals this snippet beneath the row, aligned with the title. A group row is not a link. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | Leading visual (avatar, icon, status dot). With a status column it follows the column. Not expressible in JSON Schema; see the component types for the signature. |
 | `meta` | `(opaque)` | no | — | Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts under the title (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a control (an error with its own "Try again") may put one in. Not expressible in JSON Schema; see the component types for the signature. |
+| `onRetryClick` | `(opaque)` | no | — | Called when the row's "Try again" button is chosen. Without it the error shows no button. Not expressible in JSON Schema; see the component types for the signature. |
 | `status` | `(opaque)` | no | — | The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that every list on every page shares, so titles start at one x position down the list; on a phone it moves to line two, before the meta. The dot and word sit on the first line of the title. Not expressible in JSON Schema; see the component types for the signature. |
 | `target` | `(opaque)` | no | — | Browsing context for the title anchor (`_blank`, `_self`, `_parent`, `_top`, or a named frame). Not expressible in JSON Schema; see the component types for the signature. |
 | `time` | `(opaque)` | no | — | The time, or the next run, at the right edge of line one, aligned to its top. Pass a `RelativeTime` or a plain string. Not expressible in JSON Schema; see the component types for the signature. |

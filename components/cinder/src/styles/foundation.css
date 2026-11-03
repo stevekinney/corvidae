@@ -116,14 +116,17 @@
 
 /* Control size follows the pointer, not the viewport width. A fine pointer keeps the
    shared steps (`--cinder-control-height-sm` 28px, `-md` 32px) at every width, so a narrow
-   desktop window stays 32px. A coarse pointer raises both to `--cinder-touch-target-min`
+   desktop window stays 32px. A coarse pointer raises every step to `--cinder-touch-target-min`
    (44px), which every control reads through the height tokens (Button and icon Button,
    Select, SegmentedControl, Input, controls in sticky bars), and gives list rows a 44px
-   minimum. The row keeps one control height. The `xs` and `lg` steps are unchanged. */
+   minimum. The `xs` and `lg` steps rise too: an extra-small icon button is still a control,
+   and row 04h asks for 44px on every one. The row keeps one control height. */
 @media (pointer: coarse) {
   :root {
+    --cinder-control-height-xs: var(--cinder-touch-target-min);
     --cinder-control-height-sm: var(--cinder-touch-target-min);
     --cinder-control-height-md: var(--cinder-touch-target-min);
+    --cinder-control-height-lg: var(--cinder-touch-target-min);
     --cinder-list-row-min-height: var(--cinder-touch-target-min);
   }
 }

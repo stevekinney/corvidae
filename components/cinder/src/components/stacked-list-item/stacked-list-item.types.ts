@@ -117,6 +117,17 @@ type StackedListItemBase = ForwardedLiAttributes & {
    * that must carry a control (an error with its own "Try again") may put one in.
    */
   meta?: Snippet;
+  /**
+   * A row whose own details failed to load: line two says this message beside a warning glyph, in
+   * the danger text colour, in place of `meta`, and the rest of the list stays live (there is no
+   * banner and no full-page error). Pass `onRetryClick` for the secondary "Try again" button that
+   * belongs to the row. A row with an `error` is not a link.
+   */
+  error?: string;
+  /** Called when the row's "Try again" button is chosen. Without it the error shows no button. */
+  onRetryClick?: () => void;
+  /** Text of the error's retry button. Default `Try again`. */
+  retryLabel?: string;
   /** Trailing region (chevron, action button, dropdown trigger). */
   trailing?: Snippet;
   /**

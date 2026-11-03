@@ -23,6 +23,7 @@ It reads in the viewer's time zone on one 12-hour clock: "just now", "4 min ago"
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Custom class merged with `.cinder-relative-time`. |
+| `dayWords` | `false` \| `true` \| `"today"` | no | — | Which days the label may name with a word. `true` says "Today", "Yesterday" and "Tomorrow"; `'today'` says only "Today" and names every other day ("Sun Nov 1, 4:12 PM"); `false` always names the calendar day. Defaults to `'today'` for `format="absolute"` and `true` for `relative`. |
 | `format` | `"relative"` \| `"absolute"` | no | — | `relative` reads "4 min ago", "1 h ago", then "Yesterday, 4:12 PM". `absolute` always reads the clock ("Today, 10:44 AM", "Sun Nov 1, 4:12 PM"). The tooltip carries the other reading. |
 | `locale` | `string` \| `string`[] | no | — | Locale for the label. Defaults to the surrounding locale context, then the browser's language. |
 | `tick` | `boolean` | no | — | Recalculate the label on an interval. Set false to disable ticking. |

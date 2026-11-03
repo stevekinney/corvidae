@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Upcoming and past runs';
   export const description =
-    'The list variant with hollow pending rings, a Skip action on each upcoming run, the Now marker, and a separator where daylight saving time ended.';
+    'The list variant with hollow pending rings, a Skip action on each upcoming run, the Now marker, the missed runs once as a collapsed amber band below it, and a separator where daylight saving time ended.';
 </script>
 
 <script lang="ts">
@@ -20,6 +20,13 @@
     tone: 'pending',
   });
 
+  const missedRuns = [
+    'Mon Nov 2, 3:00 AM',
+    'Sun Nov 1, 3:00 AM',
+    'Sat Oct 31, 4:00 AM',
+    'Fri Oct 30, 4:00 AM',
+  ];
+
   const entries: TimelineEntry[] = [
     upcoming('nov-5', '2026-11-05T09:00:00Z'),
     upcoming('nov-4', '2026-11-04T09:00:00Z'),
@@ -30,6 +37,17 @@
       datetime: '2026-11-02T16:46:00Z',
       timestamp: formatDateTime(now, clock),
       title: 'Now',
+    },
+    {
+      id: 'missed',
+      kind: 'band',
+      tone: 'warning',
+      datetime: '2026-11-02T09:00:00Z',
+      timestamp: 'Mon Nov 2',
+      title: 'Missed 4 times since Oct 30',
+      detail: 'Interborough was off',
+      expandLabel: 'Show each',
+      collapseLabel: 'Hide',
     },
     {
       id: 'dst',
@@ -50,6 +68,13 @@
 
 <div style="max-width: 36rem;">
   <Timeline {entries} variant="list" label="Runs">
+    {#snippet children(entry)}
+      {#if entry.kind === 'band'}
+        <ul>
+          {#each missedRuns as run (run)}<li>{run}</li>{/each}
+        </ul>
+      {/if}
+    {/snippet}
     {#snippet actions(entry)}
       {#if entry.tone === 'pending'}
         <Button variant="secondary" size="sm">Skip</Button>

@@ -1,4 +1,8 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* A band entry renders a StackedListItem band group row with a StatusDot, so the styles they need
+ * travel with it. */
+@import '../stacked-list-item/stacked-list-item.css';
+@import '../status-dot/status-dot.css';
 @layer cinder.components {
   /* ========================================
  * TIMELINE
@@ -211,8 +215,16 @@
  * ---------------------------------------- */
 
   .cinder-timeline-item[data-cinder-kind='now'],
-  .cinder-timeline-item[data-cinder-kind='separator'] {
+  .cinder-timeline-item[data-cinder-kind='separator'],
+  .cinder-timeline-item[data-cinder-kind='band'] {
     padding-block: var(--cinder-space-2);
+  }
+
+  /* A band is a stacked-list-item group row in a list of its own, full width and without a rail. */
+  .cinder-timeline-item__band {
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
   .cinder-timeline-item__now,

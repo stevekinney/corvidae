@@ -1,9 +1,9 @@
 /**
  * COR-2010 (B02, rows 04h and 08g): control size follows the pointer.
  *
- * A fine pointer keeps `--cinder-control-height-sm` / `-md` at 28px / 32px at every width; under
- * `(pointer: coarse)` both become `--cinder-touch-target-min` (44px) and a list-row minimum of
- * 44px applies. These pin the CSS shape, because the media query cannot be evaluated here.
+ * A fine pointer keeps `--cinder-control-height-sm` / `-md` at 28px / 32px at every width (xs 24px,
+ * lg 40px); under `(pointer: coarse)` every step becomes `--cinder-touch-target-min` (44px) and a
+ * list-row minimum of 44px applies. These pin the CSS shape, because the media query cannot be evaluated here.
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -34,23 +34,25 @@ describe('control heights keyed to the pointer', () => {
   test('a fine pointer keeps 28px and 32px, whatever the width', () => {
     expect(tokens).toContain('--cinder-control-height-sm: 1.75rem;');
     expect(tokens).toContain('--cinder-control-height-md: 2rem;');
+    expect(tokens).toContain('--cinder-control-height-xs: 1.5rem;');
+    expect(tokens).toContain('--cinder-control-height-lg: 2.5rem;');
     expect(tokens).toContain('--cinder-list-row-min-height: 0px;');
     // No width query touches a control height: the size is the pointer's, not the viewport's.
     expect(foundation).not.toMatch(/@media[^{]*width[^{]*\{[^}]*--cinder-control-height/);
   });
 
-  test('a coarse pointer makes the sm and md steps the 44px touch target', () => {
+  test('a coarse pointer makes every step, xs to lg, the 44px touch target', () => {
     const block = coarseBlock();
+    expect(block).toContain('--cinder-control-height-xs: var(--cinder-touch-target-min);');
+    expect(block).toContain('--cinder-control-height-lg: var(--cinder-touch-target-min);');
     expect(block).toContain('--cinder-control-height-sm: var(--cinder-touch-target-min);');
     expect(block).toContain('--cinder-control-height-md: var(--cinder-touch-target-min);');
     expect(tokens).toContain('--cinder-touch-target-min: 44px;');
   });
 
-  test('a coarse pointer gives list rows a 44px minimum, and no other step moves', () => {
+  test('a coarse pointer gives list rows a 44px minimum', () => {
     const block = coarseBlock();
     expect(block).toContain('--cinder-list-row-min-height: var(--cinder-touch-target-min);');
-    expect(block).not.toContain('--cinder-control-height-xs');
-    expect(block).not.toContain('--cinder-control-height-lg');
     expect(stackedListItem).toContain('min-block-size: var(--cinder-list-row-min-height);');
   });
 

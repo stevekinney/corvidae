@@ -16,9 +16,11 @@ export type DateFormatOptions = {
   /**
    * Whether {@link formatDateTime} may say "Today", "Yesterday" and "Tomorrow". Defaults to true.
    * Set it to false for a schedule or an occurrence that must always name its calendar day
-   * ("Tue Nov 3, 3:00 AM"), even when that day is tomorrow.
+   * ("Tue Nov 3, 3:00 AM"), even when that day is tomorrow. Set it to `'today'` to say "Today"
+   * and name every other day ("Today, 10:44 AM", "Sun Nov 1, 4:12 PM"), the reading of an
+   * absolute "Updated" time.
    */
-  dayWords?: boolean | undefined;
+  dayWords?: boolean | 'today' | undefined;
 };
 
 /** Options for {@link formatRelativeTime}. */
@@ -172,7 +174,8 @@ function shortDayLabel(date: Date, now: Date, options: DateFormatOptions): strin
  * An absolute date and time in the viewer's zone on one 12-hour clock: "Today, 10:44 AM",
  * "Yesterday, 4:12 PM", "Sun Nov 1, 4:12 PM". Never relative; pair it with
  * {@link formatRelativeTime} in a tooltip. Pass `dayWords: false` to always name the calendar day
- * ("Tue Nov 3, 3:00 AM" rather than "Tomorrow, 3:00 AM").
+ * ("Tue Nov 3, 3:00 AM" rather than "Tomorrow, 3:00 AM"), or `dayWords: 'today'` to say only
+ * "Today" ("Sun Nov 1, 4:12 PM" rather than "Yesterday, 4:12 PM").
  */
 export function formatDateTime(input: DateInput, options: DateFormatOptions = {}): string {
   const date = toDate(input);
@@ -180,8 +183,12 @@ export function formatDateTime(input: DateInput, options: DateFormatOptions = {}
   const now = resolveNow(options.now);
   const time = formatTimeOfDay(date, options);
   const offset = daysBefore(date, now, options.timeZone);
+  const saysWord =
+    options.dayWords === 'today'
+      ? offset === 0
+      : options.dayWords !== false && (offset === 0 || offset === 1 || offset === -1);
   const label =
-    options.dayWords !== false && (offset === 0 || offset === 1 || offset === -1)
+    saysWord && (offset === 0 || offset === 1 || offset === -1)
       ? dayWord(offset, options.locale)
       : shortDayLabel(date, now, options);
   return `${label}, ${time}`;

@@ -32,14 +32,28 @@ const schema = {
             default: 'info',
           },
           kind: {
-            enum: ['event', 'now', 'separator'],
+            enum: ['event', 'now', 'separator', 'band'],
             description:
-              'What the entry is. For `now`, `title` is the pill\'s text ("Now") and `timestamp` the time at\nthe right. For `separator`, `title` is the label and `timestamp` and `datetime` say what moment\nit marks. Neither draws a marker, a connector, a body or actions.',
+              'What the entry is. For `now`, `title` is the pill\'s text ("Now") and `timestamp` the time at\nthe right. For `separator`, `title` is the label and `timestamp` and `datetime` say what moment\nit marks. Neither draws a marker, a connector, a body or actions. For `band`, `tone` tints the\nband (`warning` is amber, anything else neutral) and `title` is its bold text.',
             default: 'event',
           },
           groupLabel: {
             type: 'string',
             description: 'Optional day/week group label override. The first entry in a group wins.',
+          },
+          detail: {
+            type: 'string',
+            description: 'For a `band`: the muted text after the title ("Interborough was off").',
+          },
+          expandLabel: {
+            type: 'string',
+            description: 'For a `band`: the text of the button that opens it.',
+            default: 'Show',
+          },
+          collapseLabel: {
+            type: 'string',
+            description: 'For a `band`: the text of the button that closes it.',
+            default: 'Hide',
           },
         },
         additionalProperties: false,

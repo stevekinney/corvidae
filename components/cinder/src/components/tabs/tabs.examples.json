@@ -32,6 +32,12 @@
       "title": "Tabs with keyboard navigation",
       "description": "Focus a tab and use ←/→ to move; horizontal tablists activate on focus per the WAI-ARIA pattern.",
       "code": "<script lang=\"ts\">\n  import { Tabs } from '@lostgradient/cinder';\n  let active = $state('design');\n</script>\n\n<Tabs bind:value={active}>\n  <Tabs.List label=\"Workflow stages\">\n    <Tabs.Trigger value=\"design\">Design</Tabs.Trigger>\n    <Tabs.Trigger value=\"develop\">Develop</Tabs.Trigger>\n    <Tabs.Trigger value=\"ship\" disabled>Ship</Tabs.Trigger>\n    <Tabs.Trigger value=\"review\">Review</Tabs.Trigger>\n  </Tabs.List>\n\n  <Tabs.Panel value=\"design\">\n    <p>Sketch the user experience before writing code.</p>\n  </Tabs.Panel>\n  <Tabs.Panel value=\"develop\">\n    <p>Build the components and wire up the state.</p>\n  </Tabs.Panel>\n  <Tabs.Panel value=\"ship\">\n    <p>Disabled tab — its panel is unreachable.</p>\n  </Tabs.Panel>\n  <Tabs.Panel value=\"review\">\n    <p>Review and iterate based on feedback.</p>\n  </Tabs.Panel>\n</Tabs>\n"
+    },
+    {
+      "id": "with-count",
+      "title": "Tabs with an attention count",
+      "description": "A tab that holds something needing attention carries an amber count pill from `count`; a healthy tab (zero or no count) carries none. The count is part of the tab’s accessible name, so it never depends on colour.",
+      "code": "<script lang=\"ts\">\n  import { Tabs } from '@lostgradient/cinder';\n\n  let active = $state('workers');\n</script>\n\n<Tabs bind:value={active}>\n  <Tabs.List label=\"Health\">\n    <Tabs.Trigger value=\"overview\">Overview</Tabs.Trigger>\n    <Tabs.Trigger value=\"workers\" count={1} countLabel=\"needs attention\">Workers</Tabs.Trigger>\n    <Tabs.Trigger value=\"storage\" count={1} countLabel=\"needs attention\">Storage</Tabs.Trigger>\n    <Tabs.Trigger value=\"audit\" count={0}>Audit log</Tabs.Trigger>\n  </Tabs.List>\n\n  <Tabs.Panel value=\"overview\">\n    <p>Overview and Audit log carry no chip.</p>\n  </Tabs.Panel>\n  <Tabs.Panel value=\"workers\">\n    <p>One disconnected worker needs a look.</p>\n  </Tabs.Panel>\n  <Tabs.Panel value=\"storage\">\n    <p>One storage alert is firing.</p>\n  </Tabs.Panel>\n  <Tabs.Panel value=\"audit\">\n    <p>Nothing needs attention.</p>\n  </Tabs.Panel>\n</Tabs>\n"
     }
   ]
 }

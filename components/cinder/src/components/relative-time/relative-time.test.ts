@@ -118,6 +118,28 @@ describe('RelativeTime', () => {
     }
   });
 
+  test('absolute format says Today but names yesterday by its day (row 80h)', () => {
+    const realNow = Date.now;
+    Date.now = () => Date.UTC(2026, 10, 2, 16, 46);
+    try {
+      const read = (date: number, dayWords?: boolean | 'today') =>
+        render(RelativeTime, {
+          date,
+          format: 'absolute',
+          ...(dayWords === undefined ? {} : { dayWords }),
+          timeZone: 'America/Chicago',
+          locale: 'en-US',
+          tick: false,
+        }).container.querySelector('time')?.textContent;
+      expect(read(Date.UTC(2026, 10, 2, 16, 44))).toBe('Today, 10:44 AM');
+      expect(read(Date.UTC(2026, 10, 1, 22, 12))).toBe('Sun Nov 1, 4:12 PM');
+      expect(read(Date.UTC(2026, 10, 1, 22, 12), true)).toBe('Yesterday, 4:12 PM');
+      expect(read(Date.UTC(2026, 10, 2, 16, 44), false)).toBe('Mon Nov 2, 10:44 AM');
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   test('relative format carries the full dated reading in the tooltip', () => {
     const realNow = Date.now;
     Date.now = () => Date.UTC(2026, 10, 2, 16, 46);

@@ -5,6 +5,8 @@
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { statusDotWordTones } from '@lostgradient/cinder';
+
 import { GOAL_STATUSES } from './bureau-goals.ts';
 import type { TaskState } from './bureau-tasks.ts';
 import StatusLabel from './status-label.svelte';
@@ -12,7 +14,6 @@ import {
   goalStatusWord,
   scheduleStatusWord,
   STATUS_BADGE_VARIANTS,
-  STATUS_TONES,
   STATUS_WORDS,
   taskStatusWord,
   workflowRunStatusWord,
@@ -21,19 +22,18 @@ import {
 } from './status.ts';
 
 const TONES: readonly (readonly [StatusWord, string])[] = [
-  ['Running', 'accent'],
+  ['Running', 'info'],
   ['Waiting on you', 'warning'],
   ['Done', 'success'],
   ['Failed', 'danger'],
   ['Canceled', 'neutral'],
   ['Scheduled', 'pending'],
-  ['Paused', 'offline'],
+  ['Paused', 'neutral'],
 ];
 
 describe('the status vocabulary', () => {
-  test('is seven words, each with one tone and one badge variant', () => {
+  test('is seven words, each with one badge variant', () => {
     expect([...STATUS_WORDS]).toEqual(TONES.map(([word]) => word));
-    expect(Object.keys(STATUS_TONES).toSorted()).toEqual([...STATUS_WORDS].toSorted());
     expect(Object.keys(STATUS_BADGE_VARIANTS).toSorted()).toEqual([...STATUS_WORDS].toSorted());
   });
 
@@ -42,7 +42,7 @@ describe('the status vocabulary', () => {
     const dot = view.container.querySelector('[data-cinder-status]');
     expect(dot?.getAttribute('data-cinder-status')).toBe(tone);
     expect(view.getByText(word)).toBeTruthy();
-    expect(STATUS_TONES[word]).toBe(tone as never);
+    expect(statusDotWordTones[word]).toBe(tone as never);
     view.unmount();
   });
 });

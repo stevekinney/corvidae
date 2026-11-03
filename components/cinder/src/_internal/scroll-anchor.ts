@@ -27,8 +27,10 @@ export function captureScrollAnchor(list: HTMLElement): (() => void) | undefined
   if (scrolled <= 0) return undefined;
   const top = container ? container.getBoundingClientRect().top : 0;
 
-  // A leaf row (not a group holding rows) is the anchor, so a group header never is.
-  const anchor = [...list.querySelectorAll('li')].find(
+  // A leaf row (not a group holding rows) is the anchor, so a group header never is. The list's
+  // live region is an `<li role="presentation">` that takes no space and sits above every row, so it
+  // would be the first "visible" leaf and never move when a row arrives below it: it is not a row.
+  const anchor = [...list.querySelectorAll('li:not([role="presentation"])')].find(
     (row) => row.querySelector('li') === null && row.getBoundingClientRect().bottom > top,
   );
   if (anchor === undefined) return undefined;

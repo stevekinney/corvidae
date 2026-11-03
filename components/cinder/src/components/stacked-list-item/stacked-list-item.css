@@ -349,6 +349,34 @@
     white-space: nowrap;
   }
 
+  /* A row whose details failed to load (row 14q): line two is the message in the danger text
+   * colour beside a warning glyph, and the row's own secondary "Try again" button at the end. It
+   * wraps rather than truncating, because the message is the one thing the row has to say. */
+  .cinder-stacked-list-item__error {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    margin-block-start: var(--cinder-space-0-5);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-stacked-list-item__error-glyph {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .cinder-stacked-list-item__error-message {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-stacked-list-item__error > .cinder-button {
+    flex: none;
+  }
+
   /* The trailing region spans both lines and stays beside them. */
   .cinder-stacked-list-item--lines .cinder-stacked-list-item__trailing {
     margin-inline-start: var(--cinder-space-3);

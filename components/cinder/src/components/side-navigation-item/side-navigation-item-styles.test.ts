@@ -74,6 +74,20 @@ describe('vertical navigation item: one 30px control (rows 02m, 02n)', () => {
     expect(declaration(hover[0], 'color')).toBe('var(--cinder-text-default)');
     expect(declaration(hover[0], 'background-color')).toBe('var(--cinder-surface-hover)');
   });
+
+  test('a sidebar row hovers to a neutral ink tint, never the accent wash of --cinder-surface-hover', () => {
+    const strip = (selector: string) => selector.replaceAll(/\s+/g, '');
+    const wanted = strip(`${VERTICAL}:hover:not([aria-disabled='true'],[data-active='true'])`);
+    let tint: string | undefined;
+    parse(navigationItemCss).walkRules((rule) => {
+      if (rule.selectors.some((candidate) => strip(candidate) === wanted)) {
+        tint = declaration(rule, 'background-color');
+      }
+    });
+    expect(tint).toBe('color-mix(in oklch, var(--cinder-border-ink), transparent 94%)');
+    expect(tint).not.toContain('accent');
+    expect(tint).not.toContain('surface-hover');
+  });
 });
 
 describe('vertical navigation item: active (rows 02n, 02p)', () => {

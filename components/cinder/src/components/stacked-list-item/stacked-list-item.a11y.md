@@ -88,6 +88,10 @@ With `status`, `time` or `details` the row is a two-line grid: the status dot an
 
 The title is clamped at two lines with an ellipsis; set `tooltip` to the title's text so the full text is available on hover. Line two is one line that ends in an ellipsis, so give a long value its full text through the surrounding page (the detail page) rather than relying on the row.
 
+## Failed row
+
+A row with `error` says the message as plain text on line two; the warning glyph is decorative and hidden, so the message, not the colour, carries the meaning. The "Try again" button is described by the message (`aria-describedby`), so a list of several failed rows still tells them apart by their titles in reading order. A failed row is not a link.
+
 ## Group row
 
 A group row (`details`) is a non-link row with a real `<button>` that carries `aria-expanded` and `aria-controls`; the region is `hidden` while collapsed. Its name is the visible "Show" or "Hide", so pass `expandLabel` and `collapseLabel` that name what they open when several appear on a page.

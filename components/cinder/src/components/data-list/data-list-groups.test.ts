@@ -168,6 +168,23 @@ describe('scroll anchor', () => {
     scroller.remove();
   });
 
+  test('never anchors on the live region, which takes no space above the first row', () => {
+    const { scroller, list, rows } = listWithRows([-120, -70, -20, 30]);
+    const live = document.createElement('li');
+    live.setAttribute('role', 'presentation');
+    live.className = 'cinder-data-list-live';
+    // Zero height at the top of the list, still below the scroller's top edge.
+    live.getBoundingClientRect = () => ({ top: 10, bottom: 10, height: 0 }) as DOMRect;
+    list.prepend(live);
+    scroller.scrollTop = 200;
+    const restore = captureScrollAnchor(list);
+    expect(restore).toBeDefined();
+    for (const item of rows) item.moveTo(item.getBoundingClientRect().top + 50);
+    restore?.();
+    expect(scroller.scrollTop).toBe(250);
+    scroller.remove();
+  });
+
   test('does nothing when the browser already kept the row in place', () => {
     const { scroller, list } = listWithRows([-20, 30]);
     scroller.scrollTop = 200;

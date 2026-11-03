@@ -103,6 +103,9 @@
         title={entry.title}
         tone={entry.tone ?? 'info'}
         kind={entry.kind ?? 'event'}
+        detail={entry.detail}
+        expandLabel={entry.expandLabel}
+        collapseLabel={entry.collapseLabel}
         connectorAfter={renderEntry.connectorAfter}
         groupHeader={renderEntry.index === group.entries[0]?.index ? group.label : undefined}
         {groupHeaderLevel}

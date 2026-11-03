@@ -48,6 +48,15 @@ const schema = {
       description:
         'Line two as text, shown as a tooltip over line two, which ends in an ellipsis when it is long.\nSet it to the same text the `meta` (or `description`) snippet renders.',
     },
+    error: {
+      type: 'string',
+      description:
+        'A row whose own details failed to load: line two says this message beside a warning glyph, in\nthe danger text colour, in place of `meta`, and the rest of the list stays live (there is no\nbanner and no full-page error). Pass `onRetryClick` for the secondary "Try again" button that\nbelongs to the row. A row with an `error` is not a link.',
+    },
+    retryLabel: {
+      type: 'string',
+      description: "Text of the error's retry button. Default `Try again`.",
+    },
     actionsLabel: {
       type: 'string',
       description:
@@ -139,6 +148,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           'Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts\nunder the title (not under the status) and ends in an ellipsis rather than wrapping. A line\nthat must carry a control (an error with its own "Try again") may put one in.',
+      },
+      {
+        name: 'onRetryClick',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the row\'s "Try again" button is chosen. Without it the error shows no button.',
       },
       {
         name: 'status',

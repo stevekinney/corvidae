@@ -16,7 +16,10 @@
 
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
-  import type { TimelineHeadingLevel } from '../timeline/timeline.types.ts';
+  import StackedListItem from '../stacked-list-item/stacked-list-item.svelte';
+  import StatusDot from '../status-dot/status-dot.svelte';
+  import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
+  import type { TimelineHeadingLevel, TimelineTone } from '../timeline/timeline.types.ts';
   import type { TimelineItemProps } from './timeline-item.types.ts';
 
   let {
@@ -25,6 +28,9 @@
     title,
     tone = 'info',
     kind = 'event',
+    detail,
+    expandLabel = 'Show',
+    collapseLabel = 'Hide',
     connectorAfter = 'visible',
     groupHeader,
     groupHeaderLevel = 3,
@@ -45,8 +51,26 @@
       ? Math.min(6, Math.max(1, Math.trunc(Number(groupHeaderLevel))))
       : 3,
   );
+  // A band's dot follows the entry's tone, and is named for it so colour is never the only signal.
+  const bandDots: Record<TimelineTone, { status: StatusDotStatus; label: string }> = {
+    info: { status: 'info', label: 'Information' },
+    success: { status: 'success', label: 'Done' },
+    warning: { status: 'warning', label: 'Needs attention' },
+    error: { status: 'danger', label: 'Failed' },
+    pending: { status: 'pending', label: 'Pending' },
+  };
+  const bandDot = $derived(bandDots[tone]);
   const groupHeaderTag = $derived(`h${resolvedGroupHeaderLevel}` as `h${TimelineHeadingLevel}`);
 </script>
+
+{#snippet bandStatus()}
+  <StatusDot status={bandDot.status} label={bandDot.label} labelVisible={false} />
+{/snippet}
+{#snippet bandTitle()}{title}{/snippet}
+{#snippet bandDetail()}{detail}{/snippet}
+{#snippet bandDetails()}
+  {#if children}{@render children()}{/if}
+{/snippet}
 
 <li
   {...rest}
@@ -67,6 +91,21 @@
       <span class="cinder-timeline-item__rule" aria-hidden="true"></span>
       <time class="cinder-timeline-item__time" {datetime}>{timestamp}</time>
     </div>
+  {:else if kind === 'band'}
+    <!-- One collapsed group row below Now: the stacked-list-item band draws it, so it is not drawn twice. -->
+    <ul class="cinder-timeline-item__band">
+      <StackedListItem
+        groupLayout="band"
+        tone={tone === 'warning' ? 'warning' : 'neutral'}
+        {expandLabel}
+        {collapseLabel}
+        tooltip={title}
+        {...detail === undefined ? {} : { metaTooltip: detail, meta: bandDetail }}
+        status={bandStatus}
+        title={bandTitle}
+        details={bandDetails}
+      />
+    </ul>
   {:else if kind === 'separator'}
     <!-- A quiet labelled break. The rules are decoration; the label is the content. -->
     <div class="cinder-timeline-item__separator">

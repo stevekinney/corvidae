@@ -32,6 +32,11 @@ const schema = {
       description:
         '`relative` reads "4 min ago", "1 h ago", then "Yesterday, 4:12 PM". `absolute` always reads\nthe clock ("Today, 10:44 AM", "Sun Nov 1, 4:12 PM"). The tooltip carries the other reading.',
     },
+    dayWords: {
+      enum: [false, true, 'today'],
+      description:
+        'Which days the label may name with a word. `true` says "Today", "Yesterday" and "Tomorrow";\n`\'today\'` says only "Today" and names every other day ("Sun Nov 1, 4:12 PM"); `false` always\nnames the calendar day. Defaults to `\'today\'` for `format="absolute"` and `true` for `relative`.',
+    },
     tick: {
       type: 'boolean',
       description: 'Recalculate the label on an interval. Set false to disable ticking.',

@@ -305,6 +305,13 @@ describe('COR-2010 board forms', () => {
       );
     });
 
+    test("dayWords: 'today' says Today and names yesterday and tomorrow by their day (row 80h)", () => {
+      const today = { ...options, dayWords: 'today' } as const;
+      expect(formatDateTime(Date.UTC(2026, 10, 2, 16, 44), today)).toBe('Today, 10:44 AM');
+      expect(formatDateTime(Date.UTC(2026, 10, 1, 22, 12), today)).toBe('Sun Nov 1, 4:12 PM');
+      expect(formatDateTime(Date.UTC(2026, 10, 3, 9, 0), today)).toBe('Tue Nov 3, 3:00 AM');
+    });
+
     test('keeps the Nov 6 form of a later day', () => {
       expect(formatDateTime(Date.UTC(2026, 10, 6, 17, 0), { ...options, dayWords: false })).toBe(
         'Fri Nov 6, 11:00 AM',

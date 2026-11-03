@@ -38,7 +38,7 @@ See the [chronological display boundary decision](https://github.com/stevekinney
 
 ### Upcoming and past runs, around Now
 
-`variant="list"` draws the same entries as compact rows: no connector, a hairline between rows, the time first. The `pending` tone is a hollow neutral ring for something that has not happened yet. `kind: 'now'` is the marker for the current moment (an accent pill from `title`, a rule, and `timestamp` at the right), and `kind: 'separator'` is a quiet labelled rule, such as the day daylight saving time ended. Neither draws a marker, a connector, a body or actions. The `actions` snippet draws controls at the end of an event's row; unlike `marker`, they are interactive.
+`variant="list"` draws the same entries as compact rows: no connector, a hairline between rows, the time first. The `pending` tone is a hollow neutral ring for something that has not happened yet. `kind: 'now'` is the marker for the current moment (an accent pill from `title`, a rule, and `timestamp` at the right), and `kind: 'separator'` is a quiet labelled rule, such as the day daylight saving time ended. Neither draws a marker, a connector, a body or actions. `kind: 'band'` is one collapsed group row (the stacked-list-item band: a status dot, a chevron, `title`, muted `detail` and a toggle labelled `expandLabel`, "Show each" for the missed runs); `tone: 'warning'` makes it amber, and the entry's `children` are the details it opens. The `actions` snippet draws controls at the end of an event's row; unlike `marker`, they are interactive.
 
 ```svelte
 <script lang="ts">
@@ -95,7 +95,7 @@ Marker snippets are decorative. Do not place focusable or interactive content in
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-timeline`. |
-| `entries` | ({ datetime: `string`; groupLabel?: `string`; id: `string`; kind?: `"event"` \| `"now"` \| `"separator"`; timestamp: `string`; title: `string`; tone?: `"info"` \| `"success"` \| `"warning"` \| `"error"` \| `"pending"` })[] | yes | — | Timeline entries rendered in source order. |
+| `entries` | ({ collapseLabel?: `string`; datetime: `string`; detail?: `string`; expandLabel?: `string`; groupLabel?: `string`; id: `string`; kind?: `"event"` \| `"now"` \| `"separator"` \| `"band"`; timestamp: `string`; title: `string`; tone?: `"info"` \| `"success"` \| `"warning"` \| `"error"` \| `"pending"` })[] | yes | — | Timeline entries rendered in source order. |
 | `gapThresholdMinutes` | `number` | no | — | Hide the following connector when adjacent valid timestamps exceed this gap (in minutes). |
 | `groupBy` | `"none"` \| `"day"` \| `"week"` | no | `"none"` | Optional adjacent UTC day/week grouping mode. |
 | `groupHeaderLevel` | `1` \| `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level applied to rendered group headers. |

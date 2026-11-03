@@ -84,6 +84,7 @@
     locale,
     timeZone,
     format = 'relative',
+    dayWords,
     tick = true,
     class: customClassName,
     children,
@@ -104,8 +105,11 @@
     if (!validTimestamp) return 'Invalid date';
     const options = { locale: resolvedLocale, timeZone, now };
     return format === 'absolute'
-      ? formatDateTime(timestamp, options)
-      : formatRelativeTime(timestamp, options);
+      ? formatDateTime(timestamp, { ...options, dayWords: dayWords ?? 'today' })
+      : formatRelativeTime(timestamp, {
+          ...options,
+          ...(dayWords === undefined ? {} : { dayWords }),
+        });
   });
   // The other reading of the same moment, so the tooltip adds what the visible label leaves out.
   const tooltip = $derived.by(() => {

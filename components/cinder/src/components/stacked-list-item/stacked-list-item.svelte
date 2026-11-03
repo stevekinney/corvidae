@@ -31,7 +31,7 @@
 </script>
 
 <script lang="ts">
-  import { ChevronDown, ChevronRight, ChevronUp, Ellipsis } from '@lucide/svelte';
+  import { ChevronDown, ChevronRight, ChevronUp, Ellipsis, TriangleAlert } from '@lucide/svelte';
   import { getDataListContext } from '../../_internal/data-list-context.ts';
   import { phoneViewport } from '../../_internal/phone-viewport.svelte.ts';
   import type { StackedListItemProps } from './stacked-list-item.types.ts';
@@ -56,6 +56,9 @@
     description,
     meta,
     metaTooltip,
+    error,
+    onRetryClick,
+    retryLabel = 'Try again',
     trailing,
     actions,
     actionsLabel = 'More actions',
@@ -101,13 +104,19 @@
   const isBand = $derived(details !== undefined && groupLayout === 'band');
   const isLines = $derived(
     !isBand &&
-      (reservesStatusColumn || time !== undefined || details !== undefined || lines === true),
+      (reservesStatusColumn ||
+        time !== undefined ||
+        details !== undefined ||
+        lines === true ||
+        error !== undefined),
   );
-  // A group row is not a link: its only control is the disclosure button.
-  const linkHref = $derived(details === undefined ? href : undefined);
+  // A group row is not a link: its only control is the disclosure button. A row that failed to
+  // load is not a link either: its details are the thing that is missing.
+  const linkHref = $derived(details === undefined && error === undefined ? href : undefined);
   const phone = $derived(phoneViewport.current);
   const hasActions = $derived(actions !== undefined && actions.length > 0);
   const detailsId = $derived(`${generatedId}-details`);
+  const errorId = $derived(`${generatedId}-error`);
 
   /** Blocks a disabled action's click, as `aria-disabled` alone does not. */
   function guardDisabled(action: NonNullable<StackedListItemProps['actions']>[number]) {
@@ -176,6 +185,7 @@
     isLines && reservesStatusColumn && 'cinder-stacked-list-item--status-column',
     isLines && status && 'cinder-stacked-list-item--has-status',
     isBand && 'cinder-stacked-list-item--band',
+    error !== undefined && 'cinder-stacked-list-item--failed',
     details !== undefined && 'cinder-stacked-list-item--group',
     details !== undefined && `cinder-stacked-list-item--tone-${tone}`,
     selected && 'cinder-stacked-list-item--selected',
@@ -271,7 +281,24 @@
               {/if}
             </div>
           {/if}
-          {#if description || meta}
+          {#if error !== undefined}
+            <div class="cinder-stacked-list-item__line-two cinder-stacked-list-item__error">
+              <span class="cinder-stacked-list-item__error-glyph" aria-hidden="true">
+                <TriangleAlert size={14} />
+              </span>
+              <span id={errorId} class="cinder-stacked-list-item__error-message">{error}</span>
+              {#if onRetryClick}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-describedby={errorId}
+                  onclick={() => onRetryClick?.()}
+                >
+                  {retryLabel}
+                </Button>
+              {/if}
+            </div>
+          {:else if description || meta}
             <div class="cinder-stacked-list-item__line-two" title={metaTooltip}>
               {#if description}
                 <div class="cinder-stacked-list-item__description">{@render description()}</div>

@@ -11,9 +11,9 @@
     },
     {
       "id": "absolute",
-      "title": "Absolute time in Central time",
-      "description": "format=\"absolute\" always reads the clock (\"Today, 10:44 AM\", \"Sun Nov 1, 4:12 PM\") and puts the relative reading in the tooltip. timeZone sets the zone; it defaults to the viewer's.",
-      "code": "<script lang=\"ts\">\n  import { RelativeTime } from '@lostgradient/cinder';\n\n  const updated = new Date(Date.now() - 4 * 60_000);\n</script>\n\n<RelativeTime date={updated} format=\"absolute\" timeZone=\"America/Chicago\" tick={false} />\n"
+      "title": "Absolute time with a relative tooltip",
+      "description": "format=\"absolute\" always reads the clock (\"Today, 10:44 AM\", \"Sun Nov 1, 4:12 PM\"), never relative: it says Today and names every other day, and the relative reading moves into the tooltip. Pass dayWords={true} to say Yesterday too. Use it for an \"Updated\" column that has to name the moment.",
+      "code": "<script lang=\"ts\">\n  import { RelativeTime } from '@lostgradient/cinder';\n  import { onMount } from 'svelte';\n\n  // Read the clock in the browser, so the labels are relative to the reader's today: this morning,\n  // yesterday afternoon and five days ago.\n  let moments = $state<{ label: string; date: Date }[]>([]);\n  onMount(() => {\n    const at = (daysAgo: number, hours: number, minutes: number) => {\n      const date = new Date();\n      date.setDate(date.getDate() - daysAgo);\n      date.setHours(hours, minutes, 0, 0);\n      return date;\n    };\n    moments = [\n      { label: 'Updated', date: at(0, 10, 44) },\n      { label: 'Previous update', date: at(1, 16, 12) },\n      { label: 'First seen', date: at(5, 9, 20) },\n    ];\n  });\n</script>\n\n<dl\n  style=\"display: grid; grid-template-columns: max-content 1fr; gap: var(--cinder-space-1) var(--cinder-space-6); margin: 0; font-size: var(--cinder-text-sm);\"\n>\n  {#each moments as moment (moment.label)}\n    <dt style=\"color: var(--cinder-text-muted);\">{moment.label}</dt>\n    <dd style=\"margin: 0;\"><RelativeTime date={moment.date} format=\"absolute\" tick={false} /></dd>\n  {/each}\n</dl>\n"
     }
   ]
 }

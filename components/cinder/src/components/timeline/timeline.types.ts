@@ -9,9 +9,11 @@ export type TimelineTone = 'info' | 'success' | 'warning' | 'error' | 'pending';
  * What an entry is. `event` is an ordinary marker row. `now` is the marker for the current moment
  * (an accent pill, a rule, and the time at the right), placed between the upcoming and the past.
  * `separator` is a quiet labelled rule between two rows, for a break the reader should not
- * mistake for a gap, such as the day daylight saving time ended.
+ * mistake for a gap, such as the day daylight saving time ended. `band` is one collapsed group
+ * row with a tinted band, a chevron, the title, muted `detail` and a disclosure label: the missed
+ * runs of a schedule, shown once below Now. Its `children` are the details the band opens.
  */
-export type TimelineEntryKind = 'event' | 'now' | 'separator';
+export type TimelineEntryKind = 'event' | 'now' | 'separator' | 'band';
 /**
  * `rail` is the default: a vertical rail with a connector from marker to marker. `list` is the
  * same entries as compact rows, with no connector, a hairline between rows and the time first.
@@ -36,11 +38,18 @@ export type TimelineEntry = {
   /**
    * What the entry is. For `now`, `title` is the pill's text ("Now") and `timestamp` the time at
    * the right. For `separator`, `title` is the label and `timestamp` and `datetime` say what moment
-   * it marks. Neither draws a marker, a connector, a body or actions. @default "event"
+   * it marks. Neither draws a marker, a connector, a body or actions. For `band`, `tone` tints the
+   * band (`warning` is amber, anything else neutral) and `title` is its bold text. @default "event"
    */
   kind?: TimelineEntryKind | undefined;
   /** Optional day/week group label override. The first entry in a group wins. */
   groupLabel?: string | undefined;
+  /** For a `band`: the muted text after the title ("Interborough was off"). */
+  detail?: string | undefined;
+  /** For a `band`: the text of the button that opens it. @default "Show" */
+  expandLabel?: string | undefined;
+  /** For a `band`: the text of the button that closes it. @default "Hide" */
+  collapseLabel?: string | undefined;
 };
 
 /**
