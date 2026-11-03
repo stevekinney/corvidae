@@ -42,7 +42,7 @@
     class: customClassName,
   }: ThemeSwitchProps = $props();
 
-  const buttons: (HTMLButtonElement | undefined)[] = [];
+  const buttons = $state<(HTMLButtonElement | undefined)[]>([]);
 
   // A value outside the three positions (a JavaScript caller) reads as System without rewriting
   // what the caller bound.

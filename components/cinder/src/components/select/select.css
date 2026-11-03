@@ -215,6 +215,12 @@
     inline-size: auto;
   }
 
+  /* A native ghost select takes the width of its widest option instead of filling the field. */
+  .cinder-select-field[data-cinder-variant='ghost'] .cinder-select {
+    inline-size: auto;
+    min-inline-size: 0;
+  }
+
   .cinder-select[data-cinder-variant='ghost'] + .cinder-select-field__chevron {
     inset-inline-end: var(--cinder-pad-control);
     inline-size: 0.875rem;

@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -198,5 +198,20 @@ describe('ThemeSwitch — quiet sky and night track', () => {
     expect(themeSwitchCss).toContain('inset-inline-start: calc(');
     expect(themeSwitchCss).toContain('@media (prefers-reduced-motion: reduce)');
     expect(themeSwitchCss).toContain('@media (forced-colors: active)');
+  });
+});
+
+describe('ThemeSwitch element references', () => {
+  test('binds its option buttons through reactive state, so Svelte raises no non-reactive binding warning', () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(ThemeSwitch, { props: { value: 'system', onValueChange: () => {} } });
+      const messages = warn.mock.calls.map((call) => String(call[0]));
+      expect(
+        messages.filter((message) => message.includes('binding_property_non_reactive')),
+      ).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
