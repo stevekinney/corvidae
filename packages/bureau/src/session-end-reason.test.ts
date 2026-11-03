@@ -115,6 +115,27 @@ describe('the end reason of a chat', () => {
     expect(listed).toMatchObject({ endReason: 'host-stopped', activity: 'idle' });
   });
 
+  test('a chat the host detaches is not ended: it reads no end reason and its run goes on', async () => {
+    const database = createSqliteStorageFixture();
+    databases.push(database);
+    const generating = Promise.withResolvers<void>();
+    const agent = holdingFirstAnswer(generating);
+    const bureau = await open(database, agent, true);
+    const run = await bureau.tasks.start('assistant', 'Rename the billing tables');
+    await generating.promise;
+
+    await bureau.shutdown({ policy: 'detach' });
+
+    const restarted = await open(database, agent, false);
+    await restarted.recovery();
+    await waitForCondition(async () => {
+      const view = await contextView(restarted, run.contextId);
+      return view.detail?.['lastMessagePreview'] === 'Done.';
+    }, 'the detached chat to finish after the restart');
+    const { detail } = await contextView(restarted, run.contextId);
+    expect(detail).toMatchObject({ endReason: null });
+  });
+
   test('a chat whose run ended on its own has no end reason', async () => {
     const database = createSqliteStorageFixture();
     databases.push(database);

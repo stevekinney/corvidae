@@ -4,7 +4,9 @@
  */
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { describe, expect, it } from 'bun:test';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createToolbox } from 'armorer';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentFileConflictError, AgentFileError } from './agent-file';
 import {
@@ -14,6 +16,13 @@ import {
   hashAgentOverrides,
 } from './agent-override-store';
 import { createCodeAgentOverrides } from './code-agent-overrides';
+import type { AgentDefinitions } from './agent-catalog';
+import { createBureau } from './create-bureau';
+import {
+  createSqliteStorageFixture,
+  type PersistentBureauStorageFixture,
+} from './test/storage-fixtures';
+import type { Bureau } from './types';
 
 function clock() {
   let minute = 0;
@@ -236,5 +245,62 @@ describe('the overrides the catalog saves', () => {
     expect(saved.version).toBe(1);
     const [version] = await overrides.versions('tool-runner');
     expect(version).toMatchObject({ savedBy: 'api-key:operator', owner: 'anonymous:local' });
+  });
+});
+
+describe('the override versions of a Bureau', () => {
+  const bureaus: Bureau<AgentDefinitions>[] = [];
+  const databases: PersistentBureauStorageFixture[] = [];
+  afterEach(async () => {
+    for (const bureau of bureaus.splice(0)) await bureau.dispose();
+    for (const database of databases.splice(0)) await database.dispose();
+  });
+
+  async function open(database: PersistentBureauStorageFixture, first: boolean) {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        'tool-runner': createAgent({
+          name: 'Tool runner',
+          generate: async () => ({ content: 'Done.', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: first ? database.storage : database.open(),
+      durable: true,
+      durableOwnership: { ownership: 'none' },
+    });
+    bureaus.push(bureau);
+    return bureau;
+  }
+
+  it('keeps a built-in agent’s versions across a restart, and restores one there', async () => {
+    const database = createSqliteStorageFixture();
+    databases.push(database);
+    const bureau = await open(database, true);
+    const first = await bureau.agents.overrides.save(
+      'tool-runner',
+      { stepLimit: 10 },
+      { expectedHash: hashAgentOverrides({}) },
+    );
+    await bureau.agents.overrides.save(
+      'tool-runner',
+      { stepLimit: 20 },
+      { expectedHash: first.hash },
+    );
+    await bureau.dispose();
+    bureaus.splice(bureaus.indexOf(bureau), 1);
+
+    const restarted = await open(database, false);
+    const kept = await restarted.agents.overrides.versions('tool-runner');
+    expect(kept.map((version) => [version.version, version.overrides])).toEqual([
+      [2, { stepLimit: 20 }],
+      [1, { stepLimit: 10 }],
+    ]);
+    const current = await restarted.agents.overrides.get('tool-runner');
+    const restored = await restarted.agents.overrides.restore('tool-runner', 1, {
+      expectedHash: current!.hash,
+    });
+    expect(restored).toEqual({ id: 'tool-runner', hash: first.hash, version: 3 });
   });
 });
