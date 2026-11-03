@@ -528,27 +528,43 @@ export const SHOWCASE_TRIAGE_INBOX_FILE: ShowcaseWorkflowFile = {
 };
 
 /**
- * Order refund, the file that can't load: the comma at the end of line 11 is missing, so the parser
- * stops at line 12 (PageWorkflow, "File problem · Code tab"). It has no title, so its identifier is
- * its heading, and the Weekly refund audit schedule starts it.
+ * Order refund as it was last saved whole (decisions.md, "Owner, Nov 3"): the Weekly refund audit
+ * schedule (Mondays at 11:00 AM Central time, Tool runner) is its trigger, written on one line so
+ * the file keeps its line numbers. The seed writes it while a host runs, so Bureau makes the
+ * schedule and records the version, then breaks it ({@link SHOWCASE_ORDER_REFUND_FILE}); Bureau
+ * keeps that schedule from this last good version and holds it while the file can't load.
  */
-export const SHOWCASE_ORDER_REFUND_FILE: ShowcaseWorkflowFile = {
+export const SHOWCASE_ORDER_REFUND_VALID_FILE: ShowcaseWorkflowFile = {
   id: 'order-refund',
   text: `{
   "name": "order-refund",
   "description": "Looks up an order, waits for a person to approve, then issues the refund.",
-  "trigger": { "kind": "signal", "signal": "refund-requested" },
+  "trigger": { "kind": "schedule", "name": "Weekly refund audit", "spec": "0 11 * * 1", "timezone": "America/Chicago" },
   "steps": [
     { "kind": "activity", "handler": "agent",
       "input": { "agent": "tool-runner",
         "message": "Look up the order and propose a refund." } },
     { "kind": "await-signal", "signal": "approval", "review": true },
     { "kind": "activity", "handler": "agent",
-      "input": { "agent": "tool-runner"
+      "input": { "agent": "tool-runner",
         "message": "Issue the approved refund." } }
   ]
 }
 `,
+};
+
+/**
+ * Order refund, the file that can't load: {@link SHOWCASE_ORDER_REFUND_VALID_FILE} with the comma
+ * at the end of line 11 missing, so the parser stops at line 12 (PageWorkflow, "File problem · Code
+ * tab"). It has no title, so its identifier is its heading, and the Weekly refund audit schedule
+ * its last good version made starts it.
+ */
+export const SHOWCASE_ORDER_REFUND_FILE: ShowcaseWorkflowFile = {
+  id: 'order-refund',
+  text: SHOWCASE_ORDER_REFUND_VALID_FILE.text.replace(
+    '"agent": "tool-runner",\n        "message": "Issue the approved refund."',
+    '"agent": "tool-runner"\n        "message": "Issue the approved refund."',
+  ),
 };
 
 /** The sample world's three workflow files, in the order the Workflows page lists them. */

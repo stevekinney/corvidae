@@ -9,6 +9,7 @@ import { join } from 'node:path';
 
 import {
   SHOWCASE_ORDER_REFUND_FILE,
+  SHOWCASE_ORDER_REFUND_VALID_FILE,
   SHOWCASE_RELEASE_NOTES_FILE,
   SHOWCASE_TRIAGE_INBOX_FILE,
   SHOWCASE_WORKFLOW_FILES,
@@ -136,6 +137,24 @@ describe('the sample world workflow files', () => {
     const lines = SHOWCASE_ORDER_REFUND_FILE.text.split('\n');
     expect(lines[10]).toBe('      "input": { "agent": "tool-runner"');
     expect(lines[11]).toBe('        "message": "Issue the approved refund." } }');
+  });
+
+  test('Order refund’s last good version carries the Weekly refund audit schedule, and differs from the broken file only by the comma on line 11', () => {
+    expect(JSON.parse(SHOWCASE_ORDER_REFUND_VALID_FILE.text)).toMatchObject({
+      name: 'order-refund',
+      trigger: {
+        kind: 'schedule',
+        name: 'Weekly refund audit',
+        spec: '0 11 * * 1',
+        timezone: 'America/Chicago',
+      },
+    });
+    const valid = SHOWCASE_ORDER_REFUND_VALID_FILE.text.split('\n');
+    const broken = SHOWCASE_ORDER_REFUND_FILE.text.split('\n');
+    expect(broken).toHaveLength(valid.length);
+    const differing = valid.flatMap((line, index) => (line === broken[index] ? [] : [index + 1]));
+    expect(differing).toEqual([11]);
+    expect(valid[10]).toBe(`${broken[10]},`);
   });
 });
 
