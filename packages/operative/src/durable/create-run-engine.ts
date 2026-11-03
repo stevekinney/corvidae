@@ -2,6 +2,7 @@ import { textValueStore, type Storage } from '@lostgradient/storage';
 import {
   createObservabilityInterceptors,
   Engine,
+  type AlertingOptions,
   type AnyWorkflowDefinition,
   type CheckpointSizeWarningEvent,
   type HistoryPolicy,
@@ -267,6 +268,13 @@ export interface CreateRunEngineOptions {
   schedulerPollIntervalMs?: number | undefined;
 
   /**
+   * Weft's built-in alerting: the rules the engine evaluates against its own metrics, such as a
+   * `storage.size` rule over the storage size it reports. Read what is firing with
+   * `engine.getActiveAlerts()`. Omitted, the engine evaluates none.
+   */
+  alerts?: AlertingOptions | undefined;
+
+  /**
    * Caller-supplied version identifier for the currently-deployed `agentRun`
    * workflow code (e.g. the app's package version or a deploy SHA) — AB-10,
    * workflow versioning for in-flight durable runs. On every recovered run,
@@ -452,6 +460,7 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
     ...(options.onRecoveredWorkflow !== undefined
       ? { onRecoveredWorkflow: options.onRecoveredWorkflow }
       : {}),
+    ...(options.alerts !== undefined ? { alerts: options.alerts } : {}),
     resolveWorkflowServices,
     onLog: createHumanWaitMarkerSink(options.onLog),
     ...(options.workflowLogs !== undefined ? { workflowLogs: options.workflowLogs } : {}),

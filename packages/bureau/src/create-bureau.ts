@@ -439,6 +439,7 @@ import {
   type WorkflowRuntime,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
+import { everySchedule, readAttention } from './attention-feed';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { createWorkflowTools } from './workflow-tools';
@@ -2615,6 +2616,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
   const pluginRegistry = createPluginRegistry(composedPlugins.records);
+  // COR-2009: a plugin that did not load needs attention from the moment its loading was tried.
+  const pluginsComposedAt = Date.now();
   // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
   // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
   const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
@@ -21898,6 +21901,18 @@ async function constructBureau<const D extends AgentDefinitions>(
   const bureau: Bureau<D> = {
     id: bureauId,
     plugins: pluginRegistry.plugins,
+    // COR-2009: what needs attention, read now from the parts this Bureau has.
+    attention: () =>
+      readAttention({
+        now: () => Date.now(),
+        activeAlerts: () => durableEngine()?.getActiveAlerts() ?? [],
+        schedules: () => everySchedule(schedules),
+        missed: (scheduleId) => schedules.missed(scheduleId),
+        hooks: async () => (await hooksInstance?.hooks.list()) ?? [],
+        plugins: () => pluginRegistry.plugins.list(),
+        pluginsComposedAt,
+        ...(options.attention === undefined ? {} : { contributed: options.attention }),
+      }),
     reviews,
     schedules,
     contexts,

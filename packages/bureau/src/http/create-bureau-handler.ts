@@ -141,6 +141,10 @@ import {
   diagnosticsGetOperation,
 } from './management/diagnostics-operations.ts';
 import {
+  type BureauAttentionOperationHost,
+  healthAttentionOperation,
+} from './management/attention-operations.ts';
+import {
   agentsListOperation,
   type BureauDeploymentOperationHost,
   deploymentGetOperation,
@@ -247,6 +251,7 @@ export type BureauHandlerSource = Pick<
   | 'deployments'
   | 'hooks'
   | 'plugins'
+  | 'attention'
   | 'formatEvent'
   | 'goals'
   | 'memory'
@@ -349,6 +354,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauOwnershipHost &
   BureauDeploymentOperationHost &
   BureauDiagnosticsOperationHost &
+  BureauAttentionOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
   BureauTaskEventsOperationHost &
@@ -748,6 +754,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   getPrincipalOperation,
   deploymentGetOperation,
   diagnosticsGetOperation,
+  healthAttentionOperation,
   agentsListOperation,
   agentsModelsOperation,
   agentsReferencesOperation,
@@ -1302,6 +1309,7 @@ export function buildBureauHandlerHost(
     settings: bureau.settings,
     respond: (request) => bureau.tasks.respond(request),
     diagnostics: { snapshot: () => bureau.internals.diagnostics() },
+    attention: () => bureau.attention(),
     deployment: {
       id: bureau.id,
       state: () => bureau.lifecycle,

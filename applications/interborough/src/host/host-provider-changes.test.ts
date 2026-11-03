@@ -7,6 +7,7 @@ import { openBungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { StorageSizeReportedEvent } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -826,6 +827,54 @@ describe('disconnecting a provider', () => {
       ['provider.disconnected', 'provider:anthropic', 'anonymous:local', { provider: 'anthropic' }],
     ]);
     expect(JSON.stringify(page)).not.toContain(KEY_A);
+  });
+
+  test('lists no model provider connected under Needs attention once the last key is removed (COR-2009)', async () => {
+    const { host } = await startConnected();
+    expect((await host.bureau.attention()).items).toEqual([]);
+
+    await host.providers.disconnect('openai');
+    // Anthropic still offers a model, so nothing needs attention yet.
+    expect((await host.bureau.attention()).items).toEqual([]);
+    await host.providers.disconnect('anthropic');
+
+    const attention = await host.bureau.attention();
+    const [removed] = (
+      await host.bureau.audit.query({ type: 'provider.disconnected', limit: 100 })
+    ).records.toReversed();
+    expect(attention.items).toEqual([
+      {
+        kind: 'no-provider',
+        area: 'providers',
+        at: Date.parse(removed!.timestamp),
+        provider: 'anthropic',
+      },
+    ]);
+    expect(attention.checks).toEqual([{ area: 'providers', count: 1 }]);
+  });
+
+  test('passes its alert rules to the Bureau, and lists a firing one under Needs attention (COR-2009)', async () => {
+    const directory = await home();
+    await storeKey(directory, 'anthropic-api-key', KEY_A);
+    const host = await startAt(directory, {
+      alerts: { rules: [{ metric: 'storage.size', threshold: 1_000, action: 'log' }] },
+    });
+    const engine = host.bureau.durableEngine();
+    if (engine === undefined) throw new Error('The host composed no durable engine.');
+
+    engine.dispatchEvent(new StorageSizeReportedEvent(1_600));
+
+    await waitUntil(async () => (await host.bureau.attention()).count === 1);
+    expect((await host.bureau.attention()).items).toEqual([
+      {
+        kind: 'alert',
+        area: 'storage',
+        at: engine.getActiveAlerts()[0]!.lastFiredAt!,
+        metric: 'storage.size',
+        currentValue: 1_600,
+        threshold: 1_000,
+      },
+    ]);
   });
 
   test('connecting again brings the models back with the edits that were kept', async () => {

@@ -111,6 +111,7 @@ import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
   serve,
+  type AlertingOptions,
   type RegistryAgnosticEngine,
   type ServeOptions,
   type WeftServer,
@@ -170,6 +171,7 @@ import { createHostMemory } from './memory.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
 import { defaultDecisionOptions, workspacePlugins } from './plugins.ts';
+import { providerAttention } from './provider-attention.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
@@ -361,6 +363,12 @@ export type HostOptions = {
    * answer. Defaults to ten seconds.
    */
   readonly toolSourceProbeTimeoutMilliseconds?: number;
+  /**
+   * Alert rules the Bureau's engine evaluates against its own metrics, passed through as
+   * `BureauOptions.alerts`, such as a `storage.size` rule. A firing rule is listed under Needs
+   * attention. Omitted, the host configures none.
+   */
+  readonly alerts?: AlertingOptions;
 };
 
 /**
@@ -797,6 +805,13 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
       hooks: hookOptionsFor(bungalow.mode),
+      ...(options.alerts === undefined ? {} : { alerts: options.alerts }),
+      // Needs attention (COR-2009): no model provider connected is the host's to see.
+      attention: () =>
+        providerAttention({
+          modelCount: () => providers.current().rows.length,
+          auditTrail: () => held.bureau?.internals.auditTrail,
+        }),
     });
     held.bureau = bureau;
     // A tool source connected from now on is loaded at once, and its tools join the Bureau's

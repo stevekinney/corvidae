@@ -2940,6 +2940,7 @@ async function buildRuntimeComposition(
         ? {}
         : { goalWorkflow: dependencies.goalWorkflow }),
       ...(effectiveObservability !== undefined ? { observability: effectiveObservability } : {}),
+      ...(options.alerts === undefined ? {} : { alerts: options.alerts }),
       ...(logStore === undefined
         ? effectiveOnLog
           ? { onLog: effectiveOnLog }

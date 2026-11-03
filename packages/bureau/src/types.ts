@@ -57,9 +57,11 @@ import type {
 import type { StartTaskOrigin } from './task-origin';
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
+import type { BureauAttention, BureauAttentionItem } from './attention-feed';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import type { ConditionalTextValueStore, Storage, TextValueStore } from '@lostgradient/storage';
 import type {
+  AlertingOptions,
   ListFilter,
   ListOptions,
   ObservabilityOptions,
@@ -858,6 +860,20 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * only when a durable engine is composed.
    */
   durableGuardrails?: DurableGuardrailsConfiguration;
+  /**
+   * Alert rules the durable engine evaluates against its own metrics (Weft's built-in alerting),
+   * such as a `storage.size` rule over the storage size the engine reports every minute. What is
+   * firing is read with `engine.getActiveAlerts()` and reported by {@link Bureau.attention} and
+   * `bureau.health.attention`. Omitted, the engine evaluates no rule. Has effect only when a
+   * durable engine is composed.
+   */
+  alerts?: AlertingOptions;
+  /**
+   * COR-2009 — the problems the host can see and the Bureau cannot, such as `no-provider` when no
+   * model provider is connected. Read on every {@link Bureau.attention} call and merged into the one
+   * list, most recent first; a plugin the Bureau already reports as not loaded is listed once.
+   */
+  attention?: () => Promise<readonly BureauAttentionItem[]> | readonly BureauAttentionItem[];
   /**
    * Multi-process ownership posture for the durable engine (AB-178). Omit for
    * the default `ownership: 'workflow-lease'`. Pass `{ ownership: 'none' }` to
@@ -2819,6 +2835,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * leave authorization to the caller, as `Bureau.goals` does. See {@link BureauHooks}.
    */
   readonly hooks: BureauHooks | undefined;
+  /**
+   * COR-2009 — what needs attention now: firing alerts, schedules that missed runs, hooks whose last
+   * delivery failed or gave up, plugins that did not load, and what {@link BureauOptions.attention}
+   * adds, as one list, most recent first, with the same items counted by area as its checks.
+   * Reviews waiting on a person are never on it. See {@link BureauAttention}.
+   */
+  attention(): Promise<BureauAttention>;
   /**
    * COR-1876 — an event as a person reads it: a contributed formatter's sentence for its kind, or
    * the raw kind and the run link for an event no formatter claims. Pure; it never throws for a

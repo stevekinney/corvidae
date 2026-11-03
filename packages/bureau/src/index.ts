@@ -208,6 +208,18 @@ export {
   WORKFLOW_REVISION_KEY_PREFIX,
 } from './workflow-revision-ledger';
 export { WorkflowAgentStepError, WorkflowHostConflictError } from './workflow-host';
+export { ATTENTION_AREAS, MISSED_RUNS_ATTENTION_WINDOW_MILLISECONDS } from './attention-feed';
+export type {
+  AlertAttentionItem,
+  AttentionArea,
+  AttentionCheck,
+  BureauAttention,
+  BureauAttentionItem,
+  HookAttentionItem,
+  MissedRunsAttentionItem,
+  PluginAttentionItem,
+  ProviderAttentionItem,
+} from './attention-feed';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
 export type {
   BureauWorkerDeploymentRouting,
