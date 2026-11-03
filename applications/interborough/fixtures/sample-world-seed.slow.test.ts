@@ -7,12 +7,28 @@
  * most {@link SLACK}.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { Host } from '../src/host/host.ts';
-import { SHOWCASE_ASSISTANT_REPLY, SHOWCASE_HUMAN_INPUT } from '../src/host/showcase-agents.ts';
+import {
+  SHOWCASE_ASSISTANT_REPLY,
+  SHOWCASE_HUMAN_INPUT,
+  toolRunnerLookupReply,
+} from '../src/host/showcase-agents.ts';
+import { SHOWCASE_STORAGE_WARNING_BYTES } from '../src/host/showcase.ts';
+import { formatBytes } from '../src/lib/format/index.ts';
+import { GITHUB_SOURCE_ID, GITHUB_STUB_TOOLS } from './github-stub-mcp.ts';
+import {
+  DAILY_SUMMARY_SCHEDULE,
+  LOOK_UP_4468_CHAT,
+  RELEASE_NOTES_FAILURE,
+  SAMPLE_WORLD_DURATIONS,
+  SAMPLE_WORLD_HISTORY_TIMES,
+  SAMPLE_WORLD_HOOKS,
+  SAMPLE_WORLD_STORAGE_BYTES,
+} from './sample-world-history.ts';
 import {
   REFUND_4471_ASK_DELAY_MILLISECONDS,
   SAMPLE_WORLD_CHATS,
@@ -22,6 +38,11 @@ import {
   TOOL_RUNNER_HOW_TOS,
   type SampleWorld,
 } from './sample-world-seed.ts';
+import {
+  SHOWCASE_ORDER_REFUND_FILE,
+  SHOWCASE_RELEASE_NOTES_FILE,
+  SHOWCASE_TRIAGE_INBOX_FILE,
+} from './showcase-content.ts';
 
 /** How far past its moment a record may land: the work between two moments, on a slow machine. */
 const SLACK = 60_000;
@@ -70,15 +91,30 @@ type ContextRow = {
 };
 
 describe('the sample world, part A', () => {
-  test('holds the four chats, each with its title, agent, time and state', async () => {
-    const { contexts } = await call<{ contexts: ContextRow[] }>('bureau.contexts.list', {});
+  test('holds the five chats, each with its title, agent, time and state', async () => {
+    // A person's chats only: the sessions goals and schedule fires ran in are not chats.
+    const { contexts } = await call<{ contexts: ContextRow[] }>('bureau.contexts.list', {
+      origin: 'chat',
+    });
     const byId = new Map(contexts.map((context) => [context.id, context]));
     expect(contexts.map((context) => context.id)).toEqual([
       SAMPLE_WORLD_CHATS.refund.threadId,
       SAMPLE_WORLD_CHATS.release.threadId,
       SAMPLE_WORLD_CHATS.sayHello.threadId,
+      LOOK_UP_4468_CHAT.threadId,
       SAMPLE_WORLD_CHATS.billing.threadId,
     ]);
+
+    // Oct 30, 11:20 AM: you ask Tool runner to look up order 4468, and it answers 23 s later.
+    const lookUp = byId.get(LOOK_UP_4468_CHAT.threadId);
+    expect(lookUp).toMatchObject({
+      title: LOOK_UP_4468_CHAT.title,
+      agentName: 'tool-runner',
+      activity: 'idle',
+      endReason: null,
+      lastMessagePreview: toolRunnerLookupReply('4468'),
+    });
+    expectAt(lookUp?.createdAt, SAMPLE_WORLD_HISTORY_TIMES.lookUp4468);
 
     const refund = byId.get(SAMPLE_WORLD_CHATS.refund.threadId);
     expect(refund).toMatchObject({
@@ -323,3 +359,605 @@ async function auditSince(moment: number) {
     (left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp),
   );
 }
+
+/** A run of the Bureau's engine, as `weft.workflows.list` lists it. */
+type EngineRunRow = {
+  id: string;
+  type: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+  tags?: string[];
+};
+
+/** A run as the Bureau's task list keeps it. */
+type TaskRow = { id: string; status: string; createdAt: string; updatedAt: string };
+
+/** One row of the sample world's run list, as PageRuns' captioned table defines it. */
+type RunListRow = {
+  /** When it started, to the minute. */
+  readonly at: number;
+  readonly workflow: string;
+  readonly startedBy: string;
+  readonly status: string;
+  /** How long it took, in seconds; `null` for a run still waiting on you. */
+  readonly seconds: number | null;
+};
+
+/** One JSON-RPC call to the seeded host's Weft plane. */
+async function engineCall<T>(method: string, params: Record<string, unknown>): Promise<T> {
+  const response = await fetch(new URL('/jsonrpc', world.host.url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: method, method, params }),
+  });
+  const body = (await response.json()) as { result?: T; error?: unknown };
+  if (body.result === undefined) throw new Error(`${method}: ${JSON.stringify(body.error)}`);
+  return body.result;
+}
+
+/** The words a run's status reads as on Runs, from its task's status or the engine's. */
+const STATUS_WORDS: Readonly<Record<string, string>> = {
+  'input-required': 'Waiting on you',
+  completed: 'Done',
+  canceled: 'Canceled',
+  cancelled: 'Canceled',
+  failed: 'Failed',
+};
+
+/** What started a run, as Runs' Started by names it, from its `origin:` tag. */
+const STARTED_BY_WORDS: Readonly<Record<string, string>> = {
+  chat: 'Chats',
+  schedule: 'Schedules',
+  goal: 'Goals',
+  system: 'Interborough',
+};
+
+/**
+ * The sample world's run list: every run of the engine that Runs lists, which leaves out a goal's
+ * own controller (its attempts are the runs) and a workflow's steps (the workflow's run is).
+ */
+async function runList(): Promise<RunListRow[]> {
+  const { items } = await engineCall<{ items: EngineRunRow[] }>('weft.workflows.list', {
+    limit: 500,
+  });
+  const { tasks } = await call<{ tasks: TaskRow[] }>('bureau.tasks.list', { limit: 100 });
+  const taskOf = new Map(tasks.map((task) => [task.id, task]));
+  return items
+    .filter((run) => run.type !== 'goalRun' && !(run.tags ?? []).includes('origin:parent'))
+    .map((run) => {
+      const tags = run.tags ?? [];
+      const origin = tags.find((tag) => tag.startsWith('origin:'))?.slice('origin:'.length) ?? '';
+      const task = taskOf.get(run.id);
+      const status = STATUS_WORDS[task?.status ?? run.status] ?? run.status;
+      const started = task === undefined ? run.createdAt : Date.parse(task.createdAt);
+      const ended = task === undefined ? run.updatedAt : Date.parse(task.updatedAt);
+      const workflow =
+        run.type === 'agentRun'
+          ? origin === 'goal'
+            ? 'Goal attempts'
+            : 'Chat with an agent'
+          : run.type === 'scheduleTick'
+            ? 'Schedule tick'
+            : run.type;
+      return {
+        at: Math.floor(started / 60_000) * 60_000,
+        workflow,
+        startedBy: STARTED_BY_WORDS[origin] ?? origin,
+        status,
+        seconds: status === 'Waiting on you' ? null : (ended - started) / 1000,
+      };
+    });
+}
+
+/** Counts `rows` by the value `key` reads. */
+function countBy(rows: readonly RunListRow[], key: (row: RunListRow) => string) {
+  const counts: Record<string, number> = {};
+  for (const row of rows) counts[key(row)] = (counts[key(row)] ?? 0) + 1;
+  return counts;
+}
+
+/** How far past its scripted duration a run may end: the real work between two moments. */
+const DURATION_SLACK_SECONDS = 5;
+
+describe('the sample world, part B', () => {
+  test('holds the run list PageRuns defines, with the billing chat its restart ended', async () => {
+    const times = { ...SAMPLE_WORLD_TIMES, ...SAMPLE_WORLD_HISTORY_TIMES };
+    const durations = SAMPLE_WORLD_DURATIONS;
+    const attempts = durations.draftReleaseNotesAttempts;
+    const chat = 'Chat with an agent';
+    const goal = 'Goal attempts';
+    const expected: Array<Omit<RunListRow, 'seconds'> & { seconds: number | null | 'any' }> = [
+      {
+        at: times.refund4471Started,
+        workflow: chat,
+        startedBy: 'Chats',
+        status: 'Waiting on you',
+        seconds: null,
+      },
+      {
+        at: times.refund4472Asked,
+        workflow: chat,
+        startedBy: 'Chats',
+        status: 'Done',
+        seconds: 'any',
+      },
+      {
+        at: times.releaseAsked,
+        workflow: chat,
+        startedBy: 'Chats',
+        status: 'Waiting on you',
+        seconds: null,
+      },
+      {
+        at: times.serverStarted,
+        workflow: 'Schedule tick',
+        startedBy: 'Interborough',
+        status: 'Done',
+        seconds: 0,
+      },
+      { at: times.sayHello, workflow: chat, startedBy: 'Chats', status: 'Done', seconds: 8 },
+      {
+        at: times.lookUp4468,
+        workflow: chat,
+        startedBy: 'Chats',
+        status: 'Done',
+        seconds: durations.lookUp4468,
+      },
+      {
+        at: times.releaseNotesFailed,
+        workflow: 'release-notes',
+        startedBy: 'Schedules',
+        status: 'Failed',
+        seconds: durations.releaseNotesFailed,
+      },
+      {
+        at: times.summarizeRefundsSecondAttempt,
+        workflow: goal,
+        startedBy: 'Goals',
+        status: 'Canceled',
+        seconds: durations.summarizeRefundsSecondAttempt,
+      },
+      {
+        at: times.summarizeRefundsGoal,
+        workflow: goal,
+        startedBy: 'Goals',
+        status: 'Done',
+        seconds: durations.summarizeRefundsFirstAttempt,
+      },
+      ...attempts
+        .map((seconds, index) => ({
+          at: times.draftReleaseNotesGoal + index * 120_000,
+          workflow: goal,
+          startedBy: 'Goals',
+          status: 'Done',
+          seconds,
+        }))
+        .toReversed(),
+      {
+        at: times.sayHelloGoal,
+        workflow: goal,
+        startedBy: 'Goals',
+        status: 'Done',
+        seconds: durations.sayHelloGoal,
+      },
+      // Not on PageRuns' list: the run the Oct 29 restart stopped, which the chat list reads as Ended.
+      {
+        at: times.billingAsked,
+        workflow: chat,
+        startedBy: 'Chats',
+        status: 'Canceled',
+        seconds: 60,
+      },
+      {
+        at: times.dailySummaryRan,
+        workflow: chat,
+        startedBy: 'Schedules',
+        status: 'Done',
+        seconds: durations.dailySummary,
+      },
+      {
+        at: times.dailySummaryRan,
+        workflow: 'Schedule tick',
+        startedBy: 'Interborough',
+        status: 'Done',
+        seconds: 0,
+      },
+      {
+        at: times.triageSecondRun,
+        workflow: 'triage-inbox',
+        startedBy: 'Schedules',
+        status: 'Done',
+        seconds: durations.triageSecondRun,
+      },
+      {
+        at: times.triageFirstRun,
+        workflow: 'triage-inbox',
+        startedBy: 'Schedules',
+        status: 'Done',
+        seconds: durations.triageFirstRun,
+      },
+    ];
+    const order = (
+      left: { at: number; workflow: string },
+      right: { at: number; workflow: string },
+    ) => right.at - left.at || left.workflow.localeCompare(right.workflow);
+    const rows = (await runList()).toSorted(order);
+    expect(rows.map(({ seconds: _seconds, ...row }) => row)).toEqual(
+      expected.toSorted(order).map(({ seconds: _seconds, ...row }) => row),
+    );
+    for (const [index, row] of expected.toSorted(order).entries()) {
+      const seconds = rows[index]?.seconds;
+      if (row.seconds === 'any') continue;
+      if (row.seconds === null) {
+        expect(seconds).toBeNull();
+        continue;
+      }
+      // A moment the story sets lands to the millisecond; the work between moments only adds.
+      expect(Math.round(seconds ?? -1)).toBeGreaterThanOrEqual(row.seconds);
+      expect(seconds).toBeLessThan(row.seconds + DURATION_SLACK_SECONDS);
+    }
+
+    // All 20 = Waiting on you 2 + Done 15 + Failed 1 + Canceled 2 (the board's 19 and the billing chat).
+    expect(countBy(rows, (row) => row.status)).toEqual({
+      'Waiting on you': 2,
+      Done: 15,
+      Failed: 1,
+      Canceled: 2,
+    });
+    expect(countBy(rows, (row) => row.startedBy)).toEqual({
+      Chats: 6,
+      Schedules: 4,
+      Goals: 8,
+      Interborough: 2,
+    });
+    expect(countBy(rows, (row) => row.workflow)).toEqual({
+      'Chat with an agent': 7,
+      'Goal attempts': 8,
+      'Schedule tick': 2,
+      'triage-inbox': 2,
+      'release-notes': 1,
+    });
+  });
+
+  test('fails Release notes at step 2 of 4 on Oct 30, because GitHub didn’t answer', async () => {
+    const { runs } = await call<{
+      runs: Array<{ id: string; status: string; error?: unknown }>;
+    }>('bureau.workflows.runs.list', { workflow: 'release-notes', limit: 10 });
+    expect(runs.map((run) => run.status)).toEqual(['failed']);
+    const steps = (
+      await engineCall<{ items: EngineRunRow[] }>('weft.workflows.list', {
+        limit: 500,
+        tags: [`origin-parent:${runs[0]?.id ?? ''}`],
+      })
+    ).items;
+    const { tasks } = await call<{ tasks: Array<TaskRow & { statusMessage: string | null }> }>(
+      'bureau.tasks.list',
+      { limit: 100 },
+    );
+    const stepTasks = tasks.filter((task) => steps.some((step) => step.id === task.id));
+    expect(stepTasks.map((task) => task.status).toSorted()).toEqual(['completed', 'failed']);
+    expect(stepTasks.find((task) => task.status === 'failed')?.statusMessage).toContain(
+      RELEASE_NOTES_FAILURE,
+    );
+  });
+
+  test('keeps the four schedules with their cadences: Active 3, Paused 1', async () => {
+    type ScheduleRow = {
+      description: string;
+      agentName: string | null;
+      workflowType: string;
+      inputPreview: string | null;
+      cronExpression: string;
+      timeZone: string;
+      status: string;
+      nextFireAt: string | null;
+      lastFireAt: string | null;
+      blocker: { kind: string; workflow: string } | null;
+    };
+    const { schedules } = await call<{ schedules: ScheduleRow[] }>('bureau.schedules.list', {
+      limit: 100,
+    });
+    const named = (description: string) =>
+      schedules.find((schedule) => schedule.description === description);
+    expect(schedules.map((schedule) => schedule.description).toSorted()).toEqual([
+      'Daily summary',
+      'Inbox triage',
+      'Release notes digest',
+      'Weekly refund audit',
+    ]);
+    expect(
+      countBy(
+        schedules.map((schedule) => ({ status: schedule.status }) as unknown as RunListRow),
+        (row) => row.status,
+      ),
+    ).toEqual({ active: 3, paused: 1 });
+
+    // Daily summary: Assistant every day at 9:00 AM UTC, which is 3:00 AM CST; last ran Oct 29.
+    expect(named('Daily summary')).toMatchObject({
+      agentName: 'assistant',
+      workflowType: 'agentRun',
+      inputPreview: DAILY_SUMMARY_SCHEDULE.input,
+      cronExpression: '0 9 * * *',
+      timeZone: 'UTC',
+      status: 'active',
+      lastFireAt: new Date(SAMPLE_WORLD_HISTORY_TIMES.dailySummaryRan).toISOString(),
+      blocker: null,
+    });
+    const centralClock = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    });
+    expect(centralClock.format(Date.parse('2026-11-02T09:00:00Z'))).toBe('3:00 AM CST');
+
+    // Inbox triage: Triage inbox's trigger, every day at 8:00 AM, paused since its Oct 24 run.
+    expect(named('Inbox triage')).toMatchObject({
+      workflowType: 'triage-inbox',
+      cronExpression: '0 8 * * *',
+      timeZone: 'America/Chicago',
+      status: 'paused',
+      lastFireAt: new Date(SAMPLE_WORLD_HISTORY_TIMES.triageSecondRun).toISOString(),
+    });
+
+    // Release notes digest: release-notes.json's trigger, Fridays at 11:00 AM; next Fri Nov 6.
+    expect(named('Release notes digest')).toMatchObject({
+      workflowType: 'release-notes',
+      cronExpression: '0 11 * * 5',
+      timeZone: 'America/Chicago',
+      status: 'active',
+      lastFireAt: new Date(SAMPLE_WORLD_HISTORY_TIMES.releaseNotesFailed).toISOString(),
+      nextFireAt: '2026-11-06T17:00:00.000Z',
+      blocker: null,
+    });
+
+    // Weekly refund audit: Order refund's trigger from its last good version, never run, first
+    // due today at 11:00 AM, held because the file can't load.
+    expect(named('Weekly refund audit')).toMatchObject({
+      workflowType: 'order-refund',
+      cronExpression: '0 11 * * 1',
+      timeZone: 'America/Chicago',
+      status: 'active',
+      lastFireAt: null,
+      nextFireAt: '2026-11-02T17:00:00.000Z',
+      blocker: { kind: 'workflow-cannot-load', workflow: 'order-refund' },
+    });
+  });
+
+  test('lists Needs attention most recent first: the provider, the storage alert, the missed runs', async () => {
+    const attention = await world.host.bureau.attention();
+    expect(attention.items).toEqual([
+      expect.objectContaining({ kind: 'no-provider', provider: 'anthropic' }),
+      expect.objectContaining({
+        kind: 'alert',
+        metric: 'storage.size',
+        currentValue: SAMPLE_WORLD_STORAGE_BYTES,
+        threshold: SHOWCASE_STORAGE_WARNING_BYTES,
+      }),
+      expect.objectContaining({ kind: 'missed-runs', scheduleName: 'Daily summary', count: 4 }),
+    ]);
+    const [provider, alert, missed] = attention.items;
+    expectAt(new Date(provider?.at ?? 0).toISOString(), SAMPLE_WORLD_TIMES.anthropicKeyRemoved);
+    expect(alert?.at).toBe(SAMPLE_WORLD_HISTORY_TIMES.storageAlertFired);
+    expect(formatBytes(SAMPLE_WORLD_STORAGE_BYTES)).toBe('1.6 GB');
+    expectAt(new Date(missed?.at ?? 0).toISOString(), SAMPLE_WORLD_TIMES.serverStarted);
+    expect(missed).toMatchObject({ since: Date.parse('2026-10-30T09:00:00Z') });
+
+    // The server's start logged the four missed runs, in the audit log too.
+    const records = await auditSince(SAMPLE_WORLD_TIMES.serverStarted);
+    const misses = records.filter((record) => record.type === 'schedule.missed');
+    expect(misses.length).toBeGreaterThan(0);
+    for (const record of misses) expectAt(record.timestamp, SAMPLE_WORLD_TIMES.serverStarted);
+  });
+
+  test('ends the three goals as PageGoals draws them: done, gave up and stopped', async () => {
+    type GoalRow = {
+      goalRunId: string;
+      agentName: string;
+      status: string;
+      attempts: Array<{ status: string; startedAt: string }>;
+    };
+    const { goals } = await call<{ goals: GoalRow[] }>('bureau.goals.list', {});
+    const byAgentAndCount = goals.map((goal) => [
+      goal.agentName,
+      goal.status,
+      goal.attempts.map((attempt) => attempt.status),
+    ]);
+    expect(byAgentAndCount.toSorted()).toEqual(
+      [
+        ['assistant', 'succeeded', ['passed']],
+        ['assistant', 'exhausted', ['failed', 'failed', 'failed', 'failed', 'failed']],
+        ['tool-runner', 'canceled', ['failed', 'aborted']],
+      ].toSorted(),
+    );
+    const gaveUp = goals.find((goal) => goal.status === 'exhausted');
+    for (const [index, attempt] of (gaveUp?.attempts ?? []).entries()) {
+      expectAt(
+        attempt.startedAt,
+        SAMPLE_WORLD_HISTORY_TIMES.draftReleaseNotesGoal + index * 120_000,
+      );
+    }
+  });
+
+  test('keeps the five hooks, delivered through the showcase and never to their addresses', async () => {
+    type HookRow = {
+      name: string;
+      events: string[];
+      enabled: boolean;
+      action: { type: string; url?: string };
+      scope: { kind: string; id: string } | null;
+      lastDelivery: {
+        kind: string;
+        status: string;
+        lastAttempt: { startedAt: number; status: number | null };
+      } | null;
+    };
+    const { hooks } = await call<{ hooks: HookRow[] }>('bureau.hooks.list', {});
+    const named = (hook: { name: string }) => hooks.find((row) => row.name === hook.name);
+    const { pageOnCall, notifySlack, triageFinishes, scheduleMisses, refundAudit } =
+      SAMPLE_WORLD_HOOKS;
+    expect(hooks).toHaveLength(5);
+    const lastDelivered = (hook: HookRow | undefined, kind: string, moment: number) => {
+      expect(hook?.lastDelivery).toMatchObject({ kind, status: 'delivered' });
+      expectAt(new Date(hook?.lastDelivery?.lastAttempt.startedAt ?? 0).toISOString(), moment);
+    };
+    expect(named(pageOnCall)).toMatchObject({ enabled: true, events: ['schedule.failed'] });
+    lastDelivered(
+      named(pageOnCall),
+      'schedule.failed',
+      SAMPLE_WORLD_HISTORY_TIMES.releaseNotesFailed,
+    );
+    expect(named(notifySlack)).toMatchObject({ enabled: true, events: ['review.requested'] });
+    lastDelivered(
+      named(notifySlack),
+      'review.requested',
+      SAMPLE_WORLD_TIMES.refund4471Started + REFUND_4471_ASK_DELAY_MILLISECONDS,
+    );
+    expect(named(triageFinishes)).toMatchObject({
+      enabled: true,
+      action: { type: 'notify' },
+      scope: { kind: 'workflow', id: 'triage-inbox' },
+    });
+    lastDelivered(
+      named(triageFinishes),
+      'schedule.completed',
+      SAMPLE_WORLD_HISTORY_TIMES.triageSecondRun,
+    );
+    expect(named(scheduleMisses)).toMatchObject({ enabled: true, action: { type: 'notify' } });
+    lastDelivered(named(scheduleMisses), 'schedule.missed', SAMPLE_WORLD_TIMES.serverStarted);
+    expect(named(refundAudit)).toMatchObject({
+      enabled: false,
+      scope: { kind: 'agent', id: 'tool-runner' },
+    });
+    lastDelivered(named(refundAudit), 'hook.test', SAMPLE_WORLD_HISTORY_TIMES.refundAuditTested);
+    // Every webhook answered 200: the showcase's own fetch, not the real address.
+    for (const hook of [pageOnCall, notifySlack, refundAudit]) {
+      expect(named(hook)?.lastDelivery?.lastAttempt.status).toBe(200);
+    }
+  });
+
+  test('runs Guardrails and Inspectors, needs setup for the providers and TypeSafe, and keeps Demo, Ollama and Voyage off', async () => {
+    const response = await fetch(new URL('/host/plugins', world.host.url));
+    const { plugins } = (await response.json()) as {
+      plugins: Array<{ descriptor: { name: string }; source: string; status: string }>;
+    };
+    const statuses = Object.fromEntries(
+      plugins
+        .filter((plugin) => plugin.source !== 'built-in')
+        .map((plugin) => [plugin.descriptor.name, plugin.status]),
+    );
+    expect(statuses).toEqual({
+      guardrails: 'running',
+      inspectors: 'running',
+      anthropic: 'needs-setup',
+      openai: 'needs-setup',
+      gemini: 'needs-setup',
+      typesafe: 'needs-setup',
+      demo: 'disabled',
+      ollama: 'disabled',
+      voyage: 'disabled',
+    });
+  });
+
+  test('connects GitHub, a stub MCP server, with List issues, Create issue and Delete branch off', async () => {
+    const response = await fetch(new URL('/host/tool-sources', world.host.url));
+    const { sources } = (await response.json()) as {
+      sources: Array<{
+        id: string;
+        state: string;
+        tools: Array<{ tool: string; enabled: boolean; tier: string }>;
+      }>;
+    };
+    expect(sources).toHaveLength(1);
+    const [github] = sources;
+    expect(github).toMatchObject({ id: GITHUB_SOURCE_ID, state: 'loaded' });
+    expect(github?.tools.map(({ tool, enabled }) => [tool, enabled])).toEqual([
+      ['list_issues', true],
+      ['create_issue', true],
+      ['delete_branch', false],
+    ]);
+    // What a person reads: each tool's title, and its risk.
+    const probe = await fetch(
+      new URL(`/host/tool-sources/${GITHUB_SOURCE_ID}/probe`, world.host.url),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          source: {
+            id: GITHUB_SOURCE_ID,
+            kind: 'mcp',
+            transport: {
+              type: 'stdio',
+              command: process.execPath,
+              args: [join(import.meta.dir, 'github-stub-mcp.ts')],
+            },
+          },
+        }),
+      },
+    );
+    const probed = (await probe.json()) as {
+      outcome: string;
+      tools: Array<{ tool: string; title: string; tier: string }>;
+    };
+    expect(probed.outcome).toBe('listed');
+    expect(probed.tools.map(({ tool, title, tier }) => [tool, title, tier])).toEqual([
+      ['list_issues', GITHUB_STUB_TOOLS.list_issues, 'read-only'],
+      ['create_issue', GITHUB_STUB_TOOLS.create_issue, 'mutating'],
+      ['delete_branch', GITHUB_STUB_TOOLS.delete_branch, 'dangerous'],
+    ]);
+  });
+
+  test('keeps Release notes’ four versions, the run on 1.2.0, and the files as the Code tabs show them', async () => {
+    type Revision = {
+      version: string;
+      savedAt: string;
+      surface: string | null;
+      compatibility: string | null;
+      changes: Array<{ kind: string }>;
+      runs: { count: number; firstRunAt: string | null };
+    };
+    const { revisions } = await call<{ revisions: Revision[] }>('bureau.workflows.history', {
+      id: 'release-notes',
+    });
+    const times = SAMPLE_WORLD_HISTORY_TIMES;
+    expect(
+      revisions.map(({ version, surface, compatibility, changes }) => ({
+        version,
+        surface,
+        compatibility,
+        changes: changes.map((change) => change.kind).toSorted(),
+      })),
+    ).toEqual([
+      { version: '1.3.0', surface: 'web', compatibility: 'compatible', changes: ['step-reworded'] },
+      { version: '1.2.0', surface: null, compatibility: 'compatible', changes: ['step-added'] },
+      {
+        version: '1.1.0',
+        surface: null,
+        compatibility: 'breaking',
+        changes: ['input-schema', 'step-reworded'],
+      },
+      { version: '1.0.0', surface: null, compatibility: null, changes: [] },
+    ]);
+    const saved = [
+      times.releaseNotesVersion4,
+      times.releaseNotesVersion3,
+      times.releaseNotesVersion2,
+      times.releaseNotesVersion1,
+    ];
+    for (const [index, revision] of revisions.entries()) {
+      expectAt(revision.savedAt, saved[index] ?? 0);
+    }
+    expect(revisions[1]?.runs.count).toBe(1);
+    expectAt(revisions[1]?.runs.firstRunAt, times.releaseNotesFailed);
+
+    const workflows = join(home, 'home', 'workflows');
+    for (const file of [
+      SHOWCASE_RELEASE_NOTES_FILE,
+      SHOWCASE_TRIAGE_INBOX_FILE,
+      SHOWCASE_ORDER_REFUND_FILE,
+    ]) {
+      expect(await readFile(join(workflows, `${file.id}.json`), 'utf8')).toBe(file.text);
+    }
+  });
+});

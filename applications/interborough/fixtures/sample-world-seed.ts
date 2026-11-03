@@ -31,18 +31,37 @@
 
 import { ANONYMOUS_LOCAL_OWNER } from '@lostgradient/bureau';
 import { createMemoryAuthority, type MemoryAuthority } from '@lostgradient/memory';
-import { waitUntil } from '@lostgradient/testing/wait-until';
 import { mkdir, rm } from 'node:fs/promises';
 
+import { setPluginsEnabled } from '../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../src/host/host.ts';
 import { createOffsetRuntime, type OffsetRuntime } from '../src/host/offset-runtime.ts';
-import type { ShowcaseToolRunnerMoment } from '../src/host/showcase-agents.ts';
+import type { ShowcasePacing } from '../src/host/showcase-agents.ts';
 import { SHOWCASE_MODELS, showcaseHostOptions } from '../src/host/showcase.ts';
 import { writeProviderHome } from '../src/host/stub-provider.ts';
-
-/** An instant of the story in Central time, from its local date and time and its UTC offset. */
-const central = (local: string, offset: '-05:00' | '-06:00'): number =>
-  Date.parse(`${local}${offset}`);
+import {
+  missedRunsLogged,
+  november1Afternoon,
+  october21,
+  october23,
+  october24,
+  october28,
+  october29DailySummary,
+  october29Morning,
+  october30,
+  SAMPLE_WORLD_HISTORY_TIMES,
+  storageAlertFires,
+  writeFinalWorkflowFiles,
+} from './sample-world-history.ts';
+import {
+  bureauCall,
+  central,
+  pendingReviewOf,
+  sendChatMessage,
+  waitForIdle,
+  type Director,
+  type SessionContext,
+} from './sample-world-host.ts';
 
 /**
  * The moments of the story (Central time; daylight time ends Nov 1 at 2:00 AM, so October is UTC-5
@@ -162,72 +181,6 @@ export interface SampleWorld {
   readonly memories: { readonly corrected: string; readonly original: string };
 }
 
-/** A fault the host answered a JSON-RPC call with. */
-class HostFault extends Error {}
-
-/** One JSON-RPC call to the host's Bureau plane, as the local caller; a fault throws. */
-async function bureauCall<T>(
-  host: Host,
-  method: string,
-  params: Record<string, unknown> = {},
-): Promise<T> {
-  const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: method, method, params }),
-  });
-  const body = (await response.json()) as { result?: T; error?: { message?: string } };
-  if (body.error !== undefined) {
-    throw new HostFault(`${method} answered: ${body.error.message ?? 'no message'}`);
-  }
-  return body.result as T;
-}
-
-/**
- * Sends `message` to `agent` in `threadId` over AG-UI, as a person's chat does, and reads the run's
- * stream to its end: the run finished, or parked waiting on a person.
- */
-async function sendChatMessage(
-  host: Host,
-  agent: string,
-  threadId: string,
-  message: string,
-): Promise<void> {
-  const response = await fetch(new URL(`/bureau/ag-ui/agents/${agent}/run`, host.url), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-    body: JSON.stringify({
-      threadId,
-      runId: `run-${crypto.randomUUID()}`,
-      messages: [{ id: `user-${crypto.randomUUID()}`, role: 'user', content: message }],
-      tools: [],
-      context: [],
-      state: {},
-      forwardedProps: {},
-    }),
-  });
-  const stream = await response.text();
-  if (response.status !== 200 || stream.includes('RUN_ERROR')) {
-    throw new Error(`The run of ${agent} in ${threadId} failed: ${stream.slice(0, 400)}`);
-  }
-}
-
-/** A review waiting on you, as `bureau.reviews.list` shows it. */
-type ReviewRow = {
-  readonly id: string;
-  readonly runId: string;
-  readonly sessionId?: string;
-  readonly round?: number;
-};
-
-/** The pending review of the chat `threadId`. */
-async function pendingReviewOf(host: Host, threadId: string): Promise<ReviewRow> {
-  const listed = await bureauCall<{ reviews: ReviewRow[] }>(host, 'bureau.reviews.list', {});
-  const review = listed.reviews.find((entry) => entry.sessionId === threadId);
-  if (review === undefined) throw new Error(`The chat ${threadId} is waiting on no review.`);
-  return review;
-}
-
 /** Saves `overrides` as Tool runner's next version. */
 async function saveToolRunnerVersion(
   host: Host,
@@ -313,25 +266,30 @@ async function correctToolRunnerMemory(
   return { original: written.recordId, corrected: correctedId };
 }
 
-/** What a session of the story is handed: its host and the story's clock. */
-interface SessionContext {
-  readonly host: Host;
-  readonly runtime: OffsetRuntime;
-}
-
 /** Tool runner's answers wait here while the server stops it mid-reply. */
 interface Holding {
   /** Resolved once Tool runner is answering the billing chat. */
   readonly answering: PromiseWithResolvers<void>;
 }
 
+/** How long Assistant takes to say hello on Nov 1 (8 s). */
+const SAY_HELLO_MILLISECONDS = 8000;
+
 /**
- * How the driver paces Tool runner: Issue refund asks for order 4471 twenty seconds after its run
- * starts, and the billing chat's answer waits until the run is stopped.
+ * How the driver paces the scripted agents and checks: the scene the director is playing first
+ * (`sample-world-history.ts`), then the chats': Issue refund asks for order 4471 twenty seconds
+ * after its run starts, and the billing chat's answer waits until the run is stopped.
  */
-function samplePacing(runtime: OffsetRuntime, holding: Holding) {
+function samplePacing(
+  runtime: OffsetRuntime,
+  holding: Holding,
+  director: Director,
+): ShowcasePacing {
   return {
-    toolRunner: async (moment: ShowcaseToolRunnerMoment): Promise<void> => {
+    assistant: async (moment) => director.scene.assistant?.(moment),
+    check: async (moment) => director.scene.check?.(moment),
+    toolRunner: async (moment) => {
+      await director.scene.toolRunner?.(moment);
       if (moment.step === 'refund-ask' && moment.orderId === '4471') {
         runtime.advance(REFUND_4471_ASK_DELAY_MILLISECONDS);
         return;
@@ -348,34 +306,37 @@ function samplePacing(runtime: OffsetRuntime, holding: Holding) {
   };
 }
 
-/** Starts a host on `home` at `at` on the story's clock. */
-async function startAt(
-  home: string,
-  runtime: OffsetRuntime,
-  holding: Holding,
-  at: number,
-): Promise<Host> {
+/** The story's home, clock, holding and director, which every session of it shares. */
+interface Story {
+  readonly home: string;
+  readonly runtime: OffsetRuntime;
+  readonly holding: Holding;
+  readonly director: Director;
+}
+
+/** Starts a host on the story's home at `at` on the story's clock. */
+async function startAt(story: Story, at: number): Promise<Host> {
+  const { home, runtime, holding, director } = story;
   runtime.setTime(at);
   return startHost({
     environment: { INTERBOROUGH_HOME: home },
     port: 0,
     runtime,
-    ...showcaseHostOptions(samplePacing(runtime, holding)),
+    ...showcaseHostOptions(samplePacing(runtime, holding, director)),
   });
 }
 
 /** Runs `act` on a host started at `at`, then stops the host. */
 async function session(
-  home: string,
-  runtime: OffsetRuntime,
-  holding: Holding,
+  story: Story,
   at: number,
   act: (context: SessionContext) => Promise<void>,
 ): Promise<void> {
-  const host = await startAt(home, runtime, holding, at);
+  const host = await startAt(story, at);
   try {
-    await act({ host, runtime });
+    await act({ host, runtime: story.runtime, director: story.director });
   } finally {
+    story.director.scene = {};
     await host.close();
   }
 }
@@ -398,11 +359,23 @@ async function billingChatEndedByARestart({ host, runtime }: SessionContext, hol
   await answer;
 }
 
-/** The Nov 2 story on the host that started at 9:00 AM: everything from 9:46 AM to 10:45 AM. */
-async function monday({
-  host,
-  runtime,
-}: SessionContext): Promise<Omit<SampleWorld, 'host' | 'runtime'>> {
+/** Nov 1, 4:12 PM: "Say hello" with Assistant, which answers in 8 s. */
+async function sayHelloChat({ host, runtime, director }: SessionContext): Promise<void> {
+  const chat = SAMPLE_WORLD_CHATS.sayHello;
+  director.scene = { assistant: () => runtime.advance(SAY_HELLO_MILLISECONDS) };
+  await sendChatMessage(host, chat.agent, chat.threadId, chat.message);
+  director.scene = {};
+}
+
+/**
+ * The Nov 2 story on the host that started at 9:00 AM: the missed Daily summary runs it logs as it
+ * starts, the storage alert at 9:05 AM, then
+ * everything from 9:46 AM to 10:45 AM.
+ */
+async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host' | 'runtime'>> {
+  const { host, runtime } = context;
+  await missedRunsLogged(context);
+  storageAlertFires(context);
   const { release, refund } = SAMPLE_WORLD_CHATS;
   runtime.setTime(SAMPLE_WORLD_TIMES.releaseAsked);
   await sendChatMessage(host, release.agent, release.threadId, release.message);
@@ -441,18 +414,12 @@ async function monday({
   };
 }
 
-/** Waits until the chat `threadId` has no run in flight and nothing waiting on you. */
-async function waitForIdle(host: Host, threadId: string): Promise<void> {
-  await waitUntil(
-    async () => {
-      const context = await bureauCall<{ activity: string }>(host, 'bureau.contexts.get', {
-        contextId: threadId,
-      });
-      return context.activity === 'idle';
-    },
-    { message: `the chat ${threadId} to finish its run` },
-  );
-}
+/**
+ * The plugins the sample world keeps off (decisions.md, "Owner answers during B01"): Demo, Ollama
+ * and Voyage. Guardrails and Inspectors run; Anthropic, OpenAI, Gemini and TypeSafe are on but
+ * need setup, since no key of theirs is saved once the Anthropic key is removed.
+ */
+export const SAMPLE_WORLD_DISABLED_PLUGINS = ['demo', 'ollama', 'voyage'] as const;
 
 /**
  * Seeds the sample world into `home`, which it empties first so every seed starts the same, and
@@ -462,40 +429,60 @@ export async function seedSampleWorld(home: string): Promise<SampleWorld> {
   await rm(home, { recursive: true, force: true });
   await mkdir(home, { recursive: true });
   await writeProviderHome(home, SHOWCASE_MODELS);
-  const runtime = createOffsetRuntime(SAMPLE_WORLD_TIMES.toolRunnerVersion1);
-  const holding: Holding = { answering: Promise.withResolvers<void>() };
+  await setPluginsEnabled(
+    home,
+    Object.fromEntries(SAMPLE_WORLD_DISABLED_PLUGINS.map((name) => [name, false])),
+  );
+  const story: Story = {
+    home,
+    runtime: createOffsetRuntime(SAMPLE_WORLD_TIMES.toolRunnerVersion1),
+    holding: { answering: Promise.withResolvers<void>() },
+    director: { scene: {} },
+  };
+  const { runtime, holding } = story;
   const times = SAMPLE_WORLD_TIMES;
+  const history = SAMPLE_WORLD_HISTORY_TIMES;
   const [version1, version2, version3, version4] = TOOL_RUNNER_VERSIONS;
 
-  await session(home, runtime, holding, times.toolRunnerVersion1, async ({ host }) =>
+  await session(story, times.toolRunnerVersion1, async ({ host }) =>
     saveToolRunnerVersion(host, version1),
   );
-  await session(home, runtime, holding, times.toolRunnerVersion2, async ({ host }) => {
+  await session(story, times.toolRunnerVersion2, async ({ host }) => {
     await saveToolRunnerVersion(host, version2);
     runtime.setTime(times.neverShareEmails);
     await rememberHowTo(host, TOOL_RUNNER_HOW_TOS.neverShareEmails);
   });
-  await session(home, runtime, holding, times.lookUpBeforeAnswering, async ({ host }) =>
-    rememberHowTo(host, TOOL_RUNNER_HOW_TOS.lookUpBeforeAnswering),
-  );
-  await session(home, runtime, holding, times.toolRunnerVersion3, async ({ host }) =>
+  await session(story, times.lookUpBeforeAnswering, async (context) => {
+    await rememberHowTo(context.host, TOOL_RUNNER_HOW_TOS.lookUpBeforeAnswering);
+    await october21(context);
+  });
+  await session(story, history.triageCreated - 60_000, october23);
+  await session(story, history.triageSecondRun - 60_000, october24);
+  await session(story, times.toolRunnerVersion3, async ({ host }) =>
     saveToolRunnerVersion(host, version3),
   );
+  await session(story, history.releaseNotesVersion3 - 60_000, october29Morning);
   // The server was started a minute before the chat, so its start comes first in the audit log.
-  await session(home, runtime, holding, times.billingAsked - 60_000, (context) =>
+  await session(story, times.billingAsked - 60_000, (context) =>
     billingChatEndedByARestart(context, holding),
   );
-  await session(home, runtime, holding, times.toolRunnerVersion4, async ({ host }) =>
+  await session(story, times.toolRunnerVersion4, async ({ host }) =>
     saveToolRunnerVersion(host, version4),
   );
-  await session(home, runtime, holding, times.sayHello, async ({ host }) => {
-    const chat = SAMPLE_WORLD_CHATS.sayHello;
-    await sendChatMessage(host, chat.agent, chat.threadId, chat.message);
+  await session(story, history.sayHelloGoal - 60_000, october30);
+  await session(story, times.sayHello, async (context) => {
+    await sayHelloChat(context);
+    await november1Afternoon(context);
   });
+  // Daily summary, on a clock set back to Oct 28 (`sample-world-history.ts` says why).
+  await session(story, history.dailySummaryCreated - 60_000, october28);
+  await session(story, history.dailySummaryRan - 30_000, october29DailySummary);
+  await writeFinalWorkflowFiles(home);
 
-  const host = await startAt(home, runtime, holding, times.serverStarted);
+  const host = await startAt(story, times.serverStarted);
   try {
-    return { host, runtime, ...(await monday({ host, runtime })) };
+    const context = { host, runtime, director: story.director };
+    return { host, runtime, ...(await monday(context)) };
   } catch (error) {
     await host.close();
     throw error;

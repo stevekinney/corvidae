@@ -276,6 +276,14 @@ export interface CreateRunEngineOptions {
   alerts?: AlertingOptions | undefined;
 
   /**
+   * How often, in milliseconds, the engine reports its storage's size (the `storage.size` metric an
+   * alert rule reads). Weft's default is every minute; `0` turns the periodic report off, so the
+   * only sizes reported are the ones dispatched on the engine (COR-2009: the showcase reports its
+   * sample world's size once).
+   */
+  storageSizeReportIntervalMs?: number | undefined;
+
+  /**
    * Caller-supplied version identifier for the currently-deployed `agentRun`
    * workflow code (e.g. the app's package version or a deploy SHA) — AB-10,
    * workflow versioning for in-flight durable runs. On every recovered run,
@@ -463,6 +471,9 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
       ? { onRecoveredWorkflow: options.onRecoveredWorkflow }
       : {}),
     ...(options.alerts !== undefined ? { alerts: options.alerts } : {}),
+    ...(options.storageSizeReportIntervalMs !== undefined
+      ? { storageSizeReportIntervalMs: options.storageSizeReportIntervalMs }
+      : {}),
     resolveWorkflowServices,
     onLog: createHumanWaitMarkerSink(options.onLog),
     ...(options.workflowLogs !== undefined ? { workflowLogs: options.workflowLogs } : {}),

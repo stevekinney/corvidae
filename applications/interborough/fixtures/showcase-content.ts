@@ -497,9 +497,10 @@ export const SHOWCASE_RELEASE_NOTES_FILE: ShowcaseWorkflowFile = {
 };
 
 /**
- * Triage inbox: paused, started every day at 8:00 AM by the paused Inbox triage schedule, and
- * startable by hand (a `manual` trigger, part of the extended format). Its three steps are
- * Assistant's.
+ * Triage inbox: paused, and started every day at 8:00 AM Central time by its schedule trigger, the
+ * Inbox triage schedule, which pausing the file pauses too (decisions.md: "Inbox triage starts the
+ * Triage inbox workflow (Assistant), both paused, last run Oct 24"). A workflow file's schedule
+ * exists only as its trigger, so this is where Inbox triage lives. Its three steps are Assistant's.
  */
 export const SHOWCASE_TRIAGE_INBOX_FILE: ShowcaseWorkflowFile = {
   id: 'triage-inbox',
@@ -508,7 +509,12 @@ export const SHOWCASE_TRIAGE_INBOX_FILE: ShowcaseWorkflowFile = {
   "title": "Triage inbox",
   "description": "Sorts new messages into the right folder and flags anything urgent.",
   "paused": true,
-  "trigger": { "kind": "manual" },
+  "trigger": {
+    "kind": "schedule",
+    "name": "Inbox triage",
+    "spec": "0 8 * * *",
+    "timezone": "America/Chicago"
+  },
   "steps": [
     { "title": "Read new messages",
       "kind": "activity", "handler": "agent",

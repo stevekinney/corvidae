@@ -27,6 +27,8 @@ import {
   withBackendDescriptors,
   type GenerateFunction,
   type GenerateResponse,
+  type Validator,
+  type ValidatorOutcome,
 } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
@@ -98,6 +100,8 @@ export const SHOWCASE_ORDERS: Readonly<
     {
       readonly totalCents: number;
       readonly delivered: string;
+      /** The day it shipped, when the sample world says (RunDetail's order 4468). */
+      readonly shipped?: string;
       /**
        * What Tool runner says as it asks to refund the order, if anything. A run's last answer is
        * what its agent remembers, so this is the memory the ask leaves (PageMemory: "Order 4471
@@ -107,7 +111,7 @@ export const SHOWCASE_ORDERS: Readonly<
     }
   >
 > = {
-  '4468': { totalCents: 2650, delivered: 'Oct 27' },
+  '4468': { totalCents: 1800, shipped: 'Oct 27', delivered: 'Oct 29' },
   '4471': {
     totalCents: 4200,
     delivered: 'Oct 31',
@@ -138,15 +142,39 @@ export interface ShowcaseToolRunnerMoment {
   readonly signal: AbortSignal | undefined;
 }
 
+/** A moment in Assistant's script, handed to {@link ShowcasePacing.assistant} before it answers. */
+export interface ShowcaseAssistantMoment {
+  /** The text of the last user message, which a workflow step's message or a goal's prompt is too. */
+  readonly request: string;
+  /** Aborted when the run is: a pace that waits must stop waiting then. */
+  readonly signal: AbortSignal | undefined;
+}
+
+/** A goal's check about to answer, handed to {@link ShowcasePacing.check}. */
+export interface ShowcaseCheckMoment {
+  /** The check's validator name, one of {@link SHOWCASE_GOAL_CHECKS}. */
+  readonly check: string;
+  /** Which attempt it judges, from zero. */
+  readonly attemptIndex: number;
+  /** Whether the attempt met the check. */
+  readonly passed: boolean;
+}
+
 /**
- * How the sample world's seed paces the scripted agents (`fixtures/sample-world-seed.ts`): Tool
- * runner awaits {@link ShowcasePacing.toolRunner} before each answer, so the seed can move its clock
- * inside a run (the 4471 ask comes 20 s after its run starts) or hold an answer until the server
- * stops. Without pacing every answer comes at once.
+ * How the sample world's seed paces the scripted agents and checks (`fixtures/sample-world-seed.ts`):
+ * Tool runner awaits {@link ShowcasePacing.toolRunner} before each answer and Assistant
+ * {@link ShowcasePacing.assistant}, so the seed can move its clock inside a run (the 4471 ask comes
+ * 20 s after its run starts), hold an answer until the server stops, or fail one (Release notes'
+ * step 2 on Oct 30); a goal's check awaits {@link ShowcasePacing.check} before it answers, so the
+ * next attempt starts when the story says. Without pacing every answer comes at once.
  */
 export interface ShowcasePacing {
   /** Awaited before each Tool runner answer; a rejection fails the answer, as an aborted one does. */
   readonly toolRunner?: (moment: ShowcaseToolRunnerMoment) => void | Promise<void>;
+  /** Awaited before each Assistant answer; a rejection fails the answer with its message. */
+  readonly assistant?: (moment: ShowcaseAssistantMoment) => void | Promise<void>;
+  /** Awaited before a goal's check answers. */
+  readonly check?: (moment: ShowcaseCheckMoment) => void | Promise<void>;
 }
 
 /** How Tool runner asks for each of its tools: Lookup order Never, Issue refund Always, Triage refunds On changes. */
@@ -253,9 +281,11 @@ function asksOnlyToLookUp(text: string): boolean {
 /** What Tool runner says after looking an order up when it was asked only to look. */
 export function toolRunnerLookupReply(orderId: string): string {
   const order = SHOWCASE_ORDERS[orderId];
-  return order === undefined
-    ? `I couldn’t find order ${orderId}.`
-    : `Order ${orderId} was delivered on ${order.delivered}, for $${(order.totalCents / 100).toFixed(2)}.`;
+  if (order === undefined) return `I couldn’t find order ${orderId}.`;
+  const total = `$${(order.totalCents / 100).toFixed(2)}`;
+  return order.shipped === undefined
+    ? `Order ${orderId} was delivered on ${order.delivered}, for ${total}.`
+    : `Order ${orderId} shipped on ${order.shipped} and was delivered on ${order.delivered}. The total was ${total}, paid by card.`;
 }
 
 /**
@@ -355,6 +385,61 @@ export function showcaseModelSwitcherGenerate(): GenerateFunction {
   return withBackendDescriptors(generate, [row]);
 }
 
+/**
+ * Assistant's script: it says {@link SHOWCASE_ASSISTANT_REPLY} to every message, once `pacing` has
+ * let it ({@link ShowcasePacing.assistant}).
+ */
+export function showcaseAssistantGenerate(pacing: ShowcasePacing = {}): GenerateFunction {
+  const scripted = createScriptedGenerate(repeatedReply(SHOWCASE_ASSISTANT_REPLY));
+  return async (request) => {
+    const last = request.conversation.getMessages().findLast((message) => message.role === 'user');
+    await pacing.assistant?.({ request: textOf(last?.content), signal: request.signal });
+    return scripted(request);
+  };
+}
+
+/**
+ * The checks the sample world's goals name (PageGoals), each a built-in validator of the showcase
+ * host whose name says the check in words: "Reply says hello", "Notes mention the staging fix" and
+ * "Summary lists every refund waiting for approval". Each looks for its phrase in the attempt's
+ * answer.
+ */
+export const SHOWCASE_GOAL_CHECKS = {
+  sayHello: { name: 'reply-says-hello', version: '1', phrase: 'hello' },
+  stagingFix: { name: 'notes-mention-the-staging-fix', version: '1', phrase: 'staging fix' },
+  waitingRefunds: {
+    name: 'summary-lists-every-refund-waiting-for-approval',
+    version: '1',
+    phrase: 'waiting for approval',
+  },
+} as const;
+
+/**
+ * The goal checks of {@link SHOWCASE_GOAL_CHECKS} as validators: an attempt whose answer holds the
+ * check's phrase passes, and one that doesn't fails with a retryable "Check not met", so the goal
+ * tries again while it has attempts left. `pacing` is awaited before each answer.
+ */
+export function createShowcaseValidators(pacing: ShowcasePacing = {}): Validator[] {
+  return Object.values(SHOWCASE_GOAL_CHECKS).map(({ name, version, phrase }) => ({
+    identity: { name, version },
+    determinism: 'deterministic',
+    validate: async ({ result, attemptIndex }): Promise<ValidatorOutcome> => {
+      const answer = result.content;
+      const passed = answer.toLowerCase().includes(phrase);
+      await pacing.check?.({ check: name, attemptIndex, passed });
+      const evidence = [{ source: name, detail: { answer } }];
+      return passed
+        ? { kind: 'pass', evidence }
+        : {
+            kind: 'fail',
+            feedback: `The answer doesn’t mention “${phrase}”.`,
+            evidence,
+            retryable: true,
+          };
+    },
+  }));
+}
+
 /** Echo's script: it repeats the text of the last user message, unchanged. */
 export function showcaseEchoGenerate(): GenerateFunction {
   return async ({ conversation }) => {
@@ -410,7 +495,8 @@ export function showcaseWorkflowAuthor(tools: BureauOwnTools) {
 /**
  * The six built-in agents, fresh, so no two hosts share a script's position. The showcase host
  * passes them as `HostOptions.extraAgents`: Workflow author among those built from the Bureau's
- * own tools. `pacing` paces Tool runner's script (the sample world's seed passes it).
+ * own tools, and the goal checks as validators. `pacing` paces the scripts and checks (the sample
+ * world's seed passes it).
  */
 export function showcaseBuiltInAgents(pacing: ShowcasePacing = {}): ExtraAgents {
   return {
@@ -419,7 +505,7 @@ export function showcaseBuiltInAgents(pacing: ShowcasePacing = {}): ExtraAgents 
         name: 'assistant',
         description: 'Answers every message with the same scripted reply.',
         examples: ['Say hello'],
-        generate: createScriptedGenerate(repeatedReply(SHOWCASE_ASSISTANT_REPLY)),
+        generate: showcaseAssistantGenerate(pacing),
         stopWhen: stopWhen.noToolCalls(),
       }),
       echo: createAgent({
@@ -456,5 +542,6 @@ export function showcaseBuiltInAgents(pacing: ShowcasePacing = {}): ExtraAgents 
       }),
     },
     withBureauTools: { 'workflow-author': showcaseWorkflowAuthor },
+    validators: createShowcaseValidators(pacing),
   };
 }

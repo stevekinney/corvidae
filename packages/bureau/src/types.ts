@@ -904,6 +904,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   alerts?: AlertingOptions;
   /**
+   * COR-2009 — how often, in milliseconds, the durable engine reports its storage's size, the
+   * `storage.size` metric {@link BureauOptions.alerts} reads. Omitted, every minute (Weft's
+   * default); `0` turns the periodic report off, so the only sizes reported are the ones dispatched
+   * on the engine. Has effect only when a durable engine is composed.
+   */
+  storageSizeReportIntervalMs?: number;
+  /**
    * COR-2009 — the problems the host can see and the Bureau cannot, such as `no-provider` when no
    * model provider is connected. Read on every {@link Bureau.attention} call and merged into the one
    * list, most recent first; a plugin the Bureau already reports as not loaded is listed once.

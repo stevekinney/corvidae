@@ -236,6 +236,7 @@ import {
   forwardMissedFires,
   subscribeEventFeed,
 } from './bureau-event-forwarders.ts';
+import { publishWorkflowScheduleOutcomes } from './workflow-schedule-outcomes';
 import { auditMemoryCorrections } from './memory-correction-audit.ts';
 import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
 import {
@@ -3157,6 +3158,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       );
     }
     if (runtime.durable !== undefined) {
+      // COR-2009: a run a workflow file's schedule started publishes its outcome, as a fire does.
+      stopForwarding.push(
+        publishWorkflowScheduleOutcomes(runtime.durable.engine, (event) => emitter.dispatch(event)),
+      );
       stopForwarding.push(
         forwardMissedFires(
           // COR-1721: the composition listens from the moment the engine exists, and replays here.

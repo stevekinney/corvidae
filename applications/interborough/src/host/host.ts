@@ -107,7 +107,11 @@ import {
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
-import { type GenerateFunction, type RuntimeServices } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  type RuntimeServices,
+  type Validator,
+} from '@lostgradient/operative';
 import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
@@ -279,6 +283,12 @@ export type ExtraAgents = {
    * They are served as {@link ExtraAgents.agents} are, and a name may be in only one of the two.
    */
   readonly withBureauTools?: Readonly<Record<string, AgentWithBureauTools>>;
+  /**
+   * Goal validators to register beside the ones the plugins contribute (COR-2009), passed through
+   * as `BureauOptions.validators`: a goal names one by its exact name and version. The showcase's
+   * built-in checks are registered this way.
+   */
+  readonly validators?: readonly Validator[];
 };
 
 /**
@@ -374,6 +384,12 @@ export type HostOptions = {
    * attention. Omitted, the host configures none.
    */
   readonly alerts?: AlertingOptions;
+  /**
+   * How often, in milliseconds, the Bureau's engine reports its storage's size, passed through as
+   * `BureauOptions.storageSizeReportIntervalMs` (COR-2009). Omitted, every minute; `0` turns the
+   * report off, which the showcase does so its sample world's one 1.6 GB reading stands.
+   */
+  readonly storageSizeReportIntervalMilliseconds?: number;
   /**
    * The runtime services the host and its Bureau run on, passed through as `BureauOptions.runtime`
    * (COR-2009): its clock stamps every record the Bureau and its engine write, and the host's own
@@ -798,6 +814,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       ...(options.extraAgents?.withBureauTools === undefined
         ? {}
         : { agentsWithBureauTools: { ...options.extraAgents.withBureauTools } }),
+      ...(options.extraAgents?.validators === undefined
+        ? {}
+        : { validators: options.extraAgents.validators }),
       // The default of the `decisions.model` setting is the plugin's Jev model, while that plugin
       // is loaded and enabled; the other choice is Bureau's own `catalog`, the language-model fallback.
       ...defaultDecisionOptions(pluginManager.loadable(), pluginManager.settings()),
@@ -858,6 +877,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ? {}
         : { webhooks: { targets: [], fetch: options.hookFetch } }),
       ...(options.alerts === undefined ? {} : { alerts: options.alerts }),
+      ...(options.storageSizeReportIntervalMilliseconds === undefined
+        ? {}
+        : { storageSizeReportIntervalMs: options.storageSizeReportIntervalMilliseconds }),
       // Needs attention (COR-2009): no model provider connected is the host's to see, and so is a
       // plugin the host skipped before the Bureau composed the rest.
       attention: async () => [

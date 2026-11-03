@@ -17,6 +17,11 @@
  */
 
 import type { BungalowEnvironment } from '@lostgradient/bungalow';
+import type { BureauPluginEntry } from '@lostgradient/bureau';
+import guardrails from '@lostgradient/plugin-guardrails';
+import ollama from '@lostgradient/plugin-ollama';
+import voyage from '@lostgradient/plugin-voyage';
+import type { AlertingOptions } from '@lostgradient/weft';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -24,6 +29,7 @@ import { SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SHOWCASE_WORKFLOW_FILES } from '../../fixtures/showcase-content.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { WORKFLOW_DIRECTORY_NAME, type HostOptions } from './host.ts';
+import { workspacePlugins } from './plugins.ts';
 import { showcaseBuiltInAgents, type ShowcasePacing } from './showcase-agents.ts';
 import { fakeProvider, writeProviderHome } from './stub-provider.ts';
 
@@ -103,18 +109,72 @@ export function showcaseProviderResolver(): NonNullable<HostOptions['resolveProv
 }
 
 /**
+ * The plugins the showcase host loads: the workspace's own, and the Guardrails, Ollama and Voyage
+ * plugins, which the sample world lists on Settings › Plugins (decisions.md, "Owner answers during
+ * B01": Guardrails runs, Ollama and Voyage are disabled).
+ */
+export function showcasePlugins(): readonly BureauPluginEntry[] {
+  return [
+    ...workspacePlugins(),
+    { descriptor: guardrails, source: 'package', location: '@lostgradient/plugin-guardrails' },
+    { descriptor: ollama, source: 'package', location: '@lostgradient/plugin-ollama' },
+    { descriptor: voyage, source: 'package', location: '@lostgradient/plugin-voyage' },
+  ];
+}
+
+/**
+ * The HTTP client the showcase's hooks deliver with: it answers every delivery `200 OK` itself, so a
+ * sample hook keeps its delivery records and never posts to the address it names
+ * (`events.pagerduty.com`, `hooks.slack.com`, `audit.example.com`).
+ */
+export const showcaseHookFetch: typeof fetch = Object.assign(
+  async () => new Response('ok', { status: 200 }),
+  { preconnect: fetch.preconnect },
+);
+
+/** The showcase's storage warning level: the threshold of its `storage.size` alert rule, 1 GB. */
+export const SHOWCASE_STORAGE_WARNING_BYTES = 1024 ** 3;
+
+/**
+ * The showcase's alert rules (decisions.md, "Coordinator call: the firing storage.size alert …"):
+ * one `storage.size` rule at {@link SHOWCASE_STORAGE_WARNING_BYTES}, which a fresh install doesn't
+ * have, so the sample world's storage alert can fire. Its action is `webhook` with no webhook
+ * targets, so firing posts nothing and logs nothing; the alert is read from the engine.
+ */
+export const SHOWCASE_ALERTS: AlertingOptions = {
+  rules: [{ metric: 'storage.size', threshold: SHOWCASE_STORAGE_WARNING_BYTES, action: 'webhook' }],
+};
+
+/**
  * What a showcase host is started with beside its environment: the stub provider's resolver, the
- * sample world's built-in agents and tools as extra agents, and its nightly clean-up in the sample
- * world's Central time, whatever zone the machine is in. The development entry (`dev.ts`), the
- * end-to-end showcase host and the showcase host test all start it with these; the sample world's
- * seed passes `pacing` to pace the scripted agents.
+ * sample world's built-in agents, tools and goal checks as extra agents, its plugins, hooks that
+ * deliver without posting, its storage alert rule with no periodic size report to resolve it, and its nightly clean-up in the sample world's Central time, whatever
+ * zone the machine is in. The development entry (`dev.ts`), the end-to-end showcase host and the
+ * showcase host test all start it with these; the sample world's seed passes `pacing` to pace the
+ * scripted agents.
  */
 export function showcaseHostOptions(
   pacing: ShowcasePacing = {},
-): Pick<HostOptions, 'extraAgents' | 'resolveProviderGenerate' | 'nightlyCleanUp'> {
+): Pick<
+  HostOptions,
+  | 'extraAgents'
+  | 'resolveProviderGenerate'
+  | 'nightlyCleanUp'
+  | 'plugins'
+  | 'hookFetch'
+  | 'alerts'
+  | 'storageSizeReportIntervalMilliseconds'
+> {
   return {
     extraAgents: showcaseBuiltInAgents(pacing),
     resolveProviderGenerate: showcaseProviderResolver(),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },
+    plugins: showcasePlugins(),
+    hookFetch: showcaseHookFetch,
+    alerts: SHOWCASE_ALERTS,
+    // The sample world's storage holds 1.6 GB (its seed reports it at 9:05 AM on Nov 2); the
+    // engine's own report of the real database's few megabytes would resolve the alert a minute
+    // later, so it is off.
+    storageSizeReportIntervalMilliseconds: 0,
   };
 }
