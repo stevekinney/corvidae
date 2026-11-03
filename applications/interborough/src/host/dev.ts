@@ -12,8 +12,8 @@
  * `development-source` (COR-1881). Plugin code loads once, so under `bun --watch` an edit to it
  * restarts the host and the new code is what runs.
  *
- * `--showcase` runs the showcase host (`showcase.ts`): a home of its own, the demo plugin and a stub
- * model provider, and believable content seeded over HTTP once the host listens
+ * `--showcase` runs the showcase host (`showcase.ts`): a home of its own, the sample world's built-in
+ * agents, the demo plugin and a stub model provider, and believable content seeded over HTTP once the host listens
  * (`fixtures/showcase-seed.ts`).
  *
  * The host runs with `development: true`, so every open page reloads itself after a successful
@@ -38,7 +38,7 @@ import { RESTART_EXIT_CODE } from './restart.ts';
 import {
   prepareShowcaseHome,
   showcaseEnvironment,
-  showcaseProviderResolver,
+  showcaseHostOptions,
   splitShowcaseFlag,
 } from './showcase.ts';
 import { installShutdownSignals } from './shutdown-signals.ts';
@@ -80,7 +80,7 @@ const host = await startHost({
   development: true,
   developmentPlugins: pluginPaths,
   onRestartRequested: () => shutDown(RESTART_EXIT_CODE),
-  ...(showcase ? { resolveProviderGenerate: showcaseProviderResolver() } : {}),
+  ...(showcase ? showcaseHostOptions() : {}),
 });
 console.info(`Interborough is listening on ${host.url}`);
 console.info(

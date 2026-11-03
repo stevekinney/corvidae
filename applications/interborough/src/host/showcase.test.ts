@@ -8,10 +8,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  SHOWCASE_ORDER_REFUND_FILE,
+  SHOWCASE_RELEASE_NOTES_FILE,
+  SHOWCASE_TRIAGE_INBOX_FILE,
+  SHOWCASE_WORKFLOW_FILES,
+} from '../../fixtures/showcase-content.ts';
+import { SHOWCASE_AGENT_IDENTIFIERS } from './showcase-agents.ts';
+import {
   prepareShowcaseHome,
   SHOWCASE_FLAG,
   SHOWCASE_MODELS,
   showcaseEnvironment,
+  showcaseHostOptions,
   splitShowcaseFlag,
 } from './showcase.ts';
 
@@ -68,5 +76,70 @@ describe('prepareShowcaseHome', () => {
     };
     expect(document.plugins['demo']?.enabled).toBe(true);
     expect(document.plugins['anthropic']?.configuration?.models).toEqual([...SHOWCASE_MODELS]);
+  });
+});
+
+describe('the sample world workflow files', () => {
+  test('are written into the home, byte for byte', async () => {
+    const home = join(scratch, 'workflow-files');
+    await prepareShowcaseHome(home);
+    for (const file of SHOWCASE_WORKFLOW_FILES) {
+      expect(await readFile(join(home, 'workflows', `${file.id}.json`), 'utf8')).toBe(file.text);
+    }
+  });
+
+  test('Release notes is the one file in the extended format the Code tab shows', () => {
+    const file = JSON.parse(SHOWCASE_RELEASE_NOTES_FILE.text) as {
+      name: string;
+      title: string;
+      description: string;
+      trigger: Record<string, unknown>;
+      input: { required: string[]; properties: Record<string, Record<string, unknown>> };
+      output: { required: string[] };
+      steps: Record<string, unknown>[];
+    };
+    expect(file.name).toBe('release-notes');
+    expect(file.title).toBe('Release notes');
+    expect(file.description).toBe('Collects merged changes into a draft.');
+    expect(file.trigger).toEqual({
+      kind: 'schedule',
+      spec: '0 11 * * 5',
+      timezone: 'America/Chicago',
+      overlap: 'skip',
+      catchUp: false,
+    });
+    expect(file.input.required).toEqual(['branch']);
+    expect(file.input.properties['since']?.['format']).toBe('date');
+    expect(file.output.required).toEqual(['notes']);
+    expect(file.steps.map((step) => step['title'])).toEqual([
+      'Find the last release',
+      'Collect merged changes',
+      'Draft the notes',
+      'Wait for approval',
+    ]);
+    expect(file.steps.at(-1)).toEqual({
+      title: 'Wait for approval',
+      kind: 'await-signal',
+      signal: 'notes-approved',
+    });
+  });
+
+  test('Triage inbox is paused, and Order refund cannot be read past line 11', () => {
+    expect(JSON.parse(SHOWCASE_TRIAGE_INBOX_FILE.text)).toMatchObject({
+      name: 'triage-inbox',
+      paused: true,
+    });
+    expect(() => JSON.parse(SHOWCASE_ORDER_REFUND_FILE.text)).toThrow();
+    const lines = SHOWCASE_ORDER_REFUND_FILE.text.split('\n');
+    expect(lines[10]).toBe('      "input": { "agent": "tool-runner"');
+    expect(lines[11]).toBe('        "message": "Issue the approved refund." } }');
+  });
+});
+
+describe('showcaseHostOptions', () => {
+  test('registers the six built-in agents and the stub provider', () => {
+    const options = showcaseHostOptions();
+    expect(Object.keys(options.extraAgents?.agents ?? {})).toEqual([...SHOWCASE_AGENT_IDENTIFIERS]);
+    expect(options.resolveProviderGenerate).toBeFunction();
   });
 });

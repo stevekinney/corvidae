@@ -5,7 +5,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { DEMO_AGENT_NAMES } from './agents.ts';
+import { CHANGELOG_WRITER_REPLY, DEMO_AGENT_NAMES, RELEASE_HELPER_REPLY } from './agents.ts';
 import plugin, { createDemoPlugin, DEMO_APPROVAL_SECRET } from './plugin.ts';
 
 pluginContract(plugin, { createHost: createPluginTestHost });
@@ -63,7 +63,7 @@ describe('the demo plugin', () => {
     expect(plugin.enabledByDefault).toBe(false);
   });
 
-  test('lists the six agents under its prefix once enabled', async () => {
+  test('lists the eight agents under its prefix once enabled', async () => {
     const bureau = await start({ secret: 'fixture-demo-approval-secret' });
     const ids = bureau.agents
       .list()
@@ -83,6 +83,16 @@ describe('the demo plugin', () => {
     const echoTask = await bureau.tasks.start('demo:echo', 'Say this back');
     const echo = await echoTask.result();
     expect(echo.content).toBe('Say this back');
+  });
+
+  test('holds the release helper and the changelog writer, which answer from their scripts', async () => {
+    const bureau = await start({ secret: 'fixture-demo-approval-secret' });
+    const helperTask = await bureau.tasks.start('demo:release-helper', 'Draft');
+    const helper = await helperTask.result();
+    expect(helper.content).toBe(RELEASE_HELPER_REPLY);
+    const writerTask = await bureau.tasks.start('demo:changelog-writer', 'Write');
+    const writer = await writerTask.result();
+    expect(writer.content).toBe(CHANGELOG_WRITER_REPLY);
   });
 
   test('tool-runner stops on a refund that waits for an operator, signed with its own secret', async () => {

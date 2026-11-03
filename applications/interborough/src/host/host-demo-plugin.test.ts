@@ -52,14 +52,16 @@ afterEach(async () => {
 });
 
 describe('the demo agents', () => {
-  test('are the six the demo plugin defines, and the host serves all of them to chat', async () => {
+  test('are the eight the demo plugin defines, and the host serves all of them to chat', async () => {
     const host = await start();
     for (const id of DEMO_AGENT_IDS) expect(host.bureau.agents.has(id)).toBe(true);
     expect([...DEMO_AGENT_IDS].toSorted()).toEqual([
       'demo:assistant',
+      'demo:changelog-writer',
       'demo:echo',
       'demo:internal',
       'demo:model-switcher',
+      'demo:release-helper',
       'demo:request-human-input',
       'demo:tool-runner',
     ]);

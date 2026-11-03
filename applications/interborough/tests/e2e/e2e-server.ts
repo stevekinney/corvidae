@@ -30,7 +30,7 @@ import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
 import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost } from '../../src/host/host.ts';
-import { prepareShowcaseHome, showcaseProviderResolver } from '../../src/host/showcase.ts';
+import { prepareShowcaseHome, showcaseHostOptions } from '../../src/host/showcase.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
@@ -319,13 +319,14 @@ const connectHost = await startConnectHost({
 
 // The seventh host, which only the showcase specification opens (`showcase.spec.ts`): the shape of
 // `bun run dev -- --showcase`, so the Bureau's own engine runs its console, the stub provider
-// gives the agents their models, and the demo plugin is on. It starts empty; the specification
+// gives the agents their models, the sample world's built-in agents are there, and the demo
+// plugin is on. It starts empty; the specification
 // seeds it and removes what it seeded.
 const showcaseHome = join(scratch, 'showcase-home');
 await prepareShowcaseHome(showcaseHome);
 const showcaseHost = await startHost({
   environment: { INTERBOROUGH_HOME: showcaseHome },
-  resolveProviderGenerate: showcaseProviderResolver(),
+  ...showcaseHostOptions(),
   port: E2E_SHOWCASE_PORT,
   buildDirectory,
 });

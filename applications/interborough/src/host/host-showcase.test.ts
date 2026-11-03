@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 import { removeShowcase, seedShowcase, type ShowcaseSeed } from '../../fixtures/showcase-seed.ts';
 import { startHost, type Host } from './host.ts';
-import { prepareShowcaseHome, showcaseProviderResolver } from './showcase.ts';
+import { prepareShowcaseHome, showcaseHostOptions } from './showcase.ts';
 
 let home: string;
 let host: Host;
@@ -57,7 +57,7 @@ beforeAll(async () => {
   await prepareShowcaseHome(home);
   host = await startHost({
     environment: { INTERBOROUGH_HOME: home },
-    resolveProviderGenerate: showcaseProviderResolver(),
+    ...showcaseHostOptions(),
     port: 0,
   });
   // The demo plugin seeds its schedule and goal in `afterStart`, which the host does not wait for.
@@ -82,8 +82,25 @@ describe('the showcase seed on a host', () => {
       hooks: 2,
       // The demo plugin's own goal.
       goals: 1 + 2,
-      workflows: 3,
+      // The seed's three, and the sample world's three files the home holds.
+      workflows: 3 + 3,
     });
+  });
+
+  test('lists the sample world files: Order refund cannot be read, and the extended format waits on Bureau', async () => {
+    const listed = await bureau<{
+      workflows: { id: string; state: string; problem?: { code: string } }[];
+    }>('bureau.workflows.list');
+    const state = (id: string) => listed.workflows.find((workflow) => workflow.id === id);
+    expect(state('order-refund')).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'invalid-json' },
+    });
+    // Bureau accepts the extended keys (`title`, `timezone`, `catchUp`, `manual`) once the format
+    // grows (COR-2009 piece 3); until then it refuses the two files that use them.
+    for (const id of ['release-notes', 'triage-inbox']) {
+      expect(state(id)).toMatchObject({ state: 'invalid', problem: { code: 'invalid-document' } });
+    }
   });
 
   test('puts workflow runs in each state, with the model picker and a failed chat', async () => {
@@ -146,7 +163,8 @@ describe('the showcase seed on a host', () => {
       hooks: 0,
       // A goal cannot be deleted, so the two stay, cancelled.
       goals: 1 + 2,
-      workflows: 0,
+      // The sample world's files belong to the home, not to the seed.
+      workflows: 3,
     });
   });
 });
