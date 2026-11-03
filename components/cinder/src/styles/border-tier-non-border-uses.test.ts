@@ -281,6 +281,13 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/run-step-timeline/run-step-timeline.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
   ],
+  'components/cinder/src/components/attempts-indicator/attempts-indicator.css': [
+    {
+      declaration: '--_cinder-attempts-indicator-fill: var(--cinder-border-control);',
+      category: 'area',
+      audit: 'attempts-indicator',
+    },
+  ],
   'components/cinder/src/components/slider/slider.css': [
     {
       declaration: 'background: var(--cinder-border-control, currentColor);',

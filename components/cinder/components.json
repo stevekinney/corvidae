@@ -425,6 +425,36 @@
       }
     },
     {
+      "name": "AttemptsIndicator",
+      "id": "attempts-indicator",
+      "import": "@lostgradient/cinder",
+      "exportName": "AttemptsIndicator",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Segmented bar with one segment per allowed attempt, filled for the attempts made, that reads as an image named \"2 of 5 attempts\".",
+      "tags": ["attempts", "progress", "segments"],
+      "useWhen": [
+        "Showing how many of a fixed number of attempts a goal, retry or reconnection has used, beside its count.",
+        "Drawing a neutral attempts bar on a list row's second line, where the word beside it carries the outcome."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing continuous progress toward a value — use progress or meter."
+        },
+        {
+          "reason": "Drawing a trend over time — use sparkbar."
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/attempts-indicator/attempts-indicator.schema.json",
+        "variables": "src/components/attempts-indicator/attempts-indicator.variables.json",
+        "examples": "src/components/attempts-indicator/attempts-indicator.examples.json"
+      }
+    },
+    {
       "name": "AudioPlayer",
       "id": "audio-player",
       "import": "@lostgradient/cinder",
@@ -1608,12 +1638,13 @@
       "exportName": "DataList",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Semantic list container for homogeneous record rows, with a styled empty state and an optional list-level density.",
+      "purpose": "Semantic list container for like rows: empty state, density, day groups, a shared status column, and announced live insertion.",
       "tags": ["list", "iterator"],
       "useWhen": [
         "Rendering a vertical list of like records where each row shares the same layout.",
         "Pairing with StackedListItem rows for leading/title/description/meta/trailing content.",
-        "Showing a dedicated empty state when the collection has no items."
+        "Showing a dedicated empty state when the collection has no items.",
+        "Grouping rows under day headers, or announcing rows that arrive while the list is on screen."
       ],
       "avoidWhen": [
         {
@@ -5258,11 +5289,12 @@
       "exportName": "StackedListItem",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Dense list row with leading, title, description, meta, and trailing slots that may optionally render as an anchor.",
-      "tags": ["list", "row"],
+      "purpose": "Dense list row with leading, status, title, time, description, meta, and trailing slots; the status-first two-line row has a fixed 128px status column, a two-line title clamp and a whole-row link.",
+      "tags": ["list", "row", "status"],
       "useWhen": [
         "Listing entities vertically with consistent leading icons or avatars and trailing actions.",
-        "Linking each row to a detail view by passing href."
+        "Linking each row to a detail view by passing href, which makes the whole row one link.",
+        "Listing runs, goals, schedules or agents with a status word, bold title and time on line one and muted meta on line two."
       ],
       "avoidWhen": [
         {

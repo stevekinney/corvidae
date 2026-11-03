@@ -47,6 +47,13 @@ export type {
   AreaChartSchemaProps,
 } from './components/area-chart/index.ts';
 
+export { default as AttemptsIndicator } from './components/attempts-indicator/index.ts';
+export type {
+  AttemptsIndicatorLayout,
+  AttemptsIndicatorProps,
+  AttemptsIndicatorTone,
+} from './components/attempts-indicator/index.ts';
+
 export { default as Autocomplete } from './components/autocomplete/index.ts';
 export type {
   AutocompleteProps,
@@ -269,7 +276,7 @@ export type { CopyButtonProps } from './components/copy-button/index.ts';
 export { copyToClipboard } from './utilities/clipboard.ts';
 
 export { default as DataList } from './components/data-list/index.ts';
-export type { DataListProps } from './components/data-list/index.ts';
+export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
 
 export { default as DataGrid } from './components/data-grid/index.ts';
 export type {
@@ -878,8 +885,11 @@ export type {
 
 export { default as StackedListItem } from './components/stacked-list-item/index.ts';
 export type {
+  StackedListItemAction,
   StackedListItemDensity,
   StackedListItemProps,
+  StackedListItemStatusPlacement,
+  StackedListItemTitleLines,
 } from './components/stacked-list-item/index.ts';
 
 export { default as Stack } from './components/stack/index.ts';

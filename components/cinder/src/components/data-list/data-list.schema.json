@@ -6,6 +6,10 @@
       "enum": ["comfortable", "condensed"],
       "description": "List-level density inherited by StackedListItem rows that do not set their\nown `density` prop. Omit to let each row use its own default. A per-row\n`density` always overrides this list-level value.\n\nNote: when passing a variable that may be `undefined`, spread conditionally\nbecause `exactOptionalPropertyTypes` is enabled:\n`{...(density ? { density } : {})}`"
     },
+    "statusColumn": {
+      "type": "boolean",
+      "description": "Keep the status column's width for every row that has no `status` (a workflow, an agent with\nnothing to report), so titles line up down the whole list. A row's own `statusColumn` wins."
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged onto the `.cinder-data-list` root element."
@@ -24,6 +28,16 @@
         "name": "empty",
         "reason": "function-or-snippet",
         "description": "Rendered when `items` is empty. The component automatically wraps the\nsnippet output in `<li class=\"cinder-data-list-empty\">`.\n\n**Do NOT wrap in an `<li>` yourself** — the component provides the `<li>`\nwrapper automatically. Pass only inner content (e.g. a `<p>`, a `<div>`,\nor plain text). Contrast with `children`, which must render an `<li>`."
+      },
+      {
+        "name": "groupBy",
+        "reason": "function-or-snippet",
+        "description": "Group consecutive items under a header band, newest group first as the items arrive. Each\ngroup is a nested list named by its header, so a screen reader announces the day. Items are\nnot reordered; pass them already sorted."
+      },
+      {
+        "name": "insertionAnnouncement",
+        "reason": "function-or-snippet",
+        "description": "Announce rows inserted while the list is on screen. Called with the number of new rows; the\nreturned text (`1 new run`) is spoken politely through a live region that takes no space.\nThe first render announces nothing. Rows inserted above the viewport do not move what the\nreader is looking at."
       },
       {
         "name": "items",

@@ -15,6 +15,14 @@ DataList renders a `<ul role="list">`. The `role="list"` attribute is stated exp
 
 Every element produced by the `children` snippet must be a valid `<li>` so the `<ul>` has a valid DOM structure. [`StackedListItem`](../stacked-list-item/README.md) is the recommended row: it renders an `<li>` with leading/title/description/ meta/trailing slots. Do not render `<div>`, `<span>`, or arbitrary fragments directly inside DataList — doing so creates invalid HTML.
 
+## Day groups
+
+With `groupBy` each group is an `<li>` that holds a header (`<div id>`) and a nested `<ul role="list" aria-labelledby>` named by that header, so a screen reader announces "Today · Monday, Nov 2, list, 3 items" rather than a flat run of rows. The header is a plain element, not a heading: it names a list, and a page that wants its days in the heading outline should say so itself.
+
+## Live insertion
+
+With `insertionAnnouncement` the list holds one extra `<li role="presentation">` that contains a polite live region (`role="status"`, `aria-live="polite"`, `aria-atomic="true"`). The element is not drawn and takes no space. It speaks the text you return when rows that were not in the previous render appear (`1 new run`); the first render and removed or reordered rows are not announced. Do not also announce the same change elsewhere on the page.
+
 ## Accessible naming
 
 DataList does not supply an accessible name for the list. Consumers are responsible for labelling the list through one of:

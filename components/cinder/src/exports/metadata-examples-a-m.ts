@@ -8,6 +8,7 @@ import alertExamplesJson from '../components/alert/alert.examples.json' with { t
 import approvalCardExamplesJson from '../components/approval-card/approval-card.examples.json' with { type: 'json' };
 import areaChartExamplesJson from '../components/area-chart/area-chart.examples.json' with { type: 'json' };
 import aspectRatioExamplesJson from '../components/aspect-ratio/aspect-ratio.examples.json' with { type: 'json' };
+import attemptsIndicatorExamplesJson from '../components/attempts-indicator/attempts-indicator.examples.json' with { type: 'json' };
 import audioPlayerExamplesJson from '../components/audio-player/audio-player.examples.json' with { type: 'json' };
 import autocompleteExamplesJson from '../components/autocomplete/autocomplete.examples.json' with { type: 'json' };
 import avatarGroupExamplesJson from '../components/avatar-group/avatar-group.examples.json' with { type: 'json' };
@@ -116,6 +117,8 @@ export const approvalCardExamples = approvalCardExamplesJson;
 export const areaChartExamples = areaChartExamplesJson;
 /** Code examples for this component. */
 export const aspectRatioExamples = aspectRatioExamplesJson;
+/** Code examples for this component. */
+export const attemptsIndicatorExamples = attemptsIndicatorExamplesJson;
 /** Code examples for this component. */
 export const audioPlayerExamples = audioPlayerExamplesJson;
 /** Code examples for this component. */

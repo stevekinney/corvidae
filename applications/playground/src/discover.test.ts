@@ -188,6 +188,7 @@ const SIDEBAR_BASELINE = [
   'approval-card',
   'area-chart',
   'aspect-ratio',
+  'attempts-indicator',
   'audio-player',
   'autocomplete',
   'avatar',

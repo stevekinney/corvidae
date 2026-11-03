@@ -1,0 +1,40 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    made: {
+      type: 'number',
+      description:
+        'Attempts made so far. Filled segments are counted from the start; the value is clamped to `allowed`.',
+    },
+    allowed: {
+      type: 'number',
+      description:
+        'Attempts allowed, which is the number of segments: one per allowed attempt. Above 100 the bar\nstill draws 100 segments and fills them in proportion.',
+    },
+    tone: {
+      enum: ['neutral', 'accent'],
+      description:
+        'Colour of the filled segments. `neutral` is the default, because the word beside the bar\ncarries the outcome; `accent` suits a bar that is a progress cue in its own right, such as\nreconnection attempts.',
+    },
+    layout: {
+      enum: ['inline', 'block'],
+      description: 'Width of the bar. Default `inline`.',
+    },
+    label: {
+      type: 'string',
+      description: 'Accessible name. Defaults to `${made} of ${allowed} attempts`.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-attempts-indicator`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['allowed', 'made'],
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

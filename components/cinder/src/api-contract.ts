@@ -220,6 +220,9 @@ export const CONTRACT: Record<string, ComponentContract> = {
       items: { optional: false, type_kind: 'TSArrayType', default: REQUIRED },
       key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
       density: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      groupBy: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      insertionAnnouncement: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
