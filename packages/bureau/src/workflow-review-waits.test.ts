@@ -10,11 +10,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MemoryStorage } from '@lostgradient/storage';
+import { principalFromApiKey } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { BureauError } from './create-bureau';
 import { projectReview } from './http/bureau-reviews-operations';
+import { createMemoryAssetStorage } from './assets/storage';
+import { createBureauHandler } from './http/create-bureau-handler';
 import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
@@ -269,6 +272,65 @@ describe('a workflow review step', () => {
       }),
     );
     expect((different as BureauError).code).toBe('CONFLICT');
+  });
+
+  it('reaches the Reviews page over the wire, which lists, reads and resolves it', async () => {
+    const harness = await start({
+      overrides: { id: 'workflow-review-wire', assets: { storage: createMemoryAssetStorage() } },
+    });
+    const { runId, review } = await atReview(harness);
+    const handler = createBureauHandler(harness.bureau, {
+      authentication: {
+        resolveApiKeyPrincipal: async (key: string) =>
+          key === 'reviewer-key'
+            ? principalFromApiKey({
+                subject: 'reviewer',
+                scopes: ['bureau.reviews:read', 'bureau.reviews:resolve'],
+              })
+            : null,
+        auditSink: () => undefined,
+      },
+    });
+    const call = async (method: string, params: unknown) => {
+      const response = await handler(
+        new Request('http://localhost/jsonrpc', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'X-API-Key': 'reviewer-key' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        }),
+      );
+      return (await response.json()) as { result?: Record<string, unknown> };
+    };
+
+    const listed = await call('bureau.reviews.list', {});
+    expect(listed.result?.['reviews']).toEqual([
+      expect.objectContaining({
+        source: 'bureau',
+        kind: 'human-wait',
+        id: review.id,
+        runId,
+        status: 'pending',
+        workflow: {
+          id: 'release-notes',
+          title: 'Release notes',
+          step: 3,
+          stepTitle: 'Approve the notes',
+        },
+      }),
+    ]);
+    const fetched = await call('bureau.reviews.get', { id: review.id });
+    expect(fetched.result).toMatchObject({ id: review.id, workflow: { step: 3 } });
+    const resolved = await call('bureau.reviews.resolve', {
+      id: review.id,
+      decision: 'approve',
+      answer: { note: 'Ship it' },
+    });
+    expect(resolved.result).toMatchObject({
+      id: review.id,
+      decision: 'approve',
+      receipt: 'applied',
+    });
+    await waitUntil(async () => (await statusOf(harness, runId)) === 'completed');
   });
 
   it('is still waiting after a restart, on the version its instance began on', async () => {
