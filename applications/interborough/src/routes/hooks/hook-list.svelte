@@ -142,7 +142,6 @@
         onSearchChange={(query) => setParameter('q', query)}
         onFacetChange={setParameter}
         onFilterRemove={(key) => setParameter(key, '')}
-        onClearAll={clearFilters}
       />
     {/snippet}
     {#snippet newHook()}

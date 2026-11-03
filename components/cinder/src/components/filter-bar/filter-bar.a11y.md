@@ -2,43 +2,50 @@
 
 ## Pattern
 
-`FilterBar` is a composed filter surface, not a single widget. It uses the `role="search"` landmark to group the filtering controls. Individual controls within (search input, selects, chip remove buttons, clear-all button) follow their own native or ARIA patterns.
+`FilterBar` is a composed filter surface, not a single widget. It uses the `role="search"` landmark to group the filtering controls, and every control inside follows its own pattern: a radio group of segments, listbox selects, popover dialogs for the choice facets, toggle buttons, and a search input.
 
-Roving-tabindex Toolbar semantics are intentionally NOT applied to the outer container: the search input and select controls own their own arrow-key semantics (text cursor, option navigation), which conflict with the toolbar pattern's arrow-key model. Normal Tab order is used throughout.
+Roving-tabindex Toolbar semantics are intentionally NOT applied to the outer container: the search input and selects own their own arrow-key semantics (text cursor, option navigation), which conflict with the toolbar pattern's arrow-key model. Normal Tab order is used throughout. The bar has one row and the DOM order is the visual order, except that an applied chip is drawn after the chips still waiting for a value; its place in the Tab order is its facet's.
 
 ## Roles names states
 
 | Element | Role / Semantics | Notes |
 | --- | --- | --- |
-| Root `div` | `role="search"` | Consumer must supply a meaningful `aria-label` (e.g. `"Workflow filters"`). |
-| Search input | `type="search"` | Provided by `SearchField`; inherits its own label and clear-button wiring. |
-| Select facet `select` | Native `select` | Labeled via `aria-label` attribute equal to `facet.label`; visually-hidden `label[for]` also rendered. |
-| Applied-filter chip | `span[data-cinder-mode="removable"]` | Chip's remove button carries `aria-label="Remove filter: {label}: {value}"`. |
-| Clear-all `button` | `type="button"` | Visible text "Clear all" is the accessible name. |
-| Live region `div` | `role="status"` (`aria-live="polite"`, `aria-atomic="true"`) | Always in DOM; announces active filter count and values on change. Never conditionally rendered. |
+| Root `div` | `role="search"` | Consumer must supply a meaningful `aria-label` (for example `"Run filters"`). |
+| Segments | `role="radiogroup"` of `role="radio"` | Named by `segmentsLabel` (visually hidden). Each segment's count is part of its name ("Waiting on you, 2"), so it never depends on colour. |
+| Collapsed segments | Listbox `Select` | Named by `segmentsLabel`; the visible prefix "Status:" is decorative. Options read "Failed 1". |
+| Select facet | Listbox `Select` | Named by the facet label; the prefix "Kind:" is decorative. The first option clears the facet. |
+| Choice chip (label) | `button`, `aria-haspopup="dialog"`, `aria-expanded` | Opens a dialog named by the facet's title. An applied chip reads "Started by: Chats, Goals". |
+| Choice chip (x) | `button` | `aria-label="Remove filter: Started by: Chats, Goals"`. Focus returns to the facet's chip after removal. |
+| Choice options | `group` of checkboxes, or a `radiogroup` | Each count is the checkbox's or radio's `aria-describedby`. |
+| Toggle chip | `button`, `aria-pressed` | Name includes the count ("Missed runs 1"). The dot is decorative. |
+| Search | `type="search"` | Provided by `SearchField`. In the medium layout an icon button named "Search" opens it in a dialog; in the narrow layout it is the Filter menu's Search row. |
+| Filter button | `button`, `aria-haspopup="dialog"`, `aria-expanded` | Named "Filter", or "Filter, 2 applied" while filters are applied. |
+| Filter menu rows | `button`, `aria-expanded`, `aria-controls` | One row per facet and one for Search; a row opens its controls in place beneath it. |
+| Live region | `role="status"` (`aria-live="polite"`, `aria-atomic="true"`) | Always in DOM; announces the active filter count and values on change. Never conditionally rendered. |
 
 ## Keyboard
 
 | Key | Action |
 | --- | --- |
-| Tab | Move focus sequentially through search field, facet selects, chip remove buttons, clear-all button. |
-| Enter / Space | Activate the focused button (clear-all, chip remove). |
-| Arrow Up / Down | Navigate options within a focused native select. |
-| Escape | Clear search field text when the search input is focused (native browser behavior for `type="search"`). |
+| Tab | Move focus sequentially through the segments, the facet controls, and the search field. |
+| Arrow keys | Move between segments; move through the options of an open select. |
+| Enter / Space | Open a chip's popover, press a toggle, activate Remove, Clear, or a Filter menu row. |
+| Escape | Close an open popover or select and return focus to its trigger. In the search field, clear the text (native `type="search"` behaviour). |
 
-There is no roving-tabindex model; every interactive element is in the natural Tab order.
+## Mouse and pointer
 
-## Mouse / pointer
-
-- Clicking a chip's remove button (×) fires `onFilterRemove` with the chip's key.
-- Clicking "Clear all" fires `onClearAll`.
-- Changing a select facet fires `onFacetChange` with the facet key and new value.
+- Clicking a chip's label opens its popover; clicking its x fires `onFilterRemove` with the facet key.
+- Ticking a checkbox fires `onFacetValuesChange` with every chosen value in the facet's own option order; Clear fires it with an empty list.
+- Choosing a radio row, a select option or a toggle fires `onFacetChange`; clearing reports an empty string.
 - Typing in the search field fires `onSearchChange` on every keystroke.
-- The search field's clear button (rendered by `SearchField`) clears the query and fires `onSearchChange('')`.
+
+## Responsive behaviour
+
+The bar never wraps and never scrolls sideways. Below 1024px of viewport (or when its own width cannot hold the wide form) the segments fold into a select and the search into an icon button. Below 640px only the Status select and a Filter button remain; on a phone the Filter menu opens as a bottom sheet with 44px rows. Under `prefers-reduced-motion` the popovers cross-fade instead of sliding, as every Cinder popover does.
 
 ## Hard scope caps
 
 - The bar does not implement routing, URL-sync, or persistence. The consumer owns those.
 - The bar does not implement data fetching or debouncing. The consumer owns those.
-- No date-range primitive is included. A `type: 'custom'` facet with a consumer-supplied snippet is the extension point for date pickers.
-- The bar does not implement a roving-tabindex toolbar model. Arrow-key navigation between controls is the responsibility of the individual controls (select, SearchField).
+- No date-range primitive is included. A `type: 'custom'` facet is the extension point for date pickers.
+- The bar draws no Clear all button. A list that filters to nothing offers Clear filters in its own empty state.

@@ -154,7 +154,6 @@
       searchPlaceholder={AGENTS_COPY.searchPlaceholder}
       searchAriaLabel={AGENTS_COPY.searchLabel}
       onSearchChange={(query) => (search = query)}
-      onClearAll={() => (search = '')}
     />
   {/snippet}
   {#snippet newAgent()}

@@ -449,11 +449,16 @@ export type {
 export { default as FilterBar } from './components/filter-bar/index.ts';
 export type {
   AppliedFilter,
+  ChoiceFacet,
   CustomFacet,
   FacetDefinition,
   FacetOption,
+  FilterBarLayout,
   FilterBarProps,
+  FilterSegment,
   SelectFacet,
+  ToggleFacet,
+  ToggleFacetTone,
 } from './components/filter-bar/index.ts';
 
 export { default as FeedBoundary } from './components/feed-boundary/index.ts';

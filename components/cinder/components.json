@@ -2364,11 +2364,11 @@
       "exportName": "FilterBar",
       "category": "form",
       "status": "beta",
-      "purpose": "Composed filtering toolbar with search, select facets, applied-filter chips, and clear-all for dense operational list views.",
+      "purpose": "Single-row filtering toolbar for list views: status segments, select and chip facets, a search field, and a collapse to a select and a Filter menu on narrow screens.",
       "tags": ["form", "filter"],
       "useWhen": [
-        "Filtering a list or table by multiple dimensions such as status, category, and queue simultaneously.",
-        "Showing applied filters as removable chips so users can see and undo active constraints."
+        "Filtering a list or table by several dimensions at once, such as status, who started it, and which agent ran it.",
+        "Showing applied filters as tinted chips that read \"Agent: Tool runner\" and can be removed in place."
       ],
       "avoidWhen": [
         {
@@ -2378,7 +2378,7 @@
           "reason": "Filtering navigates to a new page — the bar owns no routing or persistence."
         }
       ],
-      "related": ["search-field", "chip", "select", "toolbar"],
+      "related": ["search-field", "segmented-control", "select", "popover"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {

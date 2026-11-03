@@ -246,7 +246,6 @@
       {appliedFilters}
       onFacetChange={(key, value) => change({ [key]: value })}
       onFilterRemove={(key) => change({ [key]: '' })}
-      onClearAll={clearFilters}
     />
   {/snippet}
   {#snippet startRun()}

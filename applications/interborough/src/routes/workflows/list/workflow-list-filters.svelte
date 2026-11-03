@@ -18,8 +18,7 @@
    * multi-valued and already self-represent their active state (`TagInput`
    * renders its own removable chips; the status row's pressed `Chip`s ARE
    * the active-state display) — routing them through the bar's single-chip
-   * model would just duplicate that. `onClearAll` resets everything this
-   * component owns, tags/status included, so "Clear all" still works.
+   * model would just duplicate that.
    */
   import {
     Chip,
@@ -68,7 +67,7 @@
   const statuses = $derived(normalizeWorkflowStatusFilter(filter.status));
   const createdPreset = $derived(timeRangeToCreatedDatePreset(filter.createdAt));
   // No control sets the updated window: a link does (the Health overview's Failed in 24h), so the
-  // chip names it, and removing it or Clear all drops it.
+  // chip names it, and removing it drops it.
   const updatedPreset = $derived(timeRangeToCreatedDatePreset(filter.updatedAt));
 
   /**
@@ -150,12 +149,6 @@
       else if (key === 'updated') delete draft.updatedAt;
     });
   }
-
-  function onClearAll(): void {
-    const next: WorkflowListQuery = {};
-    if (filter.limit !== undefined) next.limit = filter.limit;
-    onFilterChange(next);
-  }
 </script>
 
 <div class="weft-workflow-filters">
@@ -183,7 +176,6 @@
     {appliedFilters}
     {onFacetChange}
     {onFilterRemove}
-    {onClearAll}
     facets={[
       ...(lockType
         ? []
