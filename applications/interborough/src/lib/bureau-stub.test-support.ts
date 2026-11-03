@@ -313,6 +313,8 @@ export function catalogFixture(
       defaultApproval: 'allow' as const,
       source: 'host' as const,
       plugin: null,
+      title: null,
+      skill: null,
       users: [],
       ...tool,
     })),

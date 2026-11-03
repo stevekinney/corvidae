@@ -799,6 +799,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       hooks: hookOptionsFor(bungalow.mode),
     });
     held.bureau = bureau;
+    // A tool source connected from now on is loaded at once, and its tools join the Bureau's
+    // catalog without a restart (COR-2009).
+    toolSources.goLive((tools) => bureau.agents.addTools(tools));
     // One line per plugin with its status and problem codes, once Bureau has composed them.
     for (const line of pluginStartupLines(await pluginManager.snapshot())) {
       log(line);

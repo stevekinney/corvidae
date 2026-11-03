@@ -109,11 +109,15 @@ describe('probing an MCP server', () => {
     expect(probe).toEqual({
       outcome: 'listed',
       tools: [
-        { name: 'notes__lookup', tool: 'lookup', tier: 'read-only' },
-        { name: 'notes__wipe', tool: 'wipe', tier: 'dangerous' },
+        expect.objectContaining({ name: 'notes__lookup', tool: 'lookup', tier: 'read-only' }),
+        expect.objectContaining({ name: 'notes__wipe', tool: 'wipe', tier: 'dangerous' }),
       ],
       skipped: [],
     });
+    // Each tool comes with what Choose tools shows: its name for a person and its description.
+    for (const tool of probe.outcome === 'listed' ? probe.tools : []) {
+      expect(Object.keys(tool)).toEqual(['name', 'tool', 'tier', 'title', 'description']);
+    }
     // Nothing was stored, written or recorded, and the source is not in the list.
     expect(home.state.secrets.size).toBe(0);
     expect(home.state.configuration).toBeUndefined();
@@ -206,6 +210,111 @@ describe('probing an OpenAPI service', () => {
       'pets__delete-pet',
       'pets__list-pets',
     ]);
+  });
+});
+
+describe('testing an OpenAPI connection (COR-2009)', () => {
+  /** Payments: List refunds reads and needs nothing; Get refund needs an id; Create refund changes things. */
+  const refundsDocument = {
+    openapi: '3.1.0',
+    info: { title: 'Payments API', version: '1.0.0' },
+    paths: {
+      '/refunds/{id}': {
+        get: {
+          operationId: 'getRefund',
+          summary: 'Get refund',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        },
+      },
+      '/refunds': {
+        get: { operationId: 'listRefunds', summary: 'List refunds' },
+        post: { operationId: 'createRefund', summary: 'Create refund' },
+      },
+    },
+  };
+  const KEY = 'payments-test-key-4f1c';
+  const source = {
+    id: 'payments',
+    kind: 'openapi',
+    specification: { type: 'document', document: refundsDocument },
+    baseUrl: 'https://payments.example.com/v1',
+    authentication: { type: 'api-key', header: 'x-api-key', credential: 'key' },
+  };
+
+  /** A service that answers List refunds for the right key, and 401 for any other. */
+  function service() {
+    const calls: { method: string; url: string }[] = [];
+    const fetchImplementation = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      calls.push({ method: init?.method ?? 'GET', url });
+      const headers = new Headers(init?.headers);
+      return headers.get('x-api-key') === KEY
+        ? Response.json([])
+        : Response.json({ error: 'unauthorized' }, { status: 401 });
+    }) as typeof fetch;
+    return { calls, fetch: fetchImplementation };
+  }
+
+  test('calls List refunds (GET /refunds) with the key, so a working key passes now', async () => {
+    const fake = service();
+    const { manager } = await managerOver('local', { fetch: fake.fetch });
+
+    const probe = await manager.probe({
+      id: 'payments',
+      source,
+      credentials: { key: KEY },
+      principal: owner,
+    });
+
+    expect(probe).toMatchObject({
+      outcome: 'listed',
+      test: { tool: 'list-refunds', title: 'List refunds', passed: true },
+    });
+    expect(fake.calls).toEqual([{ method: 'GET', url: 'https://payments.example.com/v1/refunds' }]);
+    if (probe.outcome !== 'listed') return;
+    expect(probe.tools.find((tool) => tool.tool === 'list-refunds')).toMatchObject({
+      title: 'List refunds',
+      tier: 'read-only',
+    });
+  });
+
+  test('says a wrong key fails the call, naming neither the key nor the address', async () => {
+    const fake = service();
+    const { manager } = await managerOver('local', { fetch: fake.fetch });
+
+    const probe = await manager.probe({
+      id: 'payments',
+      source,
+      credentials: { key: 'the-wrong-key-value' },
+      principal: owner,
+    });
+
+    expect(probe).toMatchObject({
+      outcome: 'listed',
+      test: {
+        tool: 'list-refunds',
+        passed: false,
+        message: 'List refunds answered 401, so the key or the address may be wrong.',
+      },
+    });
+    const text = JSON.stringify(probe);
+    expect(text).not.toContain('the-wrong-key-value');
+    expect(text).not.toContain('payments.example.com');
+  });
+
+  test('makes no call to an MCP server, which is tested by listing its tools', async () => {
+    const server = await track(startMcpServer(TOKEN));
+    const { manager } = await managerOver();
+
+    const probe = await manager.probe({
+      id: 'notes',
+      source: mcpSource('notes', server.origin),
+      credentials: { token: TOKEN },
+      principal: owner,
+    });
+
+    expect(probe.outcome).toBe('listed');
+    expect('test' in probe).toBe(false);
   });
 });
 

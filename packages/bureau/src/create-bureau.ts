@@ -3005,7 +3005,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // settling after the engine and the store are closed (or fenced off) leaves the run in its
   // persisted state for a correctly configured boot to resume.
   let models: Models;
-  let agentToolCatalog: Readonly<Record<string, Tool>>;
+  /** The deployment's tool catalog; mutable only through `agents.addTools` (COR-2009). */
+  let agentToolCatalog: Record<string, Tool>;
   let fileAgents: FileAgentRuntime | undefined;
   /** COR-1911 — the agents being tried, held in memory for the contexts that started them. */
   const tryAgents = createTryAgents();
@@ -3327,8 +3328,34 @@ async function constructBureau<const D extends AgentDefinitions>(
             track: (promise, label) => runtimeServices.deferred.track(promise, label),
           });
     await fileAgents?.files.refresh();
+    /**
+     * COR-2009 — adds a tool source the host connected while the Bureau runs: the tools join the
+     * catalog as the host's, and every agent file is checked again, so a file that names one of
+     * them is ready without a restart. A name Bureau or a plugin holds is refused, and nothing is
+     * added; a name the host already holds is replaced.
+     */
+    async function addHostTools(tools: Readonly<Record<string, Tool>>): Promise<void> {
+      const files = fileAgents?.files;
+      if (files === undefined) {
+        throw new BureauError(
+          'Tools can be added only to a Bureau with an agent source and a model catalog.',
+          'UNSUPPORTED_CAPABILITY',
+        );
+      }
+      const added = Object.entries(tools);
+      const held = added.find(([name]) => bureauToolNames.has(name) || pluginToolNames.has(name));
+      if (held !== undefined) {
+        throw new BureauError(
+          `Cannot add tool "${held[0]}": the name belongs to ${bureauToolNames.has(held[0]) ? 'Bureau' : 'a plugin'}.`,
+          'CONFLICT',
+        );
+      }
+      for (const [name, tool] of added) agentToolCatalog[name] = tool;
+      await files.revalidate();
+    }
     agentCatalog = createAgentCatalog(agentsSnapshot, {
       selectorAvailable: true,
+      addTools: addHostTools,
       files: fileAgents?.files,
       snapshots: fileAgents?.snapshots,
       descriptors: () => models.catalog().descriptors,

@@ -83,7 +83,7 @@ describe('the showcase built-in agents', () => {
     expect(
       author === undefined
         ? []
-        : [...(author as { toolNames: readonly string[] }).toolNames].toSorted(),
+        : [...(author as unknown as { toolNames: readonly string[] }).toolNames].toSorted(),
     ).toEqual(Object.keys(SHOWCASE_WORKFLOW_AUTHOR_TOOLS).toSorted());
     expect(SHOWCASE_WORKFLOW_AUTHOR_TOOLS).toEqual({
       'bureau:workflows-create': 'on-changes',

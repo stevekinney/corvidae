@@ -1241,7 +1241,10 @@ export function buildBureauHandlerHost(
                   return detail?.text;
                 },
               }),
-          ...(bureau.hooks === undefined ? {} : { hooks: () => bureau.hooks?.list() ?? [] }),
+          hooks: async () => {
+            const hooks = bureau.hooks;
+            return hooks === undefined ? [] : hooks.list();
+          },
         }),
     },
     agentDefinitions: {

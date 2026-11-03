@@ -51,6 +51,7 @@
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",
     "cron-parser": "catalog:",
+    "js-yaml": "catalog:",
     "svelte": "catalog:",
     "zod": "catalog:"
   },
@@ -62,6 +63,7 @@
     "@testing-library/jest-dom": "catalog:",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
+    "@types/js-yaml": "catalog:",
     "fake-indexeddb": "catalog:",
     "happy-dom": "catalog:",
     "oxlint": "catalog:",

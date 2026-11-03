@@ -19,6 +19,7 @@ import type {
   RunnableAgent,
 } from '@lostgradient/operative';
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
+import type { Tool } from 'armorer';
 
 import { AgentFileError } from './agent-file';
 import { agentSkillNames } from './agent-skills';
@@ -220,6 +221,15 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   /** The tools an agent file may name: the deployment's tool catalog, by name. */
   tools(): readonly AgentToolDescription[];
   /**
+   * COR-2009 — add tools to the deployment's tool catalog while the Bureau runs, by the name an
+   * agent file uses, as the host's own (`source: 'host'`, or `skill` for a tool whose metadata names
+   * one): a tool source the host connected, whose tools are available without a restart. Every
+   * agent file is checked again before it resolves, so a file that names one of them is ready. A
+   * name Bureau or a plugin holds is refused (`CONFLICT`) and nothing is added; a name the host
+   * already holds is replaced. Refused (`UNSUPPORTED_CAPABILITY`) by a Bureau with no agent source.
+   */
+  addTools(tools: Readonly<Record<string, Tool>>): Promise<void>;
+  /**
    * The snapshots that have run for `id`, most recently run first. A snapshot is kept while any
    * run that references it is retained (`BureauRetentionOptions.tasks`) and pruned after the last.
    */
@@ -289,6 +299,11 @@ export interface CreateAgentCatalogOptions {
    * settings can change it. The models it forbids are marked `denied` (COR-1996). Defaults to none.
    */
   readonly modelPolicy?: (() => BureauModelPolicyOptions | undefined) | undefined;
+  /**
+   * What {@link BureauAgentCatalog.addTools} does (COR-2009). Omitted, it refuses, because there is
+   * no tool catalog to add to.
+   */
+  readonly addTools?: ((tools: Readonly<Record<string, Tool>>) => Promise<void>) | undefined;
 }
 
 /**
@@ -443,6 +458,11 @@ export function createAgentCatalog<D extends AgentDefinitions>(
         ...tool,
         users: [...tool.users, ...(codeUsers.get(tool.name) ?? [])].toSorted(),
       }));
+    },
+    async addTools(tools) {
+      const add = options?.addTools;
+      if (add === undefined) throw new Error('This catalog has no tool catalog to add tools to.');
+      await add(tools);
     },
     revisions(id) {
       return snapshots?.revisions(id) ?? Promise.resolve([]);
