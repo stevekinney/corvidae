@@ -132,8 +132,8 @@ export async function auditOverrideWrite(
   const index = versions.findIndex((version) => version.hash === result.hash);
   const current = versions[index];
   const previous = index === -1 ? undefined : versions[index + 1];
-  const detail = await agents.detail(result.id);
-  const ownTools = detail?.codeDefinition?.tools ?? [];
+  // The agent's own tools, not the effective ones its detail shows with the overrides applied.
+  const ownTools = agents.overrides.ownTools(result.id);
   const toolsNow = current?.overrides.tools ?? ownTools;
   const toolsBefore = previous?.overrides.tools ?? ownTools;
   const toolsAdded = joinedDifference(toolsNow, toolsBefore);

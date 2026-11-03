@@ -39,6 +39,7 @@ import type { AgentFileWriter } from './agent-file-writer';
 import type { AgentVersionRecord } from './agent-version-store';
 import { createAgentOverrideStore, type AgentOverrideStore } from './agent-override-store';
 import { type CodeAgentOverrides, createCodeAgentOverrides } from './code-agent-overrides';
+import { effectiveCodeAgent, type EffectiveCodeAgentDeployment } from './code-agent-effective';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
 
@@ -263,8 +264,10 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   readonly overrides: CodeAgentOverrides;
   /**
    * Rescan the agent directory now, and when the model catalog has changed since the last scan,
-   * revalidate against it. Resolves once the catalog reflects the directory. A no-op without
-   * `BureauOptions.agentSource`.
+   * revalidate against it. Resolves once the catalog reflects the directory. Without
+   * `BureauOptions.agentSource` there is no directory to scan. COR-2009: it also reads the
+   * overrides in force of every built-in agent again, so a version another process saved on the
+   * same store applies from here.
    */
   refresh(): Promise<void>;
   /** Called after every rescan that added, changed, or removed a file agent. Returns its unsubscribe. */
@@ -348,6 +351,15 @@ export interface CreateAgentCatalogOptions {
    * which a restart forgets.
    */
   readonly overrides?: AgentOverrideStore | undefined;
+  /**
+   * COR-2009 — what applying a built-in agent's overrides to its runs needs from the deployment:
+   * the model resolver, the tool catalog, the plugin guardrails, the approval secret and the
+   * Bureau's services. `find`, `models`, `generationProfile`, `detail` and `tools` answer for a
+   * built-in agent with its overrides in force (`code-agent-effective.ts`). Omitted, a run of an
+   * overridden agent gets no catalog tool, no plugin guardrail and no model the catalog resolves.
+   */
+  readonly codeAgentRuns?:
+    Omit<EffectiveCodeAgentDeployment, 'descriptors' | 'modelPolicy'> | undefined;
 }
 
 /**
@@ -465,6 +477,39 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     modelPolicy,
   });
 
+  /**
+   * The built-in agent `name` as a run gets it: with the overrides in force applied, rebuilt only
+   * when they or the model catalog change. Any other agent is returned as it is.
+   */
+  interface EffectiveEntry {
+    readonly overrides: object;
+    readonly descriptors: readonly BackendDescriptor[];
+    readonly agent: AnyRunnableAgent;
+    profile?: AgentGenerationProfile;
+  }
+  const effectiveAgents = new Map<string, EffectiveEntry>();
+  const effectiveEntry = (name: string, agent: AnyRunnableAgent): EffectiveEntry | undefined => {
+    if (!overrides.isBuiltIn(name)) return undefined;
+    const inForce = overrides.inForce(name);
+    const catalogNow = descriptors();
+    const cached = effectiveAgents.get(name);
+    if (cached?.overrides === inForce && cached.descriptors === catalogNow) return cached;
+    const entry: EffectiveEntry = {
+      overrides: inForce,
+      descriptors: catalogNow,
+      agent: effectiveCodeAgent(agent, inForce, {
+        toolCatalog: () => ({}),
+        ...options?.codeAgentRuns,
+        descriptors,
+        modelPolicy,
+      }),
+    };
+    effectiveAgents.set(name, entry);
+    return entry;
+  };
+  const effectiveOf = (name: string, agent: AnyRunnableAgent): AnyRunnableAgent =>
+    effectiveEntry(name, agent)?.agent ?? agent;
+
   const catalog: BureauAgentCatalog<D> = {
     // Same cast rationale as above: `byName.get(name)!.agent` is genuinely
     // `D[TName]` for a `TName` the caller supplied, but the `Map`'s own
@@ -478,7 +523,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return entry.agent as D[TName];
     },
     find(name) {
-      return byName.get(name)?.agent ?? files?.find(name);
+      const code = byName.get(name);
+      return code === undefined ? files?.find(name) : effectiveOf(name, code.agent);
     },
     has(name): name is keyof D & string {
       return byName.has(name);
@@ -493,6 +539,12 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return entries.filter(predicate);
     },
     generationProfile(name) {
+      const code = byName.get(name);
+      const effective = code === undefined ? undefined : effectiveEntry(name, code.agent);
+      if (effective !== undefined && effective.agent !== code?.agent) {
+        effective.profile ??= buildCatalogGenerationProfile(effective.agent, selectorAvailable);
+        return effective.profile;
+      }
       const cached = generationProfiles.get(name);
       if (cached !== undefined) return cached;
       const fileAgent = files?.find(name);
@@ -518,7 +570,12 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           ...codeListing(code),
           text: null,
           definition: null,
-          codeDefinition: describeCodeAgent(code.agent, descriptors(), modelPolicy()),
+          // COR-2009: a built-in agent as its runs get it, with the overrides in force.
+          codeDefinition: describeCodeAgent(
+            effectiveOf(id, code.agent),
+            descriptors(),
+            modelPolicy(),
+          ),
         };
       }
       const disabled = unavailable.get(id);
@@ -533,7 +590,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return files?.detail(id);
     },
     models(name) {
-      const agent = byName.get(name)?.agent ?? files?.find(name);
+      const code = byName.get(name);
+      const agent = code === undefined ? files?.find(name) : effectiveOf(name, code.agent);
       return agent === undefined
         ? undefined
         : describeAgentModels(agent, descriptors(), modelPolicy());
@@ -543,7 +601,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       // `createAgent`; an agent that states none uses none that can be told.
       const codeUsers = new Map<string, string[]>();
       for (const entry of entries) {
-        for (const name of codeToolNames(entry.agent)) {
+        for (const name of codeToolNames(effectiveOf(entry.name, entry.agent))) {
           codeUsers.set(name, [...(codeUsers.get(name) ?? []), entry.name]);
         }
       }
@@ -566,8 +624,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
         requireFiles().versions.restore(id, revision, writeOptions),
     },
     overrides,
-    refresh() {
-      return files?.refresh() ?? Promise.resolve();
+    async refresh() {
+      await Promise.all([files?.refresh(), overrides.load()]);
     },
     onChange(listener) {
       return files?.onChange(listener) ?? (() => undefined);

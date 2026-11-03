@@ -59,6 +59,23 @@ export interface CodeAgentOverrides {
   /** The saved versions of built-in agent `id`, newest first; empty for any other identifier. */
   versions(id: string): Promise<readonly AgentOverrideVersionRecord[]>;
   /**
+   * The overrides of built-in agent `id` in force, as this Bureau last read them from the store
+   * ({@link load}) or saved them; empty for an agent never changed and for any other identifier.
+   * Synchronous, so the catalog can hand a run the agent with its overrides applied.
+   */
+  inForce(id: string): AgentOverrides;
+  /**
+   * The tools built-in agent `id` states itself, before any override: what a version that does
+   * not override `tools` allows. Empty for any other identifier.
+   */
+  ownTools(id: string): readonly string[];
+  /**
+   * Reads the overrides in force of every built-in agent from the store, for {@link inForce}. The
+   * Bureau calls it once it is built and whenever the catalog is refreshed, so a version another
+   * process saved on the same store is read then.
+   */
+  load(): Promise<void>;
+  /**
    * Saves version `version` of built-in agent `id` again as a new version, under the checks and
    * failures of {@link save}, and `agent-version-not-found` when no such version is stored.
    */
@@ -167,6 +184,31 @@ function checkModels(
 export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): CodeAgentOverrides {
   const { store, codeAgents } = options;
   const isBuiltIn = (id: string) => codeAgents.has(id) && !id.includes(':');
+  const inForce = new Map<string, AgentOverrides>();
+
+  async function loadOne(id: string): Promise<void> {
+    const state = await store.current(id);
+    inForce.set(id, state.overrides);
+  }
+
+  /** Runs a write, then holds what is in force after it: the saved overrides, or the store's. */
+  async function writing(
+    id: string,
+    write: () => Promise<{
+      readonly result: AgentOverrideWriteResult;
+      readonly overrides: AgentOverrides;
+    }>,
+  ): Promise<AgentOverrideWriteResult> {
+    try {
+      const { result, overrides } = await write();
+      inForce.set(id, overrides);
+      return result;
+    } catch (error) {
+      // A stale write lost to a save another process made: read what that save put in force.
+      if (isBuiltIn(id)) await loadOne(id);
+      throw error;
+    }
+  }
 
   function requireBuiltIn(id: string): { readonly tools: readonly string[] } {
     const agent = isBuiltIn(id) ? codeAgents.get(id) : undefined;
@@ -213,7 +255,11 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
       return isBuiltIn(id) ? store.current(id) : undefined;
     },
     async save(id, overrides, writeOptions) {
-      return store.save(id, check(id, overrides), saveOptionsOf(writeOptions));
+      const checked = check(id, overrides);
+      return writing(id, async () => ({
+        result: await store.save(id, checked, saveOptionsOf(writeOptions)),
+        overrides: checked,
+      }));
     },
     async versions(id) {
       return isBuiltIn(id) ? store.list(id) : [];
@@ -224,7 +270,19 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
       const restored = versions.find((record) => record.version === version);
       // Checked again: a tool or model a version named may have gone from the deployment since.
       if (restored !== undefined) check(id, restored.overrides);
-      return store.restore(id, version, saveOptionsOf(writeOptions));
+      return writing(id, async () => ({
+        result: await store.restore(id, version, saveOptionsOf(writeOptions)),
+        overrides: restored?.overrides ?? {},
+      }));
+    },
+    inForce(id) {
+      return (isBuiltIn(id) ? inForce.get(id) : undefined) ?? {};
+    },
+    ownTools(id) {
+      return (isBuiltIn(id) ? codeAgents.get(id)?.tools : undefined) ?? [];
+    },
+    async load() {
+      await Promise.all([...codeAgents.keys()].filter(isBuiltIn).map(loadOne));
     },
   };
 }

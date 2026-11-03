@@ -23,6 +23,7 @@ import {
   appendAgentInput,
   payloadText,
   assertAgentInput,
+  type BackendDescriptor,
   type CombinedOperativeEventMap,
   createActiveRun,
   createAgentRun,
@@ -164,7 +165,12 @@ import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createPluginRegistry } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
-import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
+import {
+  type AgentDefinitions,
+  type AgentNames,
+  createAgentCatalog,
+  type CreateAgentCatalogOptions,
+} from './agent-catalog';
 import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
@@ -3329,6 +3335,39 @@ async function constructBureau<const D extends AgentDefinitions>(
     const pluginToolNames: ReadonlySet<string> = new Set(
       Object.keys(composedPlugins.tools).filter((name) => !bureauToolNames.has(name)),
     );
+    /**
+     * COR-1961: the run's owner decides whether a default effort its model cannot do fails the step
+     * or is lowered; a run with no owner on record, or an owner whose profile says nothing, rejects.
+     * A file agent's and an overridden built-in agent's runs ask it alike.
+     */
+    async function effortFallbackModeOfRun(
+      runId: string | undefined,
+    ): Promise<'reject' | 'degrade'> {
+      if (runId === undefined) return 'reject';
+      const owner = ownerOrLocal(await ownerOf({ kind: 'run', id: runId }));
+      const users = modelPolicyOf(currentSettings())?.users;
+      const profile = users !== undefined && Object.hasOwn(users, owner) ? users[owner] : undefined;
+      return profile?.effortFallbackMode ?? 'reject';
+    }
+    /**
+     * COR-2009 — a built-in agent's overrides apply to its runs as an agent file's settings do: the
+     * same model resolver, tool catalog, plugin guardrails, approval secret and effort fallback.
+     */
+    function codeAgentRunsDeployment(): NonNullable<CreateAgentCatalogOptions['codeAgentRuns']> {
+      return {
+        ...(options.models?.generate === undefined
+          ? {}
+          : { resolveGenerate: (row: BackendDescriptor) => models.generate(row) }),
+        toolCatalog: () => agentToolCatalog,
+        contributions: options.agentContributions,
+        approvalSecret: options.agentApprovalSecret,
+        ...(runtime.secretAnswers === undefined
+          ? {}
+          : { secretResolver: secretResolverOf(runtime.secretAnswers) }),
+        effortFallbackMode: effortFallbackModeOfRun,
+        runtime: runtimeServices,
+      };
+    }
     // COR-1815: built before the catalog, which asks it which revisions a retained run references.
     const agentSnapshots = createAgentSnapshotStore({
       store: runtime.kv,
@@ -3348,17 +3387,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               resolveGenerate: (row) => models.generate(row),
               // COR-1980: the settings are live, so a write is judged by the policy as it is now.
               modelPolicy: () => modelPolicyOf(currentSettings()),
-              // COR-1961: the run's owner decides whether a default effort its model cannot do
-              // fails the step or is lowered; a run with no owner on record, or an owner whose
-              // profile says nothing, rejects.
-              effortFallbackMode: async (runId) => {
-                if (runId === undefined) return 'reject';
-                const owner = ownerOrLocal(await ownerOf({ kind: 'run', id: runId }));
-                const users = modelPolicyOf(currentSettings())?.users;
-                const profile =
-                  users !== undefined && Object.hasOwn(users, owner) ? users[owner] : undefined;
-                return profile?.effortFallbackMode ?? 'reject';
-              },
+              effortFallbackMode: effortFallbackModeOfRun,
               ...(options.agentApprovalSecret === undefined
                 ? {}
                 : { approvalSecret: options.agentApprovalSecret }),
@@ -3442,7 +3471,10 @@ async function constructBureau<const D extends AgentDefinitions>(
         store: runtime.kv,
         nowISO: runtimeServices.clock.nowISO,
       }),
+      codeAgentRuns: codeAgentRunsDeployment(),
     });
+    // COR-2009: the overrides in force of the built-in agents, read before any run can start.
+    await agentCatalog.overrides.load();
     // COR-1721 — after the first scan, so the files present at boot are not reported as added.
     stopForwarding.push(
       forwardDefinitionChanges('agents', agentCatalog, (event) => emitter.dispatch(event)),

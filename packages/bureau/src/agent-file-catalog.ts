@@ -143,7 +143,9 @@ import type { AgentSource, DefinitionEntry } from './sources/definition-source';
  * What a code-defined agent states about itself, read-only (COR-1818), so an editor can show it and
  * offer to duplicate it into an agent file. It is read from the agent object, never from a file:
  * an agent that is not a `createAgent` result states less, and each statement it does not make is
- * `null` or empty here.
+ * `null` or empty here. COR-2009: for a built-in agent it is read with the saved overrides in force
+ * applied, as its runs get it, so its `model`, `models`, `tools` and `instructions` are the effective
+ * ones.
  */
 export interface AgentCodeDefinition {
   /** The agent's display name. */
