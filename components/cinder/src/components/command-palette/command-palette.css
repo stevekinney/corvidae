@@ -2,6 +2,8 @@
 /* CommandItem styles live in their own sidecar. Pull them in here so that
  * importing `cinder/command-palette` brings in CommandItem styles. */
 @import '../command-item/command-item.css';
+/* The sheet form's Close button. */
+@import '../button/button.css';
 
 @layer cinder.components {
   /* ========================================
@@ -235,5 +237,96 @@
       opacity: 0;
       translate: 0 -0.75rem;
     }
+  }
+
+  /* ----------------------------------------
+ * Bottom sheet (rows 05d, 05j, 06c)
+ *
+ * Below `sheetBelow` the palette docks to the bottom edge: full width, rounded top corners, a
+ * grabber, a bordered search field with its own Close button, and 44px rows. It rides above the
+ * on-screen keyboard (`--_cinder-keyboard-inset`, published while it is open) and clears the bottom
+ * safe area, and its listbox scrolls inside it because the panel's height is capped by the space
+ * the keyboard leaves. Physical properties, as in drawer.css, because the sheet is physically
+ * bottom anchored in every writing mode.
+ * ---------------------------------------- */
+
+  .cinder-command-palette[data-cinder-sheet='docked'] {
+    inset-block-start: auto;
+    inset-block-end: var(--_cinder-keyboard-inset, 0px);
+    inset-inline: 0;
+    max-width: none;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-palette__panel {
+    max-height: calc(90dvh - var(--_cinder-keyboard-inset, 0px));
+    padding: var(--cinder-space-2) var(--cinder-space-2)
+      max(var(--cinder-space-4), env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) 0 0;
+  }
+
+  .cinder-command-palette__grabber {
+    flex-shrink: 0;
+    inline-size: 2.25rem;
+    block-size: 0.25rem;
+    margin: 0 auto var(--cinder-space-2);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-border-control);
+  }
+
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-palette__search {
+    min-block-size: var(--cinder-touch-target-min);
+    gap: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3) var(--cinder-space-1);
+    margin-block-end: var(--cinder-space-1);
+    border: 1px solid var(--cinder-border-control);
+    border-radius: var(--cinder-radius-md);
+  }
+
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-palette__search-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-palette__input {
+    min-inline-size: 0;
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-group__label {
+    padding: var(--cinder-space-2) var(--cinder-space-3) var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* The sheet rises from the bottom edge and leaves the same way. */
+  .cinder-command-palette[data-cinder-sheet='docked']
+    .cinder-command-palette__panel[data-cinder-closing] {
+    translate: 0 100%;
+  }
+
+  @starting-style {
+    .cinder-command-palette[data-cinder-sheet='docked'] .cinder-command-palette__panel {
+      translate: 0 100%;
+    }
+  }
+
+  /* Reduced motion: no slide, a cross-fade instead (design row 05d). foundation.css forces every
+   * CSS transition to 0.01ms under reduced motion, so the fade is played from script
+   * (reduced-motion-fade.ts); CSS only keeps the panel where it is. */
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-command-palette[data-cinder-sheet='docked']
+      .cinder-command-palette__panel[data-cinder-closing] {
+      translate: none;
+    }
+  }
+
+  :root[data-reduced-motion='on']
+    .cinder-command-palette[data-cinder-sheet='docked']
+    .cinder-command-palette__panel[data-cinder-closing] {
+    translate: none;
   }
 }

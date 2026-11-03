@@ -9,6 +9,15 @@ type ModalBaseProps = {
   dismissOnEscape?: boolean;
   /** When true, renders the close button in the upper corner of the modal panel. Default `true`. */
   closeButtonVisible?: boolean;
+  /**
+   * Viewport width below which the modal opens as a bottom sheet instead of a centred card: it
+   * docks to the bottom edge with a grabber and rounded top corners, its footer actions stack at
+   * full width and 44px with the last action (the confirmation) first, and it rides above the
+   * on-screen keyboard and the bottom safe area. A CSS length such as `"640px"`, or `false` for the
+   * centred card at every width. Ignored for `chrome="none"`.
+   * @default false
+   */
+  sheetBelow?: string | false;
   /** Additional class names merged with the component's root class. */
   class?: string;
   children: Snippet;

@@ -21,6 +21,12 @@
   import type { ModalProps } from './modal.types.ts';
   import { onDestroy } from 'svelte';
   import { getHostContext } from '../../_internal/host-context.ts';
+  import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
+  import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
+  import {
+    readViewportBreakpoint,
+    useViewportBelow,
+  } from '../../_internal/viewport-below.svelte.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { overflowFade } from '../../utilities/attachments.ts';
   import { classNames } from '../../utilities/class-names.ts';
@@ -56,6 +62,7 @@
     dismissOnBackdropClick = true,
     dismissOnEscape = true,
     closeButtonVisible = true,
+    sheetBelow = false,
     class: className,
     children,
     footer,
@@ -91,6 +98,13 @@
   let mounted = $state(false);
 
   const reducedMotion = useReducedMotion();
+
+  // Below `sheetBelow` the modal is a bottom sheet (row 05d). Opt-in: a modal that is not told
+  // otherwise stays a centred card. A chromeless modal owns the whole surface, so never docks.
+  const sheetBreakpoint = $derived(readViewportBreakpoint(sheetBelow, 'Modal', 'sheetBelow'));
+  const narrowViewport = useViewportBelow(() => sheetBreakpoint);
+  const sheet = $derived(narrowViewport.current && !isChromeless);
+
   const bodyOverflowFade = overflowFade();
   // Owns focus capture/restore, body scroll lock, escape-stack participation
   // (a no-op handler — Modal handles Escape via the native <dialog> `cancel`
@@ -107,6 +121,8 @@
     getDialogElement: () => dialogElement,
     getPanelElement: () => panelElement,
     getReducedMotion: () => reducedMotion.current,
+    // A sheet slides in with motion, so with less motion it cross-fades instead of vanishing.
+    getFadeOnReducedMotion: () => sheet,
     getTriggerRef: () => triggerRef,
     // Initial focus strategy: if a child carries `autofocus`, the native
     // dialog already focused it; otherwise focus the body container
@@ -130,6 +146,12 @@
 
   $effect(() => {
     mounted = true;
+  });
+
+  // The sheet rides above the on-screen keyboard and scrolls inside itself (row 05j).
+  $effect(() => {
+    if (!open || !sheet) return;
+    return trackKeyboardInset();
   });
 
   $effect(() => {
@@ -269,6 +291,7 @@
     {role}
     aria-modal="true"
     data-cinder-chrome={isChromeless ? 'none' : undefined}
+    data-cinder-sheet={sheet ? 'docked' : undefined}
     {...isChromeless ? { 'aria-label': ariaLabel } : { 'aria-labelledby': titleId }}
     {...isNonEmptyString(describedById) ? { 'aria-describedby': describedById } : {}}
     data-cinder-closing={dialogState.isClosing ? '' : undefined}
@@ -295,13 +318,15 @@
         data-cinder-chrome={isChromeless ? 'none' : undefined}
         data-cinder-closing={dialogState.isClosing ? '' : undefined}
         inert={dialogState.isClosing}
+        {@attach reducedMotionFadeIn(() => reducedMotion.current && sheet)}
         {@attach createFocusTrap({
           active: () => open && !dialogState.isClosing,
           restoreFocus: false,
           manageInitialFocus: false,
         })}
       >
-        {#if host.isDesktop && !isChromeless}<div
+        {#if sheet}<div class="cinder-modal__grabber" aria-hidden="true"></div>{/if}
+        {#if host.isDesktop && !isChromeless && !sheet}<div
             class="cinder-modal__drag-strip"
             aria-hidden="true"
           ></div>{/if}

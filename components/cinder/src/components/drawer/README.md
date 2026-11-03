@@ -2,6 +2,12 @@
 
 Edge-anchored overlay panel for supplementary content without leaving the current page. The `placement` prop picks the edge: `left`, `right` (default), or `bottom` for mobile-style bottom sheets. Drawer is modal by default; set `modal={false}` for a non-modal `<aside>` that leaves the page interactive while still closing from the shared Escape stack. A non-modal drawer reads as a side panel of the page: its panel is the inset surface (`--cinder-surface-inset`), and its header, body and footer are transparent, where a modal drawer is a raised sheet.
 
+A bottom drawer is a sheet, and every sheet follows the same rules (design rows 05d, 05j):
+
+- **Grabber**: `placement="bottom"` shows a 36 by 4 grabber above the header. It is decorative; set `dragHandleVisible={false}` to omit it.
+- **Keyboard and height**: while a bottom drawer is open it rides above the on-screen keyboard (`--_cinder-keyboard-inset`, published only while it is open) and its 90dvh cap shrinks by the keyboard, so on a short viewport the body scrolls inside the sheet instead of the sheet outgrowing the screen.
+- **Reduced motion**: the drawer and every sheet cross-fade instead of sliding when the person asked for less motion. The fade is played from script, because `foundation.css` forces every CSS transition and animation to 0.01ms under reduced motion.
+
 ## Choosing this component
 
 - Showing detail or edit forms alongside a list or table where the user needs to stay in context.
@@ -66,7 +72,7 @@ Edge-anchored overlay panel for supplementary content without leaving the curren
 | --- | --- | --- | --- | --- |
 | `ariaLabelledby` | `string` | no | — | Optional id of an element that names the drawer. When supplied, drawer wires `aria-labelledby` to this id and renders no internal heading. Use this when a custom `header` snippet has its own visible heading — supply `ariaLabelledby` pointing to that heading's id so the visible and accessible names stay in sync. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-drawer`. |
-| `dragHandleVisible` | `boolean` | no | `false` | When `true` and `placement="bottom"`, render a decorative drag handle above the header. Swipe-to-close gesture is a stretch goal not implemented in MVP — the handle is purely a visual affordance. Ignored for `left`/`right` placements. Named `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML `draggable` attribute on the underlying `<dialog>`. |
+| `dragHandleVisible` | `boolean` | no | `true` | Whether a `placement="bottom"` drawer shows the grabber, the small pill above the header that marks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance only. Ignored for `left`/`right` placements. Named `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML `draggable` attribute on the underlying `<dialog>`. |
 | `modal` | `boolean` | no | `true` | Whether the drawer is modal. Modal drawers use the native dialog top layer, backdrop, body scroll lock, and focus trap. Non-modal drawers render as an aside and leave the page interactive. |
 | `open` | `boolean` | no | — | Whether the drawer is open. Bindable via `bind:open`. |
 | `placement` | `"left"` \| `"right"` \| `"bottom"` | no | `"right"` | Edge the drawer slides in from. |

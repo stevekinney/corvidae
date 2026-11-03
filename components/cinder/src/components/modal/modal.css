@@ -337,4 +337,84 @@
       transition: none;
     }
   }
+
+  /* ----------------------------------------
+ * Bottom sheet (row 05d)
+ *
+ * Below `sheetBelow` the modal docks to the bottom edge, as a drawer placed at the bottom does:
+ * full width, rounded top corners, a grabber, a height capped so the body scrolls inside the sheet
+ * instead of the sheet outgrowing the screen, and a lift above the on-screen keyboard
+ * (`--_cinder-keyboard-inset`, published while it is open). The footer's actions stack at full
+ * width and 44px with the last one, the confirmation, on top; DOM order is unchanged, so the
+ * first action keeps initial focus. Physical properties, as in drawer.css, because the sheet is
+ * physically bottom anchored in every writing mode.
+ * ---------------------------------------- */
+
+  .cinder-modal[data-cinder-sheet='docked'] {
+    inset-block-start: auto;
+    inset-block-end: var(--_cinder-keyboard-inset, 0px);
+    inset-inline: 0;
+    margin: 0;
+    max-width: none;
+    max-height: calc(90dvh - var(--_cinder-keyboard-inset, 0px));
+    border-radius: 0;
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel {
+    border-width: 1px 0 0;
+    border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) 0 0;
+  }
+
+  .cinder-modal__grabber {
+    flex-shrink: 0;
+    inline-size: 2.25rem;
+    block-size: 0.25rem;
+    margin: var(--cinder-space-2) auto var(--cinder-space-1);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-border-control);
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    padding-block-end: max(var(--cinder-space-4), env(safe-area-inset-bottom));
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer > * {
+    inline-size: 100%;
+  }
+
+  /* Footer buttons and the body's fields are full 44px targets in the sheet. The selector repeats the button's own
+   * attribute so it outranks the compact height without a cross-component custom property. */
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer .cinder-button[data-cinder-size],
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__body .cinder-input.cinder-input {
+    min-height: var(--cinder-touch-target-min);
+  }
+
+  .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel[data-cinder-closing] {
+    translate: 0 100%;
+  }
+
+  @starting-style {
+    .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel {
+      translate: 0 100%;
+    }
+  }
+
+  /* Reduced motion: no slide, a cross-fade instead (design row 05d). foundation.css forces every
+   * CSS transition to 0.01ms under reduced motion, so the fade is played from script
+   * (reduced-motion-fade.ts); CSS only keeps the panel where it is. */
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-modal[data-cinder-sheet='docked']
+      .cinder-modal__panel[data-cinder-closing] {
+      translate: none;
+    }
+  }
+
+  :root[data-reduced-motion='on']
+    .cinder-modal[data-cinder-sheet='docked']
+    .cinder-modal__panel[data-cinder-closing] {
+    translate: none;
+  }
 }

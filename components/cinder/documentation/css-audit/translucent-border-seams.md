@@ -99,7 +99,7 @@ y=19  rgb(141,144,148)   the border.control border, 48% ink
 
 A stacked pair would have produced a single row at their combined weight. The edge is 2px of two different weights, which is what it was before the tiers were composed — both layers simply track the surface now.
 
-Fourteen sites (fifteen declarations: the ColorField hatch has two stops) are a real area rather than a hairline. All of them carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. One is outside `@lostgradient/cinder` (Chat's busy dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet. Every one of them is the only visible shape of an indicator, so since the two-job split every one is on a control tier.
+Sixteen sites (seventeen declarations: the ColorField hatch has two stops) are a real area rather than a hairline. All of them carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. One is outside `@lostgradient/cinder` (Chat's busy dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet. Every one of them is the only visible shape of an indicator, so since the two-job split every one is on a control tier.
 
 | site | tier | how it is painted |
 | --- | --- | --- |
@@ -108,7 +108,9 @@ Fourteen sites (fifteen declarations: the ColorField hatch has two stops) are a 
 | `parameter-field` rail | `border.control` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 3px wide, full body height |
 | `mega-menu` indicator track | `border.control` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 2px tall |
 | `media-controls` progress track | `border.control` | 4px tall |
-| `drawer` drag-handle pill | `border.control` | 40 × 4px |
+| `drawer` drag-handle pill | `border.control` | 36 × 4px |
+| `command-palette` sheet grabber | `border.control` | 36 × 4px, the same pill the bottom drawer draws |
+| `modal` sheet grabber | `border.control` | 36 × 4px, the same pill the bottom drawer draws |
 | `slider` tick | `border.control` | 2 × 8px, undiluted — the redundant `opacity: 0.6` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `color-field` empty hatch | `border.control` | a 6px `linear-gradient` repeat across the swatch |
 | `feed-event` dot | `border.control` (was `border.strong`) | 8 × 8px |

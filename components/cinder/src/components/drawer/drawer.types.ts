@@ -48,14 +48,13 @@ export type DrawerProps = {
    */
   ariaLabelledby?: string;
   /**
-   * When `true` and `placement="bottom"`, render a decorative drag handle
-   * above the header. Swipe-to-close gesture is a stretch goal not
-   * implemented in MVP — the handle is purely a visual affordance.
-   * Ignored for `left`/`right` placements.
+   * Whether a `placement="bottom"` drawer shows the grabber, the small pill above the header that
+   * marks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance
+   * only. Ignored for `left`/`right` placements.
    *
-   * Named `dragHandleVisible` (not `draggable`) to avoid colliding with the
-   * native HTML `draggable` attribute on the underlying `<dialog>`.
-   * @default false
+   * Named `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML
+   * `draggable` attribute on the underlying `<dialog>`.
+   * @default true
    */
   dragHandleVisible?: boolean;
   /** Custom header. Falls back to a default header that renders `title`. */

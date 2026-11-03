@@ -1847,6 +1847,36 @@
       }
     },
     {
+      "name": "DockedActionBar",
+      "id": "docked-action-bar",
+      "import": "@lostgradient/cinder",
+      "exportName": "DockedActionBar",
+      "category": "layout",
+      "status": "beta",
+      "purpose": "Bar that docks a page's main actions to the bottom of its scrolling area, above the safe area and the on-screen keyboard, while the page scrolls behind it.",
+      "tags": ["docked", "actions", "sticky"],
+      "useWhen": [
+        "Actions must never scroll away: a live run's Send a message and Cancel run, or a review's Deny and Approve on a phone.",
+        "The actions can go off together for one stated reason, such as a dropped connection."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The actions belong to a form inside a dialog or drawer — use the modal or drawer footer."
+        },
+        {
+          "reason": "A banner states a page-level condition — use banner so it sits above the content instead."
+        }
+      ],
+      "related": ["stale-region", "toast-region", "button"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/docked-action-bar/docked-action-bar.schema.json",
+        "variables": "src/components/docked-action-bar/docked-action-bar.variables.json",
+        "examples": "src/components/docked-action-bar/docked-action-bar.examples.json"
+      }
+    },
+    {
       "name": "DonutChart",
       "id": "donut-chart",
       "import": "@lostgradient/cinder",

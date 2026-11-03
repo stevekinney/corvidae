@@ -57,6 +57,7 @@ export { default as dateRangeFieldVariables } from '../components/date-range-fie
 export { default as descriptionListVariables } from '../components/description-list/description-list.variables.ts';
 export { default as diffStatisticsVariables } from '../components/diff-statistics/diff-statistics.variables.ts';
 export { default as dividerVariables } from '../components/divider/divider.variables.ts';
+export { default as dockedActionBarVariables } from '../components/docked-action-bar/docked-action-bar.variables.ts';
 export { default as donutChartVariables } from '../components/donut-chart/donut-chart.variables.ts';
 export { default as drawerVariables } from '../components/drawer/drawer.variables.ts';
 export { default as dropdownGroupVariables } from '../components/dropdown-group/dropdown-group.variables.ts';

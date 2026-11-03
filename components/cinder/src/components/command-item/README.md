@@ -2,6 +2,8 @@
 
 Individual selectable row within a command palette or dropdown command list.
 
+`keys` shows a key sequence at the end of the row, read as "G then H" (each key in a `Kbd`); a single key shows alone. It is text in the row, so it joins the option's accessible name unless `accessibleLabel` is set. A sequence is not a chord, so it does not set `aria-keyshortcuts`; pass `keyboardShortcut` for a chord.
+
 ## Usage
 
 ```svelte
@@ -30,6 +32,7 @@ Individual selectable row within a command palette or dropdown command list.
 | `description` | `string` | no | — | Optional secondary text shown below the main label. |
 | `disabled` | `boolean` | no | — | When true, the item is skipped by arrow keys and cannot be activated. |
 | `keyboardShortcut` | `string` | no | — | Keyboard shortcut exposed through `aria-keyshortcuts`, e.g. `Meta+N`. |
+| `keys` | `string`[] | no | — | A key sequence shown at the end of the row, read as "G then H": each key in a `Kbd`, with "then" between them. One key shows alone ("C"). It is text in the row, so it joins the option's accessible name unless `accessibleLabel` is set; it does not set `aria-keyshortcuts`, which describes a chord, not a sequence. Pass `keyboardShortcut` as well for a chord. |
 | `selectionMode` | `"item"` \| `"parent"` | no | — | `selectionMode` is a compile-time discriminant that only controls whether `onSelect` is required; it has no runtime effect on activation dispatch. `'item'` is the default CommandPalette mode, in which this component's own `onSelect` is required. |
 | `value` | `string` | yes | — | Submitted value; surfaced through the registration record. |
 | `children` | `(opaque)` | yes | — | Main label content. Not expressible in JSON Schema; see the component types for the signature. |

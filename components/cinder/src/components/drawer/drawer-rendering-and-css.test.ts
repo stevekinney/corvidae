@@ -26,25 +26,25 @@ afterEach(() => {
   resetEscapeStack();
 });
 describe('Drawer', () => {
-  test('drag handle is absent by default (dragHandleVisible=false)', () => {
+  test('a bottom drawer shows the grabber by default, aria-hidden (row 05d)', () => {
     const { container } = render(Drawer, {
       props: { open: true, placement: 'bottom', title: 'Test', children: emptySnippet },
     });
-    expect(container.querySelector('.cinder-drawer__drag-handle')).toBeNull();
+    const handle = container.querySelector('.cinder-drawer__drag-handle');
+    expect(handle).not.toBeNull();
+    expect(handle?.getAttribute('aria-hidden')).toBe('true');
   });
-  test('drag handle renders when dragHandleVisible=true with aria-hidden="true"', () => {
+  test('dragHandleVisible=false opts a bottom drawer out of the grabber', () => {
     const { container } = render(Drawer, {
       props: {
         open: true,
         placement: 'bottom',
         title: 'Test',
-        dragHandleVisible: true,
+        dragHandleVisible: false,
         children: emptySnippet,
       },
     });
-    const handle = container.querySelector('.cinder-drawer__drag-handle');
-    expect(handle).not.toBeNull();
-    expect(handle?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('.cinder-drawer__drag-handle')).toBeNull();
   });
   test('drag handle never renders on side placements even when dragHandleVisible=true', () => {
     const { container } = render(Drawer, {
@@ -64,10 +64,21 @@ describe('Drawer', () => {
     expect(closeRule).toContain('width: 2.75rem');
     expect(closeRule).toContain('height: 2.75rem');
   });
-  test('drawer.css drag handle meets 44px touch target', async () => {
+  test('drawer.css draws the grabber as a 36 by 4 pill in a 20px band', async () => {
     const cssText = drawerCss;
     const handleRule = cssText.split('.cinder-drawer__drag-handle {')[1]?.split('}')[0];
-    expect(handleRule).toMatch(/min-height:\s*(?:2\.75rem|var\(--cinder-touch-target-min\))/);
+    expect(handleRule).toContain('min-height: var(--cinder-space-5)');
+    const pillRule = cssText.split('.cinder-drawer__drag-handle-pill {')[1]?.split('}')[0];
+    expect(pillRule).toContain('width: 2.25rem');
+    expect(pillRule).toContain('height: 0.25rem');
+  });
+  test('drawer.css lifts the bottom panel above the keyboard and shrinks its cap by it (row 05j)', () => {
+    expect(drawerCss).toMatch(
+      /\.cinder-drawer__panel\[data-cinder-placement='bottom'\]\s*\{[^}]*bottom:\s*var\(--_cinder-keyboard-inset, 0px\);/s,
+    );
+    expect(drawerCss).toMatch(
+      /max-height:\s*calc\(90dvh - var\(--_cinder-keyboard-inset, 0px\)\);/,
+    );
   });
   test('drawer.css caps the bottom panel and keeps overflow inside the body', async () => {
     const cssText = drawerCss;
@@ -76,7 +87,7 @@ describe('Drawer', () => {
       /\.cinder-drawer__panel\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/s,
     );
     expect(cssText).toMatch(
-      /\.cinder-drawer__panel\[data-cinder-placement='bottom'\]\s*\{[^}]*max-height:\s*90dvh;/s,
+      /\.cinder-drawer__panel\[data-cinder-placement='bottom'\]\s*\{[^}]*max-height:\s*calc\(90dvh - var\(--_cinder-keyboard-inset, 0px\)\);/s,
     );
     expect(cssText).not.toMatch(/max-block-size:\s*90dvh;/s);
     expect(cssText).toMatch(

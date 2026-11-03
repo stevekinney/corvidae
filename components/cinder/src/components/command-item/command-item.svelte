@@ -21,6 +21,7 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { classNames } from '../../utilities/class-names.ts';
+  import Kbd from '../kbd/kbd.svelte';
   import { rowDividerAttachment } from '../../utilities/row-divider.ts';
   import {
     getCommandListContext,
@@ -39,6 +40,7 @@
     description,
     accessibleLabel,
     keyboardShortcut,
+    keys,
     leading,
     trailing,
     children,
@@ -138,6 +140,15 @@
       <span class="cinder-command-item__description cinder-_truncate">{description}</span>
     {/if}
   </span>
+
+  {#if keys && keys.length > 0}
+    <span class="cinder-command-item__keys">
+      {#each keys as key, index (index)}
+        {#if index > 0}{' '}<span class="cinder-command-item__then">then</span>{' '}{/if}
+        <Kbd size="sm" label={key} />
+      {/each}
+    </span>
+  {/if}
 
   {#if trailing}
     <span class="cinder-command-item__trailing" aria-hidden="true">

@@ -1,6 +1,7 @@
 import { tick } from 'svelte';
 
 import { captureFocus, lockBodyScroll, pushEscapeHandler } from '../../_internal/overlay.ts';
+import { playReducedMotionFade } from '../../_internal/reduced-motion-fade.ts';
 import { waitForTransitionCompletion } from '../../_internal/transition-completion.ts';
 import { restoreFocusTo } from '../../utilities/focus.ts';
 
@@ -27,6 +28,12 @@ export type SlidingDialogStateOptions = {
   getDialogElement: () => HTMLDialogElement | undefined;
   getPanelElement: () => HTMLElement | undefined;
   getReducedMotion: () => boolean;
+  /**
+   * Whether the panel cross-fades, instead of vanishing at once, when the person asked for less
+   * motion. Sheets and the drawer say yes: they slide in with motion, so without it the exit would
+   * be the only abrupt thing on screen. Read when the exit begins.
+   */
+  getFadeOnReducedMotion?: () => boolean;
   getTriggerRef: () => HTMLElement | null;
   onOpen?: () => void;
   onClosed?: () => void;
@@ -172,6 +179,18 @@ export class SlidingDialogState {
     this.isClosing = true;
     const generation = ++this.#closeGeneration;
     this.#cancelPendingClose?.();
+    const fade =
+      this.#options.getReducedMotion() && this.#options.getFadeOnReducedMotion?.()
+        ? playReducedMotionFade(panelElement, 'out')
+        : null;
+    if (fade) {
+      // Reduced motion: no slide, a short opacity fade the CSS cannot carry (see
+      // reduced-motion-fade.ts). Cancelling stops the fade and leaves completion to the
+      // generation guard in `#finishClosing`, exactly as a cancelled transition wait does.
+      this.#cancelPendingClose = fade.cancel;
+      void fade.finished.then(() => this.#finishClosing(generation));
+      return;
+    }
     this.#cancelPendingClose = waitForTransitionCompletion({
       element: panelElement,
       reducedMotion: this.#options.getReducedMotion(),

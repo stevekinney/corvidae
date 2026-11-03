@@ -1,0 +1,124 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * DOCKED ACTION BAR
+ *
+ * A bar that keeps a page's main actions at the bottom of the scrolling area while the page
+ * scrolls behind it (design rows 04u, 05j, 26p, 54o, 56e). It is `position: sticky`, so it sits in
+ * the flow at the end of the content: the content above it never needs bottom padding of its own,
+ * because the bar occupies exactly that space. It rides above the on-screen keyboard through
+ * `--_cinder-keyboard-inset` (keyboard-inset.ts), clears the home indicator through
+ * `env(safe-area-inset-bottom)`, and publishes its own height as `--_cinder-docked-action-bar-height`
+ * (docked-bar-height.ts) so the toast region sits above it.
+ * ======================================== */
+
+  .cinder-docked-action-bar {
+    container-type: inline-size;
+    position: sticky;
+    inset-block-end: var(--_cinder-keyboard-inset, 0px);
+    z-index: 1;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1-5);
+    margin-block-start: var(--cinder-space-4);
+    padding: var(--cinder-space-2-5);
+    padding-block-end: max(var(--cinder-space-2-5), env(safe-area-inset-bottom));
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+    color: var(--cinder-text-default);
+    box-shadow: 0 -4px 16px light-dark(oklch(0% 0 0 / 0.08), oklch(0% 0 0 / 0.4));
+  }
+
+  .cinder-docked-action-bar__row {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-docked-action-bar__content {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-docked-action-bar__actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  /* Without content the actions fill the bar. */
+  .cinder-docked-action-bar__row > .cinder-docked-action-bar__actions:only-child {
+    flex: 1 1 auto;
+  }
+
+  /* Equal-width actions: a Deny and Approve pair shares the row evenly. */
+  .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions {
+    flex: 1 1 0;
+  }
+
+  .cinder-docked-action-bar[data-cinder-equal-actions] .cinder-docked-action-bar__actions > * {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  /* The reason an off bar gives sits under the row, as muted text. The status node stays mounted
+   * and empty otherwise, so it takes no room. */
+  .cinder-docked-action-bar__status:empty {
+    display: none;
+  }
+
+  .cinder-docked-action-bar__reason {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  /* Every button and field in the bar is a full 44px target on touch (row 04u) and in a narrow bar
+   * (row 26p: the bar at 375px has equal-width 44px Deny and Approve whatever the pointer). The
+   * selectors repeat the controls' own attribute and class so they outrank the compact desktop
+   * height without a cross-component custom property, which the variable-ownership contract
+   * forbids. */
+  @media (pointer: coarse) {
+    .cinder-docked-action-bar .cinder-button[data-cinder-size],
+    .cinder-docked-action-bar .cinder-input.cinder-input {
+      min-height: var(--cinder-touch-target-min);
+    }
+  }
+
+  /* A narrow bar puts the actions on their own row under the content, sharing it. */
+  @container (inline-size < 32rem) {
+    .cinder-docked-action-bar__row {
+      flex-wrap: wrap;
+    }
+
+    .cinder-docked-action-bar__content {
+      flex: 1 1 100%;
+    }
+
+    .cinder-docked-action-bar__actions {
+      flex: 1 1 100%;
+    }
+
+    .cinder-docked-action-bar__actions > * {
+      flex: 1 1 0;
+      min-inline-size: 0;
+    }
+
+    .cinder-docked-action-bar .cinder-button[data-cinder-size],
+    .cinder-docked-action-bar .cinder-input.cinder-input {
+      min-height: var(--cinder-touch-target-min);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-docked-action-bar {
+      border-color: CanvasText;
+      box-shadow: none;
+    }
+  }
+}

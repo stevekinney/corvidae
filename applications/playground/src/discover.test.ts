@@ -242,6 +242,7 @@ const SIDEBAR_BASELINE = [
   'diff-statistics',
   'diff-viewer',
   'divider',
+  'docked-action-bar',
   'donut-chart',
   'drawer',
   'dropdown',

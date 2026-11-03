@@ -4,6 +4,8 @@ Pre-wired modal dialog for user-initiated binary decisions: "proceed" or "cancel
 
 See the [dialog preset boundary](https://github.com/stevekinney/cinder/blob/main/docs/decisions/dialog-presets.md) for the preserved role, acknowledgement, and dismissal contract.
 
+Below 640px (`sheetBelow`, which accepts any CSS length, or `false` for the centred dialog) the dialog is a bottom sheet: a grabber, the confirmation first and Cancel under it, both full width at 44px. Cancel keeps initial focus, the corner close button is not drawn, and Escape still closes it.
+
 ## Dialog model
 
 ConfirmDialog is one of three dialog-level components:
@@ -88,6 +90,7 @@ The key distinction between ConfirmDialog and AlertDialog is _who initiates_ the
 | `description` | `string` | no | — | Optional body description — short, plain text only. Rendered as a single <p> and wired to aria-describedby. For rich content (markup, lists, multiple paragraphs), compose <Modal> + <Button> directly — screen readers announce aria-describedby targets as one continuous run. |
 | `destructive` | `boolean` | no | — | When true, the confirm button uses variant="danger". The cancel button still receives default focus regardless — color is never the sole destructive signal. |
 | `open` | `boolean` | yes | — | Controls visibility. Bindable. |
+| `sheetBelow` | `string` \| `false` | no | `"640px"` | Viewport width below which the dialog is a bottom sheet: a grabber, the confirmation first and Cancel under it, both full width at 44px, with Cancel keeping initial focus. A CSS length such as `"640px"`, or `false` for the centred dialog at every width. |
 | `title` | `string` | yes | — | Modal title; passed through to <Modal>. |
 | `typeToConfirm` | `string` | no | — | When set, renders a labelled text input and disables the confirm button until the trimmed input matches this value case-insensitively. |
 | `typeToConfirmLabel` | `string` | no | — | Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. |

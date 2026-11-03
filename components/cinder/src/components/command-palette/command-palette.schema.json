@@ -18,6 +18,23 @@
       "type": "string",
       "description": "Bindable search query. Mutated by the input's oninput handler.\nExposed to the items snippet so consumers can filter.\nReset to an empty string each time the palette opens."
     },
+    "sheetBelow": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "Viewport width below which the palette opens as a bottom sheet instead of a centred panel: it\ndocks to the bottom edge with a grabber, a search field with a Close button, 44px rows, and a\nheight capped so the list scrolls inside it. It rides above the on-screen keyboard and\nrespects the bottom safe area. A CSS length such as `\"640px\"`, or `false` to keep the centred\npanel at every width.",
+      "default": "640px"
+    },
+    "closeLabel": {
+      "type": "string",
+      "description": "Accessible name and visible text of the Close button the sheet form shows beside the search\nfield.",
+      "default": "Close"
+    },
     "class": {
       "type": "string",
       "description": "Class merged onto the palette panel."

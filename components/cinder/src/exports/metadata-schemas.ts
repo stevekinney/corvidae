@@ -57,6 +57,7 @@ export { default as dateRangeFieldSchema } from '../components/date-range-field/
 export { default as descriptionListSchema } from '../components/description-list/description-list.schema.ts';
 export { default as diffStatisticsSchema } from '../components/diff-statistics/diff-statistics.schema.ts';
 export { default as dividerSchema } from '../components/divider/divider.schema.ts';
+export { default as dockedActionBarSchema } from '../components/docked-action-bar/docked-action-bar.schema.ts';
 export { default as donutChartSchema } from '../components/donut-chart/donut-chart.schema.ts';
 export { default as drawerSchema } from '../components/drawer/drawer.schema.ts';
 export { default as dropdownGroupSchema } from '../components/dropdown-group/dropdown-group.schema.ts';
