@@ -7,3 +7,5 @@
 - The built-in spinner animation is disabled automatically for users who prefer reduced motion. Any item entrance animation in the caller's list is outside this component's scope and should follow the same preference.
 - The sentinel auto-load path disables itself after `maxRetries` consecutive requests. The button still works after that cap, which keeps the control recoverable without a hidden background loop.
 - Without JavaScript, Svelte event handlers do not run. If you need a real server-rendered fallback, wrap the list in your own `<form>` and place a normal submit button beside `LoadMore`.
+
+- The failure message is a `role="alert"`, so it is announced once when a load fails, and "Try again" is the recovery path. The count text is plain text, not live: it does not announce every page.

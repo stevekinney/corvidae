@@ -28,6 +28,12 @@ Use the public props and documented examples to provide accessible names, descri
 
 The caller owns semantics inside PageHeader's named snippets. Keep title and description snippets to phrasing content, render breadcrumb navigation with an accessible name, prefer native action controls, and add ARIA only when it matches the rendered behavior.
 
+## Create action, status and title
+
+- The create action is an icon-only button named by its `label`, so its tooltip repeats the accessible name and is not added as a description. Under a stale region it is `aria-disabled`, still focusable, and described by the region's reason.
+- `status` is rendered as content, not announced; give it words (a dot is never the only signal).
+- The title keeps its full text in the document when it is clamped to two lines; the tooltip is a convenience for pointer users.
+
 ## Verification
 
 - Render PageHeader in the playground or a focused test fixture.

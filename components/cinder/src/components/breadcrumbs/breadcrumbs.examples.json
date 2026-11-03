@@ -14,6 +14,12 @@
       "title": "Custom separator",
       "description": "Override the default \"/\" separator with any string or snippet.",
       "code": "<script lang=\"ts\">\n  import { Breadcrumbs } from '@lostgradient/cinder';\n</script>\n\n<Breadcrumbs\n  separator=\"›\"\n  items={[\n    { label: 'Home', href: '/' },\n    { label: 'Library', href: '/library' },\n    { label: 'Music', href: '/library/music' },\n    { label: 'Albums' },\n  ]}\n/>\n"
+    },
+    {
+      "id": "phone-and-popover",
+      "title": "Phone form and a long current page",
+      "description": "Below collapseBelow (640px by default) the trail is a back link labelled with the parent (\"Back to Chat\") and the current page, which truncates first. A popover on the current page draws it as a button that truncates at 300px and keeps the full title in the popover. This example sets collapseBelow wide enough to show the phone form at any width.",
+      "code": "<script lang=\"ts\">\n  import { Breadcrumbs } from '@lostgradient/cinder';\n\n  const title =\n    'Please refund order 4471, it arrived damaged, and also check whether the Parcelly damage claims batch from last week was filed for the same carrier';\n</script>\n\n<div style=\"display: grid; gap: 1.5rem;\">\n  <Breadcrumbs\n    separator=\"›\"\n    items={[\n      { label: 'Chat', href: '/chat' },\n      { label: title, popover: true },\n    ]}\n    collapseBelow={false}\n  />\n  <Breadcrumbs\n    collapseBelow=\"9999px\"\n    items={[{ label: 'Runs', href: '/runs' }, { label: 'Look up order 4472' }]}\n  />\n</div>\n"
     }
   ]
 }

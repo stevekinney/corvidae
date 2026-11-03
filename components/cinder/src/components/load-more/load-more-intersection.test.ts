@@ -141,7 +141,7 @@ describe('LoadMore', () => {
 
     await waitFor(() => {
       expect(calls).toBe(1);
-      expect(rendered.getByRole('button', { name: 'Retry loading' })).toBeDefined();
+      expect(rendered.getByRole('button', { name: 'Try again' })).toBeDefined();
     });
 
     rejectNextRequest = false;

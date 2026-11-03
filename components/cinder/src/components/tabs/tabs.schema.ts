@@ -19,6 +19,23 @@ const schema = {
         'Fill the available space when Tabs is placed inside a bounded flex parent,\nletting the active TabPanel occupy the remaining height.',
       default: false,
     },
+    collapseBelow: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          const: false,
+        },
+      ],
+      description:
+        "Viewport width below which a horizontal tab bar collapses to a select reading \"Tab: Access\",\nso a phone shows one full-width control instead of a bar that scrolls sideways. The tabs stay\nin the page, hidden, and the panels keep their names. A simple CSS length such as `'640px'`,\nor `false` to always show the tab bar. Vertical tabs never collapse. Default `'640px'`.",
+    },
+    collapseLabel: {
+      type: 'string',
+      description:
+        'The select\'s accessible name and the prefix before the current tab\'s label in its trigger.\nDefault `"Tab"`.',
+    },
     activateOnFocus: {
       type: 'boolean',
       description:

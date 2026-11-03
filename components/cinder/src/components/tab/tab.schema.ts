@@ -18,6 +18,11 @@ const schema = {
       description:
         'Optional non-empty `aria-controls` target for caller-owned panels. Empty or\nwhitespace-only strings are treated as omitted. By default, Cinder points\nat the matching TabPanel id (`${baseId}-panel-${value}`).',
     },
+    label: {
+      type: 'string',
+      description:
+        "The plain-text name this tab has in the narrow form's select. By default it is read from the\ntab's own text once it is on the page, without the count and trailing content; pass it when\nthe label changes after the first render.",
+    },
     disabled: {
       type: 'boolean',
       description: 'Disables this single tab and removes it from keyboard activation.',

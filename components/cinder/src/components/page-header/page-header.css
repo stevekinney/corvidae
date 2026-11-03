@@ -28,17 +28,55 @@
     min-width: 0;
   }
 
+  /* The title and, when it is `inline`, the status share one line that stays on the title's first
+     line however long the title is. */
+  .cinder-page-header__title-line {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-3);
+    min-width: 0;
+  }
+
+  /* A long title wraps to two lines and then ends in an ellipsis; the full text is in its
+     tooltip. */
   .cinder-page-header__title {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
     margin: 0;
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-xl);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-tight);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-page-header__status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    min-width: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* Beside the title: one line tall as the title's first line, so a title that wraps leaves the
+     status on its first line. */
+  .cinder-page-header__status[data-cinder-placement='inline'] {
+    flex: none;
+    flex-wrap: nowrap;
+    min-block-size: calc(var(--cinder-text-xl) * var(--cinder-leading-tight));
     white-space: nowrap;
+  }
+
+  .cinder-page-header__status[data-cinder-placement='below'] {
+    margin-block-start: var(--cinder-space-1);
   }
 
   .cinder-page-header__description {

@@ -9,6 +9,7 @@
     tabindex?: number;
     disabled?: boolean;
     controls?: string;
+    count?: number;
   };
 
   export type FixtureOption = FixtureOptionBase &
@@ -90,6 +91,7 @@
         disabled={option.disabled}
         onclick={option.onclick}
         tabindex={option.tabindex}
+        count={option.count}
       >
         {option.label}
       </Segment>
@@ -98,6 +100,7 @@
         value={option.value ?? option.href ?? ''}
         disabled={option.disabled}
         controls={option.controls}
+        count={option.count}
       >
         {#snippet leading()}<span data-test-icon></span>{/snippet}
         {option.label}
@@ -107,6 +110,7 @@
         value={option.value ?? option.href ?? ''}
         disabled={option.disabled}
         controls={option.controls}
+        count={option.count}
       >
         {option.label}
       </Segment>

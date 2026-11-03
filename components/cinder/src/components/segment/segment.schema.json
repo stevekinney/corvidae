@@ -6,6 +6,10 @@
       "type": "string",
       "description": "Custom class merged with `.cinder-segmented-control-option`."
     },
+    "count": {
+      "type": "number",
+      "description": "A number drawn after the label in a muted, tabular figure: \"Waiting on you 2\". It is part of\nthe segment's accessible name (\"Waiting on you, 2\"), so it never depends on colour. Unlike\na Tab's count, zero is shown (\"Running 0\"); only `undefined` hides it."
+    },
     "disabled": {
       "type": "boolean",
       "description": "Disable just this segment (independent of the control-level `disabled`)."

@@ -28,6 +28,11 @@ Use the public props and documented examples to provide accessible names, descri
 
 When Breadcrumbs accepts snippets or arbitrary children, the caller owns the semantics inside those children. Prefer native elements first, and add ARIA only when it matches the rendered behavior.
 
+## Phone form and popover
+
+- Below `collapseBelow` the trail is a link named "Back to {parent}" followed by the current page; the current page keeps `aria-current="page"`, and the ancestors that are not shown are removed from the page, not hidden.
+- A current page with a `popover` is a `button` that keeps `aria-current="page"`, and Popover gives it `aria-expanded` and `aria-haspopup="dialog"`. Its label truncates visually, but the full text is its accessible name and the popover's content.
+
 ## Verification
 
 - Render Breadcrumbs in the playground or a focused test fixture.

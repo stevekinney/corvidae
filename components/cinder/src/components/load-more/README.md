@@ -26,6 +26,10 @@ Use `LoadMore` to fetch the next page of results as the reader reaches the end o
 <LoadMore onLoadMore={fetchNext} bind:loading bind:hasMore />
 ```
 
+## Footer with a count
+
+Pass `loadedCount` and `totalCount` and the footer reads "Showing 10 of 19" beside its button, in one centered row. When `onLoadMore` rejects, the footer keeps the count and says what went wrong in words, with a "Try again" button: "Couldn’t load more runs. Showing 10 of 19." Name what the list holds with `itemLabel` ("runs"), or replace the whole message with `errorMessage`.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -35,11 +39,15 @@ Use `LoadMore` to fetch the next page of results as the reader reaches the end o
 | `buttonLabel` | `string` | no | `"Load more"` | Visible label for the load-more button. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-load-more`. |
 | `endOfListMessage` | `string` | no | `"End of list"` | Politely announced when the end of the list is reached. |
+| `errorMessage` | `string` | no | — | Replaces the whole failure message shown after `onLoadMore` rejects. By default it reads "Couldn’t load more {itemLabel}." followed by the count when `loadedCount` and `totalCount` are set. |
 | `hasMore` | `boolean` | no | — | Whether more items are available. Bindable. |
+| `itemLabel` | `string` | no | `"items"` | What the list holds, in the plural, for the failure message: "runs" gives "Couldn’t load more runs." |
+| `loadedCount` | `number` | no | — | How many items the list shows now. With `totalCount` the footer reads "Showing 10 of 19" next to its button, and keeps that count when a load fails. |
 | `loading` | `boolean` | no | — | Whether a load is in progress. Bindable. |
 | `maxRetries` | `number` | no | `5` | Maximum consecutive sentinel-triggered requests before auto-loading pauses. |
-| `retryLabel` | `string` | no | `"Retry loading"` | Visible label for the retry button after a load error. |
+| `retryLabel` | `string` | no | `"Try again"` | Visible label for the retry button after a load error. |
 | `rootMargin` | `string` | no | — | rootMargin passed to IntersectionObserver. Captured at attachment time. |
+| `totalCount` | `number` | no | — | How many items exist in all; pairs with `loadedCount`. |
 | `onError` | `(opaque)` | no | — | Notified when onLoadMore throws or rejects. Not expressible in JSON Schema; see the component types for the signature. |
 | `onLoadMore` | `(opaque)` | no | — | Called when the next page should be loaded. Caller flips `loading` and `hasMore`. Not expressible in JSON Schema; see the component types for the signature. |
 | `root` | `(opaque)` | no | — | Scroll container the sentinel is observed within. Pass the scrollable ancestor element when the list scrolls inside a container rather than the viewport. `null`/omitted observes against the viewport. Captured at attachment time. Not expressible in JSON Schema; see the component types for the signature. |

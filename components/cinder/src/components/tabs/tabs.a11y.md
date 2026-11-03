@@ -43,3 +43,8 @@ Disabled tabs use the native HTML `disabled` attribute on the underlying `<butto
 If every tab in the tablist is disabled, the handler still calls `event.preventDefault()` on Arrow, Home, and End so the keypress does not leak into page scrolling. No focus changes occur.
 
 Consumers should avoid disabling the currently selected tab. If it happens, selection is preserved on the disabled tab (so the bound `value` does not change unexpectedly), but the tab stop moves to the first enabled tab so the tablist remains keyboard-reachable.
+
+## Narrow collapse
+
+- Below `collapseBelow` the tab bar is hidden with the `hidden` attribute, so its tabs leave the tab order and the accessibility tree, while `TabPanel`'s `aria-labelledby` still resolves to them.
+- The select that replaces the bar is named "Tab" (`collapseLabel`) and shows the current tab's label with its prefix; the listbox exposes disabled tabs as disabled options.

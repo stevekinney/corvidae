@@ -110,4 +110,68 @@ describe('LoadMore', () => {
       expect(container.firstElementChild?.getAttribute('aria-busy')).toBe('false');
     });
   });
+
+  test('shows "Showing N of M" beside the button when both counts are given', () => {
+    const { getByText, getByRole } = render(LoadMore, {
+      props: { onLoadMore: () => {}, hasMore: true, loadedCount: 10, totalCount: 19 },
+    });
+
+    expect(getByText('Showing 10 of 19')).toBeDefined();
+    expect(getByRole('button', { name: 'Load more' })).toBeDefined();
+  });
+
+  test('shows no count unless both numbers are valid', () => {
+    const { container } = render(LoadMore, {
+      props: { onLoadMore: () => {}, hasMore: true, loadedCount: 10 },
+    });
+
+    expect(container.querySelector('.cinder-load-more__summary')).toBeNull();
+  });
+
+  test('keeps the count after the last page and drops the button', () => {
+    const { getByText, queryByRole } = render(LoadMore, {
+      props: { onLoadMore: () => {}, hasMore: false, loadedCount: 19, totalCount: 19 },
+    });
+
+    expect(getByText('Showing 19 of 19')).toBeDefined();
+    expect(queryByRole('button')).toBeNull();
+  });
+
+  test('a failed load keeps the count and offers Try again', async () => {
+    const { getByRole, findByRole } = render(LoadMore, {
+      props: {
+        onLoadMore: async () => {
+          throw new Error('offline');
+        },
+        hasMore: true,
+        loadedCount: 10,
+        totalCount: 19,
+        itemLabel: 'runs',
+      },
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Load more' }));
+
+    const failure = await findByRole('alert');
+    expect(failure.textContent).toBe('Couldn’t load more runs. Showing 10 of 19.');
+    expect(getByRole('button', { name: 'Try again' })).toBeDefined();
+  });
+
+  test('a failed load reads generically without counts, and errorMessage replaces it', async () => {
+    const failing = async () => {
+      throw new Error('offline');
+    };
+    const first = render(LoadMore, { props: { onLoadMore: failing, hasMore: true } });
+    await fireEvent.click(first.getByRole('button', { name: 'Load more' }));
+    const firstFailure = await first.findByRole('alert');
+    expect(firstFailure.textContent).toBe('Couldn’t load more items.');
+    cleanup();
+
+    const second = render(LoadMore, {
+      props: { onLoadMore: failing, hasMore: true, errorMessage: 'The server said no.' },
+    });
+    await fireEvent.click(second.getByRole('button', { name: 'Load more' }));
+    const secondFailure = await second.findByRole('alert');
+    expect(secondFailure.textContent).toBe('The server said no.');
+  });
 });

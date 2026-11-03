@@ -17,6 +17,10 @@ afterEach(() => {
 
 const { createRawSnippet } = await import('svelte');
 const { default: PageHeader } = await import('./page-header.svelte');
+const { default: Harness } = await import('./page-header-harness.test.svelte');
+const { fireEvent } = await import('@testing-library/svelte');
+const { readFileSync } = await import('node:fs');
+const stylesheet = readFileSync(new URL('./page-header.css', import.meta.url), 'utf8');
 const { default: pageHeaderSchema } = await import('./page-header.schema.ts');
 
 describe('PageHeader', () => {
@@ -28,10 +32,13 @@ describe('PageHeader', () => {
       title: { type: 'string' },
       description: { type: 'string' },
       headingLevel: { enum: [1, 2, 3, 4, 5, 6], default: 1 },
+      error: { type: 'boolean', default: false },
+      statusPlacement: { enum: ['inline', 'below'], default: 'below' },
     });
     expect(pageHeaderSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
       'actions',
       'breadcrumbs',
+      'status',
     ]);
     expect(validate({ title: 'Approvals', description: 'Review pending requests.' })).toBe(true);
     expect(validate({})).toBe(false);
@@ -138,5 +145,157 @@ describe('PageHeader', () => {
     expect(secondTarget.querySelectorAll('.cinder-page-header')).toHaveLength(1);
     expect(firstTarget.querySelectorAll('header')).toHaveLength(0);
     expect(secondTarget.querySelectorAll('header')).toHaveLength(0);
+  });
+
+  describe('create action', () => {
+    test('is a secondary icon-only button named for the page', () => {
+      const { getByRole, container } = render(Harness);
+
+      const create = getByRole('button', { name: 'New agent' });
+      expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+      expect(create.hasAttribute('data-cinder-icon-only')).toBe(true);
+      expect(create.querySelector('svg')).not.toBeNull();
+      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe('New agent');
+    });
+
+    test('names the tooltip without describing the button a second time', () => {
+      const { getByRole } = render(Harness);
+
+      expect(
+        getByRole('button', { name: 'New agent' }).getAttribute('aria-describedby'),
+      ).toBeNull();
+    });
+
+    test('is drawn last in the actions region, after custom actions', () => {
+      const { container } = render(Harness, { props: { withActions: true } });
+
+      const labels = [
+        ...container.querySelectorAll('.cinder-page-header__actions .cinder-button'),
+      ].map((button) => button.getAttribute('aria-label') ?? button.textContent?.trim());
+      expect(labels).toEqual(['Add a memory', 'Delete', 'New agent']);
+    });
+
+    test('is in the same place with no other actions', () => {
+      const { container } = render(Harness);
+
+      const actions = container.querySelector('.cinder-page-header__actions');
+      expect(actions?.querySelectorAll('.cinder-button')).toHaveLength(1);
+    });
+
+    test('presses through onclick, and renders a link when given an href', async () => {
+      let pressed = 0;
+      const { getByRole } = render(Harness, { props: { onCreate: () => (pressed += 1) } });
+      await fireEvent.click(getByRole('button', { name: 'New agent' }));
+      expect(pressed).toBe(1);
+      cleanup();
+
+      const link = render(Harness, { props: { createHref: '/agents/new' } });
+      const anchor = link.getByRole('link', { name: 'New agent' });
+      expect(anchor.getAttribute('href')).toBe('/agents/new');
+      expect(anchor.getAttribute('data-cinder-variant')).toBe('secondary');
+    });
+
+    test('is inert under a stale region, described by its reason, and presses nothing', async () => {
+      let pressed = 0;
+      const { getByRole } = render(Harness, {
+        props: { stale: true, onCreate: () => (pressed += 1) },
+      });
+
+      const create = getByRole('button', { name: 'New agent' });
+      expect(create.getAttribute('aria-disabled')).toBe('true');
+      expect(create.getAttribute('aria-describedby')).not.toBeNull();
+      await fireEvent.click(create);
+      expect(pressed).toBe(0);
+    });
+
+    test('is absent when the page offers none', () => {
+      const { container } = render(Harness, { props: { withCreate: false } });
+
+      expect(container.querySelector('.cinder-page-header__actions')).toBeNull();
+    });
+  });
+
+  describe('full-page error', () => {
+    test('draws primary header actions as secondary while an error shows', () => {
+      const { getByRole } = render(Harness, { props: { error: true, withActions: true } });
+
+      expect(
+        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
+      ).toBe('secondary');
+      // Only primary is demoted; a danger button keeps its meaning.
+      expect(getByRole('button', { name: 'Delete' }).getAttribute('data-cinder-variant')).toBe(
+        'danger',
+      );
+      expect(getByRole('button', { name: 'New agent' }).getAttribute('data-cinder-variant')).toBe(
+        'secondary',
+      );
+    });
+
+    test('leaves primary actions primary otherwise, and follows the flag', async () => {
+      const { getByRole, rerender } = render(Harness, { props: { withActions: true } });
+      expect(
+        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
+      ).toBe('primary');
+
+      await rerender({ withActions: true, error: true });
+      expect(
+        getByRole('button', { name: 'Add a memory' }).getAttribute('data-cinder-variant'),
+      ).toBe('secondary');
+    });
+  });
+
+  describe('status', () => {
+    test('sits on the title line when inline, and under the title otherwise', () => {
+      const inline = render(Harness, { props: { withStatus: true, statusPlacement: 'inline' } });
+      expect(
+        inline.container.querySelector('.cinder-page-header__title-line .harness-status'),
+      ).not.toBeNull();
+      cleanup();
+
+      const below = render(Harness, { props: { withStatus: true } });
+      expect(
+        below.container.querySelector('.cinder-page-header__title-line .harness-status'),
+      ).toBeNull();
+      const status = below.container.querySelector('.cinder-page-header__status');
+      expect(status?.getAttribute('data-cinder-placement')).toBe('below');
+      expect(status?.previousElementSibling?.className).toBe('cinder-page-header__title-line');
+    });
+
+    test('renders no status line without a status', () => {
+      const { container } = render(Harness);
+
+      expect(container.querySelector('.cinder-page-header__status')).toBeNull();
+    });
+
+    test('keeps the inline status on the first line of a wrapping title', () => {
+      expect(stylesheet).toMatch(/__title-line\s*\{[^}]*align-items:\s*flex-start/);
+      expect(stylesheet).toMatch(
+        /__status\[data-cinder-placement='inline'\]\s*\{[^}]*min-block-size:/,
+      );
+    });
+  });
+
+  describe('long title', () => {
+    test('clamps to two lines and carries the full title in its tooltip', () => {
+      const { container } = render(Harness, {
+        props: { title: 'Please refund order 4471, it arrived damaged, and also check the claims' },
+      });
+
+      const heading = container.querySelector('.cinder-page-header__title');
+      expect(heading?.getAttribute('title')).toBe(
+        'Please refund order 4471, it arrived damaged, and also check the claims',
+      );
+      expect(stylesheet).toMatch(/__title\s*\{[^}]*-webkit-line-clamp:\s*2/);
+    });
+
+    test('takes the tooltip from titleText when the title is a snippet', () => {
+      const { container } = render(Harness, {
+        props: { title: 'Plain title', titleText: 'Plain title' },
+      });
+
+      const heading = container.querySelector('.cinder-page-header__title');
+      expect(heading?.getAttribute('title')).toBe('Plain title');
+      expect(heading?.querySelector('em')?.textContent).toBe('Plain title');
+    });
   });
 });

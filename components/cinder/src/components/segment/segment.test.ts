@@ -22,6 +22,14 @@ function renderControl(value: string) {
   });
 }
 
+/**
+ * Matches an accessible name while ignoring the space the DOM-based name computation puts before
+ * an inline-block comma; a browser builds the same name without it.
+ */
+function named(expected: string): (name: string) => boolean {
+  return (name) => name.replace(/\s+,/g, ',') === expected;
+}
+
 describe('Segment', () => {
   test('renders each segment as a button with role="radio" in single mode', () => {
     const { container } = renderControl('source');
@@ -104,5 +112,43 @@ describe('Segment', () => {
 
     disabled?.click();
     expect(clicks).toHaveLength(0);
+  });
+
+  test('a count is part of the accessible name and is drawn after the label', () => {
+    const { container } = render(Fixture, {
+      props: {
+        id: 'status',
+        label: 'Status',
+        value: 'all',
+        options: [
+          { value: 'all', label: 'All', count: 19 },
+          { value: 'waiting', label: 'Waiting on you', count: 2 },
+          { value: 'running', label: 'Running', count: 0 },
+          { value: 'plain', label: 'Plain' },
+        ],
+      },
+    });
+
+    expect(screen.getByRole('radio', { name: named('All, 19') }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(screen.getByRole('radio', { name: named('Waiting on you, 2') })).toBeDefined();
+    // Zero is a real count, so a segment with nothing in it still says so.
+    expect(screen.getByRole('radio', { name: named('Running, 0') })).toBeDefined();
+    expect(screen.getByRole('radio', { name: 'Plain' })).toBeDefined();
+    expect(container.querySelectorAll('.cinder-segmented-control-option-count')).toHaveLength(3);
+  });
+
+  test('a count reads the same on a navigation link', () => {
+    render(Fixture, {
+      props: {
+        id: 'source-filter',
+        label: 'Source filter',
+        variant: 'navigation',
+        options: [{ value: 'all', label: 'Done', href: '/runs?status=done', count: 12 }],
+      },
+    });
+
+    expect(screen.getByRole('link', { name: named('Done, 12') })).toBeDefined();
   });
 });

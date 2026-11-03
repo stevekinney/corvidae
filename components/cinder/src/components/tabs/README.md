@@ -28,6 +28,10 @@ Composite tabs root that coordinates tab list, tab triggers, and their content p
 
 The leaves are also named exports of `@lostgradient/cinder`.
 
+## Narrow collapse
+
+Below `collapseBelow` (640px by default) a horizontal tab bar becomes one full-width select reading "Tab: Access", so a phone shows a single control instead of a bar that scrolls sideways. Picking an option selects its tab. The tab bar is hidden, not removed, so every tab still registers and every panel keeps its name. Each option's label is the tab's own text (without its count pill, which becomes the option's note); pass `label` on a trigger when the text changes after the first render. `collapseLabel` words the select's name and the prefix before its value, and `collapseBelow={false}` keeps the bar at every width. Vertical tabs never collapse.
+
 ## Caller-owned panels
 
 Use `Tabs.Panel` for ordinary tabs where each trigger owns one rendered panel. When the selected value controls one stable external surface, pass that panel id through `Tabs.Trigger`'s `controls` prop and render the panel yourself:
@@ -88,6 +92,8 @@ The `trailing` wrapper is `aria-hidden`, so its content is omitted from the tab'
 | --- | --- | --- | --- | --- |
 | `activateOnFocus` | `boolean` | no | — | When true (default for horizontal), focusing a tab also activates it (the panel updates immediately). Vertical defaults to manual activation — the user moves focus with arrows, then presses Enter or Space. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-tabs`. |
+| `collapseBelow` | `string` \| `false` | no | — | Viewport width below which a horizontal tab bar collapses to a select reading "Tab: Access", so a phone shows one full-width control instead of a bar that scrolls sideways. The tabs stay in the page, hidden, and the panels keep their names. A simple CSS length such as `'640px'`, or `false` to always show the tab bar. Vertical tabs never collapse. Default `'640px'`. |
+| `collapseLabel` | `string` | no | — | The select's accessible name and the prefix before the current tab's label in its trigger. Default `"Tab"`. |
 | `fill` | `boolean` | no | `false` | Fill the available space when Tabs is placed inside a bounded flex parent, letting the active TabPanel occupy the remaining height. |
 | `orientation` | `"horizontal"` \| `"vertical"` | no | `"horizontal"` | Layout orientation. Affects which arrow keys move between tabs. |
 | `value` | `string` | no | — | Bound active tab value. |

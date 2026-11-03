@@ -18,6 +18,10 @@
 <script lang="ts">
   import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
+  import {
+    getActionEmphasisContext,
+    resolveActionVariant,
+  } from '../../_internal/action-emphasis-context.ts';
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
   import {
     getStaleRegionContext,
@@ -73,8 +77,12 @@
   // Prop-derived values must use `$derived` so they update when the consumer flips a prop
   // (most importantly `loading`) after the initial render.
   const mergedClassName = $derived(classNames('cinder-button', customClassName));
+  // A page header with a full-page error under it draws its primary buttons as secondary, so the
+  // error's own "Try again" is the only primary on the page.
+  const actionEmphasis = getActionEmphasisContext();
+  const resolvedVariant = $derived(resolveActionVariant(actionEmphasis, variant));
   const dataAttributes = $derived({
-    'data-cinder-variant': variant,
+    'data-cinder-variant': resolvedVariant,
     'data-cinder-size': size,
     'data-cinder-full-width': fullWidth ? '' : undefined,
     'data-cinder-loading': loading ? '' : undefined,
