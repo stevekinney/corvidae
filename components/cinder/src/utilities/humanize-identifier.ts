@@ -37,6 +37,7 @@ export const IDENTIFIER_ACRONYMS = [
   'UTC',
   'AG-UI',
   'A2A',
+  'SKU',
 ] as const;
 
 /** Options for {@link humanizeIdentifier}. */

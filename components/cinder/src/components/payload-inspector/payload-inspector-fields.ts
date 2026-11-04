@@ -1,4 +1,5 @@
 import { parseUnifiedPatch } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
+import { SecretValue } from './payload-inspector-secrets.ts';
 
 /** One entry of an object or array, ready for the Fields view. */
 export type PayloadEntry = {
@@ -6,14 +7,19 @@ export type PayloadEntry = {
   key: string;
   /** The value. A `Date` is already written as its ISO string, or `Invalid Date` when it holds no time. */
   value: unknown;
-  /** True when the value is an object or array, which the Fields view nests. */
+  /** True when the value is an object or array, which the Fields view nests. A hidden secret is not nested. */
   nested: boolean;
   /** True when `key` is a position in an array, not a property name to format. */
   isIndex: boolean;
 };
 
 function isNested(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && !(value instanceof Date);
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !(value instanceof Date) &&
+    !(value instanceof SecretValue)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

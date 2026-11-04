@@ -3875,7 +3875,7 @@
       "exportName": "PayloadInspector",
       "category": "data-display",
       "status": "stable",
-      "purpose": "Inspector for structured payloads: labelled fields by default with a Fields / JSON switch, a copy action, and size and truncation status.",
+      "purpose": "Card for any payload: sentence-case fields by default, a Fields / JSON switch, count and size, one copy action, secret masking, and states from streaming to failed.",
       "tags": ["json", "inspector", "payload"],
       "useWhen": [
         "Inspecting workflow inputs, signal payloads, activity results, or API response bodies in a dashboard.",

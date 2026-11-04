@@ -96,6 +96,7 @@ describe('humanizeIdentifier', () => {
       'UTC',
       'AG-UI',
       'A2A',
+      'SKU',
     ]);
   });
 });
