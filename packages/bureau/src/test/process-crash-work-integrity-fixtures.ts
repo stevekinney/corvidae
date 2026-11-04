@@ -206,6 +206,7 @@ export interface HarnessBureauOptions {
   readonly toolbox: AnyToolbox;
   readonly memory?: GovernedMemory;
   readonly recoverableStartedApprovals?: ReadonlyMap<string, RecoverableStartedApproval>;
+  readonly requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
   /** Wires `requestHumanInput` into the run (the COR-1409 park scenario). */
 }
 
@@ -223,7 +224,7 @@ export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bure
     },
     storage: options.storage,
     durable: true,
-    requestAuthorityValidator: () => true,
+    requestAuthorityValidator: options.requestAuthorityValidator ?? (() => true),
     ...(options.recoverableStartedApprovals === undefined
       ? {}
       : { recoverableStartedApprovals: options.recoverableStartedApprovals }),
@@ -280,7 +281,9 @@ export function createInterruptedApprovalToolbox(
 }
 
 /** COR-2051: the peer-shaped approval used by the real SQLite recovery scenarios. */
-export function createPeerApprovalToolbox(afterExecute: () => void = () => {}): AnyToolbox {
+export function createPeerApprovalToolbox(
+  afterExecute: () => void | Promise<void> = () => {},
+): AnyToolbox {
   return createToolbox(
     [
       createTool({
@@ -289,7 +292,7 @@ export function createPeerApprovalToolbox(afterExecute: () => void = () => {}): 
         description: 'Ask a peer for an answer',
         input: z.object({ message: z.string().min(1) }),
         async execute() {
-          afterExecute();
+          await afterExecute();
           return 'peer answer';
         },
       }),
