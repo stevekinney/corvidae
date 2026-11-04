@@ -9,7 +9,7 @@ import type { Page } from '@playwright/test';
 
 import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BARRIER_URL, E2E_BUREAU_URL } from './e2e-constants.ts';
-import { expect, loggedFailedResponse, test } from './fixtures.ts';
+import { expect, test } from './fixtures.ts';
 
 const TOOL_RUNNER = 'demo:tool-runner';
 const CHAT_PROOF_PARENT = 'e2e:chat-proof-parent';
@@ -177,7 +177,6 @@ test.describe('the transcript', () => {
 
 test('shows a durable specialist child while held, then restores its completed card after reload', async ({
   page,
-  pageErrors,
   request,
 }) => {
   let parentId: string | undefined;
@@ -213,19 +212,18 @@ test('shows a durable specialist child while held, then restores its completed c
     expect(release.ok()).toBe(true);
     await expect(conversation(page).getByText('Finished', { exact: true })).toHaveCount(1);
 
-    pageErrors.expect({
-      pattern: loggedFailedResponse(
-        404,
-        new RegExp(`/bureau/ag-ui/threads/${childRunId}/messages`),
-      ),
-      count: 1,
-      reason: 'child runs expose their durable details but have no standalone chat transcript',
+    const childMessageRequests: string[] = [];
+    page.on('request', (outgoing) => {
+      if (outgoing.url().includes(`/bureau/ag-ui/threads/${childRunId}/messages`)) {
+        childMessageRequests.push(outgoing.url());
+      }
     });
     await childLink.click();
     await expect(page).toHaveURL(new RegExp(`/runs/${childRunId}$`));
     const details = page.getByRole('complementary', { name: 'Details' });
     await expect(details.locator(`code[title="${childRunId}"]`)).toHaveCount(1);
     await expect(details.getByRole('link', { name: 'Review the fixture workflow' })).toBeVisible();
+    expect(childMessageRequests).toEqual([]);
 
     await page.goto(parentUrl);
     await page.reload();
