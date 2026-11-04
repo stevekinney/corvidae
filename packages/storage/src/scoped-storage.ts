@@ -5,6 +5,12 @@ import {
   type DeleteRangeOptions,
 } from './delete-range.ts';
 import {
+  storageScanWithMetadata,
+  storageStat,
+  type StorageEntryMetadata,
+  type StorageScanEntryWithMetadata,
+} from './entry-metadata.ts';
+import {
   assertStorageBatchOperationCount,
   storageConditionalBatch,
   storageCount,
@@ -154,6 +160,25 @@ export class ScopedStorage implements Storage {
       this.#toInnerOptions(options),
     )) {
       yield [this.#toPublicKey(key), value];
+    }
+  }
+
+  /** What the inner store knows about the scoped `key`; "unknown" when it records no write times. */
+  async stat(key: string): Promise<StorageEntryMetadata | null> {
+    return storageStat(this.#storage, this.#toInnerKey(key));
+  }
+
+  /** {@link ScopedStorage.scan} with each entry's metadata from the inner store. */
+  async *scanWithMetadata(
+    prefix: string,
+    options?: ScanOptions,
+  ): AsyncIterable<StorageScanEntryWithMetadata> {
+    for await (const [key, value, metadata] of storageScanWithMetadata(
+      this.#storage,
+      this.#toInnerKey(prefix),
+      this.#toInnerOptions(options),
+    )) {
+      yield [this.#toPublicKey(key), value, metadata];
     }
   }
 

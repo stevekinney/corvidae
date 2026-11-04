@@ -13,6 +13,7 @@ const API_KEY_SECRET = 'voyage-api-key';
  */
 export default definePlugin({
   name: 'voyage',
+  title: 'Voyage',
   version: '1.0.0',
   description: 'Embeds memory with the Voyage AI Embeddings API. Needs a Voyage API key.',
   configuration: z.object({

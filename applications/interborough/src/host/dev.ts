@@ -12,9 +12,9 @@
  * `development-source` (COR-1881). Plugin code loads once, so under `bun --watch` an edit to it
  * restarts the host and the new code is what runs.
  *
- * `--showcase` runs the showcase host (`showcase.ts`): a home of its own, the demo plugin and a stub
- * model provider, and believable content seeded over HTTP once the host listens
- * (`fixtures/showcase-seed.ts`).
+ * `--showcase` runs the showcase host (`showcase.ts`): a home of its own, emptied and seeded with the
+ * sample world on every start (`fixtures/sample-world-seed.ts`), which runs the story on hosts of
+ * its own and leaves this one running at Monday, Nov 2, a little after 10:45 AM on its offset clock.
  *
  * The host runs with `development: true`, so every open page reloads itself after a successful
  * rebuild (`dev-reload.ts`).
@@ -28,19 +28,14 @@
 import { unwatchFile, watchFile, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { describeShowcase, seedShowcase } from '../../fixtures/showcase-seed.ts';
+import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { buildBrowserApplication, stopBrowserBuilds } from './browser-build.ts';
 import { developmentPluginPaths } from './development-plugin-flag.ts';
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
-import { startHost } from './host.ts';
+import { startHost, type Host, type HostOptions } from './host.ts';
 import { createRebuildScheduler } from './rebuild-scheduler.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
-import {
-  prepareShowcaseHome,
-  showcaseEnvironment,
-  showcaseProviderResolver,
-  splitShowcaseFlag,
-} from './showcase.ts';
+import { showcaseEnvironment, splitShowcaseFlag } from './showcase.ts';
 import { installShutdownSignals } from './shutdown-signals.ts';
 import { createSourceWatcher } from './source-watcher.ts';
 
@@ -73,15 +68,18 @@ const REBUILD_DELAY_MILLISECONDS = 100;
 const buildOptions = { outdir: buildDirectory, inputsFile: BUILD_INPUTS_FILE };
 
 await buildBrowserApplication(buildOptions);
-if (showcase) await prepareShowcaseHome(environment['INTERBOROUGH_HOME']!);
-const host = await startHost({
+const hostOptions = {
   environment,
   buildDirectory,
   development: true,
   developmentPlugins: pluginPaths,
   onRestartRequested: () => shutDown(RESTART_EXIT_CODE),
-  ...(showcase ? { resolveProviderGenerate: showcaseProviderResolver() } : {}),
-});
+} satisfies HostOptions;
+const host: Host = showcase
+  ? await seedSampleWorld(environment['INTERBOROUGH_HOME']!, { host: hostOptions }).then(
+      (world) => world.host,
+    )
+  : await startHost(hostOptions);
 console.info(`Interborough is listening on ${host.url}`);
 console.info(
   `Its state lives in ${
@@ -91,12 +89,7 @@ console.info(
   }`,
 );
 
-if (showcase) {
-  // The demo plugin seeds its schedule and goal in `afterStart`, which `startHost` does not wait for.
-  await host.bureau.plugins.ready();
-  const seed = await seedShowcase(host.url.origin);
-  console.info(`Showcase content: ${describeShowcase(seed)}`);
-}
+if (showcase) console.info('The showcase host holds the sample world at Monday, Nov 2, 10:45 AM.');
 
 // The entry page is watched by its own poll below, so its input is not watched as a directory.
 const sources = createSourceWatcher({

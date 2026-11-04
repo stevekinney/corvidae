@@ -7,7 +7,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { Engine, workflow } from '@lostgradient/weft';
@@ -28,8 +28,11 @@ afterEach(async () => {
 /** A plugin workflow on an hourly schedule, so no fire lands while a test runs. */
 const SYNC = workflowFileText('linear:sync', { trigger: { kind: 'schedule', spec: '1h' } });
 
-/** An owner directory and the `linear` plugin's layer holding `sync.json`, over one storage. */
-async function world() {
+/**
+ * An owner directory and the `linear` plugin's layer holding `sync.json`, over one storage. The
+ * engine and the workflow runtime read `services`' clock.
+ */
+async function world(services: RuntimeServices = createDefaultRuntimeServices()) {
   const owner = await mkdtemp(join(tmpdir(), 'bureau-plugin-workflow-owner-'));
   const plugin = await mkdtemp(join(tmpdir(), 'bureau-plugin-workflow-linear-'));
   cleanups.push(() => rm(owner, { recursive: true, force: true }));
@@ -41,7 +44,7 @@ async function world() {
 
   /** A fresh engine over the same storage and snapshots: a restart. */
   async function boot(prepare?: (engine: Engine) => void) {
-    const engine = new Engine({ storage });
+    const engine = new Engine({ storage, getNow: () => services.clock.now() });
     cleanups.push(() => engine[Symbol.asyncDispose]());
     prepare?.(engine);
     const runtime = createWorkflowRuntime({
@@ -58,7 +61,7 @@ async function world() {
         }),
       }),
       snapshotStore: createWorkflowSnapshotStore({ store, nowISO: () => new Date().toISOString() }),
-      runtime: createDefaultRuntimeServices(),
+      runtime: services,
       diagnose: (message) => diagnostics.push(message),
       createError: (message) => new Error(message),
     });
@@ -99,6 +102,25 @@ describe('a plugin workflow', () => {
 
     const revisions = await runtime.workflows.revisions('linear:sync');
     expect(revisions).toMatchObject([{ id: 'linear:sync', compatibility: { compatible: true } }]);
+  });
+
+  it('counts the last day’s runs on its own clock, not the real one (COR-2009)', async () => {
+    // A month behind real time, as the showcase's clock is once its date has passed.
+    const real = createDefaultRuntimeServices();
+    const behind = () => Date.now() - 30 * 24 * 60 * 60_000;
+    const { boot } = await world({
+      ...real,
+      clock: { now: behind, nowISO: () => new Date(behind()).toISOString() },
+    });
+    const { engine, runtime } = await boot();
+
+    const started = await runtime.workflows.start('linear:sync', { owner: 'anonymous:local' });
+    await waitUntil(async () => {
+      const state = await engine.get(started.runId);
+      return state?.status === 'completed';
+    });
+
+    expect(await runtime.workflows.runCounts('linear:sync')).toMatchObject({ last24Hours: 1 });
   });
 
   it('keeps one schedule under the mapped name across a restart', async () => {

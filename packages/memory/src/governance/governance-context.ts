@@ -17,6 +17,7 @@ import type {
   MemoryOperationResult,
   MemoryOperationStatus,
   MemoryRecordLocator,
+  MemorySupersessionNotice,
 } from './governed-memory-types';
 import type { MemoryGovernanceLedger } from './ledger';
 import type { MemoryGovernanceEvent } from './ledger-types';
@@ -176,6 +177,18 @@ const HIDDEN_DENIALS: ReadonlySet<MemoryDenialReason> = new Set([
   'tampered',
   'pending-derivation',
 ]);
+
+/** The supersession notice of a `memory.forgotten` event a correction recorded, or nothing. */
+function supersessionNoticeOf(event: MemoryGovernanceEvent): {
+  readonly supersession?: MemorySupersessionNotice;
+} {
+  const details = event.details;
+  if (event.type !== 'memory.forgotten' || details?.['mode'] !== 'supersession') return {};
+  const collection = details['collection'];
+  const source = details['source'];
+  if (typeof collection !== 'string' || typeof source !== 'string') return {};
+  return { supersession: { collection, source } };
+}
 
 /**
  * How a denial reads to the caller. Missing a capability says nothing about the
@@ -373,6 +386,7 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
               projection: event.attribution.projection,
             }),
         ...(correlation === undefined ? {} : { correlation }),
+        ...supersessionNoticeOf(stored),
       });
     },
 

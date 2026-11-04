@@ -119,6 +119,7 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   // Never empty (`VIEWS.settings.canBeEmpty`), so the answer is never served as an empty one.
   settings: bureauProbe('bureau.settings.get', {
     values: {},
+    effective: {},
     revision: 0,
     persisted: true,
     keys: {},

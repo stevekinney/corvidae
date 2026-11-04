@@ -130,6 +130,7 @@ describe('definitionRevision on the wire', () => {
       hash: 'a'.repeat(64),
       problem: null,
       plugin: null,
+      unavailable: null,
     };
     const accepts = (definitionRevision: unknown) =>
       agentDefinitionsListOperation.outputSchema.safeParse({

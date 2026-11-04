@@ -6,6 +6,7 @@ import {
   storageHasCore,
   storageKeysCore,
 } from './derived-operations.ts';
+import type { StorageEntryMetadata, StorageScanEntryWithMetadata } from './entry-metadata.ts';
 /**
  * A single KV operation in a batch.
  *
@@ -136,11 +137,12 @@ export interface ScanOptions {
  *
  * Required methods are `get`, `put`, `delete`, `scan`, and `batch`. Optional
  * fast paths are `conditionalBatch`, `has`, `deletePrefix`, `deleteRange`,
- * `keys`, `count`, `scoped`, and `query`. Adapters that omit optional methods
+ * `keys`, `count`, `scoped`, `stat`, `scanWithMetadata`, and `query`. Adapters that omit optional methods
  * get generic fallbacks via `storageHas`, `storageKeys`, `storageCount`,
  * `storageDeletePrefix`, and `storageConditionalBatch` (all from this module),
- * plus `storageDeleteRange` (exported from `@lostgradient/storage`, defined in
- * `delete-range.ts`). Callers should use those wrappers rather than
+ * plus `storageDeleteRange` (defined in `delete-range.ts`) and `storageStat` and
+ * `storageScanWithMetadata` (defined in `entry-metadata.ts`, which answer "unknown"),
+ * all exported from `@lostgradient/storage`. Callers should use those wrappers rather than
  * calling optional methods directly.
  *
  * @example
@@ -181,6 +183,21 @@ export interface Storage extends Disposable {
   keys?(prefix: string, options?: ScanOptions): AsyncIterable<string>;
   count?(prefix: string): Promise<number>;
   scoped?(prefix: string): Storage;
+  /**
+   * What the backend knows about `key` (when it was last written), or `null` when the key is
+   * absent. Only backends that record write times implement it; call {@link storageStat}, which
+   * answers `{ updatedAt: null }` for the rest.
+   */
+  stat?(key: string): Promise<StorageEntryMetadata | null>;
+  /**
+   * {@link Storage.scan} with each entry's metadata beside its value, read in the same statement.
+   * Only backends that record write times implement it; call {@link storageScanWithMetadata},
+   * which answers `{ updatedAt: null }` for the rest.
+   */
+  scanWithMetadata?(
+    prefix: string,
+    options?: ScanOptions,
+  ): AsyncIterable<StorageScanEntryWithMetadata>;
 
   /** Optional SQL passthrough for dashboard/debugging. */
   query?<T>(sql: string, params?: unknown[]): Promise<T[]>;

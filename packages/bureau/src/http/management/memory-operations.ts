@@ -46,6 +46,17 @@ import type { BureauScope } from '../bureau-scopes.ts';
 import { ownerOfPrincipal } from '../owner-predicate.ts';
 import type { BureauAgentVisibilityHost } from './deployment-operations.ts';
 import {
+  historyOf,
+  kindOf,
+  MEMORY_KINDS,
+  MEMORY_WRITERS,
+  memoryClassOfKind,
+  memoryExportFileName,
+  memoryHistoryEntrySchema,
+  supersessionsOf,
+  writerOf,
+} from './memory-history.ts';
+import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
   resourceNotFound,
@@ -88,14 +99,6 @@ const nonBlankText = (maximum: number) =>
 /** The longest a memory's text may be, which is the default admission policy's own limit. */
 const MAXIMUM_CONTENT_LENGTH = 32_768;
 
-/**
- * The class an operator's own memory is kept in. Not governed memory's default, `episodic`, which
- * is the class of chat memory: its retention is a duration a sweep enforces, and a host can shorten
- * it with `retention.memory`, so a memory a person wrote on purpose would quietly disappear.
- * `semantic` is kept until a correction supersedes it.
- */
-const OPERATOR_MEMORY_CLASS = 'semantic';
-
 const deletionStatus = z.enum(['completed', 'pending', 'exempt', 'failed', 'unknown']);
 
 /**
@@ -107,7 +110,12 @@ export const memoryViewSchema = z.object({
   id: z.string(),
   content: z.string(),
   memoryClass: z.enum(MEMORY_CLASSES),
+  /** Fact or How-to, from its class: `procedural` is a how-to, every other class a fact. */
+  kind: z.enum(MEMORY_KINDS),
   source: z.enum(MEMORY_SOURCE_KINDS),
+  /** Who wrote it, from its source: an `operator` write is a person's, a run's is the agent's. */
+  writer: z.enum(MEMORY_WRITERS),
+  /** The trust its writer earned it; it follows from the writer, and is carried beside it. */
   trust: z.enum(MEMORY_TRUST_LEVELS),
   createdAt: z.string(),
   /** The chat that produced it: the persist hook writes it into the record, because the collection is the agent. */
@@ -124,7 +132,9 @@ function viewOf(record: GovernedMemoryRecord): MemoryView {
     id: record.id,
     content: record.content,
     memoryClass: record.memoryClass,
+    kind: kindOf(record.memoryClass),
     source: record.source,
+    writer: writerOf(record.source),
     trust: record.trust,
     createdAt: isoTime(record.createdAt),
     sessionId: typeof sessionId === 'string' ? sessionId : null,
@@ -218,7 +228,9 @@ const ACCESS = {
   correct: { scope: 'bureau.memory:write', capabilities: ['memory:get', 'memory:write'] },
   share: { scope: 'bureau.memory:write', capabilities: ['memory:share'] },
   quarantine: { scope: 'bureau.memory:write', capabilities: ['memory:quarantine'] },
-  export: { scope: 'bureau.memory:read', capabilities: ['memory:export'] },
+  // `export` also reads the ledger's supersessions, which `listEvents` serves under `memory:list`,
+  // to fold each corrected version into its correction's history.
+  export: { scope: 'bureau.memory:read', capabilities: ['memory:export', 'memory:list'] },
   hold: {
     scope: 'bureau.memory:govern',
     capabilities: ['memory:legal-hold'],
@@ -419,7 +431,12 @@ const getInput = z.object({
       'The owner of the memory, for a grantee reading a memory another owner shared with it (`bureau.memory.share`). Omit it to read the caller’s own.',
     ),
 });
-const getOutput = z.object({ memory: memoryViewSchema, lineage: lineageSchema });
+const getOutput = z.object({
+  memory: memoryViewSchema,
+  lineage: lineageSchema,
+  /** Each version a correction replaced, the most recent first; empty for a memory never corrected. */
+  history: z.array(memoryHistoryEntrySchema),
+});
 
 export const memoryGetOperation = defineOperation<
   typeof getInput,
@@ -430,7 +447,7 @@ export const memoryGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one memory with its lineage',
   description:
-    'Reads one memory of the agent `agentId` with its lineage: `memory` (its text, class, source, trust, creation time and the chat, `sessionId`, that produced it), and `lineage`, read from the governance ledger: `runId`, the run that wrote it (`null` for one an operator wrote); `corrects`, the memory this one replaced; and `correctedBy`, the memory that replaced it. A corrected memory is no longer listed or searched, but is read here, which is how a correction is followed back. Another owner’s memory, a missing one, and a quarantined or revoked one are answered `NotFound`, except a memory its owner shared with the caller (`bureau.memory.share`): the grantee names the owner in `ownerId` and reads it, with an empty `lineage`, since the ledger’s history is the owner’s alone, until the owner revokes the share. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
+    'Reads one memory of the agent `agentId` with its lineage and history: `memory` (its text, class and `kind`, source and `writer`, trust, creation time and the chat, `sessionId`, that produced it); `lineage`, read from the governance ledger: `runId`, the run that wrote it (`null` for one an operator wrote), `corrects`, the memory this one replaced, and `correctedBy`, the memory that replaced it; and `history`, each earlier version a correction replaced, the most recent first, with its text, kind, writer, trust, when it was written and when it was corrected (empty for a memory never corrected). A person’s correction is written by the person, so it reads `writer` `person` and `trust` `verified` while its history keeps what the agent first wrote. A corrected memory is no longer listed or searched, but is read here, which is how a correction is followed back. Another owner’s memory, a missing one, and a quarantined or revoked one are answered `NotFound`, except a memory its owner shared with the caller (`bureau.memory.share`): the grantee names the owner in `ownerId` and reads it, with an empty `lineage`, since the ledger’s history is the owner’s alone, until the owner revokes the share. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: getInput,
@@ -452,7 +469,13 @@ export const memoryGetOperation = defineOperation<
     // The ledger's events are the owner's to read: a grantee reading another owner's memory gets
     // the memory and an empty lineage, because the write and supersession events carry the owner.
     const events = await memory.listEvents(authority, { recordId: input.id });
-    return { memory: viewOf(record), lineage: lineageOf(input.id, events) };
+    const supersessions = supersessionsOf(
+      await memory.listEvents(authority, { type: 'memory.forgotten' }),
+    );
+    const history = await historyOf(input.id, supersessions, (id) =>
+      memory.get(authority, { id, collection: input.agentId }),
+    );
+    return { memory: viewOf(record), lineage: lineageOf(input.id, events), history };
   },
 });
 
@@ -461,6 +484,10 @@ const rememberInput = z.object({
   content: nonBlankText(MAXIMUM_CONTENT_LENGTH).describe(
     'The text of the memory, in the caller’s own words.',
   ),
+  kind: z
+    .enum(MEMORY_KINDS)
+    .optional()
+    .describe('Whether the memory is a `fact` or a `how-to`. Defaults to `fact`.'),
 });
 const rememberOutput = z.discriminatedUnion('outcome', [
   z.object({
@@ -488,7 +515,7 @@ export const memoryRememberOperation = defineOperation<
   mcpExposable: false,
   summary: 'Add a memory',
   description:
-    'Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as a `semantic` memory, kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and no other operation reaches it), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
+    'Adds one memory to what the agent `agentId` remembers of the caller, in the caller’s own words, and answers `outcome` `added` with the memory as the list shows it. It is written by the caller as an `operator` source, so it is `verified` and governed memory’s ledger records a `memory.write.admitted` event under the caller’s owner; `bureau.memory.get` answers its `lineage` with a `null` `runId`. It is stored as the `kind` given, a `fact` (governed memory’s `semantic` class) by default or a `how-to` (its `procedural` class), either kept until a correction supersedes it and never swept as chat memory is, and belongs to no chat, so its `sessionId` is `null` and deleting a chat leaves it. A memory that memory does not admit (its content policy, its quota) is `Unprocessable` with `data.reason` `memory-not-admitted`, and nothing is stored. Content the admission detectors flag is stored quarantined for an inspector, and never listed, searched, read, exported or recalled, so the answer is `outcome` `held` with the stored record’s `id` and no `memory`; this is data and not a fault because only `reason` travels with a fault, and the `id` is the caller’s only name for the record. `bureau.memory.forget` with that `id` removes it (a quarantined memory is otherwise kept indefinitely, and no other operation reaches it), and a caller that does not remove it leaves it stored. A blank `content`, or one longer than 32768 characters, is `InvalidParams`. An agent that is not in the catalog, or one the caller may not name, is `NotFound`. The call is not idempotent: repeating it adds the memory again. A caller that can own no memory is `Forbidden` with `data.reason` `no owner of record`. Requires `bureau.memory:write`; a caller without it is `Forbidden`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: rememberInput,
@@ -525,7 +552,7 @@ export const memoryRememberOperation = defineOperation<
     const receipt = await memory.write(authority, input.content, {
       collection: input.agentId,
       source: 'operator',
-      memoryClass: OPERATOR_MEMORY_CLASS,
+      memoryClass: memoryClassOfKind(input.kind ?? 'fact'),
     });
     // Not a fault: a fault's data carries only its reason on the wire, and the caller needs the
     // record's identifier to remove what was stored.
@@ -957,7 +984,10 @@ const exportInput = z.object({ agentId: agentIdentifier });
 const exportOutput = z.object({
   /** The manifest governed memory stored for this export, which a deletion scrubs a removed record from. */
   exportId: z.string().nullable(),
-  memories: z.array(memoryViewSchema),
+  /** The name to save the export under: `<agent>-memories.json`, such as `tool-runner-memories.json`. */
+  fileName: z.string(),
+  /** Every memory the list shows, each with its history; a corrected version is in its correction’s history. */
+  memories: z.array(memoryViewSchema.extend({ history: z.array(memoryHistoryEntrySchema) })),
 });
 
 /** `bureau.memory.export`: exports an agent’s memories as data (COR-1809). */
@@ -970,7 +1000,7 @@ export const memoryExportOperation = defineOperation<
   mcpExposable: false,
   summary: 'Export an agent’s memories',
   description:
-    'Exports every memory in the caller’s own private partition of the agent `agentId` that the caller may read, as data, with `exportId`, the manifest governed memory stored (a memory deleted later is scrubbed from it) and a `memory.exported` ledger event under the caller’s owner. A memory that was corrected is exported with its correction, which is the correction history; a quarantined or revoked one is not. Memories shared with the caller are read with `bureau.memory.get` and are not exported. A caller that can own no memory exports an empty list with a `null` `exportId`; one with no memories of the agent gets a manifest of none. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
+    'Exports every memory in the caller’s own private partition of the agent `agentId` that the caller may read, as data, with `exportId`, the manifest governed memory stored (a memory deleted later is scrubbed from it), `fileName`, the name to save it under (`<agent>-memories.json`), and a `memory.exported` ledger event under the caller’s owner. Each memory carries its text, kind, writer, trust and `history`, as `bureau.memory.get` answers them, so the export holds the memories the list shows: a version that was corrected is exported in its correction’s `history`, not as a memory of its own (one whose correction is no longer stored is exported on its own). A quarantined or revoked memory is not exported. Memories shared with the caller are read with `bureau.memory.get` and are not exported. A caller that can own no memory exports an empty list with a `null` `exportId`; one with no memories of the agent gets a manifest of none. Requires `bureau.memory:read`; a caller without it is `Forbidden`.',
   destructive: false,
   tags: ['Memory'],
   inputSchema: exportInput,
@@ -981,8 +1011,9 @@ export const memoryExportOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
+    const fileName = memoryExportFileName(input.agentId);
     const { memory, authority } = acting(host, principal, ACCESS.export);
-    if (authority === undefined) return { exportId: null, memories: [] };
+    if (authority === undefined) return { exportId: null, fileName, memories: [] };
     const result = await memory.export(authority, {
       collection: input.agentId,
       visibility: 'private',
@@ -990,7 +1021,27 @@ export const memoryExportOperation = defineOperation<
     if (result.status !== 'applied' || result.exportId === undefined) {
       throw new Error(`Governed memory answered an export ${result.status}.`);
     }
-    return { exportId: result.exportId, memories: result.records.map(viewOf) };
+    const supersessions = supersessionsOf(
+      await memory.listEvents(authority, { type: 'memory.forgotten' }),
+    );
+    const exported = new Map(result.records.map((record) => [record.id, record]));
+    // A version is folded into its correction's history when that correction is exported too.
+    const corrected = new Set(
+      [...supersessions]
+        .filter(([successorId]) => exported.has(successorId))
+        .map(([, { originalId }]) => originalId),
+    );
+    const read = async (id: string) => exported.get(id);
+    const memories = await Promise.all(
+      result.records
+        .filter((record) => !corrected.has(record.id))
+        .toSorted((left, right) => right.createdAt - left.createdAt)
+        .map(async (record) => ({
+          ...viewOf(record),
+          history: await historyOf(record.id, supersessions, read),
+        })),
+    );
+    return { exportId: result.exportId, fileName, memories };
   },
 });
 

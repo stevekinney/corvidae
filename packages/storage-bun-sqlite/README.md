@@ -2,9 +2,9 @@
 
 The Bun SQLite storage adapter. `BunSQLiteStorage` is a `Storage` over Bun's built-in `bun:sqlite`: it opens the database in WAL mode, caches its prepared statements, commits a batch in one transaction, and waits on another process's write lock instead of failing. It needs the Bun runtime and carries no database driver of its own; its only dependency is `@lostgradient/storage`, which holds the protocol it implements.
 
-| Entry                              | What it holds       |
-| ---------------------------------- | ------------------- |
-| `@lostgradient/storage-bun-sqlite` | `BunSQLiteStorage`. |
+| Entry                              | What it holds                                     |
+| ---------------------------------- | ------------------------------------------------- |
+| `@lostgradient/storage-bun-sqlite` | `BunSQLiteStorage` and `BunSQLiteStorageOptions`. |
 
 ## Store bytes on disk
 
@@ -37,6 +37,19 @@ using storage = new BunSQLiteStorage();
 
 const rows = await storage.query<{ journal_mode: string }>('PRAGMA journal_mode');
 console.log(rows[0]?.journal_mode); // 'memory' for an in-memory database, 'wal' for a file
+```
+
+## Read when a key was written
+
+Every put, batch put, and applied conditional batch put records its time in the table's `updated_at` column, which `stat` and `scanWithMetadata` read. The time comes from the `now` option (milliseconds since the Unix epoch, `Date.now` by default), and every put in one batch shares one reading. A database file written before the column existed opens unchanged: the column is added on open, and its existing rows read back `updatedAt: null` until they are written again.
+
+```ts
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+
+using storage = new BunSQLiteStorage(':memory:', { now: () => Date.UTC(2026, 10, 2, 16, 45) });
+await storage.put('memory:goals', new TextEncoder().encode('ship it'));
+
+console.log(await storage.stat('memory:goals')); // { updatedAt: 1793637900000 }
 ```
 
 ## Hand it to Weft or Bureau

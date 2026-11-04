@@ -1,12 +1,15 @@
 /**
  * Playwright fixtures shared by every persona-flow spec (plan §11.4). The host serves one local
- * caller and asks for no sign-in, so the page needs no credential. There are two fixtures: the axe
- * gate, `checkA11y`, and an automatic one that fails a test whose page logged a console error,
- * threw, or had a request fail, on any page of its context, unless `ALLOWED_PAGE_ERRORS` names it
- * or the test declared it.
+ * caller and asks for no sign-in, so the page needs no credential. There are three fixtures: the axe
+ * gate, `checkA11y`; an automatic one that fails a test whose page logged a console error, threw,
+ * or had a request fail, on any page of its context, unless `ALLOWED_PAGE_ERRORS` names it or the
+ * test declared it; and an automatic one that, during a design-review capture, pins every page to
+ * the sample world's clock and time zone (`capture-clock.ts`).
  */
 import PlaywrightAxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
+
+import { captureClock } from './capture-clock.ts';
 
 /**
  * Polls every button/input's `background-color`/`color` across consecutive
@@ -311,7 +314,20 @@ export class PageErrorLog {
 export const test = base.extend<{
   checkA11y: (screenLabel: string) => Promise<void>;
   pageErrors: PageErrorLog;
+  sampleClock: void;
 }>({
+  // A capture renders in the sample world's zone; an ordinary run keeps the host's.
+  timezoneId: captureClock()?.timeZone,
+  // A capture fixes `Date` at the sample "now" in every page of the context before the test opens
+  // one. Only `Date` is fixed: timers keep running, so nothing that waits on one stalls.
+  sampleClock: [
+    async ({ context }, use) => {
+      const clock = captureClock();
+      if (clock !== undefined) await context.clock.setFixedTime(clock.now);
+      await use();
+    },
+    { auto: true },
+  ],
   checkA11y: async ({ page }, use) => {
     await use((screenLabel: string) => assertNoSeriousAxeViolations(page, screenLabel));
   },

@@ -73,6 +73,7 @@ import {
   type ApprovalStatus,
   type CapabilityTier,
   readToolShortDescription,
+  readToolTitle,
   resolveCapabilityTier,
   type Tool,
   type ToolSecretResolver,
@@ -142,7 +143,9 @@ import type { AgentSource, DefinitionEntry } from './sources/definition-source';
  * What a code-defined agent states about itself, read-only (COR-1818), so an editor can show it and
  * offer to duplicate it into an agent file. It is read from the agent object, never from a file:
  * an agent that is not a `createAgent` result states less, and each statement it does not make is
- * `null` or empty here.
+ * `null` or empty here. COR-2009: for a built-in agent it is read with the saved overrides in force
+ * applied, as its runs get it, so its `model`, `models`, `tools` and `instructions` are the effective
+ * ones.
  */
 export interface AgentCodeDefinition {
   /** The agent's display name. */
@@ -194,6 +197,12 @@ export interface AgentToolDescription {
    */
   readonly shortDescription: string | null;
   /**
+   * The tool's name for a person ("Issue refund" for `issue-refund`): its `metadata.title`, or the
+   * `title` an MCP server gave it, or `null` when it has neither, in which case a screen shows the
+   * identifier (COR-2009).
+   */
+  readonly title: string | null;
+  /**
    * The tool's input as a JSON Schema (draft 2020-12, the `input` side), or `null` when the schema
    * cannot be written as one. Another process never receives a function, so a screen that shows
    * what the tool takes reads this.
@@ -214,13 +223,20 @@ export interface AgentToolDescription {
    */
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
   /**
-   * Where the tool comes from: `bureau` for a tool Bureau adds itself (the settings and workflow
-   * tools, and the built-in `bureau` plugin's), `plugin` for a tool another plugin contributes
-   * (`plugin:name`, COR-1892), `host` for a tool the host passed in `agentSource.tools`.
+   * Where the tool comes from: `skill` for a tool a skill brings (its `metadata.skill` names the
+   * skill, COR-2009), whoever registered it; otherwise `bureau` for a tool Bureau adds itself (the
+   * settings and workflow tools, and the built-in `bureau` plugin's), `plugin` for a tool another
+   * plugin contributes (`plugin:name`, COR-1892), `host` for a tool the host passed in
+   * `agentSource.tools`.
    */
-  readonly source: 'host' | 'bureau' | 'plugin';
-  /** The plugin that contributes the tool when {@link AgentToolDescription.source} is `plugin`, else `null`. */
+  readonly source: 'host' | 'bureau' | 'plugin' | 'skill';
+  /**
+   * The plugin that contributes the tool: set when it comes from a plugin other than the built-in
+   * one, whether {@link AgentToolDescription.source} is `plugin` or `skill`, else `null`.
+   */
   readonly plugin: string | null;
+  /** The skill that brings the tool when {@link AgentToolDescription.source} is `skill`, else `null`. */
+  readonly skill: string | null;
   /**
    * The identifiers of the agents that use the tool now, sorted: a ready agent file that lists it
    * in `tools`, and a code-defined agent that names it. Read from the definitions as they stand,
@@ -251,27 +267,59 @@ export function describeToolCapability(
   };
 }
 
-/** Where the tool `name` comes from, and the plugin that contributes it. */
+/**
+ * The skill a tool belongs to: its `metadata.skill`, the name of the skill that brings it, when that
+ * is a non-blank string (COR-2009), else `undefined`.
+ */
+export function readToolSkill(metadata: Tool['metadata']): string | undefined {
+  const value = metadata?.['skill'];
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
+/** Where the tool `name` comes from, the plugin that contributes it, and the skill that brings it. */
 function toolOrigin(
   name: string,
+  tool: Pick<Tool, 'metadata'>,
   options: Pick<AgentFileCatalogOptions, 'bureauToolNames' | 'pluginToolNames'>,
-): Pick<AgentToolDescription, 'source' | 'plugin'> {
-  if (options.bureauToolNames?.has(name) === true) return { source: 'bureau', plugin: null };
-  if (options.pluginToolNames?.has(name) === true) {
-    return { source: 'plugin', plugin: name.slice(0, name.indexOf(':')) };
+): Pick<AgentToolDescription, 'source' | 'plugin' | 'skill'> {
+  const plugin =
+    options.pluginToolNames?.has(name) === true ? name.slice(0, name.indexOf(':')) : null;
+  const skill = readToolSkill(tool.metadata);
+  if (skill !== undefined) return { source: 'skill', plugin, skill };
+  if (options.bureauToolNames?.has(name) === true) {
+    return { source: 'bureau', plugin: null, skill: null };
   }
-  return { source: 'host', plugin: null };
+  if (plugin !== null) return { source: 'plugin', plugin, skill: null };
+  return { source: 'host', plugin: null, skill: null };
 }
 
 /** The reserved name of the implicit Bureau-wide agent, which no longer exists. No file may take its name. */
 export const RESERVED_DEFAULT_AGENT_IDENTIFIER = 'bureau';
+
+/**
+ * COR-2009 — why a listed agent cannot run now, though Bureau knows it: the plugin that ships it is
+ * disabled. Enabling the plugin and restarting makes the agent available again.
+ */
+export interface AgentUnavailability {
+  /** `plugin-disabled`: the plugin that ships the agent is disabled. */
+  readonly code: 'plugin-disabled';
+  /** The reason as a person reads it, naming the plugin by its title: `Plugin Demo is disabled`. */
+  readonly message: string;
+}
 
 /** One agent in {@link BureauAgentCatalog.list}, code-defined or from a file. */
 export interface AgentListing {
   /** A code agent's map key, or a file agent's filename without `.md`. */
   readonly id: string;
   readonly source: 'code' | 'file';
-  readonly state: 'ready' | 'invalid';
+  /**
+   * `ready` runs; `invalid` is a file that cannot be used (see `problem`); `unavailable` is a code
+   * agent of a disabled plugin (COR-2009), listed read-only so it can be read and duplicated, never
+   * run (see `unavailable`).
+   */
+  readonly state: 'ready' | 'invalid' | 'unavailable';
   /** The display label. For an invalid file, the identifier. */
   readonly name: string;
   readonly description: string | null;
@@ -294,10 +342,13 @@ export interface AgentListing {
   readonly problem?: AgentFileProblem;
   /**
    * COR-1873 — the plugin that ships the agent, for a file of a plugin's read-only layer
-   * (`plugin:name`). Such a file cannot be written; `duplicate` copies it into the owner's source.
-   * Absent for a code agent and an owner's file.
+   * (`plugin:name`), or for a code agent of a disabled plugin (COR-2009). Such an agent cannot be
+   * written; `duplicate` copies it into the owner's source. Absent for an owner's file and for any
+   * other code agent.
    */
   readonly plugin?: string;
+  /** COR-2009 — why an `unavailable` agent cannot run. Absent for every other state. */
+  readonly unavailable?: AgentUnavailability;
 }
 
 /** The plugin a listed file belongs to: the namespace of a `plugin:name` the identifier check accepted. */
@@ -1595,8 +1646,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           name,
           description: tool.description,
           shortDescription: readToolShortDescription(tool.metadata) ?? null,
+          title: readToolTitle(tool.metadata) ?? null,
           ...describeToolCapability(tool),
-          ...toolOrigin(name, options),
+          ...toolOrigin(name, tool, options),
           users: (users.get(name) ?? []).toSorted(),
         }))
         .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));

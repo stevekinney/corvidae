@@ -43,6 +43,22 @@ await sessions.set('user-1', 'active');
 console.log(await sessions.get('user-1')); // 'active'
 ```
 
+## Read when a key was written
+
+An adapter that records write times implements the optional `stat` and `scanWithMetadata`. Call them through `storageStat` and `storageScanWithMetadata`, which answer `{ updatedAt: null }` (unknown) for an adapter that records none, and `null` from `storageStat` for an absent key. `updatedAt` is in milliseconds since the Unix epoch. `BunSQLiteStorage` and the Postgres adapters record write times; every other adapter answers unknown.
+
+```ts
+import { MemoryStorage, storageScanWithMetadata, storageStat } from '@lostgradient/storage';
+
+await using storage = new MemoryStorage();
+await storage.put('memory:goals', new TextEncoder().encode('ship it'));
+
+console.log(await storageStat(storage, 'memory:goals')); // { updatedAt: null }
+for await (const [key, , metadata] of storageScanWithMetadata(storage, 'memory:')) {
+  console.log(key, metadata.updatedAt); // 'memory:goals' null
+}
+```
+
 ## Test an adapter
 
 An adapter's tests run the shared contract against a fresh instance per case.
@@ -53,3 +69,5 @@ import { runBasicStorageContract } from '@lostgradient/storage/testing';
 
 runBasicStorageContract('MemoryStorage', { create: () => new MemoryStorage() });
 ```
+
+An adapter that records write times also runs `runStorageWriteTimeContract`, whose `create` receives the clock the adapter must stamp writes with.

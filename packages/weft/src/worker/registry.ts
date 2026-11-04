@@ -9,6 +9,8 @@ import {
 import {
   createDrainRecord,
   deleteBuildDrain,
+  drainProgressOf,
+  drainRecordForWorker,
   getBuildDrain,
   isWorkerDraining,
   setBuildDrain,
@@ -270,12 +272,28 @@ export class WorkerRegistry {
     }
   }
 
-  /** Decrement in-flight count. */
+  /**
+   * Decrement in-flight count. While the worker drains, the task is counted as finished under the
+   * drain, and the moment nothing is left in flight is recorded as when the drain finished.
+   */
   taskCompleted(workerId: string): void {
     const info = this.#workers.get(workerId);
-    if (info !== undefined) {
-      info.inFlight = Math.max(0, info.inFlight - 1);
+    if (info === undefined) return;
+    info.inFlight = Math.max(0, info.inFlight - 1);
+    const drain = drainRecordForWorker(info, this.#drainStates);
+    if (drain === undefined) {
+      delete info.drainCountedFrom;
+      delete info.drainFinishedTasks;
+      delete info.drainedAt;
+      return;
     }
+    if (info.drainCountedFrom !== drain.startedAt) {
+      info.drainCountedFrom = drain.startedAt;
+      info.drainFinishedTasks = 0;
+      delete info.drainedAt;
+    }
+    info.drainFinishedTasks = (info.drainFinishedTasks ?? 0) + 1;
+    if (info.inFlight === 0) info.drainedAt = Date.now();
   }
 
   /**
@@ -655,6 +673,7 @@ export class WorkerRegistry {
       deploymentName: worker.deploymentName,
       buildId: worker.buildId,
       runtimeVersion: worker.runtimeVersion,
+      ...drainProgressOf(worker, this.#drainStates),
     }));
   }
 

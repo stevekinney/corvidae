@@ -20,11 +20,16 @@ afterEach(async () => {
   for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
-/** The first scheduled run to reach a terminal state, with how it ended. */
+/**
+ * The first scheduled run to reach a terminal state, with how it ended. The Bureau also records each
+ * fire as a Schedule tick run of its own (COR-2009), whose id starts `schedule-tick:`; that is the
+ * scheduler's bookkeeping, not the agent's run, so it is passed over.
+ */
 async function firstFinishedFire(host: Host) {
   for await (const _ of awakeTurns()) {
     const runs = await host.bureau.tasks.workflows();
     for (const item of runs?.items ?? []) {
+      if (item.id.startsWith('schedule-tick:')) continue;
       const state = await host.bureau.tasks.workflow(item.id);
       if (state?.status === 'completed' || state?.status === 'failed') return state;
     }

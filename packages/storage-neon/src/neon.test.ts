@@ -9,6 +9,7 @@ import {
   pgliteAsPostgresPool,
   runBasicStorageContract,
   runStorageCapabilityConformance,
+  runStorageWriteTimeContract,
 } from '@lostgradient/storage/testing';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { NeonStorage } from './neon.ts';
@@ -42,6 +43,14 @@ runStorageCapabilityConformance('NeonStorage', {
 });
 
 runBasicStorageContract('NeonStorage', { create: createPgliteBackedNeonStorage });
+
+// NeonStorage shares the Postgres base, so it records write times the way PostgresStorage does.
+runStorageWriteTimeContract('NeonStorage', {
+  create: async (now) => {
+    await pgliteFixture.reset();
+    return new NeonStorage({ url: 'pglite://memory', pool: pgliteFixture.pool, now });
+  },
+});
 
 describe('NeonStorage', () => {
   it('round-trips binary values including embedded NULs', async () => {

@@ -121,8 +121,8 @@
     <section class="weft-health-tab__panel">
       <SectionHeading level={3} title="Conformance" />
       <p class="weft-health-tab__hint">
-        Verify this server against the Weft conformance suite. Conformance runs from the CLI only —
-        there is no server-side trigger.
+        Verify this server against the conformance suite. Conformance runs from the CLI only — there
+        is no server-side trigger.
       </p>
       <div class="weft-health-tab__command">
         <Terminal aria-hidden="true" size={13} />

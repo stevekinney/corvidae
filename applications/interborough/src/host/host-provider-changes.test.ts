@@ -7,6 +7,7 @@ import { openBungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
+import { StorageSizeReportedEvent } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -811,6 +812,91 @@ describe('disconnecting a provider', () => {
     await host.close();
     const restarted = await startAt(directory);
     expect(pairsOf(restarted).some((pair) => pair.startsWith('anthropic/'))).toBe(false);
+  });
+
+  test('records the removal in the audit trail by provider, never the key, after the host’s start (COR-2009)', async () => {
+    const { host } = await startConnected();
+    await host.providers.disconnect('anthropic');
+
+    const page = await host.bureau.audit.query({ limit: 100 });
+    const story = page.records
+      .filter((record) => record.type === 'host.started' || record.type === 'provider.disconnected')
+      .map((record) => [record.type, record.resource, record.principal, record.detail]);
+    expect(story).toEqual([
+      ['host.started', 'host', 'system:host', null],
+      ['provider.disconnected', 'provider:anthropic', 'anonymous:local', { provider: 'anthropic' }],
+    ]);
+    expect(JSON.stringify(page)).not.toContain(KEY_A);
+  });
+
+  test('lists no model provider connected under Needs attention once the last key is removed (COR-2009)', async () => {
+    const { host } = await startConnected();
+    const connected = await host.bureau.attention();
+    expect(connected.items).toEqual([]);
+
+    await host.providers.disconnect('openai');
+    // Anthropic still offers a model, so nothing needs attention yet.
+    const oneLeft = await host.bureau.attention();
+    expect(oneLeft.items).toEqual([]);
+    await host.providers.disconnect('anthropic');
+
+    const attention = await host.bureau.attention();
+    const removals = await host.bureau.audit.query({ type: 'provider.disconnected', limit: 100 });
+    const [removed] = removals.records.toReversed();
+    expect(attention.items).toEqual([
+      {
+        kind: 'no-provider',
+        area: 'providers',
+        at: Date.parse(removed!.timestamp),
+        provider: 'anthropic',
+      },
+    ]);
+    expect(attention.checks).toEqual([{ area: 'providers', count: 1 }]);
+  });
+
+  test('passes its alert rules to the Bureau, and lists a firing one under Needs attention (COR-2009)', async () => {
+    const directory = await home();
+    await storeKey(directory, 'anthropic-api-key', KEY_A);
+    const host = await startAt(directory, {
+      alerts: { rules: [{ metric: 'storage.size', threshold: 1_000, action: 'log' }] },
+    });
+    const engine = host.bureau.durableEngine();
+    if (engine === undefined) throw new Error('The host composed no durable engine.');
+
+    engine.dispatchEvent(new StorageSizeReportedEvent(1_600));
+
+    await waitUntil(async () => {
+      const attention = await host.bureau.attention();
+      return attention.count === 1;
+    });
+    const firing = await host.bureau.attention();
+    expect(firing.items).toEqual([
+      {
+        kind: 'alert',
+        area: 'storage',
+        at: engine.getActiveAlerts()[0]!.lastFiredAt!,
+        metric: 'storage.size',
+        currentValue: 1_600,
+        threshold: 1_000,
+      },
+    ]);
+  });
+
+  test('passes its storage size report interval to the Bureau’s engine (COR-2009)', async () => {
+    const directory = await home();
+    await storeKey(directory, 'anthropic-api-key', KEY_A);
+    // A report every 10 ms, where the engine's own default is a minute, shows the setting arrived.
+    const host = await startAt(directory, { storageSizeReportIntervalMilliseconds: 10 });
+    const engine = host.bureau.durableEngine();
+    if (engine === undefined) throw new Error('The host composed no durable engine.');
+    const reported: number[] = [];
+    engine.addEventListener(StorageSizeReportedEvent.type, (event) => {
+      if (event instanceof StorageSizeReportedEvent) reported.push(event.sizeBytes);
+    });
+
+    await waitUntil(() => reported.length >= 2);
+
+    expect(reported.every((size) => size > 0)).toBe(true);
   });
 
   test('connecting again brings the models back with the edits that were kept', async () => {

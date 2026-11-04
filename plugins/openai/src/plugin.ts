@@ -28,6 +28,7 @@ export const openaiConfiguration = z
  */
 export default definePlugin({
   name: 'openai',
+  title: 'OpenAI',
   version: '0.1.0',
   description: 'OpenAI models for agents, and an embedder for memory.',
   configuration: openaiConfiguration,

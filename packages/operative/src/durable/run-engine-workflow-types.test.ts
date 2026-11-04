@@ -49,11 +49,12 @@ function importFormsIn(source: string): string[] {
 }
 
 describe('the types a Bureau’s run engine registers', () => {
-  it('are the agent run, the heartbeat tick, and the goal', () => {
+  it('are the agent run, the heartbeat tick, the goal, and the schedule tick', () => {
     expect([...RUN_ENGINE_WORKFLOW_TYPES].toSorted()).toEqual([
       'agentRun',
       'durableHeartbeatTick',
       'goalRun',
+      'scheduleTick',
     ]);
     expect(RUN_ENGINE_WORKFLOW_TYPE.agentRun).toBe('agentRun');
   });
@@ -63,7 +64,11 @@ describe('the types a Bureau’s run engine registers', () => {
   });
 
   it('leave out the goal only when the host runs none', async () => {
-    expect(await registeredTypes(false)).toEqual(['agentRun', 'durableHeartbeatTick']);
+    expect(await registeredTypes(false)).toEqual([
+      'agentRun',
+      'durableHeartbeatTick',
+      'scheduleTick',
+    ]);
   });
 
   it('are listed by a module that imports nothing, so a browser can read them alone', async () => {

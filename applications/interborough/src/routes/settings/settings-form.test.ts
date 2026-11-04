@@ -18,7 +18,14 @@ const controls = new Map<string, Control>([
 ]);
 
 function snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
-  return { values: { ...SETTING_VALUES }, revision: 3, persisted: true, keys: {}, ...overrides };
+  return {
+    values: { ...SETTING_VALUES },
+    effective: { ...SETTING_VALUES },
+    revision: 3,
+    persisted: true,
+    keys: {},
+    ...overrides,
+  };
 }
 
 function loaded(

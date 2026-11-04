@@ -14,8 +14,23 @@ import { SETTING_LOCK_REASONS } from './bureau-settings.ts';
 /** The route that reports the plugins. */
 export const HOST_PLUGINS_ROUTE = '/host/plugins';
 
-/** The route that restarts the host: a `POST`, answered `202` before the host stops. */
+/**
+ * The route that restarts the host: a `POST`, answered `202` before the host stops. A `GET`
+ * reports whether the host can restart and the command it was launched with.
+ */
 export const HOST_RESTART_ROUTE = '/host/restart';
+
+const restartStandingSchema = z.object({
+  available: z.boolean(),
+  launch: z.object({ command: z.string(), directory: z.string() }).nullable(),
+});
+
+/**
+ * Whether the host can restart, and the terminal command it was launched with (`launch.command`,
+ * such as `bun run start`, run in `launch.directory`), which the supervisor recorded when it
+ * started. `launch` is `null` for a host no supervisor started.
+ */
+export type HostRestartStanding = z.infer<typeof restartStandingSchema>;
 
 const referencesSchema = z.object({
   agents: z.number(),
@@ -43,6 +58,8 @@ const secretSchema = z.object({
 const pluginSchema = z.object({
   descriptor: z.object({
     name: z.string().min(1),
+    /** The plugin's name as a person reads it, such as `Web search`; `name` is its identifier. */
+    title: z.string().min(1),
     version: z.string(),
     description: z.string(),
     required: z.boolean(),
@@ -242,4 +259,15 @@ export async function savePluginSecret(
 export async function restartHost(options: Options = {}): Promise<void> {
   const response = await send(HOST_RESTART_ROUTE, { method: 'POST' }, options);
   if (!response.ok) throw await faultOf(response);
+}
+
+/**
+ * Asks the host whether it can restart and how it was launched. Read it while the host answers: a
+ * restart that never comes back leaves the page only this to tell the person how to start it again
+ * from the terminal.
+ */
+export async function getRestartStanding(options: Options = {}): Promise<HostRestartStanding> {
+  const response = await send(HOST_RESTART_ROUTE, {}, options);
+  if (!response.ok) throw new Error(`The host answered ${response.status}.`);
+  return restartStandingSchema.parse(await response.json());
 }

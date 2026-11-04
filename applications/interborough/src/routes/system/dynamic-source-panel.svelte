@@ -340,11 +340,11 @@
               onclick={runPreload}
             />
             <span class="weft-dynamic-source__note">
-              Ensures this revision is installed in the durable catalog. Weft validates an existing
-              entry or loads and validates the module, sharing one load per key within the serving
-              server. The diagnostics above are a separate observation of the responding server;
-              they do not prove which process handled this preload. It cannot be cancelled from
-              here.
+              Ensures this revision is installed in the durable catalog. Interborough validates an
+              existing entry or loads and validates the module, sharing one load per key within the
+              serving server. The diagnostics above are a separate observation of the responding
+              server; they do not prove which process handled this preload. It cannot be cancelled
+              from here.
             </span>
           </div>
 

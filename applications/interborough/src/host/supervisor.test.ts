@@ -10,10 +10,11 @@ import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { processEnvironment } from './environment-configuration.ts';
 import { hostCommand, supervise, type SupervisorSignals } from './supervisor.ts';
 
 const fixture = join(import.meta.dir, 'supervisor-fixture.test-support.ts');
@@ -104,6 +105,31 @@ const missingBuild = await runWithHangGuard([process.execPath, supervisorEntry, 
   cwd: packageDirectory,
   env: { ...process.env, INTERBOROUGH_BUILD_DIRECTORY: emptyBuild },
 });
+// The launch command reaches the host: `bun run start`, as Bun reports the package script, with
+// the arguments given after the script's own. No other `npm_*` variable of this test's own run
+// is passed, so the answer does not depend on how the test was started.
+const launchDirectory = scratch();
+const launchBuild = join(launchDirectory, 'build');
+mkdirSync(launchBuild);
+writeFileSync(join(launchBuild, 'index.html'), '<!doctype html>');
+const launchOutput = join(launchDirectory, 'launch.json');
+const launchFixture = join(import.meta.dir, 'launch-command-fixture.test-support.ts');
+const launched = await runWithHangGuard(
+  [process.execPath, supervisorEntry, 'serve', '--entry', launchFixture],
+  {
+    cwd: packageDirectory,
+    env: {
+      ...Object.fromEntries(
+        Object.entries(processEnvironment()).filter(([key]) => !key.startsWith('npm_')),
+      ),
+      INTERBOROUGH_BUILD_DIRECTORY: launchBuild,
+      INTERBOROUGH_LAUNCH_FIXTURE_OUTPUT: launchOutput,
+      npm_lifecycle_event: 'start',
+      npm_lifecycle_script: 'bun src/host/supervisor.ts serve',
+      npm_package_json: join(packageDirectory, 'package.json'),
+    },
+  },
+);
 const badArguments = new Map<string, Awaited<ReturnType<typeof runWithHangGuard>>>();
 for (const argumentsList of [
   [],
@@ -230,6 +256,14 @@ describe('the supervisor command', () => {
     expect(missingBuild.stderr.toString()).toContain('bun run build');
     expect(missingBuild.stderr.toString()).toContain(join(emptyBuild, 'index.html'));
     expect(missingBuild.stdout.toString()).not.toContain('Started the host');
+  });
+
+  test('hands the host the terminal command it was launched with, recorded at startup (COR-2009)', () => {
+    expect(launched.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(launchOutput, 'utf8'))).toEqual({
+      command: `bun run start --entry ${launchFixture}`,
+      directory: packageDirectory,
+    });
   });
 
   test.each([

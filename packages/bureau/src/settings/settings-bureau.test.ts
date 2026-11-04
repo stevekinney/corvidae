@@ -73,6 +73,24 @@ describe('bureau.settings on a Bureau', () => {
     }
   });
 
+  it('reports what each unset key applies by, and a code option over it (COR-2009)', async () => {
+    const bureau = await open({ retention: { events: { olderThan: 3_600_000 } } });
+    try {
+      const { values, effective } = await bureau.settings.get();
+      expect(values['retention.events']).toEqual({ olderThan: 3_600_000 });
+      expect(effective['retention.events']).toEqual({ olderThan: 3_600_000 });
+      expect(values['retention.tasks']).toBeUndefined();
+      expect(effective['retention.tasks']).toEqual({ olderThan: 30 * 86_400_000 });
+      expect(effective['memory.embedder']).toBe('hashing');
+      expect(effective['decisions.model']).toBe('catalog');
+      // `durable: false` is passed, and with no persistent storage it would be off anyway.
+      expect(effective.durable).toBe(false);
+      expect(Object.hasOwn(effective, 'workflowVersion')).toBe(false);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('shows a second Bureau on the same store a change after its maintain()', async () => {
     const storage = new MemoryStorage();
     const first = await open({ storage, maintenance: 'manual' });

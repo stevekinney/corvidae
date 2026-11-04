@@ -16,6 +16,10 @@ export const storagePutInput = z.object({
   value: binaryValueSchema.describe('Value bytes to store, replacing any existing value.'),
 });
 
+export const storagePreviewInput = z.object({
+  key: storageKeyInput.describe('Key of the raw storage value to preview.'),
+});
+
 export const storageDeleteInput = z.object({
   key: storageKeyInput.describe('Key of the raw storage value to delete.'),
 });
@@ -88,12 +92,44 @@ export const storageScanOutput = z.custom<StorageScanOutput>(
   'Storage scan output must be an async iterable.',
 );
 export const storageConditionalBatchOutput = z.object({ applied: z.boolean() });
+export const storagePreviewOutput = z
+  .object({
+    key: z.string().describe('The key that was previewed.'),
+    byteLength: z.number().int().nonnegative().describe('The size of the whole value, in bytes.'),
+    format: z
+      .enum(['json', 'text', 'binary'])
+      .describe(
+        'What the whole value is: `json` (UTF-8 text that parses as JSON), `text` (UTF-8 text that does not), or `binary` (not UTF-8).',
+      ),
+    preview: z
+      .string()
+      .nullable()
+      .describe(
+        'The value as text, at most its first 64 KB cut on a character boundary, or null for a binary value.',
+      ),
+    truncated: z.boolean().describe('True when `preview` is shorter than the value.'),
+    updatedAt: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        'When the key was last written, in milliseconds since the Unix epoch, or null when the storage backend does not record write times.',
+      ),
+  })
+  .nullable();
 
 export type StorageGetInput = z.infer<typeof storageGetInput>;
 export type StoragePutInput = z.infer<typeof storagePutInput>;
 export type StorageDeleteInput = z.infer<typeof storageDeleteInput>;
 export type StorageScanInput = z.infer<typeof storageScanInput>;
-type StorageScanEntry = { readonly key: string; readonly value: string };
+export type StoragePreviewInput = z.infer<typeof storagePreviewInput>;
+export type StoragePreviewOutput = z.infer<typeof storagePreviewOutput>;
+type StorageScanEntry = {
+  readonly key: string;
+  readonly value: string;
+  readonly updatedAt: number | null;
+};
 export type StorageScanOutput = AsyncIterable<StorageScanEntry>;
 export type StorageBatchInput = z.infer<typeof storageBatchInput>;
 export type StorageConditionalBatchInput = z.infer<typeof storageConditionalBatchInput>;

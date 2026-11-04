@@ -26,9 +26,10 @@
  * Armorer parses a description strictly. `tools` holds them per tool, keyed by the tool's own
  * (raw, unqualified) name as the server lists it, never by the `<id>__<tool>` name an agent file
  * uses: the raw name is stable across the naming rules below, which a later change may alter. It
- * has one field, `acceptsSecrets` (a boolean, off unless `true`): the host sets the tool's
- * `metadata.acceptsSecrets` from it when the source loads, which is what lets Armorer give the tool
- * the plaintext of a secret answer (COR-1816). A field it does not know is refused rather than
+ * has two fields, each a boolean: `acceptsSecrets` (off unless `true`), from which the host sets the
+ * tool's `metadata.acceptsSecrets` when the source loads, which is what lets Armorer give the tool
+ * the plaintext of a secret answer (COR-1816); and `enabled` (on unless `false`, COR-2009), which
+ * turns a tool off so the host does not offer it. A field it does not know is refused rather than
  * ignored. A name the server does not list is not an error: the source reports it as a diagnostic.
  *
  * ## Tool names
@@ -98,6 +99,11 @@ export type ConfiguredToolSettings = {
    * sets `metadata.acceptsSecrets` on the tool from it (COR-1816).
    */
   readonly acceptsSecrets?: boolean;
+  /**
+   * Whether the host offers the tool (COR-2009): `false` turns it off, so no agent can be given it
+   * ("Delete branch is off"). Absent, or `true`, it is on.
+   */
+  readonly enabled?: boolean;
 };
 
 /** One saved tool source. */
@@ -228,7 +234,7 @@ function parseEntry(entry: unknown, location: string, field: string): Configured
         );
       }
       for (const key of Object.keys(settings)) {
-        if (key !== 'acceptsSecrets') {
+        if (key !== 'acceptsSecrets' && key !== 'enabled') {
           throw new ProviderConfigurationError(
             location,
             `${field}.tools.${name}.${key}`,
@@ -244,7 +250,21 @@ function parseEntry(entry: unknown, location: string, field: string): Configured
           'expected true or false.',
         );
       }
-      tools.set(name, Object.freeze(acceptsSecrets === undefined ? {} : { acceptsSecrets }));
+      const enabled = settings['enabled'];
+      if (enabled !== undefined && typeof enabled !== 'boolean') {
+        throw new ProviderConfigurationError(
+          location,
+          `${field}.tools.${name}.enabled`,
+          'expected true or false.',
+        );
+      }
+      tools.set(
+        name,
+        Object.freeze({
+          ...(acceptsSecrets === undefined ? {} : { acceptsSecrets }),
+          ...(enabled === undefined ? {} : { enabled }),
+        }),
+      );
     }
   }
   return { source, tools };

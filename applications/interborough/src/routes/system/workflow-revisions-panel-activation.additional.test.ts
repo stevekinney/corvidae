@@ -268,7 +268,7 @@ describe('additional coverage', () => {
     const activateButton = await waitFor(() => getByRole('button', { name: 'Activate' }));
     await fireEvent.click(activateButton);
     const dialog = await waitFor(() => getByRole('dialog'));
-    expect(within(dialog).getByText(/Weft evaluates compatibility/)).not.toBeNull();
+    expect(within(dialog).getByText(/Interborough evaluates compatibility/)).not.toBeNull();
     expect(within(dialog).getByRole('button', { name: 'Activate' })).not.toBeNull();
   });
 });

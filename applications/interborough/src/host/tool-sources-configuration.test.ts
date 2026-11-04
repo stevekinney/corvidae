@@ -70,6 +70,31 @@ describe('toolSources', () => {
     expect(parseToolSourcesConfiguration(serializeToolSources(parsed), location)).toEqual(parsed);
   });
 
+  test('reads enabled per tool, on unless false, and writes it back (COR-2009)', () => {
+    const parsed = parseToolSourcesConfiguration(
+      [
+        {
+          source: pets,
+          tools: { 'delete-pet': { enabled: false }, 'list-pets': { enabled: true }, plain: {} },
+        },
+      ],
+      location,
+    );
+    const tools = parsed[0]?.tools;
+    expect(tools?.get('delete-pet')).toEqual({ enabled: false });
+    expect(tools?.get('list-pets')).toEqual({ enabled: true });
+    expect(tools?.get('plain')).toEqual({});
+    expect(parseToolSourcesConfiguration(serializeToolSources(parsed), location)).toEqual(parsed);
+    // `enabled` is a boolean and nothing else: a string like "false" must not read as off.
+    const failure = failureOf(() =>
+      parseToolSourcesConfiguration(
+        [{ source: pets, tools: { 'delete-pet': { enabled: 'false' } } }],
+        location,
+      ),
+    );
+    expect(failure.field).toBe('toolSources[0].tools.delete-pet.enabled');
+  });
+
   test('refuses what it cannot use, naming the field and never a value', () => {
     const cases: [unknown, string][] = [
       [{}, 'toolSources'],

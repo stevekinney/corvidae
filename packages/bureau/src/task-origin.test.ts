@@ -133,6 +133,7 @@ describe('taskOriginTag', () => {
       'origin:agent',
       'origin:goal',
       'origin:parent',
+      'origin:system',
     ]);
   });
 });

@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host, type HostOptions } from './host.ts';
+import { launchCommandEnvironment } from './launch-command.ts';
 import { HOST_RESTART_ROUTE } from './restart.ts';
 
 const homes: string[] = [];
@@ -19,11 +20,14 @@ afterEach(async () => {
   for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
 });
 
-async function start(options: Pick<HostOptions, 'onRestartRequested'> = {}): Promise<Host> {
+async function start(
+  options: Pick<HostOptions, 'onRestartRequested'> = {},
+  environment: Readonly<Record<string, string>> = {},
+): Promise<Host> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-restart-'));
   homes.push(home);
   const host = await startHost({
-    environment: { INTERBOROUGH_HOME: home },
+    environment: { INTERBOROUGH_HOME: home, ...environment },
     port: 0,
     ...options,
   });
@@ -118,5 +122,40 @@ describe('POST /host/restart', () => {
     const host = await start();
     const response = await fetch(restartUrl(host), { method: 'POST' });
     expect(response.status).toBe(404);
+  });
+});
+
+describe('GET /host/restart (COR-2009)', () => {
+  test('reports the terminal command the supervisor recorded when it started the host', async () => {
+    const host = await start(
+      { onRestartRequested: () => undefined },
+      launchCommandEnvironment({ command: 'bun run start', directory: '/work/interborough' }),
+    );
+    const response = await fetch(restartUrl(host));
+    expect({ status: response.status, body: await response.json() }).toEqual({
+      status: 200,
+      body: {
+        available: true,
+        launch: { command: 'bun run start', directory: '/work/interborough' },
+      },
+    });
+  });
+
+  test('reports a host no supervisor started as unable to restart, with no command', async () => {
+    const host = await start();
+    const response = await fetch(restartUrl(host));
+    expect(await response.json()).toEqual({ available: false, launch: null });
+  });
+
+  test('refuses a cross-origin request without the command', async () => {
+    const host = await start(
+      { onRestartRequested: () => undefined },
+      launchCommandEnvironment({ command: 'bun run start', directory: '/work/interborough' }),
+    );
+    const response = await fetch(restartUrl(host), {
+      headers: { origin: 'https://attacker.example' },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toContain('bun run start');
   });
 });

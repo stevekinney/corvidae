@@ -25,6 +25,10 @@ export type WorkerSnapshot = {
   deploymentName?: string | undefined;
   buildId?: string | undefined;
   runtimeVersion?: string | undefined;
+  /** Tasks finished since the drain started; present while `draining` or `drained`. */
+  drainFinishedTasks?: number | undefined;
+  /** When the drain finished; present while `drained`. */
+  drainedAt?: number | undefined;
 };
 
 /**
@@ -52,6 +56,10 @@ export function projectWorkerSummary(snapshot: WorkerSnapshot, now: number): Wor
     ...(snapshot.deploymentName !== undefined ? { deploymentName: snapshot.deploymentName } : {}),
     ...(snapshot.buildId !== undefined ? { buildId: snapshot.buildId } : {}),
     ...(snapshot.runtimeVersion !== undefined ? { runtimeVersion: snapshot.runtimeVersion } : {}),
+    ...(snapshot.drainFinishedTasks !== undefined
+      ? { drainFinishedTasks: snapshot.drainFinishedTasks }
+      : {}),
+    ...(snapshot.drainedAt !== undefined ? { drainedAt: snapshot.drainedAt } : {}),
   };
 }
 

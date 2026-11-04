@@ -9,24 +9,34 @@ Bureau does not know where the directory lives. The host passes a workflow sourc
 ```json
 {
   "name": "nightly-digest",
+  "title": "Nightly digest",
   "description": "Writes and edits the morning digest.",
   "agent": "writer",
   "paused": false,
+  "trigger": {
+    "kind": "schedule",
+    "name": "Morning digest",
+    "spec": "0 6 * * *",
+    "timezone": "America/Chicago",
+    "overlap": "skip",
+    "catchUp": false
+  },
   "inputSchema": { "type": "null" },
   "outputSchema": {
     "type": "object",
     "properties": { "content": { "type": "string" } },
     "required": ["content"]
   },
-  "trigger": { "kind": "schedule", "spec": "0 6 * * *", "overlap": "skip" },
   "steps": [
     {
+      "title": "Write the digest",
       "kind": "activity",
       "handler": "agent",
       "input": { "agent": "writer", "message": "Write the digest." }
     },
-    { "kind": "sleep", "duration": "5m" },
+    { "title": "Approve it", "kind": "await-signal", "signal": "digest-approved", "review": true },
     {
+      "title": "Edit it",
       "kind": "activity",
       "handler": "agent",
       "input": { "agent": "editor", "message": "Edit it." }
@@ -35,17 +45,18 @@ Bureau does not know where the directory lives. The host passes a workflow sourc
 }
 ```
 
-The file is Weft's workflow document (`packages/weft/src/document-workflow`, including its optional `inputSchema` and `outputSchema`) plus three Bureau fields, and nothing else: an unknown key makes the file `invalid`, because the document schema is strict.
+The file is Weft's workflow document (`packages/weft/src/document-workflow`, including its optional `inputSchema` and `outputSchema`) plus Bureau's own fields, and nothing else: an unknown key makes the file `invalid`, because the document schema is strict. Bureau's fields are `title`, `description`, `agent` and `paused` at the top, `title` and `review` on a step, and `timezone`, `catchUp`, `name`, and `input` on a `schedule` trigger (the extended format of COR-2009, which the workflow builder writes).
 
 - `name`: must equal the identifier. The filename without `.json` is the identifier, so this file is `nightly-digest.json`. An identifier matches `^[a-z](?:[a-z0-9-]*[a-z0-9])?$` and is at most 64 characters, because Bureau derives ids from it that must stay inside Weft's 128.
+- `title`: optional. The name a person reads, shown as the workflow's heading with the identifier beside it: a non-empty string of at most 120 characters. With none, the identifier is the heading.
 - `description`: optional. A sentence on what the workflow is for: a non-empty string of at most 280 characters, shown beside the workflow in lists. A description of another type, an empty one, or a longer one makes the file `invalid`.
 - `agent`: optional. The identifier of the agent that wrote the file. It is only recorded; it is not checked against the agent catalog, so deleting that agent leaves the workflow valid.
 - `paused`: optional boolean, default `false`. A paused workflow starts nothing new. See [Pausing and deleting](#pausing-and-deleting).
-- `inputSchema`, `outputSchema`: optional JSON Schemas (draft 2020-12). See [Input and output schemas](#input-and-output-schemas). A file with a `schedule` trigger whose `inputSchema` refuses `null` is `invalid` (the issue is at `inputSchema`), because a schedule fire starts its instance with no input, which is `null`, so every fire would fail with `input-invalid`.
-- `trigger`: `{ kind: 'schedule', spec, overlap? }` or `{ kind: 'signal', name }`. `spec` is a cron expression (five or six fields) or a duration such as `1h` or `30 seconds`, exactly as `DurableScheduleDefinition.spec` accepts. `overlap` is `skip` (the default), `queue`, `cancel-running`, or `allow`. `name` is a non-empty string of at most 256 characters, the longest signal name `bureau.workflows.signal` admits. Any other field, a malformed `spec`, a missing, empty, or longer `name`, or any other `kind` makes the file `invalid`. See [Signals](#signals).
-- `steps`: Weft's steps, run in order: `activity`, `sleep`, and `await-signal`. The only activity is `agent`.
+- `inputSchema`, `outputSchema`: optional JSON Schemas (draft 2020-12). See [Input and output schemas](#input-and-output-schemas). A file with a `schedule` trigger whose `inputSchema` refuses what a fire starts its instance with is `invalid`, because every fire would fail with `input-invalid`: a fire starts with the trigger's `input`, and the issue is at `trigger.input` when the schema refuses it, or, when the trigger gives no `input`, with `null`, and the issue is at `inputSchema` when the schema refuses that.
+- `trigger`: `{ kind: 'schedule', name?, spec, timezone?, overlap?, catchUp?, input? }`, `{ kind: 'signal', name }`, or `{ kind: 'manual' }`. `spec` is a cron expression (five or six fields) or a duration such as `1h` or `30 seconds`, exactly as `DurableScheduleDefinition.spec` accepts. `timezone` is the IANA zone a cron `spec` is read in (`UTC` when absent); a zone on a duration is `invalid`, because an interval counts elapsed time. `overlap` is `skip` (the default), `queue`, `cancel-running`, or `allow`. `catchUp` is `true` to run what the schedule missed while the host was off, and `false` (the default) to skip it; it is Weft's `backfill`. A schedule's `name` is its display name, such as `Release notes digest`, a non-empty string of at most 120 characters that the schedule carries as its `description` (`Workflow <identifier>` when the trigger gives none). A schedule's `input` is any JSON value, the fixed input every fire, the cadence's and one triggered through the engine alike, starts the instance with; `null` is the same as leaving it out. A `manual` workflow has no schedule and no signal: it starts only through `bureau.workflows.start`. A signal trigger's `name` is a non-empty string of at most 256 characters, the longest signal name `bureau.workflows.signal` admits. Any other field, a malformed `spec`, a missing, empty, or longer `name`, or any other `kind` makes the file `invalid`. See [Signals](#signals).
+- `steps`: Weft's steps, run in order: `activity`, `sleep`, and `await-signal`. The only activity is `agent`. Any step may carry a `title`, the step's name (the same limits as the workflow's). An `await-signal` step with `review: true` waits for a person: the waiting instance shows in Reviews. Without it the step waits for an outside signal and does not. `review` on another kind of step, or with any value but `true`, makes the file `invalid`.
 
-Only files ending exactly in `.json` count: dotfiles, `.JSON`, other extensions, and directories are ignored. A symbolic link to a file is followed. A file larger than 256 KiB is invalid. `description`, `agent`, and `paused` are stripped before the document is handed to Weft, so none is part of a revision.
+Only files ending exactly in `.json` count: dotfiles, `.JSON`, other extensions, and directories are ignored. A symbolic link to a file is followed. A file larger than 256 KiB is invalid. `title`, `description`, `agent`, and `paused`, each step's `title` and `review`, and a schedule trigger's `timezone`, `catchUp`, `name`, and `input` are stripped before the document is handed to Weft, so none is part of a revision's Weft `workflowVersion`; `bureau.workflows.list` and `get` return the trigger and the steps as written.
 
 ## What is invalid
 
@@ -153,11 +164,19 @@ Two steps, deliberately separate:
 
 `BureauOptions.retention.tasks` is therefore the window in which `bureau.workflows.revisions(id)` can list a revision of a deleted workflow, and in which `runs.list` and `runs.get` can still answer for the instances of a workflow whose file and snapshots are gone. A cancellation record is deleted by the same pass once it is older than the window and no instance of its workflow is in flight (a cancellation that kept failing leaves the instance in flight, and the record is what the next boot retries from).
 
+## Saved versions
+
+A revision is what Weft runs; a **version** is what a person saved (COR-2009), and the two differ because Bureau strips titles before Weft sees the document. Bureau numbers a workflow's versions `1.0.0`, `1.1.0`, `1.2.0`, … in the order they were saved: the number says which save it was, not how large the change was. A version is the file's content without `agent` and `paused`, so pausing, resuming, an agent taking the file over, or a hand edit that only changes whitespace adds none, while a title or step name does, though it leaves the `workflowVersion` as it was. Bureau records a version each time it registers a file whose content differs from the newest one, before the engine runs it, whether the change came through a write (with the write's `actor` and `surface`) or was found on disk (`origin: 'file'`). Records live under `bureau-workflow-revision:v1:<identifier>:<ordinal>` and are written only when their key is absent, so Bureaus sharing a store record a save once. The history of an identifier spans a delete: a file created again under it continues the numbering.
+
+Each version carries every change from the one before and its **compatibility**: whether a run started on the version before can carry on under it. Steps are compared position by position. Renaming the workflow or a step, rewording an agent step's message or giving it another agent, making a signal wait one a person decides (`review`) or the reverse, a new duration, a new trigger or description, and a step added at the end are compatible. A step replaced by one of another kind or handler, a step removed, a contributed activity given another input, a signal wait given another signal (a run already waiting would never receive it), and a changed `inputSchema` or `outputSchema` are breaking.
+
+`bureau.workflows.history(id)` lists the versions, newest first, each with its content as written, `current` for the one the file holds now, and the runs created while it was the newest (`count`, `firstRunAt`, `lastRunAt`). `bureau.workflows.impact(id, definition)` answers what saving `definition` would record, and writes nothing: the `version` it would make (`null` when nothing that makes one changes, `1.0.0` for a new workflow), the `previousVersion`, the changes and the compatibility, and how many instances are `inFlight`. A definition that would not load is refused as a write would refuse it. `create` and `update` take an optional `surface` (`web`, `palette`, or `api`), recorded with the version.
+
 ## The schedule
 
 Each workflow with a `schedule` trigger has exactly one live native schedule, whose id is `bureau-workflow-schedule:<identifier>:<generation>`. Weft keeps a cancelled schedule's record and refuses to create another under its id, so the generation is one more than the highest generation among every schedule of that identifier, cancelled ones included, read from the engine each time. "Exactly one" means one that is not cancelled.
 
-Every startup, every rescan that finds a change, and every rescan after a failed apply puts the schedule back to match the file (a schedule changed through Weft's own console is corrected at the next of these, not at once): it is created if missing, its `spec` and `overlap` are updated, it is paused when the file says `paused: true` and resumed when it does not, and it is cancelled when the file is deleted or becomes `invalid`, except that the schedule of a file with an unrecognized key (see the problem codes above) is left exactly as it is. Fixing the file creates a new generation. The schedule always resolves the active revision at the moment it fires (`active-at-fire`), and its input, which is the instance's `trigger`, is the static `{ kind: 'schedule', scheduleId }`; when it fired is the instance's own `createdAt`.
+Every startup, every rescan that finds a change, and every rescan after a failed apply puts the schedule back to match the file (a schedule changed through Weft's own console is corrected at the next of these, not at once): it is created if missing, its `spec`, `overlap`, time zone (`timezone`), `backfill` (`catchUp`) and `description` (`name`) are updated, it is cancelled and the next generation created when its `input` changed (Weft fixes a schedule's input when it is created), it is paused when the file says `paused: true` and resumed when it does not, and it is cancelled when the file is deleted or becomes `invalid`, except that the schedule of a file with an unrecognized key (see the problem codes above) is left exactly as it is. Fixing the file creates a new generation. The schedule always resolves the active revision at the moment it fires (`active-at-fire`), and its input, which is the instance's `trigger`, is the static `{ kind: 'schedule', scheduleId }`, with the trigger's `input` beside them when it gives one (`{ kind: 'schedule', scheduleId, input }`), which is the value its `inputSchema` judges and an `agent` step's message shows under `Trigger:`; when it fired is the instance's own `createdAt`.
 
 `bureau.schedules.*` (the in-process `bureau.schedules.get` and `bureau.schedules.list`) reads these schedules, and `ownerOf` answers them with the deployment's owner. `bureau.schedules.pause`, `bureau.schedules.resume`, `bureau.schedules.cancel`, `bureau.schedules.skipnext`, and `bureau.schedules.runnow` refuse them with `BureauError` (`NOT_FOUND`), as if they did not exist: the workflow's own operations are the only way to change one.
 
@@ -175,6 +194,14 @@ Delivery is over before any instance starts, so a new instance whose first step 
 The operation needs the deployment's owner or `bureau.workflows:write`. Any other caller gets `{ started: [], delivered: [] }`, and nothing is delivered or started.
 
 **When a signal cannot be sent.** Everything the engine would refuse, or an agent step could not render, is checked before anything is delivered or started: a `signalId` over 128 bytes, a payload that is not a JSON value (a `Map`, a `Set`, a `bigint` or `NaN` passed in process), a payload that cannot be encoded, and a payload (or the trigger built from it) over the engine's payload limit (`durableGuardrails.payloadSize`). Each is `InvalidParams` over the wire and `BureauError` (`BAD_REQUEST`) in process, and changes nothing. Any other error from the engine during delivery stops the call: it is `Unavailable` with `data.reason` `signal-delivery-failed`, nothing is started, and it is not retried silently. The same is true when an earlier change to the files has not reached the engine, with `data.reason` `workflow-apply-failed`, as a write does. In both cases the message names the instances the signal had already reached (`Delivered to: …`), and an in-process caller finds them on the error as `delivered`, so a retry with the same `signalId` reaches them again without applying the signal twice. An error while starting an instance is not reported this way: the call fails with what the engine said, and the instances it had already started are not listed.
+
+## Reviews
+
+An instance waiting at an `await-signal` step written with `review: true` is a review (COR-2009): `bureau.reviews.list()` lists it, waiting on the deployment's owner, beside the agents' questions, and `bureau.reviews.get`, `pendingOf`, and `resolve` answer for it. It is a `human-wait` review with no `sessionId`, addressed by the instance's id as `human-wait:<runId>:<signal>:<step index from 0>`; its `prompt` is the step's title, and `workflow` names the step that asks: the workflow's `id` and `title`, the step's position counted from 1 (`step`), and its `stepTitle`. A `review.requested` event announces it once, when the instance reaches the step. A step without `review` waits for its signal all the same and is never listed.
+
+Which step an instance waits at comes from the engine (the running signal wait in its timeline, whose step index is the step's position in the file), and whether that step is a review from the file the instance runs on: the current file when the instance is on its revision, else the newest saved version that registered as that revision. Bureau keeps no record of its own: at startup it reads every instance in flight, so a review survives a restart, and from then on it follows the engine's signal and terminal events.
+
+Resolving one delivers the decision on the step's signal, through the same path as a `bureau.run()` run's question: the durable decision record is claimed first, the delivery id is derived from the review id so a retry is applied once, and the decision is audited and recorded as resolved. An approval delivers its `payload`; a denial delivers `{ __abDenied: true, reason }`, which the next step reads under `Previous step:` as what to change; a rejection needs a reason and delivers `{ __abRejected: true, reason }`. The review then leaves the list. Resolving it again with the same decision is `NOT_FOUND`, and with a different one `CONFLICT`. A signal delivered some other way (`bureau.workflows.signal`, or the engine's) ends the wait, and the review leaves the list without a decision.
 
 ## Agent tools
 
@@ -207,7 +234,7 @@ Every workflow file belongs to the deployment's owner of record (`anonymous:loca
 
 ## Operations
 
-`createBureauHandler` serves the workflow operations as JSON-RPC: `bureau.workflows.create`, `update`, `pause`, `resume`, `delete`, `get`, `list`, `revisions`, `runs.list`, `runs.get`, `start`, `internal.get`, and `signal`. A caller reaches workflows without a scope only when it is the deployment's owner, which under `unauthenticatedAccess: 'allow'` is the one local caller. `bureau.workflows:read` grants the reads to any caller and `bureau.workflows:write` the writes, and neither implies the other. A caller who may not see workflows is answered as if there were none: an empty page for `list` and `runs.list`, and `NotFound` for the rest; `create` has nothing to hide and answers `Forbidden`. A run that is not an instance of a workflow file is `NotFound` in `runs.get` for every caller. `signal` needs the owner or `bureau.workflows:write` and answers any other caller `{ started: [], delivered: [], rejected: [] }`, because it names no workflow to hide. `start` needs the same and answers any other caller `NotFound`. A `definition` that names a key the operation does not declare (`retries`, say) is `InvalidParams` before anything is written: `data.issues` holds an `unrecognized_keys` issue at path `definition` whose message names the key. `definition.trigger` and each item of `definition.steps` are open at the wire, so the trigger kind's own validator and the document's step validation refuse their unknown keys as `Unprocessable`.
+`createBureauHandler` serves the workflow operations as JSON-RPC: `bureau.workflows.create`, `update`, `pause`, `resume`, `delete`, `get`, `list`, `revisions`, `history`, `impact`, `runs.list`, `runs.get`, `start`, `internal.get`, and `signal`. A caller reaches workflows without a scope only when it is the deployment's owner, which under `unauthenticatedAccess: 'allow'` is the one local caller. `bureau.workflows:read` grants the reads to any caller and `bureau.workflows:write` the writes, and neither implies the other. A caller who may not see workflows is answered as if there were none: an empty page for `list` and `runs.list`, and `NotFound` for the rest; `create` has nothing to hide and answers `Forbidden`. A run that is not an instance of a workflow file is `NotFound` in `runs.get` for every caller. `signal` needs the owner or `bureau.workflows:write` and answers any other caller `{ started: [], delivered: [], rejected: [] }`, because it names no workflow to hide. `start` needs the same and answers any other caller `NotFound`. A `definition` that names a key the operation does not declare (`retries`, say) is `InvalidParams` before anything is written: `data.issues` holds an `unrecognized_keys` issue at path `definition` whose message names the key. `definition.trigger` and each item of `definition.steps` are open at the wire, so the trigger kind's own validator and the document's step validation refuse their unknown keys as `Unprocessable`.
 
 ## Starting a workflow by hand
 

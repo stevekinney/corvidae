@@ -1,5 +1,6 @@
 import type { AgentContributions } from './agent-contributions';
-import type { BureauWorkflows } from './workflow-runtime';
+import type { AgentWithBureauTools } from './agents-with-bureau-tools';
+import type { BureauWorkflows, WorkflowScheduleBlocker } from './workflow-runtime';
 import type { AnswerEncryptionKeys } from './secret-answers';
 import type { BureauWorkerDeployments } from './worker-deployments';
 import type { VersionedCatalog } from './versioned-catalog';
@@ -56,9 +57,11 @@ import type {
 import type { StartTaskOrigin } from './task-origin';
 import type { InteractiveSurfaces } from './interactive-surface/store';
 import type { ToolPolicy } from 'armorer/protocol';
+import type { BureauAttention, BureauAttentionItem } from './attention-feed';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import type { ConditionalTextValueStore, Storage, TextValueStore } from '@lostgradient/storage';
 import type {
+  AlertingOptions,
   ListFilter,
   ListOptions,
   ObservabilityOptions,
@@ -270,6 +273,24 @@ export type BureauHumanInputOption =
   false | { readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined };
 
 /**
+ * COR-2009 — a kind of record {@link Bureau.removeExpiredRecords} removes: `audit` records,
+ * resolved `reviews`, `memories`, the log lines of finished runs (`logs`, counted by run),
+ * `notifications` and settled `hookDeliveries`.
+ */
+export type ExpiredRecordKind =
+  'audit' | 'reviews' | 'memories' | 'logs' | 'notifications' | 'hookDeliveries';
+
+/** COR-2009 — what {@link Bureau.removeExpiredRecords} removed. */
+export interface ExpiredRecordRemoval {
+  /** How many records went, every kind together. */
+  readonly removed: number;
+  /** How many records of each kind went; a kind whose pass failed counts zero. */
+  readonly byKind: Readonly<Record<ExpiredRecordKind, number>>;
+  /** The kinds whose pass failed, each diagnosed; empty when every pass ran. */
+  readonly failed: readonly ExpiredRecordKind[];
+}
+
+/**
  * COR-1701 — the retention windows {@link BureauOptions.retention} groups. Each field is optional and
  * keeps the meaning and default it had as a flat option.
  */
@@ -288,8 +309,9 @@ export interface BureauRetentionOptions {
    * existing durable maintenance pass: {@link Bureau.maintain}
    * for a `'manual'` host's own alarm/Cron trigger, and — under the
    * default `'automatic'` profile — the same background interval that
-   * already prunes stale run ownership (AB-374). It is never driven on a
-   * separate schedule of its own.
+   * already prunes stale run ownership (AB-374). Under
+   * `expiredRecords: 'on-request'` it runs only in
+   * {@link Bureau.removeExpiredRecords} instead (COR-2009).
    *
    * Each pass that actually prunes something writes exactly one
    * `audit.pruned` record into the trail itself, naming the count and the
@@ -383,15 +405,18 @@ export interface BureauRetentionOptions {
    * governed memory under this window, in place of the 90 days the memory policy's `episodic` rule
    * sets, without activating a policy revision; the sweep deletes an expired memory with a receipt
    * and a `memory.retention.swept` event, and a legal hold keeps what it holds. Leave it out and
-   * the memory policy's own rule decides. The other classes keep the policy's rules. Has effect
-   * only on a Bureau composed with `memory`. `olderThan` must be a positive integer; otherwise
+   * the memory policy's own rule decides. The other classes keep the policy's rules. Under
+   * `expiredRecords: 'on-request'` the sweep runs only in {@link Bureau.removeExpiredRecords}
+   * (COR-2009). Has effect only on a Bureau composed with `memory`. `olderThan` must be a positive integer; otherwise
    * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   memory?: BureauMemoryRetentionOption | undefined;
   /**
    * COR-1811 — how long a finished run's persisted `ctx.log` lines are kept after the run last
    * wrote one, swept by each maintenance pass. A run that is still active (running, suspended, or
-   * parked on a signal, a review, or a timer) keeps its lines whatever their age. Leave it out to keep them until the run is purged. Has effect
+   * parked on a signal, a review, or a timer) keeps its lines whatever their age. Leave it out to keep them until the run is purged. Under
+   * `expiredRecords: 'on-request'` the sweep runs only in {@link Bureau.removeExpiredRecords}
+   * (COR-2009). Has effect
    * only on a Bureau composed with {@link BureauOptions.logs}. `olderThan` must be a positive
    * integer; otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
@@ -399,15 +424,18 @@ export interface BureauRetentionOptions {
   /**
    * COR-1941 — how long a notification is kept after it was written, swept by each maintenance
    * pass whether or not it was read. Leave it out to keep notifications until the owner holds
-   * more than 1000, when the oldest go. `olderThan` must be a positive integer; otherwise
-   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   * more than 1000, when the oldest go. Under `expiredRecords: 'on-request'` the sweep runs only
+   * in {@link Bureau.removeExpiredRecords} (COR-2009). `olderThan` must be a positive integer;
+   * otherwise `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
    */
   notifications?: BureauNotificationsRetentionOption | undefined;
   /**
    * COR-1943 — how long a settled hook delivery record (delivered, exhausted, aborted, or failed
    * for want of a secret) is kept after it was last written, swept by each maintenance pass. A
    * pending delivery is never removed, whatever its age. Leave it out to keep delivery records until
-   * their hook is deleted. Has effect only on a Bureau composed with {@link BureauOptions.hooks}.
+   * their hook is deleted. Under `expiredRecords: 'on-request'` the sweep runs only in
+   * {@link Bureau.removeExpiredRecords} (COR-2009). Has effect only on a Bureau composed with
+   * {@link BureauOptions.hooks}.
    * `olderThan` must be a positive integer; otherwise `createBureau` throws
    * `BureauError(..., 'BAD_REQUEST')`.
    */
@@ -499,6 +527,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `BureauError` (`BAD_REQUEST`).
    */
   agents?: D;
+  /**
+   * COR-2009 — code-defined agents that hold Bureau's own tools, which an entry of
+   * {@link BureauOptions.agents} cannot: those tools read the Bureau, so they exist only once
+   * `createBureau` has started. Each key is an agent's name and each value builds the agent from
+   * the tools, by the name an agent file uses (`bureau:discover-agents`, and with an
+   * {@link BureauOptions.workflowSource} `bureau:workflows-create` and the other workflow tools).
+   * The function is called once, while the Bureau is built, and the agent it returns joins the
+   * catalog under its key as an entry of `agents` does. A key `agents` already holds, or the
+   * reserved `bureau`, is refused with `BureauError` (`BAD_REQUEST`).
+   */
+  agentsWithBureauTools?: Readonly<Record<string, AgentWithBureauTools>>;
   /**
    * COR-1702 — where agent definitions are loaded from, watched in, and written back to. Pass
    * `agentFileDirectory(path, { tools })` from `@lostgradient/bureau/sources` for a directory of
@@ -696,6 +735,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   maintenance?: 'automatic' | 'manual';
   /**
+   * COR-2009 — who removes the records past their retention window: audit records and the
+   * resolved reviews they describe, expired memories, finished runs' log lines, notifications and
+   * settled hook deliveries. `'maintenance'`, the default, removes them in every maintenance pass,
+   * on the automatic timer or in {@link Bureau.maintain}. `'on-request'` leaves them to
+   * {@link Bureau.removeExpiredRecords}, for a host that cleans up on a schedule of its own, such as
+   * once a night. Every other maintenance pass, task and event history retention included, is
+   * unchanged. Any other value makes `createBureau` throw `BureauError(..., 'BAD_REQUEST')`.
+   */
+  expiredRecords?: 'maintenance' | 'on-request';
+  /**
    * COR-1701 — how long each kind of Bureau history is kept: `audit`, `checkpoints`, `events`,
    * `tasks`, and `receipts`. See {@link BureauRetentionOptions}. Every window is read at the next
    * maintenance pass. Omitted fields keep their defaults. Invalid values make `createBureau`
@@ -846,6 +895,27 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * only when a durable engine is composed.
    */
   durableGuardrails?: DurableGuardrailsConfiguration;
+  /**
+   * Alert rules the durable engine evaluates against its own metrics (Weft's built-in alerting),
+   * such as a `storage.size` rule over the storage size the engine reports every minute. What is
+   * firing is read with `engine.getActiveAlerts()` and reported by {@link Bureau.attention} and
+   * `bureau.health.attention`. Omitted, the engine evaluates no rule. Has effect only when a
+   * durable engine is composed.
+   */
+  alerts?: AlertingOptions;
+  /**
+   * COR-2009 — how often, in milliseconds, the durable engine reports its storage's size, the
+   * `storage.size` metric {@link BureauOptions.alerts} reads. Omitted, every minute (Weft's
+   * default); `0` turns the periodic report off, so the only sizes reported are the ones dispatched
+   * on the engine. Has effect only when a durable engine is composed.
+   */
+  storageSizeReportIntervalMs?: number;
+  /**
+   * COR-2009 — the problems the host can see and the Bureau cannot, such as `no-provider` when no
+   * model provider is connected. Read on every {@link Bureau.attention} call and merged into the one
+   * list, most recent first; a plugin the Bureau already reports as not loaded is listed once.
+   */
+  attention?: () => Promise<readonly BureauAttentionItem[]> | readonly BureauAttentionItem[];
   /**
    * Multi-process ownership posture for the durable engine (AB-178). Omit for
    * the default `ownership: 'workflow-lease'`. Pass `{ ownership: 'none' }` to
@@ -1147,12 +1217,30 @@ export interface PendingHumanWaitReview {
    * schema, so a retry after the review closed can still tell which fields to keep out of a digest.
    */
   secretFields?: readonly string[] | undefined;
+  /**
+   * COR-2009 — the workflow step that asks, for the review of a workflow file's `await-signal` step
+   * written with `"review": true`; absent for every other human wait. `runId` is then the
+   * workflow's instance.
+   */
+  workflow?: WorkflowReviewOrigin | undefined;
   /** Epoch-ms timestamp the run parked. */
   requestedAt: number;
   /** Milliseconds elapsed since `requestedAt`, computed at read time. */
   ageMilliseconds: number;
   /** The review's current lifecycle status (AB-46). See {@link ReviewStatus}. */
   status: ReviewStatus;
+}
+
+/** COR-2009 — the workflow step a workflow review was asked by. */
+export interface WorkflowReviewOrigin {
+  /** The workflow's identifier. */
+  readonly id: string;
+  /** The workflow's `title`, when its file gives one. */
+  readonly title?: string | undefined;
+  /** The step's position in the file, counted from 1. */
+  readonly step: number;
+  /** The step's `title`, when it has one. */
+  readonly stepTitle?: string | undefined;
 }
 
 /** A single item in the gateway's review queue (AB-20). */
@@ -2165,6 +2253,16 @@ export interface BureauSchedules {
   inputPreview(scheduleId: string): Promise<string | undefined>;
 
   /**
+   * COR-2009 — why a workflow file's schedule won't start: its file is there but stopped parsing,
+   * so Bureau keeps the schedule its last good version made and holds it until the file parses
+   * again. The answer names the workflow, the file's problem, and the status the schedule holds
+   * meanwhile (`active` for one Bureau paused for the problem). `undefined` for any other schedule,
+   * one whose file loads, and when no durable engine is composed. It does not check who may see the
+   * schedule, so a caller answers to {@link Bureau.ownerOf} first.
+   */
+  blocker(scheduleId: string): Promise<WorkflowScheduleBlocker | undefined>;
+
+  /**
    * One page of the schedule definition's durable event history (`schedule.created`, paused,
    * resumed, and cancelled), from the exclusive `options.since` cursor. It is
    * {@link BureauTasks.events} for the `schedule` owner: the outcomes, `options.principal`
@@ -2790,6 +2888,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly hooks: BureauHooks | undefined;
   /**
+   * COR-2009 — what needs attention now: firing alerts, schedules that missed runs, hooks whose last
+   * delivery failed or gave up, plugins that did not load, and what {@link BureauOptions.attention}
+   * adds, as one list, most recent first, with the same items counted by area as its checks.
+   * Reviews waiting on a person are never on it. See {@link BureauAttention}.
+   */
+  attention(): Promise<BureauAttention>;
+  /**
    * COR-1876 — an event as a person reads it: a contributed formatter's sentence for its kind, or
    * the raw kind and the run link for an event no formatter claims. Pure; it never throws for a
    * formatter that does.
@@ -2907,6 +3012,18 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * removed none there still resolves `undefined`.
    */
   maintain(now?: number): Promise<true | undefined>;
+
+  /**
+   * COR-2009 — removes every record past its retention window now, and says how many went: audit
+   * records and the resolved reviews they describe (`retention.audit`), expired memories
+   * (`retention.memory`, or the memory policy), finished runs' log lines (`retention.logs`),
+   * notifications (`retention.notifications`) and settled hook deliveries
+   * (`retention.hookDeliveries`). The windows are read afresh first. A kind whose pass fails is
+   * diagnosed and listed in {@link ExpiredRecordRemoval.failed}, and the other kinds still go. It
+   * is how a Bureau created with `expiredRecords: 'on-request'` removes them; under the default it
+   * removes what the next maintenance pass would. Rejects with `CONFLICT` once shutdown has begun.
+   */
+  removeExpiredRecords(): Promise<ExpiredRecordRemoval>;
 
   /**
    * Installs the host-owned authority freshness check used immediately before

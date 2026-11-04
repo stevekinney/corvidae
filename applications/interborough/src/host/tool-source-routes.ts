@@ -6,20 +6,26 @@
  *   uses, and the names of its stored credentials. It never carries a credential or a URL.
  * - `PUT /host/tool-sources/<id>` with `{ "source": { … }, "credentials": { "<name>": "<value>" } }`
  *   connects a source, or replaces it. `source` is Armorer's description and its `id` must be `<id>`.
- *   A credential the description names and the host already holds may be left out. With
+ *   A credential the description names and the host already holds may be left out. `tools` takes
+ *   the per-tool settings as the `tools` route does (`{ "delete_branch": { "enabled": false } }`
+ *   leaves a tool off, COR-2009). A source this adds is loaded at once, and the answer says
+ *   `restartRequired: false` with the tools now `available` (no restart needed). With
  *   `"create": true` it only connects: a source already saved under `<id>` answers 409
  *   `{ "error": "exists", "field": "id" }` and nothing changes, which is how a page that lists the
  *   sources adds one without replacing one another tab saved a moment before.
  * - `POST /host/tool-sources/<id>/probe` with the same body as the `PUT` contacts a source that is not
  *   saved, with the credentials in the body and none from the host's vault, and answers 200 with
- *   `{ "outcome": "listed", "tools": [{ "name", "tool", "tier" }], "skipped": […] }`, or
+ *   `{ "outcome": "listed", "tools": [{ "name", "tool", "tier", "title", "description" }], "skipped": […] }`
+ *   (for an OpenAPI source also `test`: the first operation that reads and needs no input, called
+ *   with the key, `{ "tool", "title", "passed", "message"? }`, so a wrong key shows now), or
  *   `{ "outcome": "needs-authorization" }` for an OAuth server that asks for a sign-in, or
  *   `{ "outcome": "failed", "message": "…" }` for a source that did not answer as it should, in
  *   words that hold no address, command or value. It saves nothing and keeps no connection. A
  *   request that cannot be used answers as the `PUT` does, and a local command is spawned only for
  *   the owner.
  * - `PUT /host/tool-sources/<id>/tools` with `{ "tools": { "<tool>": { "acceptsSecrets": true } } }`
- *   sets the host's own settings for the named tools of a configured source (COR-1932). `<tool>` is
+ *   sets the host's own settings for the named tools of a configured source (COR-1932), and
+ *   `{ "enabled": false }` turns a tool off so no agent can be given it (COR-2009). `<tool>` is
  *   the tool's own name as the server lists it, not the `<id>__<tool>` name. Each named tool's
  *   settings are replaced and the others kept; `false` (or `{}`) removes the entry, since off is
  *   the default. A name the server does not list is accepted and reported by `GET` under the
@@ -38,7 +44,8 @@
  *   answers a small page, never JSON, and never repeats a parameter of the request.
  *
  * Every answer but the callback's is JSON. A change answers 200 with `{ id, changed,
- * restartRequired: true }` (a removal adds `affectedAgents`): the source's tools are listed when the host starts again. A refusal
+ * restartRequired }` (a removal adds `affectedAgents`): with `restartRequired: true` the change is
+ * listed when the host starts again; a source added at once answers `false` and its `available` tools. A refusal
  * because the home is remote answers 403 with `reason: "deployment"`; a local command asked for by
  * anyone but the owner answers 403 with `error: "owner-only"`; a source the configuration does not
  * list answers 404; a source that `create` would replace answers 409; a request or configuration that cannot be used answers 400 naming the field;
@@ -48,8 +55,15 @@
  * @module tool-source-routes
  */
 
+import {
+  inspectOpenApiAddress,
+  inspectOpenApiSpec,
+  type OpenApiFetchFailure,
+  type OpenApiInspection,
+} from './openapi-inspection.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
+  DEFAULT_PROBE_TIMEOUT_MILLISECONDS,
   HOST_OAUTH_CALLBACK_ROUTE,
   ToolSourceAuditError,
   ToolSourceExistsError,
@@ -75,6 +89,15 @@ export const HOST_TOOL_SOURCE_PROBE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/prob
 
 /** The route that sets the host's per-tool settings of the source it names. */
 export const HOST_TOOL_SOURCE_TOOLS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/tools`;
+
+/**
+ * The route that reads an OpenAPI spec before it is connected (COR-2009): `POST` with
+ * `{ "text": "<the file>", "fileName": "payments-openapi.yaml" }` or `{ "url": "https://…" }`. It
+ * answers `inspectOpenApiSpec`'s reading (`valid`, `invalid` with the line, or `no-operation-ids`),
+ * or `{ "outcome": "unreachable", "status", "message" }` for an address that did not give a spec.
+ * It saves nothing.
+ */
+export const HOST_OPENAPI_INSPECTION_ROUTE = '/host/openapi-inspection';
 
 /** The route that starts the sign-in of the source it names. */
 export const HOST_TOOL_SOURCE_AUTHORIZE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/authorize`;
@@ -192,7 +215,39 @@ function callbackPage(title: string, body: string, status: number): Response {
 export type ToolSourceRoutesOptions = {
   /** The principal a request acts as. A local command is added only when it is the owner. */
   readonly principal: (request: Request) => string;
+  /** Replaces the global `fetch` an OpenAPI address is read with, for a test. */
+  readonly fetch?: typeof fetch;
 };
+
+/** The reading of the OpenAPI spec a request names: its text, or its address. */
+async function inspectRequestedSpec(
+  body: Record<string, unknown>,
+  fetchImplementation: typeof fetch | undefined,
+): Promise<OpenApiInspection | OpenApiFetchFailure> {
+  const { text, url, fileName } = body;
+  if (fileName !== undefined && typeof fileName !== 'string') {
+    throw new BodyError('"fileName" must be a string.');
+  }
+  if (typeof text === 'string' && url === undefined) {
+    return inspectOpenApiSpec(text, fileName ?? null);
+  }
+  if (typeof url === 'string' && text === undefined) {
+    let address: URL;
+    try {
+      address = new URL(url);
+    } catch {
+      throw new BodyError('"url" must be an http or https address.');
+    }
+    if (address.protocol !== 'http:' && address.protocol !== 'https:') {
+      throw new BodyError('"url" must be an http or https address.');
+    }
+    return inspectOpenApiAddress(address.href, {
+      ...(fetchImplementation === undefined ? {} : { fetch: fetchImplementation }),
+      signal: AbortSignal.timeout(DEFAULT_PROBE_TIMEOUT_MILLISECONDS),
+    });
+  }
+  throw new BodyError('Send the spec as "text", or its address as "url", and not both.');
+}
 
 /** The routes to merge into the host's `routes`. Each runs the guard first. */
 export function toolSourceRoutes(
@@ -215,6 +270,7 @@ export function toolSourceRoutes(
             credentials: body['credentials'],
             principal: options.principal(request),
             createOnly: body['create'] === true,
+            tools: body['tools'],
           });
         }),
       DELETE: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_ROUTE>) =>
@@ -248,6 +304,11 @@ export function toolSourceRoutes(
           return manager.configureTools({ id: request.params.id, tools: body['tools'] });
         }),
     },
+    [HOST_OPENAPI_INSPECTION_ROUTE]: {
+      POST: (request: Request) =>
+        refuse(request) ??
+        respond(async () => inspectRequestedSpec(await readObject(request), options.fetch)),
+    },
     [HOST_TOOL_SOURCE_AUTHORIZE_ROUTE]: {
       POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_AUTHORIZE_ROUTE>) =>
         refuse(request) ?? respond(() => manager.authorize(request.params.id)),
@@ -257,10 +318,12 @@ export function toolSourceRoutes(
         const refusal = refuse(request);
         if (refusal !== undefined) return refusal;
         try {
-          await manager.completeAuthorization(request.params.id, request.url);
+          const change = await manager.completeAuthorization(request.params.id, request.url);
           return callbackPage(
             'Signed in',
-            'Signed in. Close this tab and restart Interborough to list the source’s tools.',
+            change.restartRequired
+              ? 'Signed in. Close this tab and restart Interborough to list the source’s tools.'
+              : 'Signed in. Close this tab: the source’s tools are available now.',
             200,
           );
         } catch (error) {

@@ -3,6 +3,7 @@ import {
   decodeBase64ToBytes,
   encodeBytesToBase64,
   storageConditionalBatch,
+  storageScanWithMetadata,
   type BatchOperation,
   type ConditionalBatchCondition,
   type ScanOptions,
@@ -25,6 +26,8 @@ import {
   storageDeleteInput,
   storageGetInput,
   storageGetOutput,
+  storagePreviewInput,
+  storagePreviewOutput,
   storagePutInput,
   storageScanInput,
   storageScanOutput,
@@ -33,6 +36,7 @@ import {
   type StorageScanInput,
   type StorageScanOutput,
 } from './storage-schemas.ts';
+import { previewStorageValue } from './storage-value-preview.ts';
 
 const rawStorageAccess: AccessPolicy = {
   kind: 'scoped',
@@ -127,9 +131,26 @@ async function* scanStorage(
   prefix: string,
   options: ScanOptions,
 ): StorageScanOutput {
-  for await (const [key, value] of storage.scan(prefix, options)) {
-    yield { key, value: encodeBytesToBase64(value) };
+  for await (const [key, value, metadata] of storageScanWithMetadata(storage, prefix, options)) {
+    yield { key, value: encodeBytesToBase64(value), updatedAt: metadata.updatedAt };
   }
+}
+
+/**
+ * Read one key's value and write time in a single read: a metadata scan of exactly that key, so
+ * the time always belongs to the value it is shown with.
+ */
+async function readValueWithWriteTime(
+  storage: Pick<Storage, 'scan'>,
+  key: string,
+): Promise<{ value: Uint8Array; updatedAt: number | null } | null> {
+  for await (const [entryKey, value, metadata] of storageScanWithMetadata(storage, key, {
+    lte: key,
+    limit: 1,
+  })) {
+    if (entryKey === key) return { value, updatedAt: metadata.updatedAt };
+  }
+  return null;
 }
 
 export const storageGetOperation = defineOperation({
@@ -153,6 +174,37 @@ export const storageGetOperation = defineOperation({
       'get',
     ]);
     return storage.get(input.key);
+  },
+});
+
+export const storagePreviewOperation = defineOperation({
+  name: 'weft.storage.preview',
+  mcpExposable: false,
+  summary: 'Preview a raw storage value',
+  description:
+    'Read one raw value by key and describe it without returning all of it: its size in ' +
+    'bytes, whether the whole value is JSON, other UTF-8 text, or binary, and at most its ' +
+    'first 64 KB as text, cut on a character boundary (`truncated` says whether that is ' +
+    'all of it). A binary value has no preview. `updatedAt` is when the key was last ' +
+    'written, in milliseconds since the Unix epoch, or null when the storage backend does ' +
+    'not record write times. An absent key is answered 404. The raw get still returns every ' +
+    'byte. Read-only. Requires storage:admin and is served over REST only.',
+  destructive: false,
+  tags: ['Storage'],
+  inputSchema: storagePreviewInput,
+  outputSchema: storagePreviewOutput,
+  access: rawStorageAccess,
+  discoverable: true,
+  transports: httpOnlyStorageTransports,
+  unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
+  invoke: async ({ input, host: engine, principal }) => {
+    const storage = resolveAuthorizedStorage<['scan']>(engine, principal, 'weft.storage.preview', [
+      'scan',
+    ]);
+    const entry = await readValueWithWriteTime(storage, input.key);
+    return entry === null
+      ? null
+      : { key: input.key, ...previewStorageValue(entry.value), updatedAt: entry.updatedAt };
   },
 });
 
@@ -210,7 +262,9 @@ export const storageScanOperation = defineOperation({
   description:
     'Stream raw entries whose key starts with `prefix`, optionally bounded by ' +
     '`gt`/`gte`/`lt`/`lte`, reversed, or capped by `limit`. Each entry carries the ' +
-    'key and its base64-encoded value. Read-only. Requires storage:admin and is ' +
+    'key, its base64-encoded value, and `updatedAt`: when the key was last written, in ' +
+    'milliseconds since the Unix epoch, or null when the storage backend does not record ' +
+    'write times. Read-only. Requires storage:admin and is ' +
     'served over REST only.',
   destructive: false,
   tags: ['Storage'],

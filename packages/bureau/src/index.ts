@@ -38,6 +38,7 @@ export type {
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
 export { createAgentContributions, NO_AGENT_CONTRIBUTIONS } from './agent-contributions';
+export type { AgentWithBureauTools, BureauOwnTools } from './agents-with-bureau-tools';
 export type {
   BureauMemoryFactory,
   BureauPluginEntry,
@@ -109,6 +110,7 @@ export type {
   AgentFileDetail,
   AgentListing,
   AgentToolDescription,
+  AgentUnavailability,
 } from './agent-file-catalog';
 export type { AgentFileWriteResult } from './agent-file-writer';
 export type {
@@ -128,6 +130,14 @@ export {
 } from './sources/definition-source';
 export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentVersionRecord } from './agent-version-store';
+export type {
+  AgentOverrides,
+  AgentOverrideState,
+  AgentOverrideVersionRecord,
+  AgentOverrideWriteResult,
+} from './agent-override-store';
+export type { CodeAgentOverrides } from './code-agent-overrides';
+export { SESSION_END_REASONS, type SessionEndReason } from './bureau-session-persistence';
 export type { AgentReferenceDigest, AgentReferenceDocument } from './agent-reference-documents';
 export type {
   WorkflowCodeDetail,
@@ -145,6 +155,9 @@ export type { WorkflowRunPinProblem } from './workflow-snapshot-store';
 export { WorkflowInputInvalidError } from './workflow-schema';
 export type {
   WorkflowFileDefinition,
+  WorkflowFileStep,
+  WorkflowFileTrigger,
+  WorkflowStepAnnotation,
   WorkflowFileErrorCode,
   WorkflowFileIssue,
   WorkflowFileProblem,
@@ -184,8 +197,39 @@ export {
 } from './workflow-file';
 export type { WorkflowListing, WorkflowFileWriteResult } from './workflow-file-catalog';
 export type { WorkflowRevision } from './workflow-snapshot-store';
-export type { WorkflowRevisionReport } from './workflow-runtime';
+export type {
+  WorkflowHistoryEntry,
+  WorkflowHistoryRuns,
+  WorkflowImpact,
+  WorkflowRevisionReport,
+  WorkflowScheduleBlocker,
+} from './workflow-runtime';
+export type {
+  WorkflowRevisionAttribution,
+  WorkflowRevisionChange,
+  WorkflowRevisionCompatibility,
+  WorkflowRevisionContent,
+  WorkflowRevisionPlan,
+  WorkflowRevisionRecord,
+} from './workflow-revision-ledger';
+export {
+  compareWorkflowRevisions,
+  workflowRevisionLabel,
+  WORKFLOW_REVISION_KEY_PREFIX,
+} from './workflow-revision-ledger';
 export { WorkflowAgentStepError, WorkflowHostConflictError } from './workflow-host';
+export { ATTENTION_AREAS, MISSED_RUNS_ATTENTION_WINDOW_MILLISECONDS } from './attention-feed';
+export type {
+  AlertAttentionItem,
+  AttentionArea,
+  AttentionCheck,
+  BureauAttention,
+  BureauAttentionItem,
+  HookAttentionItem,
+  MissedRunsAttentionItem,
+  PluginAttentionItem,
+  ProviderAttentionItem,
+} from './attention-feed';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
 export type {
   BureauWorkerDeploymentRouting,
@@ -541,6 +585,7 @@ export type {
   PersonTaskOrigin,
   ScheduleTaskOrigin,
   StartTaskOrigin,
+  SystemTaskOrigin,
   TaskOrigin,
   TaskOriginKind,
   TaskPersonSurface,
@@ -647,6 +692,8 @@ export type {
   BureauMemoryRetentionOption,
   BureauReceiptRetentionOption,
   BureauRetentionOptions,
+  ExpiredRecordKind,
+  ExpiredRecordRemoval,
   BureauRecoveryReport,
   BureauWatcherHealth,
   BureauAudit,
@@ -711,6 +758,7 @@ export type {
   StreamFrame,
   StreamingConfiguration,
   ToolPolicy,
+  WorkflowReviewOrigin,
 } from './types';
 export { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
 export {
@@ -734,12 +782,16 @@ export type {
   BureauHooks,
   HookActionInput,
   HookCreateInput,
+  HookReplaceSecretOptions,
   HookUpdateInput,
+  HookWithSigningSecret,
 } from './hooks/create-hooks';
 export { HOOK_TEST_EVENT_KIND } from './hooks/create-hooks';
 export {
+  generateHookSigningSecret,
   HOOK_SIGNATURE_HEADER,
   HOOK_SIGNATURE_TOLERANCE_SECONDS,
+  HOOK_SIGNING_SECRET_PREFIX,
   signHookDelivery,
   verifyHookSignature,
 } from './hooks/hook-signature';

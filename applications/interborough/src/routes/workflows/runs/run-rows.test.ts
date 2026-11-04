@@ -356,6 +356,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
     agent: { kind: 'agent', parentRunId: 'run-parent', agentName: 'planner', toolCallId: 'call-1' },
     goal: { kind: 'goal', goalRunId: 'seeded-goal', attemptId: 'a' },
     parent: { kind: 'parent', parentRunId: 'wf-instance' },
+    system: { kind: 'system' },
   } as const satisfies { readonly [Kind in TaskOriginKind]: Extract<TaskOrigin, { kind: Kind }> };
 
   const rowOf = (origin: unknown) =>
@@ -407,6 +408,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       parentRunId: 'wf-instance',
       href: '/runs/wf-instance',
     });
+    expect(rowOf(ORIGINS.system)).toEqual({ kind: 'system' });
   });
 
   test('is the recorded origin, not what the task’s chats and goals suggest', () => {
