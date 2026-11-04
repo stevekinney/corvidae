@@ -2129,6 +2129,46 @@ describe('the lines a run leaves under its messages', () => {
     return { wiring, conversation: terminal.conversation };
   }
 
+  test.each(['completed', 'failed', 'aborted'] as const)(
+    'places a child card live and settles it before the parent ends (%s)',
+    async (status) => {
+      const conversation = appendUserMessage(empty(), 'Remember it');
+      let current = conversation;
+      const snapshots: ConversationHistory[] = [];
+      const stubbed = mount([
+        stream([
+          started(),
+          childStarted,
+          {
+            type: 'CUSTOM',
+            name: 'bureau.child-run-settled',
+            value: { childRunId: 'child-1', status },
+          },
+          finished(),
+        ]),
+      ]);
+      const wiring = createChatRunWiring({
+        agentName: () => 'assistant',
+        fetch: stubbed.fetch,
+        conversation: () => current,
+        onSnapshot: (next) => {
+          current = next;
+          snapshots.push(next);
+        },
+      });
+
+      const result = await frames(wiring, conversation);
+      const terminal = result.at(-1);
+      if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+      expect(notesOf(snapshots[0]!, conversation.ids[0]!)).toMatchObject([
+        { kind: 'child-run', childRunId: 'child-1', status: 'running' },
+      ]);
+      expect(notesOf(snapshots.at(-1)!, conversation.ids[0]!)).toMatchObject([
+        { kind: 'child-run', childRunId: 'child-1', status, href: '/runs/child-1' },
+      ]);
+    },
+  );
+
   test('are on the rows they belong to when the run completes, through the mapper', async () => {
     const { conversation, wiring } = await completed([
       ...text('reply-1', 'Noted.'),
