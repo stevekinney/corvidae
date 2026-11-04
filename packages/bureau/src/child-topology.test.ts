@@ -2492,6 +2492,44 @@ describe('delegation grants', () => {
       ).toMatchObject({ code: 'budget-exhausted' });
     });
 
+    it('fails closed when a grant read throws and does not weaken a later child', async () => {
+      const engine = createFakeEngine();
+      const first = createFixture({ delegation, engine });
+      await startedChild(first, {
+        childRunId: 'child-a',
+        authority: { capabilities: { tools: ['host:read'] } },
+      });
+      await startedChild(first, {
+        childRunId: 'child-b',
+        authority: { capabilities: { tools: ['plugin:read'] } },
+      });
+      engine.states.set('parent-1', workflowState('parent-1', 'running'));
+      engine.states.set('child-a', workflowState('child-a', 'running'));
+      engine.states.set('child-b', workflowState('child-b', 'running'));
+
+      const loadGrant = first.store.loadGrant.bind(first.store);
+      let firstRead = true;
+      const flakyStore: ChildTopologyStore = {
+        ...first.store,
+        async loadGrant(grantId) {
+          if (firstRead) {
+            firstRead = false;
+            throw new Error('transient grant storage read');
+          }
+          return loadGrant(grantId);
+        },
+      };
+      const second = createFixture({ store: flakyStore, engine, delegation });
+
+      await second.topology.prepareRecovery();
+      expect(() => second.topology.recoveredRunContext('child-a')).toThrow(
+        'cannot resume: could not read grant',
+      );
+      expect(second.topology.recoveredRunContext('child-b')?.delegatedToolCapabilities).toEqual([
+        'plugin:read',
+      ]);
+    });
+
     it.each([
       [
         'tampered',

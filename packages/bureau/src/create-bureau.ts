@@ -3315,7 +3315,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1710: the settings tools are always in the catalog; an agent file that lists them gets them.
     const settingsTools = createSettingsTools({
       settings: () => settingsOf().settings,
-      ownerOf: (runId) => ownerOf({ kind: 'run', id: runId }),
+      authorityForRun: async (runId) => (await ownerOf({ kind: 'run', id: runId })) ?? undefined,
     });
     agentToolCatalog = {
       ...options.agentSource?.tools,

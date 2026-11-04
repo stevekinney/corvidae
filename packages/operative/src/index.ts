@@ -84,6 +84,7 @@ export {
   resolveAgentGuardrails,
   resolvesOwnGuardrails,
   withActiveSkillToolPolicy,
+  withDelegatedToolCapabilities,
 } from './agent-policy';
 export type {
   AgentSkills,

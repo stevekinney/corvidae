@@ -918,6 +918,8 @@ export interface RunOptionsBase {
    * inherits no delegated-authority narrowing from a dispatching parent.
    */
   delegatedAuthority?: DelegatedAuthority | undefined;
+  /** Tool identities allowed by the Bureau delegation grant; absent means unrestricted. */
+  delegatedToolCapabilities?: readonly string[] | undefined;
   /**
    * COR-814 — this run's own end of the typed signal channel its parent
    * opened through `dispatchChildRun` (forwarded from

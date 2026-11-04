@@ -3,6 +3,7 @@
  * tool the active skills' `allowed-tools` exclude is refused with `SKILL_TOOL_DENIED` before the
  * tool runs, and the run continues.
  */
+import { HookRegistry } from '@lostgradient/lifecycle';
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
 import { createTool, createToolbox } from 'armorer';
 import type { ToolCall, ToolPolicy } from 'armorer/protocol';
@@ -10,9 +11,10 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
-import { withActiveSkillToolPolicy } from './agent-policy';
+import { withActiveSkillToolPolicy, withDelegatedToolCapabilities } from './agent-policy';
 import { createActiveRun } from './create-run';
 import type { ToolSettledBubbleEvent } from './events';
+import type { OperativeHookMap } from './hooks';
 import { createMockGenerate } from './test/index';
 import type { GenerateFunction } from './types';
 
@@ -523,6 +525,138 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
       ['call-write', 'error'],
       ['call-search', 'success'],
     ]);
+  });
+});
+
+describe('withDelegatedToolCapabilities (COR-2026)', () => {
+  it('allows listed identities, refuses unlisted identities before invocation, and treats absent as unrestricted', async () => {
+    const executed: string[] = [];
+    const toolbox = createToolbox([
+      createTool({
+        name: 'workflows-list',
+        namespace: 'bureau',
+        description: 'list',
+        input: z.object({}),
+        execute: async () => {
+          executed.push('list');
+          return 'listed';
+        },
+      }),
+      createTool({
+        name: 'workflows-create',
+        namespace: 'bureau',
+        description: 'create',
+        input: z.object({}),
+        execute: async () => {
+          executed.push('create');
+          return 'created';
+        },
+      }),
+    ]);
+    const gated = withDelegatedToolCapabilities(toolbox, ['bureau:workflows-list']);
+    const result = await gated.execute([
+      { id: 'list-call', name: 'bureau__workflows-list', arguments: {} },
+      { id: 'create-call', name: 'bureau__workflows-create', arguments: {} },
+    ]);
+    expect(result.map((item) => item.outcome)).toEqual(['success', 'error']);
+    expect(result[1]?.error?.code).toBe('DELEGATED_TOOL_DENIED');
+    expect(executed).toEqual(['list']);
+    expect(withDelegatedToolCapabilities(toolbox, undefined).tools()).toHaveLength(2);
+  });
+
+  it('matches versioned namespace grants without admitting a same-named plugin', async () => {
+    const executed: string[] = [];
+    const toolbox = createToolbox([
+      createTool({
+        name: 'search',
+        namespace: 'host',
+        version: '3.0.0',
+        description: 'host search',
+        input: z.object({}),
+        execute: async () => {
+          executed.push('host');
+          return 'host';
+        },
+      }),
+      createTool({
+        name: 'search',
+        namespace: 'plugin',
+        version: '3.0.0',
+        description: 'plugin search',
+        input: z.object({}),
+        execute: async () => {
+          executed.push('plugin');
+          return 'plugin';
+        },
+      }),
+    ]);
+    const gated = withDelegatedToolCapabilities(toolbox, ['host:search']);
+
+    expect(gated.tools().map(({ id }) => id)).toEqual(['host:search@3.0.0']);
+    const [host, plugin] = await gated.execute([
+      { id: 'host-call', name: 'host__search', arguments: {} },
+      { id: 'plugin-call', name: 'plugin__search', arguments: {} },
+    ]);
+    expect(host?.outcome).toBe('success');
+    expect(plugin?.error?.code).toBe('DELEGATED_TOOL_DENIED');
+    expect(executed).toEqual(['host']);
+  });
+
+  it('treats an empty list as deny-all', async () => {
+    const toolbox = createToolbox([
+      createTool({
+        name: 'read',
+        description: 'read',
+        input: z.object({}),
+        execute: async () => 'read',
+      }),
+    ]);
+    const result = await withDelegatedToolCapabilities(toolbox, []).execute({
+      id: 'read-call',
+      name: 'read',
+      arguments: {},
+    });
+    expect(result).toMatchObject({ outcome: 'error', error: { code: 'DELEGATED_TOOL_DENIED' } });
+  });
+
+  it('does not let a selectTools replacement bypass deny-all', async () => {
+    let executed = false;
+    const selected = createToolbox([
+      createTool({
+        name: 'plugin-only',
+        namespace: 'plugin',
+        version: '1.0.0',
+        description: 'plugin-only',
+        input: z.object({}),
+        execute: async () => {
+          executed = true;
+          return 'should not run';
+        },
+      }),
+    ]);
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('selectTools', async () => selected);
+    const run = createActiveRun({
+      generate: createMockGenerate([
+        {
+          content: '',
+          toolCalls: [{ id: 'plugin-call', name: 'plugin__plugin-only', arguments: {} }],
+        },
+        { content: 'done', toolCalls: [] },
+      ]),
+      toolbox: createToolbox([]),
+      conversation: new Conversation(),
+      hooks,
+      delegatedToolCapabilities: [],
+      stopWhen: ({ toolCalls }) => toolCalls.length === 0,
+    });
+
+    const result = await run.result;
+    expect(executed).toBe(false);
+    expect(result.steps[0]?.results[0]).toMatchObject({
+      outcome: 'error',
+      error: { code: 'DELEGATED_TOOL_DENIED' },
+    });
   });
 });
 
