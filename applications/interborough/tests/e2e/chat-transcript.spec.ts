@@ -7,10 +7,13 @@
  */
 import type { Page } from '@playwright/test';
 
-import { conversation, newThreadId, runToEnd } from './chat-support.ts';
+import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
+import { E2E_BARRIER_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 const TOOL_RUNNER = 'demo:tool-runner';
+const CHAT_PROOF_PARENT = 'e2e:chat-proof-parent';
+const CHAT_PROOF_CHILD = 'e2e:workflow-reviewer';
 
 /** A tool-runner session left waiting on the approval of its refund, the way another client leaves one. */
 async function waitingSession(
@@ -170,4 +173,59 @@ test.describe('the transcript', () => {
     await expect(heading).not.toContainText('**');
     await expect(heading).not.toContainText('`');
   });
+});
+
+test('shows a durable specialist child while held, then restores its completed card after reload', async ({
+  page,
+  request,
+}) => {
+  let parentId: string | undefined;
+  let childRunId: string | undefined;
+  try {
+    await page.goto(`/chats/new?agent=${encodeURIComponent(CHAT_PROOF_PARENT)}`);
+    await page.getByRole('textbox').fill('Review the fixture workflow');
+    await page.getByRole('textbox').press('Enter');
+    await expect(page).toHaveURL(/\/chats\/(?!new(?:$|\?))[^/?]+$/);
+    parentId = decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1) ?? '');
+    const parentUrl = page.url();
+    const childLink = conversation(page).getByRole('link', { name: 'View run' });
+    await expect(childLink).toHaveCount(1);
+    await expect(conversation(page).getByText(CHAT_PROOF_CHILD, { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('Running', { exact: true })).toHaveCount(1);
+    const childHref = await childLink.getAttribute('href');
+    expect(childHref).toMatch(/^\/runs\/[^/]+$/);
+    childRunId = childHref?.slice('/runs/'.length);
+    if (childRunId === undefined) throw new Error('The child card did not link to a child run.');
+
+    await expect
+      .poll(async () => {
+        const response = await request.get(
+          `${E2E_BARRIER_URL}/chat-proof/waiting?childRunId=${encodeURIComponent(childRunId as string)}`,
+        );
+        return ((await response.json()) as { waiting: boolean }).waiting;
+      })
+      .toBe(true);
+
+    const release = await request.post(`${E2E_BARRIER_URL}/chat-proof/release`, {
+      data: { childRunId },
+    });
+    expect(release.ok()).toBe(true);
+    await expect(conversation(page).getByText('Completed', { exact: true })).toHaveCount(1);
+
+    await childLink.click();
+    await expect(page).toHaveURL(new RegExp(`/runs/${childRunId}$`));
+
+    await page.goto(parentUrl);
+    await page.reload();
+    const restoredLink = conversation(page).getByRole('link', { name: 'View run' });
+    await expect(restoredLink).toHaveCount(1);
+    await expect(conversation(page).getByText(CHAT_PROOF_CHILD, { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('Completed', { exact: true })).toHaveCount(1);
+    await expect(restoredLink).toHaveAttribute('href', `/runs/${childRunId}`);
+  } finally {
+    if (childRunId !== undefined) {
+      await request.post(`${E2E_BARRIER_URL}/chat-proof/release`, { data: { childRunId } });
+    }
+    if (parentId !== undefined) await deleteChats([parentId]);
+  }
 });

@@ -17,6 +17,7 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createWorkflowLogStore, Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -29,7 +30,7 @@ import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
 import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
-import { startHost } from '../../src/host/host.ts';
+import { startHost, type Host } from '../../src/host/host.ts';
 import { prepareShowcaseHome, showcaseProviderResolver } from '../../src/host/showcase.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
@@ -87,6 +88,81 @@ await seedToolSources(home, toolSourceServers);
 await enableDemoPlugin(home);
 const provider = fakeProvider('This reply comes from the end-to-end provider stub.');
 
+const CHAT_PROOF_PARENT = 'e2e:chat-proof-parent';
+const CHAT_PROOF_CHILD = 'e2e:workflow-reviewer';
+
+type ChatProofBarrier = {
+  wait(runId: string, signal?: AbortSignal): Promise<void>;
+  waiting(runId: string): boolean;
+  release(runId: string): boolean;
+};
+
+function createChatProofBarrier(): ChatProofBarrier {
+  const waiting = new Map<string, () => void>();
+  return {
+    wait(runId, signal) {
+      return new Promise<void>((resolve, reject) => {
+        const release = (): void => {
+          signal?.removeEventListener('abort', abort);
+          waiting.delete(runId);
+          resolve();
+        };
+        const abort = (): void => {
+          waiting.delete(runId);
+          reject(new Error('The chat-proof barrier step was aborted.'));
+        };
+        waiting.set(runId, release);
+        signal?.addEventListener('abort', abort, { once: true });
+      });
+    },
+    waiting: (runId) => waiting.has(runId),
+    release(runId) {
+      const release = waiting.get(runId);
+      if (release === undefined) return false;
+      release();
+      return true;
+    },
+  };
+}
+
+const chatProofBarrier = createChatProofBarrier();
+let chatProofBureau: Host['bureau'] | undefined;
+
+const chatProofReviewer = createAgent({
+  name: CHAT_PROOF_CHILD,
+  description: 'Reviews the fixture workflow.',
+  generate: (async ({ runId, signal }) => {
+    if (runId === undefined) throw new Error('The chat-proof reviewer needs a run id.');
+    await chatProofBarrier.wait(runId, signal);
+    return { content: 'The fixture workflow is healthy.', toolCalls: [] };
+  }) satisfies GenerateFunction,
+});
+
+const chatProofParent = createAgent({
+  name: CHAT_PROOF_PARENT,
+  description: 'Dispatches a workflow review to a specialist.',
+  generate: (async ({ runId }) => {
+    if (runId === undefined || chatProofBureau === undefined) {
+      throw new Error('The chat-proof parent is missing its Bureau run context.');
+    }
+    const childRunId = `e2e-chat-proof-child-${runId}`;
+    const started = await chatProofBureau.children.dispatch({
+      parentRunId: runId,
+      childRunId,
+      agentName: CHAT_PROOF_CHILD,
+      input: 'Review the fixture workflow.',
+    });
+    if (started.outcome !== 'started' && started.outcome !== 'duplicate') {
+      throw new Error(`The chat-proof child did not start: ${started.outcome}`);
+    }
+    const settled = await chatProofBureau.children.wait({ parentRunId: runId, childRunId });
+    if (settled.outcome !== 'settled') {
+      throw new Error(`The chat-proof child did not settle: ${settled.outcome}`);
+    }
+    return { content: 'The workflow review is complete.', toolCalls: [] };
+  }) satisfies GenerateFunction,
+});
+
 // Three workflow files, in the directory the Bureau reads at start (`26-workflows.spec.ts`): one
 // that loads and is started by a schedule, one started by a signal whose one step waits for another,
 // and one the Bureau cannot use. Each is written as a person would write it, by hand.
@@ -125,6 +201,8 @@ const host = await startHost({
       ...createTextEchoAgents(),
       ...createQuestionAgents(),
       ...createModelAgents(),
+      [CHAT_PROOF_PARENT]: chatProofParent,
+      [CHAT_PROOF_CHILD]: chatProofReviewer,
     },
   },
   environment: { INTERBOROUGH_HOME: home },
@@ -152,6 +230,7 @@ const host = await startHost({
 if (fixtureEngine === undefined) throw new Error('The host did not create the console engine.');
 const engine = fixtureEngine;
 const { server } = host;
+chatProofBureau = host.bureau;
 // The demo plugin seeds the schedule and the goal in `afterStart`, which `startHost` does not wait
 // for, and the specs read both as soon as the server says it is listening.
 await host.bureau.plugins.ready();
@@ -343,6 +422,23 @@ const barrierControl = Bun.serve({
       POST: () => {
         barrier.release();
         return Response.json({ released: true });
+      },
+    },
+    '/chat-proof/waiting': {
+      GET: (request) => {
+        const childRunId = new URL(request.url).searchParams.get('childRunId');
+        return Response.json({
+          waiting: childRunId === null ? false : chatProofBarrier.waiting(childRunId),
+        });
+      },
+    },
+    '/chat-proof/release': {
+      POST: async (request) => {
+        const body = (await request.json()) as { childRunId?: unknown };
+        const childRunId = typeof body.childRunId === 'string' ? body.childRunId : '';
+        return Response.json({
+          released: childRunId !== '' && chatProofBarrier.release(childRunId),
+        });
       },
     },
     // The addresses of the servers the connect host's specification connects to: loopback origins, no secret.
