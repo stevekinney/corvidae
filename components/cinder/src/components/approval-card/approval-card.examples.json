@@ -44,6 +44,30 @@
       "title": "Denied approval",
       "description": "A decided approval stays in the transcript as a neutral decision with who decided and when.",
       "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4398 for $27.25?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  operation={{ kind: 'other', argsPreview: { orderId: 4398, amount: '$27.25' } }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-04\"\n  state=\"denied\"\n  decidedBy=\"you\"\n  decidedAt=\"2026-11-02T10:40:00.000Z\"\n/>\n"
+    },
+    {
+      "id": "row-approving",
+      "title": "Approve in flight",
+      "description": "Approve reads \"Approving…\" with a spinner and both buttons turn off; the approval stays pending until the answer lands.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-approving\"\n  state=\"pending\"\n  resolving=\"approve\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-failed",
+      "title": "Approve failed",
+      "description": "A red-toned inline message says what failed and what is still true. Nothing was decided, so Approve is the retry.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-failed\"\n  state=\"pending\"\n  failure={{\n    summary: \"Couldn't approve.\",\n    detail: \"Interborough couldn't reach the agent. Nothing was refunded.\",\n  }}\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-expired",
+      "title": "Expired approval",
+      "description": "An approval that passed its `expiresAt` is read-only and says when it expired.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-expired\"\n  state=\"pending\"\n  expiresAt=\"2026-11-02T10:15:00.000Z\"\n/>\n"
+    },
+    {
+      "id": "row-done",
+      "title": "Decided approval with its result",
+      "description": "A decided approval shows who decided and when, then what it led to.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"row-done\"\n  state=\"approved\"\n  decidedBy=\"you\"\n  decidedAt=\"2026-11-02T10:33:00.000Z\"\n  result=\"Refunded $42.00 to the original card.\"\n/>\n"
     }
   ]
 }

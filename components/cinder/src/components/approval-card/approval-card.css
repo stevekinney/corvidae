@@ -245,6 +245,53 @@
     gap: var(--cinder-space-2);
   }
 
+  /* A line of context above the question, such as "Test chat · this runs for real". */
+  .cinder-approval-card__context {
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* Why the last answer did not go through: red-toned text with a glyph, nothing else. */
+  .cinder-approval-card__failure {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    color: var(--cinder-status-danger-text);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__failure > svg {
+    flex: none;
+    margin-block-start: 1px;
+  }
+
+  .cinder-approval-card__failure-summary {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* What the approval led to, once it is decided. */
+  .cinder-approval-card__result {
+    margin: 0;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__result-label {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* What happens once the approver decides, under the buttons. */
+  .cinder-approval-card__footnote {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+    text-align: end;
+  }
+
   /* The "Allow <tool> for ..." checkbox sits on its own line before Deny and Approve. */
   .cinder-approval-card__remember {
     display: flex;
@@ -303,6 +350,11 @@
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
+  }
+
+  /* In the row the notice lines up with the question, past the glyph. */
+  .cinder-approval-card--row > .cinder-approval-card__readonly-summary {
+    margin-inline-start: calc(16px + var(--cinder-space-2));
   }
 
   .cinder-approval-card__readonly-summary[data-cinder-state='approved'],
@@ -464,7 +516,8 @@
 
   /* Everything below the title lines up with the question, past the glyph. */
   .cinder-approval-card__row-body,
-  .cinder-approval-card__outcome {
+  .cinder-approval-card__outcome,
+  .cinder-approval-card--row > .cinder-approval-card__result {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);

@@ -34,6 +34,8 @@ Risk and approval state are communicated with more than color. The status dot is
 
 When `expiresAt` passes, the effective state becomes `expired` and the action buttons are removed. Expiration never fires `onResolve`; the host remains the source of truth for persisted state.
 
+While an answer is in flight (`resolving`), the button being answered carries `aria-busy` and `aria-disabled` (it stays focusable), shows a spinner, and a polite status announces "Approving…" or "Denying…"; the other button is natively disabled. A failed answer (`failure`) is written in a `role="alert"` region so it is announced when it appears, and its meaning never rests on colour: the summary is bold, a glyph leads it, and the sentence says what failed and what is still true.
+
 ## Security boundary
 
 `env` accepts environment variable names only. If a caller accidentally passes a `NAME=value` string, the component renders only the name before `=` and never renders the value. Names render as plain text chips — no masked placeholders that would imply secret material is present in the DOM. The list carries an `aria-label` stating that values are never shown, for anyone using a screen reader.

@@ -446,7 +446,6 @@
 
   .cinder-run-step-timeline__note[data-cinder-tone='danger'] {
     border-color: var(--cinder-status-danger-border);
-    border-inline-start: 3px solid var(--cinder-status-danger-solid);
     background: var(--cinder-status-danger-background);
     color: var(--cinder-text-default);
   }

@@ -1,6 +1,12 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
-  import type { ApprovalResolution, ApprovalState, ApprovalTool } from './approval-card.types.ts';
+  import type {
+    ApprovalFailure,
+    ApprovalResolution,
+    ApprovalResolving,
+    ApprovalState,
+    ApprovalTool,
+  } from './approval-card.types.ts';
 
   /** Props of the internal approval row. Not part of the public API. */
   export type ApprovalCardRowProps = {
@@ -34,6 +40,20 @@
     disabledReason: string | undefined;
     /** Why an unavailable approval cannot be answered now. */
     unavailableReason: string | undefined;
+    /** The answer on its way, or `undefined` when none is. */
+    resolving: ApprovalResolving | undefined;
+    /** Why the last answer did not go through. */
+    failure: ApprovalFailure | undefined;
+    /** A notice written beneath a read-only approval. */
+    notice: string | undefined;
+    /** What the approval led to. */
+    result: string | undefined;
+    /** A line written under the buttons while the approval is pending. */
+    footnote: string | undefined;
+    /** What the payload is called in the Input block. */
+    inputLabel: string;
+    /** A line of context written above the question. */
+    context: Snippet | undefined;
     /** Identity of the request; the note and the checkbox reset when it changes. */
     requestKey: string;
     /** The pairs of the one-line summary of the input. */
@@ -53,6 +73,8 @@
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
   import Textarea from '../textarea/textarea.svelte';
+  import ApprovalCardFailure from './approval-card-failure.svelte';
+  import ApprovalCardOutcome from './approval-card-outcome.svelte';
   import { RISK_LABELS, RISK_WORDS, STATE_LABELS } from './approval-card-state.ts';
   import type { InputSummaryPair } from './approval-card-state.ts';
 
@@ -72,6 +94,13 @@
     outcomeTime,
     disabledReason,
     unavailableReason,
+    resolving,
+    failure,
+    notice,
+    result,
+    footnote,
+    inputLabel,
+    context,
     requestKey,
     inputPairs,
     inputBody,
@@ -103,6 +132,10 @@
   const isUnavailable = $derived(approvalState === 'unavailable');
   const isDecided = $derived(!isPending && !isUnavailable);
   const canAnswer = $derived(isPending && resolve !== undefined);
+  // While an answer is on its way nothing else can be answered, and the note and checkbox stay
+  // as they were sent.
+  const isBusy = $derived(resolving !== undefined);
+  const actionsOff = $derived(disabledReason !== undefined || isBusy);
   const riskLabel = $derived(RISK_LABELS[tool.risk]);
   const riskWord = $derived(RISK_WORDS[tool.risk]);
   const sourceText = $derived(source === undefined ? undefined : `Approval from ${source}`);
@@ -113,13 +146,17 @@
   );
 
   function decide(decision: 'approve' | 'deny'): void {
-    if (!canAnswer || disabledReason !== undefined) return;
+    if (!canAnswer || actionsOff) return;
     const trimmedNote = note.trim();
     const resolution: ApprovalResolution = { decision, remember };
     if (trimmedNote) resolution.reason = trimmedNote;
     resolve?.(resolution);
   }
 </script>
+
+{#if context !== undefined}
+  <div class="cinder-approval-card__context">{@render context()}</div>
+{/if}
 
 <div class="cinder-approval-card__row">
   <span
@@ -172,15 +209,17 @@
 
 {#if isDecided}
   {#if outcomeText !== undefined}
-    <p class="cinder-approval-card__outcome">
-      <span class="cinder-approval-card__outcome-word">
-        <span class="cinder-approval-card__outcome-dot" aria-hidden="true"></span>
-        {outcomeText}
-      </span>
-      {#if outcomeTime !== undefined}
-        <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-        <span class="cinder-approval-card__outcome-time">{outcomeTime}</span>
-      {/if}
+    <ApprovalCardOutcome {outcomeText} {outcomeTime} />
+  {/if}
+  {#if result !== undefined}
+    <p class="cinder-approval-card__result">
+      <span class="cinder-approval-card__result-label">Result:</span>
+      {result}
+    </p>
+  {/if}
+  {#if notice !== undefined}
+    <p class="cinder-approval-card__readonly-summary" data-cinder-state={approvalState}>
+      {notice}
     </p>
   {/if}
 {:else}
@@ -201,6 +240,11 @@
       {#if unavailableReason !== undefined}
         <p class="cinder-approval-card__reason">{unavailableReason}</p>
       {/if}
+      {#if notice !== undefined}
+        <p class="cinder-approval-card__readonly-summary" data-cinder-state={approvalState}>
+          {notice}
+        </p>
+      {/if}
     {:else}
       {#if hasInput}
         <div class="cinder-approval-card__input">
@@ -218,7 +262,7 @@
               aria-hidden="true"
               data-cinder-open={inputOpen || undefined}
             />
-            <span class="cinder-approval-card__input-word">Input</span>
+            <span class="cinder-approval-card__input-word">{inputLabel}</span>
             <span class="cinder-approval-card__input-pairs">
               {#each inputPairs as pair, index (pair.label)}
                 {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true"
@@ -237,13 +281,17 @@
         </div>
       {/if}
 
+      {#if canAnswer && failure !== undefined}
+        <ApprovalCardFailure {failure} />
+      {/if}
+
       {#if disabledReason !== undefined}
         <p id={disabledReasonId} class="cinder-approval-card__reason">{disabledReason}</p>
       {/if}
 
       {#if canAnswer && rememberScope !== undefined}
         <div class="cinder-approval-card__remember">
-          <Checkbox bind:checked={remember} label={rememberLabel} mutating />
+          <Checkbox bind:checked={remember} label={rememberLabel} disabled={isBusy} mutating />
         </div>
       {/if}
 
@@ -257,6 +305,7 @@
             placeholder="Add a note for the agent or the record"
             rows={2}
             size="sm"
+            disabled={isBusy}
           />
         </div>
       {/if}
@@ -268,6 +317,7 @@
               type="button"
               class="cinder-approval-card__note-toggle"
               aria-expanded={noteOpen}
+              disabled={isBusy}
               onclick={() => (noteOpen = true)}
             >
               Add a note
@@ -279,24 +329,31 @@
             variant="secondary"
             size="sm"
             mutating
-            disabled={disabledReason !== undefined}
+            disabled={actionsOff && resolving !== 'deny'}
+            loading={resolving === 'deny'}
+            loadingStatus="Denying…"
             aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
             onclick={() => decide('deny')}
           >
-            Deny
+            {resolving === 'deny' ? 'Denying…' : 'Deny'}
           </Button>
           <Button
             type="button"
             variant="primary"
             size="sm"
             mutating
-            disabled={disabledReason !== undefined}
+            disabled={actionsOff && resolving !== 'approve'}
+            loading={resolving === 'approve'}
+            loadingStatus="Approving…"
             aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
             onclick={() => decide('approve')}
           >
-            Approve
+            {resolving === 'approve' ? 'Approving…' : 'Approve'}
           </Button>
         </div>
+        {#if footnote !== undefined}
+          <p class="cinder-approval-card__footnote">{footnote}</p>
+        {/if}
       {/if}
     {/if}
   </div>

@@ -1,3 +1,4 @@
+import { formatTimeOfDay, formatTimeZoneLabel } from '../../utilities/format-date.ts';
 import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
 import { readPayloadEntries } from '../payload-inspector/payload-inspector-fields.ts';
 import { describeContents, describeScalar } from '../payload-inspector/payload-inspector-model.ts';
@@ -70,6 +71,16 @@ export function isApprovalActionable(
 
 function resolveComparisonTime(currentTime: number | undefined): number {
   return currentTime ?? Date.now();
+}
+
+/**
+ * Says when an approval expired: "This approval expired at 10:15 AM CST, the time its request
+ * set." The zone is the viewer's, so the time reads the way the viewer's clock does.
+ */
+export function describeExpiry(expirationTimestamp: number): string {
+  const time = formatTimeOfDay(expirationTimestamp);
+  const zone = formatTimeZoneLabel(expirationTimestamp);
+  return `This approval expired at ${time}${zone === '' ? '' : ` ${zone}`}, the time its request set.`;
 }
 
 /** Parses an ISO expiration timestamp, returning undefined for invalid input. */

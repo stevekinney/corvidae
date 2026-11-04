@@ -1,3 +1,4 @@
+import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
 export type ApprovalToolRisk = 'low' | 'medium' | 'high';
@@ -136,6 +137,22 @@ export type ApprovalResolution = {
  */
 export type ApprovalCardLayout = 'card' | 'row';
 
+/** Which answer is on its way to the host: the approver pressed Approve or Deny and the answer has not landed. */
+export type ApprovalResolving = 'approve' | 'deny';
+
+/**
+ * Why an answer did not go through. Written as a red-toned inline message with the summary in
+ * bold and the detail after it: "Couldn't approve. Interborough couldn't reach the agent."
+ *
+ * @schemaObject
+ */
+export type ApprovalFailure = {
+  /** What failed, in a few words, such as `Couldn't approve.`. */
+  summary: string;
+  /** The reason and what is still true, such as `Interborough couldn't reach the agent. Nothing was refunded.`. */
+  detail?: string;
+};
+
 export type ApprovalCardCallbacks = {
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
@@ -190,6 +207,32 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     disabledReason?: string;
     /** Why an `unavailable` approval cannot be answered now, written beneath it. */
     unavailableReason?: string;
+    /**
+     * The answer that is on its way: `approve` writes "Approving…" with a spinner on Approve,
+     * `deny` writes "Denying…" with a spinner on Deny, and both buttons, the note and the
+     * checkbox turn off until the host clears it. The approval stays pending.
+     */
+    resolving?: ApprovalResolving;
+    /**
+     * Why the last answer did not go through, written as a red-toned inline message below the
+     * consequence. Nothing was decided, so Deny and Approve stay live; Approve is the retry.
+     */
+    failure?: ApprovalFailure;
+    /**
+     * A notice written beneath a read-only approval, such as why it expired or what happened
+     * elsewhere. Without one, an approval that passed its `expiresAt` says when it expired.
+     */
+    notice?: string;
+    /** What the approval led to, once it is decided: written as "Result: Refunded $18.50 to the original card.". */
+    result?: string;
+    /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
+    decidedIn?: string;
+    /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */
+    footnote?: string;
+    /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */
+    inputLabel?: string;
+    /** A line of context written above the question, such as "Test chat · this runs for real". */
+    context?: Snippet;
     /** The reference time for relative times. Defaults to now. */
     now?: Date | number;
     /** Additional CSS classes applied to the root element. */
@@ -245,6 +288,20 @@ export type ApprovalCardSchemaProps = {
   disabledReason?: string;
   /** Why an `unavailable` approval cannot be answered now, written beneath it. */
   unavailableReason?: string;
+  /** The answer that is on its way: `approve` writes "Approving…" with a spinner on Approve, `deny` writes "Denying…" on Deny, and both buttons, the note and the checkbox turn off until the host clears it. */
+  resolving?: ApprovalResolving;
+  /** Why the last answer did not go through, written as a red-toned inline message below the consequence. Nothing was decided, so Deny and Approve stay live; Approve is the retry. */
+  failure?: ApprovalFailure;
+  /** A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired. */
+  notice?: string;
+  /** What the approval led to, once it is decided: written as "Result: Refunded $18.50 to the original card.". */
+  result?: string;
+  /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
+  decidedIn?: string;
+  /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */
+  footnote?: string;
+  /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */
+  inputLabel?: string;
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
   /** Additional CSS classes applied to the root element. */

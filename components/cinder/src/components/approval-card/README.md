@@ -75,6 +75,17 @@ Presentational human-in-the-loop approval surface for reviewing a tool operation
 
 A decided approval stays in the transcript as a decision in neutral text: `state="denied"` with `decidedBy="you"` and `decidedAt` reads "Denied by you · 10:40 AM", with no decision buttons and no error colour.
 
+## Answers in flight, failed answers and read-only approvals
+
+The host owns the answer, so it tells the card where the answer stands:
+
+- `resolving="approve"` writes "Approving…" with a spinner on Approve and turns Deny off; `resolving="deny"` does the same for Deny ("Denying…"). The note and the checkbox stop taking changes, the approval stays pending, and a second press is ignored until the host clears `resolving`.
+- `failure={{ summary, detail }}` writes a red-toned inline message ("Couldn't approve. Interborough couldn't reach the agent. Nothing was refunded.") below the input, with the summary in bold. Nothing was decided, so Deny and Approve stay live and Approve is the retry; the card draws no second "Try again".
+- An approval that passed its `expiresAt` is `expired`: read-only, with no Deny or Approve, and a notice that says when it expired in the viewer's time zone ("This approval expired at 10:15 AM CST, the time its request set."). Pass `notice` to write your own sentence for any read-only approval, such as what was refunded or what happened elsewhere.
+- `result` writes what a decided approval led to ("Result: Refunded $18.50 to the original card."), and `decidedIn` says where it was decided when that was not here ("Approved by you in Reviews at 10:44 AM", with `decidedBy` and `decidedAt`).
+- `footnote` writes a muted line under the buttons while the approval waits, such as what happens once you decide. It goes with the buttons.
+- `context` is a snippet written above the question, such as "Test chat · this runs for real: order 4471 is refunded".
+
 An `unavailable` approval is a held approval nobody can answer now, such as one that belongs to an agent whose plugin is disabled. The row shows the neutral word "Unavailable" at the right, the input line, and `unavailableReason` below it, with no Deny or Approve.
 
 ## Operation rendering
@@ -85,7 +96,7 @@ An `unavailable` approval is a held approval nobody can answer now, such as one 
 - `operation.kind: 'command'` renders the command as a syntax-highlighted shell `CodeBlock`.
 - `operation.kind: 'patch'` renders the supplied unified patch as a syntax-highlighted diff.
 - `operation.filesTouched` renders one row per unique path, each with a copy button. Duplicate paths are collapsed.
-- `operation.argsPreview` renders through `PayloadInspector`; oversized previews are replaced with a bounded truncation notice before rendering. The card shows the exact JSON an approver signs off on; the row opens the Fields view.
+- `operation.argsPreview` renders through `PayloadInspector`; oversized previews are replaced with a bounded truncation notice before rendering. Both layouts open the Fields view, with the exact stored JSON one click away on the Fields/JSON switch. The card names the block `<tool> arguments`; pass `inputLabel` (for example `Runs with`) to name it yourself.
 - `env` renders variable names only, as plain text. Values are not accepted and are stripped if a caller accidentally passes `NAME=value`.
 - Sandbox context, environment names, and the policy version / idempotency key / snapshot id all live in a single collapsed "Details" disclosure so supporting context stays out of the approver's way until they ask for it. The action buttons are the last element of a pending card.
 
@@ -107,24 +118,32 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `consequence` | `string` | no | — | What approving does, in one line, such as `Sends $42.00 back to the original card`. |
 | `decidedAt` | `string` | no | — | When the approval was decided, as an ISO timestamp, written as a time of day after the outcome. |
 | `decidedBy` | `string` | no | — | Who decided, once the approval is decided: `you`. Written as "Denied by you". |
+| `decidedIn` | `string` | no | — | Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". |
 | `disabledReason` | `string` | no | — | Why Deny and Approve are off while the approval is still pending. Written above the actions and named by both buttons. |
 | `editableArgs` | `boolean` | no | `false` | Whether approving with edited JSON arguments is available. Default `false`. |
 | `env` | `string`[] | no | — | Environment variable names only. Values are ignored if accidentally supplied as `NAME=value`. |
 | `expiresAt` | `string` | no | — | Optional ISO timestamp after which a pending approval is treated as expired. |
+| `failure` | { detail?: `string`; summary: `string` } | no | — | Why the last answer did not go through, written as a red-toned inline message below the consequence. Nothing was decided, so Deny and Approve stay live; Approve is the retry. |
+| `footnote` | `string` | no | — | A line of text written under the buttons while the approval is pending, such as what happens once you decide. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the card title; section headings render one level deeper. Default `3`. |
 | `idempotencyKey` | `string` | yes | — | Idempotency key that makes repeated decisions durable. |
+| `inputLabel` | `string` | no | — | What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. |
 | `layout` | `"card"` \| `"row"` | no | `"card"` | Layout: the full `card`, or the shared `row`, one approval inside a transcript or beneath a tool call. Default `'card'`. |
+| `notice` | `string` | no | — | A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired. |
 | `operation` | { argsPreview?: `unknown`; command: `string`; filesTouched?: `string`[]; kind: `"command"` } \| { argsPreview?: `unknown`; filesTouched: `string`[]; kind: `"file-write"` } \| { argsPreview?: `unknown`; diff: `string`; filesTouched?: `string`[]; kind: `"patch"` } \| { argsPreview?: `unknown`; filesTouched?: `string`[]; kind: `"other"` } | yes | — | Operation details shown to the approver. |
 | `policyVersion` | `string` | yes | — | Policy version that produced the approval request. |
 | `question` | `string` | no | — | The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. |
 | `rememberScope` | `string` | no | — | Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always. |
 | `requestedAt` | `string` | no | — | When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending. |
+| `resolving` | `"approve"` \| `"deny"` | no | — | The answer that is on its way: `approve` writes "Approving…" with a spinner on Approve, `deny` writes "Denying…" on Deny, and both buttons, the note and the checkbox turn off until the host clears it. |
+| `result` | `string` | no | — | What the approval led to, once it is decided: written as "Result: Refunded $18.50 to the original card.". |
 | `sandbox` | { name: `string`; provider: `string`; workingDir: `string` } | no | — | Optional sandbox context in which the operation will run. |
 | `snapshotId` | `string` | no | — | Snapshot identifier for the pending approval context. |
 | `source` | `string` | no | — | Who asked, written after "Approval from": `Tool runner`, or `the agent`. |
 | `state` | `"pending"` \| `"approved"` \| `"approved_with_edits"` \| `"denied"` \| `"expired"` \| `"cancelled"` \| `"unavailable"` | yes | — | Persisted approval state. |
 | `tool` | { irreversible?: `boolean`; label?: `string`; name: `string`; risk: `"low"` \| `"medium"` \| `"high"` } | yes | — | Tool requesting approval. |
 | `unavailableReason` | `string` | no | — | Why an `unavailable` approval cannot be answered now, written beneath it. |
+| `context` | `(opaque)` | no | — | A line of context written above the question, such as "Test chat · this runs for real". Not expressible in JSON Schema; see the component types for the signature. |
 | `onResolve` | `(opaque)` | no | — | Called for approve, approve-with-edits, and deny with the complete resolution payload. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

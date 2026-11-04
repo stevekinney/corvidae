@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  describeExpiry,
   RISK_WORDS,
   STATE_DOT_STATUS,
   STATE_LABELS,
@@ -59,5 +60,13 @@ describe('summarizeInput', () => {
     expect(summarizeInput('--force')).toEqual([]);
     expect(summarizeInput(undefined)).toEqual([]);
     expect(summarizeInput(['a'])).toEqual([{ label: '1', text: 'a', muted: false }]);
+  });
+});
+
+describe('describeExpiry', () => {
+  test('says when the approval expired, with the time zone, in one sentence', () => {
+    expect(describeExpiry(Date.parse('2026-11-02T10:15:00.000Z'))).toMatch(
+      /^This approval expired at 10:15 AM \w+, the time its request set\.$/,
+    );
   });
 });

@@ -230,6 +230,46 @@
       "type": "string",
       "description": "Why an `unavailable` approval cannot be answered now, written beneath it."
     },
+    "resolving": {
+      "enum": ["approve", "deny"],
+      "description": "The answer that is on its way: `approve` writes \"Approving…\" with a spinner on Approve, `deny` writes \"Denying…\" on Deny, and both buttons, the note and the checkbox turn off until the host clears it."
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "What failed, in a few words, such as `Couldn't approve.`."
+        },
+        "detail": {
+          "type": "string",
+          "description": "The reason and what is still true, such as `Interborough couldn't reach the agent. Nothing was refunded.`."
+        }
+      },
+      "additionalProperties": false,
+      "required": ["summary"],
+      "description": "Why the last answer did not go through, written as a red-toned inline message below the consequence. Nothing was decided, so Deny and Approve stay live; Approve is the retry."
+    },
+    "notice": {
+      "type": "string",
+      "description": "A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired."
+    },
+    "result": {
+      "type": "string",
+      "description": "What the approval led to, once it is decided: written as \"Result: Refunded $18.50 to the original card.\"."
+    },
+    "decidedIn": {
+      "type": "string",
+      "description": "Where it was decided when that was not here, such as `Reviews`: \"Approved by you in Reviews at 10:44 AM\"."
+    },
+    "footnote": {
+      "type": "string",
+      "description": "A line of text written under the buttons while the approval is pending, such as what happens once you decide."
+    },
+    "inputLabel": {
+      "type": "string",
+      "description": "What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card."
+    },
     "class": {
       "type": "string",
       "description": "Additional CSS classes applied to the root element."
@@ -239,6 +279,11 @@
   "required": ["idempotencyKey", "operation", "policyVersion", "state", "tool"],
   "metadata": {
     "unsupportedProps": [
+      {
+        "name": "context",
+        "reason": "function-or-snippet",
+        "description": "A line of context written above the question, such as \"Test chat · this runs for real\"."
+      },
       {
         "name": "onResolve",
         "reason": "function-or-snippet",

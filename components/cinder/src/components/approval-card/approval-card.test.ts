@@ -21,6 +21,7 @@ import type { ApprovalCardProps } from './approval-card.types.ts';
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
+const { createRawSnippet } = await import('svelte');
 const { tick } = await import('svelte');
 const { default: ApprovalCard } = await import('./approval-card.svelte');
 const { default: approvalCardSchema } = await import('./approval-card.schema.ts');
@@ -35,6 +36,10 @@ afterEach(() => {
   jest.restoreAllMocks();
   document.body.replaceChildren();
 });
+
+// An approval that passed the time its request set says when, in the viewer's zone.
+const EXPIRED_NOTICE =
+  /^This approval expired at \d{1,2}:\d{2} [AP]M \w+, the time its request set\.$/;
 
 function approvalCardProps(overrides: Partial<ApprovalCardProps> = {}): ApprovalCardProps {
   return {
@@ -88,6 +93,7 @@ describe('ApprovalCard', () => {
     expect(approvalCardSchema.required).toContain('operation');
     expect(approvalCardSchema.properties).toHaveProperty('operation');
     expect(approvalCardSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
+      'context',
       'onResolve',
     ]);
   });
@@ -454,12 +460,14 @@ describe('ApprovalCard', () => {
     ).toBe(true);
   });
 
-  test('shows the arguments an approver signs off on as exact JSON', () => {
-    const { container } = render(ApprovalCard, {
+  test('shows the arguments an approver signs off on as fields, with the exact JSON a click away', async () => {
+    const { container, getByRole } = render(ApprovalCard, {
       ...approvalCardProps({
         operation: { kind: 'command', command: 'run', argsPreview: { count: 1, label: '1' } },
       }),
     });
+    expect(container.querySelector('.cinder-json-viewer')).toBeNull();
+    await fireEvent.click(getByRole('radio', { name: 'JSON' }));
     expect(container.querySelector('.cinder-json-viewer')).not.toBeNull();
     expect(container.textContent).toContain('"1"');
   });
@@ -756,6 +764,7 @@ describe('ApprovalCard', () => {
         }),
       });
 
+      await fireEvent.click(getByRole('radio', { name: 'JSON' }));
       const viewer = container.querySelector('.cinder-json-viewer');
       expect(viewer?.textContent).toContain('"--force"');
 
@@ -1015,9 +1024,7 @@ describe('ApprovalCard', () => {
     jest.advanceTimersByTime(1_000);
     await tick();
 
-    expect(
-      getByText('No approval actions are available because this request is expired.'),
-    ).toBeTruthy();
+    expect(getByText(EXPIRED_NOTICE)).toBeTruthy();
     expect(getByRole('img', { name: 'Expired' })).toBeTruthy();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(onResolve).not.toHaveBeenCalled();
@@ -1067,9 +1074,7 @@ describe('ApprovalCard', () => {
     await tick();
 
     expect(onResolve).not.toHaveBeenCalled();
-    expect(
-      getByText('No approval actions are available because this request is expired.'),
-    ).toBeTruthy();
+    expect(getByText(EXPIRED_NOTICE)).toBeTruthy();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 
@@ -1085,9 +1090,7 @@ describe('ApprovalCard', () => {
 
     await tick();
 
-    expect(
-      getByText('No approval actions are available because this request is expired.'),
-    ).toBeTruthy();
+    expect(getByText(EXPIRED_NOTICE)).toBeTruthy();
     expect(getByRole('img', { name: 'Expired' })).toBeTruthy();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
   });
@@ -1124,9 +1127,7 @@ describe('ApprovalCard', () => {
       }),
     });
 
-    expect(
-      getByText('No approval actions are available because this request is expired.'),
-    ).toBeTruthy();
+    expect(getByText(EXPIRED_NOTICE)).toBeTruthy();
     expect(getByRole('img', { name: 'Expired' })).toBeTruthy();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
   });
@@ -1250,7 +1251,10 @@ describe('ApprovalCard card layout anatomy', () => {
 
     expect(css).not.toMatch(/\[data-cinder-risk='high'\] \.cinder-approval-card__header/);
     expect(css).not.toMatch(/readonly-summary\[data-cinder-state='denied'\]/);
-    expect(css).not.toContain('--cinder-status-danger');
+    // Only the inline failure message is red-toned; no surface or header ever is.
+    expect(css.replace(/\.cinder-approval-card__failure \{[^}]*\}/, '')).not.toContain(
+      '--cinder-status-danger',
+    );
   });
 
   test('shows an unavailable card read-only with its reason', () => {
@@ -1600,5 +1604,229 @@ describe('ApprovalCard row layout', () => {
     expect(
       decided.container.querySelector('.cinder-approval-card__line')?.textContent,
     ).not.toContain('min ago');
+  });
+});
+
+describe('ApprovalCard answers in flight, failed and read-only', () => {
+  const approveFailure = {
+    summary: "Couldn't approve.",
+    detail: "Interborough couldn't reach the agent. Nothing was refunded.",
+  };
+
+  for (const layout of ['row', 'card'] as const) {
+    describe(`${layout} layout`, () => {
+      test('Approve in flight writes Approving… with a spinner and turns both buttons off', async () => {
+        const onResolve = mock();
+        const { getByRole, queryByRole, container } = render(ApprovalCard, {
+          props: refundRow({ layout, resolving: 'approve', onResolve }),
+        });
+
+        const approve = getByRole('button', { name: 'Approving…' });
+        expect(approve.getAttribute('data-cinder-loading')).not.toBeNull();
+        expect(approve.getAttribute('aria-busy')).toBe('true');
+        expect(approve.getAttribute('aria-disabled')).toBe('true');
+        expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+        expect((getByRole('button', { name: 'Deny' }) as HTMLButtonElement).disabled).toBe(true);
+        expect(
+          [...container.querySelectorAll('[data-cinder-button-status]')]
+            .map((node) => node.textContent)
+            .join(''),
+        ).toBe('Approving…');
+
+        await fireEvent.click(approve);
+        await fireEvent.click(getByRole('button', { name: 'Deny' }));
+        expect(onResolve).not.toHaveBeenCalled();
+        // The approval is still waiting on the answer.
+        expect(getByRole('article').getAttribute('data-cinder-state')).toBe('pending');
+      });
+
+      test('Deny in flight writes Denying… and turns Approve off', async () => {
+        const onResolve = mock();
+        const { getByRole } = render(ApprovalCard, {
+          props: refundRow({ layout, resolving: 'deny', onResolve }),
+        });
+
+        expect(getByRole('button', { name: 'Denying…' }).getAttribute('aria-busy')).toBe('true');
+        expect((getByRole('button', { name: 'Approve' }) as HTMLButtonElement).disabled).toBe(true);
+        await fireEvent.click(getByRole('button', { name: 'Approve' }));
+        expect(onResolve).not.toHaveBeenCalled();
+      });
+
+      test('the note and the checkbox stop taking changes while an answer is in flight', () => {
+        const { container, getByRole } = render(ApprovalCard, {
+          props: refundRow({
+            layout,
+            resolving: 'approve',
+            rememberScope: 'the rest of this chat',
+          }),
+        });
+
+        expect(getByRole('checkbox') as HTMLInputElement).toHaveProperty('disabled', true);
+        const note = container.querySelector('textarea');
+        if (note !== null) expect(note.disabled).toBe(true);
+        else
+          expect((getByRole('button', { name: 'Add a note' }) as HTMLButtonElement).disabled).toBe(
+            true,
+          );
+      });
+
+      test('a failed answer shows a red-toned alert below the input and leaves Approve live as the retry', async () => {
+        const onResolve = mock();
+        const { getByRole, queryByRole } = render(ApprovalCard, {
+          props: refundRow({ layout, failure: approveFailure, onResolve }),
+        });
+
+        const alert = getByRole('alert');
+        expect(squash(alert.textContent)).toBe(
+          "Couldn't approve. Interborough couldn't reach the agent. Nothing was refunded.",
+        );
+        expect(alert.querySelector('strong')?.textContent).toBe("Couldn't approve.");
+        expect(queryByRole('button', { name: /try again/i })).toBeNull();
+        expect(getByRole('article').getAttribute('data-cinder-state')).toBe('pending');
+
+        await fireEvent.click(getByRole('button', { name: 'Approve' }));
+        expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+      });
+
+      test('a failure with only a summary writes just the summary', () => {
+        const { getByRole } = render(ApprovalCard, {
+          props: refundRow({ layout, failure: { summary: "Couldn't deny." } }),
+        });
+        expect(squash(getByRole('alert').textContent)).toBe("Couldn't deny.");
+      });
+
+      test('an expired approval is read-only and says when it expired', () => {
+        const { getByText, queryByRole, getByRole } = render(ApprovalCard, {
+          props: refundRow({
+            layout,
+            expiresAt: '2026-11-02T10:15:00.000Z',
+            now: new Date('2026-11-02T10:42:00.000Z'),
+          }),
+        });
+
+        expect(getByRole('article').getAttribute('data-cinder-state')).toBe('expired');
+        expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+        expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+        expect(
+          getByText('This approval expired at 10:15 AM UTC, the time its request set.'),
+        ).toBeTruthy();
+      });
+
+      test('a notice from the host replaces the default expiry sentence', () => {
+        const { getByText, queryByText } = render(ApprovalCard, {
+          props: refundRow({
+            layout,
+            expiresAt: '2026-11-02T10:15:00.000Z',
+            notice: 'This approval expired at 10:15 AM CST. Nothing was refunded.',
+          }),
+        });
+
+        expect(
+          getByText('This approval expired at 10:15 AM CST. Nothing was refunded.'),
+        ).toBeTruthy();
+        expect(queryByText(/the time its request set/)).toBeNull();
+      });
+
+      test('a decided approval shows who decided, when, and the result', () => {
+        const { container, getByText } = render(ApprovalCard, {
+          props: refundRow({
+            layout,
+            state: 'approved',
+            decidedBy: 'you',
+            decidedAt: '2026-11-02T10:33:00.000Z',
+            result: 'Refunded $18.50 to the original card.',
+          }),
+        });
+
+        expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
+          'Approved by you · 10:33 AM',
+        );
+        expect(squash(container.querySelector('.cinder-approval-card__result')?.textContent)).toBe(
+          'Result: Refunded $18.50 to the original card.',
+        );
+        expect(getByText('Refunded $18.50 to the original card.', { exact: false })).toBeTruthy();
+      });
+
+      test('an approval answered elsewhere says where and when in one sentence', () => {
+        const { container, queryByRole } = render(ApprovalCard, {
+          props: refundRow({
+            layout,
+            state: 'approved',
+            decidedBy: 'you',
+            decidedIn: 'Reviews',
+            decidedAt: '2026-11-02T10:44:00.000Z',
+            notice:
+              "The run is continuing, so this page changed. You don't need to do anything here.",
+          }),
+        });
+
+        expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
+          'Approved by you in Reviews at 10:44 AM',
+        );
+        expect(container.textContent).toContain("You don't need to do anything here.");
+        expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+        expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+      });
+
+      test('the footnote shows while the approval waits and goes with the buttons', () => {
+        const waiting = render(ApprovalCard, {
+          props: refundRow({
+            layout,
+            footnote: 'Once you decide, Tool runner continues when a provider is connected.',
+          }),
+        });
+        expect(
+          waiting.getByText('Once you decide, Tool runner continues when a provider is connected.'),
+        ).toBeTruthy();
+        cleanup();
+
+        const decided = render(ApprovalCard, {
+          props: refundRow({ layout, state: 'denied', footnote: 'Once you decide.' }),
+        });
+        expect(decided.queryByText('Once you decide.')).toBeNull();
+      });
+
+      test('inputLabel renames the Input block', () => {
+        const { container } = render(ApprovalCard, {
+          props: refundRow({ layout, inputLabel: 'Runs with' }),
+        });
+        expect(container.textContent).toContain('Runs with');
+      });
+
+      test('a context slot writes its line above the question', () => {
+        const context = createRawSnippet(() => ({
+          render: () => '<span>Test chat · this runs for real: order 4471 is refunded</span>',
+        }));
+        const { container } = render(ApprovalCard, { props: refundRow({ layout, context }) });
+
+        const line = container.querySelector('.cinder-approval-card__context');
+        const title = container.querySelector('h3');
+        expect(line?.textContent).toBe('Test chat · this runs for real: order 4471 is refunded');
+        expect(
+          line !== null &&
+            title !== null &&
+            line.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
+    });
+  }
+
+  test('an unavailable row writes the host notice beside the reason', () => {
+    const { getByText } = render(ApprovalCard, {
+      props: refundRow({
+        state: 'unavailable',
+        unavailableReason: 'Tool runner is unavailable.',
+        notice: 'It returns when the plugin is enabled.',
+      }),
+    });
+    expect(getByText('Tool runner is unavailable.')).toBeTruthy();
+    expect(getByText('It returns when the plugin is enabled.')).toBeTruthy();
+  });
+
+  test('a failure is not shown once the approval is decided', () => {
+    const { queryByRole } = render(ApprovalCard, {
+      props: refundRow({ state: 'approved', failure: approveFailure }),
+    });
+    expect(queryByRole('alert')).toBeNull();
   });
 });
