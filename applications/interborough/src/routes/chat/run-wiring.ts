@@ -704,6 +704,13 @@ function isNoteAnnouncement(announced: Announced): announced is NoteAnnouncement
   return 'kind' in announced;
 }
 
+function isLiveChildAnnouncement(announced: Announced): announced is NoteAnnouncement {
+  return (
+    isNoteAnnouncement(announced) &&
+    (announced.kind === 'child-settled' || announced.note.kind === 'child-run')
+  );
+}
+
 function announcedKey(announced: Announced): string {
   return isNoteAnnouncement(announced)
     ? noteAnnouncementKey(announced)
@@ -1117,6 +1124,13 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         if (announcement !== undefined) {
           rememberAnnouncement(announced, announcement);
           if (assetRun !== undefined) rememberAnnouncement(assetRun.announcements, announcement);
+          if (isLiveChildAnnouncement(announcement)) {
+            const live = placeAnnouncements(options.conversation(), [announcement], {
+              owns: (id) => !turnStartIds.has(id),
+              anchorAnywhere: true,
+            });
+            options.onSnapshot?.(live.conversation);
+          }
         }
         const ungranted = grantNotLoosenedOf(event);
         if (ungranted !== undefined && !toldGrants.has(ungranted.interruptId)) {
