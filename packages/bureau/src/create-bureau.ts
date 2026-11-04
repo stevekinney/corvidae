@@ -6469,7 +6469,13 @@ async function constructBureau<const D extends AgentDefinitions>(
   // trail exactly once, in the same ordinal order as every other outbox
   // entry for that session, whether that happens promptly (this bureau is
   // still alive) or after a restart.
-  type ReviewAuditAttachment = { runId: string; type: string; detail: unknown; principal: string };
+  type ReviewAuditAttachment = {
+    runId: string;
+    type: string;
+    detail: unknown;
+    principal: string;
+    decisionRequest?: ReviewDecisionRequest;
+  };
   const REVIEW_AUDIT_OUTBOX_NAMESPACE = 'audit-record';
   function reviewAuditOutboxAttachment(
     attachment: ReviewAuditAttachment | undefined,
@@ -8131,6 +8137,21 @@ async function constructBureau<const D extends AgentDefinitions>(
           const freshDecision = await reviewDecisions.inspect(currentRecovery.request);
           return freshDecision.outcome === 'matching' && !freshDecision.recorded;
         };
+        const recoveryAuthorityCurrent = async (): Promise<boolean> => {
+          const freshSession = await runtime.sessionStore?.load(sessionId);
+          if (freshSession === undefined) return false;
+          const context = recoveredRequestContextFromMetadata(
+            freshSession.metadata,
+            runId,
+            sessionId,
+            freshSession.agentName,
+            runtimeServices.clock.now,
+          );
+          if (context === undefined || !isTransportIssuedAuthority(context)) return true;
+          return (
+            requestAuthorityValidator !== undefined && (await requestAuthorityValidator(context))
+          );
+        };
         if (!(await acquireLease())) {
           const retryKey = `${sessionId}:${marker.id}:${String(persisted.round)}`;
           if (!peerRecoveryRetryKeys.has(retryKey)) {
@@ -8193,6 +8214,9 @@ async function constructBureau<const D extends AgentDefinitions>(
           if (freshApproval === undefined) continue;
           let result = persistedPeerRecoveryResult(freshSession?.metadata, marker.id);
           if (result === undefined) {
+            // The authority may be revoked during the lease/state reads above. Revalidate at the
+            // last possible point before invoking the external attachment adapter.
+            if (!(await recoveryAuthorityCurrent())) continue;
             result = await adapter.attach({
               sessionId,
               runId,
@@ -8232,6 +8256,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               : { reason: currentRecovery.request.reason }),
           };
           const materialized = await materializeToolResultAsync(result);
+          const admitted = await admitApprovedToolResultMedia(review, result, materialized);
           const auditAttachment = buildReviewDecisionAuditRecord(
             review,
             'approve',
@@ -8305,7 +8330,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                 conversationHistory: resolveToolResult(
                   finalSession.conversationHistory,
                   currentApproval.approval.callId,
-                  materialized,
+                  admitted,
                 ),
                 metadata: {
                   ...finalSession.metadata,
@@ -8332,6 +8357,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             {
               outbox: reviewAuditOutboxAttachment({
                 ...auditAttachment,
+                decisionRequest: currentRecovery.request,
                 detail: {
                   ...(auditAttachment.detail as Record<string, unknown>),
                   decisionRequest: currentRecovery.request,
@@ -8347,7 +8373,6 @@ async function constructBureau<const D extends AgentDefinitions>(
             answerDigest: currentRecovery.request.digest,
           });
           await recordApprovedCall(approvedCallAuditOf(review, persisted.approval, result));
-          await reviewDecisions.markRecorded(currentRecovery.request);
         } finally {
           runtimeServices.timers.clearInterval(renewal);
           await runtime.sessionStore?.update(sessionId, (cleanupSession) => {
@@ -14074,17 +14099,32 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the only payload shape this bureau ever appends under
    * {@link REVIEW_AUDIT_OUTBOX_NAMESPACE}.
    */
-  function isReviewAuditAttachmentPayload(
-    value: unknown,
-  ): value is { runId: string; type: string; detail: unknown; principal: string } {
+  function isReviewAuditAttachmentPayload(value: unknown): value is ReviewAuditAttachment {
     if (typeof value !== 'object' || value === null) return false;
     const record = value as Record<string, unknown>;
-    return (
+    if (
       typeof record['runId'] === 'string' &&
       typeof record['type'] === 'string' &&
       'detail' in record &&
       typeof record['principal'] === 'string'
-    );
+    ) {
+      const request = record['decisionRequest'];
+      if (request === undefined) return true;
+      if (typeof request !== 'object' || request === null || Array.isArray(request)) return false;
+      const candidate = request as Record<string, unknown>;
+      return (
+        typeof candidate['reviewId'] === 'string' &&
+        typeof candidate['round'] === 'number' &&
+        Number.isInteger(candidate['round']) &&
+        (candidate['decision'] === 'approve' ||
+          candidate['decision'] === 'deny' ||
+          candidate['decision'] === 'reject') &&
+        typeof candidate['principal'] === 'string' &&
+        typeof candidate['digest'] === 'string' &&
+        (candidate['reason'] === undefined || typeof candidate['reason'] === 'string')
+      );
+    }
+    return false;
   }
 
   /**
@@ -14166,6 +14206,17 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1828: the decision's resolved-review record rides the same replay, so a crash after the
     // session commit leaves it for the next drain, as it leaves the audit entry.
     await recordResolvedReview(payload, entry.committedAtMs);
+    if (payload.decisionRequest !== undefined) {
+      const recorded = await reviewDecisions.markRecorded(payload.decisionRequest);
+      const inspection = recorded
+        ? undefined
+        : await reviewDecisions.inspect(payload.decisionRequest);
+      if (!recorded && (inspection?.outcome !== 'matching' || !inspection.recorded)) {
+        throw new Error(
+          `could not mark review decision "${payload.decisionRequest.reviewId}" recorded before acknowledging its outbox entry`,
+        );
+      }
+    }
     return acknowledge();
   }
 
