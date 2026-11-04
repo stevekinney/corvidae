@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Ajv2020 from 'ajv/dist/2020';
@@ -100,6 +101,60 @@ describe('run-step-timeline generated schema', () => {
         },
       ],
     });
+  });
+
+  test('accepts the narrative statuses, description, time and note a step can carry', () => {
+    expectValid({
+      steps: [
+        { id: 'started', label: 'Started', status: 'recorded', time: '10:45:20 AM' },
+        {
+          id: 'collect',
+          label: 'Step 2 · Collect merged changes',
+          status: 'running',
+          description: 'Reading merged pull requests from GitHub.',
+          time: 'now',
+          note: {
+            title: 'Merged since Oct 23, so far',
+            lines: ['#412 Fix the sync', '#413 Add retries'],
+            tone: 'neutral',
+            label: 'Your note',
+            streaming: true,
+          },
+        },
+        { id: 'wait', label: 'Wait for approval', status: 'waiting' },
+      ],
+    });
+    expectInvalid({
+      steps: [{ id: 'bad', label: 'Bad', status: 'recorded', note: { title: 'No lines' } }],
+    });
+    expectInvalid({
+      steps: [{ id: 'bad', label: 'Bad', status: 'recorded', note: { lines: [], tone: 'loud' } }],
+    });
+  });
+
+  test('describes every property a run step declares', () => {
+    const declared = [
+      ...readFileSync(
+        join(
+          import.meta.dir,
+          '..',
+          'src',
+          'components',
+          'run-step-timeline',
+          'run-step-timeline.types.ts',
+        ),
+        'utf8',
+      ).matchAll(/^export type RunStep = \{([\s\S]*?)^\};/gm),
+    ]
+      .flatMap((match) => [...(match[1] ?? '').matchAll(/^ {2}(\w+)\??:/gm)])
+      .map((match) => match[1]);
+    const stepSchema = (
+      schema as { properties: { steps: { items: { anyOf: { properties: object }[] } } } }
+    ).properties.steps.items.anyOf[0];
+    const properties = Object.keys(stepSchema?.properties ?? {});
+
+    // `icon` is a snippet, which JSON cannot carry; every other property must be in the schema.
+    expect(declared.filter((name) => name !== 'icon' && !properties.includes(name!))).toEqual([]);
   });
 
   test('rejects malformed detail variants before they reach the renderer', () => {

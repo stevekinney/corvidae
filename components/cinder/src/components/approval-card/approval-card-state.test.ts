@@ -22,30 +22,30 @@ describe('approval card vocabulary', () => {
 describe('summarizeInput', () => {
   test('writes sentence-case labels and values as text', () => {
     expect(summarizeInput({ orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' })).toEqual([
-      { label: 'Order ID', text: '4471', muted: false },
-      { label: 'Amount', text: '$42.00', muted: false },
-      { label: 'Reason', text: 'Arrived damaged', muted: false },
+      { key: 'orderId', label: 'Order ID', text: '4471', muted: false },
+      { key: 'amount', label: 'Amount', text: '$42.00', muted: false },
+      { key: 'reason', label: 'Reason', text: 'Arrived damaged', muted: false },
     ]);
   });
 
   test('reads serialized JSON the same as an object', () => {
     expect(summarizeInput('{"shippedOn":"2026-10-24","insured":true}')).toEqual([
-      { label: 'Shipped on', text: 'Oct 24, 2026', muted: false },
-      { label: 'Insured', text: 'Yes', muted: false },
+      { key: 'shippedOn', label: 'Shipped on', text: 'Oct 24, 2026', muted: false },
+      { key: 'insured', label: 'Insured', text: 'Yes', muted: false },
     ]);
   });
 
   test('writes null and empty text as muted stand-ins', () => {
     expect(summarizeInput({ coupon: null, giftNote: '' })).toEqual([
-      { label: 'Coupon', text: 'None', muted: true },
-      { label: 'Gift note', text: 'Empty', muted: true },
+      { key: 'coupon', label: 'Coupon', text: 'None', muted: true },
+      { key: 'giftNote', label: 'Gift note', text: 'Empty', muted: true },
     ]);
   });
 
   test('counts a nested value instead of spilling it onto the line', () => {
     expect(summarizeInput({ notify: { email: 'a@b.c', slack: '#x' }, tags: ['a'] })).toEqual([
-      { label: 'Notify', text: '2 fields', muted: false },
-      { label: 'Tags', text: '1 item', muted: false },
+      { key: 'notify', label: 'Notify', text: '2 fields', muted: false },
+      { key: 'tags', label: 'Tags', text: '1 item', muted: false },
     ]);
   });
 
@@ -56,10 +56,17 @@ describe('summarizeInput', () => {
     expect(pair?.text).not.toContain('sk-live-123');
   });
 
+  test('keeps distinct keys apart when they humanize to one label', () => {
+    const pairs = summarizeInput({ orderId: 4471, order_id: 4472, OrderId: 4473 });
+
+    expect(pairs.map((pair) => pair.label)).toEqual(['Order ID', 'Order ID', 'Order ID']);
+    expect(new Set(pairs.map((pair) => pair.key)).size).toBe(3);
+  });
+
   test('has no pairs for anything but an object', () => {
     expect(summarizeInput('--force')).toEqual([]);
     expect(summarizeInput(undefined)).toEqual([]);
-    expect(summarizeInput(['a'])).toEqual([{ label: '1', text: 'a', muted: false }]);
+    expect(summarizeInput(['a'])).toEqual([{ key: '1', label: '1', text: 'a', muted: false }]);
   });
 });
 

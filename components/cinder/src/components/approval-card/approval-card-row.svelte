@@ -227,7 +227,7 @@
     {#if isUnavailable}
       {#if inputPairs.length > 0}
         <p class="cinder-approval-card__input-summary" data-cinder-static>
-          {#each inputPairs as pair, index (pair.label)}
+          {#each inputPairs as pair, index (pair.key)}
             {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">·</span
               >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
             >{' '}<span
@@ -264,7 +264,7 @@
             />
             <span class="cinder-approval-card__input-word">{inputLabel}</span>
             <span class="cinder-approval-card__input-pairs">
-              {#each inputPairs as pair, index (pair.label)}
+              {#each inputPairs as pair, index (pair.key)}
                 {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true"
                     >·</span
                   >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span

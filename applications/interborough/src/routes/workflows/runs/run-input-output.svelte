@@ -48,10 +48,10 @@
 
   {#if workflow !== undefined}
     <h3 class="ib-run__heading-3">{RUN_PAGE_COPY.inputHeading}</h3>
-    <PayloadInspector value={workflow.input} label={RUN_PAGE_COPY.inputPayload} />
+    <PayloadInspector value={workflow.input} label={RUN_PAGE_COPY.inputPayload} redact={[]} />
   {:else if record !== undefined}
     <h3 class="ib-run__heading-3">{RUN_PAGE_COPY.inputHeading}</h3>
-    <PayloadInspector value={record.trigger} label={RUN_PAGE_COPY.inputPayload} />
+    <PayloadInspector value={record.trigger} label={RUN_PAGE_COPY.inputPayload} redact={[]} />
   {/if}
 
   {#if task !== undefined}
@@ -75,7 +75,7 @@
   {#if workflow !== undefined}
     {#if workflow.status === 'completed'}
       <h3 class="ib-run__heading-3">{RUN_PAGE_COPY.resultHeading}</h3>
-      <PayloadInspector value={workflow.result} label={RUN_PAGE_COPY.resultPayload} />
+      <PayloadInspector value={workflow.result} label={RUN_PAGE_COPY.resultPayload} redact={[]} />
     {:else if workflow.status === 'failed'}
       <div class="weft-overview-tab__failure">
         <div class="weft-overview-tab__failure-title">
@@ -114,7 +114,7 @@
   {:else if record !== undefined}
     {#if record.result !== undefined && record.result !== null}
       <h3 class="ib-run__heading-3">{RUN_PAGE_COPY.resultHeading}</h3>
-      <PayloadInspector value={record.result} label={RUN_PAGE_COPY.resultPayload} />
+      <PayloadInspector value={record.result} label={RUN_PAGE_COPY.resultPayload} redact={[]} />
     {/if}
     {#if record.error !== undefined && record.error !== null}
       <h3 class="ib-run__heading-3">{TASK_COPY.runRecord.error}</h3>

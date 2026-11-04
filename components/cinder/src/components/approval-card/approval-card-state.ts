@@ -200,6 +200,11 @@ export function dedupeFilePaths(paths: string[]): string[] {
 
 /** One pair of the input line: a sentence-case label and the value written as text. */
 export type InputSummaryPair = {
+  /**
+   * The raw property name, such as `orderId`. Object keys are unique, so this is the stable
+   * identity of a pair; distinct keys such as `orderId` and `order_id` humanize to one label.
+   */
+  key: string;
   /** The label, such as `Order ID`. */
   label: string;
   /** The value as text, such as `$42.00`. A hidden secret reads as its mask. */
@@ -219,14 +224,17 @@ export function summarizeInput(value: unknown): InputSummaryPair[] {
   for (const entry of entries) {
     const label = humanizeIdentifier(entry.key, { casing: 'sentence' });
     if (entry.nested) {
-      pairs.push({ label, text: describeContents(entry.value), muted: false });
+      pairs.push({ key: entry.key, label, text: describeContents(entry.value), muted: false });
       continue;
     }
     const display = describeScalar(entry.value);
-    if (display.kind === 'secret') pairs.push({ label, text: SECRET_MASK, muted: false });
-    else if (display.kind === 'none') pairs.push({ label, text: 'None', muted: true });
-    else if (display.kind === 'empty') pairs.push({ label, text: 'Empty', muted: true });
-    else pairs.push({ label, text: display.text, muted: false });
+    if (display.kind === 'secret')
+      pairs.push({ key: entry.key, label, text: SECRET_MASK, muted: false });
+    else if (display.kind === 'none')
+      pairs.push({ key: entry.key, label, text: 'None', muted: true });
+    else if (display.kind === 'empty')
+      pairs.push({ key: entry.key, label, text: 'Empty', muted: true });
+    else pairs.push({ key: entry.key, label, text: display.text, muted: false });
   }
   return pairs;
 }

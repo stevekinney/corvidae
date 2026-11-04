@@ -1272,6 +1272,20 @@ describe('ApprovalCard card layout anatomy', () => {
 });
 
 describe('ApprovalCard row layout', () => {
+  test('mounts when two argument keys humanize to the same label', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        operation: { kind: 'other', argsPreview: { orderId: 4471, order_id: 4472 } },
+      }),
+    });
+
+    const labels = [...container.querySelectorAll('.cinder-approval-card__pair-label')];
+    expect(labels.map((label) => label.textContent)).toEqual(['Order ID', 'Order ID']);
+    expect(squash(container.querySelector('.cinder-approval-card__input-pairs')?.textContent)).toBe(
+      'Order ID 4471 · Order ID 4472',
+    );
+  });
+
   test('renders the shared approval row: glyph, question, line, consequence, Input, note, Deny and Approve', () => {
     const { container, getByRole } = render(ApprovalCard, { props: refundRow() });
 

@@ -29,5 +29,6 @@
     Binary value · {formatBytes(preview.byteLength)} — not valid UTF-8, cannot be displayed as text.
   </p>
 {:else}
-  <PayloadInspector value={preview.text} {label} />
+  <!-- The stored value is the source: nothing else shows it, so no property is hidden by its name. -->
+  <PayloadInspector value={preview.text} {label} redact={[]} />
 {/if}

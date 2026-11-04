@@ -34,6 +34,15 @@ describe('StorageValueDisplay', () => {
     expect(getByText('ops')).not.toBeNull();
   });
 
+  test('shows a stored property named for a secret, because the stored value is the source', () => {
+    const bytes = new TextEncoder().encode('{"key":"theme","value":"dark"}');
+    const { getByText, queryByText } = render(StorageValueDisplay, { props: { value: bytes } });
+
+    expect(getByText('theme')).not.toBeNull();
+    expect(getByText('dark')).not.toBeNull();
+    expect(queryByText('Hidden')).toBeNull();
+  });
+
   test('passes a custom label through to PayloadInspector', () => {
     const bytes = new TextEncoder().encode('hello');
     const { getByText } = render(StorageValueDisplay, {

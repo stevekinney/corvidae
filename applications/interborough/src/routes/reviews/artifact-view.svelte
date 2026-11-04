@@ -64,5 +64,5 @@
     srcdoc={rendered.html}
   ></iframe>
 {:else}
-  <PayloadInspector value={inspectorValue} {label} />
+  <PayloadInspector value={inspectorValue} {label} redact={[]} />
 {/if}
