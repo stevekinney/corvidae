@@ -26,6 +26,34 @@ const glyphs: Record<CodeBlockAnnotationTone, readonly string[]> = {
   info: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z', 'M12 16v-4', 'M12 8h.01'],
 };
 
+/** The class a token takes when its text is a numeric literal. */
+export const numberTokenClass = 'cinder-code-block__number';
+
+/** A number as a source file writes it: optional sign, digits with a point, an exponent. */
+const numericLiteral = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/**
+ * An attachment that tags the tokens of highlighted code that are numeric literals.
+ *
+ * A Shiki theme paints a number in the hue it uses for JSON keys, booleans and `null`, so a value
+ * never reads as one class of its own. A token carries only an inline color, and a stylesheet
+ * cannot read its text, so the text is read here and the token marked; the stylesheet then gives a
+ * marked token the number role in dark mode. Only a token that holds nothing but the number is
+ * marked, so a string, a comment or an identifier that merely contains digits never is.
+ */
+export const markNumericTokens: Attachment<HTMLElement> = (container) => {
+  const marked: HTMLElement[] = [];
+  for (const token of container.querySelectorAll<HTMLElement>('pre code span[style]')) {
+    if (token.childElementCount > 0 || token.classList.contains('line')) continue;
+    if (!numericLiteral.test(token.textContent.trim())) continue;
+    token.classList.add(numberTokenClass);
+    marked.push(token);
+  }
+  return () => {
+    for (const token of marked) token.classList.remove(numberTokenClass);
+  };
+};
+
 /** The class a line takes when a note of this tone belongs to it. */
 export function lineToneClass(tone: CodeBlockAnnotationTone): string {
   return `cinder-code-block__line--${tone}`;

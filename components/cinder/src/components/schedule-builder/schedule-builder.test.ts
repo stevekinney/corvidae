@@ -1132,6 +1132,16 @@ describe('ScheduleBuilder', () => {
       );
     });
 
+    test('a day is the height of the At field beside the group, not the chip toolbar step', async () => {
+      const { readFileSync } = await import('node:fs');
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      expect(css).toMatch(
+        /__weekday-group > \.cinder-chip \{[^}]*box-sizing: border-box;[^}]*min-block-size: var\(--cinder-control-height-md\);/,
+      );
+      const input = readFileSync(new URL('../input/input.css', import.meta.url), 'utf8');
+      expect(input).toContain('--_cinder-input-height: var(--cinder-control-height-md);');
+    });
+
     test('aggregates the styles of the fields it composes before the component layer', async () => {
       const { readFileSync } = await import('node:fs');
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');

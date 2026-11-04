@@ -27,6 +27,7 @@
   import {
     annotationToneClass,
     decorateHighlightedLines,
+    markNumericTokens,
     lineToneClass,
   } from './code-block-lines.ts';
   import type { CodeBlockAnnotation, CodeBlockProps } from './code-block.types.ts';
@@ -216,6 +217,7 @@
             {@attach hasLineFeatures
               ? decorateHighlightedLines(annotations, (found) => (lined = found))
               : noopScrollFadeAttachment}
+            {@attach markNumericTokens}
           >
             {@html highlighted}
           </div>

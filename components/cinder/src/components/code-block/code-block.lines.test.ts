@@ -229,3 +229,43 @@ describe('CodeBlock — wrapping and scrolling (row 05l)', () => {
     expect(css).toMatch(/overflow-wrap:\s*anywhere/);
   });
 });
+
+describe('CodeBlock — numeric tokens (row 07s)', () => {
+  const key = '<span style="color:#005CC5;--shiki-dark:#79B8FF">';
+  const tokens = (value: string): string =>
+    `<pre class="shiki"><code><span class="line">${key}"total"</span>: ${key}${value}</span></span></code></pre>`;
+
+  test('marks a token that holds only a number, and leaves a key, a string and a word alone', async () => {
+    const highlighter: Highlighter = () =>
+      `<pre class="shiki"><code><span class="line">${key}"total"</span>${key}42.0</span>${key}-1e3</span>${key}true</span>${key}"42"</span>${key}v2</span></span></code></pre>`;
+    const { container } = render(CodeBlock, { code: 'x', language: 'json', highlighter });
+
+    await waitFor(() => expect(container.querySelector('pre.shiki')).not.toBeNull());
+    const marked = [...container.querySelectorAll('.cinder-code-block__number')].map(
+      (token) => token.textContent,
+    );
+    expect(marked).toEqual(['42.0', '-1e3']);
+  });
+
+  test('marks a number whatever the line features are', async () => {
+    const { container } = render(CodeBlock, {
+      code: 'x',
+      language: 'json',
+      highlighter: () => tokens('7'),
+      lineNumbers: true,
+    });
+
+    await waitFor(() =>
+      expect(container.querySelector('.cinder-code-block__number')).not.toBeNull(),
+    );
+    expect(container.querySelector('.cinder-code-block__number')?.textContent).toBe('7');
+  });
+
+  test('the stylesheet lifts a marked number from the key blue to the warning text role in dark', async () => {
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+
+    expect(css).toMatch(
+      /span\.cinder-code-block__number\[style\*='--shiki-dark:#79b8ff' i\]\s*\{\s*--shiki-dark:\s*var\(--cinder-status-warning-text\)\s*!important;/,
+    );
+  });
+});

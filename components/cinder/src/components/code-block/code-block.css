@@ -244,6 +244,17 @@
     --shiki-dark: var(--cinder-status-success-text) !important;
   }
 
+  /* The same theme paints a number in the key blue (#79b8ff), so `{ "total": 42.0 }` reads as one
+   * hue. The design draws a number in amber, as json-highlight does (`--cinder-status-warning-text`,
+   * which clears AA on the inset). The stylesheet cannot read a token's text, so `code-block-lines.ts`
+   * marks the tokens that are numeric literals, and only a marked token painted in that blue is
+   * lifted: a number a theme paints another color is left to the theme. */
+  .cinder-code-block
+    :where(pre.shiki)
+    span.cinder-code-block__number[style*='--shiki-dark:#79b8ff' i] {
+    --shiki-dark: var(--cinder-status-warning-text) !important;
+  }
+
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just
  * the glyph with a hover wash.
  *

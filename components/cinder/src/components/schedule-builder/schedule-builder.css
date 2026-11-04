@@ -103,7 +103,11 @@
     min-inline-size: 0;
   }
 
+  /* Each day is the height of the At field beside the group (the medium control step, 32px), not
+     the chip's small toolbar step, so the group's top and bottom line up with the field's. */
   .cinder-schedule-builder__weekday-group > .cinder-chip {
+    box-sizing: border-box;
+    min-block-size: var(--cinder-control-height-md);
     inline-size: 3rem;
     flex: 0 1 auto;
     border-radius: 0;
