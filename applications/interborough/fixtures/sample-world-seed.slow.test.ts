@@ -832,7 +832,7 @@ describe('the sample world, part B', () => {
     }
   });
 
-  test('runs Guardrails and Inspectors, needs setup for the providers and TypeSafe, and keeps Demo, Ollama and Voyage off', async () => {
+  test('runs Guardrails and Inspectors, needs setup for the providers and TypeSafe, and keeps Demo, Workspace, Ollama and Voyage off', async () => {
     const response = await fetch(new URL('/host/plugins', world.host.url));
     const { plugins } = (await response.json()) as {
       plugins: Array<{ descriptor: { name: string }; source: string; status: string }>;
@@ -850,6 +850,7 @@ describe('the sample world, part B', () => {
       gemini: 'needs-setup',
       typesafe: 'needs-setup',
       demo: 'disabled',
+      workspace: 'disabled',
       ollama: 'disabled',
       voyage: 'disabled',
     });
