@@ -7,13 +7,26 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createGovernedMemory,
+  createInMemoryMemoryRecordStorage,
+  createMemoryGovernanceLedger,
+  createMemoryGovernancePolicy,
+  createMemoryVectorStore,
+  createMockEmbedder,
+  createTestEmbedders,
+} from '@lostgradient/memory';
+import { MemoryStorage } from '@lostgradient/storage';
 
 import { BureauError, UnknownScheduleAgentError } from './create-bureau';
 import { runTask, taskContent, waitForTaskState } from './test';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {
   agentFileText,
   KNOWN_MODEL,
   OTHER_MODEL,
+  lookupTool,
 } from './testing/agent-file-fixtures.test-support';
 import {
   type FileBureauHarness,
@@ -21,7 +34,6 @@ import {
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
 import { pollUntil } from './schedule-fire-fixtures.test-support';
-import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { agentFileDirectory } from './sources/agent-file-directory';
 
 const harnesses: FileBureauHarness[] = [];
@@ -42,6 +54,18 @@ const RESEARCHER = agentFileText(
   { name: 'Researcher', model: KNOWN_MODEL, tools: '[lookup-order]' },
   'You are a careful researcher.\n',
 );
+
+function governedMemory() {
+  const runtime = createManualRuntimeServices({ identifierSeed: 'agent-file-memory-tools' });
+  return createGovernedMemory({
+    storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
+    ledger: createMemoryGovernanceLedger(new MemoryStorage()),
+    ...createTestEmbedders(createMockEmbedder(64), 64),
+    vectors: createMemoryVectorStore(new MemoryStorage()),
+    policy: createMemoryGovernancePolicy({ revision: 'agent-file-memory-tools' }),
+    runtime,
+  });
+}
 
 /** A script that waits on `gate` before it answers, so a test can change the world mid-run. */
 function gated(answer: string) {
@@ -65,6 +89,39 @@ function gated(answer: string) {
 }
 
 describe('tasks.start of a file agent', () => {
+  it('registers governed memory tools under their declared names', async () => {
+    const memory = governedMemory();
+    const harness = await start({
+      overrides: { id: 'memory-tools', memory },
+      scripts: { [OPUS_5_5]: () => 'file reply' },
+    });
+    await harness.put(
+      'memory-agent.md',
+      agentFileText({ name: 'Memory Agent', model: KNOWN_MODEL, tools: '[memory_recall]' }),
+    );
+    await harness.bureau.agents.refresh();
+    await harness.bureau.tasks.start('memory-agent', 'hello').then((task) => task.result());
+    expect(harness.observed[0]?.tools).toContain('memory_recall');
+    expect(harness.observed[0]?.tools).not.toContain('recall');
+  });
+
+  it('refuses a host tool that collides with a governed memory name', async () => {
+    const memory = governedMemory();
+    const error = await rejectionOf(
+      start({
+        overrides: {
+          id: 'memory-tools-collision',
+          memory,
+          agentSource: agentFileDirectory('/tmp/corvidae-memory-collision', {
+            tools: { memory_store: lookupTool },
+          }),
+        },
+      }),
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('names a tool "memory_store"');
+  });
+
   it('runs the agent the file describes: its model, tools, and instructions', async () => {
     const { bureau, put, observed } = await start({ scripts: { [OPUS_5_5]: () => 'file reply' } });
     await put('researcher.md', RESEARCHER);

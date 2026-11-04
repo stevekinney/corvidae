@@ -23,6 +23,7 @@ import {
   createMemoryPersistHook,
   createMemoryRecallHook,
   createRunMemoryAuthority,
+  createToolMemoryAuthority,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
   type RunMemoryIdentity,
 } from './runtime-composition';
@@ -133,6 +134,22 @@ describe('createRunMemoryAuthority (COR-41)', () => {
     expect(custom.delegationChain[1]?.principal).toEqual({
       kind: 'service',
       id: 'system:scheduler',
+    });
+  });
+});
+
+describe('createToolMemoryAuthority (COR-2033)', () => {
+  it('uses an independent tool ceiling and lets requests narrow it', () => {
+    const authority = createToolMemoryAuthority(
+      requestContext({ capabilities: ['tools:execute', 'memory:search', 'memory:get'] }),
+      'memory_correct',
+      { toolCapabilities: ['memory:get', 'memory:write', 'memory:delete'] },
+    );
+    expect(authority).toMatchObject({
+      principal: { kind: 'tool', id: 'memory_correct' },
+      purpose: 'tool',
+      projection: 'tool',
+      capabilities: ['memory:get'],
     });
   });
 });
