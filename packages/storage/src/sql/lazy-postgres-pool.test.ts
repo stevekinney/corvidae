@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createLazyPostgresPool } from './lazy-postgres-pool.ts';
-import type { PostgresPool } from './postgres-key-value-storage.ts';
+import type { PostgresPool } from './postgres-pool.ts';
 
 /**
  * A no-op pool that records lifecycle for assertions. Stands in for a real driver

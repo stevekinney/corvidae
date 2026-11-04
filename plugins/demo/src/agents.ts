@@ -1,6 +1,7 @@
 /**
- * The demo plugin's six agents. The Bureau registers them as `demo:assistant`, `demo:tool-runner`,
- * `demo:request-human-input`, `demo:echo`, `demo:model-switcher` and `demo:internal`.
+ * The demo plugin's eight agents. The Bureau registers them as `demo:assistant`, `demo:tool-runner`,
+ * `demo:request-human-input`, `demo:echo`, `demo:model-switcher`, `demo:internal`,
+ * `demo:release-helper` and `demo:changelog-writer`.
  *
  * - `assistant`: answers every message with one fixed reply.
  * - `tool-runner`: looks an order up (a read-only tool), then asks to refund it (a mutating tool
@@ -17,6 +18,13 @@
  *   model each message ran on. It is offered the models the host's catalog holds: the two models
  *   need a configured provider, and a host with none offers no choice, so Chat shows no picker.
  * - `internal`: a plain agent that answers with a scripted bookkeeping reply.
+ * - `release-helper`: drafts release notes from the pull requests merged since the last tag, from
+ *   a script.
+ * - `changelog-writer`: turns release notes into a short customer-facing changelog entry, from a
+ *   script.
+ *
+ * The showcase sample world (`tmp/design-review/decisions.md`) keeps the Demo plugin disabled, so
+ * `release-helper` and `changelog-writer` are the agents it holds back.
  *
  * @module agents
  */
@@ -43,10 +51,20 @@ export const DEMO_AGENT_NAMES = [
   'echo',
   'model-switcher',
   'internal',
+  'release-helper',
+  'changelog-writer',
 ] as const;
 
+/** What `release-helper` answers, from its script. */
+export const RELEASE_HELPER_REPLY =
+  'Here is a draft of the release notes from the pull requests merged since the last tag. This reply is scripted; no model was called.';
+
+/** What `changelog-writer` answers, from its script. */
+export const CHANGELOG_WRITER_REPLY =
+  'Here is a short changelog entry for customers. This reply is scripted; no model was called.';
+
 /**
- * The six agents. `approvalSecret` signs the refund approvals `tool-runner` raises; `undefined`
+ * The eight agents. `approvalSecret` signs the refund approvals `tool-runner` raises; `undefined`
  * builds its toolbox without one, which only happens while the plugin is `needs-setup`, and the
  * plugin's gate then refuses every run of every demo agent. `toolApprovalHooks` is the host's
  * tool-approval rule, from the plugin's setup context.
@@ -123,6 +141,26 @@ export function createDemoAgents(
         generate: createScriptedGenerate(
           repeated([reply('Internal bookkeeping is done. This reply is scripted.')]),
         ),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
+    {
+      name: 'release-helper',
+      agent: createAgent({
+        name: 'release-helper',
+        description: 'Drafts release notes from the pull requests merged since the last tag.',
+        examples: ['Draft the notes for this release'],
+        generate: createScriptedGenerate(repeated([reply(RELEASE_HELPER_REPLY)])),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
+    {
+      name: 'changelog-writer',
+      agent: createAgent({
+        name: 'changelog-writer',
+        description: 'Turns release notes into a short customer-facing changelog entry.',
+        examples: ['Write the changelog entry for this release'],
+        generate: createScriptedGenerate(repeated([reply(CHANGELOG_WRITER_REPLY)])),
         stopWhen: stopWhen.noToolCalls(),
       }),
     },

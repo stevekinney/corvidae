@@ -27,9 +27,12 @@ export interface PluginTestHostListing {
 export interface PluginTestHostAgent {
   /** The agent's identifier; a file a plugin ships is `plugin:name`. */
   readonly id: string;
-  /** Whether the agent can run. */
-  readonly state: 'ready' | 'invalid';
-  /** The plugin that ships the agent, for a file of a plugin's read-only layer. */
+  /**
+   * Whether the agent can run: `ready` does, `invalid` is a file that cannot be used, and
+   * `unavailable` is a code agent of a disabled plugin, which the host lists but never runs.
+   */
+  readonly state: 'ready' | 'invalid' | 'unavailable';
+  /** The plugin that ships the agent, for a file of a plugin's read-only layer or a disabled plugin's code. */
   readonly plugin?: string | undefined;
   /** Why an `invalid` agent cannot run. */
   readonly problem?: { readonly code: string; readonly message: string } | undefined;

@@ -1,7 +1,7 @@
 import { storageValuesEqual, type ConditionalBatchCondition } from '../interface.ts';
 import { toBytea, toStorageValue, type BatchNetEffect } from './neon-value-mapping.ts';
 import type { PostgresKeyValueQueries } from './postgres-key-value-queries.ts';
-import type { PostgresPoolClient } from './postgres-key-value-storage.ts';
+import type { PostgresPoolClient } from './postgres-pool.ts';
 
 /**
  * The collapsed transaction-phase helpers for the Postgres storage adapters'
@@ -52,12 +52,14 @@ export async function conditionsHold(
  * statement — the put-set as a single `unnest`-driven multi-row upsert, the
  * delete-set as a single `key = ANY($1)` delete. The two key sets are disjoint
  * (see {@link resolveBatchNetEffect}), so the statements commute; each is
- * skipped when its set is empty.
+ * skipped when its set is empty. Every put is stamped with `writtenAt`, the
+ * batch's one write time in milliseconds since the Unix epoch.
  */
 export async function writeBatchNetEffect(
   client: PostgresPoolClient,
   queries: PostgresKeyValueQueries,
   netEffect: BatchNetEffect,
+  writtenAt: number,
 ): Promise<void> {
   if (netEffect.puts.size > 0) {
     const keys: string[] = [];
@@ -66,7 +68,7 @@ export async function writeBatchNetEffect(
       keys.push(key);
       values.push(toBytea(value));
     }
-    await client.query(queries.upsertValuesByKeys, [keys, values]);
+    await client.query(queries.upsertValuesByKeys, [keys, values, writtenAt]);
   }
   if (netEffect.deletes.size > 0) {
     await client.query(queries.deleteValuesByKeys, [[...netEffect.deletes]]);

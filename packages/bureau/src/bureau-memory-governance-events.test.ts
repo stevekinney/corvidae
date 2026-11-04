@@ -58,10 +58,12 @@ const note = { collection: 'prefs', source: 'conversation' } as const;
 describe('memory.governance on the bureau emitter', () => {
   it('forwards each notification of a supplied memory, with identifiers only, and stops at shutdown', async () => {
     const base = governedMemory();
+    let subscribed = 0;
     let unsubscribed = 0;
     const memory: GovernedMemory = {
       ...base,
       subscribe(listener) {
+        subscribed += 1;
         const stop = base.subscribe(listener);
         return () => {
           unsubscribed += 1;
@@ -108,9 +110,11 @@ describe('memory.governance on the bureau emitter', () => {
     expect(JSON.stringify(projection)).not.toContain(SECRET);
     expect(JSON.stringify(admitted)).not.toContain(SECRET);
 
+    // The Bureau subscribes twice: to forward the notifications, and to audit corrections.
+    expect(subscribed).toBe(2);
     expect(unsubscribed).toBe(0);
     await bureau.shutdown();
-    expect(unsubscribed).toBe(1);
+    expect(unsubscribed).toBe(subscribed);
     const afterShutdown = seen.length;
     await base.write(writer, 'Written after shutdown.', note);
     expect(seen).toHaveLength(afterShutdown);

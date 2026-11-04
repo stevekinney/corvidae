@@ -40,6 +40,8 @@ import {
   type WorkflowFileDefinition,
   WorkflowFileError,
   type WorkflowFileProblem,
+  type WorkflowFileStep,
+  type WorkflowFileTrigger,
   workflowVersionOf,
 } from './workflow-file';
 
@@ -51,6 +53,8 @@ export interface WorkflowListing {
   readonly owner: string;
   /** The SHA-256 of the file's bytes, when they could be read. */
   readonly hash?: string;
+  /** The workflow's `title`, or `null` when the file gives none or is invalid. */
+  readonly title: string | null;
   /** What the workflow is for, in a sentence, or `null` when the file gives none or is invalid. */
   readonly description: string | null;
   /** The identifier of the agent that wrote the file, or `null`. */
@@ -62,8 +66,13 @@ export interface WorkflowListing {
   readonly outputSchema: Readonly<Record<string, unknown>> | null;
   /** The `kind` of the file's trigger, for a ready file, and `null` for an invalid one. */
   readonly triggerKind: string | null;
-  /** The file's trigger as written (`kind` and the keys of that kind), for a ready file, else `null`. */
-  readonly trigger: Readonly<{ kind: string } & Record<string, unknown>> | null;
+  /**
+   * The file's trigger as written (`kind` and the keys of that kind, a schedule's `timezone`,
+   * `catchUp`, `name`, and `input` included), for a ready file, else `null`.
+   */
+  readonly trigger: WorkflowFileTrigger | null;
+  /** The file's steps as written (`title` and `review` included), for a ready file, else `null`. */
+  readonly steps: readonly WorkflowFileStep[] | null;
   /** Weft's `workflowVersion` of the document, for a ready file. */
   readonly version?: string;
   /** Why an `invalid` file cannot run. */
@@ -349,13 +358,15 @@ export function createWorkflowFileCatalog(
             id: entry.id,
             state: ready ? 'ready' : 'invalid',
             owner,
+            title: entry.file?.title ?? null,
             description: entry.file?.description ?? null,
             agent: entry.file?.agent ?? null,
             paused: entry.file?.paused ?? false,
             inputSchema: entry.file?.inputSchema ?? null,
             outputSchema: entry.file?.outputSchema ?? null,
             triggerKind: entry.file?.document.trigger.kind ?? null,
-            trigger: entry.file?.document.trigger ?? null,
+            trigger: entry.file?.trigger ?? null,
+            steps: entry.file?.steps ?? null,
             ...(entry.hash === undefined ? {} : { hash: entry.hash }),
             ...(entry.file === undefined ? {} : { version: entry.file.version }),
             ...(entry.problem === undefined ? {} : { problem: entry.problem }),
@@ -415,16 +426,16 @@ export function createWorkflowFileCatalog(
           );
         }
         if (parsed.file.paused === paused) return { id, hash: current.hash };
-        const { name: _name, ...document } = parsed.file.document;
         const bytes = bytesFor(id, {
+          ...(parsed.file.title === null ? {} : { title: parsed.file.title }),
           ...(parsed.file.description === null ? {} : { description: parsed.file.description }),
           ...(parsed.file.agent === null ? {} : { agent: parsed.file.agent }),
           paused,
-          // Pausing changes nothing else in the file, schemas included.
+          // Pausing changes nothing else in the file: schemas, titles, and the trigger as written.
           ...(parsed.file.inputSchema === null ? {} : { inputSchema: parsed.file.inputSchema }),
           ...(parsed.file.outputSchema === null ? {} : { outputSchema: parsed.file.outputSchema }),
-          trigger: document.trigger,
-          steps: document.steps,
+          trigger: parsed.file.trigger,
+          steps: parsed.file.steps,
         });
         return write(id, bytes, expectedHash, { onWritten });
       });

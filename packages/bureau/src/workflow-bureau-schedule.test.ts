@@ -119,15 +119,79 @@ describe('bureau.schedules on a workflow’s schedule', () => {
       await harness.bureau.ownerOf({ kind: 'schedule', id: 'bureau-workflow-schedule:digest:2' }),
     ).toBe('anonymous:local');
   });
+});
 
-  it('is cancelled when the file becomes invalid, and created again under the next generation when it is fixed', async () => {
+describe('a workflow file that stops parsing (COR-2009)', () => {
+  const id = 'bureau-workflow-schedule:digest:1';
+
+  it('keeps the schedule its last good version made, and reports that the workflow can’t load', async () => {
+    const harness = await start();
+    await harness.putWorkflow('digest', HOURLY);
+    const before = await harness.bureau.schedules.get(id);
+    await harness.put('digest.json', '{');
+    await harness.bureau.workflows?.refresh();
+
+    expect(await liveIds(harness)).toEqual([id]);
+    const after = await harness.bureau.schedules.get(id);
+    expect(after?.cronExpression ?? after?.intervalMs).toBe(
+      before?.cronExpression ?? before?.intervalMs,
+    );
+    expect(await harness.bureau.schedules.blocker(id)).toEqual({
+      kind: 'workflow-cannot-load',
+      workflow: 'digest',
+      message: expect.any(String) as unknown as string,
+      status: 'active',
+    });
+  });
+
+  it('holds it paused in the engine, with its next fire kept, so it starts nothing', async () => {
     const harness = await start();
     await harness.putWorkflow('digest', HOURLY);
     await harness.put('digest.json', '{');
     await harness.bureau.workflows?.refresh();
-    expect(await liveIds(harness)).toEqual([]);
+
+    const engine = harness.bureau.durableEngine()!;
+    const held = await engine.getSchedule(id);
+    expect(held?.status).toBe('paused');
+    expect(held?.nextFireAt).not.toBeNull();
+    // A workflow file's schedule is never started by hand either.
+    const runNow = await harness.bureau.schedules.runNow(id).catch((thrown: unknown) => thrown);
+    expect((runNow as BureauError).code).toBe('NOT_FOUND');
+    const instances = await engine.list({ type: 'digest' });
+    expect(instances.items).toEqual([]);
+  });
+
+  it('resumes it, under the same id and with no blocker, when the file parses again', async () => {
+    const harness = await start();
     await harness.putWorkflow('digest', HOURLY);
-    expect(await liveIds(harness)).toEqual(['bureau-workflow-schedule:digest:2']);
+    await harness.put('digest.json', '{');
+    await harness.bureau.workflows?.refresh();
+    await harness.putWorkflow('digest', HOURLY);
+
+    expect(await liveIds(harness)).toEqual([id]);
+    expect(await statusOf(harness, id)).toBe('active');
+    expect(await harness.bureau.schedules.blocker(id)).toBeUndefined();
+  });
+
+  it('keeps a schedule the last good version paused paused, and reports it as paused', async () => {
+    const harness = await start();
+    await harness.putWorkflow('digest', { ...HOURLY, paused: true });
+    await harness.put('digest.json', '{');
+    await harness.bureau.workflows?.refresh();
+    const blocker = await harness.bureau.schedules.blocker(id);
+    expect(blocker?.status).toBe('paused');
+    await harness.putWorkflow('digest', { ...HOURLY, paused: true });
+    expect(await statusOf(harness, id)).toBe('paused');
+  });
+
+  it('still cancels the schedule when the file is deleted while it can’t load', async () => {
+    const harness = await start();
+    await harness.putWorkflow('digest', HOURLY);
+    await harness.put('digest.json', '{');
+    await harness.bureau.workflows?.refresh();
+    await rm(join(harness.directory, 'digest.json'));
+    await harness.bureau.workflows?.refresh();
+    expect(await liveIds(harness)).toEqual([]);
   });
 });
 
@@ -158,6 +222,36 @@ describe('restarting a Bureau over workflow files', () => {
       expect(live?.items, `restart ${restart}`).toHaveLength(1);
       await bureau.dispose();
     }
+  });
+});
+
+describe('restarting a Bureau over a workflow file that stopped parsing (COR-2009)', () => {
+  it('still holds the schedule as active, with its blocker, and resumes it once the file parses', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bureau-workflow-hold-'));
+    cleanups.push(() => rm(root, { recursive: true, force: true }));
+    const storageFixture = createSqliteStorageFixture({ path: join(root, 'bureau.sqlite') });
+    cleanups.push(() => storageFixture.dispose());
+    const workflows = join(root, 'workflows');
+    const overrides = {
+      storage: storageFixture.storage,
+      durableOwnership: { ownership: 'none' },
+    } as const;
+    const id = 'bureau-workflow-schedule:digest:1';
+    const first = await startWorkflowBureau({ directory: workflows, overrides });
+    await first.putWorkflow('digest', HOURLY);
+    await first.put('digest.json', '{');
+    await first.bureau.workflows?.refresh();
+    await first.dispose();
+
+    const second = await startWorkflowBureau({ directory: workflows, overrides });
+    const blocker = await second.bureau.schedules.blocker(id);
+    expect(blocker?.status).toBe('active');
+    const inEngine = await second.bureau.durableEngine()!.getSchedule(id);
+    expect(inEngine?.status).toBe('paused');
+    await second.putWorkflow('digest', HOURLY);
+    expect(await statusOf(second, id)).toBe('active');
+    expect(await second.bureau.schedules.blocker(id)).toBeUndefined();
+    await second.dispose();
   });
 });
 

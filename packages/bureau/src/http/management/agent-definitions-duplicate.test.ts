@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { definePlugin } from '@lostgradient/interborough-plugin';
+import { createAgent } from '@lostgradient/operative';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool, type Tool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -120,6 +122,158 @@ describe('bureau.agents.definitions.duplicate', () => {
       'agents-writer-key',
     );
     expect(allowed.error).toBeUndefined();
+  });
+});
+
+/**
+ * A `demo` plugin, titled Demo, whose code agent `release-helper` answers from a script and names no
+ * model. Its `setup` counts its runs, and its `afterStart` records that it ran.
+ */
+function demoPlugin(calls: { setup: number; afterStart: number }) {
+  return definePlugin({
+    name: 'demo',
+    title: 'Demo',
+    version: '1.0.0',
+    description: 'Scripted agents.',
+    enabledByDefault: false,
+    setup: () => {
+      calls.setup += 1;
+      return {
+        codeAgents: [
+          {
+            name: 'release-helper',
+            agent: createAgent({
+              name: 'release-helper',
+              description: 'Drafts release notes from the pull requests merged since the last tag.',
+              instructions: 'Draft the release notes.',
+              generate: async () => ({ content: 'Here are the notes.', toolCalls: [] }),
+            }),
+          },
+        ],
+        afterStart: () => {
+          calls.afterStart += 1;
+        },
+      };
+    },
+  });
+}
+
+async function serveDemo(enabled?: boolean) {
+  const owner = await temporaryDirectory();
+  const calls = { setup: 0, afterStart: 0 };
+  const served = await serve({
+    directory: owner,
+    overrides: {
+      agentSource: agentFileDirectory(owner, { tools }),
+      plugins: [{ descriptor: demoPlugin(calls), source: 'package', location: '@example/demo' }],
+      ...(enabled === undefined ? {} : { pluginConfiguration: { demo: { enabled } } }),
+    },
+  });
+  await served.bureau.plugins.ready();
+  return { served, owner, calls };
+}
+
+describe('a disabled plugin’s agents (COR-2009)', () => {
+  it('are listed unavailable with the reason, read like any code agent, and start no run', async () => {
+    const { served, calls } = await serveDemo();
+    const { bureau } = served;
+
+    expect(bureau.agents.list().find(({ id }) => id === 'demo:release-helper')).toMatchObject({
+      source: 'code',
+      state: 'unavailable',
+      plugin: 'demo',
+      unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+    });
+    expect(bureau.agents.find('demo:release-helper')).toBeUndefined();
+    expect(bureau.agents.has('demo:release-helper')).toBe(false);
+    // Read once, for what its agents state; the plugin itself never started.
+    expect(calls).toEqual({ setup: 1, afterStart: 0 });
+
+    const refused = await rejectionOf(bureau.tasks.start('demo:release-helper', 'Draft them'));
+    expect(String(refused)).toContain(
+      'Agent "demo:release-helper" is unavailable: Plugin Demo is disabled.',
+    );
+
+    const listed = await callAs(served.owner, 'bureau.agents.definitions.list', {});
+    expect(
+      listOf(listed, 'agents').find((entry) => entry['id'] === 'demo:release-helper'),
+    ).toMatchObject({
+      state: 'unavailable',
+      plugin: 'demo',
+      a2a: false,
+      unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+    });
+    const detail = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'demo:release-helper',
+    });
+    expect(detail.result).toMatchObject({
+      state: 'unavailable',
+      unavailable: { message: 'Plugin Demo is disabled' },
+      codeDefinition: {
+        name: 'release-helper',
+        description: 'Drafts release notes from the pull requests merged since the last tag.',
+        instructions: 'Draft the release notes.',
+        model: null,
+      },
+    });
+    // The agents a caller can start leave it out.
+    const startable = await callAs(served.owner, 'bureau.agents.list', {});
+    expect(listOf(startable, 'agents').map((entry) => entry['name'])).not.toContain(
+      'demo:release-helper',
+    );
+  });
+
+  it('duplicates into an agent file you own, which runs and can be edited', async () => {
+    const { served, owner } = await serveDemo();
+    const { bureau } = served;
+
+    const copied = await callAs(served.owner, 'bureau.agents.definitions.duplicate', {
+      id: 'demo:release-helper',
+    });
+    expect(copied.error).toBeUndefined();
+    expect(copied.result).toMatchObject({ id: 'release-helper' });
+    const text = await readFile(join(owner, 'release-helper.md'), 'utf8');
+    // A scripted agent names no model, so the copy takes the first one the catalog offers, and a
+    // file must name one.
+    expect(text).toMatch(/^model: [a-z]+\/[\w.-]+$/mu);
+    expect(text).toContain('Draft the release notes.');
+
+    await bureau.agents.refresh();
+    expect(bureau.agents.list().find(({ id }) => id === 'release-helper')).toMatchObject({
+      source: 'file',
+      state: 'ready',
+    });
+    expect(bureau.agents.find('release-helper')).toBeDefined();
+    const edited = await bureau.agents.update(
+      'release-helper',
+      { model: KNOWN_MODEL, instructions: 'Draft shorter notes.' },
+      { expectedHash: served.hashOf('release-helper') },
+    );
+    expect(edited.id).toBe('release-helper');
+    // The original stays unavailable.
+    expect(bureau.agents.list().find(({ id }) => id === 'demo:release-helper')?.state).toBe(
+      'unavailable',
+    );
+
+    const again = await callAs(served.owner, 'bureau.agents.definitions.duplicate', {
+      id: 'demo:release-helper',
+    });
+    expect(again.error?.data).toMatchObject({ reason: 'agent-file-exists' });
+  });
+
+  it('are available again once the plugin is enabled', async () => {
+    const { served, calls } = await serveDemo(true);
+    const { bureau } = served;
+    expect(bureau.agents.list().find(({ id }) => id === 'demo:release-helper')).toEqual(
+      expect.objectContaining({ state: 'ready' }),
+    );
+    expect(
+      bureau.agents.list().find(({ id }) => id === 'demo:release-helper')?.unavailable,
+    ).toBeUndefined();
+    expect(bureau.agents.has('demo:release-helper')).toBe(true);
+    expect(calls).toEqual({ setup: 1, afterStart: 1 });
+    const run = await bureau.tasks.start('demo:release-helper', 'Draft them');
+    expect(run.id).toBeString();
   });
 });
 

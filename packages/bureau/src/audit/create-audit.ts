@@ -84,15 +84,79 @@ const DETAIL_ALLOWLIST: readonly string[] = [
   // string is cut at the limit above.
   'affectedAgents',
   'affectedAgentCount',
+  // COR-2009: an `a2a.call` names the task a remote call started and the name the caller gave
+  // itself (`callerName`, its own claim; the record's `principal` is who authenticated).
+  'taskId',
+  'callerName',
+  // COR-2009: an agent write names the saved version it made and the one before it, the keys that
+  // changed, and the tool identifiers added or removed (comma-joined); the definition's text never
+  // enters the trail, so the instructions' before and after are read from the agent's versions.
+  'previousRevision',
+  'changedKeys',
+  'toolsAdded',
+  'toolsRemoved',
+  // COR-2009: a tool record names its call, which names the review an approval opened
+  // (`approval:<runId>:<toolCallId>`), so "asked to refund" links to the review it waits in.
+  'toolCallId',
+  // COR-2009: what a `review.*` record names of its review, lifted from the stored `review` object
+  // by {@link reviewDetailOf}: the review, its tool call and its signal.
+  'reviewId',
+  'callId',
+  'signalName',
+  // COR-2009: a `schedule.missed` record says how many occurrences were missed and why
+  // (`late` or `dst-gap`; not `reason`, which on a review decision is a person's note).
+  'missedCount',
+  'missedReason',
+  // COR-2009: a `memory.corrected` record names the memory the correction wrote, the one it
+  // replaced, and whether a person or the agent wrote the correction; never the memory's text.
+  'memoryId',
+  'correctsId',
+  'writer',
 ];
+
+/** A scalar the projection keeps: a string cut to the limit, a number, or a boolean. */
+function scalarOf(value: unknown): string | number | boolean | undefined {
+  if (typeof value === 'string') return value.slice(0, DETAIL_VALUE_LIMIT);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  return undefined;
+}
+
+/**
+ * The names a `review.*` record's stored `review` object carries, as top-level detail fields
+ * (COR-2009): `reviewId`, `kind`, `agentName`, `sessionId`, `signalName`, and for a tool approval
+ * `toolName` and `callId`. The object itself is never projected (it holds the tool's arguments
+ * and the prompt), so without this a decision would name nothing but its status. Only these
+ * identifiers are read, and only when they are scalars.
+ */
+function reviewDetailOf(review: unknown): Record<string, unknown> {
+  if (typeof review !== 'object' || review === null) return {};
+  const source = review as Record<string, unknown>;
+  const approval =
+    typeof source['approval'] === 'object' && source['approval'] !== null
+      ? (source['approval'] as Record<string, unknown>)
+      : {};
+  return {
+    reviewId: source['id'],
+    kind: source['kind'],
+    agentName: source['agentName'],
+    sessionId: source['sessionId'],
+    signalName: source['signalName'],
+    toolName: approval['toolName'],
+    callId: approval['callId'],
+  };
+}
 
 function detailOf(detail: unknown): AuditQueryRecord['detail'] {
   if (typeof detail !== 'object' || detail === null) return null;
+  // The record's own fields win over what is lifted from its `review`.
+  const source = {
+    ...reviewDetailOf((detail as Record<string, unknown>)['review']),
+    ...Object.fromEntries(Object.entries(detail).filter(([, value]) => value !== undefined)),
+  };
   const projected: Record<string, string | number | boolean> = {};
   for (const key of DETAIL_ALLOWLIST) {
-    const value = (detail as Record<string, unknown>)[key];
-    if (typeof value === 'string') projected[key] = value.slice(0, DETAIL_VALUE_LIMIT);
-    else if (typeof value === 'number' || typeof value === 'boolean') projected[key] = value;
+    const value = Object.hasOwn(source, key) ? scalarOf(source[key]) : undefined;
+    if (value !== undefined) projected[key] = value;
   }
   return Object.keys(projected).length === 0 ? null : projected;
 }

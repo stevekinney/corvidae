@@ -82,7 +82,6 @@
     "./sql PostgresKeyValueQueries.selectKeyPresence",
     "./sql PostgresKeyValueQueries.selectValueByKey",
     "./sql PostgresKeyValueQueries.tableReference",
-    "./sql PostgresKeyValueQueries.upsertValueByKey",
     "./sql PostgresKeyValueStorage.[Symbol.asyncDispose]",
     "./sql PostgresKeyValueStorage.[Symbol.dispose]",
     "./sql PostgresKeyValueStorage.batch",

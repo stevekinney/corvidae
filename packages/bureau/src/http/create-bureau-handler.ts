@@ -102,6 +102,11 @@ import {
   agentsModelsOperation,
 } from './management/agents-models-operation.ts';
 import {
+  type BureauAgentReferencesOperationHost,
+  agentsReferencesOperation,
+} from './management/agent-references-operation.ts';
+import { findAgentReferences } from '../agent-references.ts';
+import {
   type BureauContextsInputOperationHost,
   contextsInputOperation,
 } from './management/contexts-input-operation.ts';
@@ -131,10 +136,15 @@ import {
   type BureauAgentDefinitionsOperationHost,
   bureauAgentDefinitionsOperations,
 } from './management/agent-definitions-operations.ts';
+import { bureauAgentOverridesOperations } from './management/agent-overrides-operations.ts';
 import {
   type BureauDiagnosticsOperationHost,
   diagnosticsGetOperation,
 } from './management/diagnostics-operations.ts';
+import {
+  type BureauAttentionOperationHost,
+  healthAttentionOperation,
+} from './management/attention-operations.ts';
 import {
   agentsListOperation,
   type BureauDeploymentOperationHost,
@@ -242,6 +252,7 @@ export type BureauHandlerSource = Pick<
   | 'deployments'
   | 'hooks'
   | 'plugins'
+  | 'attention'
   | 'formatEvent'
   | 'goals'
   | 'memory'
@@ -298,6 +309,7 @@ export type BureauHandlerSource = Pick<
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'blocker'
   >;
 } & {
   readonly internals: Pick<
@@ -326,6 +338,7 @@ export type BureauHandlerSource = Pick<
     | 'tools'
     | 'revisions'
     | 'versions'
+    | 'overrides'
     | 'create'
     | 'update'
     | 'delete'
@@ -344,6 +357,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauOwnershipHost &
   BureauDeploymentOperationHost &
   BureauDiagnosticsOperationHost &
+  BureauAttentionOperationHost &
   BureauTasksOperationHost &
   BureauTasksInspectOperationHost &
   BureauTaskEventsOperationHost &
@@ -355,6 +369,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsRenameOperationHost &
   BureauContextsWindowOperationHost &
   BureauAgentModelsOperationHost &
+  BureauAgentReferencesOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
   BureauWorkerDeploymentsOperationHost &
@@ -742,8 +757,10 @@ export const BUREAU_HANDLER_OPERATIONS = [
   getPrincipalOperation,
   deploymentGetOperation,
   diagnosticsGetOperation,
+  healthAttentionOperation,
   agentsListOperation,
   agentsModelsOperation,
+  agentsReferencesOperation,
   tasksListOperation,
   tasksGetOperation,
   tasksInspectOperation,
@@ -759,6 +776,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsRenameOperation,
   contextsWindowOperation,
   ...bureauAgentDefinitionsOperations,
+  ...bureauAgentOverridesOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   eventsCatalogOperation,
@@ -1146,6 +1164,28 @@ function createPushSupport(
   return { delivery, checkpoints, projector, ready };
 }
 
+/** How many schedules one page of {@link scheduleReferencesOf} reads. */
+const SCHEDULE_REFERENCE_PAGE = 100;
+
+/** Every schedule of the Bureau with the agent it runs and its name, for `bureau.agents.references`. */
+async function scheduleReferencesOf(
+  bureau: BureauHandlerSource,
+): Promise<{ id: string; agentName: string | undefined; name: string | null }[]> {
+  const found: { id: string; agentName: string | undefined; name: string | null }[] = [];
+  for (let offset = 0; ; offset += SCHEDULE_REFERENCE_PAGE) {
+    const page = await bureau.schedules.list({ limit: SCHEDULE_REFERENCE_PAGE, offset });
+    if (page === undefined) return found;
+    for (const summary of page.items) {
+      found.push({
+        id: summary.id,
+        agentName: await bureau.schedules.agentName(summary.id),
+        name: summary.description ?? null,
+      });
+    }
+    if (offset + page.items.length >= page.total || page.items.length === 0) return found;
+  }
+}
+
 /** How many of an opted-out agent's tasks one tombstone check reads at a time. */
 const TOMBSTONE_SCAN_PAGE = 50;
 
@@ -1198,6 +1238,26 @@ export function buildBureauHandlerHost(
     agentModels: {
       describe: (agentName) => bureau.agents.models(agentName),
     },
+    agentReferences: {
+      has: (agentName) => bureau.agents.list().some((agent) => agent.id === agentName),
+      find: (agentName) =>
+        findAgentReferences(agentName, {
+          schedules: () => scheduleReferencesOf(bureau),
+          ...(bureau.workflows === undefined
+            ? {}
+            : {
+                workflows: () => bureau.workflows?.list() ?? [],
+                workflowText: async (id) => {
+                  const detail = await bureau.workflows?.get(id);
+                  return detail?.text;
+                },
+              }),
+          hooks: async () => {
+            const hooks = bureau.hooks;
+            return hooks === undefined ? [] : hooks.list();
+          },
+        }),
+    },
     agentDefinitions: {
       agents: bureau.agents,
       optsCodeAgentIntoA2A: (id) => a2aAgents.includes(id),
@@ -1206,7 +1266,7 @@ export function buildBureauHandlerHost(
         await bureau.internals.auditTrail?.record(entry);
       },
     },
-    skills: { standing: () => skills?.standing() },
+    skills: { standing: () => skills?.standing(), tools: () => bureau.agents.tools() },
     workflows: bureau.workflows,
     codeWorkflow: (id) => {
       if (bureau.workflows !== undefined) return bureau.workflows.getCode(id);
@@ -1231,6 +1291,7 @@ export function buildBureauHandlerHost(
       owner: (scheduleId) => bureau.ownerOf({ kind: 'schedule', id: scheduleId }),
       agentName: bureau.schedules.agentName,
       inputPreview: bureau.schedules.inputPreview,
+      blocker: bureau.schedules.blocker,
       hasAgent: (name) => bureau.agents.find(name) !== undefined,
     },
     goals: bureau.goals,
@@ -1253,6 +1314,7 @@ export function buildBureauHandlerHost(
     settings: bureau.settings,
     respond: (request) => bureau.tasks.respond(request),
     diagnostics: { snapshot: () => bureau.internals.diagnostics() },
+    attention: () => bureau.attention(),
     deployment: {
       id: bureau.id,
       state: () => bureau.lifecycle,

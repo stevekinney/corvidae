@@ -365,7 +365,7 @@
   description={confirming === null
     ? ''
     : confirming.action === 'activate-candidate'
-      ? `Activate "${confirming.source.candidate?.revision ?? ''}" as the active revision for ${workflowName}? Weft evaluates compatibility against the active revision first; an incompatible candidate is refused with no durable change.`
+      ? `Activate "${confirming.source.candidate?.revision ?? ''}" as the active revision for ${workflowName}? Interborough evaluates compatibility against the active revision first; an incompatible candidate is refused with no durable change.`
       : `Check ${workflowName}'s refresh source and, when the new candidate is compatible, activate it under generation ${String(confirming.expectedGeneration)}. A stale generation or an incompatible candidate leaves it installed and inactive.`}
   confirmLabel={confirming?.action === 'activate-candidate' ? 'Activate' : 'Check and activate'}
   onConfirm={() => {

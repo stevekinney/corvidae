@@ -87,6 +87,7 @@ const SAMPLES: Readonly<Record<SettingKey, unknown>> = {
 
 type Snapshot = {
   values: Record<string, unknown>;
+  effective: Record<string, unknown>;
   revision: number;
   keys: Record<
     string,
@@ -157,8 +158,21 @@ describe('bureau.settings operations', () => {
       });
       const after = await snapshotOf(opened);
       expect(after.values[key]).toEqual(SAMPLES[key]);
+      expect(after.effective[key]).toEqual(SAMPLES[key]);
       expect(after.keys[key]?.pendingRestart).toBe(after.keys[key]?.apply === 'restart');
     }
+  });
+
+  it('serves each unset key’s effective value, and none for a key whose unset state has no one value', async () => {
+    const opened = await open();
+    const snapshot = await snapshotOf(opened);
+    expect(snapshot.values['retention.events']).toBeUndefined();
+    expect(snapshot.effective['retention.events']).toEqual({ olderThan: 7 * 86_400_000 });
+    expect(snapshot.effective['engine.retentionSweepInterval']).toBe(300_000);
+    expect(snapshot.effective['engine.workflowClaimTtl']).toBe(30_000);
+    expect(snapshot.effective['decisions.maximumPerTask']).toBe(20);
+    expect(Object.hasOwn(snapshot.effective, 'modelPolicy')).toBe(false);
+    expect(Object.hasOwn(snapshot.effective, 'context.summarizerModel')).toBe(false);
   });
 
   it('publishes the schema with every key', async () => {

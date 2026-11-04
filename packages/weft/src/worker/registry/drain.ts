@@ -94,3 +94,22 @@ export function workerHealth(worker: WorkerInfo, states: DrainStates): WorkerHea
   if (!isWorkerDraining(worker, states)) return 'active';
   return worker.inFlight > 0 ? 'draining' : 'drained';
 }
+
+/**
+ * What a draining or drained worker has done under its drain: the tasks it finished since the drain
+ * started, and, once nothing is in flight, when that happened (the drain's start when nothing was
+ * in flight then). Empty for a worker that is not draining, and counts kept under an earlier drain
+ * never carry into a later one.
+ */
+export function drainProgressOf(
+  worker: WorkerInfo,
+  states: DrainStates,
+): { drainFinishedTasks?: number; drainedAt?: number } {
+  const drain = drainRecordForWorker(worker, states);
+  if (drain === undefined) return {};
+  const counted = worker.drainCountedFrom === drain.startedAt;
+  const drainFinishedTasks = counted ? (worker.drainFinishedTasks ?? 0) : 0;
+  if (worker.inFlight > 0) return { drainFinishedTasks };
+  const drainedAt = counted && worker.drainedAt !== undefined ? worker.drainedAt : drain.startedAt;
+  return { drainFinishedTasks, drainedAt };
+}

@@ -1,3 +1,4 @@
+import type { StorageEntryMetadata } from '../entry-metadata.ts';
 import type { BatchOperation } from '../interface.ts';
 
 /**
@@ -103,4 +104,14 @@ export function resolveBatchNetEffect(operations: BatchOperation[]): BatchNetEff
   }
 
   return { puts, deletes };
+}
+
+/**
+ * The metadata a row's `updated_at` gives: its write time, or unknown for `NULL` (a row written
+ * before the column existed). Drivers return `BIGINT` as a string, so it is read as a number.
+ */
+export function metadataFromWriteTime(raw: unknown): StorageEntryMetadata {
+  if (raw === null || raw === undefined) return { updatedAt: null };
+  const updatedAt = Number(raw);
+  return { updatedAt: Number.isFinite(updatedAt) ? updatedAt : null };
 }

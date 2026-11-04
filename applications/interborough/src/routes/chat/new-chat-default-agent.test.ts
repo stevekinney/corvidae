@@ -27,6 +27,7 @@ function pluginWithAgent(agent: string, status: string) {
   return {
     descriptor: {
       name: `${agent}-plugin`,
+      title: `${agent}-plugin`,
       version: '1.0.0',
       description: '',
       required: false,

@@ -4,7 +4,7 @@ An Interborough plugin that gives a fresh host something to try without a model 
 
 Everything it contributes answers from a script, so no model is called and no provider key is needed. The Bureau registers each contribution under the plugin's prefix.
 
-- **Agents**: `demo:assistant`, `demo:tool-runner`, `demo:request-human-input`, `demo:echo`, `demo:model-switcher`, and `demo:internal`. `demo:tool-runner` looks an order up, then asks to refund it and stops until an operator approves.
+- **Agents**: `demo:assistant`, `demo:tool-runner`, `demo:request-human-input`, `demo:echo`, `demo:model-switcher`, `demo:internal`, `demo:release-helper`, and `demo:changelog-writer`. `demo:tool-runner` looks an order up, then asks to refund it and stops until an operator approves.
 - **Tools**: `demo:lookup-order` (read-only) and `demo:issue-refund` (changes something, so an operator approves each call). An agent file lists them under `tools`.
 - **Validators**: `demo:accepts-any-answer` passes every answer, and `demo:never-passes` waits until its goal is cancelled.
 - **A goal and a schedule**: the `seeded-goal` goal (it names `demo:accepts-any-answer`) and the `Daily summary` schedule (it runs `demo:assistant`), both created in `afterStart`.

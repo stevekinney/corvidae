@@ -127,8 +127,8 @@
       {#snippet icon()}
         <CircleAlert aria-hidden="true" size={17} />
       {/snippet}
-      Weft returned worker versioning data this console cannot read ({reading.reason}), so none of
-      it is shown.
+      The server returned worker versioning data this console cannot read ({reading.reason}), so
+      none of it is shown.
     </Callout>
   {:else}
     <div class="weft-worker-binding__badges">

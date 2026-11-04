@@ -99,6 +99,8 @@ function keyStates(served: SettingsServed): Record<string, SettingKeyState> {
 export function settingsSnapshot(served: SettingsServed) {
   return {
     values: served.values,
+    // What the page reads for an unset row; a fixture's values stand in for it.
+    effective: { ...served.values },
     revision: served.revision,
     persisted: served.persisted,
     keys: keyStates(served),

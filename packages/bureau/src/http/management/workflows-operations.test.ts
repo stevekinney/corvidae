@@ -36,7 +36,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the thirteen workflow operations, with their scopes registered', () => {
+  it('serves the fifteen workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -46,6 +46,8 @@ describe('the operations list', () => {
       'bureau.workflows.get',
       'bureau.workflows.list',
       'bureau.workflows.revisions',
+      'bureau.workflows.history',
+      'bureau.workflows.impact',
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
       'bureau.workflows.start',
@@ -78,6 +80,12 @@ const CALLS: readonly Call[] = [
   { method: 'bureau.workflows.get', params: () => ({ id: 'digest' }), scope: 'read' },
   { method: 'bureau.workflows.list', params: () => ({}), scope: 'read' },
   { method: 'bureau.workflows.revisions', params: () => ({ id: 'digest' }), scope: 'read' },
+  { method: 'bureau.workflows.history', params: () => ({ id: 'digest' }), scope: 'read' },
+  {
+    method: 'bureau.workflows.impact',
+    params: () => ({ id: 'digest', definition: DEFINITION }),
+    scope: 'read',
+  },
   { method: 'bureau.workflows.runs.list', params: () => ({}), scope: 'read' },
   { method: 'bureau.workflows.runs.get', params: () => ({ runId: 'digest-run' }), scope: 'read' },
   {

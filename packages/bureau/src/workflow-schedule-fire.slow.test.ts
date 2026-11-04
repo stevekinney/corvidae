@@ -148,4 +148,30 @@ describe('a workflow’s schedule firing', () => {
     gated.release();
     expect(await waitForReal(() => allCompleted(harness, 'digest'))).toBe(true);
   });
+
+  it('starts nothing while the file can’t load, under the schedule its last good version made, and fires again once it parses (COR-2009)', async () => {
+    const harness = await startWorkflowBureau({ replies: { writer: () => 'done' } });
+    harnesses.push(harness);
+    const good = workflowFileText('digest', { trigger: EVERY_SECOND, steps: [AGENT_STEP] });
+    await harness.put('digest.json', good);
+    await harness.bureau.workflows?.refresh();
+    expect(await waitForReal(() => harness.calls.length >= 1)).toBe(true);
+
+    await harness.put('digest.json', '{');
+    await harness.bureau.workflows?.refresh();
+    expect(await waitForReal(() => allCompleted(harness, 'digest'))).toBe(true);
+    const before = await instanceCount(harness, 'digest');
+
+    // Three seconds: a schedule that still started runs would have fired about three times.
+    await quietFor(3_000);
+    expect(await instanceCount(harness, 'digest')).toBe(before);
+    expect(await scheduleStatus(harness, 'bureau-workflow-schedule:digest:1')).toBe('paused');
+
+    await harness.put('digest.json', good);
+    await harness.bureau.workflows?.refresh();
+    expect(await scheduleStatus(harness, 'bureau-workflow-schedule:digest:1')).toBe('active');
+    expect(await waitForReal(async () => (await instanceCount(harness, 'digest')) > before)).toBe(
+      true,
+    );
+  });
 });

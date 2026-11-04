@@ -16,6 +16,7 @@ import { ActionEvent } from './events';
 import type { Bureau, PendingReview } from './types';
 import {
   computeWebhookDeliveryDeadlineMs,
+  DEFAULT_WEBHOOK_MAX_ATTEMPTS,
   createDefaultWatchdogClock,
   createWebhookNotifier,
   type WebhookDeliveryRecord,
@@ -924,9 +925,11 @@ describe('createWebhookNotifier', () => {
   // ── AB-220: per-delivery liveness ───────────────────────────────────
 
   describe('computeWebhookDeliveryDeadlineMs (AB-220)', () => {
-    it('computes the default 15000ms deadline from DEFAULT_MAX_ATTEMPTS/DEFAULT_BACKOFF_BASE_MILLISECONDS', () => {
-      // backoffBaseMilliseconds * (2 ** (maxAttempts - 1) - 1) = 1000 * (2**4 - 1) = 15000.
-      expect(computeWebhookDeliveryDeadlineMs(5, 1000)).toBe(15000);
+    it('computes the default 127000ms deadline from DEFAULT_WEBHOOK_MAX_ATTEMPTS/DEFAULT_BACKOFF_BASE_MILLISECONDS', () => {
+      // COR-2009: one retry rule, up to 8 tries with backoff.
+      expect(DEFAULT_WEBHOOK_MAX_ATTEMPTS).toBe(8);
+      // backoffBaseMilliseconds * (2 ** (maxAttempts - 1) - 1) = 1000 * (2**7 - 1) = 127000.
+      expect(computeWebhookDeliveryDeadlineMs(DEFAULT_WEBHOOK_MAX_ATTEMPTS, 1000)).toBe(127000);
     });
 
     it('computes the deadline for a caller-configured maxAttempts/backoffBaseMilliseconds override', () => {
@@ -998,7 +1001,9 @@ describe('createWebhookNotifier', () => {
       const [snapshot] = notifier.activeDeliverySnapshots();
       expect(snapshot?.kind).toBe('webhook-delivery');
       expect(snapshot?.status).toBe('running');
-      expect(snapshot?.deadline).toBe(computeWebhookDeliveryDeadlineMs(5, 1000));
+      expect(snapshot?.deadline).toBe(
+        computeWebhookDeliveryDeadlineMs(DEFAULT_WEBHOOK_MAX_ATTEMPTS, 1000),
+      );
 
       controller.abort(new Error('test teardown'));
       await notifier.dispose();
@@ -1031,7 +1036,7 @@ describe('createWebhookNotifier', () => {
       // and the derived assessment is 'healthy'.
       expect(notifier.activeDeliverySnapshots()[0]?.assessment).toBe('healthy');
 
-      clock.advance(15000 + 1);
+      clock.advance(computeWebhookDeliveryDeadlineMs(DEFAULT_WEBHOOK_MAX_ATTEMPTS, 1000)! + 1);
 
       const [snapshot] = notifier.activeDeliverySnapshots();
       expect(snapshot?.reachability).toBe('unreachable');

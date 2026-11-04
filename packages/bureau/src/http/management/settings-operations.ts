@@ -61,6 +61,8 @@ const keyStateSchema = z.object({
 const snapshotSchema = z.object({
   /** Each key's value, by dotted key. */
   values: z.record(z.string(), z.unknown()),
+  /** Each key's value as it applies: its `values` entry, or the value it applies by when unset. */
+  effective: z.record(z.string(), z.unknown()),
   revision: z.number().int(),
   persisted: z.boolean(),
   keys: z.record(z.string(), keyStateSchema),
@@ -77,7 +79,7 @@ export const settingsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read the runtime settings',
   description:
-    'Returns every setting’s value by dotted key (the stored value, or the code option where none is stored or the key is locked), the record’s `revision` to pass back as `expectedRevision`, whether the record is `persisted` beyond the process, and per key how it applies (`live` or `restart`), whether the deployment `locked` it and, if so, the `lockReason` (`deployment`, or `shared-storage` for a key that processes sharing one store must agree on), and whether a stored `restart` value is `pendingRestart`. Requires `bureau.settings:read`.',
+    'Returns every setting’s value by dotted key (the stored value, or the code option where none is stored or the key is locked), `effective`: each key’s value as it applies (its value, or where it has none, the value it applies by when nothing sets it; absent for a key whose unset state has no one value), the record’s `revision` to pass back as `expectedRevision`, whether the record is `persisted` beyond the process, and per key how it applies (`live` or `restart`), whether the deployment `locked` it and, if so, the `lockReason` (`deployment`, or `shared-storage` for a key that processes sharing one store must agree on), and whether a stored `restart` value is `pendingRestart`. Requires `bureau.settings:read`.',
   destructive: false,
   tags: ['Settings'],
   inputSchema: getInput,
@@ -89,7 +91,12 @@ export const settingsGetOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ host }) => {
     const snapshot = await host.settings.get();
-    return { ...snapshot, values: { ...snapshot.values }, keys: { ...snapshot.keys } };
+    return {
+      ...snapshot,
+      values: { ...snapshot.values },
+      effective: { ...snapshot.effective },
+      keys: { ...snapshot.keys },
+    };
   },
 });
 

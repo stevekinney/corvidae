@@ -95,6 +95,7 @@ function standingOf(host: FakePluginHost, plugin: PluginFixture): PluginStanding
   return {
     descriptor: {
       name: plugin.name,
+      title: plugin.name,
       version: plugin.version ?? '1.0.0',
       description: plugin.description ?? `The ${plugin.name} plugin.`,
       required: plugin.required === true,

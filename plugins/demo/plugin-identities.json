@@ -10,6 +10,12 @@
     },
     {
       "kind": "code-agent",
+      "id": "demo:changelog-writer",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "code-agent",
       "id": "demo:echo",
       "version": "1.0.0",
       "schema": null
@@ -23,6 +29,12 @@
     {
       "kind": "code-agent",
       "id": "demo:model-switcher",
+      "version": "1.0.0",
+      "schema": null
+    },
+    {
+      "kind": "code-agent",
+      "id": "demo:release-helper",
       "version": "1.0.0",
       "schema": null
     },

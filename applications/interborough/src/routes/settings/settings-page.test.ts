@@ -27,6 +27,7 @@ import { shortcuts } from '../../lib/shortcuts.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 import {
   installSettingsBureau,
+  PUBLISHED_SCHEMA,
   servedSettings,
   settingsSnapshot,
   settingsStream,
@@ -331,7 +332,15 @@ describe('a save', () => {
   });
 
   test('draws a description as inline Markdown, a code span as code', async () => {
-    const { container, findByRole } = open(servedSettings());
+    // The Bureau's own descriptions are plain words (COR-2009), so the code span is served here.
+    const schema = structuredClone(PUBLISHED_SCHEMA);
+    schema.properties['tools.wakeup'] = {
+      ...schema.properties['tools.wakeup'],
+      description: 'Offers `scheduleWakeup` to new tasks.',
+    };
+    const { container, findByRole } = open(servedSettings(), undefined, {
+      'bureau.settings.schema': () => ({ schema }),
+    });
     await findByRole('group', { name: SETTINGS_COPY.formLabel });
     const wakeup = row(container, 'tools.wakeup');
     expect(wakeup?.querySelector('code')?.textContent).toBe('scheduleWakeup');

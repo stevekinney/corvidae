@@ -101,7 +101,7 @@ export type WebhookDeliveryLivenessSnapshot = LivenessSnapshot & { kind: 'webhoo
  * matching this module's own `deliver()` backoff schedule
  * (`backoffBaseMilliseconds * 2 ** (attempt - 1)`, summed across the
  * `maxAttempts - 1` retries after the first attempt). Exported for direct
- * unit testing against `DEFAULT_MAX_ATTEMPTS`/`DEFAULT_BACKOFF_BASE_MILLISECONDS`
+ * unit testing against `DEFAULT_WEBHOOK_MAX_ATTEMPTS`/`DEFAULT_BACKOFF_BASE_MILLISECONDS`
  * and a caller override.
  */
 export function computeWebhookDeliveryDeadlineMs(
@@ -254,7 +254,7 @@ export interface WebhookNotifierOptions {
   sleep?: (milliseconds: number) => Promise<void>;
   /** Injectable clock. Defaults to the composed RuntimeServices clock. */
   now?: () => number;
-  /** Maximum delivery attempts before a delivery is marked `exhausted`. Default `5`. */
+  /** Maximum delivery attempts before a delivery is marked `exhausted`. Default `8` ({@link DEFAULT_WEBHOOK_MAX_ATTEMPTS}). */
   maxAttempts?: number;
   /** Base backoff delay in milliseconds; doubles on every retry. Default `1000`. */
   backoffBaseMilliseconds?: number;
@@ -385,7 +385,11 @@ function encodeKey(id: string): string {
 
 // ── Defaults ────────────────────────────────────────────────────────
 
-const DEFAULT_MAX_ATTEMPTS = 5;
+/**
+ * How many attempts a delivery makes before it is marked `exhausted`: the one retry rule for webhook
+ * notifications and hook deliveries alike, "up to 8 tries with backoff" (COR-2009).
+ */
+export const DEFAULT_WEBHOOK_MAX_ATTEMPTS = 8;
 const DEFAULT_BACKOFF_BASE_MILLISECONDS = 1000;
 
 /**
@@ -542,7 +546,7 @@ export function createWebhookNotifier<D extends AgentDefinitions = AgentDefiniti
   const signal = options?.signal;
   const sleep = options?.sleep ?? createDefaultSleep(runtime.timers);
   const now = options?.now ?? runtime.clock.now;
-  const maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const maxAttempts = options?.maxAttempts ?? DEFAULT_WEBHOOK_MAX_ATTEMPTS;
   const backoffBaseMilliseconds =
     options?.backoffBaseMilliseconds ?? DEFAULT_BACKOFF_BASE_MILLISECONDS;
   const reviewQueueBaseUrl = options?.reviewQueueBaseUrl;

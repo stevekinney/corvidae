@@ -161,6 +161,31 @@ export const DELIVERY_MODE_METADATA_KEY = 'deliveryMode';
 /** The metadata key of a request's correlation identifier, outside every extension namespace. */
 export const CORRELATION_ID_METADATA_KEY = 'correlationId';
 
+/**
+ * The message-metadata key a caller names itself with (COR-2009): a label such as `planner`, 1 to
+ * 100 characters, that the `a2a.call` audit record keeps as `callerName` so a person reading Recent
+ * calls can tell remote agents apart when they share one key. It is the caller's own claim, never
+ * an identity: the record's `principal` is who authenticated.
+ */
+export const CALLER_NAME_METADATA_KEY = 'callerName';
+
+/** The longest `callerName` an `a2a.call` record keeps; a longer one is cut. */
+const CALLER_NAME_MAXIMUM_LENGTH = 100;
+
+/** The audit record type of one call that started a task over A2A (COR-2009). */
+export const A2A_CALL_AUDIT_TYPE = 'a2a.call';
+
+/**
+ * The name a starting message's caller gave itself under {@link CALLER_NAME_METADATA_KEY}, trimmed
+ * and cut to {@link CALLER_NAME_MAXIMUM_LENGTH} characters, or `undefined` when it gave none.
+ */
+function callerNameOf(message: Message): string | undefined {
+  const named = message.metadata?.[CALLER_NAME_METADATA_KEY];
+  if (typeof named !== 'string') return undefined;
+  const trimmed = named.trim().slice(0, CALLER_NAME_MAXIMUM_LENGTH);
+  return trimmed === '' ? undefined : trimmed;
+}
+
 /** The message-metadata key whose presence activates A2UI's extension (A2UI v0.9.1). */
 export const A2UI_CLIENT_CAPABILITIES_METADATA_KEY = 'a2uiClientCapabilities';
 
@@ -1217,8 +1242,28 @@ export function createBureauA2ARequestHandler(
       history: [historyEntryOf(inbound.history, run.id, run.contextId)],
       replyRecorded: false,
     });
+    await recordCall(message, owner, run.id);
     recordReplyWhenSettled(run.id);
     return run.id;
+  }
+
+  /**
+   * Appends the `a2a.call` audit record of a task this send started (COR-2009): when, who called
+   * (the record's `principal`, and `callerName` when the message named one), which agent answered,
+   * and the task. Keyed by the task, so a retry that reaches here again records the call once. The
+   * call is answered whether or not the record is written: a failure is the trail's to report.
+   */
+  async function recordCall(message: Message, owner: Owner, taskId: string): Promise<void> {
+    const callerName = callerNameOf(message);
+    await bureau.internals.auditTrail
+      ?.record({
+        runId: taskId,
+        type: A2A_CALL_AUDIT_TYPE,
+        principal: owner,
+        detail: { agentName, taskId, ...(callerName === undefined ? {} : { callerName }) },
+        dedupeKey: `${A2A_CALL_AUDIT_TYPE}:${taskId}`,
+      })
+      .catch(() => undefined);
   }
 
   /**

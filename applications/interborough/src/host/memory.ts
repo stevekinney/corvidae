@@ -28,6 +28,7 @@ import {
   type GovernedMemory,
   type MemoryDeletionPropagation,
 } from '@lostgradient/memory';
+import type { RuntimeServices } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/storage';
 
 /** The policy revision the installation's memory records on every write, receipt, and event. */
@@ -44,13 +45,17 @@ export const MEMORY_DELETION_PROPAGATION: MemoryDeletionPropagation = {
  * Governed memory over `storage`, which the Bureau and the engine share. The Bureau initializes and
  * closes it. It is built once plugin setup has run (COR-1879, `BureauOptions.memory`), with what the
  * running plugins contribute: their embedders join the registry beside the built-in hashing one, and
- * their detectors run after the default poisoning detector on admission and on recall.
+ * their detectors run after the default poisoning detector on admission and on recall. It runs on
+ * `runtime` (the host's, `HostOptions.runtime`), so a memory and its ledger events are stamped on the
+ * host's clock, as the Bureau's own records are; the process's own services when none is given.
  */
 export function createHostMemory(
   storage: Storage,
   contributions: PluginMemoryContributions,
+  runtime?: RuntimeServices,
 ): GovernedMemory {
   return createGovernedMemory({
+    ...(runtime === undefined ? {} : { runtime }),
     storage: createWeftMemoryRecordStorage(storage),
     ledger: createMemoryGovernanceLedger(storage),
     embedders: createEmbedderRegistry(contributions.embedders),

@@ -47,6 +47,12 @@ const keyStateSchema = z.object({
 const snapshotSchema = z.object({
   /** Each key's value, by dotted key. A key with no value is absent. */
   values: z.record(z.string(), z.unknown()),
+  /**
+   * Each key's value as it applies: its `values` entry, or where it has none, the value it applies
+   * by when nothing sets it, shown as "Default: 7 days" on an unset row. A key whose unset state has
+   * no one value (no model policy, no summarizer) is absent here too.
+   */
+  effective: z.record(z.string(), z.unknown()),
   revision: z.number().int().nonnegative(),
   /** Whether the record outlives the process. */
   persisted: z.boolean(),
