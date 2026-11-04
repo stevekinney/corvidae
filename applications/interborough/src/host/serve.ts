@@ -8,6 +8,7 @@
  * that listens to it.
  */
 
+import type { BungalowEnvironment } from '@lostgradient/bungalow';
 import { dirname } from 'node:path';
 
 import { processEnvironment, resolveBuildDirectory } from './environment-configuration.ts';
@@ -15,32 +16,44 @@ import { startHost } from './host.ts';
 import { RESTART_EXIT_CODE } from './restart.ts';
 import { installShutdownSignals } from './shutdown-signals.ts';
 
-const environment = processEnvironment();
-
-/** Stop the host, then exit with `code`. A host that did not stop cleanly exits 1, which ends the supervisor. */
-async function stop(code: number): Promise<never> {
-  try {
-    await host.close();
-  } catch (error) {
-    console.error('The host did not stop cleanly.', error);
-    process.exit(1);
+/** Run the foreground production host with the caller's resolved build directory. */
+export async function serveHost(
+  environment: BungalowEnvironment,
+  buildDirectory: string,
+): Promise<void> {
+  /** Stop the host, then exit with `code`. A host that did not stop cleanly exits 1, which ends the supervisor. */
+  async function stop(code: number): Promise<never> {
+    try {
+      await host.close();
+    } catch (error) {
+      console.error('The host did not stop cleanly.', error);
+      process.exit(1);
+    }
+    process.exit(code);
   }
-  process.exit(code);
+
+  const host = await startHost({
+    environment,
+    buildDirectory,
+    development: false,
+    onRestartRequested: () => stop(RESTART_EXIT_CODE),
+  });
+  // URL normalizes away HTTP’s default port, but the startup line always names the bound port.
+  console.info(
+    `Interborough is listening on ${host.url.protocol}//${host.url.hostname}:${host.url.port || 80}`,
+  );
+  console.info(
+    `Its state lives in ${
+      host.database.kind === 'sqlite'
+        ? dirname(host.database.path)
+        : 'the configured Postgres database'
+    }`,
+  );
+
+  installShutdownSignals(process, () => stop(0));
 }
 
-const host = await startHost({
-  environment,
-  buildDirectory: resolveBuildDirectory(environment),
-  development: false,
-  onRestartRequested: () => stop(RESTART_EXIT_CODE),
-});
-console.info(`Interborough is listening on ${host.url}`);
-console.info(
-  `Its state lives in ${
-    host.database.kind === 'sqlite'
-      ? dirname(host.database.path)
-      : 'the configured Postgres database'
-  }`,
-);
-
-installShutdownSignals(process, () => stop(0));
+if (import.meta.main) {
+  const environment = processEnvironment();
+  await serveHost(environment, resolveBuildDirectory(environment));
+}
