@@ -453,6 +453,22 @@ describe('workflows-validate and workflows-catalog', () => {
     expect(harness.bureau.workflows!.list()).toEqual(before);
   });
 
+  it('retains undeclared draft keys so validation agrees with the strict HTTP operation', async () => {
+    const harness = await start();
+    const before = harness.bureau.workflows!.list();
+    const result = await harness.callTool('bureau__workflows-validate', {
+      id: 'draft',
+      trigger: TRIGGER,
+      steps: STEPS,
+      retries: 3,
+    });
+    expect(result.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(result.result).toMatchObject({
+      issues: [expect.objectContaining({ path: '', message: expect.stringContaining('retries') })],
+    });
+    expect(harness.bureau.workflows!.list()).toEqual(before);
+  });
+
   it('derives the catalog step kinds from Weft and includes the built-in activity and triggers', async () => {
     const harness = await start();
     const { result } = await harness.callTool('bureau__workflows-catalog', {});
@@ -460,7 +476,7 @@ describe('workflows-validate and workflows-catalog', () => {
     const catalog = result as {
       stepKinds: { kind: string }[];
       activities: { id: string }[];
-      triggerKinds: { id: string }[];
+      triggerKinds: { id: string; configuration: Record<string, unknown> | null }[];
     };
     expect(catalog.stepKinds.map(({ kind }) => kind)).toEqual([
       'activity',
@@ -469,6 +485,27 @@ describe('workflows-validate and workflows-catalog', () => {
     ]);
     expect(catalog.activities.map(({ id }) => id)).toContain('agent');
     expect(catalog.triggerKinds.map(({ id }) => id)).toEqual(['schedule', 'signal', 'manual']);
+    expect(catalog.triggerKinds[0]?.configuration).toMatchObject({
+      required: ['spec'],
+      additionalProperties: false,
+    });
+    expect(catalog.triggerKinds[1]?.configuration).toMatchObject({
+      required: ['name'],
+      additionalProperties: false,
+    });
+
+    const missing = await harness.callTool('bureau__workflows-validate', {
+      id: 'missing-schedule',
+      trigger: { kind: 'schedule' },
+      steps: STEPS,
+    });
+    expect(missing.result).toMatchObject({ status: 'invalid' });
+    const extra = await harness.callTool('bureau__workflows-validate', {
+      id: 'extra-signal',
+      trigger: { kind: 'signal', name: 'go', retries: 3 },
+      steps: STEPS,
+    });
+    expect(extra.result).toMatchObject({ status: 'invalid' });
   });
 });
 

@@ -456,7 +456,7 @@ const updateInput = z.object({
 const validateInput = z.object({
   id: workflowId.optional(),
   expectedHash: hash.optional(),
-  definition: definitionSchema,
+  definition: z.looseObject(definitionSchema.shape),
   surface,
 });
 

@@ -18,6 +18,7 @@ import {
   type Engine,
   type JSONValue,
   normalizeScheduleSpec,
+  definitionSchemaToJsonSchema,
   registerWorkflowDocuments,
   type RegisteredWorkflowDocument,
   type WorkflowDocumentSet,
@@ -52,11 +53,37 @@ export interface WorkflowCatalog {
 function schemaOf(schema: unknown): Readonly<Record<string, unknown>> | null {
   if (schema === undefined) return null;
   try {
-    return z.toJSONSchema(schema as z.ZodType, { io: 'input', unrepresentable: 'any' });
+    return definitionSchemaToJsonSchema(
+      schema as Parameters<typeof definitionSchemaToJsonSchema>[0],
+    );
   } catch {
     return null;
   }
 }
+
+/** The JSON Schema contracts enforced by Bureau's built-in workflow trigger validators. */
+export const WORKFLOW_TRIGGER_CONFIGURATION_SCHEMAS = {
+  schedule: {
+    type: 'object',
+    properties: {
+      spec: { type: 'string', minLength: 1 },
+      overlap: { enum: ['skip', 'queue', 'cancel-running', 'allow'] },
+      timezone: { type: 'string' },
+      catchUp: { type: 'boolean' },
+      name: { type: 'string', minLength: 1, maxLength: 120 },
+      input: {},
+    },
+    required: ['spec'],
+    additionalProperties: false,
+  },
+  signal: {
+    type: 'object',
+    properties: { name: { type: 'string', minLength: 1, maxLength: 256 } },
+    required: ['name'],
+    additionalProperties: false,
+  },
+  manual: { type: 'object', additionalProperties: false },
+} as const;
 
 /** Build the workflow editor catalog from the exact host registrations. */
 export function workflowCatalogOf(
@@ -95,21 +122,25 @@ export function workflowCatalogOf(
       inputSchema:
         schemaOf(definition?.inputSchema) ??
         (id === AGENT_STEP_HANDLER
-          ? z.toJSONSchema(z.object({ agent: z.string(), message: z.string() }), { io: 'input' })
+          ? schemaOf(z.object({ agent: z.string(), message: z.string() }))
           : null),
     };
   });
   const builtInTriggers = [
-    { id: 'schedule', description: 'Start on a schedule.', configuration: { type: 'object' } },
+    {
+      id: 'schedule',
+      description: 'Start on a schedule.',
+      configuration: WORKFLOW_TRIGGER_CONFIGURATION_SCHEMAS.schedule,
+    },
     {
       id: 'signal',
       description: 'Start when a signal is delivered.',
-      configuration: { type: 'object' },
+      configuration: WORKFLOW_TRIGGER_CONFIGURATION_SCHEMAS.signal,
     },
     {
       id: 'manual',
       description: 'Start only when explicitly started.',
-      configuration: { type: 'object', additionalProperties: false },
+      configuration: WORKFLOW_TRIGGER_CONFIGURATION_SCHEMAS.manual,
     },
   ];
   const pluginTriggers = [...contributions.triggerKinds.values()].map((entry) => ({

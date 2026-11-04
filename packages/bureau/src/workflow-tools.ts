@@ -322,6 +322,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     steps: input.steps,
   });
 
+  const validationDefinition = (agent: string, input: Record<string, unknown>) => {
+    const { id: _id, expectedHash: _expectedHash, ...candidate } = input;
+    return {
+      ...candidate,
+      agent,
+      trigger: candidate['trigger'] as WorkflowFileDefinition['trigger'],
+      steps: candidate['steps'] as WorkflowFileDefinition['steps'],
+    } as WorkflowFileDefinition;
+  };
+
   const createInput = z.object({
     name: z.string().min(1).describe('What the workflow is called.'),
     id: z
@@ -348,7 +358,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     steps: stepsSchema,
     paused: pausedSchema,
   });
-  const validateInput = z.object({
+  const validateInput = z.looseObject({
     id: z
       .string()
       .min(1)
@@ -379,7 +389,10 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       const calling = await caller(context, id, 'bureau.workflows:read');
       if ('refusal' in calling) {
         return calling.refusal.status === 'not-found'
-          ? { status: 'forbidden', message: 'Validating workflows requires bureau.workflows:read.' }
+          ? {
+              status: 'forbidden',
+              message: 'Workflow validation is unavailable to the current caller.',
+            }
           : calling.refusal;
       }
       try {
@@ -387,7 +400,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           status: 'ok',
           ...(await calling.workflows.validate(
             input.id ?? 'draft',
-            definition(calling.agent, input),
+            validationDefinition(calling.agent, input),
             input.expectedHash,
           )),
         };
@@ -413,7 +426,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         return calling.refusal.status === 'not-found'
           ? {
               status: 'forbidden',
-              message: 'Reading the workflow catalog requires bureau.workflows:read.',
+              message: 'The workflow catalog is unavailable to the current caller.',
             }
           : calling.refusal;
       }

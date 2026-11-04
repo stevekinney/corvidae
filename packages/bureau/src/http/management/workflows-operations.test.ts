@@ -579,6 +579,22 @@ describe('faults', () => {
     expect(served.bureau.workflows?.list()).toEqual([]);
   });
 
+  it('keeps validation parity with the tool for an undeclared key, without changing the hash', async () => {
+    const served = await serve();
+    const before = await seed(served);
+    const response = await ownerRpc(served.owner, 'bureau.workflows.validate', {
+      id: 'digest',
+      expectedHash: before.hash,
+      definition: { ...DEFINITION, retries: 3 },
+    });
+    expect(response.error).toBeUndefined();
+    expect(response.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(response.result?.['issues']).toContainEqual(
+      expect.objectContaining({ message: expect.stringContaining('retries') }),
+    );
+    expect(served.bureau.workflows?.list()[0]?.hash).toBe(before.hash);
+  });
+
   it('InvalidParams naming the key for a definition with an undeclared key, and leaves the file as it was (update)', async () => {
     const served = await serve();
     const created = await seed(served);
