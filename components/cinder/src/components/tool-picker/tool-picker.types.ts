@@ -63,6 +63,12 @@ export type ToolPickerProps = {
    * dismissing leave it alone.
    */
   selected?: string[];
+  /**
+   * The text in the search field. Bindable. It is cleared when the picker closes, so it opens empty
+   * unless the page sets it before opening, such as to open on a search that matches nothing.
+   * @default ""
+   */
+  query?: string;
   /** Everything that can be listed, in the order it should read within each group. */
   items: readonly ToolPickerItem[];
   /** The groups, in the order they should appear, with a note for a group that cannot be chosen from. */

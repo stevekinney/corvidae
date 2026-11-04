@@ -240,8 +240,10 @@
             size={14}
             aria-hidden="true"
             class="cinder-form-field__glyph"
-          />{/if}<span class="cinder-form-field__error-text">{error}</span
-        >{#if errorAction}{' '}{@render errorAction()}{/if}{/if}
+          />{/if}<span class="cinder-form-field__error-body"
+          ><span class="cinder-form-field__error-text">{error}</span
+          >{#if errorAction}{' '}{@render errorAction()}{/if}</span
+        >{/if}
     </p>
   {/if}
 </div>

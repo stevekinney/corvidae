@@ -80,7 +80,6 @@
   .cinder-form-field__error {
     display: flex;
     align-items: flex-start;
-    flex-wrap: wrap;
     column-gap: var(--cinder-space-1-5);
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-normal);
@@ -88,14 +87,24 @@
     margin: 0;
   }
 
-  .cinder-form-field__error-text {
+  /* The message and its action share one block beside the glyph, so a narrow container wraps the
+     words and never leaves the glyph alone on a line of its own. */
+  .cinder-form-field__error-body {
+    flex: 1 1 0;
     min-inline-size: 0;
     overflow-wrap: anywhere;
   }
 
+  /* The action is a link in the accent colour, not the error's red: the message is the problem and
+     the action is the way out of it. */
   .cinder-form-field__error :where(a, button) {
-    color: inherit;
+    color: var(--cinder-accent-text);
     font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-form-field__error :where(a) {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
   }
 
   /* Glyph beside the error and managed lines: it takes the first line's height and never shrinks. */

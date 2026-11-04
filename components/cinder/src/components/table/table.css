@@ -485,6 +485,15 @@
     min-block-size: 2.75rem;
   }
 
+  /* A select, input or button in a card is a touch target too: the control itself is as tall as
+   * its row, not just the wrapper around it (row 40a). */
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls]
+    :is(.cinder-select, .cinder-input, .cinder-button) {
+    min-block-size: 2.75rem;
+  }
+
   /* A control that keeps its own size: a checkbox or switch, with its column's header text after it. */
   .cinder-table[data-cinder-stacked]
     .cinder-table__body

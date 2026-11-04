@@ -335,6 +335,52 @@ describe('ToolPicker search', () => {
     expect(dialog().querySelector('input[type="checkbox"]')).toBeNull();
   });
 
+  test('opens on a search when given a query, filtered to nothing (row 43p)', () => {
+    renderPicker({ query: 'invoice' });
+    const field = requiredInstance(
+      dialog().querySelector<HTMLInputElement>(
+        'input[type="search"], input[aria-label="Search tools and skills"]',
+      ),
+      HTMLInputElement,
+    );
+    expect(field.value).toBe('invoice');
+    expect(dialog().querySelector('.cinder-tool-picker__empty-title')?.textContent).toBe(
+      'No tools match “invoice”',
+    );
+  });
+
+  test('a query set before the picker opens survives the opening, and closing clears it (row 43p)', async () => {
+    const { container } = render(Host as any, {
+      props: { items, groups, query: 'invoice' },
+    });
+    const field = () =>
+      requiredInstance(
+        dialog().querySelector<HTMLInputElement>(
+          'input[type="search"], input[aria-label="Search tools and skills"]',
+        ),
+        HTMLInputElement,
+      );
+    const open = () =>
+      fireEvent.click(
+        requiredInstance(container.querySelector('[data-testid="open"]'), HTMLElement),
+      );
+    await open();
+    expect(field().value).toBe('invoice');
+    expect(dialog().querySelector('.cinder-tool-picker__empty-title')?.textContent).toBe(
+      'No tools match “invoice”',
+    );
+    await fireEvent.click(
+      requiredInstance(
+        Array.from(dialog().querySelectorAll('.cinder-modal__footer button')).find(
+          (button) => button.textContent?.trim() === 'Cancel',
+        ),
+        HTMLElement,
+      ),
+    );
+    await open();
+    expect(field().value).toBe('');
+  });
+
   test('Clear search empties the field, restores the list and returns focus to the field', async () => {
     renderPicker();
     const field = await search('invoice');

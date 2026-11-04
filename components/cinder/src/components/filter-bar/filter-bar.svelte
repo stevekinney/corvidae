@@ -224,11 +224,57 @@
     onSearchChange?.(value);
   }
 
-  async function handleFilterRemove(key: string): Promise<void> {
+  // The bar's root and the narrow form's Filter menu are looked up when focus needs a new home, since
+  // the control that held it has just unmounted.
+  let barElement: HTMLDivElement | undefined = $state();
+
+  function menuElement(): HTMLElement | null {
+    return document.getElementById(`${generatedId}-menu`);
+  }
+
+  function removeButtons(): HTMLElement[] {
+    return [menuElement(), barElement ?? null].flatMap((scope) =>
+      scope === null || scope === undefined
+        ? []
+        : [...scope.querySelectorAll<HTMLElement>('.cinder-filter-bar__chip-remove')],
+    );
+  }
+
+  /** The first enabled match of a selector inside the Filter menu, then inside the bar. */
+  function firstFocusable(selector: string): HTMLElement | null {
+    for (const scope of [menuElement(), barElement ?? null]) {
+      const found = scope?.querySelector<HTMLElement>(selector);
+      if (found !== null && found !== undefined && !found.hasAttribute('disabled')) return found;
+    }
+    return null;
+  }
+
+  /** Where focus goes when the control that held it was removed and its facet has no add chip. */
+  function fallbackFocusTarget(removedIndex: number): HTMLElement | null {
+    const remaining = removeButtons();
+    return (
+      remaining[Math.min(removedIndex, remaining.length - 1)] ??
+      firstFocusable(`[id^="${generatedId}-facet-"]`) ??
+      firstFocusable('.cinder-filter-bar__menu-row:not([data-cinder-static])') ??
+      firstFocusable('.cinder-filter-bar__menu-button') ??
+      firstFocusable('input.cinder-search-field__input') ??
+      firstFocusable('.cinder-filter-bar__search-button') ??
+      barElement ??
+      null
+    );
+  }
+
+  async function handleFilterRemove(key: string, origin?: HTMLElement | null): Promise<void> {
+    const removedIndex =
+      origin === undefined || origin === null ? 0 : removeButtons().indexOf(origin);
     onFilterRemove?.(key);
     await tick();
-    // The chip has become its facet's add chip in the same place, so focus lands on that.
-    document.getElementById(triggerId(key))?.focus();
+    // A choice facet's chip has become its add chip in the same place, so focus lands on that. A
+    // filter no facet draws has nothing left to land on, so focus moves to the nearest control
+    // instead of falling to the page.
+    const addChip = document.getElementById(triggerId(key));
+    if (addChip !== null) addChip.focus();
+    else fallbackFocusTarget(Math.max(removedIndex, 0))?.focus();
   }
 
   function triggerId(key: string): string {
@@ -364,7 +410,7 @@
       </Button>
     {/snippet}
 
-    <div class="cinder-filter-bar__menu">
+    <div id={`${generatedId}-menu`} class="cinder-filter-bar__menu">
       {#each facets as facet (facet.key)}
         {@const summary = facetSummary(facet)}
         {@const open = menuSection === facet.key}
@@ -430,7 +476,7 @@
               class="cinder-filter-bar__chip-remove"
               {disabled}
               aria-label={`Remove filter: ${filter.label}: ${summary}`}
-              onclick={() => handleFilterRemove(filter.key)}
+              onclick={(event) => handleFilterRemove(filter.key, event.currentTarget)}
             >
               <X class="cinder-icon-xs" aria-hidden="true" />
             </button>
@@ -524,7 +570,7 @@
         class="cinder-filter-bar__chip-remove"
         {disabled}
         aria-label={`Remove filter: ${filter.label}: ${summary}`}
-        onclick={() => handleFilterRemove(filter.key)}
+        onclick={(event) => handleFilterRemove(filter.key, event.currentTarget)}
       >
         <X class="cinder-icon-xs" aria-hidden="true" />
       </button>
@@ -542,6 +588,8 @@
   data-cinder-search-position={searchAtStart ? 'start' : 'end'}
   data-disabled={disabled ? '' : undefined}
   {@attach measureWidth}
+  bind:this={barElement}
+  tabindex="-1"
 >
   <div class="cinder-filter-bar__row">
     {#if searchVisible && searchAtStart && layout === 'wide'}

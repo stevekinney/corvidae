@@ -150,14 +150,14 @@
     }
   }
 
-  /* A quiet Retry beside a failed save: the error's colour, semibold, underlined, no chrome. */
+  /* A quiet Retry beside a failed save: an accent link, semibold, underlined, no chrome. */
   .cinder-setting-row__retry {
     padding: 0;
     border: 0;
     background: none;
     font: inherit;
     font-weight: var(--cinder-font-semibold);
-    color: inherit;
+    color: var(--cinder-accent-text);
     text-decoration: underline;
     text-underline-offset: 0.15em;
     cursor: pointer;
@@ -169,7 +169,9 @@
     border-radius: var(--cinder-radius-sm);
   }
 
-  /* Narrow: the control stacks under the label, ahead of the description, as the markup orders them. */
+  /* Narrow: the label and its description lead, the control stacks under them, and the status, the
+     managed line and the error sit directly under the control (row 50i). Order reads the lines
+     into that sequence whatever the markup order is. */
   @container (inline-size < 30rem) {
     .cinder-setting-row__field {
       display: flex;
@@ -191,6 +193,22 @@
       ) {
       align-self: stretch;
       justify-self: auto;
+      order: 2;
+    }
+
+    .cinder-setting-row__field .cinder-form-field__description,
+    .cinder-setting-row__field .cinder-form-field__note,
+    .cinder-setting-row__field .cinder-form-field__warning {
+      order: 1;
+    }
+
+    .cinder-setting-row__field .cinder-form-field__managed,
+    .cinder-setting-row__status {
+      order: 3;
+    }
+
+    .cinder-setting-row__field .cinder-form-field__error {
+      order: 4;
     }
 
     /* The row gap spaces the lines now, so they add none of their own. */

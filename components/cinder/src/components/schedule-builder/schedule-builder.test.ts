@@ -94,7 +94,7 @@ describe('ScheduleBuilder', () => {
       const { container, getByLabelText } = render(ScheduleBuilder, {});
 
       expect(requiredInstance(getByLabelText('Repeats'), HTMLSelectElement).value).toBe('daily');
-      expect(requiredInstance(getByLabelText('At'), HTMLInputElement).value).toBe('09:00');
+      expect(requiredInstance(getByLabelText('At'), HTMLInputElement).value).toBe('9:00 AM');
       // The package's test script runs under TZ=UTC.
       expect(readBack(container)).toBe('Every day at 9:00 AM UTC.');
     });
@@ -191,7 +191,7 @@ describe('ScheduleBuilder', () => {
 
       await chooseRepeats(getByLabelText, 'weekdays');
       await fireEvent.change(requiredInstance(getByLabelText('At'), HTMLInputElement), {
-        target: { value: '14:30' },
+        target: { value: '2:30 pm' },
       });
 
       expect(onValueChange.mock.calls.at(-1)?.[0]).toEqual({
@@ -206,7 +206,7 @@ describe('ScheduleBuilder', () => {
       const { container, getByLabelText } = render(ScheduleBuilder, { onValueChange });
       const timeInput = requiredInstance(getByLabelText('At'), HTMLInputElement);
 
-      await fireEvent.change(timeInput, { target: { value: '09:15' } });
+      await fireEvent.change(timeInput, { target: { value: '9:15 AM' } });
       onValueChange.mockClear();
       // A real clear fires `input` before `change`.
       await fireEvent.input(timeInput, { target: { value: '' } });
@@ -214,7 +214,25 @@ describe('ScheduleBuilder', () => {
 
       expect(onValueChange).not.toHaveBeenCalled();
       expect(readBack(container)).toBe('Every day at 9:15 AM UTC.');
-      expect(timeInput.value).toBe('09:15');
+      expect(timeInput.value).toBe('9:15 AM');
+    });
+
+    test('At is a text field that reads 9:00 AM, with no browser time control or clock glyph (rows 74d 74s)', () => {
+      const { getByLabelText } = render(ScheduleBuilder, {});
+      const at = requiredInstance(getByLabelText('At'), HTMLInputElement);
+      expect(at.type).toBe('text');
+      expect(at.value).toBe('9:00 AM');
+    });
+
+    test('At leaves a time it cannot read as it was, and says nothing was changed', async () => {
+      const onValueChange = mock();
+      const { container, getByLabelText } = render(ScheduleBuilder, { onValueChange });
+      const at = requiredInstance(getByLabelText('At'), HTMLInputElement);
+      await fireEvent.input(at, { target: { value: 'noonish' } });
+      await fireEvent.change(at, { target: { value: 'noonish' } });
+      expect(onValueChange).not.toHaveBeenCalled();
+      expect(at.value).toBe('9:00 AM');
+      expect(readBack(container)).toBe('Every day at 9:00 AM UTC.');
     });
 
     test('Custom days starts from the previous days and toggles one segmented day group', async () => {
@@ -1095,7 +1113,7 @@ describe('ScheduleBuilder', () => {
     test('aggregates the styles of the fields it composes before the component layer', async () => {
       const { readFileSync } = await import('node:fs');
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
-      for (const imported of ['chip', 'combobox', 'form-field', 'input', 'select', 'time-field']) {
+      for (const imported of ['chip', 'combobox', 'form-field', 'input', 'select']) {
         const at = css.indexOf(`@import '../${imported}/${imported}.css'`);
         expect(at).toBeGreaterThan(css.indexOf('@layer cinder.tokens'));
         expect(at).toBeLessThan(css.indexOf('@layer cinder.components'));

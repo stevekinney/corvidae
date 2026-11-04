@@ -176,14 +176,15 @@
   }
 
   /* Phone width, by the view's own width: the columns restack. The label with its dot and the type
-   * share the first line with the type at the end, and the description sits below. */
+   * share the first line with the type at the end, and the description sits below. The type column
+   * takes its content up to half the row, then wraps, so a long type never squeezes the label. */
   @container (max-inline-size: 30rem) {
     .cinder-schema-view__row--header {
       display: none;
     }
 
     .cinder-schema-view__row {
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) fit-content(50%);
       grid-template-areas:
         'field kind'
         'about about';

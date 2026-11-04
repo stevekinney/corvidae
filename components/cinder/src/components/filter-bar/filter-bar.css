@@ -18,6 +18,11 @@
     min-inline-size: 0;
   }
 
+  /* The root is the last place focus can land when the control that held it was removed. */
+  .cinder-filter-bar:focus {
+    outline: none;
+  }
+
   .cinder-filter-bar__row {
     display: flex;
     flex-wrap: nowrap;

@@ -4,7 +4,7 @@
   import type { ComboboxFooterContext, ComboboxOption } from '../combobox/combobox.types.ts';
   import NumberInput from '../number-input/number-input.svelte';
   import Select from '../select/select.svelte';
-  import TimeField from '../time-field/time-field.svelte';
+  import ScheduleBuilderTimeInput from './schedule-builder-time-input.svelte';
   import CronFields from './schedule-builder-cron-fields.svelte';
   import type {
     ScheduleBuilderVariant,
@@ -51,7 +51,7 @@
     timeZone: string;
     timeZoneOptions: readonly ComboboxOption[];
     onRepeatsChange: (event: Event) => void;
-    onTimeChange: (value: string | undefined) => void;
+    onTimeChange: (value: string) => void;
     onToggleDay: (day: number) => void;
     onDayOfMonthChange: (value: number | null) => void;
     onIntervalCountChange: (value: number | null) => void;
@@ -123,7 +123,7 @@
   </div>
   {#if showTimeOfDay}
     <div class="cinder-schedule-builder__time">
-      <TimeField id={`${baseId}-at`} label="At" bind:value={() => draft.time, onTimeChange} />
+      <ScheduleBuilderTimeInput id={`${baseId}-at`} value={draft.time} {onTimeChange} />
     </div>
   {/if}
   {#if compact && showTimeZone}

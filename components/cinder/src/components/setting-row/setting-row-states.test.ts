@@ -182,4 +182,20 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
     expect(control).not.toBeNull();
     expect(field.firstElementChild?.classList.contains('cinder-form-field__label-row')).toBe(true);
   });
+
+  test('stacked, the description leads, the control follows and the error sits directly under it (row 50i)', async () => {
+    const css = await Bun.file(new URL('./setting-row.css', import.meta.url)).text();
+    const narrow = css.slice(css.indexOf('@container'));
+    const orders = [...narrow.matchAll(/\{\s*(?:[^{}]*?;\s*)?order: (\d+);\s*\}/g)].map((match) =>
+      Number(match[1]),
+    );
+    // As the rules are written: the control (2), the description (1), status and managed (3), the error (4).
+    expect(orders).toEqual([2, 1, 3, 4]);
+  });
+
+  test('Retry is an accent link, not the error red (row 47k)', async () => {
+    const css = await Bun.file(new URL('./setting-row.css', import.meta.url)).text();
+    const retry = /\.cinder-setting-row__retry \{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(retry).toContain('color: var(--cinder-accent-text)');
+  });
 });

@@ -17,6 +17,12 @@ const schema = {
       description:
         'The values of the chosen items. Bindable. The picker works on a copy while it is open: Done\nwrites it back (in the order of `items`, keeping any value no item names), and Cancel and\ndismissing leave it alone.',
     },
+    query: {
+      type: 'string',
+      description:
+        'The text in the search field. Bindable. It is cleared when the picker closes, so it opens empty\nunless the page sets it before opening, such as to open on a search that matches nothing.',
+      default: '',
+    },
     title: {
       type: 'string',
       description: 'Heading of the dialog.',

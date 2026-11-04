@@ -308,6 +308,9 @@ describe('SchemaView', () => {
     const narrow = css.slice(css.indexOf('@container'));
     expect(narrow).toContain("'field kind'");
     expect(narrow).toContain("'about about'");
+    // The type column is capped at half the row, so a long type wraps instead of squeezing the label (row 29i).
+    expect(narrow).toContain('fit-content(50%)');
+    expect(narrow).not.toMatch(/grid-template-columns: minmax\(0, 1fr\) auto;/);
   });
 
   test('never dumps the raw schema while the disclosure is closed', () => {

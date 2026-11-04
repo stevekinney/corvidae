@@ -40,6 +40,7 @@
   let {
     open = $bindable(false),
     selected = $bindable<string[]>([]),
+    query = $bindable(''),
     items,
     groups,
     title = 'Add tools and skills',
@@ -51,7 +52,7 @@
     noneChosenLabel = 'none chosen',
     emptyMetaLabel = 'No risk word',
     emptyLabel = `No ${itemNoun} to choose from.`,
-    noMatchTitle = (query: string) => `No ${itemNoun} match “${query}”`,
+    noMatchTitle = (typed: string) => `No ${itemNoun} match “${typed}”`,
     noMatchHint = 'Try a shorter word.',
     clearSearchLabel = 'Clear search',
     doneLabel = 'Done',
@@ -67,7 +68,6 @@
 
   // The picker edits a copy, so Cancel leaves what the page holds untouched.
   let chosen = $state<ReadonlySet<string>>(new Set());
-  let query = $state('');
   // A group the person opened or closed by hand; a group not listed here follows the default
   // (the first one open, the rest closed) in the long-list layout.
   const toggled = new SvelteMap<string, boolean>();
@@ -78,9 +78,13 @@
   $effect(() => {
     if (open === previousOpen) return;
     previousOpen = open;
-    if (!open) return;
+    // A search belongs to one visit: it is cleared as the picker closes, so it opens empty unless
+    // the page sets `query` before opening it.
+    if (!open) {
+      query = '';
+      return;
+    }
     chosen = new Set(untrack(() => selected));
-    query = '';
     toggled.clear();
   });
 

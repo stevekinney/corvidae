@@ -19,6 +19,7 @@ import {
   formatClockTime,
   joinCron,
   orderTimeZones,
+  parseClockText,
   parseTime,
   splitCron,
   timeZoneDisplayName,
@@ -407,6 +408,31 @@ describe('schedule-builder utilities', () => {
   });
 
   describe('read-back', () => {
+    test.each([
+      ['9:00 AM', '09:00', '09:00'],
+      ['2:30 pm', '09:00', '14:30'],
+      ['9am', '21:00', '09:00'],
+      ['930 p.m.', '09:00', '21:30'],
+      ['12:00 AM', '09:00', '00:00'],
+      ['12 PM', '09:00', '12:00'],
+      ['14:30', '09:00', '14:30'],
+      ['09:15', '21:00', '09:15'],
+      ['0:05', '09:00', '00:05'],
+      ['10', '09:00', '10:00'],
+      ['10', '21:00', '22:00'],
+      ['12', '09:00', '00:00'],
+      ['12', '21:00', '12:00'],
+    ])('parseClockText reads %s (was %s) as %s', (text, previous, expected) => {
+      expect(parseClockText(text, previous)).toBe(expected);
+    });
+
+    test.each(['', 'noonish', '25:00', '9:60', '13 PM', '0 AM', '9:5'])(
+      'parseClockText does not read %p as a time',
+      (text) => {
+        expect(parseClockText(text, '09:00')).toBeUndefined();
+      },
+    );
+
     test('formatClockTime reads a 24-hour time on a 12-hour clock', () => {
       expect(formatClockTime('00:00')).toBe('12:00 AM');
       expect(formatClockTime('09:05')).toBe('9:05 AM');

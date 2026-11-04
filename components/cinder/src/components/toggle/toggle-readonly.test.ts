@@ -102,4 +102,18 @@ describe('Toggle read-only and description (row 72r)', () => {
     expect(switchOf(container).hasAttribute('aria-describedby')).toBe(false);
     expect(container.querySelector('.cinder-toggle-field__description')).toBeNull();
   });
+
+  test('a read-only switch that is on is drawn in a muted accent, at rest and on hover (row 72r)', async () => {
+    const css = await Bun.file(new URL('./toggle.css', import.meta.url)).text();
+    const muted = css.indexOf('[data-cinder-readonly][data-cinder-checked],');
+    expect(muted).toBeGreaterThan(-1);
+    const block = css.slice(muted, css.indexOf('}', muted));
+    expect(block).toContain('[data-cinder-readonly][data-cinder-checked]:hover');
+    expect(block).toContain('background-color: var(--_cinder-toggle-track-readonly)');
+    expect(css).toMatch(
+      /--_cinder-toggle-track-readonly: color-mix\(\s*in oklch,\s*var\(--cinder-accent-solid\)/,
+    );
+    // Not the full accent an editable switch uses.
+    expect(block).not.toContain('var(--cinder-accent-solid)');
+  });
 });

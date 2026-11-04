@@ -86,6 +86,7 @@ The title's line carries a counter ("3 of 9 tools chosen"), a search field sits 
 | `noMatchHint` | `string` | no | `"Try a shorter word."` | The line under the empty state's heading. |
 | `noneChosenLabel` | `string` | no | `"none chosen"` | Words on a group's header, after its count, when none of its items is chosen and something else is. Skills and other groups that cannot be chosen from show their `note` instead. |
 | `open` | `boolean` | yes | — | Whether the picker is open. Bindable. It closes itself on Done and Cancel, on Escape and on a click outside, and opens with the chosen items as `selected` says. |
+| `query` | `string` | no | `""` | The text in the search field. Bindable. It is cleared when the picker closes, so it opens empty unless the page sets it before opening, such as to open on a search that matches nothing. |
 | `searchLabel` | `string` | no | `"Search tools and skills"` | Accessible name and placeholder of the search field. |
 | `selected` | `string`[] | no | — | The values of the chosen items. Bindable. The picker works on a copy while it is open: Done writes it back (in the order of `items`, keeping any value no item names), and Cancel and dismissing leave it alone. |
 | `title` | `string` | no | `"Add tools and skills"` | Heading of the dialog. |

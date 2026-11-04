@@ -41,6 +41,9 @@ describe('isIdentifierField', () => {
     ['run_id', 'run-1'],
     ['id', 'abc'],
     ['contentHash', 'x'],
+    ['path', 'release-notes.md'],
+    ['filePath', 'src/index.ts'],
+    ['filename', 'notes.txt'],
     ['any', '3f2b9c1a-7d4e-4a86-9b0c-1e5d6f7a8b90'],
     ['any', 'a'.repeat(40)],
   ])('%s = %s is an identifier', (key, value) => {
@@ -51,6 +54,8 @@ describe('isIdentifierField', () => {
     ['name', 'Ada'],
     ['paid', 'idle'],
     ['video', 'clip'],
+    ['pathway', 'Ada'],
+    ['profile', 'Ada'],
     ['userId', ''],
     ['userId', 42],
     ['any', 'abcdef'],

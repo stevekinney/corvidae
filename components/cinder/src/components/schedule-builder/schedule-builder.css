@@ -5,7 +5,6 @@
 @import '../input/input.css';
 @import '../number-input/number-input.css';
 @import '../select/select.css';
-@import '../time-field/time-field.css';
 
 @layer cinder.components {
   /* ========================================

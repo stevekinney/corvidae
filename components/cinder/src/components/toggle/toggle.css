@@ -163,8 +163,14 @@
  * ---------------------------------------- */
 
   /* A read-only switch is drawn as it is set, still focusable, with no hover step and no pointer
-   * cursor, because a press changes nothing. */
+   * cursor, because a press changes nothing. Its on track is the accent muted toward the surface,
+   * so it reads as a value shown and not a control to press (row 72r). */
   .cinder-toggle[data-cinder-readonly] {
+    --_cinder-toggle-track-readonly: color-mix(
+      in oklch,
+      var(--cinder-accent-solid),
+      var(--cinder-surface) 45%
+    );
     cursor: default;
   }
 
@@ -172,10 +178,11 @@
     background-color: var(--cinder-toggle-track-off, var(--cinder-toggle-track-off-resting));
   }
 
+  .cinder-toggle[data-cinder-readonly][data-cinder-checked],
   .cinder-toggle[data-cinder-readonly][data-cinder-checked]:hover:not(:disabled):not(
       [aria-disabled='true']
     ) {
-    background-color: var(--cinder-toggle-track-on, var(--cinder-accent-solid));
+    background-color: var(--_cinder-toggle-track-readonly);
   }
 
   .cinder-toggle[data-cinder-readonly] ~ .cinder-toggle-field__label {

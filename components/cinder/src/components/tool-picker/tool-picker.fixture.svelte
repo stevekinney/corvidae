@@ -6,12 +6,14 @@
     items,
     groups,
     initial = [],
+    query = '',
     onDone,
     onCancel,
   }: {
     items: ToolPickerItem[];
     groups?: ToolPickerGroup[];
     initial?: string[];
+    query?: string;
     onDone?: (selected: string[]) => void;
     onCancel?: () => void;
   } = $props();
@@ -27,6 +29,7 @@
 <ToolPicker
   bind:open
   bind:selected
+  {query}
   {items}
   {groups}
   {...onDone ? { onDone } : {}}

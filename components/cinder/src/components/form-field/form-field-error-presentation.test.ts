@@ -76,6 +76,32 @@ describe('FormField error presentation (rows 42l, 34d, 34m, 34t)', () => {
     expect(text?.nextElementSibling?.tagName).toBe('A');
   });
 
+  test('the error action is an accent link and the glyph shares a block with the words (rows 34d, 47k)', async () => {
+    const css = await Bun.file(new URL('./form-field.css', import.meta.url)).text();
+    const action =
+      /\.cinder-form-field__error :where\(a, button\) \{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(action).toContain('color: var(--cinder-accent-text)');
+    expect(action).toContain('font-weight: var(--cinder-font-semibold)');
+    const error = /\.cinder-form-field__error \{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    // Nothing wraps between the glyph and the message, so the glyph never sits alone on a line.
+    expect(error).not.toContain('flex-wrap');
+    const { container } = render(FormField, {
+      props: {
+        id: 'server-url',
+        label: 'Server URL',
+        error: 'This URL is already connected as GitHub.',
+        errorAction: openGithub,
+        children: control,
+      },
+    });
+    const body = requiredInstance(
+      container.querySelector('.cinder-form-field__error-body'),
+      HTMLElement,
+    );
+    expect(body.querySelector('.cinder-form-field__error-text')).not.toBeNull();
+    expect(body.querySelector('a')?.textContent).toBe('Open GitHub');
+  });
+
   test('with no error the live region stays mounted and empty, with no glyph', () => {
     const { container } = render(FormField, {
       props: { id: 'server-url', label: 'Server URL', errorAction: openGithub, children: control },

@@ -1110,6 +1110,13 @@ describe('Table data display', () => {
     );
   });
 
+  test('a stacked card sets its controls to 44px so a select is as tall as its row (row 40a)', () => {
+    const stacked = tableCss.slice(tableCss.indexOf('[data-cinder-stacked]'));
+    expect(stacked).toMatch(
+      /:is\(\.cinder-select, \.cinder-input, \.cinder-button\) \{\s*min-block-size: 2\.75rem;/,
+    );
+  });
+
   test('the table is framed with a quiet header and a caption kept for screen readers', () => {
     const frame = ruleBody('.cinder-table');
     expect(frame).toMatch(/border:\s*1px solid var\(--cinder-border\)/);

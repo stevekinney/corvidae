@@ -479,6 +479,82 @@ describe('FilterBar choice chips (rows 10e 52l 52m 53i 53j)', () => {
     );
   });
 
+  test('removing that filter keeps keyboard focus inside the bar (the Agent chip, then the root)', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      facets: [AGENT],
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(container.querySelectorAll('.cinder-filter-bar__chip-remove').length).toBe(0),
+    );
+    await waitFor(() => expect(document.activeElement?.id).toContain('facet-agent'));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  test('removing it from a bar of only a search field focuses the search field', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(
+        document.activeElement === container.querySelector('.cinder-search-field__input'),
+      ).toBe(true),
+    );
+  });
+
+  test('removing the last control of all focuses the bar itself rather than the page', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(container.querySelectorAll('.cinder-filter-bar__chip-remove').length).toBe(0),
+    );
+    await waitFor(() =>
+      expect(document.activeElement === container.querySelector('[role="search"]')).toBe(true),
+    );
+  });
+
+  test("removing one of two unlisted filters focuses the other filter's Remove", async () => {
+    let applied = [
+      { key: 'updated', value: 'Last 24 hours', label: 'Updated' },
+      { key: 'owner', value: 'Mina', label: 'Owner' },
+    ];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      appliedFilters: applied,
+      onFilterRemove: (key: string) => {
+        applied = applied.filter((filter) => filter.key !== key);
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Remove filter: Owner: Mina'),
+    );
+  });
+
   test('in the narrow form that filter is a row in the Filter menu with its own Remove', async () => {
     const removed: string[] = [];
     const { container } = render(FilterBar, {
@@ -495,6 +571,32 @@ describe('FilterBar choice chips (rows 10e 52l 52m 53i 53j)', () => {
     )!;
     await fireEvent.click(remove);
     expect(removed).toEqual(['updated']);
+  });
+
+  test('removing that row in the Filter menu keeps focus inside the bar', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__menu-button')!);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    await fireEvent.click(
+      document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Remove filter: Updated: Last 24 hours"]',
+      )!,
+    );
+    await waitFor(() => expect(document.activeElement === document.body).toBe(false));
+    expect(
+      container.contains(document.activeElement) ||
+        document.querySelector('.cinder-filter-bar__menu')?.contains(document.activeElement),
+    ).toBe(true);
   });
 
   test('focus lands on the add chip after the consumer clears the filter on remove', async () => {

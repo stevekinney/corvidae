@@ -1,41 +1,31 @@
 <script lang="ts" module>
-  export const title = 'Save bar with unsaved changes and a failed save';
+  export const title = 'Summary left, Cancel then primary right';
   export const description =
-    'The bar at the end of a form: the unsaved-change count and the effect of saving on the left, Reset then Save on the right, with a top divider. A failed save draws a danger alert above the buttons, the choices stay as ticked, and Save keeps its label as the retry. sticky pins the bar to the bottom of a long form.';
+    'The bar at the end of a form: a summary of what the primary button will do on the left, and the secondary Cancel then the primary on the right, under a top divider. The primary names how many tools join and follows the number of checked tools.';
 </script>
 
 <script lang="ts">
   import { Button, Checkbox, Form, FormActions } from '@lostgradient/cinder';
 
-  let opus = $state(true);
-  let sonnet = $state(true);
-  let failed = $state(true);
-  let changes = $derived((opus ? 0 : 1) + (sonnet ? 0 : 1));
+  let issues = $state(true);
+  let pulls = $state(true);
+  let branches = $state(false);
+  const chosen = $derived([issues, pulls, branches].filter(Boolean).length);
 </script>
 
-<Form
-  onSubmit={() => {
-    failed = !failed;
-  }}
-  novalidate
->
-  <Checkbox id="allow-opus" label="Claude Opus 5.5" bind:checked={opus} />
-  <Checkbox id="allow-sonnet" label="Claude Sonnet 5.5" bind:checked={sonnet} />
-  <FormActions
-    unsavedChanges={changes}
-    errorTitle={failed ? 'Couldn’t save.' : undefined}
-    error={failed ? 'Interborough didn’t answer. Your choices are still here.' : undefined}
-  >
-    {#snippet summary()}Saving raises the policy revision.{/snippet}
+<Form onSubmit={() => {}} novalidate>
+  <Checkbox id="connect-issues" label="List issues" bind:checked={issues} />
+  <Checkbox id="connect-pulls" label="Create pull request" bind:checked={pulls} />
+  <Checkbox id="connect-branches" label="Delete branch" bind:checked={branches} />
+  <FormActions label="Connect tools">
+    {#snippet summary()}{chosen}
+      {chosen === 1 ? 'tool' : 'tools'} from GitHub will join Capabilities.{/snippet}
     {#snippet end()}
-      <Button
-        variant="secondary"
-        onclick={() => {
-          opus = true;
-          sonnet = true;
-        }}>Reset to default</Button
-      >
-      <Button type="submit" variant="primary">Save</Button>
+      <Button variant="secondary">Cancel</Button>
+      <Button type="submit" variant="primary" disabled={chosen === 0}>
+        Connect {chosen}
+        {chosen === 1 ? 'tool' : 'tools'}
+      </Button>
     {/snippet}
   </FormActions>
 </Form>

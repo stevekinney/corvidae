@@ -10,6 +10,16 @@
 
 <div style="display: grid; gap: 1rem; max-inline-size: 44rem;">
   <SettingRow
+    id="row-idle"
+    label="Timeout"
+    identifier="example.key"
+    description="A value as last saved."
+  >
+    {#snippet control()}
+      <DurationField id="row-idle" value={30_000} unit="s" unitSelectable={false} />
+    {/snippet}
+  </SettingRow>
+  <SettingRow
     id="row-saving"
     label="Workflow claim renew interval"
     identifier="engine.workflowClaimRenewInterval"
@@ -22,12 +32,32 @@
   </SettingRow>
   <SettingRow
     id="row-saved"
+    label="Timeout"
+    identifier="example.key"
+    description="Saved when you left the field."
+    status="saved"
+  >
+    {#snippet control()}
+      <DurationField id="row-saved" value={45_000} unit="s" unitSelectable={false} />
+    {/snippet}
+  </SettingRow>
+  <SettingRow
+    id="row-restart"
     label="Max concurrent runs"
     identifier="engine.maxConcurrentRuns"
-    description="The most workflow runs that execute at the same time."
+    description="The most workflow runs that execute at the same time. Static until you change it."
+    status="restart"
+  >
+    {#snippet control()}<Input id="row-restart" value="4" />{/snippet}
+  </SettingRow>
+  <SettingRow
+    id="row-saved-restart"
+    label="Max concurrent runs"
+    identifier="engine.maxConcurrentRuns"
+    description="Saved, and not in effect until the host restarts."
     status="saved-restart"
   >
-    {#snippet control()}<Input id="row-saved" value="4" />{/snippet}
+    {#snippet control()}<Input id="row-saved-restart" value="4" />{/snippet}
   </SettingRow>
   <SettingRow
     id="row-invalid"

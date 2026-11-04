@@ -2,12 +2,12 @@
 
 ## Pattern
 
-The root element is `role="group"` labeled by the `label` prop (default `"Schedule"`), `aria-label`, or `aria-labelledby`. Inside it is an ordinary form: a native `Select` labeled "Repeats", a `TimeField` labeled "At" (not rendered for an interval or a custom cron), the fields the chosen Repeats needs, and a `Combobox` picker labeled "Time zone" (not rendered for an interval, which counts from its start). Only the fields for the current choice are mounted, so no two visible fields share a label.
+The root element is `role="group"` labeled by the `label` prop (default `"Schedule"`), `aria-label`, or `aria-labelledby`. Inside it is an ordinary form: a native `Select` labeled "Repeats", a text `Input` labeled "At" that reads and writes a time such as `9:00 AM` (not rendered for an interval or a custom cron), the fields the chosen Repeats needs, and a `Combobox` picker labeled "Time zone" (not rendered for an interval, which counts from its start). Only the fields for the current choice are mounted, so no two visible fields share a label.
 
 ## Roles names states
 
 - Repeats and the interval Unit are native `<select>` elements with `<label for>` associations.
-- Every text/number/time field (`Input`, `NumberInput`, `TimeField`) carries its own `<label for>` association, so `getByLabelText`-style lookup and screen-reader field announcement both work out of the box.
+- Every text/number/time field (`Input`, `NumberInput`) carries its own `<label for>` association, so `getByLabelText`-style lookup and screen-reader field announcement both work out of the box.
 - The Custom days toggles are `Chip` `mode="toggle"` buttons (`aria-pressed`) joined into one `role="group"` labeled `"Days of week"`; a selected day is filled, never marked by colour alone, because `aria-pressed` carries it too. Each chip shows the short day name (`"Mon"`) but carries the full day name (`"Monday"`) as its `aria-label`. The last selected day cannot be cleared, so the choice always runs on at least one day.
 - The time zone is a `Combobox` picker (`role="combobox"` button; the open panel has its own "Search time zones" field and a listbox). Typing filters every zone by name, city or IANA id, and an underscore and a space match alike. The footer ("Showing 5 of 418 zones. Type to narrow.") sits outside the listbox. See `combobox.a11y.md`.
 - Custom cron shows five labelled `Input`s, each described by its range hint ("0–59"). A field that needs fixing carries `aria-invalid="true"` and is described by one shared error line, placed after the five fields and announced politely, that names the first field to fix. There is no alert and no banner.
@@ -23,7 +23,7 @@ The root element is `role="group"` labeled by the `label` prop (default `"Schedu
 | `ArrowUp` / `ArrowDown` | In Time zone, move through the filtered zones; in a native select, change the choice. |
 | `Enter` | In Time zone, commit the active zone. |
 | `Space` / `Enter` | Activate a focused day toggle. |
-| Native text/number/time entry | Standard browser editing keys apply inside `Input`, `NumberInput`, and `TimeField`. |
+| Native text/number/time entry | Standard browser editing keys apply inside `Input` and `NumberInput`. |
 
 ## Mouse / pointer
 

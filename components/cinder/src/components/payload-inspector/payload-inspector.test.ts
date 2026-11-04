@@ -517,8 +517,13 @@ describe('PayloadInspector: a patch value', () => {
       '+ Refunds now ask for approval before money moves.',
     ]);
     expect(getByRole('button', { name: 'Show all 9 lines' })).not.toBeNull();
-    // The path beside it stays a plain value.
+    // The path beside it is a single value in monospace, not a second diff (row 27h).
     expect(container.querySelectorAll('[data-cinder-patch]')).toHaveLength(1);
+    const path = requiredInstance(
+      container.querySelector('.cinder-payload-inspector__identifier'),
+      HTMLElement,
+    );
+    expect(path.textContent).toBe('release-notes.md');
   });
 
   test('text that only looks like a diff stays plain text', () => {

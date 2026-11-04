@@ -386,6 +386,36 @@ export function formatClockTime(time: string): string {
   return `${twelveHour}:${pad2(minute)} ${period}`;
 }
 
+/**
+ * Reads what a person typed into the At field as a `HH:MM` time on a 24-hour clock, or `undefined`
+ * when it is not a time. It accepts `9:00 AM`, `9am`, `930 pm`, `14:30` and `09:00`. A bare hour
+ * from 1 to 12 with no AM or PM keeps the period of `previous`, so retyping the hour of `9:00 AM`
+ * as `10` reads as 10:00 AM; a leading zero, 0 or an hour above 12 reads as a 24-hour time.
+ */
+export function parseClockText(text: string, previous: string): string | undefined {
+  const match = text
+    .trim()
+    .toLowerCase()
+    .match(/^(\d{1,2})(?::?(\d{2}))?\s*(?:([ap])\.?(?:m\.?)?)?$/);
+  if (!match) return undefined;
+  const typedHour = Number(match[1]);
+  const minute = match[2] === undefined ? 0 : Number(match[2]);
+  if (minute > 59 || typedHour > 23) return undefined;
+  const period = match[3];
+  let hour = typedHour;
+  if (period !== undefined) {
+    if (typedHour < 1 || typedHour > 12) return undefined;
+    hour = (typedHour % 12) + (period === 'p' ? 12 : 0);
+  } else if (
+    typedHour >= 1 &&
+    typedHour <= 12 &&
+    !(match[1]!.length === 2 && match[1]!.startsWith('0'))
+  ) {
+    hour = (typedHour % 12) + (parseTime(previous).hour >= 12 ? 12 : 0);
+  }
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
 const zoneNameCache = new Map<string, string>();
 
 /**
