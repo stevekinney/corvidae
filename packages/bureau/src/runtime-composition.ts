@@ -692,6 +692,22 @@ export const DEFAULT_RUN_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Obje
   'memory:write',
 ]);
 
+/** The default ceiling for memory tools listed by an agent file. */
+export const DEFAULT_TOOL_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Object.freeze([
+  'memory:search',
+  'memory:write',
+  'memory:get',
+  'memory:delete',
+]);
+
+const MEMORY_TOOL_CAPABILITIES: Readonly<Record<string, readonly MemoryCapability[]>> =
+  Object.freeze({
+    memory_recall: ['memory:search'],
+    memory_store: ['memory:write'],
+    memory_correct: ['memory:get', 'memory:write'],
+    memory_forget: ['memory:delete'],
+  });
+
 /**
  * COR-1546 — who a run's memory belongs to. Memory is partitioned by the Bureau's deployment
  * (`tenantId`) and the run's owner of record (`ownerId`), the same pair `bureau.memory.*` builds
@@ -750,6 +766,42 @@ export function createRunMemoryAuthority(
     projection: 'bureau',
     delegatedBy: [
       { principal: { kind: 'service', id: 'bureau' }, capabilities: deployment },
+      {
+        principal: memoryPrincipalFor(requestContext.authority.principalId),
+        capabilities: granted,
+      },
+    ],
+  });
+}
+
+/** Builds the authority a listed memory tool uses for one call. */
+export function createToolMemoryAuthority(
+  requestContext: ToolRequestContext,
+  toolName: string,
+  options: BureauMemoryAuthorityOptions = {},
+): MemoryAuthority {
+  const deployment = options.toolCapabilities ?? DEFAULT_TOOL_MEMORY_CAPABILITIES;
+  const known = new Set<string>(MEMORY_CAPABILITIES);
+  const requested = requestContext.authority.capabilities.filter((capability) =>
+    known.has(capability),
+  );
+  const ceiling =
+    requested.length === 0
+      ? deployment
+      : deployment.filter((capability) => requested.includes(capability));
+  const required = Object.hasOwn(MEMORY_TOOL_CAPABILITIES, toolName)
+    ? (MEMORY_TOOL_CAPABILITIES[toolName] ?? [])
+    : [];
+  const granted = ceiling.filter((capability) => required.includes(capability));
+  return createMemoryAuthority({
+    principal: { kind: 'tool', id: toolName },
+    tenantId: requestContext.authority.tenantId,
+    ownerId: requestContext.authority.ownerId,
+    purpose: 'tool',
+    capabilities: granted,
+    policyRevision: requestContext.authority.authorizationRevision,
+    projection: 'tool',
+    delegatedBy: [
       {
         principal: memoryPrincipalFor(requestContext.authority.principalId),
         capabilities: granted,

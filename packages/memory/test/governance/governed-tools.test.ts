@@ -150,4 +150,44 @@ describe('createGovernedMemoryTools (model-facing, untrusted)', () => {
       principal: { kind: 'tool', id: 'memory_recall' },
     });
   });
+
+  it('corrects through supersession and preserves the original in history', async () => {
+    const tools = createGovernedMemoryTools(fixture.memory, {
+      resolveContext: ({ toolName, requestContext }) =>
+        requestContext === undefined
+          ? undefined
+          : {
+              collection: requestContext.agentId ?? 'house',
+              authority: createMemoryAuthority({
+                principal: { kind: 'tool', id: toolName },
+                tenantId: requestContext.authority.tenantId,
+                ownerId: requestContext.authority.ownerId,
+                purpose: 'tool',
+                capabilities: ['memory:get', 'memory:write'],
+                policyRevision: requestContext.authority.authorizationRevision,
+                projection: 'tool',
+              }),
+            },
+    });
+    const context = { requestContext: { ...requestContext('owner-a'), agentId: 'house' } };
+    const [hit] = await fixture.memory.search(principalA, 'spare key', { collection: 'house' });
+    expect(
+      await tools.correct.execute(
+        { id: hit!.record.id, content: 'The spare key is in the desk.' },
+        context,
+      ),
+    ).toEqual({
+      corrected: true,
+      id: hit!.record.id,
+    });
+    const corrected = await fixture.memory.search(principalA, 'spare key', { collection: 'house' });
+    expect(corrected.map(({ record }) => record.content)).toContain(
+      'The spare key is in the desk.',
+    );
+    const original = await fixture.memory.get(principalA, {
+      id: hit!.record.id,
+      collection: 'house',
+    });
+    expect(original?.content).toContain('under the mat');
+  });
 });
