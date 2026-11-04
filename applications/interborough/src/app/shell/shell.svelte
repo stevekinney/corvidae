@@ -37,6 +37,7 @@
     provideConnection,
   } from '../connection.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
+  import { restartActivity } from '../restart/host-restart-flow.svelte.ts';
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
   import { connectNotificationFeed } from '../notification-feed.svelte.ts';
@@ -130,6 +131,18 @@
   });
   // Disposed with the shell, not with the effect: the monitor outlives a re-run of the effect.
   onDestroy(() => connection.dispose());
+
+  // While the host restarts the monitor keeps quiet (see the banner below). When the restart is
+  // over it asks the server once, so a host that is back does not wait out a countdown behind a
+  // banner that is no longer true.
+  let restartWasActive = false;
+  $effect(() => {
+    const active = restartActivity.active;
+    untrack(() => {
+      if (restartWasActive && !active) void connection.check();
+      restartWasActive = active;
+    });
+  });
 
   const theme = new ThemeStore();
   const layout = provideLayoutPreferences(new LayoutPreferences());
@@ -266,8 +279,9 @@
   <Sidebar {client} />
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen />
-    {#if connection.unreachable}
-      <!-- The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
+    {#if connection.unreachable && !restartActivity.active}
+      <!-- While the host restarts the restart dialog is the one account of it, so this stays quiet.
+           The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
            answering with its countdown, or the retries stopped. Retry now is always there. -->
       <Banner
         preset={connectionBannerPreset(connection)}
