@@ -230,6 +230,19 @@ describe('bureau.settings on a Bureau', () => {
       const snapshot = await harness.bureau.settings.get();
       expect(snapshot.revision).toBe(0);
       expect(snapshot.values['decisions.fallbackModel']).toBeUndefined();
+
+      await harness.putAgent('custom', ['settings-get']);
+      const read = await harness.callTool(
+        'settings-get',
+        {},
+        { agent: 'custom', principal: 'library:custom' },
+      );
+      expect(read.outcome).toBe('success');
+      expect(read.result).toEqual({
+        outcome: 'rejected',
+        reason: 'forbidden',
+        message: 'Missing scope bureau.settings:read.',
+      });
     } finally {
       await harness.dispose();
     }
