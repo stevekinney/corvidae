@@ -203,6 +203,7 @@ export { default as timeFieldSchema } from '../components/time-field/time-field.
 export { default as timelineSchema } from '../components/timeline/timeline.schema.ts';
 export { default as toastRegionSchema } from '../components/toast-region/toast-region.schema.ts';
 export { default as toggleSchema } from '../components/toggle/toggle.schema.ts';
+export { default as toolCallPanelSchema } from '../components/tool-call-panel/tool-call-panel.schema.ts';
 export { default as toolCallRailSchema } from '../components/tool-call-rail/tool-call-rail.schema.ts';
 export { default as toolPickerSchema } from '../components/tool-picker/tool-picker.schema.ts';
 export { default as toolbarSchema } from '../components/toolbar/toolbar.schema.ts';

@@ -1182,6 +1182,17 @@ export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-swit
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';
 
+export { default as ToolCallPanel } from './components/tool-call-panel/index.ts';
+export type {
+  ToolCallPanelError,
+  ToolCallPanelLabels,
+  ToolCallPanelPlacement,
+  ToolCallPanelProps,
+  ToolCallPanelResolving,
+  ToolCallPanelStatus,
+  ToolCallPanelView,
+} from './components/tool-call-panel/index.ts';
+
 export { default as ToolCallRail } from './components/tool-call-rail/index.ts';
 export type {
   ToolCallRailCall,

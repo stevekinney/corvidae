@@ -1,0 +1,43 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "tool-call-panel",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "failed-docked",
+      "title": "A failed call, docked",
+      "description": "Selecting a rail row docks its panel beside the conversation, about 340px wide, with an X to close it. The header reads \"Send email\" with \"send-email\" small and monospaced, then a red dot and \"Failed 10.0s · call 28 of 30\". The Input section lists its fields (To, Template, Order ID) and the Error section is a tinted danger block with the message first, then the code in monospace and Retryable Yes. Under it the panel says what retrying sends, then a full-width secondary \"Ask the agent to retry\" with a refresh icon and secondary \"Copy input\" and \"Copy error\" buttons. Approve elsewhere on the page stays the only primary action.",
+      "code": "<script lang=\"ts\">\n  import { ToolCallPanel } from '@lostgradient/cinder';\n\n  let open = $state(true);\n</script>\n\n<div style=\"display: flex; justify-content: flex-end; min-block-size: 30rem;\">\n  <ToolCallPanel\n    bind:open\n    placement=\"docked\"\n    name=\"Send email\"\n    identifier=\"send-email\"\n    status=\"failed\"\n    duration=\"10.0s\"\n    position=\"call 28 of 30\"\n    input={{ to: 'maya@example.com', template: 'refund-notice', orderId: '4471' }}\n    error={{ message: 'No reply from mail.example.com after 10s', code: 'smtp-timeout', retryable: true }}\n    retryMessage=\"Please retry Send email to maya@example.com\"\n    onRetry={() => undefined}\n  />\n</div>\n"
+    },
+    {
+      "id": "each-kind",
+      "title": "The panel for each kind of call",
+      "description": "A done call shows its Input and its Result as fields with secondary \"Copy input\" and \"Copy result\". The waiting call carries a \"Note (optional)\" field with its description, a secondary Deny and the only primary, Approve. A running call shows its Input and a Result that reads \"The result appears when the call finishes.\" The three panels are the same width.",
+      "code": "<script lang=\"ts\">\n  import { ToolCallPanel } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start;\">\n  <ToolCallPanel\n    placement=\"docked\"\n    name=\"Lookup order\"\n    identifier=\"lookup-order\"\n    status=\"done\"\n    duration=\"0.2s\"\n    input={{ orderId: '4471' }}\n    result={{ amount: '$42.00', delivered: 'Monday', flag: 'Damaged' }}\n  />\n  <ToolCallPanel\n    placement=\"docked\"\n    name=\"Issue refund\"\n    identifier=\"issue-refund\"\n    status=\"waiting\"\n    input={{ orderId: '4480', amount: '$27.25', reason: 'Arrived damaged' }}\n    onApprove={() => undefined}\n    onDeny={() => undefined}\n  />\n  <ToolCallPanel\n    placement=\"docked\"\n    name=\"Lookup order\"\n    identifier=\"lookup-order\"\n    status=\"running\"\n    duration=\"1.2s\"\n    input={{ orderId: '4492' }}\n  />\n</div>\n"
+    },
+    {
+      "id": "overlay",
+      "title": "Below 1280px, an overlay",
+      "description": "Under 1280px the panel opens over the conversation on a dimming scrim, closed by its X or Esc, with the same Send email content as the docked panel. It docks only at 1280px and wider (190 sidebar + 250 list + about 480 conversation + 340 panel = 1,260 plus gutters), a threshold separate from the shared 1024px desktop breakpoint. This example forces the overlay so it shows at any width.",
+      "code": "<script lang=\"ts\">\n  import { Button, ToolCallPanel } from '@lostgradient/cinder';\n\n  let open = $state(false);\n  let trigger = $state<HTMLElement | null>(null);\n</script>\n\n<div bind:this={trigger} style=\"display: inline-block;\">\n  <Button variant=\"secondary\" onclick={() => (open = true)}>Open the Send email panel</Button>\n</div>\n<ToolCallPanel\n  bind:open\n  placement=\"overlay\"\n  triggerRef={trigger}\n  name=\"Send email\"\n  identifier=\"send-email\"\n  status=\"failed\"\n  duration=\"10.0s\"\n  position=\"call 28 of 30\"\n  input={{ to: 'maya@example.com', template: 'refund-notice', orderId: '4471' }}\n  error={{ message: 'No reply from mail.example.com after 10s', code: 'smtp-timeout', retryable: true }}\n  retryMessage=\"Please retry Send email to maya@example.com\"\n  onRetry={() => (open = false)}\n/>\n"
+    },
+    {
+      "id": "bottom-sheet",
+      "title": "At 375px, a bottom sheet",
+      "description": "On a phone the panel is a full-height bottom sheet with a grabber and a Close button, like the shared sheets. The title is \"Send email\" with \"send-email\", a red \"Failed · 10.0s · call 28 of 30\", Input fields (To, Template), Error fields (Message, Retryable Yes) and a secondary full-width 44px \"Ask the agent to retry\" at the foot. It cross-fades under reduced motion.",
+      "code": "<script lang=\"ts\">\n  import { Button, ToolCallPanel } from '@lostgradient/cinder';\n\n  let open = $state(false);\n</script>\n\n<Button variant=\"secondary\" onclick={() => (open = true)}>Open the sheet</Button>\n<ToolCallPanel\n  bind:open\n  placement=\"sheet\"\n  name=\"Send email\"\n  identifier=\"send-email\"\n  status=\"failed\"\n  duration=\"10.0s\"\n  position=\"call 28 of 30\"\n  input={{ to: 'maya@example.com', template: 'refund-notice' }}\n  error={{ message: 'No reply from mail.example.com after 10s', retryable: true }}\n  onRetry={() => (open = false)}\n/>\n"
+    },
+    {
+      "id": "bottom-sheet-json",
+      "title": "A phone sheet with JSON blocks",
+      "description": "The phone panel for Lookup order opens as a bottom sheet over the run page with a grabber, the title \"Lookup order\", Close, \"Reads · ran in 0.4s\", and Input and Output JSON blocks. The line under the title is the caller's own words, and Output is the Result heading renamed.",
+      "code": "<script lang=\"ts\">\n  import { Button, ToolCallPanel } from '@lostgradient/cinder';\n\n  let open = $state(false);\n</script>\n\n<Button variant=\"secondary\" onclick={() => (open = true)}>Open Lookup order</Button>\n<ToolCallPanel\n  bind:open\n  placement=\"sheet\"\n  view=\"json\"\n  name=\"Lookup order\"\n  status=\"done\"\n  summary=\"Reads · ran in 0.4s\"\n  resultLabel=\"Output\"\n  input={'{ \"orderId\": \"4471\" }'}\n  result={'{ \"total\": 42.00, \"status\": \"paid\" }'}\n/>\n"
+    },
+    {
+      "id": "beside-the-rail",
+      "title": "Beside the rail",
+      "description": "The rail and its panel together: the selected Send email row is tinted and its panel docks to the right. Esc or the X closes the panel and Close hands focus back to the row; choosing the row again closes it too.",
+      "code": "<script lang=\"ts\">\n  import { ToolCallPanel, ToolCallRail } from '@lostgradient/cinder';\n  import type { ToolCallRailCall } from '@lostgradient/cinder';\n\n  const calls: ToolCallRailCall[] = [\n    {\n      id: 'search',\n      name: 'Search orders',\n      identifier: 'search-orders',\n      input: 'carrier Parcelly, damaged',\n      result: '14 orders',\n      duration: '0.6s',\n      status: 'done',\n    },\n    {\n      id: 'lookup',\n      name: 'Lookup order',\n      identifier: 'lookup-order',\n      input: '4471',\n      result: '$42.00, delivered Mon',\n      duration: '0.2s',\n      status: 'done',\n    },\n    {\n      id: 'send-email',\n      name: 'Send email',\n      identifier: 'send-email',\n      input: 'maya@example.com',\n      result: 'SMTP timeout after 10s',\n      duration: '10.0s',\n      status: 'failed',\n      failure: \"Mail server didn't reply within 10s. The refund notice for 4471 wasn't sent.\",\n    },\n  ];\n\n  let open = $state(true);\n  let rail: ReturnType<typeof ToolCallRail> | undefined = $state();\n  const selectedId = $derived(open ? 'send-email' : undefined);\n</script>\n\n<div style=\"display: flex; gap: 1rem; align-items: flex-start;\">\n  <div style=\"flex: 1; min-inline-size: 0;\">\n    <ToolCallRail\n      bind:this={rail}\n      {calls}\n      {selectedId}\n      onSelect={(id) => (open = id === 'send-email' ? !open : open)}\n    />\n  </div>\n  <ToolCallPanel\n    bind:open\n    onClose={() => rail?.focusCall('send-email')}\n    placement=\"docked\"\n    name=\"Send email\"\n    identifier=\"send-email\"\n    status=\"failed\"\n    duration=\"10.0s\"\n    position=\"call 3 of 3\"\n    input={{ to: 'maya@example.com', template: 'refund-notice', orderId: '4471' }}\n    error={{ message: 'No reply from mail.example.com after 10s', code: 'smtp-timeout', retryable: true }}\n    retryMessage=\"Please retry Send email to maya@example.com\"\n    onRetry={() => undefined}\n  />\n</div>\n"
+    }
+  ]
+}

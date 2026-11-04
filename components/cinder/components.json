@@ -6234,6 +6234,36 @@
       }
     },
     {
+      "name": "ToolCallPanel",
+      "id": "tool-call-panel",
+      "import": "@lostgradient/cinder",
+      "exportName": "ToolCallPanel",
+      "category": "overlay",
+      "status": "beta",
+      "purpose": "One tool call's side panel: its state, its input and result as fields, a failure's message first with next steps, and a waiting call's note and decision. Docks from 1280px; a Drawer below.",
+      "tags": ["tool-call", "panel", "agent"],
+      "useWhen": [
+        "Opening a tool call from a ToolCallRail row to read what it was given and what came back.",
+        "Letting a person answer a call that is waiting on them, with a note, without leaving the conversation."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing an arbitrary payload on its own — use payload-inspector."
+        },
+        {
+          "reason": "Showing supplementary navigation or settings from a page edge — use drawer."
+        }
+      ],
+      "related": ["tool-call-rail", "drawer", "approval-card", "payload-inspector"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/tool-call-panel/tool-call-panel.schema.json",
+        "variables": "src/components/tool-call-panel/tool-call-panel.variables.json",
+        "examples": "src/components/tool-call-panel/tool-call-panel.examples.json"
+      }
+    },
+    {
       "name": "ToolCallRail",
       "id": "tool-call-rail",
       "import": "@lostgradient/cinder",

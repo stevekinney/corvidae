@@ -70,6 +70,7 @@ import timeFieldExamplesJson from '../components/time-field/time-field.examples.
 import timelineExamplesJson from '../components/timeline/timeline.examples.json' with { type: 'json' };
 import toastRegionExamplesJson from '../components/toast-region/toast-region.examples.json' with { type: 'json' };
 import toggleExamplesJson from '../components/toggle/toggle.examples.json' with { type: 'json' };
+import toolCallPanelExamplesJson from '../components/tool-call-panel/tool-call-panel.examples.json' with { type: 'json' };
 import toolCallRailExamplesJson from '../components/tool-call-rail/tool-call-rail.examples.json' with { type: 'json' };
 import toolPickerExamplesJson from '../components/tool-picker/tool-picker.examples.json' with { type: 'json' };
 import toolbarExamplesJson from '../components/toolbar/toolbar.examples.json' with { type: 'json' };
@@ -221,6 +222,8 @@ export const timelineExamples = timelineExamplesJson;
 export const toastRegionExamples = toastRegionExamplesJson;
 /** Code examples for this component. */
 export const toggleExamples = toggleExamplesJson;
+/** Code examples for this component. */
+export const toolCallPanelExamples = toolCallPanelExamplesJson;
 /** Code examples for this component. */
 export const toolCallRailExamples = toolCallRailExamplesJson;
 /** Code examples for this component. */

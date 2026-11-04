@@ -37,6 +37,10 @@
       "type": "boolean",
       "description": "Whether a `placement=\"bottom\"` drawer shows the grabber, the small pill above the header that\nmarks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance\nonly. Ignored for `left`/`right` placements.\n\nNamed `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML\n`draggable` attribute on the underlying `<dialog>`.",
       "default": true
+    },
+    "closeLabel": {
+      "type": "string",
+      "description": "Words for the close control. When set, the control is a text button that reads these words\n(\"Close\", as on the shared sheets) instead of the X icon, and they are its accessible name.\nLeft out, the control is the X icon named \"Close drawer\"."
     }
   },
   "additionalProperties": false,
