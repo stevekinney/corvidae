@@ -207,6 +207,33 @@ describe('bureau.settings on a Bureau', () => {
       await harness.dispose();
     }
   });
+
+  it('denies a custom owner without a settings scope before reading the revision or mutating', async () => {
+    const harness = await startWorkflowToolsBureau({ agents: [] });
+    try {
+      await harness.putAgent('custom', ['settings-update']);
+      const called = await harness.callTool(
+        'settings-update',
+        {
+          patch: { 'decisions.fallbackModel': 'anthropic/SHOULD-NOT-WRITE' },
+          expectedRevision: 0,
+        },
+        { agent: 'custom', principal: 'library:custom' },
+      );
+
+      expect(called.outcome).toBe('success');
+      expect(called.result).toEqual({
+        outcome: 'rejected',
+        reason: 'forbidden',
+        message: 'Missing scope bureau.settings:write.',
+      });
+      const snapshot = await harness.bureau.settings.get();
+      expect(snapshot.revision).toBe(0);
+      expect(snapshot.values['decisions.fallbackModel']).toBeUndefined();
+    } finally {
+      await harness.dispose();
+    }
+  });
 });
 
 describe('a stored value the engine refuses', () => {

@@ -2,6 +2,7 @@ import type { AnyToolbox } from 'armorer';
 import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
+import { withDelegatedToolCapabilities } from './agent-policy';
 import type { SteeringDesiredState } from './durable/types';
 import { SelectionRevalidationError } from './errors';
 import {
@@ -365,6 +366,10 @@ export async function prepareStep(
       stepToolbox = registryToolbox;
     }
   }
+  // A `selectTools` hook may replace the agent's toolbox after createAgent's
+  // run-level proxy was composed. Re-apply the delegation boundary to the
+  // final selected toolbox so replacement cannot widen the grant.
+  stepToolbox = withDelegatedToolCapabilities(stepToolbox, deps.delegatedToolCapabilities);
   deps.onStepToolbox?.(stepToolbox);
 
   // Resolve per-step tool choice: hook override → RunOptions default → undefined

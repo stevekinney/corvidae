@@ -23,9 +23,7 @@ function mayUseSettingsTool(
   owner: string | undefined,
   scope: 'bureau.settings:read' | 'bureau.settings:write',
 ): boolean {
-  return owner !== undefined && owner.startsWith('api-key:')
-    ? false
-    : mayRunAccess(owner, scope) || owner !== undefined;
+  return mayRunAccess(owner, scope) || (owner !== undefined && owner.startsWith('user:'));
 }
 
 /** The names of the two tools. Hyphens, because provider tool-name grammars exclude dots. */

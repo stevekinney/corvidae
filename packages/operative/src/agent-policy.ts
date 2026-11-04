@@ -10,7 +10,7 @@
  */
 
 import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
-import type { AnyToolbox } from 'armorer';
+import { toolListEntryMatches, type AnyToolbox } from 'armorer';
 
 import { createGatedExecute } from './active-skill-tool-gate';
 import type { ToolPolicy } from './create-policy-enforcement-hook';
@@ -192,9 +192,14 @@ export function withDelegatedToolCapabilities(
   allowedToolIds: readonly string[] | undefined,
 ): AnyToolbox {
   if (allowedToolIds === undefined) return toolbox;
-  const allowed = new Set(allowedToolIds);
   const visibleTools = () =>
-    toolbox.tools().filter((tool) => allowed.has(tool.id) || allowed.has(tool.name));
+    toolbox
+      .tools()
+      .filter((tool) =>
+        allowedToolIds.some((entry) =>
+          toolListEntryMatches(entry, { toolName: tool.name, identity: tool.identity }),
+        ),
+      );
   return new Proxy(toolbox, {
     get(target, property, receiver) {
       if (property === 'tools') return visibleTools;
