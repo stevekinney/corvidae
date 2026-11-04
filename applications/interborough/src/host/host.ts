@@ -109,6 +109,7 @@ import {
 } from '@lostgradient/bureau';
 import {
   type GenerateFunction,
+  type PeerCallJournal,
   type RuntimeServices,
   type Validator,
 } from '@lostgradient/operative';
@@ -815,11 +816,22 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       await bungalow.readConfiguration(),
       bungalow.configurationLocation,
     );
+    let peerCalls: PeerCallJournal | undefined;
+    const peerCallHandoff: PeerCallJournal = {
+      read: (key) => {
+        if (peerCalls === undefined) throw new Error('The Bureau peer journal is not ready.');
+        return peerCalls.read(key);
+      },
+      write: (key, entry) => {
+        if (peerCalls === undefined) throw new Error('The Bureau peer journal is not ready.');
+        return peerCalls.write(key, entry);
+      },
+    };
     const peerTools = createA2APeerTools({
       peers: configuredPeers,
       readSecret: (key) => bungalow.readSecret(key),
       egressPolicy: options.a2aPeerEgressPolicy ?? createEgressPolicy(),
-      bureau: () => held.bureau,
+      peerCalls: peerCallHandoff,
       warn: options.warn ?? ((message) => console.warn(message)),
     });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
@@ -851,7 +863,19 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return source === undefined ? [] : [source];
         }),
     });
+    const peerToolNames = new Set(Object.keys(peerTools));
+    const sourceTools = toolSources.tools();
+    for (const name of Object.keys(sourceTools)) {
+      if (peerToolNames.has(name)) {
+        (options.warn ?? ((message) => console.warn(message)))(
+          `Configured A2A peer tool "${name}" replaces an existing tool with the same name.`,
+        );
+      }
+    }
     const bureau = await createBureau({
+      peerCallsReady: (journal) => {
+        peerCalls = journal;
+      },
       id: bungalow.deploymentId,
       ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       agents: { ...options.extraAgents?.agents },
@@ -902,7 +926,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
       agentSource: createAgentSource(bungalow, agentContent, {
-        ...toolSources.tools(),
+        ...sourceTools,
         ...peerTools,
       }),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,

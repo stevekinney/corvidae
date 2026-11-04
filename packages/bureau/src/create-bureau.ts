@@ -2556,6 +2556,13 @@ function resumeHooks(input: {
   );
 }
 
+function notifyPeerCallsReady<D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+  journal: PeerCallJournal,
+): void {
+  options.peerCallsReady?.(journal);
+}
+
 async function constructBureau<const D extends AgentDefinitions>(
   given: BureauOptions<D>,
   construction: BureauConstruction<D>,
@@ -21971,6 +21978,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     },
   };
+  notifyPeerCallsReady(options, peerCalls);
 
   // COR-851 — durable goals: the control plane over the goal store, its
   // controller workflow's ports, and the attempt forwarder.

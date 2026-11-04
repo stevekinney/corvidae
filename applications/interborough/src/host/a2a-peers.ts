@@ -1,6 +1,5 @@
 /** Startup configuration and host tools for authenticated A2A peers. */
 
-import type { Bureau } from '@lostgradient/bureau';
 import { createPeerCallTool, type PeerCallJournal } from '@lostgradient/operative';
 import { createA2APeerClient, type EgressPolicy } from '@lostgradient/weft/a2a';
 import type { Tool } from 'armorer';
@@ -26,6 +25,17 @@ const NO_PEERS: readonly ConfiguredA2APeer[] = Object.freeze([]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function redactSecret(value: unknown, secret: string): unknown {
+  if (typeof value === 'string') return value.split(secret).join('[REDACTED]');
+  if (Array.isArray(value)) return value.map((entry) => redactSecret(entry, secret));
+  if (isObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, redactSecret(entry, secret)]),
+    );
+  }
+  return value;
 }
 
 function parsePeer(value: unknown, location: string, field: string): ConfiguredA2APeer {
@@ -128,8 +138,8 @@ export type A2APeerToolOptions = {
   readonly readSecret: (key: string) => string | undefined;
   /** Egress policy applied before card and task requests. */
   readonly egressPolicy?: EgressPolicy;
-  /** Resolves the Bureau after startup for its durable peer journal. */
-  readonly bureau: () => Bureau | undefined;
+  /** The journal handoff installed before Bureau boot recovery. */
+  readonly peerCalls?: PeerCallJournal;
   /** Receives startup diagnostics. */
   readonly warn: (message: string) => void;
 };
@@ -153,31 +163,43 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
         ? {}
         : { authenticate: () => ({ authorization: `Bearer ${secret}` }) }),
     });
-    const durable: PeerCallJournal = {
-      async read(key) {
-        const bureau = options.bureau();
-        if (bureau === undefined) throw new Error('The Bureau is not ready.');
-        return bureau.peerCalls.read(key);
-      },
-      async write(key, entry) {
-        const bureau = options.bureau();
-        if (bureau === undefined) throw new Error('The Bureau is not ready.');
-        return bureau.peerCalls.write(key, entry);
-      },
-    };
+    const durable = options.peerCalls;
+    if (durable === undefined) {
+      options.warn(
+        `Configured A2A peer "${peer.id}" was omitted because its journal is unavailable.`,
+      );
+      continue;
+    }
     const peerTool = createPeerCallTool({
       name: `a2a-peer:${peer.id}`,
       description: peer.description,
       peer: client,
       peerUrl: peer.url,
       durable,
+      ...(secret === undefined
+        ? {}
+        : { redactPeerText: (value: string) => redactSecret(value, secret) as string }),
     });
     tools[peerTool.name] = createTool({
-      name: peerTool.name,
+      name: peer.id,
+      namespace: 'a2a-peer',
+      version: '1.0.0',
       description: peer.description,
       input: z.object({ message: z.string().describe('What to tell the peer agent.') }).strict(),
       metadata: { mutates: true, title: `Call A2A peer ${peer.id}` },
-      execute: (input, context) => peerTool.rawExecute(input, context),
+      execute: async (input, context) => {
+        try {
+          const result = await peerTool.rawExecute(input, context);
+          return secret === undefined ? result : redactSecret(result, secret);
+        } catch (error) {
+          if (secret === undefined) throw error;
+          const message = error instanceof Error ? error.message : String(error);
+          if (!message.includes(secret)) throw error;
+          const scrubbed = new Error(message.split(secret).join('[REDACTED]'));
+          scrubbed.name = error instanceof Error ? error.name : 'Error';
+          throw scrubbed;
+        }
+      },
     });
   }
   return Object.freeze(tools);
