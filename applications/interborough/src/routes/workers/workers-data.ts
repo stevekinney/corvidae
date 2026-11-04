@@ -64,7 +64,7 @@ type WorkersOperations = Pick<HttpClient, 'operations'>;
 /** A `weft.tasks.get` response the dashboard refuses to render, distinct from a transport or server fault. */
 export class MalformedTaskLedgerError extends Error {
   constructor() {
-    super('Weft returned a malformed task ledger response.');
+    super('The server returned a malformed task ledger response.');
     this.name = 'MalformedTaskLedgerError';
   }
 }

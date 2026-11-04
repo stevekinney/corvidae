@@ -29,8 +29,8 @@ const schema = {
     scrollable: {
       type: 'boolean',
       description:
-        "When true, wraps the table in a `.cinder-table-scroll` container that\nenables horizontal overflow scrolling for dense or unknown-width tables.\nUse this instead of manually wrapping Table in `.cinder-table-scroll`.\n\nWhen combined with `stickyHeader`, the generated wrapper is the sticky\nheader's scroll container. Set a bounded block size on `scrollContainerProps`\nwhen the table should scroll vertically inside that wrapper.",
-      default: false,
+        "Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and\nthe clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade\nat the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out\nas a bare `<table>`.\n\nWhen combined with `stickyHeader`, the generated wrapper is the sticky\nheader's scroll container. Set a bounded block size on `scrollContainerProps`\nwhen the table should scroll vertically inside that wrapper.",
+      default: true,
     },
     stackBelow: {
       anyOf: [
@@ -42,7 +42,7 @@ const schema = {
         },
       ],
       description:
-        "Viewport width below which every body row stacks into a card: each cell\nbecomes its column's header text above the cell's value, and the header\nrow is hidden visually but kept for assistive technology. A simple CSS\nlength such as `'640px'`, or `false` to keep the table layout at every\nwidth.",
+        "Width of the table's own container below which a table whose cells hold controls stacks. Each\nbody row becomes a card: the name and its muted detail on the first line, the controls full\nwidth at 44px beneath. A table with no `controls` cell never stacks; it scrolls. The width\nis the container's (the scroll box, or the parent when `scrollable` is false), not the\nwindow's, so a table in a narrow column stacks in a wide window. A simple CSS length such as\n`'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit\nfalls back to the viewport. `false` keeps the table layout at every width.",
       default: '640px',
     },
     class: {

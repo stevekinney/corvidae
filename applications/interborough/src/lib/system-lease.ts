@@ -23,7 +23,7 @@ export type SystemLeaseStatus = SystemLease['status'];
 /** A `weft.system.lease` response the dashboard refuses to render. */
 export class MalformedSystemLeaseError extends Error {
   constructor() {
-    super('Weft returned a malformed lease response.');
+    super('The server returned a malformed lease response.');
     this.name = 'MalformedSystemLeaseError';
   }
 }

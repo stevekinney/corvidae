@@ -1,6 +1,7 @@
 /**
  * The workflow types `createRunEngine` registers on a Bureau's engine itself: the durable agent run,
- * the heartbeat tick, and the durable goal. Only the Bureau starts them, with the owner, agent, and
+ * the heartbeat tick, the durable goal, and the schedule tick that records what the Bureau's
+ * scheduler did. Only the Bureau starts them, with the owner, agent, and
  * validator checks its own operations make, so a caller that starts one through the engine's schedule
  * operations skips those checks.
  *
@@ -17,6 +18,7 @@ export const RUN_ENGINE_WORKFLOW_TYPE = {
   agentRun: 'agentRun',
   durableHeartbeatTick: 'durableHeartbeatTick',
   goalRun: 'goalRun',
+  scheduleTick: 'scheduleTick',
 } as const;
 
 /** One of the types `createRunEngine` registers. */

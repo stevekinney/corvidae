@@ -92,6 +92,38 @@ export function validateCronField(rawValue: string, fieldIndex: number): string 
   return undefined;
 }
 
+/** The sentence every cron error ends with, so the five fields' roles are never a guess. */
+const CRON_FIELDS_SENTENCE = 'Cron uses minute, hour, day of month, month and day of week.';
+
+/**
+ * The error for one cron field as a sentence a person can act on, such as "Day of week must be 0
+ * to 6 (0 is Sunday). Cron uses minute, hour, day of month, month and day of week.", or
+ * `undefined` when the field is acceptable.
+ */
+export function describeCronFieldError(rawValue: string, fieldIndex: number): string | undefined {
+  const field = CRON_FIELDS[fieldIndex];
+  const error = validateCronField(rawValue, fieldIndex);
+  if (!field || error === undefined) return undefined;
+  const sunday = fieldIndex === 4 ? ' (0 is Sunday)' : '';
+  let message: string;
+  if (error.startsWith('Out of range')) {
+    message = `${field.name} must be ${field.min} to ${field.max}${sunday}.`;
+  } else if (error === 'Required.') {
+    message = `${field.name} can't be empty.`;
+  } else if (error === 'Empty list item.') {
+    message = `${field.name} has an empty item in its list.`;
+  } else if (error.startsWith('Step is larger')) {
+    message = `${field.name} step must be ${field.max} or less.`;
+  } else if (error === 'Step must be a positive integer.') {
+    message = `${field.name} step must be a whole number above zero.`;
+  } else if (error === 'Range start is after its end.') {
+    message = `${field.name} range starts after it ends.`;
+  } else {
+    message = `${field.name} isn't a valid value. Use a number, a range such as 1-5, a list such as 1,15 or a step such as */5.`;
+  }
+  return `${message} ${CRON_FIELDS_SENTENCE}`;
+}
+
 /** Whether all five cron fields are individually valid. */
 export function cronFieldsValid(fields: string[]): boolean {
   return (
@@ -355,27 +387,141 @@ export function formatClockTime(time: string): string {
 }
 
 /**
- * A time zone's name as a person reads it, such as `Pacific Time`, falling back to the IANA name
- * when the runtime has no better one. UTC reads as `UTC`.
+ * Reads what a person typed into the At field as a `HH:MM` time on a 24-hour clock, or `undefined`
+ * when it is not a time. It accepts `9:00 AM`, `9am`, `930 pm`, `14:30` and `09:00`. A bare hour
+ * from 1 to 12 with no AM or PM keeps the period of `previous`, so retyping the hour of `9:00 AM`
+ * as `10` reads as 10:00 AM; a leading zero, 0 or an hour above 12 reads as a 24-hour time.
+ */
+export function parseClockText(text: string, previous: string): string | undefined {
+  const match = text
+    .trim()
+    .toLowerCase()
+    .match(/^(\d{1,2})(?::?(\d{2}))?\s*(?:([ap])\.?(?:m\.?)?)?$/);
+  if (!match) return undefined;
+  const typedHour = Number(match[1]);
+  const minute = match[2] === undefined ? 0 : Number(match[2]);
+  if (minute > 59 || typedHour > 23) return undefined;
+  const period = match[3];
+  let hour = typedHour;
+  if (period !== undefined) {
+    if (typedHour < 1 || typedHour > 12) return undefined;
+    hour = (typedHour % 12) + (period === 'p' ? 12 : 0);
+  } else if (
+    typedHour >= 1 &&
+    typedHour <= 12 &&
+    !(match[1]!.length === 2 && match[1]!.startsWith('0'))
+  ) {
+    hour = (typedHour % 12) + (parseTime(previous).hour >= 12 ? 12 : 0);
+  }
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
+const zoneNameCache = new Map<string, string>();
+
+/**
+ * A time zone's name as a person reads it, in sentence case, such as `Pacific time`, falling back
+ * to the IANA name when the runtime has no better one. UTC reads as `UTC`.
  */
 export function timeZoneDisplayName(timeZone: string): string {
   if (timeZone === 'UTC' || timeZone === 'Etc/UTC') return 'UTC';
+  const cached = zoneNameCache.get(timeZone);
+  if (cached !== undefined) return cached;
+  let resolved = timeZone;
   try {
     const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longGeneric' })
       .formatToParts(new Date())
       .find((part) => part.type === 'timeZoneName')?.value;
-    return name === undefined || name.startsWith('GMT') ? timeZone : name;
+    if (name !== undefined && !name.startsWith('GMT'))
+      resolved = name.replace(/ (?:Standard |Daylight )?Time$/, ' time');
   } catch {
-    return timeZone;
+    resolved = timeZone;
+  }
+  zoneNameCache.set(timeZone, resolved);
+  return resolved;
+}
+
+/** The city a zone is named for, such as `Los Angeles` for `America/Los_Angeles`. */
+function timeZoneCity(timeZone: string): string {
+  return (timeZone.split('/').at(-1) ?? timeZone).replaceAll('_', ' ');
+}
+
+/**
+ * How the Time zone field names a zone: its sentence-case name and its city, such as
+ * `Central time · Chicago`. A zone with no better name than its IANA id, and UTC, read as they are.
+ */
+export function timeZoneOptionLabel(timeZone: string): string {
+  const name = timeZoneDisplayName(timeZone);
+  if (name === 'UTC') return name;
+  if (name === timeZone) return timeZone.replaceAll('_', ' ');
+  return `${name} · ${timeZoneCity(timeZone)}`;
+}
+
+/**
+ * A zone's offset from UTC right now, such as `UTC−6` (with a true minus sign), `UTC+5:30` or
+ * `UTC±0`. An unknown zone has no offset and reads as an empty string.
+ */
+export function timeZoneOffsetLabel(timeZone: string, at: Date = new Date()): string {
+  try {
+    const offset = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' })
+      .formatToParts(at)
+      .find((part) => part.type === 'timeZoneName')?.value;
+    if (offset === undefined) return '';
+    const match = /^GMT(?:([+\-\u2212])(\d{1,2})(?::(\d{2}))?)?$/.exec(offset);
+    if (!match) return '';
+    const [, sign, hours, minutes] = match;
+    if (sign === undefined || hours === undefined) return 'UTC±0';
+    if (Number(hours) === 0 && !minutes) return 'UTC±0';
+    return `UTC${sign === '+' ? '+' : '\u2212'}${Number(hours)}${minutes ? `:${minutes}` : ''}`;
+  } catch {
+    return '';
   }
 }
 
-/** "Mondays", "Mondays and Fridays", "Mondays, Wednesdays and Fridays", listed Monday first. */
+/**
+ * The zones the Time zone list shows before anything is typed, after the zone already chosen.
+ * Typing searches every zone.
+ */
+export const COMMON_TIME_ZONES: readonly string[] = [
+  'America/Chicago',
+  'America/Mexico_City',
+  'America/Los_Angeles',
+  'America/Denver',
+  'UTC',
+  'America/New_York',
+  'Europe/London',
+  'Europe/Paris',
+  'Asia/Kolkata',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+];
+
+/** How many zones the Time zone list shows at once. */
+export const TIME_ZONE_VISIBLE_COUNT = 5;
+
+/**
+ * `zones` in the order the Time zone list shows them: the chosen zone first, then the common
+ * zones, then the rest by name.
+ */
+export function orderTimeZones(zones: readonly string[], chosen: string): string[] {
+  const available = new Set(zones);
+  const leading: string[] = [];
+  for (const zone of [chosen, ...COMMON_TIME_ZONES]) {
+    if (available.has(zone) && !leading.includes(zone)) leading.push(zone);
+  }
+  const rest = zones
+    .filter((zone) => !leading.includes(zone))
+    .sort((a, b) => timeZoneOptionLabel(a).localeCompare(timeZoneOptionLabel(b)));
+  return [...leading, ...rest];
+}
+
+/**
+ * The days a Custom days choice runs on, Monday first: "Mondays" for one day, and "Monday and
+ * Friday" or "Monday, Wednesday and Friday" for more.
+ */
 function listDays(days: readonly number[]): string {
-  const names = WEEKDAYS.filter((day) => days.includes(day.value)).map(
-    (day) => PLURAL_DAY_NAMES[day.value] ?? '',
-  );
-  if (names.length <= 1) return names.join('');
+  const chosen = WEEKDAYS.filter((day) => days.includes(day.value));
+  if (chosen.length === 1) return PLURAL_DAY_NAMES[chosen[0]?.value ?? 0] ?? '';
+  const names = chosen.map((day) => day.long);
   return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }
 
@@ -396,7 +542,7 @@ function describeDays(draft: ScheduleDraft): string {
 }
 
 /**
- * The schedule read back as a sentence, such as "Weekdays at 9:00 AM Pacific Time". An interval
+ * The schedule read back as a sentence, such as "Weekdays at 9:00 AM Pacific time". An interval
  * reads as "Every 7 hours"; a cron no choice produces reads as the expression and its zone.
  */
 export function describeSchedule(value: ScheduleValue): string {

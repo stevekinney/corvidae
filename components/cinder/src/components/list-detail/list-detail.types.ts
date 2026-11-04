@@ -1,6 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { DataListGroup } from '../data-list/data-list.types.ts';
+
 /** State a `list` snippet receives for the row it renders. */
 export type ListDetailRowContext = {
   /** True when this row is the open item, the one the detail pane shows. */
@@ -9,6 +11,16 @@ export type ListDetailRowContext = {
   active: boolean;
   /** Opens this row's item: selects it, writes it to the URL, and shows the detail pane. */
   open: () => void;
+};
+
+/** State the `listBody` snippet receives, for a list pane that draws its own rows. */
+export type ListDetailListBodyContext<T> = {
+  /** The records to list, in order. */
+  items: T[];
+  /** Key of the open item, or `null` when none is open. */
+  selectedKey: string | null;
+  /** Opens the item with this key: selects it, writes it to the URL, and shows the detail pane. */
+  open: (key: string) => void;
 };
 
 /**
@@ -25,7 +37,7 @@ export type ListDetailSelectionLocation = {
 /** The slice of `Storage` that ListDetail uses to remember the divider width. */
 export type ListDetailStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
-/** Props for ListDetail. `items`, `key`, `label`, `list` and `detail` are required. */
+/** Props for ListDetail. `items`, `key`, `label` and `detail` are required, and so is `list` unless `listBody` draws the rows. */
 export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'class'> & {
   /** The records to list. Each is passed to `list` and, when selected, to `detail`. */
   items: T[];
@@ -36,9 +48,34 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   /**
    * Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a
    * `SelectableRow` with `selected={row.selected}` and `selectedState="current"`; activating its
-   * primary action opens the item.
+   * primary action opens the item. Omit it when `listBody` draws the rows.
    */
-  list: Snippet<[item: T, row: ListDetailRowContext]>;
+  list?: Snippet<[item: T, row: ListDetailRowContext]>;
+  /**
+   * Draws the whole list pane body itself, in place of the `<li>` rows, for a list that is a table.
+   * Give each row a `data-cinder-row-id` equal to its `key` (a `DataTable` does) so the J and K
+   * cursor finds it, and call `open` when a row is chosen. `list`, `groupBy` and `listEmpty` are
+   * ignored while it is set.
+   */
+  listBody?: Snippet<[context: ListDetailListBodyContext<T>]>;
+  /**
+   * Groups consecutive items under a header band, such as a source or a day. Passed to the list's
+   * `DataList`, so a group is a nested list named by its header.
+   */
+  groupBy?: (item: T) => DataListGroup;
+  /**
+   * Shows a placeholder in place of the rows and the open item while the records load: five list
+   * rows in the list pane and a block in the detail pane. Nothing shows for the first 300
+   * milliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after
+   * ten seconds.
+   * @default false
+   */
+  loading?: boolean;
+  /**
+   * What the loading region announces, politely, once the placeholder appears: "Loading memories".
+   * @default 'Loading'
+   */
+  loadingLabel?: string;
   /** Detail renderer for the open item. */
   detail: Snippet<[item: T]>;
   /** Rendered in the detail pane while no item is open. A default message is shown when omitted. */
@@ -77,12 +114,18 @@ export type ListDetailProps<T> = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   /**
    * Width in pixels of the component below which it shows one pane at a time: the list, then the
    * detail with a Back button. It is measured on the component, not the viewport.
-   * @default 900
+   * @default 600
    */
   pushBelow?: number;
   /**
+   * Removes the detail pane's inner padding, for a detail view that lays out its own header, body
+   * and footer edge to edge (an open chat, a table, a code frame).
+   * @default false
+   */
+  flushDetail?: boolean;
+  /**
    * Width in pixels of the list pane before the divider is moved.
-   * @default 320
+   * @default 280
    */
   defaultListWidth?: number;
   /**

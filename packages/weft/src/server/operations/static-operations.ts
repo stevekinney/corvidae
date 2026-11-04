@@ -76,6 +76,7 @@ import {
   storageConditionalBatchOperation,
   storageDeleteOperation,
   storageGetOperation,
+  storagePreviewOperation,
   storagePutOperation,
   storageScanOperation,
 } from './storage.ts';
@@ -180,6 +181,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   replayWorkflowOperation,
   storageCapabilities.storageCapabilitiesOperation,
   storageGetOperation,
+  storagePreviewOperation,
   storagePutOperation,
   storageDeleteOperation,
   storageScanOperation,

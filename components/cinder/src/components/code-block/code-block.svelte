@@ -16,13 +16,21 @@
 </script>
 
 <script lang="ts">
+  import Info from '@lucide/svelte/icons/info';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import type { Attachment } from 'svelte/attachments';
   import { getCodeHighlighterContext } from '../../_internal/code-highlighter-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import { overflowFadeEdges } from '../../utilities/attachments.ts';
   import CopyButton from '../copy-button/copy-button.svelte';
-  import type { CodeBlockProps } from './code-block.types.ts';
+  import {
+    annotationToneClass,
+    decorateHighlightedLines,
+    markNumericTokens,
+    lineToneClass,
+  } from './code-block-lines.ts';
+  import type { CodeBlockAnnotation, CodeBlockProps } from './code-block.types.ts';
 
   let {
     code,
@@ -32,6 +40,9 @@
     copyable = false,
     languageLabelVisible = true,
     scrollFadeVisible = false,
+    lineNumbers = false,
+    annotations,
+    wrap = false,
     class: className,
   }: CodeBlockProps = $props();
 
@@ -45,6 +56,25 @@
   const contextHighlighter = getCodeHighlighterContext();
 
   let highlighted = $state<string | null>(null);
+
+  // Numbered lines and notes need one element per line. Plain code is split here; highlighted
+  // code is decorated after it renders (see `code-block-lines.ts`). A highlighter that draws no
+  // line elements leaves `lined` false, and the block shows the plain rendering instead.
+  const hasLineFeatures = $derived(lineNumbers || (annotations?.length ?? 0) > 0);
+  const codeLines = $derived(
+    hasLineFeatures ? (code.endsWith('\n') ? code.slice(0, -1) : code).split('\n') : [],
+  );
+  // Digits of the largest line number, which sizes the gutter.
+  const gutterDigits = $derived(String(Math.max(1, codeLines.length)).length);
+  let lined = $state(true);
+  const notesByLine = $derived.by(() => {
+    const byLine = new Map<number, CodeBlockAnnotation[]>();
+    for (const annotation of annotations ?? []) {
+      const line = Math.trunc(annotation.line);
+      byLine.set(line, [...(byLine.get(line) ?? []), annotation]);
+    }
+    return byLine;
+  });
 
   // Two-phase render contract: the server (and the first client paint) emits
   // the plain `<pre><code>` fallback because `$effect` never runs during SSR.
@@ -81,7 +111,10 @@
     void (async () => {
       try {
         const html = await resolvedHighlighter(pendingCode, pendingLanguage);
-        if (!cancelled) highlighted = html === '' ? null : html;
+        if (!cancelled) {
+          highlighted = html === '' ? null : html;
+          lined = true;
+        }
       } catch (error) {
         if (!cancelled) highlighted = null;
         // Surface to the developer without breaking the graceful fallback.
@@ -98,7 +131,47 @@
   });
 </script>
 
-<div class={classNames('cinder-code-block', className)}>
+{#snippet note(annotation: CodeBlockAnnotation)}
+  {@const tone = annotation.tone ?? 'danger'}
+  <!-- A `<small>`, not a `<span>`: the stylesheet that keeps Shiki's own backgrounds and colors off
+       the code targets every span in the block. -->
+  <small class={classNames('cinder-code-block__annotation', annotationToneClass(tone))} role="note">
+    {#if tone === 'info'}
+      <Info size={14} aria-hidden="true" />
+    {:else}
+      <TriangleAlert size={14} aria-hidden="true" />
+    {/if}
+    {annotation.message}
+  </small>
+{/snippet}
+
+{#snippet plainCode()}
+  {#if hasLineFeatures}
+    <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
+        >{#each codeLines as text, index (index)}{@const notes =
+            notesByLine.get(index + 1) ?? []}<span
+            class={classNames(
+              'cinder-code-block__line',
+              notes[0] && lineToneClass(notes[0].tone ?? 'danger'),
+            )}>{text}</span
+          >{#each notes as annotation, noteIndex (noteIndex)}{@render note(
+              annotation,
+            )}{/each}{/each}</code
+      ></pre>
+  {:else}
+    <pre class="cinder-code-block__pre"><code class="cinder-code-block__code">{code}</code></pre>
+  {/if}
+{/snippet}
+
+<div
+  class={classNames(
+    'cinder-code-block',
+    lineNumbers && 'cinder-code-block--numbered',
+    wrap && 'cinder-code-block--wrap',
+    className,
+  )}
+  style:--_cinder-code-block-digits={hasLineFeatures ? gutterDigits : undefined}
+>
   {#if (language && languageLabelVisible) || copyable}
     <div class="cinder-code-block__meta">
       {#if language && languageLabelVisible}
@@ -137,17 +210,23 @@
          container `<div>` so the previous render is contained inside an
          element Svelte can replace in place. -->
     <svelte:boundary>
-      {#if highlighted !== null}
-        <div class="cinder-code-block__highlighted">
-          {@html highlighted}
-        </div>
+      {#if highlighted !== null && (lined || !hasLineFeatures)}
+        {#key highlighted}
+          <div
+            class="cinder-code-block__highlighted"
+            {@attach hasLineFeatures
+              ? decorateHighlightedLines(annotations, (found) => (lined = found))
+              : noopScrollFadeAttachment}
+            {@attach markNumericTokens}
+          >
+            {@html highlighted}
+          </div>
+        {/key}
       {:else}
-        <pre class="cinder-code-block__pre"><code class="cinder-code-block__code">{code}</code
-          ></pre>
+        {@render plainCode()}
       {/if}
       {#snippet failed()}
-        <pre class="cinder-code-block__pre"><code class="cinder-code-block__code">{code}</code
-          ></pre>
+        {@render plainCode()}
       {/snippet}
     </svelte:boundary>
   </div>

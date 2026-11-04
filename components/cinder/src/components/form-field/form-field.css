@@ -21,7 +21,10 @@
     gap: var(--cinder-space-1);
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);
-    line-height: 1;
+    /* A label that wraps keeps its lines apart (W22), and a long unbroken word wraps rather than
+       overflowing the field. */
+    line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
     color: var(--cinder-text-default);
   }
 
@@ -52,17 +55,74 @@
     margin: 0;
   }
 
-  .cinder-form-field__managed {
+  .cinder-form-field__note {
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
     margin: 0;
   }
 
+  /* The managed line leads with a lock glyph, so the reason a value cannot change reads before
+     its words do. */
+  .cinder-form-field__managed {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-1-5);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+    margin: 0;
+  }
+
+  /* The error leads with a glyph (a triangle for a value to fix, a circle for a conflict) and may
+     end with an action such as a link or a quiet Retry. The shared screen-reader-only rule for an
+     errorless node still wins over this layout, because it sets `position: absolute`. */
   .cinder-form-field__error {
+    display: flex;
+    align-items: flex-start;
+    column-gap: var(--cinder-space-1-5);
     font-size: var(--cinder-text-xs);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-status-danger-text);
     margin: 0;
+  }
+
+  /* The message and its action share one block beside the glyph, so a narrow container wraps the
+     words and never leaves the glyph alone on a line of its own. */
+  .cinder-form-field__error-body {
+    flex: 1 1 0;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* The action is a link in the accent colour, not the error's red: the message is the problem and
+     the action is the way out of it. */
+  .cinder-form-field__error :where(a, button) {
+    color: var(--cinder-accent-text);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-form-field__error :where(a) {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  /* Glyph beside the error and managed lines: it takes the first line's height and never shrinks. */
+  .cinder-form-field__glyph {
+    flex: none;
+    block-size: 1lh;
+    inline-size: 0.875rem;
+  }
+
+  /* A control with trailing content, such as a Try again button, shares one row with it. */
+  .cinder-form-field__control--row {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-form-field__control--row > :first-child {
+    flex: 1 1 auto;
+    min-inline-size: 0;
   }
 }

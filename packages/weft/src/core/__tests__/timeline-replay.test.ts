@@ -905,7 +905,10 @@ describe('timeline and replay', () => {
       status: 'failed',
       operationLabel: 'failStep',
     });
-    expect(timeline[0]?.duration).toBe(1);
+    // The clock ticks on every read. Between the operation's start and its end the engine reads it
+    // once more, for the event log entry it writes (stamped on the engine's clock, COR-2009). A
+    // cleanup that rewrote the duration would read the clock again and record more.
+    expect(timeline[0]?.duration).toBe(2);
     expect(timeline[0]?.outputSummary).toContain('timeline failure');
   });
 });

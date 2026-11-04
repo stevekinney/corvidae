@@ -20,13 +20,55 @@
     font-family: var(--cinder-font-sans);
   }
 
-  .cinder-source-diff-viewer__notice {
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border-muted);
-    background: var(--cinder-status-warning-background);
-    color: var(--cinder-status-warning-text);
+  /* Under the rows, a muted status and the action that renders the rest. */
+  .cinder-source-diff-viewer__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    padding: var(--cinder-space-1-5) var(--cinder-space-3);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    background: var(--cinder-surface-raised);
     font-family: var(--cinder-font-sans);
     font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-source-diff-viewer__footer-status {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-source-diff-viewer__footer-status:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-source-diff-viewer__show-all {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-weight: var(--cinder-font-medium);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  @media (hover: hover) {
+    .cinder-source-diff-viewer__show-all:hover {
+      text-decoration: underline;
+      text-underline-offset: 0.15em;
+    }
+  }
+
+  .cinder-source-diff-viewer__show-all:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   .cinder-source-diff-viewer__file + .cinder-source-diff-viewer__file {
@@ -125,5 +167,36 @@
 
   .cinder-source-diff-viewer__line:not(:has(.cinder-source-diff-viewer__line-number)) {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Inline: no outer frame. The changed lines sit in their own small rounded box, as one value
+   * among others, and Show all is a plain link with a chevron under it. */
+  .cinder-source-diff-viewer[data-cinder-variant='inline'] {
+    gap: var(--cinder-space-1);
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    font-size: var(--cinder-text-xs);
+  }
+
+  .cinder-source-diff-viewer__lines--preview {
+    overflow: hidden;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+  }
+
+  .cinder-source-diff-viewer[data-cinder-variant='inline'] .cinder-source-diff-viewer__footer {
+    justify-content: flex-start;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-source-diff-viewer__show-all:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
   }
 }

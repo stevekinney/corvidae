@@ -167,6 +167,71 @@ describe('a user message carrying a managed asset', () => {
     );
   });
 
+  it('is stored with the asset’s detected media type when the part names none, and replays with it', async () => {
+    await withHarness(
+      { script: [say('Seen.')], backends: anthropic.slice(0, 1) },
+      async (harness) => {
+        const assetId = await admit(harness, pngBytes(4, 3, 64));
+
+        const frames = await readAgUiStream(
+          await harness.handler(startRequest(userInput([attachment(assetId)]))),
+        );
+
+        expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+        const session = await harness.bureau.contexts.get('thread-1');
+        expect(session!.conversationHistory.messages['user-1']!.content).toEqual([
+          { type: 'image', mimeType: 'image/png', source: { kind: 'managed-asset', assetId } },
+        ]);
+        const messages = await messagesOf(harness);
+        const user = messages.find((message) => message.id === 'user-1')!;
+        expect(user.content).toEqual([attachment(assetId, 'image/png')]);
+      },
+    );
+  });
+
+  it('is stored with the asset’s detected media type when the part sends it beside its source', async () => {
+    // The shape the showcase seed sends: `mimeType` on the part, where AG-UI has no such key, so
+    // the door drops it. The asset still knows what it is, and the replayed part says so.
+    await withHarness(
+      { script: [say('Seen.')], backends: anthropic.slice(0, 1) },
+      async (harness) => {
+        const assetId = await admit(harness, pngBytes(4, 3, 64));
+        const part = { ...attachment(assetId), mimeType: 'image/png' };
+
+        const frames = await readAgUiStream(
+          await harness.handler(startRequest(userInput([{ type: 'text', text: 'Look.' }, part]))),
+        );
+
+        expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+        const messages = await messagesOf(harness);
+        const user = messages.find((message) => message.id === 'user-1')!;
+        expect(user.content).toEqual([
+          { type: 'text', text: 'Look.' },
+          attachment(assetId, 'image/png'),
+        ]);
+      },
+    );
+  });
+
+  it('is stored with the detected media type, not the one the part claims', async () => {
+    await withHarness(
+      { script: [say('Seen.')], backends: anthropic.slice(0, 1) },
+      async (harness) => {
+        const assetId = await admit(harness, pngBytes(4, 3, 64));
+
+        const frames = await readAgUiStream(
+          await harness.handler(startRequest(userInput([attachment(assetId, 'image/jpeg')]))),
+        );
+
+        expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+        const session = await harness.bureau.contexts.get('thread-1');
+        expect(session!.conversationHistory.messages['user-1']!.content).toEqual([
+          { type: 'image', mimeType: 'image/png', source: { kind: 'managed-asset', assetId } },
+        ]);
+      },
+    );
+  });
+
   it('is refused at the door, with the refusal of a missing asset, when another owner holds the asset', async () => {
     await withHarness(
       { script: [say('Seen.')], backends: anthropic.slice(0, 1), authentication },

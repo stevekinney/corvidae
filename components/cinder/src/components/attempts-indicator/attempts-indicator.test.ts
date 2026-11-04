@@ -90,6 +90,8 @@ describe('AttemptsIndicator', () => {
     const stylesheet = readFileSync(new URL('./attempts-indicator.css', import.meta.url), 'utf8');
     expect(stylesheet).toContain('--_cinder-attempts-indicator-fill: var(--cinder-border-control)');
     expect(stylesheet).toContain("[data-cinder-tone='accent']");
+    expect(stylesheet).toMatch(/__segment \{[^}]*background: var\(--cinder-border-faint\);/);
+    expect(stylesheet).not.toMatch(/__segment \{[^}]*--cinder-surface-inset/);
     expect(stylesheet).toContain('forced-colors: active');
     expect(stylesheet).toContain('Highlight');
   });

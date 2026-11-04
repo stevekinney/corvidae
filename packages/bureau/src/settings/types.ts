@@ -26,6 +26,16 @@ export interface SettingKeyState {
 export interface SettingsSnapshot {
   /** Each key's value: the stored value where the store has one and the key is not locked, else the code default. */
   readonly values: SettingsValues;
+  /**
+   * Each key's value as it applies (COR-2009): its {@link SettingsSnapshot.values} entry, or where
+   * that is absent, the value the Bureau applies when nothing sets the key, such as a 7-day event
+   * window or the engine's 5-minute retention sweep. A screen shows it for an unset key ("Default:
+   * 7 days") rather than "Not set". Like `values`, a `restart` key reports its stored value while
+   * it waits for a restart. A key whose unset state has no one value (no model policy, no
+   * summarizer, the memory policy's own windows) is absent here too; its description in the schema
+   * says what unset means.
+   */
+  readonly effective: SettingsValues;
   /** How many times the stored record has changed; `0` before the first change. */
   readonly revision: number;
   /** Whether the record survives the process: `false` for a Bureau without persistent storage. */

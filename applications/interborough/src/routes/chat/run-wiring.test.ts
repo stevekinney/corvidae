@@ -18,12 +18,15 @@ import {
   guardChatStreamEvents,
 } from '@lostgradient/chat';
 import { rejectionOf } from '@lostgradient/testing';
+import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import { RESUME_ROUND_CHANGED_MESSAGE } from '@lostgradient/bureau';
 import { quietFor, waitUntil, yieldEventLoopTurn } from '@lostgradient/testing/wait-until';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import { BUREAU_PATH } from '../../lib/bureau-client.ts';
+import ChatAssets from './chat-assets.svelte';
+import { assetsOf } from './chat-assets.ts';
 import { AG_UI_PATH, createChatRunWiring, openingTurn } from './run-wiring.ts';
 
 const THREAD = 'thread-1';
@@ -568,6 +571,35 @@ describe('the thread’s history', () => {
     });
     expect(history?.id).toBe(THREAD);
     expect(history?.ids.map((id) => history.messages[id]?.content)).toEqual(['Hello', 'Hi there.']);
+  });
+
+  test('replays a sent image/png attachment as an image, not a download', async () => {
+    // S63: the part as the Bureau's snapshot replays it, carrying the asset's detected type.
+    const attached = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Here is the screenshot.' },
+          {
+            type: 'image',
+            source: { type: 'file', value: 'asset-1', provider: 'bureau', mimeType: 'image/png' },
+          },
+        ],
+      },
+    ];
+    const { wiring } = wiringOver([json({ threadId: THREAD, messages: attached })], empty);
+
+    const history = await wiring.history(THREAD);
+
+    const assets = assetsOf(history!.messages['u1']!);
+    expect(assets).toEqual([{ assetId: 'asset-1', mediaType: 'image/png' }]);
+    const { container } = render(ChatAssets, { assets, role: 'user' });
+    expect(container.querySelector('.weft-chat-asset')?.getAttribute('data-kind')).toBe('image');
+    expect(container.querySelector('img')?.getAttribute('src')).toBe(
+      '/bureau/assets/asset-1/content',
+    );
+    expect(container.querySelector('a[download]')).toBeNull();
   });
 
   test('is nothing for a thread the mount does not know or will not show', async () => {
@@ -2096,6 +2128,46 @@ describe('the lines a run leaves under its messages', () => {
     if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
     return { wiring, conversation: terminal.conversation };
   }
+
+  test.each(['completed', 'failed', 'aborted'] as const)(
+    'places a child card live and settles it before the parent ends (%s)',
+    async (status) => {
+      const conversation = appendUserMessage(empty(), 'Remember it');
+      let current = conversation;
+      const snapshots: ConversationHistory[] = [];
+      const stubbed = mount([
+        stream([
+          started(),
+          childStarted,
+          {
+            type: 'CUSTOM',
+            name: 'bureau.child-run-settled',
+            value: { childRunId: 'child-1', status },
+          },
+          finished(),
+        ]),
+      ]);
+      const wiring = createChatRunWiring({
+        agentName: () => 'assistant',
+        fetch: stubbed.fetch,
+        conversation: () => current,
+        onSnapshot: (next) => {
+          current = next;
+          snapshots.push(next);
+        },
+      });
+
+      const result = await frames(wiring, conversation);
+      const terminal = result.at(-1);
+      if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+      expect(notesOf(snapshots[0]!, conversation.ids[0]!)).toMatchObject([
+        { kind: 'child-run', childRunId: 'child-1', status: 'running' },
+      ]);
+      expect(notesOf(snapshots.at(-1)!, conversation.ids[0]!)).toMatchObject([
+        { kind: 'child-run', childRunId: 'child-1', status, href: '/runs/child-1' },
+      ]);
+    },
+  );
 
   test('are on the rows they belong to when the run completes, through the mapper', async () => {
     const { conversation, wiring } = await completed([

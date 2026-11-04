@@ -2927,6 +2927,9 @@ async function buildRuntimeComposition(
       runWorkflow,
       checkpointStore,
       recover: false,
+      // COR-2009: the engine reads the Bureau's clock, so what it stores (events, checkpoints,
+      // schedule fires and misses, indexes) is stamped on the same clock as the Bureau's own records.
+      getNow: () => runtimeServices.clock.now(),
       backgroundTasks: options.maintenance ?? 'automatic',
       // COR-1527: with workflow files the scheduler waits until their documents are registered,
       // so a schedule that is due the moment the engine exists cannot fire a type Weft does not
@@ -2940,6 +2943,10 @@ async function buildRuntimeComposition(
         ? {}
         : { goalWorkflow: dependencies.goalWorkflow }),
       ...(effectiveObservability !== undefined ? { observability: effectiveObservability } : {}),
+      ...(options.alerts === undefined ? {} : { alerts: options.alerts }),
+      ...(options.storageSizeReportIntervalMs === undefined
+        ? {}
+        : { storageSizeReportIntervalMs: options.storageSizeReportIntervalMs }),
       ...(logStore === undefined
         ? effectiveOnLog
           ? { onLog: effectiveOnLog }

@@ -9,6 +9,8 @@ const { render } = await import('@testing-library/svelte');
 const { default: Wrapper } = await import('../../test/fixtures/table-fixture.svelte');
 const { default: EmptyTableCellFixture } =
   await import('../../test/fixtures/empty-table-cell-fixture.svelte');
+const { default: DetailFixture } =
+  await import('../../test/fixtures/table-cell-detail-fixture.svelte');
 
 const columns = [{ key: 'name', label: 'Name' }];
 const rows = [{ id: '1', cells: ['Alice'] }];
@@ -91,5 +93,24 @@ describe('TableCell — empty children', () => {
     expect(cell).not.toBeNull();
     expect(cell?.classList.contains('cinder-table__cell')).toBe(true);
     expect(cell?.textContent?.trim()).toBe('');
+  });
+});
+
+describe('TableCell detail', () => {
+  test('draws the detail after the cell content, in a span of its own', () => {
+    const { container } = render(DetailFixture, {});
+    const cell = container.querySelector('tbody td');
+    const detail = cell?.querySelector(':scope > .cinder-table__cell-detail');
+    expect(detail?.textContent).toBe('lookup-order');
+    expect(cell?.lastElementChild).toBe(detail ?? null);
+    expect(cell?.textContent?.trim().startsWith('Lookup order')).toBe(true);
+  });
+
+  test('draws no detail span when the cell has none', () => {
+    const { container } = render(DetailFixture, {});
+    const cells = container.querySelectorAll('tbody tr:nth-child(2) td');
+    expect(cells[0]?.querySelector('.cinder-table__cell-detail')).toBeNull();
+    // No stray whitespace after the content: a cell's text is what was written.
+    expect(cells[0]?.textContent).toBe('Issue refund');
   });
 });

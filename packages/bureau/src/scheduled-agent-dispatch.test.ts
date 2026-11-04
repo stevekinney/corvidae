@@ -90,7 +90,8 @@ describe('a schedule’s fire', () => {
       await second.maintain(created!.nextFireAt!);
       const status = await pollUntil(async () => {
         const page = await second.tasks.workflows();
-        const fire = page?.items[0];
+        // The fire's own run, not the schedule tick that records it came due (COR-2009).
+        const fire = page?.items.find((item) => item.type === 'agentRun');
         return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
       }, 'the fire to settle');
 
@@ -139,7 +140,8 @@ describe('a schedule’s fire', () => {
       await second.maintain(created!.nextFireAt!);
       const status = await pollUntil(async () => {
         const page = await second.tasks.workflows();
-        const fire = page?.items[0];
+        // The fire's own run, not the schedule tick that records it came due (COR-2009).
+        const fire = page?.items.find((item) => item.type === 'agentRun');
         return fire?.status === 'failed' || fire?.status === 'completed' ? fire.status : undefined;
       }, 'the fire to settle');
 

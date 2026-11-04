@@ -651,7 +651,7 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     expect(getByText('Settled after grace period · no worker acknowledgement')).not.toBeNull();
     expect(
       getByText(
-        `Not acknowledged · Weft settled attempt 2 at ${iso(NOW - 1_000)} after the cancellation grace period elapsed`,
+        `Not acknowledged · Interborough settled attempt 2 at ${iso(NOW - 1_000)} after the cancellation grace period elapsed`,
       ),
     ).not.toBeNull();
     expect(queryByText('Acknowledged by owning attempt')).toBeNull();
@@ -720,7 +720,7 @@ describe('TaskLedgerPanel — query states', () => {
       props: { loading: false, error, task: undefined, now: NOW },
     });
     expect(getByText('Malformed server response')).not.toBeNull();
-    expect(getByText('Weft returned a malformed task ledger response.')).not.toBeNull();
+    expect(getByText('The server returned a malformed task ledger response.')).not.toBeNull();
   });
 
   test('offers Retry on a fault when the route can read the ledger again', async () => {

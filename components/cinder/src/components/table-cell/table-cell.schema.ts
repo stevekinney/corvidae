@@ -11,9 +11,9 @@ const schema = {
       default: false,
     },
     controls: {
-      type: 'boolean',
+      enum: [false, true, 'fit'],
       description:
-        'Marks a cell that holds a form control (a select, an input, a button). The\ncontrol fills the cell, so every control in the column shares the one width\nthe column has, and the cell keeps a minimum width so the control stays\nusable. Set it on every cell in the column.',
+        "Marks a cell that holds a form control (a select, an input, a button). The control fills the\ncell, so every control in the column shares the one width the column has, and the cell keeps a\nminimum width so the control stays usable. Set it on every cell in the column. `'fit'` is for a\ncontrol that keeps its own size, such as a checkbox or a switch: the cell does not stretch it or\nset a minimum width.\n\nA table stacks its rows on a narrow container only while a cell has this set. When it\nstacks, the control cells move to a line of their own under the other cells, each at least 44px\ntall, and a `'fit'` cell shows its column's header text beside the control.",
       default: false,
     },
     align: {
@@ -40,6 +40,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           "Cell content. Optional so that empty `<td>` cells (used in spanning\ntable layouts) are a valid, non-throwing state. When omitted the cell\nrenders empty, which is valid HTML for a `<td>`.\n\n**Note for TypeScript consumers:** the Snippet type is never called externally\nby consuming code — Svelte's compiler handles invocation internally. Making\nthis optional is therefore safe as an API change: no external caller calls\n`props.children()` on a Svelte component's props.",
+      },
+      {
+        name: 'detail',
+        reason: 'function-or-snippet',
+        description:
+          "Secondary content that follows `children` in the same cell: an identifier, a description, a\nnote. It reads as part of the cell until the table stacks its rows into cards, where it is\ndropped, so the first line of a card carries the name and its one-word facts only (a tool's\nname and risk, not its identifier and description). It is not a place for anything the reader\nneeds on a phone, because it is not drawn there.",
       },
     ],
   },

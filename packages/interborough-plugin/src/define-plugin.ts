@@ -15,7 +15,7 @@ function secretKey(declaration: PluginSecretDeclaration): string {
  * Declares a plugin. It returns the descriptor unchanged, typed so `setup` and `afterStart` see the
  * configuration the `configuration` schema parses to, and refuses a malformed descriptor where the
  * plugin is written instead of where the host loads it: a name outside `pluginNamePattern`, an
- * empty version or description, or a secret that is empty or declared twice.
+ * empty title, version or description, or a secret that is empty or declared twice.
  */
 export function definePlugin<
   TConfigurationSchema extends z.ZodType = PluginEmptyConfigurationSchema,
@@ -24,6 +24,12 @@ export function definePlugin<
     throw new TypeError(
       `Plugin name ${JSON.stringify(descriptor.name)} must start with a lowercase letter and use only lowercase letters, digits and hyphens, ending in a letter or digit.`,
     );
+  }
+  if (
+    descriptor.title !== undefined &&
+    (typeof descriptor.title !== 'string' || descriptor.title.trim() === '')
+  ) {
+    throw new TypeError(`Plugin "${descriptor.name}" declares an empty title.`);
   }
   if (typeof descriptor.version !== 'string' || descriptor.version.trim() === '') {
     throw new TypeError(`Plugin "${descriptor.name}" must declare a non-empty version.`);

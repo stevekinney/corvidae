@@ -26,6 +26,8 @@ import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { AgentDefinitions } from './agent-catalog';
 import { notPurgedCondition, runTombstoneKey } from './chat-content-tombstone';
 import type { EventTimestampResolver } from './event-timestamp';
+import type { ScheduleMissedEvent } from './events';
+import { SCHEDULER_ACTOR } from './owner-of-record';
 import {
   resolveDiagnosticSink,
   serializeActionDetail,
@@ -189,6 +191,11 @@ export const AUDIT_EVENT_TYPES = [
   'schedule.paused',
   'schedule.resumed',
   'schedule.cancelled',
+  // COR-2009 — a schedule's occurrences the Bureau found missed (it was down, or a daylight-saving
+  // gap swallowed them), dispatched on the bureau-level emitter as `schedule.missed` and recorded by
+  // a dedicated listener below under `schedule:<id>`, with `system:scheduler` as the actor. The
+  // audit log reads it as "Noticed 4 missed runs · Daily summary".
+  'schedule.missed',
   // COR-718 — one entry per schedule fire, written out-of-band by
   // `create-bureau.ts` when the fire starts, under the fire's run id. The owner
   // of that run is the schedule's owner; the entry's `principal` is the actor,
@@ -1094,7 +1101,11 @@ export function auditTrailSessionOwnerId(sessionId: string): string {
  * them whole. Every other type of a deleted chat's runs is redacted, so a type a later version
  * adds is redacted by default and has to be listed here to be kept.
  */
-export const AUDIT_CONTENT_FREE_EVENT_TYPES: ReadonlySet<string> = new Set(['run.cleanup-settled']);
+export const AUDIT_CONTENT_FREE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'run.cleanup-settled',
+  // COR-2009: who started the run, its agent and its session; ids only.
+  'run.started',
+]);
 
 /**
  * The top-level `detail` fields a redacted entry keeps when they hold a string, number or boolean:
@@ -1113,6 +1124,8 @@ export const AUDIT_REDACTION_KEPT_DETAIL_FIELDS: readonly string[] = [
   'runId',
   'toolName',
   'toolCallId',
+  // COR-2009: the review an approved call ran under, an id.
+  'reviewId',
   'status',
   'startedAt',
   'decision',
@@ -1792,6 +1805,26 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       });
     });
   };
+  // COR-2009 — what the Bureau noticed a schedule miss: the count and why, filed under the schedule
+  // like its definition changes, and attributed to the scheduler, which noticed it.
+  const scheduleMissedListener = (event: ScheduleMissedEvent): void => {
+    if (!auditEventSet.has('schedule.missed')) return;
+    void writeOutOfBandRecord(
+      {
+        runId: scheduleOwnerId(event.scheduleId),
+        type: 'schedule.missed',
+        principal: SCHEDULER_ACTOR,
+        detail: {
+          scheduleId: event.scheduleId,
+          missedCount: event.missedCount,
+          // Not `reason`: a review decision's `reason` is a person's note and is never projected.
+          missedReason: event.reason,
+        },
+      },
+      { timestampMs: eventTimestamp(event) },
+    );
+  };
+  bureau.addEventListener('schedule.missed', scheduleMissedListener);
   bureau.addEventListener('schedule.created', scheduleCreatedListener);
   bureau.addEventListener('schedule.paused', scheduleTransitionListener);
   bureau.addEventListener('schedule.resumed', scheduleTransitionListener);
@@ -2905,6 +2938,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       bureau.removeEventListener('schedule.resumed', scheduleTransitionListener);
       bureau.removeEventListener('schedule.cancelled', scheduleTransitionListener);
       bureau.removeEventListener('session.deleted', sessionDeletedListener);
+      bureau.removeEventListener('schedule.missed', scheduleMissedListener);
       // Await every write already in flight (AB-207) — `kv.set` has no
       // cancellation hook, so there is nothing for the owner-issued `signal`
       // to bound here beyond refusing new writes (above); a write already

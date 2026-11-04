@@ -38,36 +38,73 @@
     --_cinder-table-controls-size: 10rem;
   }
 
+  /* The scroll box owns the frame: the hairline border, the surface radius and the clip. The table
+   * inside draws none of its own, so the frame stays put while the columns scroll under it. */
   .cinder-table-scroll {
     /* The wrapper scrolls, so it also contains: an absolutely positioned
      * descendant (a visually hidden label in a header cell) otherwise
      * positions against the page, escapes this scroll container's clip, and
      * widens the page's own scrollable overflow to the width of the table. */
     position: relative;
+    /* A flex row, so the shared inline-end fade (a pseudo-element sibling of the table) can stretch
+     * the full height of the table and stick to the right edge of the visible box. The table keeps
+     * its own height (`flex-start`), so a bounded scroll box never stretches its rows. */
+    display: flex;
+    align-items: flex-start;
     inline-size: 100%;
     max-inline-size: 100%;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
     -webkit-overflow-scrolling: touch;
-    /* Same inset-shadow horizontal-scroll affordance as data-grid's
-     * `--_cinder-data-grid-overflow-shadow` (data-grid.css) — proven,
-     * mask-free, and safe alongside the sticky header below (the shadow is
-     * decoration on the scroll container's own box, so it stays pinned at
-     * the true edges rather than scrolling with content). Driven by
-     * `overflowShadow('inline')` (utilities/attachments.ts), which is NOT
-     * scroll-position-aware: both edges show whenever content overflows at
-     * all, matching data-grid's own behavior exactly. */
-    box-shadow: var(--_cinder-table-scroll-shadow, none);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface);
+    /* The fade is opaque in the surface color; see _scroll-fade.css rule 1. */
+    --_cinder-scroll-fade-color: var(--cinder-surface);
   }
 
-  .cinder-table-scroll[data-cinder-overflows-inline] {
-    --_cinder-table-scroll-shadow:
-      inset 1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent),
-      inset -1rem 0 1rem -1rem color-mix(in srgb, var(--cinder-text-default) 28%, transparent);
-  }
-
-  .cinder-table-scroll .cinder-table {
+  .cinder-table-scroll > .cinder-table {
+    /* The frame is the scroll box's. */
+    border: 0;
+    border-radius: 0;
+    flex: 0 0 auto;
     min-inline-size: max-content;
+  }
+
+  .cinder-table-scroll::after {
+    flex: none;
+    align-self: stretch;
+  }
+
+  /* A table that scrolls says so: the scrollbar is always painted, in the shared scrollbar tokens,
+   * rather than appearing only while the pointer is moving (the overlay scrollbar on macOS).
+   * Chrome and Safari draw a persistent bar only from the `::-webkit-scrollbar` rules; setting
+   * `scrollbar-width` or `scrollbar-color` there keeps the overlay bar that fades away. So the
+   * standard properties are the fallback for engines without those pseudo-elements. */
+  @supports not selector(::-webkit-scrollbar) {
+    .cinder-table-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: var(--cinder-scrollbar-thumb) var(--cinder-scrollbar-track);
+    }
+  }
+
+  .cinder-table-scroll::-webkit-scrollbar {
+    inline-size: var(--cinder-scrollbar-size);
+    block-size: var(--cinder-scrollbar-size);
+  }
+
+  .cinder-table-scroll::-webkit-scrollbar-track,
+  .cinder-table-scroll::-webkit-scrollbar-corner {
+    background: var(--cinder-scrollbar-track);
+  }
+
+  .cinder-table-scroll::-webkit-scrollbar-thumb {
+    background: var(--cinder-scrollbar-thumb);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-table-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--cinder-scrollbar-thumb-hover);
   }
 
   .cinder-table-scroll:focus-visible {
@@ -308,6 +345,24 @@
     max-inline-size: 100%;
   }
 
+  /* A control that keeps its own size (a checkbox, a switch) does not fill the cell or ask for the
+   * minimum width, so a column of them stays as narrow as the control. */
+  .cinder-table__cell[data-cinder-controls='fit'] {
+    min-inline-size: 0;
+    inline-size: 1px;
+    vertical-align: middle;
+  }
+
+  .cinder-table__cell[data-cinder-controls='fit'] > * {
+    inline-size: auto;
+    max-inline-size: none;
+  }
+
+  /* A cell's detail flows with its content, as if it were written beside it. */
+  .cinder-table__cell-detail {
+    display: contents;
+  }
+
   .cinder-table__cell[data-cinder-align='center'] {
     text-align: center;
   }
@@ -326,16 +381,15 @@
   }
 
   /* ----------------------------------------
- * Stacked — below the `stackBelow` viewport width (table.svelte sets
- * `data-cinder-stacked`), each body row becomes a block and each cell shows
- * its column's header text (copied onto the cell as
- * `data-cinder-stack-label`) above its value. The label is a block of its
- * own rather than a grid column, so a cell holding several elements keeps
- * its own inline flow. The header row leaves the
- * layout but stays in the accessibility tree, so the table keeps its column
- * names for assistive technology. Declared last so these rules win over the
- * density, selection, alignment, and sticky-header rules at equal
- * specificity.
+ * Stacked — a table whose cells hold controls (a select, a switch, a button) never scrolls
+ * sideways on a narrow container: table.svelte sets `data-cinder-stacked` while the table's own
+ * container is narrower than `stackBelow`, and each body row becomes a card. The name and its
+ * muted detail sit on the first line; every control cell moves to a line of its own beneath,
+ * at least 44px tall, the control filling the line. A `fit` control (a checkbox) keeps its size and
+ * shows its column's header text beside it, copied onto the cell as `data-cinder-stack-label`.
+ * The header row leaves the layout but stays in the accessibility tree, so the table keeps its
+ * column names for assistive technology. Declared last so these rules win over the density,
+ * selection, alignment, and sticky-header rules at equal specificity.
  * ---------------------------------------- */
 
   .cinder-table[data-cinder-stacked] {
@@ -343,7 +397,8 @@
     position: relative;
   }
 
-  .cinder-table-scroll .cinder-table[data-cinder-stacked] {
+  .cinder-table-scroll > .cinder-table[data-cinder-stacked] {
+    flex: 1 1 auto;
     min-inline-size: 0;
   }
 
@@ -365,8 +420,13 @@
   }
 
   .cinder-table[data-cinder-stacked] .cinder-table__body .cinder-table__row {
-    display: block;
-    padding-block: var(--cinder-space-2);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--cinder-space-3);
+    row-gap: var(--cinder-space-2);
+    padding-block: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-3);
     border-bottom: 1px solid var(--cinder-border-muted);
   }
 
@@ -374,24 +434,101 @@
     border-bottom: 0;
   }
 
+  /* The break between the first line and the controls: a full-width, zero-height flex item that
+   * sits between the two groups of cells by `order`. */
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__row:has(> .cinder-table__cell[data-cinder-controls])::before {
+    content: '';
+    order: 1;
+    flex-basis: 100%;
+    block-size: 0;
+    margin-block-end: calc(var(--cinder-space-2) * -1);
+  }
+
   .cinder-table[data-cinder-stacked] .cinder-table__body .cinder-table__cell {
     display: block;
     width: auto;
     min-inline-size: 0;
-    padding-block: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-3);
+    padding: 0;
     border-bottom: 0;
     text-align: start;
+    overflow-wrap: break-word;
   }
 
-  .cinder-table[data-cinder-stacked] .cinder-table__cell[data-cinder-stack-label]::before {
-    content: attr(data-cinder-stack-label);
-    display: block;
-    margin-block-end: var(--cinder-space-0-5);
-    font-size: var(--cinder-text-xs);
-    font-weight: var(--cinder-font-medium);
+  /* A cell's detail (an identifier, a description) is not drawn on a card: line one is the name
+   * and its facts (row 40a). */
+  .cinder-table[data-cinder-stacked] .cinder-table__cell-detail {
+    display: none;
+  }
+
+  /* The first cell without a control is the name and takes the line; any other is a muted word
+   * (a risk, a kind) at the end of it. */
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell:not([data-cinder-controls]) {
+    order: 0;
+    flex: 1 1 0;
+  }
+
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell:not([data-cinder-controls])
+    ~ .cinder-table__cell:not([data-cinder-controls]) {
+    flex: 0 1 auto;
+    text-align: end;
     color: var(--cinder-text-muted);
-    overflow-wrap: anywhere;
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-table__body .cinder-table__cell[data-cinder-controls] {
+    order: 2;
+    display: flex;
+    align-items: center;
+    flex: 1 1 0;
+    min-block-size: 2.75rem;
+    min-inline-size: 0;
+  }
+
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls]
+    > * {
+    min-block-size: 2.75rem;
+  }
+
+  /* A select, input or button in a card is a touch target too: the control itself is as tall as
+   * its row, not just the wrapper around it (row 40a). */
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls]
+    :is(.cinder-select, .cinder-input, .cinder-button) {
+    min-block-size: 2.75rem;
+  }
+
+  /* A control that keeps its own size: a checkbox or switch, with its column's header text after it. */
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls='fit'] {
+    flex: 0 0 auto;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls='fit']
+    > * {
+    box-sizing: content-box;
+    inline-size: auto;
+    min-block-size: 0;
+  }
+
+  .cinder-table[data-cinder-stacked]
+    .cinder-table__body
+    .cinder-table__cell[data-cinder-controls='fit'][data-cinder-stack-label]::before {
+    content: attr(data-cinder-stack-label);
+    order: 1;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
   }
 
   .cinder-table[data-cinder-stacked] .cinder-table__cell-text {

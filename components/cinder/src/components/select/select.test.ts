@@ -540,3 +540,10 @@ describe('Select — onValueChange on the native presentation', () => {
     expect(onchange).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Select label height (row 74d)', () => {
+  test('the label takes the form-field label line height, so a Select beside an Input lines up', () => {
+    const rule = /\.cinder-select-field__label \{([^}]*)\}/s.exec(readSelectStyles())?.[1] ?? '';
+    expect(rule).not.toContain('line-height');
+  });
+});

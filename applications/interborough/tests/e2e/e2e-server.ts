@@ -25,13 +25,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { seedDynamicSources } from '../../fixtures/dynamic-sources.ts';
+import { seedSampleWorld } from '../../fixtures/sample-world-seed.ts';
 import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
-import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { startHost, type Host } from '../../src/host/host.ts';
-import { prepareShowcaseHome, showcaseProviderResolver } from '../../src/host/showcase.ts';
+import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
@@ -397,18 +397,12 @@ const connectHost = await startConnectHost({
 });
 
 // The seventh host, which only the showcase specification opens (`showcase.spec.ts`): the shape of
-// `bun run dev -- --showcase`, so the Bureau's own engine runs its console, the stub provider
-// gives the agents their models, and the demo plugin is on. It starts empty; the specification
-// seeds it and removes what it seeded.
+// `bun run dev -- --showcase`, the sample world's seed playing its story into a home of its own and
+// leaving the host running at Monday, Nov 2, a little after 10:45 AM on its offset clock.
 const showcaseHome = join(scratch, 'showcase-home');
-await prepareShowcaseHome(showcaseHome);
-const showcaseHost = await startHost({
-  environment: { INTERBOROUGH_HOME: showcaseHome },
-  resolveProviderGenerate: showcaseProviderResolver(),
-  port: E2E_SHOWCASE_PORT,
-  buildDirectory,
+const { host: showcaseHost } = await seedSampleWorld(showcaseHome, {
+  host: { port: E2E_SHOWCASE_PORT, buildDirectory },
 });
-await showcaseHost.bureau.plugins.ready();
 
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's

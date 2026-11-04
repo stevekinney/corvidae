@@ -1304,3 +1304,165 @@ describe('SortableList multi-position pointer drag', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Move-button mode
+// ---------------------------------------------------------------------------
+
+describe('SortableList move buttons', () => {
+  async function renderSteps(props: Record<string, unknown> = {}) {
+    const { default: Fixture } = await import('./sortable-list-move-buttons.fixture.svelte');
+    return render(Fixture as any, { props });
+  }
+
+  function labels(container: Element): string[] {
+    return Array.from(container.querySelectorAll('[data-step-title]')).map(
+      (element) => element.textContent ?? '',
+    );
+  }
+
+  function moveButtonNames(row: Element): string[] {
+    return Array.from(row.querySelectorAll('[data-cinder-move]')).map(
+      (button) => button.getAttribute('aria-label') ?? '',
+    );
+  }
+
+  test('gives the first row no Move up and the last row no Move down', async () => {
+    const { container } = await renderSteps();
+    const rows = container.querySelectorAll('[data-sortable-row]');
+    expect(moveButtonNames(requiredValue(rows[0]))).toEqual(['Move Ask an agent down']);
+    expect(moveButtonNames(requiredValue(rows[1]))).toEqual([
+      'Move Wait for a person up',
+      'Move Wait for a person down',
+    ]);
+    expect(moveButtonNames(requiredValue(rows[2]))).toEqual(['Move Send a message up']);
+  });
+
+  test('a single row shows neither move button', async () => {
+    const { container } = await renderSteps({ initial: ['Only step'] });
+    expect(container.querySelectorAll('[data-cinder-move]').length).toBe(0);
+  });
+
+  test('buttons mode draws no drag handle, and both mode keeps it', async () => {
+    const buttons = await renderSteps();
+    expect(buttons.container.querySelectorAll('.cinder-sortable-handle').length).toBe(0);
+    cleanup();
+    const both = await renderSteps({ reorderMode: 'both' });
+    expect(both.container.querySelectorAll('.cinder-sortable-handle').length).toBe(3);
+    expect(both.container.querySelectorAll('[data-cinder-move]').length).toBe(4);
+  });
+
+  test('handle mode offers no move buttons and no moveButtons snippet', async () => {
+    const { container } = await renderSteps({ reorderMode: 'handle' });
+    expect(container.querySelectorAll('[data-cinder-move]').length).toBe(0);
+    expect(container.querySelectorAll('.cinder-sortable-handle').length).toBe(3);
+  });
+
+  test('Move down reorders and reports the change like a drop does', async () => {
+    const onChange = mock();
+    const { container } = await renderSteps({ onChange });
+    await fireEvent.click(
+      requiredValue(container.querySelector('[aria-label="Move Ask an agent down"]')),
+    );
+    expect(labels(container)).toEqual(['Wait for a person', 'Ask an agent', 'Send a message']);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toEqual({ itemKey: 'step-0', fromIndex: 0, toIndex: 1 });
+  });
+
+  test('announces the move in the live region', async () => {
+    const { container } = await renderSteps();
+    await fireEvent.click(
+      requiredValue(container.querySelector('[aria-label="Move Send a message up"]')),
+    );
+    await waitFor(() =>
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        'Send a message, moved to position 2 of 3.',
+      ),
+    );
+  });
+
+  test('focus follows the pressed button when it still exists in the new place', async () => {
+    const { container } = await renderSteps();
+    const down = requiredValue(
+      container.querySelector<HTMLElement>('[aria-label="Move Ask an agent down"]'),
+    );
+    down.focus();
+    await fireEvent.click(down);
+    await tick();
+    // The row is now in the middle, so it has both buttons and Move down keeps focus.
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Move Ask an agent down');
+  });
+
+  test('focus moves to the remaining button when the pressed one is gone', async () => {
+    const { container } = await renderSteps();
+    const up = requiredValue(
+      container.querySelector<HTMLElement>('[aria-label="Move Wait for a person up"]'),
+    );
+    up.focus();
+    await fireEvent.click(up);
+    await tick();
+    // The row is now first and has no Move up, so focus lands on its Move down.
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Move Wait for a person down');
+  });
+
+  test('restores focus when the consumer applies the new order after onReorder returns', async () => {
+    const { container } = await renderSteps({ applyAfterTick: true });
+    const up = requiredValue(
+      container.querySelector<HTMLElement>('[aria-label="Move Wait for a person up"]'),
+    );
+    up.focus();
+    await fireEvent.click(up);
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe(
+        'Move Wait for a person down',
+      ),
+    );
+  });
+
+  test('a consumer control beside the buttons keeps working after a move', async () => {
+    const { container } = await renderSteps();
+    await fireEvent.click(
+      requiredValue(container.querySelector('[aria-label="Move Ask an agent down"]')),
+    );
+    await fireEvent.click(
+      requiredValue(container.querySelector('[aria-label="Delete Ask an agent"]')),
+    );
+    expect(labels(container)).toEqual(['Wait for a person', 'Send a message']);
+  });
+
+  test('a custom formatter names the Move up button', async () => {
+    const { container } = await renderSteps({
+      formatMoveUpLabel: (label: string) => `Earlier: ${label}`,
+    });
+    expect(container.querySelector('[aria-label="Earlier: Wait for a person"]')).not.toBeNull();
+  });
+
+  test('row content that does not render moveButtons draws no buttons and no handle', () => {
+    const list = renderList({ reorderMode: 'buttons' });
+    expect(list.container.querySelectorAll('[data-cinder-move]').length).toBe(0);
+    expect(list.container.querySelectorAll('.cinder-sortable-handle').length).toBe(0);
+  });
+});
+
+describe('SortableController step', () => {
+  const key = (item: { id: string }) => item.id;
+  const data = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  test('returns the reordered items and the change', () => {
+    const announce = mock();
+    const controller = new SortableController<{ id: string }>({ announce });
+    const result = controller.step(data, key, 'b', -1, 'Beta');
+    expect(result?.nextItems.map(key)).toEqual(['b', 'a', 'c']);
+    expect(result?.change).toEqual({ itemKey: 'b', fromIndex: 1, toIndex: 0 });
+    expect(announce).toHaveBeenCalledWith('Beta, moved to position 1 of 3.');
+  });
+
+  test('returns null at either end, for an unknown key and during a lift', () => {
+    const controller = new SortableController<{ id: string }>({ announce: mock() });
+    expect(controller.step(data, key, 'a', -1, 'Alpha')).toBeNull();
+    expect(controller.step(data, key, 'c', 1, 'Gamma')).toBeNull();
+    expect(controller.step(data, key, 'z', 1, 'Zed')).toBeNull();
+    controller.lift('a', 0, 'Alpha', 3);
+    expect(controller.step(data, key, 'b', 1, 'Beta')).toBeNull();
+  });
+});

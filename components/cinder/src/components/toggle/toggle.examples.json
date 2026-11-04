@@ -26,6 +26,12 @@
       "title": "Icon-only / inline row",
       "description": "In a toolbar or table row where the meaning is already clear from context, labelVisible={false} removes the visible text while keeping it as the accessible name.",
       "code": "<script lang=\"ts\">\n  import { Toggle } from '@lostgradient/cinder';\n\n  let wordWrap = $state(true);\n  let minimap = $state(false);\n</script>\n\n<div\n  role=\"toolbar\"\n  aria-label=\"Editor options\"\n  style=\"display: flex; align-items: center; gap: 1rem;\"\n>\n  <Toggle id=\"opt-wrap\" bind:checked={wordWrap} label=\"Word wrap\" labelVisible={false} />\n  <Toggle id=\"opt-minimap\" bind:checked={minimap} label=\"Minimap\" labelVisible={false} />\n</div>\n"
+    },
+    {
+      "id": "readonly",
+      "title": "Read-only with a description",
+      "description": "A switch that shows a setting something else owns, such as a schedule defined in a file. It stays focusable and is announced as read-only, a press changes nothing, and the description names where the value comes from.",
+      "code": "<script lang=\"ts\">\n  import { Toggle } from '@lostgradient/cinder';\n</script>\n\n<Toggle\n  id=\"schedule-active\"\n  label=\"Active\"\n  checked\n  readonly\n  description=\"Defined in workflows/release-notes.json\"\n/>\n"
     }
   ]
 }

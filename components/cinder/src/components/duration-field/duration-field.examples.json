@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "duration-field",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Number plus unit",
+      "description": "A duration stored in milliseconds, typed as a number in the unit that fits it (here 90 seconds). A setting that always counts in one unit fixes it as text inside the frame: \"15 seconds\".",
+      "code": "<script lang=\"ts\">\n  import { DurationField } from '@lostgradient/cinder';\n\n  let timeout = $state<number | null>(90_000);\n  let renew = $state<number | null>(15_000);\n</script>\n\n<div style=\"display: grid; gap: 1rem; max-inline-size: 22rem;\">\n  <DurationField id=\"timeout\" label=\"Timeout\" bind:value={timeout} />\n  <DurationField\n    id=\"renew\"\n    label=\"Renew interval\"\n    unit=\"s\"\n    unitSelectable={false}\n    bind:value={renew}\n  />\n  <p style=\"margin: 0; color: var(--cinder-text-muted);\">\n    Stored as {timeout} ms and {renew} ms.\n  </p>\n</div>\n"
+    }
+  ]
+}

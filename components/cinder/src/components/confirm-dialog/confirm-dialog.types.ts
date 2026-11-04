@@ -1,3 +1,5 @@
+import type { Snippet } from 'svelte';
+
 import type { DialogCancelProps } from '../../utilities/dialog-props.ts';
 
 /**
@@ -30,12 +32,20 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
   /** Modal title; passed through to <Modal>. */
   title: string;
   /**
-   * Optional body description — short, plain text only. Rendered as a single <p> and wired
-   * to aria-describedby. For rich content (markup, lists, multiple paragraphs), compose
-   * <Modal> + <Button> directly — screen readers announce aria-describedby targets as one
-   * continuous run.
+   * Optional body description — a short sentence or two. Rendered as a single <p> and wired
+   * to aria-describedby. A string is plain text; a snippet may add phrasing content inside the
+   * sentence, such as a key in `<code>`. Anything bigger than a sentence (a list, a code block, a
+   * checkbox) goes in `options`, below it. Screen readers announce aria-describedby targets as one
+   * continuous run, so keep the description short either way.
    */
-  description?: string;
+  description?: string | Snippet;
+  /**
+   * Content rendered below the description and above the typed confirmation: a checkbox that
+   * changes what the confirmation does, or the exact command about to run in a code block. The
+   * description says what the dialog does; the options say what each choice does. Keep the
+   * description short, and keep controls here labelled.
+   */
+  options?: Snippet;
   /**
    * Confirm button label. Required — no default. Name the action being confirmed:
    * - Destructive: "Delete", "Discard changes", "Remove from organization".
@@ -43,6 +53,11 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
    * Never use "OK" or "Confirm" in production — they don't describe the action.
    */
   confirmLabel: string;
+  /**
+   * Glyph at the start of the confirm button, such as a restart, stop or trash icon. Decorative:
+   * the label names the action.
+   */
+  confirmIcon?: Snippet;
   /**
    * When true, the confirm button uses variant="danger". The cancel button still
    * receives default focus regardless — color is never the sole destructive signal.
@@ -55,7 +70,43 @@ export type ConfirmDialogProps = Omit<DialogCancelProps, 'cancelLabel'> & {
   typeToConfirm?: string;
   /** Visible label for the typed-confirmation input. Defaults to `Type "<value>" to confirm`. */
   typeToConfirmLabel?: string;
-  /** Fired when the user activates the confirm button. Required. Component closes itself after. */
+  /**
+   * True while the confirmed work is in flight. The confirm button shows `busyLabel` and a spinner
+   * and ignores presses (it stays focusable), Cancel is inert, the typed field is read-only, and
+   * the dialog cannot be dismissed (Escape, the backdrop and the close button do nothing) until
+   * the work answers. Pair it with `closeOnConfirm={false}`, so the dialog stays open to show the
+   * answer.
+   * @default false
+   */
+  busy?: boolean;
+  /**
+   * Confirm button label while `busy`, such as "Restoring…" or "Deleting…". Defaults to
+   * `confirmLabel`, so the words stay put and only the spinner shows.
+   */
+  busyLabel?: string | undefined;
+  /**
+   * Bold lead sentence of the failure, such as "Couldn’t delete the agent.", set before `error`.
+   * Shown only with `error`.
+   */
+  errorTitle?: string | undefined;
+  /**
+   * Why the confirmed work failed, in a danger callout between the body and the actions that is
+   * announced as it appears: "Nothing was deleted." The dialog stays open, the typed text stays,
+   * and the confirm button stays armed under its own label, so pressing it again is the retry.
+   * Clear it to hide the callout.
+   */
+  error?: string | undefined;
+  /**
+   * Whether the dialog closes itself when the confirm button is pressed. Set `false` when the
+   * confirmed work can fail and the page needs the dialog to stay open to show it: the page then
+   * closes the dialog with `open = false` once the work succeeds.
+   * @default true
+   */
+  closeOnConfirm?: boolean;
+  /**
+   * Fired when the user activates the confirm button. Required. The component closes itself
+   * after, unless `closeOnConfirm` is `false`.
+   */
   onConfirm: () => void;
   /**
    * Viewport width below which the dialog is a bottom sheet: a grabber, the confirmation first and

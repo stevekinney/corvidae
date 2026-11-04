@@ -3,6 +3,12 @@ export type FormSectionHeadingLevel = 2 | 3 | 4 | 5 | 6;
 type FormSectionSharedProps = {
   /** Optional descriptive paragraph rendered under the heading/legend. */
   description?: string;
+  /**
+   * A short muted note beside the heading, on its baseline ("Read with every chat", "3 of 9").
+   * It says what the section is for or how much is in it; a sentence of guidance is the
+   * `description`.
+   */
+  meta?: string;
   /** Column ceiling. Container queries pick the actual rendered count. Default 2. */
   columns?: 1 | 2 | 3 | 4;
   /** Additional class merged with `.cinder-form-section`. */

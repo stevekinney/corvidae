@@ -25,6 +25,7 @@ function plugin(name: string, status: string, agents: readonly string[]) {
   return {
     descriptor: {
       name,
+      title: name,
       version: '1.0.0',
       description: '',
       required: false,

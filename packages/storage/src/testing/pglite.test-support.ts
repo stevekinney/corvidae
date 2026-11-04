@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite';
 
-import type { PostgresPool, PostgresPoolClient } from '../sql/postgres-key-value-storage.ts';
+import type { PostgresPool, PostgresPoolClient } from '../sql/postgres-pool.ts';
 
 /**
  * A PGlite-backed Postgres pool for storage adapter tests. The adapter shares a

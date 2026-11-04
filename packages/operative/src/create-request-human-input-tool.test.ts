@@ -1,5 +1,5 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { createTool, createToolbox, createToolCall } from 'armorer';
+import { createTool, createToolbox, createToolCall, readToolTitle } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import type {
@@ -14,6 +14,13 @@ import type { CombinedOperativeEventMap } from './events';
 import { HumanWaitParkedEvent } from './events';
 
 describe('createRequestHumanInputTool', () => {
+  it('is named "Ask a person" for a person, and keeps that name through a toolbox (COR-2009)', () => {
+    const raw = createRequestHumanInputTool({ context: makeContext('run-title') });
+    expect(readToolTitle(raw.metadata)).toBe('Ask a person');
+    const tool = createTool({ ...raw, execute: (input) => Promise.resolve(raw.execute(input)) });
+    expect(readToolTitle(tool.metadata)).toBe('Ask a person');
+  });
+
   function makeContext(runId?: string, durable = true): RequestHumanInputContext {
     return { pendingHumanWait: undefined, pendingWakeup: undefined, runId, durable };
   }

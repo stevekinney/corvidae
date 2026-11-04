@@ -5,6 +5,16 @@
     "class": {
       "type": "string",
       "description": "Additional class merged with `.cinder-form`."
+    },
+    "readingColumn": {
+      "type": "boolean",
+      "description": "Holds the form to a single reading column, up to 720px (45rem), instead of the full width of\nits container. Set `--cinder-form-reading-column-width` to change the width.",
+      "default": false
+    },
+    "focusProblemOnSubmit": {
+      "type": "boolean",
+      "description": "After `onSubmit` settles, moves focus to the first field that reports a problem\n(`aria-invalid=\"true\"`), so a Save that stays enabled while the form is invalid tells the\nperson where to look. Set `false` when the page manages focus itself.",
+      "default": true
     }
   },
   "additionalProperties": false,

@@ -238,6 +238,7 @@ export async function executeTools(
           ...(deps.childRegistry !== undefined ||
           deps.runId !== undefined ||
           deps.delegatedAuthority !== undefined ||
+          deps.delegatedToolCapabilities !== undefined ||
           deps.parentSignals !== undefined
             ? {
                 executionContext: {
@@ -248,6 +249,9 @@ export async function executeTools(
                   ...(deps.runId !== undefined ? { parentRunId: deps.runId } : {}),
                   ...(deps.delegatedAuthority !== undefined
                     ? { delegatedAuthority: deps.delegatedAuthority }
+                    : {}),
+                  ...(deps.delegatedToolCapabilities !== undefined
+                    ? { delegatedToolCapabilities: deps.delegatedToolCapabilities }
                     : {}),
                   // COR-814 — this run's own port to its parent, replacing any
                   // `parentSignals` key a caller put in `executeOptions`.

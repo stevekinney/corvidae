@@ -8,6 +8,18 @@ const schema = {
       type: 'string',
       description: 'Accessible name of the list region, for example "Chats".',
     },
+    loading: {
+      type: 'boolean',
+      description:
+        'Shows a placeholder in place of the rows and the open item while the records load: five list\nrows in the list pane and a block in the detail pane. Nothing shows for the first 300\nmilliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after\nten seconds.',
+      default: false,
+    },
+    loadingLabel: {
+      type: 'string',
+      description:
+        'What the loading region announces, politely, once the placeholder appears: "Loading memories".',
+      default: 'Loading',
+    },
     selectedKey: {
       anyOf: [
         {
@@ -43,12 +55,18 @@ const schema = {
       type: 'number',
       description:
         'Width in pixels of the component below which it shows one pane at a time: the list, then the\ndetail with a Back button. It is measured on the component, not the viewport.',
-      default: 900,
+      default: 600,
+    },
+    flushDetail: {
+      type: 'boolean',
+      description:
+        "Removes the detail pane's inner padding, for a detail view that lays out its own header, body\nand footer edge to edge (an open chat, a table, a code frame).",
+      default: false,
     },
     defaultListWidth: {
       type: 'number',
       description: 'Width in pixels of the list pane before the divider is moved.',
-      default: 320,
+      default: 280,
     },
     backLabel: {
       type: 'string',
@@ -92,6 +110,12 @@ const schema = {
           'Rendered in the detail pane while no item is open. A default message is shown when omitted.',
       },
       {
+        name: 'groupBy',
+        reason: 'function-or-snippet',
+        description:
+          "Groups consecutive items under a header band, such as a source or a day. Passed to the list's\n`DataList`, so a group is a nested list named by its header.",
+      },
+      {
         name: 'header',
         reason: 'function-or-snippet',
         description:
@@ -114,9 +138,14 @@ const schema = {
       {
         name: 'list',
         reason: 'function-or-snippet',
-        required: true,
         description:
-          'Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a\n`SelectableRow` with `selected={row.selected}` and `selectedState="current"`; activating its\nprimary action opens the item.',
+          'Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a\n`SelectableRow` with `selected={row.selected}` and `selectedState="current"`; activating its\nprimary action opens the item. Omit it when `listBody` draws the rows.',
+      },
+      {
+        name: 'listBody',
+        reason: 'function-or-snippet',
+        description:
+          'Draws the whole list pane body itself, in place of the `<li>` rows, for a list that is a table.\nGive each row a `data-cinder-row-id` equal to its `key` (a `DataTable` does) so the J and K\ncursor finds it, and call `open` when a row is chosen. `list`, `groupBy` and `listEmpty` are\nignored while it is set.',
       },
       {
         name: 'listEmpty',

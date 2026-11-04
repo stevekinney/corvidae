@@ -1,3 +1,5 @@
+import { parseUnifiedPatch } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
+
 /** One entry of an object or array, ready for the Fields view. */
 export type PayloadEntry = {
   /** The property name, or the 1-based position for an array entry. */
@@ -45,14 +47,24 @@ export function readPayloadEntries(source: unknown): PayloadEntry[] {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LONG_HEXADECIMAL = /^[0-9a-f]{24,}$/i;
 const IDENTIFIER_KEY =
-  /(?:^|[_\-\s.])(?:ids?|uuids?|hash|digest|sha\d*|checksum)$|[a-z0-9](?:Ids?|Uuids?|Hash)$/;
+  /(?:^|[_\-\s.])(?:ids?|uuids?|hash|digest|sha\d*|checksum|paths?|files?|filenames?|directory)$|[a-z0-9](?:Ids?|Uuids?|Hash|Path|File|Filename)$/;
 
 /**
- * True when a text value is an identifier or a hash, which the Fields view sets
- * in small monospace: a UUID, a long hexadecimal digest, or any text under a key
- * that ends in `id`, `uuid`, `hash`, `digest` or `checksum`.
+ * True when a text value is an identifier, a hash or a file path, which the Fields view sets
+ * in small monospace: a UUID, a long hexadecimal digest, or any text under a key that ends in
+ * `id`, `uuid`, `hash`, `digest`, `checksum`, `path`, `file`, `filename` or `directory`.
  */
 export function isIdentifierField(key: string, value: unknown): boolean {
   if (typeof value !== 'string' || value === '') return false;
   return UUID.test(value) || LONG_HEXADECIMAL.test(value) || IDENTIFIER_KEY.test(key);
+}
+
+/**
+ * True when a text value is a unified patch: it has a hunk header and at least one added or
+ * removed line. Text that only looks like a diff, such as a line starting with `-`, is not one.
+ */
+export function isUnifiedPatch(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.includes('\n')) return false;
+  const parsed = parseUnifiedPatch(value, { maxLines: 0 });
+  return parsed.descriptors.some((file) => file.hunkCount > 0 && file.changedLineCount > 0);
 }

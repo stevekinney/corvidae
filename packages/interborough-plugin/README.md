@@ -240,7 +240,7 @@ You greet people with the example:greet tool.
 }
 ```
 
-A running plugin's agents and workflows are listed as `plugin:name`, and a plugin that is disabled or skipped ships nothing. Files reload while the host runs, but they are read-only: the host refuses to write or delete a definition a plugin holds, and says to duplicate it. Duplicate writes an editable copy into the owner's directory, and an owner file's stem has no `:`, so a copy can never claim a plugin's namespace. A workflow file calls a plugin activity as `plugin:name`, with no version.
+A running plugin's agents and workflows are listed as `plugin:name`, and a plugin that is disabled or skipped ships nothing. The one exception is a disabled plugin's code agents: the host runs its `setup` once, with scratch storage, no secrets and no host API, keeps only `codeAgents`, and lists each as `unavailable` with the reason `Plugin <title> is disabled`, so a person can read it and duplicate it but no run starts on it. Nothing else the plugin returns is registered, and `afterStart` never runs, so keep `setup` free of side effects. Files reload while the host runs, but they are read-only: the host refuses to write or delete a definition a plugin holds, and says to duplicate it. Duplicate writes an editable copy into the owner's directory, and an owner file's stem has no `:`, so a copy can never claim a plugin's namespace. A workflow file calls a plugin activity as `plugin:name`, with no version.
 
 A file that names a contribution nothing loaded holds (a tool you misspelled, a plugin that is disabled) is invalid with a `reference-unresolved` problem naming the file and the id. The plugin stays `running`.
 

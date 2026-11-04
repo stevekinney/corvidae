@@ -66,6 +66,8 @@ export {
   AsyncActivityTokenNotFoundError,
   BulkDeleteRequiresTerminalWorkflowsError,
   BulkOperationConfirmationError,
+  DEFAULT_WORKFLOW_CLAIM_RENEW_INTERVAL_MS,
+  DEFAULT_WORKFLOW_CLAIM_TTL_MS,
   DefinitionSchemaRequiredError,
   DynamicWorkflowSourceUnavailableError,
   ENGINE_LEASE_LOST_WARNING_NAME,

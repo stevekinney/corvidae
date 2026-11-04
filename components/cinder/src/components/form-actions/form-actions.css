@@ -1,0 +1,94 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../alert/alert.css';
+@import '../button/button.css';
+
+@layer cinder.components {
+  /* ========================================
+ * FORM ACTIONS
+ *
+ * The bar at the end of a form (rows 33l, 41b, 49g, 50w): a summary on the left, the secondary then
+ * the primary button on the right, a top divider, and the page's canvas fill. A failed save draws
+ * its danger alert above the buttons. `sticky` keeps the bar at the bottom of the nearest scrolling
+ * container with no margin hacks: it sits in the flow at the end of the form, so the content above
+ * it needs no bottom padding, rides above the on-screen keyboard through `--_cinder-keyboard-inset`
+ * and clears the home indicator through `env(safe-area-inset-bottom)`.
+ * ======================================== */
+
+  .cinder-form-actions {
+    container-type: inline-size;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2-5);
+    padding-block: var(--cinder-space-3);
+    padding-block-end: max(var(--cinder-space-3), env(safe-area-inset-bottom));
+    border-block-start: 1px solid var(--cinder-border);
+    background: var(--cinder-surface-canvas);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-form-actions[data-cinder-sticky] {
+    position: sticky;
+    inset-block-end: var(--_cinder-keyboard-inset, 0px);
+    z-index: 1;
+  }
+
+  .cinder-form-actions__row {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  /* The left side takes the room the buttons leave and wraps rather than pushing them off. */
+  .cinder-form-actions__summary {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-form-actions__summary:empty {
+    flex-basis: 0;
+  }
+
+  .cinder-form-actions__start,
+  .cinder-form-actions__end {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  /* With nothing on the left the buttons stay at the end of the row. */
+  .cinder-form-actions__end {
+    margin-inline-start: auto;
+  }
+
+  /* In a narrow bar the summary takes its own line above the buttons, which share the row below. */
+  @container (inline-size < 28rem) {
+    .cinder-form-actions__row {
+      flex-wrap: wrap;
+    }
+
+    .cinder-form-actions__summary {
+      flex-basis: 100%;
+    }
+
+    .cinder-form-actions__summary:empty {
+      display: none;
+    }
+
+    .cinder-form-actions__end {
+      flex: 1 1 auto;
+      justify-content: flex-end;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-form-actions {
+      border-block-start-color: CanvasText;
+    }
+  }
+}

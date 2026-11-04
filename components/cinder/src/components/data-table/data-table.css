@@ -17,16 +17,10 @@
 
   /* The non-scrollable wrapper is a pure structural pass-through: `display:
    * contents` lets the inner <table> participate directly in the parent layout
-   * with no extra box. */
-  .cinder-data-table {
+   * with no extra box. A scrollable wrapper (the default) is the `.cinder-table-scroll`
+   * box from table.css and keeps its own box, which owns the frame and the scrolling. */
+  .cinder-data-table:not(.cinder-table-scroll) {
     display: contents;
-  }
-
-  /* When scrollable, the wrapper MUST generate a box so its `overflow-x: auto`
-   * (from .cinder-table-scroll) has something to scroll — `display: contents`
-   * would erase the box and silently disable horizontal scrolling. */
-  .cinder-data-table.cinder-table-scroll {
-    display: block;
   }
 
   .cinder-data-table[data-cinder-virtualized] {
@@ -64,8 +58,100 @@
     background: var(--cinder-surface-hover);
   }
 
+  /* ----------------------------------------
+ * Rows that open a detail pane: an open row is tinted like a selected list row, and a row that
+ * opens shows the pointer and keeps its focus ring inside the frame.
+ * ---------------------------------------- */
+
+  .cinder-data-table .cinder-table__row[data-cinder-row-opens] {
+    cursor: pointer;
+  }
+
+  .cinder-data-table .cinder-table__row[data-cinder-open],
+  .cinder-data-table .cinder-table__row[data-cinder-open]:hover {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-data-table .cinder-table__row[data-cinder-open] {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+  }
+
+  .cinder-data-table [data-cinder-monospace] {
+    font-family: var(--cinder-font-mono);
+  }
+
+  /* ----------------------------------------
+ * Group rows, row messages and the footer: rows that span the table.
+ * ---------------------------------------- */
+
+  .cinder-data-table__group-cell {
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    text-align: start;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+    background: var(--cinder-surface-inset);
+    border-block: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-data-table__group-detail {
+    margin-inline-start: var(--cinder-space-1);
+    font-weight: var(--cinder-font-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  /* A row with a message keeps no bottom edge of its own: the message row draws it, so the two
+   * read as one row. */
+  .cinder-data-table .cinder-table__row[data-cinder-message] > .cinder-table__cell {
+    border-bottom: 0;
+  }
+
+  .cinder-data-table__row-message-cell {
+    padding-block: 0 var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+    border-bottom: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-data-table__footer-cell {
+    position: relative;
+    padding-block: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  /* The last body row draws no bottom edge of its own, so the footer's top edge is the only line. */
+  .cinder-data-table__end {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    block-size: 1px;
+    pointer-events: none;
+  }
+
+  /* Stacked: the rows that span the table are blocks of their own. */
+  .cinder-table[data-cinder-stacked] .cinder-data-table__group-row,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__row-message,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__footer,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__footer > tr {
+    display: block;
+  }
+
+  .cinder-table[data-cinder-stacked] .cinder-data-table__group-cell,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__row-message-cell,
+  .cinder-table[data-cinder-stacked] .cinder-data-table__footer-cell {
+    display: block;
+  }
+
   .cinder-data-table[data-cinder-virtualized]
-    .cinder-table__row[data-cinder-virtual-row]:focus-visible {
+    .cinder-table__row[data-cinder-virtual-row]:focus-visible,
+  .cinder-data-table .cinder-table__row[data-cinder-row-opens]:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
@@ -78,7 +164,8 @@
 
   @media (forced-colors: active) {
     .cinder-data-table[data-cinder-virtualized]
-      .cinder-table__row[data-cinder-virtual-row]:focus-visible {
+      .cinder-table__row[data-cinder-virtual-row]:focus-visible,
+    .cinder-data-table .cinder-table__row[data-cinder-row-opens]:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: calc(-1 * var(--cinder-ring-width));
       box-shadow: none;

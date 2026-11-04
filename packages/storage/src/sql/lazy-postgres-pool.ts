@@ -1,4 +1,4 @@
-import type { PostgresPool } from './postgres-key-value-storage.ts';
+import type { PostgresPool } from './postgres-pool.ts';
 
 /**
  * Options for {@link createLazyPostgresPool}.

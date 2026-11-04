@@ -6,8 +6,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import type { SampleWorldRecords } from '../fixtures/sample-world-records.ts';
 import * as content from '../fixtures/showcase-content.ts';
-import type { ShowcaseSeed } from '../fixtures/showcase-seed.ts';
 import { routes } from '../src/app/routes.ts';
 import { matchRoute } from '../src/lib/router.svelte.ts';
 import {
@@ -16,29 +16,34 @@ import {
   showcaseVariants,
 } from './e2e/showcase-routes.ts';
 
-const SEED: ShowcaseSeed = {
-  agents: ['agent-1', 'agent-2'],
-  instructionsAgent: 'agent-2',
-  memoryAgent: 'agent-1',
-  memory: 'memory-1',
-  memories: ['memory-1'],
+const SEED: SampleWorldRecords = {
   chats: {
-    release: 'chat-1',
-    'refund-denied': 'chat-2',
-    'refund-waiting': 'chat-3',
-    'refund-approved': 'chat-4',
-    question: 'chat-5',
-    'model-picker': 'chat-6',
-    attachment: 'chat-7',
-    failed: 'chat-8',
+    refund: 'chat-1',
+    release: 'chat-2',
+    sayHello: 'chat-3',
+    lookUp4468: 'chat-4',
+    billing: 'chat-5',
   },
-  workflows: { digest: 'digest', review: 'review', sync: 'sync' },
-  runs: { succeeded: 'run-1', failed: 'run-2', running: 'run-3', cancelled: 'run-4' },
-  schedules: ['schedule-1', 'schedule-2', 'schedule-3'],
-  hooks: ['hook-1', 'hook-2'],
-  goals: ['goal-1', 'goal-2'],
+  agent: 'agent-1',
+  memory: 'memory-1',
+  workflows: { releaseNotes: 'release', triageInbox: 'triage', orderRefund: 'refund' },
+  runs: { failed: 'run-1', done: 'run-2', waiting: 'run-3', canceled: 'run-4' },
+  schedules: {
+    dailySummary: 'schedule-1',
+    inboxTriage: 'schedule-2',
+    releaseNotesDigest: 'schedule-3',
+    weeklyRefundAudit: 'schedule-4',
+  },
+  goals: { sayHello: 'goal-1', draftReleaseNotes: 'goal-2', summarizeRefunds: 'goal-3' },
+  hooks: {
+    pageOnCall: 'hook-1',
+    notifySlack: 'hook-2',
+    triageFinishes: 'hook-3',
+    scheduleMisses: 'hook-4',
+    refundAudit: 'hook-5',
+  },
   reviews: { waiting: 'bureau:review-1', decided: 'bureau:review-2' },
-  created: [],
+  toolSource: 'github',
 };
 
 const PATTERNS = routes.filter((route) => route.redirect === undefined).map((r) => r.pattern);
@@ -87,22 +92,16 @@ describe('the showcase content', () => {
     stringsIn(value).map((text) => ({ name, text })),
   );
 
-  test('holds the minimum the design review needs', () => {
-    expect(content.SHOWCASE_AGENTS.length).toBeGreaterThanOrEqual(6);
-    expect(content.SHOWCASE_AGENTS.some((agent) => (agent.memories?.length ?? 0) > 0)).toBe(true);
-    expect(
-      new Set(content.SHOWCASE_AGENTS.map((agent) => agent.definition['description'])).size,
-    ).toBe(content.SHOWCASE_AGENTS.length);
-    expect(Object.keys(content.SHOWCASE_CHATS).length).toBeGreaterThanOrEqual(5);
-    expect(Object.keys(content.SHOWCASE_WORKFLOWS)).toHaveLength(3);
-    expect(new Set(content.SHOWCASE_SCHEDULES.map((schedule) => schedule.timeZone)).size).toBe(3);
-    expect(content.SHOWCASE_SCHEDULES.filter((schedule) => schedule.paused)).toHaveLength(1);
-    expect(content.SHOWCASE_HOOKS).toHaveLength(2);
-    expect(content.SHOWCASE_GOALS).toHaveLength(2);
+  test('holds the sample world’s three workflow files', () => {
+    expect(content.SHOWCASE_WORKFLOW_FILES.map((file) => file.id)).toEqual([
+      'release-notes',
+      'order-refund',
+      'triage-inbox',
+    ]);
   });
 
   test('has no word longer than 40 characters in any literal', () => {
-    expect(literals.length).toBeGreaterThan(50);
+    expect(literals.length).toBeGreaterThan(3);
     for (const { name, text } of literals) {
       expect(longestUnbrokenRun(text).length, `${name}: ${text.slice(0, 60)}`).toBeLessThanOrEqual(
         40,

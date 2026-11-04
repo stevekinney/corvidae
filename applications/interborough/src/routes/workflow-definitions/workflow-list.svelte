@@ -143,7 +143,6 @@
       onSearchChange={(query) => (search = query)}
       onFacetChange={(_key, value) => (statusFilter = value)}
       onFilterRemove={() => (statusFilter = '')}
-      onClearAll={clearFilters}
     />
   {/snippet}
   {#snippet toolbarActions()}

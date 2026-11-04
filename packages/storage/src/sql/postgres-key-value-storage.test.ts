@@ -9,7 +9,9 @@ import {
   runBinaryAndLargeScanStorageConformance,
   runStorageCapabilityConformance,
 } from '../testing/storage-contract.ts';
-import { PostgresKeyValueStorage, type PostgresPool } from './postgres-key-value-storage.ts';
+import { runStorageWriteTimeContract } from '../testing/write-time-contract.ts';
+import { PostgresKeyValueStorage } from './postgres-key-value-storage.ts';
+import type { PostgresPool } from './postgres-pool.ts';
 
 let database: PGlite | undefined;
 
@@ -43,6 +45,12 @@ async function createStorage(): Promise<PostgresKeyValueStorage> {
   return new PostgresKeyValueStorage({ pool }, refusePoolFactory);
 }
 
+/** {@link createStorage} with each write's time read from `now`. */
+async function createRecordingStorage(now: () => number): Promise<PostgresKeyValueStorage> {
+  await createStorage();
+  return new PostgresKeyValueStorage({ pool, now }, refusePoolFactory);
+}
+
 runStorageCapabilityConformance('PostgresKeyValueStorage', {
   create: createStorage,
   expected: {
@@ -58,6 +66,8 @@ runStorageCapabilityConformance('PostgresKeyValueStorage', {
 runBasicStorageContract('PostgresKeyValueStorage', { create: createStorage });
 
 runBinaryAndLargeScanStorageConformance('PostgresKeyValueStorage', { create: createStorage });
+
+runStorageWriteTimeContract('PostgresKeyValueStorage', { create: createRecordingStorage });
 
 describe('PostgresKeyValueStorage', () => {
   it('requires either a url or a pool', () => {

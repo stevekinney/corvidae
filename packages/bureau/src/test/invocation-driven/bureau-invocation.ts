@@ -13,8 +13,8 @@
  * - `read` only reads.
  *
  * Bureau composes its durable engine with `maintenance: 'manual'`
- * and `ownership: 'none'`. Bureau does not forward a `getNow` to that engine,
- * so its timers are scheduled on the wall clock; the driver's virtual clock
+ * and `ownership: 'none'`. This Bureau is given no runtime, so the engine reads
+ * the default runtime's clock, the wall clock, and its timers are scheduled on it; the driver's virtual clock
  * for these invocations therefore starts at the wall time, and only
  * `maintain(now)` reads it. With no claims to lapse, `'none'`
  * keeps the wall clock from deciding any outcome here.

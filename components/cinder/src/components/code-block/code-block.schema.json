@@ -26,6 +26,16 @@
       "type": "boolean",
       "description": "Show a scroll-driven fade on the horizontal (inline) edges of the code\nviewport as a long line overflows — signals \"this line continues\" rather\nthan dimming a wrapped block. Opt-in and presentation-only. The gradient\nterminates at partial opacity (not fully opaque) so a half-covered glyph\nstill reads as a glyph, not as a hard cutoff. Defaults to `false`."
     },
+    "lineNumbers": {
+      "type": "boolean",
+      "description": "Number each line of the code. The numbers are drawn in the left gutter, kept out of the copied\ntext and out of the accessibility tree, and a wrapped line is numbered once. Defaults to\n`false`.",
+      "default": false
+    },
+    "wrap": {
+      "type": "boolean",
+      "description": "Wrap a line longer than the block instead of scrolling it sideways. Defaults to `false`, which\nkeeps the block a fixed-width box that scrolls inside itself with a visible scrollbar.",
+      "default": false
+    },
     "class": {
       "type": "string",
       "description": "Additional class names merged with `.cinder-code-block`."
@@ -35,6 +45,11 @@
   "required": ["code"],
   "metadata": {
     "unsupportedProps": [
+      {
+        "name": "annotations",
+        "reason": "unknown-shape",
+        "description": "Notes drawn under specific lines, such as the line a file problem points at. Works with\nhighlighted and plain code alike. Pass a new array to change them."
+      },
       {
         "name": "highlighter",
         "reason": "function-or-snippet",

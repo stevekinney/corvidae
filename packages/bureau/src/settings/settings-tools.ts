@@ -17,9 +17,22 @@ import { z } from 'zod';
 
 import { runIdOf } from '../workflow-tools.ts';
 import type { BureauSettings, SettingsSnapshot, SettingsUpdateResult } from './types.ts';
+import { mayRunAccess } from '../run-authority.ts';
+
+function mayUseSettingsTool(
+  owner: string | undefined,
+  scope: 'bureau.settings:read' | 'bureau.settings:write',
+): boolean {
+  return mayRunAccess(owner, scope);
+}
 
 /** The names of the two tools. Hyphens, because provider tool-name grammars exclude dots. */
 export const SETTINGS_TOOL_NAMES = ['settings-get', 'settings-update'] as const;
+type SettingsForbidden = {
+  readonly outcome: 'rejected';
+  readonly reason: 'forbidden';
+  readonly message: string;
+};
 
 /** The name of a tool in the agent source's `tools` that one of the two would collide with, if there is one. */
 export function collidingSettingsToolName(
@@ -33,7 +46,7 @@ export interface SettingsToolHost {
   /** The settings. Read on every call, because the tools exist before the settings do. */
   readonly settings: () => BureauSettings;
   /** The owner of record of a run, for the run that made a tool call. */
-  readonly ownerOf: (runId: string) => Promise<string | undefined>;
+  readonly authorityForRun: (runId: string) => Promise<string | undefined>;
 }
 
 /** The tools, bound to the Bureau they read from. */
@@ -42,10 +55,25 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
     name: 'settings-get',
     version: '1.0.0',
     description:
-      "Read the deployment's runtime settings: each setting's value by dotted key, the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked (with the `lockReason`).",
+      "Read the deployment's runtime settings: each setting's value by dotted key, `effective` (the value each key applies by, set or not), the `revision` to pass to settings-update as `expectedRevision`, and per key whether it applies live or at restart and whether it is locked (with the `lockReason`).",
     input: z.object({}),
-    metadata: { readOnly: true, shortDescription: "Read the deployment's runtime settings." },
-    execute: async (): Promise<SettingsSnapshot> => host.settings().get(),
+    metadata: {
+      readOnly: true,
+      title: 'Read settings',
+      shortDescription: "Read the deployment's runtime settings.",
+    },
+    execute: async (_input, context): Promise<SettingsSnapshot | SettingsForbidden> => {
+      const runId = runIdOf(context);
+      const owner = runId === undefined ? undefined : await host.authorityForRun(runId);
+      if (!mayUseSettingsTool(owner, 'bureau.settings:read')) {
+        return {
+          outcome: 'rejected',
+          reason: 'forbidden',
+          message: 'Missing scope bureau.settings:read.',
+        };
+      }
+      return host.settings().get();
+    },
   });
 
   const update = createTool({
@@ -61,13 +89,24 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
         .nonnegative()
         .describe('The revision settings-get returned.'),
     }),
-    metadata: { mutates: true, shortDescription: "Change the deployment's runtime settings." },
-    execute: async (input, context): Promise<SettingsUpdateResult> => {
+    metadata: {
+      mutates: true,
+      title: 'Change settings',
+      shortDescription: "Change the deployment's runtime settings.",
+    },
+    execute: async (input, context): Promise<SettingsUpdateResult | SettingsForbidden> => {
       const runId = runIdOf(context);
-      const principal = runId === undefined ? undefined : await host.ownerOf(runId);
+      const owner = runId === undefined ? undefined : await host.authorityForRun(runId);
+      if (!mayUseSettingsTool(owner, 'bureau.settings:write')) {
+        return {
+          outcome: 'rejected',
+          reason: 'forbidden',
+          message: 'Missing scope bureau.settings:write.',
+        };
+      }
       return host.settings().update(input.patch, {
         expectedRevision: input.expectedRevision,
-        ...(principal === undefined ? {} : { principal }),
+        ...(owner === undefined ? {} : { principal: owner }),
       });
     },
   });

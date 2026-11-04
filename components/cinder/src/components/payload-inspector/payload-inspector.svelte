@@ -30,10 +30,16 @@
   import CopyButton from '../copy-button/copy-button.svelte';
   import JsonViewer from '../json-viewer/json-viewer.svelte';
   import Segment from '../segment/segment.svelte';
+  import SourceDiffViewer from '../source-diff-viewer/source-diff-viewer.svelte';
+  import { countPatchChanges } from '../source-diff-viewer/source-diff-viewer.utilities.ts';
   import SegmentedControl from '../segmented-control/segmented-control.svelte';
   import { classNames } from '../../utilities/class-names.ts';
   import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
-  import { isIdentifierField, readPayloadEntries } from './payload-inspector-fields.ts';
+  import {
+    isIdentifierField,
+    isUnifiedPatch,
+    readPayloadEntries,
+  } from './payload-inspector-fields.ts';
 
   let {
     value,
@@ -208,12 +214,31 @@
   {:else}
     <dl class="cinder-payload-inspector__fields">
       {#each entries.slice(0, FIELD_ENTRY_LIMIT) as entry (entry.key)}
-        <div class="cinder-payload-inspector__field">
+        {@const patch = !entry.nested && isUnifiedPatch(entry.value) ? entry.value : undefined}
+        <div
+          class="cinder-payload-inspector__field"
+          data-cinder-patch={patch !== undefined || undefined}
+        >
           <dt class="cinder-payload-inspector__field-label">
             {entry.isIndex ? entry.key : humanizeIdentifier(entry.key)}
+            {#if patch !== undefined}
+              {@const changes = countPatchChanges(patch)}
+              <span
+                class="cinder-payload-inspector__patch-count"
+                aria-label={`${changes.added} added, ${changes.removed} removed`}
+                >+{changes.added} −{changes.removed}</span
+              >
+            {/if}
           </dt>
           <dd class="cinder-payload-inspector__field-value">
-            {#if entry.nested && depth < maxDepth}
+            {#if patch !== undefined}
+              <SourceDiffViewer
+                {patch}
+                variant="inline"
+                maxLines={2}
+                ariaLabel={humanizeIdentifier(entry.key)}
+              />
+            {:else if entry.nested && depth < maxDepth}
               {@render fieldRows(entry.value, [...path, entry.key], depth + 1)}
             {:else if entry.nested}
               <span class="cinder-payload-inspector__null">Too deep to show here.</span>

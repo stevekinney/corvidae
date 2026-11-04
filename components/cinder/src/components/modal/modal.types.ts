@@ -22,6 +22,13 @@ type ModalBaseProps = {
   class?: string;
   children: Snippet;
   footer?: Snippet;
+  /**
+   * Content drawn at the trailing edge of the header, on the title's line (a count such as "3 of 9
+   * chosen"). It is not part of the dialog's accessible name. With the close button hidden it sits
+   * at the panel's own padding; with the close button shown it stays clear of it. Ignored by
+   * `chrome="none"`, which draws no header.
+   */
+  headerTrailing?: Snippet;
   triggerRef?: HTMLElement | null;
   /**
    * Fired on user-initiated dismissal. Includes: Escape key (native dialog 'cancel' event),

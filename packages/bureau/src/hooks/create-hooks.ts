@@ -6,8 +6,10 @@
  *
  * ## The signing secret
  *
- * The caller chooses the secret and sends it with `create` or `update`; nothing ever returns it. It
- * is sealed with COR-1816's scheme under `BureauOptions.answerEncryption` and kept through the
+ * A webhook created without a secret gets one the Bureau generates (`whsec_` and 24 hexadecimal
+ * digits), returned on the created hook and never again; `replaceSigningSecret` makes a new one the
+ * same way (COR-2009). A caller may still choose the secret and send it with `create` or `update`,
+ * and that one is never returned. Every secret is sealed with COR-1816's scheme under `BureauOptions.answerEncryption` and kept through the
  * host's {@link HookSecretStore}, which holds ciphertext only. A host whose secrets live elsewhere
  * (a remote Interborough home) has its port report a write lock, and a write then fails with
  * {@link HookError} `locked` and the port's reason, `deployment`.
@@ -87,6 +89,7 @@ import {
   type HookEventToDeliver,
 } from './hook-delivery.ts';
 import { type DeletedChatReference, purgeChatHookDeliveries } from './chat-hook-purge.ts';
+import { generateHookSigningSecret } from './hook-signature.ts';
 import {
   createHookStore,
   createKvHookSecretStore,
@@ -193,7 +196,11 @@ export interface HookCreateInput {
   readonly events: readonly string[];
   /** The one subject the hook fires for; every kind in `events` must be one it can be told by. Omitted, it fires for the whole Bureau. */
   readonly scope?: HookScopeInput;
-  /** The secret webhook deliveries are signed with, 16 to 256 characters. Required for a webhook and refused otherwise. Sealed on arrival; never returned. */
+  /**
+   * The secret webhook deliveries are signed with, 16 to 256 characters; refused for any other
+   * action. Sealed on arrival and never returned. Omitted for a webhook, the Bureau generates one
+   * ({@link generateHookSigningSecret}) and returns it once, on the created hook.
+   */
   readonly signingSecret?: string;
   /** A label, at most 100 characters. */
   readonly name?: string;
@@ -231,10 +238,42 @@ export interface HookCallOptions {
   readonly principal?: string;
 }
 
+/**
+ * A hook as `hooks.create` and `hooks.replaceSigningSecret` answer it: the hook, and the signing
+ * secret the Bureau generated for it, the one time it is shown (COR-2009). Nothing reads it back
+ * afterwards: `get`, `list` and every later answer leave it out, and a person who lost it replaces it.
+ */
+export interface HookWithSigningSecret extends Hook {
+  /**
+   * The secret the Bureau generated, `whsec_` and 24 hexadecimal digits. On `create` it is present
+   * only for a webhook created without a secret of the caller's own.
+   */
+  readonly signingSecret?: string;
+}
+
+/** What `hooks.replaceSigningSecret` takes beyond the hook. */
+export interface HookReplaceSecretOptions extends HookCallOptions {
+  /** Replace the secret only if the hook is still at this revision. */
+  readonly expectedRevision?: number;
+}
+
 /** The Bureau's hooks: `Bureau.hooks`. Ownership is decided by the caller, as for `Bureau.goals`. */
 export interface BureauHooks {
-  /** Creates a hook; refuses with {@link HookError}. */
-  create(input: HookCreateInput): Promise<Hook>;
+  /**
+   * Creates a hook; refuses with {@link HookError}. A webhook created without `signingSecret` gets
+   * one the Bureau generates, returned on this answer and never again.
+   */
+  create(input: HookCreateInput): Promise<HookWithSigningSecret>;
+  /**
+   * Replaces a webhook hook's signing secret with a new one the Bureau generates, and resolves with
+   * the hook and that secret, shown this once (COR-2009). The old secret stops signing at once.
+   * Refuses a hook that is not a webhook with {@link HookError} `invalid`, and a changed revision
+   * with `stale-revision`; resolves `undefined` when there is no such hook.
+   */
+  replaceSigningSecret(
+    hookId: string,
+    options?: HookReplaceSecretOptions,
+  ): Promise<(HookWithSigningSecret & { readonly signingSecret: string }) | undefined>;
   /** Changes a hook, or resolves `undefined` when there is none. */
   update(hookId: string, input: HookUpdateInput): Promise<Hook | undefined>;
   /** Deletes a hook, its sealed secret and its delivery records; `false` when there is none. */
@@ -899,7 +938,13 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       const action = actionOfCreate(input);
       const events = checkedEvents(input.events);
       const scope = input.scope === undefined ? undefined : checkedScope(input.scope);
-      const secret = action.type === 'webhook' ? checkedSecret(input.signingSecret) : undefined;
+      // A webhook created without a secret gets one generated here, and shown once on the answer.
+      const generated =
+        action.type === 'webhook' && input.signingSecret === undefined
+          ? generateHookSigningSecret()
+          : undefined;
+      const secret =
+        action.type === 'webhook' ? (generated ?? checkedSecret(input.signingSecret)) : undefined;
       if (action.type !== 'webhook' && input.signingSecret !== undefined) {
         invalid('signingSecret', 'Only a webhook hook has a signing secret');
       }
@@ -936,7 +981,26 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
       if (!created) throw new Error(`Hook id "${record.id}" is already in use`);
       // The creator is the owner, so the owner is also the actor.
       recordChange('hook.created', record, owner);
-      return viewOf(record);
+      return generated === undefined
+        ? viewOf(record)
+        : { ...viewOf(record), signingSecret: generated };
+    },
+    async replaceSigningSecret(hookId, options) {
+      // The caller owns `options`: read before the first await.
+      const principal = options?.principal;
+      const expectedRevision = options?.expectedRevision;
+      const stored = await store.getHook(hookId);
+      if (stored === undefined) return undefined;
+      if (stored.record.action.type !== 'webhook') {
+        invalid('signingSecret', 'Only a webhook hook has a signing secret');
+      }
+      const signingSecret = generateHookSigningSecret();
+      const replaced = await hooks.update(hookId, {
+        signingSecret,
+        ...(principal === undefined ? {} : { principal }),
+        ...(expectedRevision === undefined ? {} : { expectedRevision }),
+      });
+      return replaced === undefined ? undefined : { ...replaced, signingSecret };
     },
     async update(hookId, input) {
       // The caller's input is read, checked and copied before the first await: the caller owns it

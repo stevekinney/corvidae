@@ -208,8 +208,8 @@ describe('the list of agents', () => {
     expect(container.querySelector('[data-agent="internal"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe('1 agent');
 
-    // Clear all in the filter bar takes the search out again.
-    await fireEvent.click(await findByRole('button', { name: 'Clear all filters' }));
+    // Emptying the search takes it out again.
+    await fireEvent.input(search, { target: { value: '' } });
     await waitFor(() => expect(container.querySelector('[data-agent="assistant"]')).not.toBeNull());
     await fireEvent.input(search, { target: { value: 'intern' } });
     await waitFor(() =>

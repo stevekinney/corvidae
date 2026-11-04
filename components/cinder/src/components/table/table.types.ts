@@ -39,6 +39,11 @@ export type TableContext = {
   onSortChange: (column: string) => void;
   /** Mirror of Table.selectable. Set synchronously at construction time. */
   readonly selectionEnabled?: boolean;
+  /**
+   * Called by a cell that holds a control while it is mounted. The table stacks its rows only
+   * while at least one cell is registered. Returns the function that withdraws the registration.
+   */
+  registerControls?: () => () => void;
 };
 /** Attributes forwarded to Table's generated scroll wrapper. */
 export type TableScrollContainerProps = Omit<
@@ -90,14 +95,15 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   selectable?: boolean;
   /**
-   * When true, wraps the table in a `.cinder-table-scroll` container that
-   * enables horizontal overflow scrolling for dense or unknown-width tables.
-   * Use this instead of manually wrapping Table in `.cinder-table-scroll`.
+   * Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and
+   * the clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade
+   * at the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out
+   * as a bare `<table>`.
    *
    * When combined with `stickyHeader`, the generated wrapper is the sticky
    * header's scroll container. Set a bounded block size on `scrollContainerProps`
    * when the table should scroll vertically inside that wrapper.
-   * @default false
+   * @default true
    */
   scrollable?: boolean;
   /**
@@ -109,11 +115,13 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   scrollContainerProps?: TableScrollContainerProps;
   /**
-   * Viewport width below which every body row stacks into a card: each cell
-   * becomes its column's header text above the cell's value, and the header
-   * row is hidden visually but kept for assistive technology. A simple CSS
-   * length such as `'640px'`, or `false` to keep the table layout at every
-   * width.
+   * Width of the table's own container below which a table whose cells hold controls stacks. Each
+   * body row becomes a card: the name and its muted detail on the first line, the controls full
+   * width at 44px beneath. A table with no `controls` cell never stacks; it scrolls. The width
+   * is the container's (the scroll box, or the parent when `scrollable` is false), not the
+   * window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as
+   * `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit
+   * falls back to the viewport. `false` keeps the table layout at every width.
    * @default "640px"
    */
   stackBelow?: string | false;

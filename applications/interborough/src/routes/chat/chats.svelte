@@ -219,6 +219,7 @@
     onSelectedKeyChange={openChat}
     selectionParameter={null}
     storageKey="interborough-chats"
+    flushDetail
   >
     {#snippet header()}
       <div class="ib-chats__title-row">

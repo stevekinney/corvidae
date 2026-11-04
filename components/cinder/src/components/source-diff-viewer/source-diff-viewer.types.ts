@@ -146,13 +146,50 @@ export type SourceDiffViewerRef = {
   ) => SourceDiffViewerFocusResult;
 };
 
+/**
+ * How a diff is framed. `default` is a bordered frame with file headers, hunk headers and a
+ * footer that reads "Showing 6 of 64 changed lines" beside a Show all action. `inline` has no
+ * frame: it previews the first changed lines as bare added and removed rows, with a Show all link
+ * and a chevron under them, for a diff that is one value among others, such as a patch in a
+ * payload.
+ */
+export type SourceDiffViewerVariant = 'default' | 'inline';
+
+/** The number of lines a patch adds and removes, as read by `countPatchChanges`. */
+export type SourceDiffChangeCounts = {
+  /** Lines the patch adds. */
+  added: number;
+  /** Lines the patch removes. */
+  removed: number;
+};
+
 export type SourceDiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /** Unified patch text to parse and render. */
   patch: string;
   /** Accessible label for the diff region. */
   ariaLabel?: string;
-  /** Maximum number of diff rows to render before truncating. */
+  /**
+   * Maximum number of diff rows to render before truncating. When the patch is longer, a Show all
+   * action under the rows renders the rest in place. In the `inline` variant the limit counts
+   * changed lines only, and the first ones are all that shows until Show all.
+   */
   maxLines?: number;
+  /**
+   * How the diff is framed: `default` or `inline`.
+   * @default "default"
+   */
+  variant?: SourceDiffViewerVariant;
+  /**
+   * Whether every row renders, past `maxLines`. Bindable: Show all sets it, and a host can set it
+   * to open or close the diff from outside.
+   * @default false
+   */
+  expanded?: boolean;
+  /**
+   * Label of the action that renders the rest of a truncated patch. It reads "Show all" in the
+   * `default` variant and "Show all 9 lines" (the number of lines in the patch) in `inline`.
+   */
+  showAllLabel?: string;
   /** Whether old and new line-number gutters are rendered. */
   lineNumbers?: boolean;
   /**

@@ -106,6 +106,12 @@ export type {
   ScheduledAgentRunInput,
   SchedulingEngine,
 } from './schedule-agent';
+export { createScheduleTickWorkflow, isScheduleTick } from './schedule-tick-workflow';
+export type {
+  ScheduleCameDueTick,
+  ScheduleMissedRunsTick,
+  ScheduleTick,
+} from './schedule-tick-workflow';
 export {
   createSessionInputDeliveryStore,
   parseSessionInputDeliveries,

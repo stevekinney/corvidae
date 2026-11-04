@@ -67,9 +67,9 @@ type KnownPreloadConflictReason = (typeof KNOWN_PRELOAD_CONFLICT_REASONS)[number
 
 const PRELOAD_CONFLICT_REASON_LABELS: Readonly<Record<KnownPreloadConflictReason, string>> = {
   'load-failed':
-    'The source loader failed. Weft never forwards the loader’s own message; check the load state below for its bounded failure category.',
+    'The source loader failed. Interborough never forwards the loader’s own message; check the load state below for its bounded failure category.',
   'ambiguous-revision':
-    'More than one registered revision matched, so Weft refused to pick one. Name an exact revision.',
+    'More than one registered revision matched, so Interborough refused to pick one. Name an exact revision.',
   // NOT "the module loaded but failed validation": when the revision is already
   // in the durable catalog, `resolveCachedOrHandle()` validates the CACHED
   // manifest against the descriptor's pins and throws before the loader is ever
@@ -82,7 +82,7 @@ const PRELOAD_CONFLICT_REASON_LABELS: Readonly<Record<KnownPreloadConflictReason
   'catalog-conflict':
     'The durable workflow catalog rejected the install. This exact revision is already stored with different contract metadata, or the catalog changed concurrently.',
   'not-registered': 'This revision is no longer registered with the server.',
-  'legacy-ambiguous': 'This revision predates revision pinning, so Weft cannot resolve it.',
+  'legacy-ambiguous': 'This revision predates revision pinning, so Interborough cannot resolve it.',
   'not-installed': 'This revision was removed from the catalog while the load was running.',
 };
 
@@ -160,7 +160,7 @@ function isKnownConflictReason(value: string): value is KnownPreloadConflictReas
 export function preloadConflictReasonLabel(reason: string): string {
   return isKnownConflictReason(reason)
     ? PRELOAD_CONFLICT_REASON_LABELS[reason]
-    : `Weft refused the preload for a reason this console does not recognize: ${reason}`;
+    : `Interborough refused the preload for a reason this console does not recognize: ${reason}`;
 }
 
 /** One attempt at `weft.workflows.revisions.preload`: either it installed a revision, or it threw. */
@@ -253,7 +253,7 @@ function describeOtherFault(
 ): PreloadOutcome {
   switch (error.faultCode) {
     case 'InvalidParams':
-      return { kind: 'invalid', message: `Weft rejected the request: ${error.message}` };
+      return { kind: 'invalid', message: `Interborough rejected the request: ${error.message}` };
     case 'Unauthorized':
     case 'Forbidden':
       return {
@@ -263,7 +263,7 @@ function describeOtherFault(
     default:
       return {
         kind: 'faulted',
-        message: `Weft could not preload "${name}" at revision "${revision}": ${error.message}`,
+        message: `Interborough could not preload "${name}" at revision "${revision}": ${error.message}`,
       };
   }
 }

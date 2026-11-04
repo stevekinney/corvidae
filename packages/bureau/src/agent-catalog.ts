@@ -19,11 +19,12 @@ import type {
   RunnableAgent,
 } from '@lostgradient/operative';
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
+import type { Tool } from 'armorer';
 
-import { AgentFileError } from './agent-file';
+import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
 import { agentSkillNames } from './agent-skills';
 import { type AgentModels, describeAgentModels } from './agent-models';
-import type { BureauModelPolicyOptions } from './model-policy';
+import { modelPolicyDenialOf, type BureauModelPolicyOptions } from './model-policy';
 import type {
   AgentCatalogChange,
   AgentCodeDefinition,
@@ -32,9 +33,13 @@ import type {
   AgentFileVersions,
   AgentListing,
   AgentToolDescription,
+  AgentUnavailability,
 } from './agent-file-catalog';
 import type { AgentFileWriter } from './agent-file-writer';
 import type { AgentVersionRecord } from './agent-version-store';
+import { createAgentOverrideStore, type AgentOverrideStore } from './agent-override-store';
+import { type CodeAgentOverrides, createCodeAgentOverrides } from './code-agent-overrides';
+import { effectiveCodeAgent, type EffectiveCodeAgentDeployment } from './code-agent-effective';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
 
@@ -220,6 +225,15 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   /** The tools an agent file may name: the deployment's tool catalog, by name. */
   tools(): readonly AgentToolDescription[];
   /**
+   * COR-2009 — add tools to the deployment's tool catalog while the Bureau runs, by the name an
+   * agent file uses, as the host's own (`source: 'host'`, or `skill` for a tool whose metadata names
+   * one): a tool source the host connected, whose tools are available without a restart. Every
+   * agent file is checked again before it resolves, so a file that names one of them is ready. A
+   * name Bureau or a plugin holds is refused (`CONFLICT`) and nothing is added; a name the host
+   * already holds is replaced. Refused (`UNSUPPORTED_CAPABILITY`) by a Bureau with no agent source.
+   */
+  addTools(tools: Readonly<Record<string, Tool>>): Promise<void>;
+  /**
    * The snapshots that have run for `id`, most recently run first. A snapshot is kept while any
    * run that references it is retained (`BureauRetentionOptions.tasks`) and pruned after the last.
    */
@@ -242,9 +256,18 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
     restore: AgentFileVersions['restore'];
   };
   /**
+   * COR-2009 — the saved overrides of the built-in agents (code agents the host defines, never a
+   * plugin's): what a person changed on one (its tools and how each asks, guardrails, budgets,
+   * model, switchable models, effort, step limit and instructions), each save numbered as a
+   * version that can be restored like a file agent's. An agent never changed has none.
+   */
+  readonly overrides: CodeAgentOverrides;
+  /**
    * Rescan the agent directory now, and when the model catalog has changed since the last scan,
-   * revalidate against it. Resolves once the catalog reflects the directory. A no-op without
-   * `BureauOptions.agentSource`.
+   * revalidate against it. Resolves once the catalog reflects the directory. Without
+   * `BureauOptions.agentSource` there is no directory to scan. COR-2009: it also reads the
+   * overrides in force of every built-in agent again, so a version another process saved on the
+   * same store applies from here.
    */
   refresh(): Promise<void>;
   /** Called after every rescan that added, changed, or removed a file agent. Returns its unsubscribe. */
@@ -260,8 +283,31 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   /**
    * COR-1873 — copy a plugin's read-only agent (`plugin:name`) into the owner's source as
    * `name.md`, with its tools unversioned. Fails with `AgentFileConflictError` when that file exists.
+   *
+   * COR-2009 — a plugin's code agent, whether its plugin runs or is disabled, is copied from what it
+   * states about itself (`detail(id).codeDefinition`): its name, description, instructions, tools
+   * (by the name the tool catalog holds, `plugin:tool` for its plugin's own), skills, and model. A
+   * scripted or routed agent names no model, so the copy gets its first switchable model, or else
+   * the first model of the deployment's catalog the model policy allows; with none, it fails with
+   * `AgentFileError` `unknown-model` and writes nothing. The copy is checked like any new file, so a
+   * tool the catalog does not hold (a disabled plugin's own) refuses it with `unknown-tool`.
    */
   duplicate: AgentFileWriter['duplicate'];
+}
+
+/**
+ * COR-2009 — a code agent Bureau knows but cannot run: one a disabled plugin ships. It is listed
+ * `unavailable` so it can be read and duplicated; no run can start on it.
+ */
+export interface UnavailableCodeAgent {
+  /** Its identifier, `plugin:name`. */
+  readonly id: string;
+  /** The plugin that ships it. */
+  readonly plugin: string;
+  /** The agent, read only for what it states about itself and never run. */
+  readonly agent: AnyRunnableAgent;
+  /** Why it cannot run. */
+  readonly unavailable: AgentUnavailability;
 }
 
 /**
@@ -289,6 +335,31 @@ export interface CreateAgentCatalogOptions {
    * settings can change it. The models it forbids are marked `denied` (COR-1996). Defaults to none.
    */
   readonly modelPolicy?: (() => BureauModelPolicyOptions | undefined) | undefined;
+  /**
+   * What {@link BureauAgentCatalog.addTools} does (COR-2009). Omitted, it refuses, because there is
+   * no tool catalog to add to.
+   */
+  readonly addTools?: ((tools: Readonly<Record<string, Tool>>) => Promise<void>) | undefined;
+  /**
+   * COR-2009 — the code agents of disabled plugins, listed after the code-defined agents as
+   * `unavailable`. `find`, `has`, `get` and `models` do not hold them, so no run starts on one. An
+   * identifier the code-defined map already holds is not listed again.
+   */
+  readonly unavailable?: readonly UnavailableCodeAgent[] | undefined;
+  /**
+   * COR-2009 — where the built-in agents' override versions live. Defaults to a memory store,
+   * which a restart forgets.
+   */
+  readonly overrides?: AgentOverrideStore | undefined;
+  /**
+   * COR-2009 — what applying a built-in agent's overrides to its runs needs from the deployment:
+   * the model resolver, the tool catalog, the plugin guardrails, the approval secret and the
+   * Bureau's services. `find`, `models`, `generationProfile`, `detail` and `tools` answer for a
+   * built-in agent with its overrides in force (`code-agent-effective.ts`). Omitted, a run of an
+   * overridden agent gets no catalog tool, no plugin guardrail and no model the catalog resolves.
+   */
+  readonly codeAgentRuns?:
+    Omit<EffectiveCodeAgentDeployment, 'descriptors' | 'modelPolicy'> | undefined;
 }
 
 /**
@@ -349,6 +420,29 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     ([name, agent]) => Object.freeze({ name, agent }) as AgentCatalogEntry<D>,
   );
   const byName = new Map<string, AgentCatalogEntry<D>>(entries.map((entry) => [entry.name, entry]));
+  const unavailable = new Map<string, UnavailableCodeAgent>(
+    (options?.unavailable ?? [])
+      .filter((entry) => !byName.has(entry.id))
+      .map((entry) => [entry.id, entry]),
+  );
+  const unavailableListing = (entry: UnavailableCodeAgent): AgentListing => ({
+    id: entry.id,
+    source: 'code',
+    state: 'unavailable',
+    name: entry.agent.name,
+    description: entry.agent.description ?? null,
+    a2a: false,
+    owner: ownerOrLocal(undefined),
+    definitionRevision: readGenerationProfile(entry.agent).revision,
+    plugin: entry.plugin,
+    unavailable: entry.unavailable,
+  });
+  /** A plugin's code agent (`plugin:name`), running or disabled, which `duplicate` copies from. */
+  const pluginCodeAgent = (id: string): AnyRunnableAgent | undefined => {
+    const disabled = unavailable.get(id);
+    if (disabled !== undefined) return disabled.agent;
+    return id.includes(':') ? byName.get(id)?.agent : undefined;
+  };
   const codeListing = (entry: AgentCatalogEntry<D>): AgentListing => ({
     id: entry.name,
     source: 'code',
@@ -370,6 +464,55 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     ]),
   );
 
+  const overrides = createCodeAgentOverrides({
+    store:
+      options?.overrides ??
+      createAgentOverrideStore({
+        // COR-2009: a version is stamped on the Bureau's clock when the catalog has one.
+        nowISO: options?.codeAgentRuns?.runtime?.clock.nowISO ?? (() => new Date().toISOString()),
+      }),
+    codeAgents: new Map(
+      entries.map((entry) => [entry.name, { tools: codeToolNames(entry.agent) }] as const),
+    ),
+    listsOtherAgent: (id) =>
+      unavailable.has(id) || (files?.list() ?? []).some((listing) => listing.id === id),
+    toolNames: () => new Set((files?.tools() ?? []).map((tool) => tool.name)),
+    descriptors,
+    modelPolicy,
+  });
+
+  /**
+   * The built-in agent `name` as a run gets it: with the overrides in force applied, rebuilt only
+   * when they or the model catalog change. Any other agent is returned as it is.
+   */
+  interface EffectiveEntry {
+    readonly overrides: object;
+    readonly descriptors: readonly BackendDescriptor[];
+    readonly agent: AnyRunnableAgent;
+    profile?: AgentGenerationProfile;
+  }
+  const effectiveAgents = new Map<string, EffectiveEntry>();
+  const effectiveEntry = (name: string, agent: AnyRunnableAgent): EffectiveEntry | undefined => {
+    if (!overrides.isBuiltIn(name)) return undefined;
+    const inForce = overrides.inForce(name);
+    const catalogNow = descriptors();
+    const cached = effectiveAgents.get(name);
+    if (cached?.overrides === inForce && cached.descriptors === catalogNow) return cached;
+    const entry: EffectiveEntry = {
+      overrides: inForce,
+      descriptors: catalogNow,
+      agent: effectiveCodeAgent(agent, inForce, {
+        ...options?.codeAgentRuns,
+        descriptors,
+        modelPolicy,
+      }),
+    };
+    effectiveAgents.set(name, entry);
+    return entry;
+  };
+  const effectiveOf = (name: string, agent: AnyRunnableAgent): AnyRunnableAgent =>
+    effectiveEntry(name, agent)?.agent ?? agent;
+
   const catalog: BureauAgentCatalog<D> = {
     // Same cast rationale as above: `byName.get(name)!.agent` is genuinely
     // `D[TName]` for a `TName` the caller supplied, but the `Map`'s own
@@ -383,7 +526,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return entry.agent as D[TName];
     },
     find(name) {
-      return byName.get(name)?.agent ?? files?.find(name);
+      const code = byName.get(name);
+      return code === undefined ? files?.find(name) : effectiveOf(name, code.agent);
     },
     has(name): name is keyof D & string {
       return byName.has(name);
@@ -398,6 +542,12 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return entries.filter(predicate);
     },
     generationProfile(name) {
+      const code = byName.get(name);
+      const effective = code === undefined ? undefined : effectiveEntry(name, code.agent);
+      if (effective !== undefined && effective.agent !== code?.agent) {
+        effective.profile ??= buildCatalogGenerationProfile(effective.agent, selectorAvailable);
+        return effective.profile;
+      }
       const cached = generationProfiles.get(name);
       if (cached !== undefined) return cached;
       const fileAgent = files?.find(name);
@@ -410,7 +560,11 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return profile;
     },
     list() {
-      return [...entries.map(codeListing), ...(files?.list() ?? [])];
+      return [
+        ...entries.map(codeListing),
+        ...[...unavailable.values()].map(unavailableListing),
+        ...(files?.list() ?? []),
+      ];
     },
     async detail(id) {
       const code = byName.get(id);
@@ -419,13 +573,28 @@ export function createAgentCatalog<D extends AgentDefinitions>(
           ...codeListing(code),
           text: null,
           definition: null,
-          codeDefinition: describeCodeAgent(code.agent, descriptors(), modelPolicy()),
+          // COR-2009: a built-in agent as its runs get it, with the overrides in force.
+          codeDefinition: describeCodeAgent(
+            effectiveOf(id, code.agent),
+            descriptors(),
+            modelPolicy(),
+          ),
+        };
+      }
+      const disabled = unavailable.get(id);
+      if (disabled !== undefined) {
+        return {
+          ...unavailableListing(disabled),
+          text: null,
+          definition: null,
+          codeDefinition: describeCodeAgent(disabled.agent, descriptors(), modelPolicy()),
         };
       }
       return files?.detail(id);
     },
     models(name) {
-      const agent = byName.get(name)?.agent ?? files?.find(name);
+      const code = byName.get(name);
+      const agent = code === undefined ? files?.find(name) : effectiveOf(name, code.agent);
       return agent === undefined
         ? undefined
         : describeAgentModels(agent, descriptors(), modelPolicy());
@@ -435,7 +604,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       // `createAgent`; an agent that states none uses none that can be told.
       const codeUsers = new Map<string, string[]>();
       for (const entry of entries) {
-        for (const name of codeToolNames(entry.agent)) {
+        for (const name of codeToolNames(effectiveOf(entry.name, entry.agent))) {
           codeUsers.set(name, [...(codeUsers.get(name) ?? []), entry.name]);
         }
       }
@@ -443,6 +612,11 @@ export function createAgentCatalog<D extends AgentDefinitions>(
         ...tool,
         users: [...tool.users, ...(codeUsers.get(tool.name) ?? [])].toSorted(),
       }));
+    },
+    async addTools(tools) {
+      const add = options?.addTools;
+      if (add === undefined) throw new Error('This catalog has no tool catalog to add tools to.');
+      await add(tools);
     },
     revisions(id) {
       return snapshots?.revisions(id) ?? Promise.resolve([]);
@@ -452,8 +626,9 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       restore: async (id, revision, writeOptions) =>
         requireFiles().versions.restore(id, revision, writeOptions),
     },
-    refresh() {
-      return files?.refresh() ?? Promise.resolve();
+    overrides,
+    async refresh() {
+      await Promise.all([files?.refresh(), overrides.load()]);
     },
     onChange(listener) {
       return files?.onChange(listener) ?? (() => undefined);
@@ -464,7 +639,17 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
-    duplicate: async (id, writeOptions) => requireFiles().duplicate(id, writeOptions),
+    duplicate: async (id, writeOptions) => {
+      const agent = pluginCodeAgent(id);
+      if (agent === undefined) return requireFiles().duplicate(id, writeOptions);
+      const writer = requireFiles();
+      const copy = copyOfCodeAgent(id, agent, {
+        descriptors: descriptors(),
+        policy: modelPolicy(),
+        toolNames: new Set(writer.tools().map((tool) => tool.name)),
+      });
+      return writer.create(id.slice(id.indexOf(':') + 1), copy, writeOptions);
+    },
   };
 
   return Object.freeze(catalog);
@@ -495,6 +680,58 @@ function describeCodeAgent(
       typeof stated.instructions === 'string' && stated.instructions !== ''
         ? stated.instructions
         : null,
+  };
+}
+
+/**
+ * COR-2009 — the agent file a plugin's code agent `id` (`plugin:name`) is copied into: what it states
+ * about itself, with each tool named as the tool catalog holds it (`plugin:tool` for one of its
+ * plugin's own, whose code agents name them without the plugin) and a model a file can hold. See
+ * {@link BureauAgentCatalog.duplicate}.
+ */
+function copyOfCodeAgent(
+  id: string,
+  agent: AnyRunnableAgent,
+  deployment: {
+    readonly descriptors: readonly BackendDescriptor[];
+    readonly policy: BureauModelPolicyOptions | undefined;
+    readonly toolNames: ReadonlySet<string>;
+  },
+): AgentFileDefinitionInput {
+  const { descriptors, policy, toolNames } = deployment;
+  const plugin = id.slice(0, id.indexOf(':'));
+  const stated = describeCodeAgent(agent, descriptors, policy);
+  const models = describeAgentModels(agent, descriptors, policy);
+  const named = (choice: { readonly provider: string; readonly model: string }) =>
+    `${choice.provider}/${choice.model}`;
+  const allowed = models.models.filter((choice) => choice.denied !== true).map(named);
+  const fallback = descriptors.find(
+    (row) => row.lifecycle !== 'retired' && modelPolicyDenialOf(row, policy) === undefined,
+  );
+  const model =
+    (models.default !== null && models.default.denied !== true
+      ? named(models.default)
+      : undefined) ??
+    allowed[0] ??
+    (fallback === undefined ? undefined : named(fallback));
+  if (model === undefined) {
+    throw new AgentFileError(
+      'unknown-model',
+      `"${id}" names no model, and the deployment's model catalog has none its copy may use.`,
+    );
+  }
+  const local = id.slice(plugin.length + 1);
+  return {
+    name: stated.name === '' || stated.name === '(agent)' ? local : stated.name,
+    description: stated.description,
+    model,
+    ...(allowed.length > 1 && allowed.includes(model) ? { models: allowed } : {}),
+    tools: stated.tools.map((tool) =>
+      !toolNames.has(tool) && toolNames.has(`${plugin}:${tool}`) ? `${plugin}:${tool}` : tool,
+    ),
+    skillDescriptors: stated.skillDescriptors,
+    ...(stated.skills.length === 0 ? {} : { allowedSkills: stated.skills }),
+    instructions: stated.instructions ?? '',
   };
 }
 

@@ -10,7 +10,7 @@
  */
 
 import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
-import type { AnyToolbox } from 'armorer';
+import { toolListEntryMatches, type AnyToolbox } from 'armorer';
 
 import { createGatedExecute } from './active-skill-tool-gate';
 import type { ToolPolicy } from './create-policy-enforcement-hook';
@@ -179,6 +179,43 @@ export function withActiveSkillToolPolicy(
           target,
           (calls, options) => Reflect.apply(execute, receiver, [calls, options]),
           visibleTools,
+        );
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+}
+
+/** Applies a delegation grant's tool allow-list at invocation time. */
+export function withDelegatedToolCapabilities(
+  toolbox: AnyToolbox,
+  allowedToolIds: readonly string[] | undefined,
+): AnyToolbox {
+  if (allowedToolIds === undefined) return toolbox;
+  const visibleTools = () =>
+    toolbox
+      .tools()
+      .filter((tool) =>
+        allowedToolIds.some((entry) =>
+          toolListEntryMatches(entry, { toolName: tool.name, identity: tool.identity }),
+        ),
+      );
+  return new Proxy(toolbox, {
+    get(target, property, receiver) {
+      if (property === 'tools') return visibleTools;
+      if (property === 'execute') {
+        const execute = Reflect.get(target, property, receiver) as (
+          calls: unknown,
+          options?: unknown,
+        ) => Promise<unknown>;
+        return createGatedExecute(
+          target,
+          (calls, options) => Reflect.apply(execute, receiver, [calls, options]),
+          visibleTools,
+          (toolName) => ({
+            code: 'DELEGATED_TOOL_DENIED',
+            message: `Tool "${toolName}" is not available: the delegation grant excludes it.`,
+          }),
         );
       }
       return Reflect.get(target, property, receiver) as unknown;

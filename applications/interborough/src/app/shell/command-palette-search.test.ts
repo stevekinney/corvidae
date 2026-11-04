@@ -277,6 +277,8 @@ function tool(overrides: Partial<CatalogTool>): CatalogTool {
     defaultApproval: 'ask',
     source: 'host',
     plugin: null,
+    title: null,
+    skill: null,
     users: [],
     ...overrides,
   };

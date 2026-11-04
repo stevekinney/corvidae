@@ -30,7 +30,10 @@
  *      `scrollIntoView({block:'nearest'})`, which parks the focused item
  *      flush against the edge — exactly under a fully-on fade. That is a
  *      WCAG 1.4.11 / 1.4.3 failure, not a 2.4.11 one. This disqualifies every
- *      listbox, menu, and tab strip.
+ *      listbox and menu. A horizontal tab strip qualifies only because its
+ *      scrollport sets `scroll-padding-inline-end` to the fade's size, so the
+ *      focused tab scrolls to just clear of the fade and is never under it
+ *      (`tabs.css`, row 04l of the Nov 2 canvas).
  *   4. Never fade a text-entry surface. No fading a box with a caret in it.
  *   5. The fade is Tier 3 polish (see PLATFORM-POLICY.md). It may never be
  *      the sole signal that content scrolls — `data-cinder-overflows` (JS,

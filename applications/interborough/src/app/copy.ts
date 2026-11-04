@@ -3823,6 +3823,7 @@ export const CAPABILITIES_COPY = {
       host: 'MCP server',
       bureau: 'Built in',
       plugin: (plugin: string): string => `Plugin ${plugin}`,
+      skill: (skill: string): string => `Skill ${skill}`,
     },
     loadFailed: {
       title: 'The tools could not be read',

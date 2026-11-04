@@ -56,6 +56,11 @@ export interface PluginDescriptor<
 > {
   /** The plugin's name; it matches `pluginNamePattern`, and prefixes every contribution's id. */
   readonly name: string;
+  /**
+   * The plugin's name as a person reads it, such as `Web search` or `OpenAI`. Settings shows it,
+   * with `name` small beside it. Defaults to `name`.
+   */
+  readonly title?: string;
   /** The plugin's version; a durable record pins it when a contribution declares no version of its own. */
   readonly version: string;
   /** What the plugin does, as Settings shows it. */

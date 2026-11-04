@@ -12,6 +12,7 @@ import {
   buildSqliteKeyRangeDelete,
   buildSqliteKeyRangeQuery,
   buildSqliteKeyRangeSelect,
+  buildSqliteKeyValueMetadataRangeSelect,
   buildSqliteKeyValueRangeSelect,
   buildSqlitePrefixRange,
 } from './sqlite-key-value-queries.ts';
@@ -80,6 +81,17 @@ describe('SQLite key-value query helpers', () => {
     expect(buildSqliteKeyRangeSelect('item:', { reverse: true })).toEqual({
       parameters: ['item:', 'item;'],
       sql: 'SELECT key FROM kv WHERE key >= ? AND key < ? ORDER BY key DESC',
+    });
+  });
+
+  it("builds the metadata range select from the same suffix, reading each row's write time", () => {
+    expect(buildSqliteKeyValueMetadataRangeSelect('item:', { limit: 3 })).toEqual({
+      parameters: ['item:', 'item;', 3],
+      sql: 'SELECT key, value, updated_at FROM kv WHERE key >= ? AND key < ? ORDER BY key ASC LIMIT ?',
+    });
+    expect(buildSqliteKeyValueMetadataRangeSelect('item:')).toEqual({
+      parameters: ['item:', 'item;'],
+      sql: 'SELECT key, value, updated_at FROM kv WHERE key >= ? AND key < ? ORDER BY key ASC',
     });
   });
 

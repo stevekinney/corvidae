@@ -30,6 +30,8 @@
     // the `$state` rune; the public prop name is still `state`.
     state: stateProp = 'neutral',
     disabled = false,
+    description,
+    icon,
     class: className,
     children,
   }: ChoiceGridItemProps = $props();
@@ -73,6 +75,8 @@
   // There is no separate `size` prop on ChoiceGridItem — the grid is the
   // single source of truth so every item in a grid sizes consistently.
   const size = $derived(context.size);
+  const isCard = $derived(context.variant === 'card');
+  const descriptionId = $props.id();
 
   let elementRef: HTMLElement | null = $state(null);
 
@@ -123,16 +127,33 @@
   role={context.multiple ? 'checkbox' : 'radio'}
   aria-checked={isSelected}
   aria-disabled={isDisabled || undefined}
+  aria-describedby={isCard && description ? descriptionId : undefined}
   tabindex={tabIndex}
   class={classNames('cinder-choice-grid-item', className)}
   data-cinder-selected={isSelected ? '' : undefined}
   data-cinder-disabled={isDisabled || undefined}
   data-cinder-state={feedbackState !== 'neutral' ? feedbackState : undefined}
-  data-cinder-size={size}
+  data-cinder-size={isCard ? undefined : size}
+  data-cinder-variant={isCard ? 'card' : undefined}
   onclick={handleClick}
   onkeydown={handleKeydown}
 >
-  <span class="cinder-choice-grid-item__content">
-    {@render children()}
-  </span>
+  {#if isCard}
+    <span class="cinder-choice-grid-item__indicator" aria-hidden="true"></span>
+    <span class="cinder-choice-grid-item__card">
+      <span class="cinder-choice-grid-item__heading">
+        {#if icon}
+          <span class="cinder-choice-grid-item__icon" aria-hidden="true">{@render icon()}</span>
+        {/if}
+        <span class="cinder-choice-grid-item__title">{@render children()}</span>
+      </span>
+      {#if description}
+        <span id={descriptionId} class="cinder-choice-grid-item__description">{description}</span>
+      {/if}
+    </span>
+  {:else}
+    <span class="cinder-choice-grid-item__content">
+      {@render children()}
+    </span>
+  {/if}
 </div>

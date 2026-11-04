@@ -67,7 +67,7 @@ describe('weft.tasks.diagnostics filters', () => {
       queue: 'payments',
       terminalAt: 9_000,
       adopted: false,
-      evidence: ['Terminal task has remained unadopted for 1000ms'],
+      evidence: ['Terminal task has remained unadopted for 1 second'],
     });
   });
 

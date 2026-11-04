@@ -161,6 +161,12 @@ function firstCallAnswers(): GenerateFunction {
 }
 
 /** The audit entries of an owner, once the trail holds `count` of them. */
+/**
+ * The audit entries of one settled chat run: `run.started` (COR-2009), `step.completed`,
+ * `run.completed` and `run.cleanup-settled`.
+ */
+const RUN_AUDIT_ENTRIES = 4;
+
 async function auditOf(bureau: Bureau, runId: string, count: number) {
   await waitUntil(
     async () => {
@@ -190,8 +196,8 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
       const { bureau, fixture } = harness;
       const { targetRunId, neighbourRunId } = await chatsWithPrefixNeighbour(harness);
       await bureau.maintain();
-      const targetAuditBefore = await auditOf(bureau, targetRunId, 3);
-      const neighbourAuditBefore = await auditOf(bureau, neighbourRunId, 3);
+      const targetAuditBefore = await auditOf(bureau, targetRunId, RUN_AUDIT_ENTRIES);
+      const neighbourAuditBefore = await auditOf(bureau, neighbourRunId, RUN_AUDIT_ENTRIES);
       // A marker a removed surface left, which only a surface removal writes.
       const surfaceMarker = `${REMOVED_SURFACES_PREFIX}${targetRunId}:generation-1`;
       await fixture.storage.put(surfaceMarker, new TextEncoder().encode('removed'));
@@ -237,7 +243,7 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
       ).toEqual([expect.stringContaining(':session.deleted:')]);
 
       // The audit entries stay, redacted in place: same kinds, ids, times and actor.
-      const redacted = await auditOf(bureau, targetRunId, 3);
+      const redacted = await auditOf(bureau, targetRunId, RUN_AUDIT_ENTRIES);
       expect(redacted).toHaveLength(targetAuditBefore.length);
       for (const [index, entry] of redacted.entries()) {
         const original = targetAuditBefore[index]!;
@@ -254,7 +260,9 @@ describe('contexts.delete purges the content of the chat (COR-1934)', () => {
 
       // The second chat, whose run id begins with the deleted one's, is untouched, byte for byte.
       expect(entriesOf(after, 'chat-10', neighbourRunId)).toEqual(neighbourBefore);
-      expect(await auditOf(bureau, neighbourRunId, 3)).toEqual(neighbourAuditBefore);
+      expect(await auditOf(bureau, neighbourRunId, RUN_AUDIT_ENTRIES)).toEqual(
+        neighbourAuditBefore,
+      );
       expect(await bureau.contexts.get('chat-10')).toBeDefined();
       expect(errorsOf(harness.diagnostics)).toEqual([]);
     });

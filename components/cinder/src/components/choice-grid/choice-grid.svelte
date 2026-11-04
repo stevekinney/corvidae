@@ -20,6 +20,7 @@
     ChoiceGridItemState,
     ChoiceGridProps,
     ChoiceGridSize,
+    ChoiceGridVariant,
   } from './choice-grid.types.ts';
 </script>
 
@@ -38,6 +39,7 @@
     multiple = false,
     columns = 'responsive',
     size,
+    variant = 'tile',
     // The responsive default depends on `size`: a compact grid needs a
     // smaller minimum column before consumers have a reason to override it
     // (COR-330). An explicit `minColumnWidth` always wins over either default.
@@ -225,6 +227,9 @@
     get size() {
       return size;
     },
+    get variant() {
+      return variant;
+    },
     isSelected,
     select,
     register,
@@ -279,6 +284,7 @@
   data-cinder-multiple={multiple || undefined}
   data-cinder-disabled={disabled || undefined}
   data-cinder-size={size}
+  data-cinder-variant={variant === 'card' ? 'card' : undefined}
 >
   {@render children()}
 </Grid>

@@ -120,6 +120,7 @@ import {
 import { ownerOrLocal, principalDefect } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
+import { DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS } from './settings/setting-defaults';
 import type { AgentTaskOrigin } from './task-origin';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
@@ -322,6 +323,7 @@ export interface ChildTopologyStart {
   readonly childRunId: string;
   readonly principal?: string | undefined;
   readonly context: Pick<AgentRunContext, 'parentSignals' | 'childCorrelation'>;
+  readonly delegatedToolCapabilities?: readonly string[] | undefined;
   /** The origin of the child's task: the parent run that dispatched it (COR-1868). */
   readonly taskOrigin: AgentTaskOrigin;
 }
@@ -394,7 +396,9 @@ export interface ChildTopology {
   /** The context a recovered child's re-resolved run options must carry. */
   recoveredRunContext(
     runId: string,
-  ): Pick<AgentRunContext, 'parentSignals' | 'childCorrelation'> | undefined;
+  ):
+    | Pick<AgentRunContext, 'parentSignals' | 'childCorrelation' | 'delegatedToolCapabilities'>
+    | undefined;
   /** Settles, re-authorizes, or reattaches every record `prepareRecovery` loaded. */
   reconcileRecovery(): Promise<void>;
   /** Resolves once every in-flight settlement write has landed. */
@@ -418,13 +422,18 @@ export const CHILD_AGENT_RUN_WORKFLOW_TYPE = 'agentRun';
 /** The longest `toolCallId` a dispatch may name, in UTF-8 bytes. */
 const MAX_TOOL_CALL_ID_BYTES = 256;
 const DEFAULT_POLICY_VERSION = 'bureau-delegation/1';
-const DEFAULT_TIME_TO_LIVE_MILLISECONDS = 60 * 60 * 1000;
 const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<string> = new Set([
   'completed',
   'failed',
   'cancelled',
   'timed-out',
 ]);
+
+interface RecoveryAuthorizationFailure {
+  readonly code: string;
+  readonly reason: string;
+  readonly canDenyBeforeRecovery: boolean;
+}
 const PARENT_CANCELLATIONS: readonly string[] = ['cascade', 'detach'];
 const LIST_CAPABILITIES = ['tools', 'pathPatterns', 'secrets'] as const;
 const SWITCH_CAPABILITIES = ['network', 'admin'] as const;
@@ -610,7 +619,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   const defaultTimeToLive = (): number =>
     dependencies.defaultTimeToLiveMilliseconds?.() ??
     delegation?.defaultTimeToLiveMilliseconds ??
-    DEFAULT_TIME_TO_LIVE_MILLISECONDS;
+    DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS;
 
   const tracked = new Map<string, TrackedChild>();
   const inFlight = new Set<Promise<unknown>>();
@@ -624,6 +633,8 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   /** Parents whose cancellation has been requested: none admits another child. */
   const cancelledParents = new Set<string>();
   const pendingRecovery = new Map<string, BureauChildRecord>();
+  const pendingRecoveryToolCapabilities = new Map<string, readonly string[]>();
+  const pendingRecoveryAuthorizationFailures = new Map<string, RecoveryAuthorizationFailure>();
 
   // -------------------------------------------------------------------------
   // Bookkeeping
@@ -1483,6 +1494,9 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
           childCorrelation: correlationOf(record),
           ...(entry.channel === undefined ? {} : { parentSignals: entry.channel.child }),
         },
+        ...(grant?.effectiveCapabilities.tools === undefined
+          ? {}
+          : { delegatedToolCapabilities: grant.effectiveCapabilities.tools }),
         taskOrigin: {
           kind: 'agent',
           parentRunId: request.parentRunId,
@@ -1720,10 +1734,76 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   }
 
   async function prepareRecovery(): Promise<void> {
+    pendingRecovery.clear();
+    pendingRecoveryToolCapabilities.clear();
+    pendingRecoveryAuthorizationFailures.clear();
     const records = await store.listAll();
     for (const record of records) {
       if (record.status !== 'running') continue;
       pendingRecovery.set(record.childRunId, record);
+      if (record.grantId !== undefined) {
+        try {
+          if (delegation === undefined) {
+            pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+              code: 'delegation-unavailable',
+              reason: 'no delegation secret is configured',
+              canDenyBeforeRecovery: true,
+            });
+          } else {
+            const loaded = await store.loadGrant(record.grantId);
+            if (loaded.status !== 'found') {
+              pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+                code: loaded.status,
+                reason: `grant ${record.grantId} is ${loaded.status}`,
+                canDenyBeforeRecovery: true,
+              });
+            } else {
+              const verification = verifyDelegationGrant(
+                loaded.grant,
+                delegation.secret,
+                runtime.clock.now(),
+              );
+              if (!verification.valid) {
+                pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+                  code: verification.code,
+                  reason: verification.reason,
+                  canDenyBeforeRecovery: true,
+                });
+              } else if (loaded.grant.effectiveCapabilities.tools !== undefined) {
+                pendingRecoveryToolCapabilities.set(
+                  record.childRunId,
+                  loaded.grant.effectiveCapabilities.tools,
+                );
+              }
+            }
+          }
+        } catch (error) {
+          pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+            code: 'grant-read-failed',
+            reason: `could not read grant ${record.grantId}: ${describeError(error)}`,
+            canDenyBeforeRecovery: false,
+          });
+        }
+      }
+      const failure = pendingRecoveryAuthorizationFailures.get(record.childRunId);
+      if (failure?.canDenyBeforeRecovery && record.workflow.kind === 'durable') {
+        const engine = dependencies.getEngine();
+        if (engine) {
+          try {
+            const state = await engine.get(record.workflow.workflowId);
+            if (state && !TERMINAL_WORKFLOW_STATUSES.has(state.status)) {
+              await deny(record, failure.code, failure.reason);
+            }
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'recovery',
+              message: `[bureau] Could not pre-deny child "${record.childRunId}" during recovery: ${describeError(error)}`,
+              cause: error,
+            });
+          }
+        }
+      }
       if (record.workflow.kind !== 'durable') continue;
       const entry = ensureTracked(record.childRunId);
       const contract = contractFor(record.childAgentName);
@@ -1754,17 +1834,27 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       }
     }
     pendingRecovery.clear();
+    pendingRecoveryToolCapabilities.clear();
+    pendingRecoveryAuthorizationFailures.clear();
   }
 
   function recoveredRunContext(
     runId: string,
-  ): Pick<AgentRunContext, 'parentSignals' | 'childCorrelation'> | undefined {
+  ):
+    | Pick<AgentRunContext, 'parentSignals' | 'childCorrelation' | 'delegatedToolCapabilities'>
+    | undefined {
     const record = pendingRecovery.get(runId);
     if (!record) return undefined;
+    const authorizationFailure = pendingRecoveryAuthorizationFailures.get(runId);
+    if (authorizationFailure !== undefined) {
+      throw new Error(`Child "${runId}" cannot resume: ${authorizationFailure.reason}`);
+    }
     const channel = tracked.get(runId)?.channel;
+    const delegatedToolCapabilities = pendingRecoveryToolCapabilities.get(runId);
     return {
       childCorrelation: correlationOf(record),
       ...(channel === undefined ? {} : { parentSignals: channel.child }),
+      ...(delegatedToolCapabilities === undefined ? {} : { delegatedToolCapabilities }),
     };
   }
 

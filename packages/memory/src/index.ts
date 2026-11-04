@@ -105,6 +105,7 @@ export type {
   MemoryRecordLocator,
   MemoryRetentionCandidate,
   MemoryRetentionSweep,
+  MemorySupersessionNotice,
   MemoryWriteReceipt,
   MemoryWriteRejection,
   RecallForModelOptions,

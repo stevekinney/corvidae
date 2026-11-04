@@ -36,7 +36,8 @@
     type SchemaFormField,
   } from './schema-form-model.ts';
   import SchemaFormChips from './schema-form-chips.svelte';
-  import SchemaFormDuration from './schema-form-duration.svelte';
+  import DurationField from '../duration-field/duration-field.svelte';
+  import { focusFirstProblem } from '../form/focus-first-problem.ts';
   import SchemaFormJsonPanel from './schema-form-json-panel.svelte';
   import SchemaFormRecord from './schema-form-record.svelte';
   import { createSchemaFormState } from './schema-form-state.svelte.ts';
@@ -337,11 +338,7 @@
   async function focusFirstError(submitId: number) {
     await tick();
     if (activeSubmitId !== submitId) return;
-    formElement
-      ?.querySelector<HTMLElement>(
-        '[aria-invalid="true"], [data-cinder-invalid="true"], .cinder-schema-form__error',
-      )
-      ?.focus();
+    if (formElement) focusFirstProblem(formElement);
   }
 
   function shouldResumeNativeSubmit(): boolean {
@@ -622,7 +619,7 @@
           onblur={() => formState.validateTouchedField(field)}
         />
       {:else if (field.kind === 'number' || field.kind === 'integer') && field.unit}
-        <SchemaFormDuration
+        <DurationField
           {id}
           label={field.label}
           description={field.description}

@@ -195,6 +195,7 @@ export type {
   ChoiceGridItemState,
   ChoiceGridProps,
   ChoiceGridSize,
+  ChoiceGridVariant,
 } from './components/choice-grid/index.ts';
 
 export { default as ChoiceGridItem } from './components/choice-grid-item/index.ts';
@@ -222,7 +223,11 @@ export { default as ClickAwayListener } from './components/click-away-listener/i
 export type { ClickAwayListenerProps } from './components/click-away-listener/index.ts';
 
 export { default as CodeBlock } from './components/code-block/index.ts';
-export type { CodeBlockProps } from './components/code-block/index.ts';
+export type {
+  CodeBlockAnnotation,
+  CodeBlockAnnotationTone,
+  CodeBlockProps,
+} from './components/code-block/index.ts';
 
 export { default as Collapsible } from './components/collapsible/index.ts';
 export type {
@@ -342,9 +347,11 @@ export type {
 
 export { default as DataTable } from './components/data-table/index.ts';
 export type {
+  DataTableCellContext,
   DataTableColumn,
   DataTableProps,
   DataTableRow,
+  DataTableRowContext,
   DataTableSelectionMode,
 } from './components/data-table/index.ts';
 
@@ -415,6 +422,15 @@ export type { DropdownSeparatorProps } from './components/dropdown-separator/ind
 export { default as DropdownTrigger } from './components/dropdown-trigger/index.ts';
 export type { DropdownTriggerProps } from './components/dropdown-trigger/index.ts';
 
+export {
+  DURATION_UNITS,
+  default as DurationField,
+  durationUnitFor,
+  fromMilliseconds,
+  toMilliseconds,
+} from './components/duration-field/index.ts';
+export type { DurationFieldProps, DurationUnit } from './components/duration-field/index.ts';
+
 export { default as EmptyState } from './components/empty-state/index.ts';
 export type {
   EmptyStateAlign,
@@ -433,11 +449,16 @@ export type {
 export { default as FilterBar } from './components/filter-bar/index.ts';
 export type {
   AppliedFilter,
+  ChoiceFacet,
   CustomFacet,
   FacetDefinition,
   FacetOption,
+  FilterBarLayout,
   FilterBarProps,
+  FilterSegment,
   SelectFacet,
+  ToggleFacet,
+  ToggleFacetTone,
 } from './components/filter-bar/index.ts';
 
 export { default as FeedBoundary } from './components/feed-boundary/index.ts';
@@ -470,15 +491,19 @@ export { default as FileUpload } from './components/file-upload/index.ts';
 export type {
   FileUploadEntry,
   FileUploadProps,
+  FileUploadRejection,
   FileUploadRejectionReason,
   FileUploadStatus,
+  FileUploadVariant,
   RejectedFile,
 } from './components/file-upload/index.ts';
 
 export { default as FocusTrap, createFocusTrap } from './components/focus-trap/index.ts';
 export type { FocusTrapOptions, FocusTrapProps } from './components/focus-trap/index.ts';
 
-export { default as Form } from './components/form/index.ts';
+export { default as FormActions } from './components/form-actions/index.ts';
+export type { FormActionsProps } from './components/form-actions/index.ts';
+export { default as Form, focusFirstProblem } from './components/form/index.ts';
 export type { FormProps, FormSubmitContext } from './components/form/index.ts';
 
 export { default as FormField } from './components/form-field/index.ts';
@@ -520,7 +545,11 @@ export { default as InlineLoading } from './components/inline-loading/index.ts';
 export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
 
 export { default as JsonEditor } from './components/json-editor/index.ts';
-export type { JsonEditorProps, JsonEditorSchema } from './components/json-editor/index.ts';
+export type {
+  JsonEditorDiagnostic,
+  JsonEditorProps,
+  JsonEditorSchema,
+} from './components/json-editor/index.ts';
 
 export { default as JsonSchemaEditor } from './components/json-schema-editor/index.ts';
 export type {
@@ -603,6 +632,7 @@ export type { LocaleProviderProps, TextDirection } from './components/locale-pro
 
 export { LIST_DETAIL_SHORTCUTS, default as ListDetail } from './components/list-detail/index.ts';
 export type {
+  ListDetailListBodyContext,
   ListDetailProps,
   ListDetailRowContext,
   ListDetailSelectionLocation,
@@ -800,6 +830,13 @@ export type {
   ResizablePanelsResizeReason,
 } from './components/resizable-panels/index.ts';
 
+export {
+  RESTART_RETRY_MAXIMUM_SECONDS,
+  default as RestartState,
+  restartRetryDelaySeconds,
+} from './components/restart-state/index.ts';
+export type { RestartStatePhase, RestartStateProps } from './components/restart-state/index.ts';
+
 export { default as ScheduleBuilder } from './components/schedule-builder/index.ts';
 export type {
   ScheduleBuilderProps,
@@ -875,7 +912,7 @@ export type {
 } from './components/selection-popover/index.ts';
 
 export { default as SettingRow } from './components/setting-row/index.ts';
-export type { SettingRowProps } from './components/setting-row/index.ts';
+export type { SettingRowProps, SettingRowStatus } from './components/setting-row/index.ts';
 
 export { default as ShareCard } from './components/share-card/index.ts';
 export type { ShareCardAction, ShareCardProps } from './components/share-card/index.ts';
@@ -903,7 +940,7 @@ export {
 export type { SidebarProps } from './components/sidebar/index.ts';
 
 export { default as SortableList } from './components/sortable-list/index.ts';
-export type { SortableListProps } from './components/sortable-list/index.ts';
+export type { SortableListProps, SortableReorderMode } from './components/sortable-list/index.ts';
 export type {
   SortableAnnouncements,
   SortableItemContext,
@@ -921,6 +958,7 @@ export type { SliderMode, SliderProps, SliderValue } from './components/slider/i
 
 export {
   default as SourceDiffViewer,
+  countPatchChanges,
   getSourceDiffFileLabel,
   getSourceDiffLineLabel,
   parseUnifiedPatch,
@@ -928,6 +966,7 @@ export {
 export type {
   SourceDiffAnnotationSelection,
   SourceDiffAnnotationSide,
+  SourceDiffChangeCounts,
   SourceDiffFile,
   SourceDiffFileAnnotationContext,
   SourceDiffFileDescriptor,
@@ -939,6 +978,7 @@ export type {
   SourceDiffViewerFocusResult,
   SourceDiffViewerProps,
   SourceDiffViewerRef,
+  SourceDiffViewerVariant,
 } from './components/source-diff-viewer/index.ts';
 
 export { default as StackedListItem } from './components/stacked-list-item/index.ts';
@@ -1131,6 +1171,13 @@ export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-swit
 
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';
+
+export { default as ToolPicker } from './components/tool-picker/index.ts';
+export type {
+  ToolPickerGroup,
+  ToolPickerItem,
+  ToolPickerProps,
+} from './components/tool-picker/index.ts';
 
 export { default as Toolbar } from './components/toolbar/index.ts';
 export type {

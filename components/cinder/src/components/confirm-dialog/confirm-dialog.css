@@ -13,4 +13,50 @@
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
   }
+
+  /* Monospace inside the sentence (a key, an identifier) reads as part of the sentence. */
+  .cinder-confirm-dialog__description :where(code) {
+    font-family: var(--cinder-font-mono);
+    font-size: 0.95em;
+    color: var(--cinder-text-default);
+  }
+
+  /* The description, the options, the typed field and the failure are one column, a step apart.
+   * The failure region is always mounted so a failure is announced, and takes no room until it has
+   * one. */
+  .cinder-confirm-dialog .cinder-modal__body > * + *:not(:empty) {
+    margin-block-start: var(--cinder-space-4);
+  }
+
+  /* What each choice does: a checkbox, or the command about to run. */
+  .cinder-confirm-dialog__options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  .cinder-confirm-dialog__failure :where(strong) {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  /* Cancel holds the first focus (the guard against a hasty confirm), and the dialog opens from a
+   * click as often as from a key: the ring must show on that first focus either way, which
+   * :focus-visible alone does not promise for a script focus after a pointer press. Same ring as
+   * the button's own. */
+  .cinder-confirm-dialog__cancel:focus:not(:disabled):not([aria-disabled='true']) {
+    border-color: transparent;
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-button-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    .cinder-confirm-dialog__cancel:focus:not(:disabled):not([aria-disabled='true']) {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+  }
 }

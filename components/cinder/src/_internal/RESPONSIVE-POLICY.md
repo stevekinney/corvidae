@@ -5,10 +5,11 @@ Component-owned responsive behavior should use container queries. If a component
 Viewport queries are reserved for viewport-owned behavior: app shells, drawers, and modality switches where the viewport itself is the constraint. The documented exceptions share one set of breakpoints: phones are narrower than 640px, tablets run from 640px to 1023px, and desktops start at 1024px.
 
 - Sidebar's mobile Drawer switch (`SIDEBAR_MOBILE_BREAKPOINT`, `639.98px`), so tablets keep the inline column and its icon rail.
-- Table's `stackBelow`, which stacks rows into labelled values on a phone.
+- Table's `stackBelow`, which stacks the rows of a table with controls into cards. It is not viewport-owned: the length is compared in script against the table's own container width (a `ResizeObserver` on the scroll box), because a size container query cannot read a length from a prop. The viewport stands in only until the container has a measurable width.
 - Popover's, Dropdown's, Combobox's, and MultiSelect's `sheetBelow`, which open them as bottom sheets on a phone.
 - Breadcrumbs' `collapseBelow`, which collapses a trail to a back link to the parent and the current page on a phone, and Tabs' `collapseBelow`, which turns a horizontal tab bar into one select. Both are phone-form choices made in script (`useViewportBelow`), so what is not shown is not in the page.
 - StackedListItem's phone form: below 640px a status moves to line two beside the kind and agent, and trailing `actions` collapse into one menu button. Many rows ask the same question, so they read one shared query through `phoneViewport` in `phone-viewport.svelte.ts` rather than one `MediaQuery` each.
+- JsonEditor's long lines: a line longer than the frame scrolls sideways inside the editor with the gutter fixed, and below 640px it wraps instead, because sideways scrolling is hard to use on a phone. CodeMirror's line wrapping is an editor setting rather than a stylesheet rule, so the component reads the shared `phoneViewport` and passes it in; `wrap` overrides it either way.
 
 Each reads the viewport through `useViewportBelow` in `viewport-below.svelte.ts` (or the shared `phoneViewport`, for the row), which wraps Svelte's `MediaQuery`, so none of them adds a viewport `@media` rule to component CSS.
 

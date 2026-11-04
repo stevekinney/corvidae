@@ -62,6 +62,7 @@ export const OPERATION_MAP = {
   },
   'bureau.deployment.get': { exempt: 'composed from the Bureau’s id, lifecycle, and agents' },
   'bureau.diagnostics.get': { member: 'internals.diagnostics' },
+  'bureau.health.attention': { member: 'attention' },
   'bureau.events': { exempt: 'a transport subscription over the Bureau’s event feed' },
   'bureau.events.catalog': {
     exempt: 'a static description of the published event kinds; it reads no Bureau state',
@@ -118,6 +119,8 @@ export const OPERATION_MAP = {
   'bureau.workflows.get': { member: 'workflows.get' },
   'bureau.workflows.list': { member: 'workflows.list' },
   'bureau.workflows.revisions': { member: 'workflows.revisions' },
+  'bureau.workflows.history': { member: 'workflows.history' },
+  'bureau.workflows.impact': { member: 'workflows.impact' },
   'bureau.workflows.runs.list': { member: 'workflows.listRuns' },
   'bureau.workflows.runs.get': { member: 'workflows.getRun' },
   'bureau.workflows.start': { member: 'workflows.start' },
@@ -160,6 +163,9 @@ export const OPERATION_MAP = {
   'bureau.agents.list': { member: 'agents.list' },
   // Describes one catalog agent against the models catalog (COR-1708).
   'bureau.agents.models': { member: 'agents.models' },
+  'bureau.agents.references': {
+    exempt: 'composed from the catalog, the schedules, the workflow files, and the hooks',
+  },
   'bureau.agents.try': { member: 'agents.try' },
   'bureau.agents.definitions.create': { member: 'agents.create' },
   'bureau.agents.definitions.update': { member: 'agents.update' },
@@ -170,6 +176,8 @@ export const OPERATION_MAP = {
   'bureau.agents.definitions.revisions': { member: 'agents.revisions' },
   'bureau.agents.versions.list': { member: 'agents.versions.list' },
   'bureau.agents.versions.restore': { member: 'agents.versions.restore' },
+  'bureau.agents.overrides.get': { member: 'agents.overrides.get' },
+  'bureau.agents.overrides.update': { member: 'agents.overrides.save' },
 
   // COR-1813: the wire name is `rollback` because operation names are lowercase; the in-process
   // member keeps the camel-cased `rollBack`.
@@ -180,6 +188,7 @@ export const OPERATION_MAP = {
 
   'bureau.hooks.create': { member: 'hooks.create' },
   'bureau.hooks.update': { member: 'hooks.update' },
+  'bureau.hooks.secret.replace': { member: 'hooks.replaceSigningSecret' },
   'bureau.hooks.delete': { member: 'hooks.delete' },
   'bureau.hooks.get': { member: 'hooks.get' },
   'bureau.hooks.list': { member: 'hooks.list' },

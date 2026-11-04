@@ -15,3 +15,4 @@ export * from './sqlite-contention.test-support.ts';
 export * from './storage-adapter.test-support.ts';
 export * from './storage-contract.ts';
 export * from './storage-test-primitives.test-support.ts';
+export * from './write-time-contract.ts';

@@ -17,6 +17,7 @@ import {
   composeAgentRunPolicy,
   OPERATIVE_RESOLVES_GUARDRAILS,
   resolveAgentGuardrails,
+  withDelegatedToolCapabilities,
 } from './agent-policy';
 import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';
@@ -1041,7 +1042,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       agentHooks === undefined && !hasPolicy
         ? undefined
         : mergeHookRegistries(undefined, agentHooks, undefined);
-    const toolbox =
+    const toolbox = withDelegatedToolCapabilities(
       hooks !== undefined && hasPolicy
         ? composeAgentRunPolicy({
             guardrails: runGuardrails,
@@ -1051,7 +1052,9 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
             agentName: context?.agentName ?? resolvedName,
             runtime,
           })
-        : baseToolbox;
+        : baseToolbox,
+      context?.delegatedToolCapabilities,
+    );
 
     assertAgentInput(input);
     const conversation = !isConversationInput(input)
@@ -1140,6 +1143,9 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       // `childRegistry` does above.
       ...(context?.delegatedAuthority !== undefined
         ? { delegatedAuthority: context.delegatedAuthority }
+        : {}),
+      ...(context?.delegatedToolCapabilities !== undefined
+        ? { delegatedToolCapabilities: context.delegatedToolCapabilities }
         : {}),
       // AB-241 — `AgentRunContext.principal` forwards into `RunOptions.principal`
       // the same way `signal`/`traceContext` do above.

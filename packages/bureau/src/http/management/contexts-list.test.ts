@@ -475,6 +475,7 @@ describe('bureau.contexts.get', () => {
         title: 'the opening question',
         lastMessagePreview: 'Done.',
         activity: 'idle',
+        endReason: null,
       });
       expect(Object.keys(body.result ?? {}).toSorted()).toEqual([
         'activity',
@@ -482,6 +483,7 @@ describe('bureau.contexts.get', () => {
         'configVersion',
         'createdAt',
         'effort',
+        'endReason',
         'forkedFromMessageId',
         'id',
         'lastMessagePreview',

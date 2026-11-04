@@ -1,66 +1,69 @@
 <script lang="ts">
-  import { FilterBar } from '@lostgradient/cinder';
-  import type { AppliedFilter, FacetDefinition } from '@lostgradient/cinder';
+  import { type AppliedFilter, type FacetDefinition, FilterBar } from '@lostgradient/cinder';
+
+  const segments = [
+    { value: 'all', label: 'All', count: 19 },
+    { value: 'waiting', label: 'Waiting on you', count: 2 },
+    { value: 'running', label: 'Running', count: 0 },
+    { value: 'done', label: 'Done', count: 15 },
+    { value: 'failed', label: 'Failed', count: 1 },
+    { value: 'canceled', label: 'Canceled', count: 1 },
+  ];
 
   const facets: FacetDefinition[] = [
     {
-      type: 'select',
-      key: 'status',
-      label: 'Status',
-      placeholder: 'All statuses',
+      type: 'choice',
+      key: 'startedBy',
+      label: 'Started by',
       options: [
-        { value: 'running', label: 'Running' },
-        { value: 'failed', label: 'Failed' },
-        { value: 'paused', label: 'Paused' },
-        { value: 'completed', label: 'Completed' },
+        { value: 'you', label: 'You', count: 0 },
+        { value: 'chats', label: 'Chats', count: 5 },
+        { value: 'schedules', label: 'Schedules', count: 4 },
+        { value: 'goals', label: 'Goals', count: 8 },
+        { value: 'interborough', label: 'Interborough', count: 2 },
+        { value: 'workflows', label: 'Workflows', count: 0 },
+        { value: 'agents', label: 'Agents', count: 0 },
       ],
     },
     {
-      type: 'select',
-      key: 'queue',
-      label: 'Queue',
-      placeholder: 'All queues',
+      type: 'choice',
+      key: 'agent',
+      label: 'Agent',
+      multiple: false,
       options: [
-        { value: 'default', label: 'Default' },
-        { value: 'priority', label: 'Priority' },
-        { value: 'background', label: 'Background' },
+        { value: 'assistant', label: 'Assistant' },
+        { value: 'tool-runner', label: 'Tool runner' },
       ],
     },
   ];
 
-  let appliedFilters = $state<AppliedFilter[]>([]);
+  let segmentValue = $state('all');
+  let appliedFilters = $state<AppliedFilter[]>([
+    { key: 'agent', value: 'tool-runner', label: 'Agent' },
+  ]);
   let searchQuery = $state('');
 
-  function handleFacetChange(key: string, value: string) {
-    const facet = facets.find((f) => f.key === key);
-    if (!value) {
-      appliedFilters = appliedFilters.filter((f) => f.key !== key);
-      return;
-    }
-    appliedFilters = [
-      ...appliedFilters.filter((f) => f.key !== key),
-      { key, value, label: facet?.label ?? key },
-    ];
-  }
-
-  function handleFilterRemove(key: string) {
-    appliedFilters = appliedFilters.filter((f) => f.key !== key);
-  }
-
-  function handleClearAll() {
-    appliedFilters = [];
-    searchQuery = '';
+  function setFilter(key: string, values: readonly string[]) {
+    const facet = facets.find((candidate) => candidate.key === key);
+    const rest = appliedFilters.filter((filter) => filter.key !== key);
+    appliedFilters =
+      values.length === 0
+        ? rest
+        : [...rest, { key, value: values.join(','), label: facet?.label ?? key, values }];
   }
 </script>
 
 <FilterBar
   aria-label="Workflow filters"
+  {segments}
+  {segmentValue}
   {facets}
   {appliedFilters}
   {searchQuery}
-  searchPlaceholder="Search workflows…"
-  onSearchChange={(q) => (searchQuery = q)}
-  onFacetChange={handleFacetChange}
-  onFilterRemove={handleFilterRemove}
-  onClearAll={handleClearAll}
+  searchPlaceholder="Search runs"
+  onSegmentChange={(value) => (segmentValue = value)}
+  onSearchChange={(query) => (searchQuery = query)}
+  onFacetChange={(key, value) => setFilter(key, value === '' ? [] : [value])}
+  onFacetValuesChange={setFilter}
+  onFilterRemove={(key) => setFilter(key, [])}
 />

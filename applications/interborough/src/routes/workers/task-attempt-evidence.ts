@@ -306,7 +306,7 @@ function acknowledgementText(task: TaskLedgerDetail, owner: TaskAttemptRecord | 
     return `Not acknowledged · attempt ${owner.attempt} is ${DISPOSITION_LABEL[owner.disposition].toLowerCase()}`;
   }
   if (isGracePeriodSettlement(owner)) {
-    return `Not acknowledged · Weft settled attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)} after the cancellation grace period elapsed`;
+    return `Not acknowledged · Interborough settled attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)} after the cancellation grace period elapsed`;
   }
   const reason = owner.dispositionReason ? ` · ${owner.dispositionReason}` : '';
   return `Acknowledged by attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)}${reason}`;
