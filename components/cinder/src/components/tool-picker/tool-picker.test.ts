@@ -540,6 +540,16 @@ describe('ToolPicker loading', () => {
     expect(dialog().querySelector('.cinder-tool-picker__empty')).toBeNull();
   });
 
+  test('shows no counter while loading, then the count once the list arrives', () => {
+    const { rerender } = renderPicker({ loading: true, items: [] });
+    flushSync();
+    expect(dialog().querySelector('.cinder-tool-picker__counter')).toBeNull();
+    expect(dialog().textContent).not.toContain('0 of 0');
+    rerender({ loading: false, items, groups });
+    flushSync();
+    expect(counter()).toBe('3 of 9 tools chosen');
+  });
+
   test('Done waits until the list has loaded', () => {
     renderPicker({ loading: true, items: [], selected: [] });
     const done = Array.from(dialog().querySelectorAll('.cinder-modal__footer button')).find(

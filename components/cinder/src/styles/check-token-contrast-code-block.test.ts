@@ -91,9 +91,15 @@ describe('dark code-block contrast (COR-2010 inset at 18%)', () => {
 
   it('lifts the comment color, which falls under AA on the 18% inset without it', () => {
     const lifted = liftedDarkColors();
-    expect([...lifted.keys()]).toEqual(['#6a737d']);
+    expect([...lifted.keys()]).toEqual(['#6a737d', '#9ecbff']);
     const unlifted = contrastRatio(relativeLuminance(hexToLinearRgb('#6a737d')), insetLuminance);
     expect(unlifted).toBeLessThan(AA_TEXT);
+  });
+
+  it('lifts the string color to the success text role, so a JSON key and string differ in hue', () => {
+    // github-dark paints keys #79b8ff and strings #9ecbff: two steps of one blue. The design draws
+    // keys blue and strings green.
+    expect(liftedDarkColors().get('#9ecbff')).toBe('--cinder-status-success-text');
   });
 
   it('Cinder text tokens clear AA text on the dark inset', () => {

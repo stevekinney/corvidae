@@ -127,12 +127,24 @@
     border-end-end-radius: var(--cinder-radius-md);
   }
 
+  /* A day that is not chosen sits on the field surface with the field's own edge, in the medium
+     weight of the field text: the grey chip fill belongs to a standalone chip, not to a joined
+     group of fields. `background-color` (not the shorthand) leaves the chip's hover film alone. */
+  .cinder-schedule-builder__weekday-group
+    > .cinder-chip[aria-pressed='false'][data-cinder-variant]:not(:disabled) {
+    background-color: var(--cinder-control-background);
+    border-color: var(--cinder-control-border);
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-medium);
+  }
+
   /* A chosen day is filled in the accent tint, and paints over its neighbours' shared edge so
      its accent edge is whole. */
   .cinder-schedule-builder__weekday-group > .cinder-chip[aria-pressed='true'][data-cinder-variant] {
     background: var(--cinder-accent-background);
     color: var(--cinder-accent-text);
     border-color: var(--cinder-accent-solid);
+    font-weight: var(--cinder-font-semibold);
     position: relative;
     z-index: 1;
   }

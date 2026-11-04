@@ -1121,6 +1121,17 @@ describe('ScheduleBuilder', () => {
       );
     });
 
+    test('an unchosen day sits on the field surface with the field edge, a chosen one is semibold', async () => {
+      const { readFileSync } = await import('node:fs');
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      expect(css).toMatch(
+        /\.cinder-chip\[aria-pressed='false'\]\[data-cinder-variant\]:not\(:disabled\) \{[^}]*background-color: var\(--cinder-control-background\);[^}]*border-color: var\(--cinder-control-border\);[^}]*font-weight: var\(--cinder-font-medium\);/,
+      );
+      expect(css).toMatch(
+        /\.cinder-chip\[aria-pressed='true'\]\[data-cinder-variant\] \{[^}]*font-weight: var\(--cinder-font-semibold\);/,
+      );
+    });
+
     test('aggregates the styles of the fields it composes before the component layer', async () => {
       const { readFileSync } = await import('node:fs');
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');

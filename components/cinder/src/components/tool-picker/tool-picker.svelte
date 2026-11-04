@@ -177,7 +177,11 @@
   onDismiss={() => onCancel?.()}
 >
   {#snippet headerTrailing()}
-    <span class="cinder-tool-picker__counter" aria-live="polite">{counter}</span>
+    <!-- While the catalogue loads there is nothing to count: "0 of 0 tools chosen" would be read
+         out as a fact, so the counter appears with the list. -->
+    {#if !loading}
+      <span class="cinder-tool-picker__counter" aria-live="polite">{counter}</span>
+    {/if}
   {/snippet}
 
   <div class="cinder-tool-picker__search">

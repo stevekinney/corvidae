@@ -36,7 +36,7 @@ Modal traps focus inside the dialog. Focus starts on the dialog body, then Tab r
 
 ### Assistive-technology announcements
 
-The dialog is named by its title. The counter ("3 of 9 tools chosen") is a polite live region, so each choice is announced as it changes the count. A checkbox is named by the tool's human name and described by its description; the identifier, risk and starting level are read as part of the row's text. A tool with no risk word draws an em dash that is named "No risk word". A skill has no checkbox and reads "Follows its tools". Each group is a `role="group"` named by its header. The empty state reads as text in the list, and the loading placeholder is announced politely as "Loading tools and skills".
+The dialog is named by its title. The counter ("3 of 9 tools chosen") is a polite live region, so each choice is announced as it changes the count. While the catalogue loads there is no counter, so nothing announces a count of zero. A checkbox is named by the tool's human name and described by its description; the identifier, risk and starting level are read as part of the row's text. A tool with no risk word draws an em dash that is named "No risk word". A skill has no checkbox and reads "Follows its tools". Each group is a `role="group"` named by its header. The empty state reads as text in the list, and the loading placeholder is announced politely as "Loading tools and skills".
 
 ## Forced colors
 

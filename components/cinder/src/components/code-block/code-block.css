@@ -236,6 +236,14 @@
     --shiki-dark: var(--cinder-text-subtle) !important;
   }
 
+  /* Shiki's `github-dark` paints a JSON key and a string in two steps of one blue (#79b8ff and
+   * #9ecbff), so the two read as one hue. The design draws keys blue and strings green, as
+   * json-highlight does. A string takes the success text role; keys, numbers and booleans keep
+   * the theme's blue. Same lift as the comment above, so the dark swap reads it unchanged. */
+  .cinder-code-block :where(pre.shiki) span[style*='--shiki-dark:#9ecbff' i] {
+    --shiki-dark: var(--cinder-status-success-text) !important;
+  }
+
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just
  * the glyph with a hover wash.
  *
