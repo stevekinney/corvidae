@@ -46,7 +46,6 @@ function toolDescription(action: string, root: WorkspaceRoot): string {
 }
 
 /** The disabled-by-default plugin that contributes tools for configured workspace roots. */
-/** The disabled-by-default plugin that contributes tools for configured workspace roots. */
 export default definePlugin({
   name: 'workspace',
   version: '1.0.0',
