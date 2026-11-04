@@ -124,6 +124,19 @@ export interface WorkflowFileCatalog {
   readonly read: (
     id: string,
   ) => Promise<{ readonly hash: string; readonly text: string } | undefined>;
+  /** The file's bytes as text, including a file that does not parse as a workflow. */
+  readonly readRaw: (
+    id: string,
+  ) => Promise<{ readonly hash: string; readonly text: string } | undefined>;
+  /** A single source snapshot of the listing and file text, for a coherent read. */
+  readonly readSnapshot: (id: string) => Promise<
+    | {
+        readonly listing: WorkflowListing;
+        readonly text?: string;
+        readonly file?: ReadyWorkflowFile;
+      }
+    | undefined
+  >;
   readonly create: (
     id: string,
     definition: WorkflowFileDefinition,
@@ -160,6 +173,22 @@ interface WorkflowEntry {
   readonly revision: number;
   readonly file?: ReadyWorkflowFile;
   readonly problem?: WorkflowFileProblem;
+}
+
+function sourceProblem(problem: {
+  readonly code: 'file-too-large' | 'unreadable';
+  readonly message: string;
+  readonly size?: number;
+}): WorkflowFileProblem {
+  return problem.code === 'file-too-large'
+    ? {
+        code: 'file-too-large',
+        message: `The file is ${problem.size ?? 0} bytes; a workflow file may be at most ${WORKFLOW_FILE_SIZE_LIMIT}.`,
+      }
+    : {
+        code: 'unreadable',
+        message: `The file could not be read: ${problem.message}`,
+      };
 }
 
 function refuse(problem: WorkflowFileProblem): never {
@@ -217,19 +246,16 @@ export function createWorkflowFileCatalog(
       id,
       hash: undefined,
       revision,
-      problem: {
-        code: 'file-too-large',
-        message: `The file is ${size} bytes; a workflow file may be at most ${WORKFLOW_FILE_SIZE_LIMIT}.`,
-      },
+      problem: sourceProblem({ code: 'file-too-large', message: '', size }),
     }),
     unreadable: (id, error, revision) => ({
       id,
       hash: undefined,
       revision,
-      problem: {
+      problem: sourceProblem({
         code: 'unreadable',
-        message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
-      },
+        message: error instanceof Error ? error.message : String(error),
+      }),
     }),
     sameSignature: (before, after) =>
       before.hash === after.hash && before.problem?.code === after.problem?.code,
@@ -348,30 +374,32 @@ export function createWorkflowFileCatalog(
     return { id, hash: written.hash };
   }
 
+  function listingOf(entry: WorkflowEntry): WorkflowListing {
+    const ready = entry.file !== undefined;
+    return {
+      id: entry.id,
+      state: ready ? 'ready' : 'invalid',
+      owner,
+      title: entry.file?.title ?? null,
+      description: entry.file?.description ?? null,
+      agent: entry.file?.agent ?? null,
+      paused: entry.file?.paused ?? false,
+      inputSchema: entry.file?.inputSchema ?? null,
+      outputSchema: entry.file?.outputSchema ?? null,
+      triggerKind: entry.file?.document.trigger.kind ?? null,
+      trigger: entry.file?.trigger ?? null,
+      steps: entry.file?.steps ?? null,
+      ...(entry.hash === undefined ? {} : { hash: entry.hash }),
+      ...(entry.file === undefined ? {} : { version: entry.file.version }),
+      ...(entry.problem === undefined ? {} : { problem: entry.problem }),
+    };
+  }
+
   return {
     list() {
       return [...watched.entries().values()]
         .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
-        .map((entry): WorkflowListing => {
-          const ready = entry.file !== undefined;
-          return {
-            id: entry.id,
-            state: ready ? 'ready' : 'invalid',
-            owner,
-            title: entry.file?.title ?? null,
-            description: entry.file?.description ?? null,
-            agent: entry.file?.agent ?? null,
-            paused: entry.file?.paused ?? false,
-            inputSchema: entry.file?.inputSchema ?? null,
-            outputSchema: entry.file?.outputSchema ?? null,
-            triggerKind: entry.file?.document.trigger.kind ?? null,
-            trigger: entry.file?.trigger ?? null,
-            steps: entry.file?.steps ?? null,
-            ...(entry.hash === undefined ? {} : { hash: entry.hash }),
-            ...(entry.file === undefined ? {} : { version: entry.file.version }),
-            ...(entry.problem === undefined ? {} : { problem: entry.problem }),
-          };
-        });
+        .map(listingOf);
     },
 
     find: (id) => watched.entries().get(id)?.file,
@@ -392,6 +420,38 @@ export function createWorkflowFileCatalog(
         throw new WorkflowFileError('not-utf8', `The file for "${id}" is not valid UTF-8.`);
       }
       return { hash: entry.hash, text };
+    },
+
+    async readRaw(id) {
+      if (!isNamespacedIdentifier(id)) checkIdentifier(id);
+      const entry = await readFresh(id);
+      if (entry === undefined) return undefined;
+      const text = decodeWorkflowFile(entry.bytes);
+      if (text === undefined) {
+        throw new WorkflowFileError('not-utf8', `The file for "${id}" is not valid UTF-8.`);
+      }
+      return { hash: entry.hash, text };
+    },
+
+    async readSnapshot(id) {
+      const entry = await readFresh(id);
+      if (entry === undefined) return undefined;
+      const evaluated: WorkflowEntry =
+        entry.problem === undefined
+          ? evaluate(id, entry.bytes, entry.hash, 0, entry.plugin)
+          : {
+              id,
+              hash: undefined,
+              revision: 0,
+              problem: sourceProblem(entry.problem),
+            };
+      const text = entry.problem === undefined ? decodeWorkflowFile(entry.bytes) : undefined;
+      const listing = listingOf(evaluated);
+      return {
+        listing,
+        ...(text === undefined ? {} : { text }),
+        ...(evaluated.file === undefined ? {} : { file: evaluated.file }),
+      };
     },
 
     create(id, definition, observer) {

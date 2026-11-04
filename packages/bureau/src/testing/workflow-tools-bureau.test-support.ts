@@ -1,6 +1,6 @@
 /**
  * A Bureau with a workflow directory and an agent directory, for the tests of the workflow tools
- * (COR-1529). One file agent lists the five tools; its model is scripted to make one tool call a
+ * (COR-1529). One file agent lists the eight tools; its model is scripted to make one tool call a
  * test names and to record what the tool answered. No provider key is used.
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -14,6 +14,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
+import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import { createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools.ts';
@@ -68,7 +69,7 @@ export interface WorkflowToolsHarness {
   /** The names of the tools each model call was offered, in order. */
   readonly offered: string[][];
   /**
-   * Writes an agent file under the identifier `id` that lists `tools` (the five workflow tools by
+   * Writes an agent file under the identifier `id` that lists `tools` (the eight workflow tools by
    * default). Each tool is set to `never`, so a call runs without waiting for a person; pass
    * `approval: 'default'` to leave `toolApproval` out and take the agent default (COR-1913).
    */
@@ -86,6 +87,8 @@ export interface WorkflowToolsOptions {
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   /** The file agents to create, by identifier. Defaults to `scribe`. */
   readonly agents?: readonly string[];
+  /** Optional file operations used by workflow-source tests to simulate read failures. */
+  readonly workflowOperations?: AgentFileOperations;
 }
 
 export async function startWorkflowToolsBureau(
@@ -135,7 +138,10 @@ export async function startWorkflowToolsBureau(
       }),
     },
     agentSource: agentFileDirectory(agentsPath),
-    workflowSource: workflowFileDirectory(workflowsPath),
+    workflowSource: workflowFileDirectory(
+      workflowsPath,
+      options.workflowOperations === undefined ? {} : { operations: options.workflowOperations },
+    ),
     models: { generate: (_descriptor: BackendDescriptor) => generate },
     storage: new MemoryStorage(),
     durable: true,
