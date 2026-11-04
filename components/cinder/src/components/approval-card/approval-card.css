@@ -506,6 +506,18 @@
     line-height: var(--cinder-leading-snug);
   }
 
+  /* The identifier, the risk word and "Can't be undone" read as one unit that never breaks across
+   * lines; the tool's name before it may wrap, and so may who asked. The time never splits. */
+  .cinder-approval-card__line-facts {
+    white-space: nowrap;
+  }
+
+  .cinder-approval-card__line time,
+  .cinder-approval-card__eyebrow time,
+  .cinder-approval-card__detail-ask time {
+    white-space: nowrap;
+  }
+
   /* The state word at the right of the title: neutral, never a colour. */
   .cinder-approval-card__state-word {
     flex: none;
@@ -516,7 +528,6 @@
 
   /* Everything below the title lines up with the question, past the glyph. */
   .cinder-approval-card__row-body,
-  .cinder-approval-card__outcome,
   .cinder-approval-card--row > .cinder-approval-card__result {
     display: flex;
     flex-direction: column;
@@ -525,7 +536,13 @@
     padding-inline-start: calc(16px + var(--cinder-space-2));
   }
 
+  .cinder-approval-card--row > .cinder-approval-card__outcome {
+    padding-inline-start: calc(16px + var(--cinder-space-2));
+  }
+
   .cinder-approval-card__outcome {
+    display: flex;
+    margin: 0;
     flex-direction: row;
     align-items: center;
     flex-wrap: wrap;
@@ -548,6 +565,47 @@
     block-size: 8px;
     border-radius: var(--cinder-radius-full);
     background: var(--cinder-text-subtle);
+  }
+
+  /* An approval is green; a denial, an expiry and every other decision stay neutral. */
+  .cinder-approval-card__outcome[data-cinder-tone='success'] .cinder-approval-card__outcome-dot {
+    background: var(--cinder-status-success-solid);
+  }
+
+  /* Where the question was asked, after the outcome and its time. */
+  .cinder-approval-card__outcome-trailing {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* The note the approver left: "Your note", the note, then where it went. */
+  .cinder-approval-card__decision-note {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-approval-card__decision-note-label {
+    margin-inline-end: var(--cinder-space-1);
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__decision-note-caption {
+    margin-inline-start: var(--cinder-space-1);
+    color: var(--cinder-text-subtle);
+  }
+
+  /* Under a decided row, the note and the input summary line up with the question. */
+  .cinder-approval-card--row > .cinder-approval-card__decision-note,
+  .cinder-approval-card--row > .cinder-approval-card__decided-input {
+    padding-inline-start: calc(16px + var(--cinder-space-2));
+  }
+
+  .cinder-approval-card__decided-input .cinder-approval-card__input-word {
+    margin-inline-end: var(--cinder-space-2);
   }
 
   .cinder-approval-card__input {
@@ -663,6 +721,80 @@
   .cinder-approval-card__note-toggle:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* ----------------------------------------
+   * Detail layout: an approval's own page
+   * ---------------------------------------- */
+
+  .cinder-approval-card--detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__detail-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-approval-card__detail-eyebrow,
+  .cinder-approval-card__detail-ask,
+  .cinder-approval-card__detail-tool {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0 var(--cinder-space-1);
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__detail-eyebrow {
+    gap: var(--cinder-space-2);
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-approval-card__detail-eyebrow .cinder-approval-card__risk-icon {
+    margin-block-start: 0;
+  }
+
+  .cinder-approval-card__detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+  }
+
+  /* The risk glyph line under Input: what cannot be undone and what approving does. */
+  .cinder-approval-card__detail-risk {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    color: var(--cinder-text-default);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-approval-card__detail-risk > svg {
+    flex: none;
+    margin-block-start: 2px;
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-approval-card--detail:not([data-cinder-state='pending'])
+    .cinder-approval-card__detail-risk
+    > svg,
+  .cinder-approval-card--detail[data-cinder-risk='low'] .cinder-approval-card__detail-risk > svg {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-approval-card--detail .cinder-approval-card__consequence {
+    color: inherit;
+    font-size: inherit;
   }
 
   /* ----------------------------------------

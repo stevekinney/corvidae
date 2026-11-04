@@ -69,6 +69,19 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* The selected view is a quiet accent tint with accent text, not the control's solid fill: the
+   * switch sits in every payload on a page, so it must not outshout the data. The hover rule is
+   * restated because the control darkens a selected segment on hover. */
+  .cinder-payload-inspector__header .cinder-segmented-control-option[data-cinder-selected],
+  .cinder-payload-inspector__header
+    .cinder-segmented-control-option[data-cinder-selected]:hover:not(:disabled):not(
+      [aria-disabled='true']
+    ) {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    color: var(--cinder-accent-text);
+    box-shadow: none;
+  }
+
   /* Copy is a bare icon in the header; it only gets an edge back when it is focused. */
   .cinder-payload-inspector__header .cinder-copy-button {
     padding: var(--cinder-space-1);
@@ -136,6 +149,30 @@
     gap: var(--cinder-space-3);
   }
 
+  /* A plain list of keys and values shares one key column, as wide as its longest key and never
+   * more than 40% of the card, so the values line up and no key is stretched across the row. */
+  .cinder-payload-inspector__fields[data-cinder-layout='rows'] {
+    display: grid;
+    grid-template-columns: fit-content(40%) minmax(0, 1fr);
+    column-gap: var(--cinder-space-3);
+    row-gap: var(--cinder-space-1-5);
+  }
+
+  .cinder-payload-inspector__fields[data-cinder-layout='rows'] > .cinder-payload-inspector__field {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    column-gap: var(--cinder-space-3);
+    row-gap: 0;
+  }
+
+  .cinder-payload-inspector__fields[data-cinder-layout='rows']
+    > .cinder-payload-inspector__field[data-cinder-block],
+  .cinder-payload-inspector__fields[data-cinder-layout='rows']
+    > .cinder-payload-inspector__field[data-cinder-patch] {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--cinder-space-1);
+  }
+
   /* A nested object or array, a patch and an item are not squeezed into the value column: the label
    * and its count sit on one line and the content takes the whole width under them. */
   .cinder-payload-inspector__field[data-cinder-block],
@@ -167,9 +204,18 @@
     overflow-wrap: anywhere;
   }
 
-  /* A tree reads in the stronger weight at every level, so a nested value looks like a top-level one. */
-  .cinder-payload-inspector__field-view[data-cinder-tree] .cinder-payload-inspector__field-value {
+  /* A tree reads the same at every level: a leaf value is in the stronger weight and a key is
+   * regular and muted, whether it sits at the top or three levels down. Only a value that is a
+   * leaf is bold; a block's value holds more keys and values, which style themselves. */
+  .cinder-payload-inspector__field-view[data-cinder-tree]
+    .cinder-payload-inspector__field:not([data-cinder-block])
+    > .cinder-payload-inspector__field-value {
     font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-payload-inspector__field-view[data-cinder-tree] .cinder-payload-inspector__field-label {
+    color: var(--cinder-text-muted);
+    font-weight: var(--cinder-font-normal);
   }
 
   /* The count that follows a nested label: "Parts · 3 items". */
@@ -297,6 +343,15 @@
     .cinder-payload-inspector__field {
       grid-template-columns: 1fr;
       gap: 0;
+    }
+
+    .cinder-payload-inspector__fields[data-cinder-layout='rows'] {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cinder-payload-inspector__fields[data-cinder-layout='rows']
+      > .cinder-payload-inspector__field {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .cinder-payload-inspector__fields[data-cinder-layout='grid']
@@ -445,5 +500,13 @@
 
   .cinder-payload-inspector__error {
     color: var(--cinder-status-danger-text);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-payload-inspector__header .cinder-segmented-control-option[data-cinder-selected] {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
+    }
   }
 }

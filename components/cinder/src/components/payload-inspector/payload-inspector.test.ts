@@ -383,9 +383,11 @@ describe('PayloadInspector', () => {
       expect(view.textContent).not.toContain('ops@example.com');
     });
 
-    test('keeps the same value styling at every level', () => {
+    test('keeps the same key and value styling at every level', () => {
+      // A leaf value is bold at every depth, and a key is regular at every depth; the rules name
+      // the leaf (`:not([data-cinder-block])`) so a nested key never inherits a value's weight.
       expect(readCss()).toMatch(
-        /\[data-cinder-tree\]\s*\.cinder-payload-inspector__field-value\s*\{[^}]*font-weight:\s*var\(--cinder-font-semibold\)/s,
+        /\[data-cinder-tree\]\s*\.cinder-payload-inspector__field:not\(\[data-cinder-block\]\)\s*>\s*\.cinder-payload-inspector__field-value\s*\{[^}]*font-weight:\s*var\(--cinder-font-semibold\)/s,
       );
     });
 
@@ -1342,5 +1344,42 @@ describe('PayloadInspector: a patch value', () => {
     });
     expect(container.querySelector('[data-cinder-patch]')).toBeNull();
     expect(container.querySelector('.cinder-source-diff-viewer')).toBeNull();
+  });
+});
+
+describe('PayloadInspector tree styling', () => {
+  test('bolds only a leaf value, so nested keys read like top-level keys', () => {
+    const css = readCss();
+
+    expect(css).not.toMatch(
+      /\[data-cinder-tree\]\s+\.cinder-payload-inspector__field-value\s*\{[^}]*font-weight/,
+    );
+    expect(css).toMatch(
+      /\[data-cinder-tree\]\s+\.cinder-payload-inspector__field:not\(\[data-cinder-block\]\)\s*>\s*\.cinder-payload-inspector__field-value\s*\{[^}]*semibold/,
+    );
+    expect(css).toMatch(
+      /\[data-cinder-tree\]\s+\.cinder-payload-inspector__field-label\s*\{[^}]*font-weight: var\(--cinder-font-normal\)/,
+    );
+  });
+
+  test('sizes the key column to its longest key, capped, and shares it across rows', () => {
+    const css = readCss();
+
+    expect(css).toMatch(
+      /__fields\[data-cinder-layout='rows'\]\s*\{[^}]*grid-template-columns: fit-content\(40%\) minmax\(0, 1fr\)/,
+    );
+    expect(css).toMatch(/> \.cinder-payload-inspector__field\s*\{[^}]*subgrid/);
+  });
+
+  test('draws the selected view as a quiet accent tint with accent text', () => {
+    const css = readCss();
+    const selected =
+      /__header \.cinder-segmented-control-option\[data-cinder-selected\][^{]*\{([^}]*)\}/.exec(
+        css,
+      );
+
+    expect(selected?.[1]).toContain('var(--cinder-accent-text)');
+    expect(selected?.[1]).toContain('transparent 88%');
+    expect(selected?.[1]).not.toContain('accent-contrast');
   });
 });

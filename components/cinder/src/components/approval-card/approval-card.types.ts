@@ -1,6 +1,8 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { PayloadInspectorView } from '../payload-inspector/payload-inspector.types.ts';
+
 export type ApprovalToolRisk = 'low' | 'medium' | 'high';
 
 /** Heading level rendered for the card title. Section headings render one level deeper. */
@@ -131,11 +133,15 @@ export type ApprovalResolution = {
 };
 
 /**
- * Layout of an approval. `card` is the full review surface; `row` is the shared approval row
- * (glyph and question, a line naming the tool and where it came from, the consequence, Input,
+ * Layout of an approval. `card` is the full review surface: who asked, the question, the tool and
+ * the consequence in the header, then the evidence and the decision. `row` is the shared approval
+ * row (glyph and question, a line naming the tool and where it came from, the consequence, Input,
  * Add a note, Deny and Approve) for an approval inside a transcript or beneath a tool call.
+ * `detail` is the approval's own page: an eyebrow, the question, who asked and how long it has
+ * waited, the tool, the Input block, then a line carrying the risk glyph and what approving does,
+ * and the decision below. It has no Details disclosure.
  */
-export type ApprovalCardLayout = 'card' | 'row';
+export type ApprovalCardLayout = 'card' | 'row' | 'detail';
 
 /** Which answer is on its way to the host: the approver pressed Approve or Deny and the answer has not landed. */
 export type ApprovalResolving = 'approve' | 'deny';
@@ -183,12 +189,18 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     editableArgs?: boolean;
     /** Heading level for the card title; section headings render one level deeper. Default `3`. */
     headingLevel?: ApprovalCardHeadingLevel;
-    /** Layout: the full `card`, or the shared `row`, one approval inside a transcript or beneath a tool call. Default `'card'`. */
+    /** Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`. */
     layout?: ApprovalCardLayout;
     /** The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. */
     question?: string;
-    /** Who asked, written after "Approval from": `Tool runner`, or `the agent`. */
+    /** Who asked, written after the source prefix: `Tool runner`, or `the agent`. */
     source?: string;
+    /** The words before `source`. Default `Approval from`, or `Asked by` in the `detail` layout. */
+    sourcePrefix?: string;
+    /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
+    eyebrow?: string;
+    /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`. */
+    toolPrefix?: string;
     /** When the approval was asked. Written as relative time ("4 min ago") while the approval is pending. */
     requestedAt?: string | number | Date;
     /** What approving does, in one line, such as `Sends $42.00 back to the original card`. */
@@ -203,6 +215,11 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     decidedBy?: string;
     /** When the approval was decided, written as a time of day after the outcome ("Denied by you · 10:40 AM"). */
     decidedAt?: string | number | Date;
+    /**
+     * The note the approver left with the decision, written under the outcome as "Your note", the
+     * note, and a caption saying where it went: "Sent to the agent as the reason." for a denial.
+     */
+    decisionNote?: string;
     /** Why Deny and Approve are off while the approval is still pending, such as `Approving is off until Interborough is reachable`. Written above the actions and named by both buttons. */
     disabledReason?: string;
     /** Why an `unavailable` approval cannot be answered now, written beneath it. */
@@ -233,6 +250,11 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     inputLabel?: string;
     /** A line of context written above the question, such as "Test chat · this runs for real". */
     context?: Snippet;
+    /**
+     * Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch
+     * can govern every payload on a page. Default `fields`.
+     */
+    view?: PayloadInspectorView;
     /** The reference time for relative times. Defaults to now. */
     now?: Date | number;
     /** Additional CSS classes applied to the root element. */
@@ -268,12 +290,18 @@ export type ApprovalCardSchemaProps = {
   editableArgs?: boolean;
   /** Heading level for the card title; section headings render one level deeper. Default `3`. @default 3 */
   headingLevel?: ApprovalCardHeadingLevel;
-  /** Layout: the full `card`, or the shared `row`, one approval inside a transcript or beneath a tool call. Default `'card'`. @default 'card' */
+  /** Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`. @default 'card' */
   layout?: ApprovalCardLayout;
   /** The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. */
   question?: string;
-  /** Who asked, written after "Approval from": `Tool runner`, or `the agent`. */
+  /** Who asked, written after the source prefix: `Tool runner`, or `the agent`. */
   source?: string;
+  /** The words before `source`. Default `Approval from`, or `Asked by` in the `detail` layout. */
+  sourcePrefix?: string;
+  /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
+  eyebrow?: string;
+  /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`. */
+  toolPrefix?: string;
   /** When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending. */
   requestedAt?: string;
   /** What approving does, in one line, such as `Sends $42.00 back to the original card`. */
@@ -284,6 +312,8 @@ export type ApprovalCardSchemaProps = {
   decidedBy?: string;
   /** When the approval was decided, as an ISO timestamp, written as a time of day after the outcome. */
   decidedAt?: string;
+  /** The note the approver left with the decision, written under the outcome as "Your note", the note, and a caption saying where it went. */
+  decisionNote?: string;
   /** Why Deny and Approve are off while the approval is still pending. Written above the actions and named by both buttons. */
   disabledReason?: string;
   /** Why an `unavailable` approval cannot be answered now, written beneath it. */
@@ -302,6 +332,8 @@ export type ApprovalCardSchemaProps = {
   footnote?: string;
   /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */
   inputLabel?: string;
+  /** Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch can govern every payload on a page. Default `fields`. @default 'fields' */
+  view?: PayloadInspectorView;
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
   /** Additional CSS classes applied to the root element. */

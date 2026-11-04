@@ -1627,7 +1627,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
     detail: "Interborough couldn't reach the agent. Nothing was refunded.",
   };
 
-  for (const layout of ['row', 'card'] as const) {
+  for (const layout of ['row', 'card', 'detail'] as const) {
     describe(`${layout} layout`, () => {
       test('Approve in flight writes Approving… with a spinner and turns both buttons off', async () => {
         const onResolve = mock();
@@ -1753,7 +1753,9 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         });
 
         expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
-          'Approved by you · 10:33 AM',
+          layout === 'detail'
+            ? 'Approved by you · 10:33 AM · Tool runner'
+            : 'Approved by you · 10:33 AM',
         );
         expect(squash(container.querySelector('.cinder-approval-card__result')?.textContent)).toBe(
           'Result: Refunded $18.50 to the original card.',
@@ -1775,7 +1777,9 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         });
 
         expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
-          'Approved by you in Reviews at 10:44 AM',
+          layout === 'detail'
+            ? 'Approved by you in Reviews at 10:44 AM · Tool runner'
+            : 'Approved by you in Reviews at 10:44 AM',
         );
         expect(container.textContent).toContain("You don't need to do anything here.");
         expect(queryByRole('button', { name: 'Approve' })).toBeNull();
@@ -1816,11 +1820,12 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         const line = container.querySelector('.cinder-approval-card__context');
         const title = container.querySelector('h3');
         expect(line?.textContent).toBe('Test chat · this runs for real: order 4471 is refunded');
-        expect(
+        // Above the question, except on the detail page, which writes the context under who asked.
+        const following =
           line !== null &&
-            title !== null &&
-            line.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING,
-        ).toBeTruthy();
+          title !== null &&
+          line.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING;
+        expect(layout === 'detail' ? !following : Boolean(following)).toBe(true);
       });
     });
   }
@@ -1842,5 +1847,228 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
       props: refundRow({ state: 'approved', failure: approveFailure }),
     });
     expect(queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('ApprovalCard detail layout', () => {
+  const detailProps = (overrides: RowOverrides = {}): ApprovalCardProps =>
+    refundRow({
+      layout: 'detail',
+      source: 'Tool runner in Please refund order 4471, it arrived damaged.',
+      rememberScope: undefined,
+      ...overrides,
+    });
+
+  test('orders the eyebrow, the question, who asked, the tool, the input and the risk line', () => {
+    const { container, getByRole } = render(ApprovalCard, { props: detailProps() });
+
+    const article = getByRole('article', { name: 'Refund order 4471 for $42.00?' });
+    expect(article.getAttribute('data-cinder-layout')).toBe('detail');
+    expect(
+      squash(container.querySelector('.cinder-approval-card__detail-eyebrow')?.textContent),
+    ).toBe('Tool approval');
+    expect(squash(container.querySelector('.cinder-approval-card__detail-ask')?.textContent)).toBe(
+      'Asked by Tool runner in Please refund order 4471, it arrived damaged. · waiting 4 min',
+    );
+    expect(squash(container.querySelector('.cinder-approval-card__detail-tool')?.textContent)).toBe(
+      'It wants to run Issue refund issue-refund · Dangerous',
+    );
+    expect(squash(container.querySelector('.cinder-approval-card__detail-risk')?.textContent)).toBe(
+      "Can't be undone. Sends $42.00 back to the original card",
+    );
+
+    const order = [
+      '.cinder-approval-card__detail-eyebrow',
+      '.cinder-approval-card__title',
+      '.cinder-approval-card__detail-ask',
+      '.cinder-approval-card__detail-tool',
+      '.cinder-payload-inspector',
+      '.cinder-approval-card__detail-risk',
+      '.cinder-approval-card__action-row',
+    ].map((selector) => container.querySelector(selector));
+    for (const [index, element] of order.entries()) {
+      expect(element, `missing ${index}`).not.toBeNull();
+      const next = order[index + 1];
+      if (element !== null && next !== undefined && next !== null) {
+        expect(
+          element.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
+    }
+  });
+
+  test('has no Details disclosure and renames the eyebrow, the prefixes and the Input block', () => {
+    const { container, getByText, queryByRole } = render(ApprovalCard, {
+      props: detailProps({
+        eyebrow: 'Approval',
+        sourcePrefix: 'From',
+        toolPrefix: 'Wants',
+        inputLabel: 'Runs with',
+      }),
+    });
+
+    expect(queryByRole('button', { name: 'Details' })).toBeNull();
+    expect(getByText('Approval')).toBeTruthy();
+    expect(
+      squash(container.querySelector('.cinder-approval-card__detail-ask')?.textContent),
+    ).toMatch(/^From Tool runner/);
+    expect(
+      squash(container.querySelector('.cinder-approval-card__detail-tool')?.textContent),
+    ).toMatch(/^Wants Issue refund/);
+    expect(container.textContent).toContain('Runs with');
+  });
+
+  test('keeps the failure below the risk line while Deny and Approve stay live', () => {
+    const { container, getByRole } = render(ApprovalCard, {
+      props: detailProps({
+        failure: {
+          summary: "Couldn't approve.",
+          detail: "Interborough couldn't reach the agent. Nothing was refunded.",
+        },
+        onResolve: mock(),
+      }),
+    });
+
+    const risk = container.querySelector('.cinder-approval-card__detail-risk');
+    const failure = getByRole('alert');
+    expect(risk?.compareDocumentPosition(failure)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(false);
+  });
+
+  test('leads a decided approval with its green outcome and writes the result and no state sentence', () => {
+    const { container } = render(ApprovalCard, {
+      props: detailProps({
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:33:00.000Z',
+        result: 'Refunded $18.50 to the original card.',
+        onResolve: undefined,
+      }),
+    });
+
+    const outcome = container.querySelector('.cinder-approval-card__outcome');
+    expect(outcome?.getAttribute('data-cinder-tone')).toBe('success');
+    expect(squash(outcome?.textContent)).toBe(
+      'Approved by you · 10:33 AM · Tool runner in Please refund order 4471, it arrived damaged.',
+    );
+    expect(container.querySelector('.cinder-approval-card__readonly-summary')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__detail-ask')).toBeNull();
+    expect(squash(container.querySelector('.cinder-approval-card__result')?.textContent)).toBe(
+      'Result: Refunded $18.50 to the original card.',
+    );
+  });
+
+  test('names an expired approval beside who asked, with the expiry notice', () => {
+    const { container } = render(ApprovalCard, {
+      props: detailProps({
+        expiresAt: '2026-11-02T10:15:00.000Z',
+        requestedAt: undefined,
+        onResolve: undefined,
+      }),
+    });
+
+    expect(squash(container.querySelector('.cinder-approval-card__detail-ask')?.textContent)).toBe(
+      'Asked by Tool runner in Please refund order 4471, it arrived damaged. · Expired',
+    );
+    expect(container.querySelector('.cinder-approval-card__readonly-summary')?.textContent).toMatch(
+      EXPIRED_NOTICE,
+    );
+  });
+});
+
+describe('ApprovalCard outcome', () => {
+  test('draws an approval in green and a denial in neutral text', () => {
+    const approved = render(ApprovalCard, {
+      props: refundRow({ state: 'approved', decidedBy: 'you' }),
+    });
+    expect(
+      approved.container
+        .querySelector('.cinder-approval-card__outcome')
+        ?.getAttribute('data-cinder-tone'),
+    ).toBe('success');
+    cleanup();
+
+    const denied = render(ApprovalCard, {
+      props: refundRow({ state: 'denied', decidedBy: 'you' }),
+    });
+    expect(
+      denied.container
+        .querySelector('.cinder-approval-card__outcome')
+        ?.getAttribute('data-cinder-tone'),
+    ).toBe('neutral');
+  });
+
+  test('writes the approver note under a denial and says it went to the agent as the reason', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        state: 'denied',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:40:00.000Z',
+        decisionNote: 'Check the carrier’s claim first.',
+      }),
+    });
+
+    expect(
+      squash(container.querySelector('.cinder-approval-card__decision-note')?.textContent),
+    ).toBe('Your note Check the carrier’s claim first. Sent to the agent as the reason.');
+  });
+
+  test('keeps the input line on a decided row', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({ state: 'approved', decidedBy: 'you', inputLabel: 'Input' }),
+    });
+
+    expect(
+      squash(container.querySelector('.cinder-approval-card__decided-input')?.textContent),
+    ).toBe('Input Order ID 4471 · Amount $42.00 · Reason Arrived damaged');
+  });
+
+  test('says nothing more than the outcome when no notice or reason was given', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        layout: 'card',
+        state: 'approved',
+        decidedBy: 'you',
+        onResolve: undefined,
+      }),
+    });
+
+    expect(container.querySelector('.cinder-approval-card__readonly-summary')).toBeNull();
+  });
+
+  test('colours only an approval green in the stylesheet', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /outcome\[data-cinder-tone='success'\] \.cinder-approval-card__outcome-dot \{[^}]*status-success/,
+    );
+    expect(css).not.toMatch(/outcome\[data-cinder-tone='neutral'\]/);
+  });
+});
+
+describe('ApprovalCard line wrapping', () => {
+  test('keeps the time and the tool facts from breaking in the stylesheet', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(/\.cinder-approval-card__line-facts \{\s*white-space: nowrap;/);
+    expect(css).toMatch(/\.cinder-approval-card__line time[^{]*\{\s*white-space: nowrap;/);
+  });
+
+  test('wraps the identifier, the risk word and the irreversible note as one unit', () => {
+    const { container } = render(ApprovalCard, { props: refundRow() });
+
+    expect(squash(container.querySelector('.cinder-approval-card__line-facts')?.textContent)).toBe(
+      "issue-refund · Dangerous · Can't be undone",
+    );
+  });
+});
+
+describe('ApprovalCard view', () => {
+  test('shows the JSON view of its input when view is json', async () => {
+    const { container, getByRole } = render(ApprovalCard, { props: refundRow({ view: 'json' }) });
+
+    await fireEvent.click(getByRole('button', { name: /^Input/ }));
+
+    expect(container.querySelector('.cinder-payload-inspector')?.textContent).toContain('orderId');
   });
 });

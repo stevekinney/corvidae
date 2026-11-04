@@ -90,11 +90,15 @@
     layout = 'card',
     question,
     source,
+    sourcePrefix,
+    eyebrow,
+    toolPrefix,
     requestedAt,
     consequence,
     rememberScope,
     decidedBy,
     decidedAt,
+    decisionNote,
     disabledReason,
     unavailableReason,
     resolving,
@@ -105,6 +109,7 @@
     footnote,
     inputLabel,
     context,
+    view = $bindable('fields'),
     now,
     onResolve,
     id,
@@ -143,19 +148,31 @@
 
   const riskLabel = $derived(RISK_LABELS[tool.risk]);
   const riskWord = $derived(RISK_WORDS[tool.risk]);
-  const sourceText = $derived(source === undefined ? undefined : `Approval from ${source}`);
+  const isDetail = $derived(layout === 'detail');
+  const sourceText = $derived(
+    source === undefined
+      ? undefined
+      : `${sourcePrefix ?? (isDetail ? 'Asked by' : 'Approval from')} ${source}`,
+  );
   // How long ago the request was made only matters while someone can still answer it.
   const requestedDate = $derived(requestedAt === undefined ? undefined : new Date(requestedAt));
   const requestedValid = $derived(
     requestedDate !== undefined && !Number.isNaN(requestedDate.getTime()),
   );
-  const requestedText = $derived(
-    requestedValid &&
-      (effectiveState === 'pending' || effectiveState === 'unavailable') &&
-      requestedDate !== undefined
-      ? formatRelativeTime(requestedDate, { now })
-      : undefined,
-  );
+  const requestedText = $derived.by(() => {
+    if (
+      !requestedValid ||
+      requestedDate === undefined ||
+      (effectiveState !== 'pending' && effectiveState !== 'unavailable')
+    ) {
+      return undefined;
+    }
+    const relative = formatRelativeTime(requestedDate, { now });
+    // The detail page counts how long the question has waited: "waiting 4 min", not "4 min ago".
+    return isDetail && relative !== 'just now'
+      ? `waiting ${relative.replace(/\s+ago$/, '')}`
+      : relative;
+  });
   const requestedIso = $derived(
     requestedValid && requestedDate !== undefined ? requestedDate.toISOString() : undefined,
   );
@@ -178,6 +195,24 @@
       : outcomeBase,
   );
   const outcomeClock = $derived(decidedIn === undefined ? outcomeTime : undefined);
+  // An approval is green, and every other decision is neutral text: a denial is not an error.
+  const outcomeTone = $derived<'success' | 'neutral'>(
+    effectiveState === 'approved' || effectiveState === 'approved_with_edits'
+      ? 'success'
+      : 'neutral',
+  );
+  const decisionNoteCaption = $derived(
+    decisionNote === undefined
+      ? undefined
+      : effectiveState === 'denied'
+        ? 'Sent to the agent as the reason.'
+        : 'Saved with your decision.',
+  );
+  const isDecidedState = $derived(
+    effectiveState === 'approved' ||
+      effectiveState === 'approved_with_edits' ||
+      effectiveState === 'denied',
+  );
   const stateText = $derived(STATE_LABELS[effectiveState]);
   // An approval that passed the time its request set says when, unless the host wrote its own.
   const resolvedNotice = $derived(
@@ -186,16 +221,20 @@
         ? describeExpiry(expirationTimestamp)
         : undefined),
   );
-  const readonlySummary = $derived(
-    resolvedNotice ??
-      (effectiveState === 'unavailable' && unavailableReason !== undefined
-        ? unavailableReason
-        : `No approval actions are available because this request is ${stateText.toLowerCase()}.`),
-  );
   // The card says who decided and when only once someone did.
   const showCardOutcome = $derived(
     outcomeText !== undefined &&
       (decidedBy !== undefined || decidedAt !== undefined || decidedIn !== undefined),
+  );
+  // A read-only approval says why only when there is something to say: the outcome line already
+  // names a decision, so a sentence repeating the state would just be noise.
+  const readonlySummary = $derived(
+    resolvedNotice ??
+      (effectiveState === 'unavailable' && unavailableReason !== undefined
+        ? unavailableReason
+        : showCardOutcome
+          ? undefined
+          : `No approval actions are available because this request is ${stateText.toLowerCase()}.`),
   );
   // Only a live countdown is shown. Once the state itself reads "Expired" (via
   // StatusDot's label), a second "Expired" badge would just repeat the same word.
@@ -211,6 +250,9 @@
     return `Expires in ${formatRemainingTime(expirationTimestamp - currentTime)}`;
   });
 
+  const payloadLabel = $derived(
+    inputLabel ?? (layout === 'card' ? `${tool.name} arguments` : 'Input'),
+  );
   const hasArgumentsPreview = $derived(operation.argsPreview !== undefined);
   const editableArgumentsValue = $derived(normalizeArgumentsPreviewValue(operation.argsPreview));
   const argumentsPreview = $derived(prepareArgumentsPreview(editableArgumentsValue));
@@ -319,7 +361,8 @@
       <PayloadInspector
         value={argumentsPreview.value}
         truncated={argumentsPreview.truncated}
-        label={inputLabel ?? `${tool.name} arguments`}
+        label={payloadLabel}
+        bind:view
       />
     </div>
   {/if}
@@ -333,7 +376,8 @@
       <PayloadInspector
         value={argumentsPreview.value}
         truncated={argumentsPreview.truncated}
-        label={inputLabel ?? 'Input'}
+        label={payloadLabel}
+        bind:view
       />
     </div>
   {/if}
@@ -363,6 +407,9 @@
       {rememberScope}
       {outcomeText}
       outcomeTime={outcomeClock}
+      {outcomeTone}
+      {decisionNote}
+      {decisionNoteCaption}
       {disabledReason}
       {unavailableReason}
       {resolving}
@@ -370,13 +417,124 @@
       notice={resolvedNotice}
       {result}
       {footnote}
-      inputLabel={inputLabel ?? 'Input'}
+      inputLabel={payloadLabel}
       {context}
       requestKey={idempotencyKey}
       {inputPairs}
       inputBody={hasRowInput ? rowInputBody : undefined}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />
+  </article>
+{:else if layout === 'detail'}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--detail', customClassName)}
+    aria-labelledby={titleId}
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="detail"
+  >
+    <header class="cinder-approval-card__detail-header">
+      <p class="cinder-approval-card__detail-eyebrow">
+        <span
+          class="cinder-approval-card__risk-icon"
+          role="img"
+          aria-label={riskLabel}
+          data-cinder-risk={tool.risk}
+        >
+          <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
+        </span>
+        <span>{eyebrow ?? 'Tool approval'}</span>
+      </p>
+      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title">
+        {rowQuestion}
+      </svelte:element>
+      {#if showCardOutcome && isDecidedState && outcomeText !== undefined}
+        <ApprovalCardOutcome
+          {outcomeText}
+          outcomeTime={outcomeClock}
+          tone={outcomeTone}
+          trailing={source}
+          {decisionNote}
+          {decisionNoteCaption}
+        />
+      {:else if sourceText !== undefined || requestedText !== undefined || !isActionable || !hasResolutionCallback}
+        <p class="cinder-approval-card__detail-ask">
+          {#if sourceText !== undefined}<span>{sourceText}</span>{/if}
+          {#if sourceText !== undefined && requestedText !== undefined}
+            <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+          {/if}
+          {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time>{/if}
+          {#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
+            {#if sourceText !== undefined || requestedText !== undefined}
+              <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+            {/if}
+            <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
+          {/if}
+        </p>
+      {/if}
+      {#if context !== undefined}
+        <div class="cinder-approval-card__context">{@render context()}</div>
+      {/if}
+      <p class="cinder-approval-card__detail-tool">
+        {toolPrefix ?? 'It wants to run'}{' '}{#if tool.label !== undefined}<span
+            class="cinder-approval-card__tool-label">{tool.label}</span
+          >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code>
+        <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+        <span class="cinder-approval-card__risk-word">{riskWord}</span>
+      </p>
+    </header>
+
+    <div class="cinder-approval-card__detail-body">
+      {@render operationPreview()}
+      {@render filesTouchedSection()}
+      {@render argumentsPreviewSection()}
+
+      {#if tool.irreversible || consequence !== undefined}
+        <p class="cinder-approval-card__detail-risk">
+          <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
+          <span>
+            {#if tool.irreversible}<span class="cinder-approval-card__undone">Can't be undone.</span
+              >{' '}{/if}{#if consequence !== undefined}<span
+                class="cinder-approval-card__consequence">{consequence}</span
+              >{/if}
+          </span>
+        </p>
+      {/if}
+
+      {#if isActionable && hasResolutionCallback}
+        {#if failure !== undefined}
+          <ApprovalCardFailure {failure} />
+        {/if}
+        <ApprovalCardActions
+          idBase={rootId}
+          requestKey={idempotencyKey}
+          toolName={tool.label ?? tool.name}
+          {rememberScope}
+          {disabledReason}
+          {resolving}
+          {canEditArguments}
+          argumentsValue={editableArgumentsValue}
+          resolve={resolveIfActionable}
+        />
+        {#if footnote !== undefined}
+          <p class="cinder-approval-card__footnote">{footnote}</p>
+        {/if}
+      {:else}
+        {#if resolvedNotice !== undefined || (effectiveState === 'unavailable' && unavailableReason !== undefined)}
+          <p class="cinder-approval-card__readonly-summary" data-cinder-state={effectiveState}>
+            {resolvedNotice ?? unavailableReason}
+          </p>
+        {/if}
+        {#if result !== undefined}
+          <p class="cinder-approval-card__result">
+            <span class="cinder-approval-card__result-label">Result:</span>
+            {result}
+          </p>
+        {/if}
+      {/if}
+    </div>
   </article>
 {:else}
   <article
@@ -555,11 +713,19 @@
         {/if}
         {#if !isActionable}
           {#if showCardOutcome && outcomeText !== undefined}
-            <ApprovalCardOutcome {outcomeText} outcomeTime={outcomeClock} />
+            <ApprovalCardOutcome
+              {outcomeText}
+              outcomeTime={outcomeClock}
+              tone={outcomeTone}
+              {decisionNote}
+              {decisionNoteCaption}
+            />
           {/if}
-          <p class="cinder-approval-card__readonly-summary" data-cinder-state={effectiveState}>
-            {readonlySummary}
-          </p>
+          {#if readonlySummary !== undefined}
+            <p class="cinder-approval-card__readonly-summary" data-cinder-state={effectiveState}>
+              {readonlySummary}
+            </p>
+          {/if}
           {#if result !== undefined}
             <p class="cinder-approval-card__result">
               <span class="cinder-approval-card__result-label">Result:</span>

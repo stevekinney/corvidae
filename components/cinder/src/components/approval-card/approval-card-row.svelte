@@ -36,6 +36,12 @@
     outcomeText: string | undefined;
     /** When it was decided, such as "10:40 AM". */
     outcomeTime: string | undefined;
+    /** Green for an approval, neutral for everything else. */
+    outcomeTone: 'success' | 'neutral';
+    /** The note the approver left with the decision. */
+    decisionNote: string | undefined;
+    /** Where the note went, such as "Sent to the agent as the reason.". */
+    decisionNoteCaption: string | undefined;
     /** Why Deny and Approve are off while the approval is pending. */
     disabledReason: string | undefined;
     /** Why an unavailable approval cannot be answered now. */
@@ -92,6 +98,9 @@
     rememberScope,
     outcomeText,
     outcomeTime,
+    outcomeTone,
+    decisionNote,
+    decisionNoteCaption,
     disabledReason,
     unavailableReason,
     resolving,
@@ -175,13 +184,15 @@
       <span class="cinder-approval-card__line-tool">
         {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
             >{tool.label}</span
-          >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code>
-        <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-        <span class="cinder-approval-card__risk-word">{riskWord}</span>
-        {#if tool.irreversible}
+          >{' '}{/if}<span class="cinder-approval-card__line-facts"
+          ><code class="cinder-approval-card__tool-identifier">{tool.name}</code>
           <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-          <span class="cinder-approval-card__undone">Can't be undone</span>
-        {/if}
+          <span class="cinder-approval-card__risk-word">{riskWord}</span>
+          {#if tool.irreversible}
+            <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+            <span class="cinder-approval-card__undone">Can't be undone</span>
+          {/if}</span
+        >
       </span>
       {#if hasSourceLine}
         <span class="cinder-approval-card__line-source">
@@ -209,7 +220,25 @@
 
 {#if isDecided}
   {#if outcomeText !== undefined}
-    <ApprovalCardOutcome {outcomeText} {outcomeTime} />
+    <ApprovalCardOutcome
+      {outcomeText}
+      {outcomeTime}
+      tone={outcomeTone}
+      {decisionNote}
+      {decisionNoteCaption}
+    />
+  {/if}
+  {#if inputPairs.length > 0}
+    <p class="cinder-approval-card__input-summary cinder-approval-card__decided-input">
+      <span class="cinder-approval-card__input-word">{inputLabel}</span>
+      {#each inputPairs as pair, index (pair.key)}
+        {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">·</span
+          >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span>{' '}<span
+          class="cinder-approval-card__pair-value"
+          data-cinder-muted={pair.muted || undefined}>{pair.text}</span
+        >{' '}
+      {/each}
+    </p>
   {/if}
   {#if result !== undefined}
     <p class="cinder-approval-card__result">
