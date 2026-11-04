@@ -64,22 +64,20 @@ describe('the continuous-integration flag', () => {
 });
 
 describe('the design-review capture settings', () => {
-  const names = [
-    'INTERBOROUGH_DESIGN_REVIEW_CAPTURE',
-    'INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME',
-  ] as const;
-  const saved = new Map<string, string | undefined>();
+  let savedCapture: string | undefined;
+  let savedColorScheme: string | undefined;
 
   beforeEach(() => {
-    for (const name of names) saved.set(name, process.env[name]);
+    savedCapture = process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+    savedColorScheme = process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
   });
 
   afterEach(() => {
-    for (const name of names) {
-      const value = saved.get(name);
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
+    if (savedCapture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+    else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = savedCapture;
+    if (savedColorScheme === undefined)
+      delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+    else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = savedColorScheme;
   });
 
   test('capture directory is the one the environment names, and absent for an ordinary run', () => {
