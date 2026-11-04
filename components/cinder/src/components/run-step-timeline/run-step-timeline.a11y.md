@@ -38,6 +38,10 @@ A step with `rewound: true` keeps its real status badge and adds a visible `Rewo
 
 A step with `compensates: "<forward-step-id>"` that resolves to a known step renders inset with a dashed reversal connector and adds a visible `Compensates {forward label}` badge whose accessible label is `"Compensates {forward label} — reverses the forward step"`. An unresolved `compensates` id renders the step in place with no inset and no badge. `data-cinder-compensation` drives the inset/connector styling only.
 
+### Narrative variant
+
+`variant="narrative"` draws a shape for each status instead of a chip. The marker is decorative (`aria-hidden`), so each step's label begins with a visually hidden status word ("Failed: Step 2 · Collect merged changes"), and a failure is also a cross and a red tone, never colour alone. The `time` and `description` are plain text in the step, and a `note` is plain text that is not a live region: a streaming note's cursor is decorative, and the cursor stops blinking under reduced motion. The caller decides whether a change should be announced, as with every step state.
+
 ## Keyboard
 
 | Key   | Action                                                                                   |

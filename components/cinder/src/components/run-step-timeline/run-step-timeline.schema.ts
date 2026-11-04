@@ -20,6 +20,10 @@ const schema = {
       description:
         "Rendered step path key to visually mark as selected.\nAccepts `null` so consumers can clear linked selection without omitting\nthe prop. Use the value passed to `onStepSelect`, or a row's\n`data-cinder-path` attribute, for nested or branch-lane steps.",
     },
+    variant: {
+      enum: ['detailed', 'narrative'],
+      description: 'How a step reads: `detailed` (default) or `narrative`.',
+    },
     class: {
       type: 'string',
       description: 'Additional CSS classes applied to the root element.',

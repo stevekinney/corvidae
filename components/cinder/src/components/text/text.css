@@ -61,4 +61,71 @@
   .cinder-text[data-cinder-variant='caption'] {
     font-size: var(--cinder-text-xs);
   }
+
+  /* A clamped run holds to its lines until it is opened. */
+  .cinder-text[data-cinder-clamp] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--_cinder-text-lines);
+    line-clamp: var(--_cinder-text-lines);
+    overflow: hidden;
+  }
+
+  /* The line under a clamped run: "Show all", then whatever the page puts beside it. */
+  .cinder-text__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+    margin-block-start: var(--cinder-space-1);
+    font-family: var(--cinder-font-sans);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-text__toggle {
+    appearance: none;
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: none;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .cinder-text__toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (hover: hover) {
+    .cinder-text__toggle:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .cinder-text__toggle + .cinder-text__actions::before {
+    content: '\00b7' / '';
+    margin-inline-end: var(--cinder-space-2);
+    opacity: 0.6;
+  }
+
+  /* Cut in the middle: the head gives way with an ellipsis and the tail always shows. */
+  .cinder-text[data-cinder-truncate='middle'] {
+    display: flex;
+    min-inline-size: 0;
+    white-space: nowrap;
+  }
+
+  .cinder-text__head {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cinder-text__tail {
+    flex: none;
+  }
 }

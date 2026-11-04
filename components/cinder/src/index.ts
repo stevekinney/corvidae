@@ -676,6 +676,8 @@ export type { MessageProps, MessageRole } from './components/message/index.ts';
 export { default as Meter } from './components/meter/index.ts';
 export type {
   MeterProps,
+  MeterRemainder,
+  MeterSegment,
   MeterSize,
   MeterState,
   MeterVerdict,
@@ -814,9 +816,11 @@ export type {
   RunStepBranchLaneOutcome,
   RunStepDetail,
   RunStepLink,
+  RunStepNote,
   RunStepStatus,
   RunStepTimelineEntry,
   RunStepTimelineProps,
+  RunStepTimelineVariant,
 } from './components/run-step-timeline/index.ts';
 
 export { default as ResizablePanels } from './components/resizable-panels/index.ts';

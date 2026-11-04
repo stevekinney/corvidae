@@ -99,8 +99,10 @@ export function statusDotStatus(status: RunStepStatus): StatusDotStatus {
     case 'cancelled':
       return 'offline';
     case 'skipped':
+    case 'recorded':
       return 'neutral';
     case 'pending':
+    case 'waiting':
       return 'pending';
     default:
       return assertNever(status);
@@ -121,13 +123,17 @@ export function statusLabel(status: RunStepStatus): string {
     case 'timed-out':
       return 'Timed out';
     case 'cancelled':
-      return 'Cancelled';
+      return 'Canceled';
     case 'skipped':
       return 'Skipped';
     case 'retrying':
       return 'Retrying';
     case 'waiting_approval':
       return 'Waiting approval';
+    case 'waiting':
+      return 'Waiting';
+    case 'recorded':
+      return 'Recorded';
     default:
       return assertNever(status);
   }
@@ -150,8 +156,10 @@ export function badgeVariant(status: RunStepStatus): RunStepBadgeVariant {
     case 'cancelled':
       return 'neutral';
     case 'skipped':
+    case 'recorded':
       return 'neutral';
     case 'pending':
+    case 'waiting':
       return 'neutral';
     default:
       return assertNever(status);
@@ -165,13 +173,19 @@ export function isTerminal(status: RunStepStatus): boolean {
     status === 'failed' ||
     status === 'timed-out' ||
     status === 'cancelled' ||
-    status === 'skipped'
+    status === 'skipped' ||
+    status === 'recorded'
   );
 }
 
 /** Whether this status represents an in-flight ("current") step. */
 export function isCurrent(status: RunStepStatus): boolean {
-  return status === 'running' || status === 'retrying' || status === 'waiting_approval';
+  return (
+    status === 'running' ||
+    status === 'retrying' ||
+    status === 'waiting_approval' ||
+    status === 'waiting'
+  );
 }
 
 /** Whether this step should render a progress bar. */
@@ -329,4 +343,24 @@ export function safeStepLinkHref(href: string): string | undefined {
   }
 
   return trimmedHref;
+}
+
+/** One run of a description: plain text, or code that was between backticks. */
+export type DescriptionSegment = { text: string; code: boolean };
+
+/**
+ * Splits a description at its backtick pairs so the parts between them can render as inline code.
+ * An unmatched backtick and an empty pair stay as plain text.
+ */
+export function describeSegments(description: string): DescriptionSegment[] {
+  const segments: DescriptionSegment[] = [];
+  let last = 0;
+  for (const match of description.matchAll(/`([^`]+)`/g)) {
+    const start = match.index;
+    if (start > last) segments.push({ text: description.slice(last, start), code: false });
+    segments.push({ text: match[1] ?? '', code: true });
+    last = start + match[0].length;
+  }
+  if (last < description.length) segments.push({ text: description.slice(last), code: false });
+  return segments;
 }

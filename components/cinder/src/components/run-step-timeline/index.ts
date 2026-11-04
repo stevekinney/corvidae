@@ -9,6 +9,7 @@ export type {
   RunStepBranchLaneOutcome,
   RunStepDetail,
   RunStepLink,
+  RunStepNote,
   RunStepStatus,
   RunStepTimelineEntry,
   RunStepTimelineProps,
@@ -21,5 +22,6 @@ export type {
   RunStepTimelineSchemaLaneStep,
   RunStepTimelineSchemaProps,
   RunStepTimelineSchemaStep,
+  RunStepTimelineVariant,
 } from './run-step-timeline.types.ts';
 export { RunStepTimeline };

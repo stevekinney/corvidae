@@ -25,8 +25,10 @@
     RunStepDetail,
     RunStepLink,
     RunStepStatus,
+    RunStepNote,
     RunStepTimelineEntry,
     RunStepTimelineProps,
+    RunStepTimelineVariant,
   } from './run-step-timeline.types.ts';
 
   // See documentation/decisions/chronological-display-boundaries.md for this family's boundary.
@@ -82,6 +84,7 @@
   import CodeBlock from '../code-block/code-block.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
   import RunStepBranchDisclosure from './run-step-branch-disclosure.svelte';
+  import RunStepMarker from './_run-step-marker.svelte';
   import Link from '../link/link.svelte';
   import Progress from '../progress/progress.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
@@ -102,6 +105,7 @@
     hiddenNestedStepLabel,
     isCurrent,
     isTerminal,
+    describeSegments,
     laneOutcomeBadgeVariant,
     laneOutcomeLabel,
     metadataItems,
@@ -119,6 +123,7 @@
     label,
     selectedStepId,
     onStepSelect,
+    variant = 'detailed',
     class: className,
     children,
     'aria-label': ariaLabel,
@@ -130,6 +135,7 @@
     ariaLabelledby === undefined && ariaLabel === undefined ? label : ariaLabel,
   );
   const timelineInstanceId = $props.id();
+  const narrative = $derived(variant === 'narrative');
 
   const renderedEntries = $derived(flattenEntries(relocateCompensationEntries(steps)));
 
@@ -427,7 +433,7 @@
 {#snippet stepItem(row: RenderedStepRow)}
   {@const step = row.step}
   {@const terminal = isTerminal(step.status)}
-  {@const metadata = metadataItems(step)}
+  {@const metadata = narrative ? [] : metadataItems(step)}
   {@const selected = selectedStepId === row.pathKey}
   <li
     {@attach createStepSelectionAttachment(row.pathKey)}
@@ -455,12 +461,16 @@
     {/if}
     <div class="cinder-run-step-timeline__event">
       <span class="cinder-run-step-timeline__marker" aria-hidden="true" inert>
-        <StatusDot
-          status={statusDotStatus(step.status)}
-          label={statusLabel(step.status)}
-          labelVisible={false}
-          size="md"
-        />
+        {#if narrative}
+          <RunStepMarker status={step.status} />
+        {:else}
+          <StatusDot
+            status={statusDotStatus(step.status)}
+            label={statusLabel(step.status)}
+            labelVisible={false}
+            size="md"
+          />
+        {/if}
       </span>
 
       <div class="cinder-run-step-timeline__content">
@@ -470,7 +480,10 @@
               {@render step.icon()}
             </span>
           {/if}
-          <span class="cinder-run-step-timeline__label">{step.label}</span>
+          <span class="cinder-run-step-timeline__label"
+            >{#if narrative}<span class="cinder-sr-only">{`${statusLabel(step.status)}: `}</span
+              >{/if}{step.label}</span
+          >
           {#if step.link}
             {@const safeLinkHref = safeStepLinkHref(step.link.href)}
             {#if safeLinkHref}
@@ -483,14 +496,16 @@
               </span>
             {/if}
           {/if}
-          <Badge
-            class="cinder-run-step-timeline__status"
-            variant={badgeVariant(step.status)}
-            size="xs"
-            aria-label={`Status: ${statusLabel(step.status)}`}
-          >
-            {statusLabel(step.status)}
-          </Badge>
+          {#if !narrative}
+            <Badge
+              class="cinder-run-step-timeline__status"
+              variant={badgeVariant(step.status)}
+              size="xs"
+              aria-label={`Status: ${statusLabel(step.status)}`}
+            >
+              {statusLabel(step.status)}
+            </Badge>
+          {/if}
           {#if step.rewound}
             <Badge
               class="cinder-run-step-timeline__flag"
@@ -519,7 +534,40 @@
               >{actionsCountLabel(step.actionsCount)}</Badge
             >
           {/if}
+          {#if step.time !== undefined && step.time !== ''}
+            <span class="cinder-run-step-timeline__time">{step.time}</span>
+          {/if}
         </div>
+
+        {#if step.description !== undefined && step.description !== ''}
+          <p class="cinder-run-step-timeline__description">
+            {#each describeSegments(step.description) as segment, index (index)}
+              {#if segment.code}<code class="cinder-run-step-timeline__code">{segment.text}</code
+                >{:else}{segment.text}{/if}
+            {/each}
+          </p>
+        {/if}
+
+        {#if step.note}
+          {@const note = step.note}
+          <div
+            class="cinder-run-step-timeline__note"
+            data-cinder-tone={note.tone ?? 'neutral'}
+            data-cinder-streaming={note.streaming ? '' : undefined}
+          >
+            {#if note.title !== undefined && note.title !== ''}
+              <p class="cinder-run-step-timeline__note-title">{note.title}</p>
+            {/if}
+            {#each note.lines as line, index (index)}
+              <p class="cinder-run-step-timeline__note-line">
+                {line}{#if note.streaming && index === note.lines.length - 1}<span
+                    class="cinder-run-step-timeline__cursor"
+                    aria-hidden="true"
+                  ></span>{/if}
+              </p>
+            {/each}
+          </div>
+        {/if}
 
         {#if hasProgress(step)}
           <div class="cinder-run-step-timeline__progress">
@@ -630,6 +678,7 @@
 <ol
   {...rest}
   class={classNames('cinder-run-step-timeline', className)}
+  data-cinder-variant={variant}
   aria-label={resolvedAriaLabel}
   aria-labelledby={ariaLabelledby}
 >

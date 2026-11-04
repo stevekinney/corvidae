@@ -17,6 +17,10 @@ import type { HTMLAttributes } from 'svelte/elements';
  * - `skipped`   — bypassed intentionally (e.g. conditional branch).
  * - `retrying`  — a prior attempt ended unsuccessfully; a new attempt is in progress.
  * - `waiting_approval` — paused on required approval; can continue afterward.
+ * - `waiting`  — paused on something that is not a person's approval, such as an external signal;
+ *                it starts again by itself when that arrives.
+ * - `recorded` — an event that happened and has no outcome of its own, such as the run's start or
+ *                its end; drawn as a plain neutral dot.
  */
 export type RunStepStatus =
   | 'pending'
@@ -27,7 +31,9 @@ export type RunStepStatus =
   | 'cancelled'
   | 'skipped'
   | 'retrying'
-  | 'waiting_approval';
+  | 'waiting_approval'
+  | 'waiting'
+  | 'recorded';
 
 type RunStepDetailBase = {
   /** Stable identity for this detail panel. */
@@ -73,6 +79,25 @@ export type RunStepCodeDetail = RunStepDetailBase & {
 export type RunStepDetail = RunStepTextDetail | RunStepCodeDetail;
 
 /**
+ * A block shown open under a step, beside its description: output that is arriving, or the cause
+ * of a failure. Unlike a detail it has no disclosure, so it is always read.
+ * @schemaObject
+ */
+export type RunStepNote = {
+  /** Bold first line of the block, such as "Merged since Oct 23, so far" or "Why it failed". */
+  title?: string | undefined;
+  /** The lines of the block, one per line. */
+  lines: string[];
+  /** `danger` tints the block for a failure. Default `neutral`. */
+  tone?: 'neutral' | 'danger' | undefined;
+  /**
+   * Whether the lines are still arriving. A text cursor follows the last line, so the block reads as
+   * partial and growing.
+   */
+  streaming?: boolean | undefined;
+};
+
+/**
  * Navigable reference attached to a step.
  * Rendered with cinder's Link component.
  */
@@ -95,6 +120,19 @@ export type RunStep = {
   icon?: Snippet | undefined;
   /** Generic execution state. */
   status: RunStepStatus;
+  /**
+   * One muted line under the label saying what happened or what is waiting, such as "Found the
+   * last release, 1.4.2, on Oct 23". Text between backticks renders as inline code, so a signal
+   * name reads as an identifier.
+   */
+  description?: string | undefined;
+  /**
+   * Short time label at the end of the label line, formatted by the caller: "10:45:20 AM", "+1.2 s",
+   * "now", "last update 40 s ago". Leave it out for a step that has no time yet.
+   */
+  time?: string | undefined;
+  /** A block shown open under the description. */
+  note?: RunStepNote | undefined;
   /**
    * ISO datetime string for when this step started.
    * Absent for pending steps.
@@ -241,6 +279,12 @@ export type RunStepTimelineSchemaStep = {
   icon?: Snippet | undefined;
   /** Generic execution state. */
   status: RunStepStatus;
+  /** One muted line under the label; text between backticks renders as inline code. */
+  description?: string | undefined;
+  /** Short time label at the end of the label line, formatted by the caller. */
+  time?: string | undefined;
+  /** A block shown open under the description. */
+  note?: RunStepNote | undefined;
   /**
    * ISO datetime string for when this step started.
    * Absent for pending steps.
@@ -306,6 +350,12 @@ export type RunStepTimelineSchemaChildStep = {
   icon?: Snippet | undefined;
   /** Generic execution state. */
   status: RunStepStatus;
+  /** One muted line under the label; text between backticks renders as inline code. */
+  description?: string | undefined;
+  /** Short time label at the end of the label line, formatted by the caller. */
+  time?: string | undefined;
+  /** A block shown open under the description. */
+  note?: RunStepNote | undefined;
   /** ISO datetime string for when this step started. */
   startTime?: string | undefined;
   /** ISO datetime string for when this step ended. */
@@ -347,6 +397,12 @@ export type RunStepTimelineSchemaGrandchildStep = {
   icon?: Snippet | undefined;
   /** Generic execution state. */
   status: RunStepStatus;
+  /** One muted line under the label; text between backticks renders as inline code. */
+  description?: string | undefined;
+  /** Short time label at the end of the label line, formatted by the caller. */
+  time?: string | undefined;
+  /** A block shown open under the description. */
+  note?: RunStepNote | undefined;
   /** ISO datetime string for when this step started. */
   startTime?: string | undefined;
   /** ISO datetime string for when this step ended. */
@@ -388,6 +444,12 @@ export type RunStepTimelineSchemaGreatGrandchildStep = {
   icon?: Snippet | undefined;
   /** Generic execution state. */
   status: RunStepStatus;
+  /** One muted line under the label; text between backticks renders as inline code. */
+  description?: string | undefined;
+  /** Short time label at the end of the label line, formatted by the caller. */
+  time?: string | undefined;
+  /** A block shown open under the description. */
+  note?: RunStepNote | undefined;
   /** ISO datetime string for when this step started. */
   startTime?: string | undefined;
   /** ISO datetime string for when this step ended. */
@@ -431,6 +493,12 @@ export type RunStepTimelineSchemaLaneStep = {
   icon?: Snippet | undefined;
   /** Generic execution state. */
   status: RunStepStatus;
+  /** One muted line under the label; text between backticks renders as inline code. */
+  description?: string | undefined;
+  /** Short time label at the end of the label line, formatted by the caller. */
+  time?: string | undefined;
+  /** A block shown open under the description. */
+  note?: RunStepNote | undefined;
   /** ISO datetime string for when this step started. */
   startTime?: string | undefined;
   /** ISO datetime string for when this step ended. */
@@ -499,6 +567,9 @@ export type RunStepTimelineSchemaBranchGroup = {
 export type RunStepTimelineSchemaEntry =
   RunStepTimelineSchemaStep | RunStepTimelineSchemaBranchGroup;
 
+/** How a RunStepTimeline draws its steps: `detailed` for operators, `narrative` for a run's story. */
+export type RunStepTimelineVariant = 'detailed' | 'narrative';
+
 /**
  * Props for the RunStepTimeline component.
  *
@@ -532,6 +603,14 @@ export type RunStepTimelineProps = Omit<HTMLAttributes<HTMLOListElement>, 'class
    */
   onStepSelect?: ((pathKey: string) => void) | undefined;
   /**
+   * How a step reads. `detailed` (the default) marks each step with a status dot and a status chip
+   * and lists its start, end, duration and attempts. `narrative` tells the run as a story for
+   * someone who wants to know what happened: a drawn marker (a check, a cross, a ring, a dashed
+   * ring for what has not run), the label and its time, one line of description, and no chips or
+   * metadata lists. The status word is still read aloud.
+   */
+  variant?: RunStepTimelineVariant | undefined;
+  /**
    * Optional per-step body content rendered after the step metadata.
    */
   children?: Snippet<[RunStep]> | undefined;
@@ -554,6 +633,8 @@ export interface RunStepTimelineSchemaProps {
    * `data-cinder-path` attribute, for nested or branch-lane steps.
    */
   selectedStepId?: string | null | undefined;
+  /** How a step reads: `detailed` (default) or `narrative`. */
+  variant?: RunStepTimelineVariant | undefined;
   /** Additional CSS classes applied to the root element. */
   class?: string | undefined;
 }

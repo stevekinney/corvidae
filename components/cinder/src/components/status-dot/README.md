@@ -33,15 +33,15 @@ One word has one tone, identical in light and dark. A qualifier after a middle d
 | Tone | Words |
 | --- | --- |
 | `warning` (amber) | Waiting on you, Missed runs, Disconnected, Needs attention, Needs sign-in |
-| `info` (solid blue) | Running, Running · checking the result |
-| `pending` (hollow ring) | Waiting, Scheduled |
+| `info` (solid blue) | Running, Running · checking the result, Live, Live · last event 1 s ago |
+| `pending` (hollow ring) | Waiting, Scheduled, Reconnecting… |
 | `success` (green dot) | Done, Approved, Active, Available, Delivered, Connected |
 | `danger` (red) | Failed, Gave up, Can't load, Not loaded |
 | `neutral` | Done · refund not issued, Check not met, Denied, Sent back, Expired, Canceled, Stopped, Paused, Off, Unavailable, Needs setup, Ended, Retrying, Draining |
 
 Only `warning`, `info` and `danger` words are coloured; every other word is muted, so the dot carries the tone. Amber is only for waiting on you and Needs attention, and red is reserved for failures to run or to load. The table is exported as `statusDotWordTones`, and `statusForStatusDotWord(word)` returns a word's status, or `undefined` for a word the table does not know (a `word` the table does not know renders a neutral dot).
 
-Some words are scoped, and the page decides where they belong: Ended is for chats only, Delivered and Retrying are for hooks only, Connected, Draining and Disconnected are for workers only, and Stopped also covers a worker that finished draining.
+Some words are scoped, and the page decides where they belong: Ended is for chats only, Delivered and Retrying are for hooks only, Connected, Draining and Disconnected are for workers only, and Stopped also covers a worker that finished draining. Live and Reconnecting… are for the line above a streaming run's steps: `<StatusDot word="Live · last event 1 s ago" />`, and `<StatusDot word="Reconnecting…" label="Reconnecting… last event 40 s ago" />`, where the word sets the tone and `label` the text.
 
 `pending` is a hollow ring (a 1.5px ring in `--cinder-border-control` over a transparent fill), so Waiting and Scheduled read differently from the solid blue Running dot. Under forced colors the solid dot uses `Highlight` and the hollow ring uses `CanvasText`; the word always carries the meaning.
 
