@@ -25,7 +25,6 @@
     Bell,
     CalendarX,
     CircleX,
-    MessageCircleCheck,
     MessageCircleQuestionMark,
     PlugZap,
     ShieldQuestionMark,
@@ -60,7 +59,6 @@
   const ICONS: Readonly<Record<string, LucideIcon>> = {
     'shield-question-mark': ShieldQuestionMark,
     'message-circle-question-mark': MessageCircleQuestionMark,
-    'message-circle-check': MessageCircleCheck,
     'circle-x': CircleX,
     'calendar-x': CalendarX,
     'plug-zap': PlugZap,
@@ -73,8 +71,8 @@
 
   /**
    * The tint of a row's icon tile: a question is information (sky), a firing rule and anything
-   * that needs a decision or failed is a warning (amber), a critical item is danger (red), and an
-   * answer is neutral.
+   * that needs a decision or failed is a warning (amber), a critical item is danger (red), and
+   * anything else is neutral.
    */
   function toneOf(item: NotificationItem): 'info' | 'warning' | 'danger' | 'neutral' {
     if (item.kind === 'question') return 'info';
@@ -85,7 +83,7 @@
 
   /**
    * Whether a row is drawn unread: tinted, with its dot. It is the rows the title counts, so an
-   * answer, which is listed but never counts, is not.
+   * standing item, which is listed but never counts, is not.
    */
   function isUnread(item: NotificationItem): boolean {
     return !item.read && item.tier !== 'info';

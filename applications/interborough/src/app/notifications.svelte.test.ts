@@ -270,12 +270,12 @@ describe('NotificationStore', () => {
     expect(store.unreadCount).toBe(0);
   });
 
-  test('the badge counts approvals, questions and failures, and never an answer', () => {
+  test('the badge counts approvals, questions and failures, and never a standing item', () => {
     const store = storeWith(
       entry({ id: 'review:a' }),
       entry({ id: 'review:b', kind: 'question' }),
       entry({ id: 'task:c', kind: 'failed' }),
-      entry({ id: 'task:d', kind: 'answered', tier: 'info' }),
+      entry({ id: 'alert:d', kind: 'alert', tier: 'info', standing: true }),
     );
 
     expect(store.items).toHaveLength(4);
@@ -341,7 +341,7 @@ describe('NotificationStore', () => {
   test('opening a chat reads the items about it and no others', () => {
     const store = storeWith(
       entry({ id: 'review:a', sessionId: 'session-refund' }),
-      entry({ id: 'task:b', kind: 'answered', tier: 'info', sessionId: 'session-refund' }),
+      entry({ id: 'task:b', kind: 'failed', tier: 'warning', sessionId: 'session-refund' }),
       entry({ id: 'review:c', sessionId: 'session-release' }),
     );
 

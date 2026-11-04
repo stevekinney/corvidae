@@ -965,13 +965,6 @@ describe('filled controls paint a gap before the ring (COR-1498)', () => {
       expected: gapRecipe('var(--cinder-toggle-ring, var(--cinder-ring-color))'),
     },
     {
-      name: 'SegmentedControl selected',
-      source: css('../components/segmented-control/segmented-control.css'),
-      selector:
-        ".cinder-segmented-control:not([data-cinder-variant='tablist']) .cinder-segmented-control-option[data-cinder-selected]:focus-visible",
-      expected: FILLED_BOX_SHADOW,
-    },
-    {
       name: 'Chip pressed (non-neutral)',
       source: css('../components/chip/chip.css'),
       selector:

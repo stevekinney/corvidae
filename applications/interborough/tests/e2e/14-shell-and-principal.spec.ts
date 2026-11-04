@@ -96,7 +96,7 @@ test.describe('the notification bell, about the person and not the engine', () =
     await checkA11y('the empty notification panel');
   });
 
-  test('after one echo chat, one approval and one question there are three items and a badge of 2', async ({
+  test('after one echo chat, one approval and one question there are two items and a badge of 2', async ({
     page,
     request,
     checkA11y,
@@ -132,10 +132,11 @@ test.describe('the notification bell, about the person and not the engine', () =
     await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(1);
 
     await bell(page, 'Notifications, 2 unread').click();
-    await expect(rows(page)).toHaveCount(3);
+    await expect(rows(page)).toHaveCount(2);
     const panel = page.locator('.weft-notification-panel');
     await expect(panel.getByRole('heading', { name: 'Notifications · 2 unread' })).toBeVisible();
-    // A review is what it asks, then whose wait it is; an answer is the agent, then its chat.
+    // A review is what it asks, then whose wait it is. The echo chat finished and nothing waits on
+    // the person in it, so it is not listed.
     await expect(
       panel.getByRole('link').filter({ hasText: /Waiting for your approval · .*Tool runner/i }),
     ).toHaveCount(1);
@@ -144,16 +145,14 @@ test.describe('the notification bell, about the person and not the engine', () =
         .getByRole('link')
         .filter({ hasText: /Waiting for your answer · .*Request human input/i }),
     ).toHaveCount(1);
-    await expect(
-      panel.getByRole('link').filter({ hasText: /answered.*Hello echo, say this back/i }),
-    ).toHaveCount(1);
+    await expect(panel.getByRole('link').filter({ hasText: /answered/i })).toHaveCount(0);
 
     // The engine's own events, and its run identifiers, stay out of the panel.
     const text = (await panel.textContent()) ?? '';
     expect(text).not.toMatch(/run-\d/);
     expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
     expect(text).not.toMatch(/Workflow (started|completed)|Waiting for signal|Signal received/);
-    await checkA11y('the notification panel with three items');
+    await checkA11y('the notification panel with two items');
   });
 
   test('approving from the chat clears that item and brings the badge down', async ({ page }) => {
@@ -170,15 +169,12 @@ test.describe('the notification bell, about the person and not the engine', () =
     // poll would after five seconds anyway.
     await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
     await bell(page, 'Notifications, 1 unread').click();
-    // The question, the echo's answer, and the run's own answer. The approval is gone, and the
-    // answer that landed in the chat that is open was read on arrival, so it is not new on leaving.
-    await expect(rows(page)).toHaveCount(3);
+    // Only the question is left: the approval is gone, and the chat it was decided in finished, which
+    // nothing waits on the person for.
+    await expect(rows(page)).toHaveCount(1);
     await expect(
       page.getByRole('link').filter({ hasText: 'Waiting for your approval' }),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole('link').filter({ hasText: /answered.*Refund order 1234/i }),
-    ).toHaveAttribute('data-read', 'true');
   });
 
   test('opening an item goes to its chat and reads it', async ({ page }) => {
@@ -195,15 +191,13 @@ test.describe('the notification bell, about the person and not the engine', () =
     await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(0);
   });
 
-  test('a finished run is listed once the chat is left, and never counts', async ({ page }) => {
+  test('a finished run is not listed, once the chat is left or ever', async ({ page }) => {
     await page.goto('/agents');
-    // A fresh page has read nothing, so the question still counts, and the two answers do not.
+    // A fresh page has read nothing, so the question still counts, and it is the only item.
     await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
     await bell(page, 'Notifications, 1 unread').click();
-    await expect(rows(page)).toHaveCount(3);
-    await expect(
-      page.getByRole('link').filter({ hasText: /answered.*Refund order 1234/i }),
-    ).toHaveCount(1);
+    await expect(rows(page)).toHaveCount(1);
+    await expect(page.getByRole('link').filter({ hasText: /answered/i })).toHaveCount(0);
   });
 
   test('the panel fits a phone and passes axe', async ({ page, checkA11y }) => {

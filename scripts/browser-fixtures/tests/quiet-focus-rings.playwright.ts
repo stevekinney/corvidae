@@ -87,6 +87,29 @@ const TIGHT_DEFAULT_CASES: readonly RingCase[] = [
     expected: 'tight',
     target: (page) => page.locator('#terms'),
   },
+  {
+    label: 'selected SegmentedControl option',
+    slug: 'segmented-control',
+    expected: 'tight',
+    target: (page) =>
+      page.locator('.cinder-segmented-control-option[data-cinder-selected]').first(),
+  },
+  {
+    label: 'pressed SegmentedControl option (multiple mode)',
+    slug: 'segmented-control',
+    expected: 'tight',
+    target: (page) => page.locator('.cinder-segmented-control-option[tabindex="0"]').first(),
+    prepare: (_page, target) =>
+      setAttributes(target, { 'data-cinder-pressed': '' }, ['data-cinder-selected']),
+  },
+  {
+    label: 'current SegmentedControl option (navigation)',
+    slug: 'segmented-control',
+    expected: 'tight',
+    target: (page) => page.locator('.cinder-segmented-control-option[tabindex="0"]').first(),
+    prepare: (_page, target) =>
+      setAttributes(target, { 'data-cinder-current': '' }, ['data-cinder-selected']),
+  },
 ];
 
 const FILLED_CASES: readonly RingCase[] = [
@@ -125,29 +148,6 @@ const FILLED_CASES: readonly RingCase[] = [
       await page.keyboard.press('Space');
       await expect(page.locator('button.cinder-toggle')).toHaveAttribute('aria-checked', 'true');
     },
-  },
-  {
-    label: 'selected SegmentedControl option',
-    slug: 'segmented-control',
-    expected: 'gap',
-    target: (page) =>
-      page.locator('.cinder-segmented-control-option[data-cinder-selected]').first(),
-  },
-  {
-    label: 'pressed SegmentedControl option (multiple mode)',
-    slug: 'segmented-control',
-    expected: 'gap',
-    target: (page) => page.locator('.cinder-segmented-control-option[tabindex="0"]').first(),
-    prepare: (_page, target) =>
-      setAttributes(target, { 'data-cinder-pressed': '' }, ['data-cinder-selected']),
-  },
-  {
-    label: 'current SegmentedControl option (navigation)',
-    slug: 'segmented-control',
-    expected: 'gap',
-    target: (page) => page.locator('.cinder-segmented-control-option[tabindex="0"]').first(),
-    prepare: (_page, target) =>
-      setAttributes(target, { 'data-cinder-current': '' }, ['data-cinder-selected']),
   },
   {
     label: 'pressed accent Chip',

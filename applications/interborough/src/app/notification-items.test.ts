@@ -1,14 +1,13 @@
 /**
  * `buildNotificationEntries`: what the bell holds for a given state of the Bureau's reviews and
- * tasks (design row 02w): a sentence and a second line for each, waiting items first, one item per
- * chat, and never a run's identifier.
+ * notifications (design row 02w): a sentence and a second line for each, waiting items first, one
+ * item per chat, and never a run's identifier. A finished chat is not an item.
  */
 import { formatTimeOfDay } from '@lostgradient/cinder';
 import { describe, expect, test } from 'bun:test';
 
 import type { BureauNotification } from '../lib/bureau-notifications.ts';
 import type { BureauReview } from '../lib/bureau-reviews.ts';
-import type { TaskView } from '../lib/bureau-tasks.ts';
 import {
   buildNotificationEntries,
   RECENT_RUN_WINDOW_MS,
@@ -61,25 +60,6 @@ function question(overrides: Partial<Extract<BureauReview, { kind: 'human-wait' 
   } satisfies BureauReview;
 }
 
-function task(overrides: Partial<TaskView> = {}): TaskView {
-  return {
-    id: 'run-3-6c4d2f8e-0000-4000-8000-0000000009cc',
-    contextId: 'session-echo',
-    agentName: 'echo',
-    owner: 'anonymous:local',
-    actor: null,
-    kind: 'chat',
-    status: 'completed',
-    finishReason: 'stop-condition',
-    statusMessage: null,
-    createdAt: minutesAgo(3),
-    updatedAt: minutesAgo(3),
-    cleanup: null,
-    openWaits: [],
-    ...overrides,
-  };
-}
-
 function notification(overrides: Partial<BureauNotification> = {}): BureauNotification {
   return {
     id: 'notification-1',
@@ -98,7 +78,6 @@ function notification(overrides: Partial<BureauNotification> = {}): BureauNotifi
 function sources(overrides: Partial<NotificationSources> = {}): NotificationSources {
   return {
     reviews: [],
-    tasks: [],
     notifications: [],
     chats: new Map<string, string | null>([
       ['session-refund', 'Refund order 1234'],
@@ -116,10 +95,8 @@ describe('buildNotificationEntries', () => {
     expect(buildNotificationEntries(sources())).toEqual([]);
   });
 
-  test('an approval, a question and an answer are three items, a review naming what it asks and whose it is', () => {
-    const entries = buildNotificationEntries(
-      sources({ reviews: [approval(), question()], tasks: [task()] }),
-    );
+  test('an approval and a question are two items, a review naming what it asks and whose it is', () => {
+    const entries = buildNotificationEntries(sources({ reviews: [approval(), question()] }));
 
     expect(entries.map(({ kind, title, detail }) => ({ kind, title, detail }))).toEqual([
       {
@@ -132,25 +109,11 @@ describe('buildNotificationEntries', () => {
         title: 'Run issue-refund?',
         detail: 'Waiting for your approval · tool-runner',
       },
-      { kind: 'answered', title: 'echo answered', detail: 'Hello echo, say this back' },
     ]);
   });
 
-  test('what needs the person comes before what only finished, newest first in each group', () => {
-    const entries = buildNotificationEntries(
-      sources({
-        reviews: [approval(), question()],
-        tasks: [task({ updatedAt: minutesAgo(0) })],
-      }),
-    );
-
-    expect(entries.map((entry) => entry.kind)).toEqual(['question', 'approval', 'answered']);
-  });
-
   test('the text of an item holds no run identifier', () => {
-    const entries = buildNotificationEntries(
-      sources({ reviews: [approval(), question()], tasks: [task()] }),
-    );
+    const entries = buildNotificationEntries(sources({ reviews: [approval(), question()] }));
     const text = entries.map((entry) => `${entry.title} ${entry.detail}`).join('\n');
 
     expect(text).not.toMatch(/run-\d/);
@@ -239,10 +202,9 @@ describe('buildNotificationEntries', () => {
     ).toEqual([]);
   });
 
-  test('a run whose chat the Bureau does not list is not an item, finished or failed', () => {
+  test('a failure of a run whose chat the Bureau does not list is not an item', () => {
     const entries = buildNotificationEntries(
       sources({
-        tasks: [task({ id: 'catalog-run', contextId: 'context-with-no-chat' })],
         notifications: [
           notification({ subject: { runId: 'catalog-failure', contextId: 'another-context' } }),
         ],
@@ -250,14 +212,6 @@ describe('buildNotificationEntries', () => {
     );
 
     expect(entries).toEqual([]);
-  });
-
-  test('a run in a chat with no title is an item, called by the words for an untitled chat', () => {
-    const [entry] = buildNotificationEntries(
-      sources({ tasks: [task()], chats: new Map([['session-echo', null]]) }),
-    );
-
-    expect(entry).toMatchObject({ kind: 'answered', detail: 'New chat' });
   });
 
   test('an approval is a different item in the next round the Bureau asks it', () => {
@@ -316,59 +270,6 @@ describe('buildNotificationEntries', () => {
     );
 
     expect(entries).toHaveLength(4);
-  });
-
-  test('an answer is an item whichever chat the person is in', () => {
-    // The feed reads the items about the open chat on arrival; the items do not know which is open.
-    const entries = buildNotificationEntries(sources({ tasks: [task()] }));
-
-    expect(entries.map((entry) => entry.sessionId)).toEqual(['session-echo']);
-  });
-
-  test('a chat is one answer: its latest run stands for the earlier ones', () => {
-    const entries = buildNotificationEntries(
-      sources({
-        tasks: [
-          task({ id: 'run-old', updatedAt: minutesAgo(30) }),
-          task({ id: 'run-new', updatedAt: minutesAgo(1) }),
-        ],
-      }),
-    );
-
-    expect(entries.map(({ kind, id }) => ({ kind, id }))).toEqual([
-      { kind: 'answered', id: 'task:run-new' },
-    ]);
-  });
-
-  test('a chat waiting on the person is not also listed as answered', () => {
-    const entries = buildNotificationEntries(
-      sources({
-        reviews: [approval({ sessionId: 'session-echo' })],
-        tasks: [task({ updatedAt: minutesAgo(5) })],
-      }),
-    );
-
-    expect(entries.map((entry) => entry.kind)).toEqual(['approval']);
-  });
-
-  test('a run that is still going or was canceled is not news', () => {
-    const entries = buildNotificationEntries(
-      sources({
-        tasks: [
-          task({ id: 'a', contextId: 'one', status: 'working' }),
-          task({ id: 'b', contextId: 'two', status: 'canceled' }),
-          task({ id: 'c', contextId: 'three', status: 'input-required' }),
-        ],
-      }),
-    );
-
-    expect(entries).toEqual([]);
-  });
-
-  test('a run that finished before the window is history, not news', () => {
-    const old = new Date(NOW - RECENT_RUN_WINDOW_MS - 1).toISOString();
-
-    expect(buildNotificationEntries(sources({ tasks: [task({ updatedAt: old })] }))).toEqual([]);
   });
 
   test('a failed run names its agent and its chat, needs the person, and is the Bureau’s record', () => {
@@ -532,42 +433,11 @@ describe('buildNotificationEntries', () => {
     expect(entry?.title).toBe('echo failed');
   });
 
-  test('a run a parent run, a goal or an agent started is not an answer', () => {
-    const entries = buildNotificationEntries(
-      sources({
-        tasks: [
-          task({ id: 'a', contextId: 'one', origin: { kind: 'agent' } }),
-          task({ id: 'b', contextId: 'two', origin: { kind: 'goal' } }),
-          task({ id: 'c', contextId: 'three', origin: { kind: 'parent' } }),
-          task({ id: 'd', contextId: 'four', origin: { kind: 'chat' } }),
-        ],
-        chats: new Map([
-          ['one', null],
-          ['two', null],
-          ['three', null],
-          ['four', null],
-        ]),
-      }),
-    );
-
-    expect(entries.map((entry) => entry.id)).toEqual(['task:d']);
-  });
-
-  test('a run that failed is no answer, and the notification is what tells of it', () => {
-    const entries = buildNotificationEntries(sources({ tasks: [task({ status: 'failed' })] }));
-
-    expect(entries).toEqual([]);
-  });
-
-  test('an answer is info, and approvals, questions and failures are not', () => {
+  test('approvals, questions and failures are warnings', () => {
     const entries = buildNotificationEntries(
       sources({
         reviews: [approval(), question()],
-        chats: new Map([
-          ['one', null],
-          ['two', null],
-        ]),
-        tasks: [task({ id: 'a', contextId: 'one' })],
+        chats: new Map([['two', null]]),
         notifications: [notification({ subject: { contextId: 'two', agentName: 'echo' } })],
       }),
     );
@@ -576,7 +446,6 @@ describe('buildNotificationEntries', () => {
       approval: 'warning',
       question: 'warning',
       failed: 'warning',
-      answered: 'info',
     });
   });
 });
@@ -684,18 +553,17 @@ describe('the fires a schedule missed', () => {
     expect(first?.id).not.toBe(later?.id);
   });
 
-  test('counts as needing the person, ahead of an answer', () => {
+  test('counts as needing the person, ahead of a standing item', () => {
     const entries = buildNotificationEntries(
       sources({
-        chats: new Map([['one', null]]),
-        tasks: [task({ id: 'a', contextId: 'one' })],
+        alerts: [{ metric: 'storage.size', at: NOW - 60_000, currentValue: 1024 ** 3 }],
         missedFires: [missed()],
       }),
     );
 
     expect(entries.map((entry) => [entry.kind, entry.tier])).toEqual([
       ['missed', 'warning'],
-      ['answered', 'info'],
+      ['alert', 'info'],
     ]);
   });
 });

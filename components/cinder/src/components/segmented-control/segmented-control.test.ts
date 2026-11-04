@@ -1247,3 +1247,44 @@ describe('SegmentedControl — child API regression', () => {
     expect(selected).toBe('first');
   });
 });
+
+// ── Selected segment surface ────────────────────────────────────────────────
+
+describe('SegmentedControl — the selected segment is a raised surface pill', () => {
+  /** The declarations of every rule in the stylesheet whose selector list names `selector`. */
+  async function declarationsOf(selector: string): Promise<string[]> {
+    const source = await Bun.file(new URL('./segmented-control.css', import.meta.url)).text();
+    const found: string[] = [];
+    for (const match of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selectors = (match[1] ?? '')
+        .split(',')
+        .map((entry) => entry.replace(/\s+/g, ' ').trim());
+      if (selectors.some((entry) => entry.endsWith(selector))) found.push(match[2] ?? '');
+    }
+    return found;
+  }
+
+  test.each([
+    '.cinder-segmented-control-option[data-cinder-selected]',
+    '.cinder-segmented-control-option[data-cinder-current]',
+    '.cinder-segmented-control-option[data-cinder-pressed]',
+  ])('%s paints the raised surface and the default text, not an accent fill', async (selector) => {
+    const declarations = await declarationsOf(selector);
+    const rules = declarations.join('\n');
+
+    expect(rules).toContain('background: var(--cinder-surface-raised);');
+    expect(rules).toContain('color: var(--cinder-text-default);');
+    expect(rules).not.toContain('--cinder-accent-solid');
+    expect(rules).not.toContain('--cinder-accent-contrast');
+  });
+
+  test('a focused selected segment keeps the tight ring, not the filled gap', async () => {
+    const declarations = await declarationsOf(
+      '.cinder-segmented-control-option[data-cinder-selected]:focus-visible',
+    );
+    const rules = declarations.join('\n');
+
+    expect(rules).toContain('var(--cinder-ring-color)');
+    expect(rules).not.toContain('--_cinder-focus-ring-filled-shadow');
+  });
+});

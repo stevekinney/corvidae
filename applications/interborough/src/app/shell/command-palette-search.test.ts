@@ -347,7 +347,12 @@ describe('what is waiting and the actions', () => {
         kind: 'question',
         title: 'echo asked a question',
       }),
-      waitingItem({ id: 'task:done', kind: 'answered', tier: 'info', title: 'echo answered' }),
+      waitingItem({
+        id: 'alert:storage',
+        kind: 'alert',
+        tier: 'info',
+        title: 'Storage passed its warning level',
+      }),
       waitingItem({ id: 'task:failed', kind: 'failed', title: 'echo failed' }),
     ];
     expect(matchWaiting(items, '').map((item) => item.id)).toEqual(['review:old', 'review:new']);

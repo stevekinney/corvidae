@@ -2,13 +2,13 @@
  * Feeds the notification store from the Bureau. It reads what is waiting on the person (the same
  * reviews query the navigation's count and `/reviews` read, so a decision made in a chat or on
  * Reviews refreshes the bell at once), the caller's notifications (a failed run, a run over its
- * budget, whatever a host wrote), the most recently changed tasks, for the answers, and the chats
- * they belong to. All of them follow `bureau.events` (a run, a session, a review, a notification)
+ * budget, whatever a host wrote), the schedules that missed fires, the host's firing rules, and the
+ * chats they belong to. A finished chat is not listed: nothing is waiting on the person. All of them follow `bureau.events` (a run, a session, a review, a notification)
  * and are asked on a timer, every {@link REVIEW_POLL_MILLISECONDS}, only while it is not live. Call it once, while the shell
  * initializes: the queries and effects belong to the calling component.
  *
- * Opening a chat reads the items about it, and that includes an answer that finishes while the
- * chat is open: it is listed, and it is read on arrival, so it is not new when the person leaves.
+ * Opening a chat reads the items about it, including one that arrives while the chat is open: it is
+ * read on arrival, so it is not new when the person leaves.
  */
 import { humanizeIdentifier } from '@lostgradient/cinder';
 import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -20,7 +20,6 @@ import {
   markBureauNotificationsRead,
 } from '../lib/bureau-notifications.ts';
 import { queryKeys } from '../lib/query.ts';
-import { recentTasksQuery } from '../lib/recent-tasks.ts';
 import { router } from '../lib/router.svelte.ts';
 import { REVIEW_POLL_MILLISECONDS, bureauReviewsQuery } from '../routes/reviews/reviews-data.ts';
 import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
@@ -60,18 +59,6 @@ export function connectNotificationFeed(
   const reviews = bureauReviewsQuery();
   const bureauLive = useBureauEventsLive();
   // Read in the option getters, so a query goes back to its timer when the feed is lost.
-  const tasks = createQuery(() => {
-    const polling = !bureauLive();
-    return {
-      ...recentTasksQuery(),
-      // The tasks follow `run.*` and `review.*`. A catalog run is announced by `run.settled` alone
-      // (its registration and actions are not published, and no `run.removed` follows it, COR-1730),
-      // so the timer is also what shows one that is still running whenever the feed is not live.
-      // poll-reason: fallback
-      refetchInterval: polling ? REVIEW_POLL_MILLISECONDS : false,
-      retry: false,
-    };
-  });
   // The chats follow `session.created`, `session.saved` and `session.deleted`.
   const chats = createQuery(() => {
     const polling = !bureauLive();
@@ -164,7 +151,6 @@ export function connectNotificationFeed(
     },
     reload: () => {
       void reviews.refetch();
-      void tasks.refetch();
       void chats.refetch();
       void notifications.refetch();
       // An explicit refetch ignores `enabled`, so the schedules gate is applied here too.
@@ -175,11 +161,7 @@ export function connectNotificationFeed(
   // A list that could not be read is not an empty one: the bell says so, with what it last read.
   $effect(() => {
     store.setLoadFailed(
-      reviews.isError ||
-        tasks.isError ||
-        chats.isError ||
-        notifications.isError ||
-        missedFires.isError,
+      reviews.isError || chats.isError || notifications.isError || missedFires.isError,
     );
   });
 
@@ -187,7 +169,6 @@ export function connectNotificationFeed(
     store.setActivity(
       buildNotificationEntries({
         reviews: reviews.data ?? [],
-        tasks: tasks.data?.tasks ?? [],
         notifications: notifications.data ?? [],
         chats: chats.data ?? new Map(),
         scheduleNames: scheduleNames.data ?? new Map(),

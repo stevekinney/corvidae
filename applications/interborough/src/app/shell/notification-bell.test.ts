@@ -34,15 +34,16 @@ function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
   };
 }
 
-const ANSWERED = entry({
-  id: 'task:echo',
-  kind: 'answered',
+/** A rule of the host's that is firing: listed read, and never counted. */
+const STANDING = entry({
+  id: 'alert:storage.size:1',
+  kind: 'alert',
   tier: 'info',
-  icon: 'message-circle-check',
-  title: 'echo answered',
-  detail: 'Hello echo, say this back',
-  sessionId: 'session-echo',
-  href: '/chats/session-echo',
+  standing: true,
+  icon: 'triangle-alert',
+  title: 'Storage passed its warning level',
+  detail: '1.6 GB used',
+  href: '/health',
 });
 
 describe('NotificationBell', () => {
@@ -54,12 +55,12 @@ describe('NotificationBell', () => {
     expect(container.querySelector('.weft-notification-bell__dot')).toBeNull();
   });
 
-  test('carries a dot and no number while anything needing the person is unread, and an answer does not count', async () => {
+  test('carries a dot and no number while anything needing the person is unread, and a standing item does not count', async () => {
     const store = memoryStore();
     store.setActivity([
       entry({ id: 'review:a' }),
       entry({ id: 'review:b', kind: 'question', title: 'request-human-input asked a question' }),
-      ANSWERED,
+      STANDING,
     ]);
 
     const { getByRole, container } = render(NotificationBell, { props: { store } });
@@ -81,7 +82,7 @@ describe('NotificationBell', () => {
 
   test('each row is the sentence, its second line, and how long ago, in one flat list', async () => {
     const store = memoryStore();
-    store.setActivity([entry(), ANSWERED]);
+    store.setActivity([entry(), STANDING]);
     const { getByRole } = render(NotificationBell, { props: { store } });
 
     await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
@@ -89,7 +90,7 @@ describe('NotificationBell', () => {
     const rows = Array.from(document.body.querySelectorAll('.weft-notification-panel__item'));
     expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
       'Refund order 1234 for $42.00? Waiting for your approval · Tool runner 2 min',
-      'echo answered Hello echo, say this back 2 min',
+      'Storage passed its warning level 1.6 GB used 2 min',
     ]);
     expect(document.body.querySelector('.weft-notification-panel__group-label')).toBeNull();
   });
@@ -215,7 +216,7 @@ describe('NotificationBell', () => {
 
   test('"Mark all read" clears the badge and keeps the rows', async () => {
     const store = memoryStore();
-    store.setActivity([entry({ id: 'review:a' }), entry({ id: 'review:b' }), ANSWERED]);
+    store.setActivity([entry({ id: 'review:a' }), entry({ id: 'review:b' }), STANDING]);
 
     const { getByRole, getByText, container } = render(NotificationBell, { props: { store } });
     await fireEvent.click(getByRole('button', { name: 'Notifications, 2 unread' }));
@@ -299,27 +300,27 @@ describe('NotificationBell', () => {
     expect(read?.querySelector('[role="img"]')).toBeNull();
   });
 
-  test('draws an answer, which is listed but never counts, without the tint or the dot of an unread row', async () => {
+  test('draws a standing item, which is listed but never counts, without the tint or the dot of an unread row', async () => {
     const store = memoryStore();
-    store.setActivity([entry(), ANSWERED]);
+    store.setActivity([entry(), STANDING]);
     const { getByRole } = render(NotificationBell, { props: { store } });
     await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
 
-    const [waiting, answered] = Array.from(
+    const [waiting, standing] = Array.from(
       document.body.querySelectorAll('.weft-notification-panel__item'),
     );
     expect(waiting?.getAttribute('data-read')).toBe('false');
-    expect(answered?.getAttribute('data-read')).toBe('true');
-    expect(answered?.querySelector('[role="img"]')).toBeNull();
+    expect(standing?.getAttribute('data-read')).toBe('true');
+    expect(standing?.querySelector('[role="img"]')).toBeNull();
     expect(document.body.querySelectorAll('.weft-notification-panel__item-dot')).toHaveLength(1);
   });
 
-  test('tints a question’s icon as information, a failure as a warning, and an answer as neutral', async () => {
+  test('tints a question’s icon as information, and a failure and a firing rule as warnings', async () => {
     const store = memoryStore();
     store.setActivity([
       entry({ id: 'review:q', kind: 'question', icon: 'message-circle-question-mark' }),
       entry({ id: 'notification:f', kind: 'failed', icon: 'circle-x' }),
-      ANSWERED,
+      STANDING,
     ]);
     const { getByRole } = render(NotificationBell, { props: { store } });
     await fireEvent.click(getByRole('button', { name: 'Notifications, 2 unread' }));
@@ -327,7 +328,7 @@ describe('NotificationBell', () => {
     const tones = Array.from(
       document.body.querySelectorAll('.weft-notification-panel__item-tile'),
     ).map((tile) => tile.getAttribute('data-tone'));
-    expect(tones).toEqual(['info', 'warning', 'neutral']);
+    expect(tones).toEqual(['info', 'warning', 'warning']);
   });
 
   test('lists a firing rule read, with a warning icon, and it never counts or marks the bell', async () => {

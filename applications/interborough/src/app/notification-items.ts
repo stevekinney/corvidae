@@ -17,14 +17,14 @@
  *   warning level (`bureau.health.attention`). It is a standing condition and not news, so it is
  *   listed read and never counts.
  * - `notice`: any other notification the Bureau holds for the person, such as one a host wrote.
- * - `answered`: the latest run of a chat finished (`bureau.tasks.list`). It is listed, but nothing is waiting on the
- *   person, so it never counts. Opening the chat reads it, including one that finishes while the
- *   chat is open.
+ *
+ * A finished chat is not an item (agreed with design row 02w, whose caption names what the bell
+ * lists): nothing is waiting on the person, so a run that completed leaves the bell and the chat
+ * list shows it.
  *
  * Of the reviews waiting in one chat, the one waiting longest stands for them all (an approval
- * before a question when they asked at the same moment), and the latest run of a chat stands for
- * all its earlier answers. A chat that is waiting on the person hides its failures and answers, so
- * it is not listed twice. A failure is one item per notification, which is one per run, so a chat
+ * before a question when they asked at the same moment). A chat that is waiting on the person hides
+ * its failures, so it is not listed twice. A failure is one item per notification, which is one per run, so a chat
  * with two failed runs lists both until each is read. The Bureau also writes a
  * `review.waiting` notification for each pending review; the bell does not list it, because the
  * pending review above says the same thing and leaves the list the moment it is decided.
@@ -37,10 +37,8 @@ import { formatTimeOfDay } from '@lostgradient/cinder';
 import type { AttentionAlert } from '../lib/bureau-attention.ts';
 import type { BureauNotification } from '../lib/bureau-notifications.ts';
 import type { BureauReview } from '../lib/bureau-reviews.ts';
-import type { TaskView } from '../lib/bureau-tasks.ts';
 import { formatBytes } from '../lib/format/index.ts';
 import { chatSessionPath } from '../lib/identifier-paths.ts';
-import { latestRunByChat } from '../lib/recent-tasks.ts';
 import { scheduleDetailPath } from '../lib/router.svelte.ts';
 import { reviewTitle } from '../routes/reviews/review-items.ts';
 import { CHAT_COPY, NOTIFICATION_COPY } from './copy.ts';
@@ -50,22 +48,14 @@ import type { MissedFireSource } from './notification-sources.ts';
 export type NotificationTier = 'critical' | 'warning' | 'info';
 
 export type NotificationKind =
-  | 'approval'
-  | 'question'
-  | 'failed'
-  | 'budget'
-  | 'missed'
-  | 'notice'
-  | 'answered'
-  | 'alert'
-  | 'engine';
+  'approval' | 'question' | 'failed' | 'budget' | 'missed' | 'notice' | 'alert' | 'engine';
 
 /** An item before the store decides whether it was read. */
 export interface NotificationEntry {
   /**
    * Stable across reads, so a read item stays read: `review:<id>` (`review:<id>:<round>` for an
    * approval, which the Bureau asks again under the same id when a round supersedes it),
-   * `notification:<id>` (the Bureau's own record of it), `task:<id>`, or `engine-status`.
+   * or `notification:<id>` (the Bureau's own record of it).
    */
   readonly id: string;
   readonly kind: NotificationKind;
@@ -94,7 +84,7 @@ export interface NotificationEntry {
   readonly serverRead?: boolean;
 }
 
-/** A finished run older than this is history, not news. */
+/** A read notification, or a missed schedule, older than this is history, not news. */
 export const RECENT_RUN_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 /** What a schedule is called, and whether that is an identifier (an agent's name) rather than prose (its description). */
@@ -109,8 +99,6 @@ export type AgentDisplayName = (agentName: string) => string;
 export interface NotificationSources {
   /** The Bureau's pending reviews. */
   readonly reviews: readonly BureauReview[];
-  /** The Bureau's most recently changed tasks, for the answers. */
-  readonly tasks: readonly TaskView[];
   /** The caller's notifications, newest first. */
   readonly notifications: readonly BureauNotification[];
   /**
@@ -173,24 +161,6 @@ function reviewEntry(
     ...(sessionId === undefined ? {} : { sessionId }),
     href: sessionId === undefined ? '/reviews' : chatSessionPath(sessionId),
     emittedAtMs: review.requestedAt,
-  };
-}
-
-function answeredEntry(
-  task: TaskView,
-  chats: ReadonlyMap<string, string | null>,
-  display: AgentDisplayName,
-): NotificationEntry {
-  return {
-    id: `task:${task.id}`,
-    sessionId: task.contextId,
-    href: chatSessionPath(task.contextId),
-    emittedAtMs: Date.parse(task.updatedAt),
-    kind: 'answered',
-    tier: 'info',
-    icon: 'message-circle-check',
-    title: NOTIFICATION_COPY.answered(agentOf(task.agentName, display)),
-    detail: chatTitle(chats, task.contextId),
   };
 }
 
@@ -314,18 +284,6 @@ function alertEntry(alert: AttentionAlert): NotificationEntry | undefined {
 }
 
 /**
- * Whether a task is an answer the person wants to hear about: a completed run that is not one a
- * parent run, a goal or an agent tool call started, because a child's answer is its parent's to
- * report.
- */
-function isNews(task: TaskView): boolean {
-  return task.status === 'completed' && !SUBORDINATE_ORIGIN_KINDS.has(task.origin?.kind ?? '');
-}
-
-/** The origin kinds of a task that something else started and will report on. */
-const SUBORDINATE_ORIGIN_KINDS: ReadonlySet<string> = new Set(['agent', 'goal', 'parent']);
-
-/**
  * The review that stands for a chat that is waiting on the person: the one waiting longest, and an
  * approval before a question when they asked at the same moment. The id breaks any tie left, so
  * the choice does not move between reads.
@@ -357,10 +315,10 @@ function onePerChat(pending: readonly BureauReview[]): BureauReview[] {
 
 /**
  * The items for `sources`, newest first within each group: what needs the person (approvals,
- * questions, failures) before what only finished.
+ * questions, failures) before what is standing.
  */
 export function buildNotificationEntries(sources: NotificationSources): NotificationEntry[] {
-  const { reviews, tasks, notifications, chats, scheduleNames, nowMs } = sources;
+  const { reviews, notifications, chats, scheduleNames, nowMs } = sources;
   const display = sources.agentName ?? ((identifier: string) => identifier);
   const missedFires = sources.missedFires ?? [];
   const pending = reviews.filter((review) => review.status === 'pending');
@@ -397,16 +355,6 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
     if (entry !== undefined) entries.push(entry);
   }
 
-  // The latest run of each chat stands for it; a chat that is waiting on the person says so once.
-  for (const task of latestRunByChat(tasks).values()) {
-    if (!isNews(task) || waiting.has(task.contextId)) continue;
-    if (nowMs - Date.parse(task.updatedAt) > RECENT_RUN_WINDOW_MS) continue;
-    // A run started without a chat (`bureau.run()` from the catalog) names a context the Bureau
-    // does not hold, and there is no chat to open for it.
-    if (!chats.has(task.contextId)) continue;
-    entries.push(answeredEntry(task, chats, display));
-  }
-
   return entries.sort(
     (left, right) => rank(left) - rank(right) || right.emittedAtMs - left.emittedAtMs,
   );
@@ -414,7 +362,7 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
 
 /**
  * Where an item sits in the list (design row 02w): what waits on the person first, then the
- * failures and missed schedules, then what only finished or is standing.
+ * failures and missed schedules, then what is standing.
  */
 function rank(entry: NotificationEntry): number {
   if (entry.kind === 'approval' || entry.kind === 'question') return 0;

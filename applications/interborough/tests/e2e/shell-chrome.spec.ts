@@ -481,6 +481,10 @@ test.describe('the top bar’s popovers on the sample world', () => {
 
     // What waits on the person comes first, newest first: the refund approval, then the question.
     const rows = panel.locator('.weft-notification-panel__item');
+    // The bell lists what waits on the person, the failures and missed schedules, and the standing
+    // rule: a chat that finished ("Assistant answered") is not an item.
+    await expect(rows).toHaveCount(4);
+    await expect(panel.getByText(/answered/i)).toHaveCount(0);
     await expect(rows.nth(0)).toContainText('Refund order 4471');
     await expect(rows.nth(0)).toContainText('Waiting for your approval · Tool runner');
     await expect(rows.nth(0).locator('.weft-notification-panel__item-time')).toHaveText('4 min');

@@ -3703,7 +3703,6 @@ export const NOTIFICATION_COPY = {
   /** The second line of a review: what it waits for, and whose it is. */
   waiting: (kind: 'approval' | 'answer', agent: string): string =>
     `${kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer'} · ${agent}`,
-  answered: (agent: string): string => `${agent} answered`,
   failed: (subject: string): string => `${subject} failed`,
   budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
   /** A schedule that did not fire: "Daily summary missed its 3:00 AM run". */
