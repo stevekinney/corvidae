@@ -78,10 +78,12 @@ describe('which agents are offered the tools', () => {
     expect(workflowToolsOf(harness.offered.at(-1))).toEqual([]);
   });
 
-  it('names the five tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
+  it('names the seven tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
     expect([...WORKFLOW_TOOL_NAMES]).toEqual([
       'workflows-create',
       'workflows-update',
+      'workflows-validate',
+      'workflows-catalog',
       'workflows-pause',
       'workflows-resume',
       'workflows-list',
@@ -430,6 +432,46 @@ describe('workflows-update, workflows-pause, workflows-resume', () => {
   });
 });
 
+describe('workflows-validate and workflows-catalog', () => {
+  it('validates a draft without writing or registering it, and reports the same issues as update', async () => {
+    const harness = await start();
+    const before = harness.bureau.workflows!.list();
+    const invalid = await harness.callTool('bureau__workflows-validate', {
+      id: 'draft',
+      trigger: { kind: 'schedule', spec: 'not a schedule' },
+      steps: [{ kind: 'activity', handler: 'missing' }],
+    });
+    expect(invalid.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(harness.bureau.workflows!.list()).toEqual(before);
+
+    const valid = await harness.callTool('bureau__workflows-validate', {
+      id: 'draft',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(valid.result).toMatchObject({ status: 'ok', id: 'draft' });
+    expect(harness.bureau.workflows!.list()).toEqual(before);
+  });
+
+  it('derives the catalog step kinds from Weft and includes the built-in activity and triggers', async () => {
+    const harness = await start();
+    const { result } = await harness.callTool('bureau__workflows-catalog', {});
+    expect(result).toMatchObject({ status: 'ok' });
+    const catalog = result as {
+      stepKinds: { kind: string }[];
+      activities: { id: string }[];
+      triggerKinds: { id: string }[];
+    };
+    expect(catalog.stepKinds.map(({ kind }) => kind)).toEqual([
+      'activity',
+      'sleep',
+      'await-signal',
+    ]);
+    expect(catalog.activities.map(({ id }) => id)).toContain('agent');
+    expect(catalog.triggerKinds.map(({ id }) => id)).toEqual(['schedule', 'signal', 'manual']);
+  });
+});
+
 describe('workflows-list', () => {
   it('lists each workflow with its hash, state, paused, and trigger kind, and a broken file with its problem', async () => {
     const harness = await start();
@@ -694,10 +736,15 @@ describe('who the tools act for', () => {
     ['workflows-pause', { id: 'digest', expectedHash: 'hash' }],
     ['workflows-resume', { id: 'digest', expectedHash: 'hash' }],
     ['workflows-list', {}],
+    ['workflows-validate', { id: 'draft', trigger: TRIGGER, steps: STEPS }],
+    ['workflows-catalog', {}],
   ] as const)('authorizes %s for local runs and denies api-key:a2a', async (tool, input) => {
     const local = await withWorkflow();
     const localInput =
-      tool === 'workflows-create' || tool === 'workflows-list'
+      tool === 'workflows-create' ||
+      tool === 'workflows-list' ||
+      tool === 'workflows-validate' ||
+      tool === 'workflows-catalog'
         ? input
         : { ...input, expectedHash: hashOf(local, 'digest') };
     const localCall = await local.callTool(`bureau__${tool}`, localInput);
@@ -706,7 +753,10 @@ describe('who the tools act for', () => {
 
     const foreign = await withWorkflow();
     const foreignInput =
-      tool === 'workflows-create' || tool === 'workflows-list'
+      tool === 'workflows-create' ||
+      tool === 'workflows-list' ||
+      tool === 'workflows-validate' ||
+      tool === 'workflows-catalog'
         ? input
         : { ...input, expectedHash: hashOf(foreign, 'digest') };
     const foreignCall = await foreign.callTool(`bureau__${tool}`, foreignInput, {
@@ -716,7 +766,9 @@ describe('who the tools act for', () => {
     expect(foreignCall.result, tool).toEqual(
       tool === 'workflows-list'
         ? { status: 'ok', workflows: [] }
-        : { status: 'not-found', id: tool === 'workflows-create' ? 'new-workflow' : 'digest' },
+        : tool === 'workflows-validate' || tool === 'workflows-catalog'
+          ? expect.objectContaining({ status: 'forbidden' })
+          : { status: 'not-found', id: tool === 'workflows-create' ? 'new-workflow' : 'digest' },
     );
   });
 });

@@ -21,14 +21,104 @@ import {
   registerWorkflowDocuments,
   type RegisteredWorkflowDocument,
   type WorkflowDocumentSet,
+  workflowDocumentStepSchema,
 } from '@lostgradient/weft';
+import { z } from 'zod';
 
-import { isMappedWeftName, isNamespacedIdentifier } from './namespaced-identifier';
+import { fromWeftName, isMappedWeftName, isNamespacedIdentifier } from './namespaced-identifier';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
 import { toScheduleSpec } from './schedule-spec';
 import { toWeftDocumentInput } from './workflow-document-handlers';
 import { AGENT_STEP_HANDLER, scheduleTriggerExtensionIssue, TRIGGER_KEYS } from './workflow-file';
 import { checkWorkflowSchema } from './workflow-schema';
+
+export interface WorkflowCatalog {
+  readonly stepKinds: readonly {
+    readonly kind: string;
+    readonly fields: Readonly<Record<string, unknown>>;
+  }[];
+  readonly activities: readonly {
+    readonly id: string;
+    readonly description: string | null;
+    readonly inputSchema: Readonly<Record<string, unknown>> | null;
+  }[];
+  readonly triggerKinds: readonly {
+    readonly id: string;
+    readonly description: string;
+    readonly configuration: Readonly<Record<string, unknown>> | null;
+  }[];
+}
+
+function schemaOf(schema: unknown): Readonly<Record<string, unknown>> | null {
+  if (schema === undefined) return null;
+  try {
+    return z.toJSONSchema(schema as z.ZodType, { io: 'input', unrepresentable: 'any' });
+  } catch {
+    return null;
+  }
+}
+
+/** Build the workflow editor catalog from the exact host registrations. */
+export function workflowCatalogOf(
+  host: DocumentWorkflowHost,
+  contributions: WorkflowContributions,
+): WorkflowCatalog {
+  const stepSchema = z.toJSONSchema(workflowDocumentStepSchema, {
+    io: 'input',
+    unrepresentable: 'any',
+  }) as {
+    properties?: { kind?: { enum?: string[] }; [key: string]: unknown };
+  };
+  const variants =
+    (
+      stepSchema as {
+        oneOf?: { properties?: Record<string, unknown> }[];
+        anyOf?: { properties?: Record<string, unknown> }[];
+      }
+    ).oneOf ??
+    (stepSchema as { anyOf?: { properties?: Record<string, unknown> }[] }).anyOf ??
+    [];
+  const stepKinds =
+    variants.map((variant) => ({
+      kind: String((variant.properties?.['kind'] as { const?: string })?.const),
+      fields: Object.fromEntries(
+        Object.entries(variant.properties ?? {}).filter(([key]) => key !== 'kind'),
+      ),
+    })) ?? [];
+  const activities = Object.entries(host.activities).map(([name, activity]) => {
+    const id = fromWeftName(name) ?? name;
+    const definition = typeof activity === 'function' ? undefined : activity;
+    return {
+      id,
+      description:
+        definition?.description ?? (id === AGENT_STEP_HANDLER ? 'Run a Bureau agent.' : null),
+      inputSchema:
+        schemaOf(definition?.inputSchema) ??
+        (id === AGENT_STEP_HANDLER
+          ? z.toJSONSchema(z.object({ agent: z.string(), message: z.string() }), { io: 'input' })
+          : null),
+    };
+  });
+  const builtInTriggers = [
+    { id: 'schedule', description: 'Start on a schedule.', configuration: { type: 'object' } },
+    {
+      id: 'signal',
+      description: 'Start when a signal is delivered.',
+      configuration: { type: 'object' },
+    },
+    {
+      id: 'manual',
+      description: 'Start only when explicitly started.',
+      configuration: { type: 'object', additionalProperties: false },
+    },
+  ];
+  const pluginTriggers = [...contributions.triggerKinds.values()].map((entry) => ({
+    id: entry.name,
+    description: entry.value.description,
+    configuration: schemaOf(entry.value.configuration),
+  }));
+  return { stepKinds, activities, triggerKinds: [...builtInTriggers, ...pluginTriggers] };
+}
 
 /** The overlap policies a `schedule` trigger may name; `skip` when it names none. */
 export const SCHEDULE_OVERLAP_POLICIES = ['skip', 'queue', 'cancel-running', 'allow'] as const;

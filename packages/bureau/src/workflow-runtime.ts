@@ -82,6 +82,8 @@ import {
   acceptContributedTriggers,
   bridgeEngineActivities,
   registerBureauWorkflowDocuments,
+  workflowCatalogOf,
+  type WorkflowCatalog,
   type ScheduleOverlapPolicy,
 } from './workflow-host';
 import {
@@ -355,6 +357,8 @@ export interface WorkflowAuditEntry {
 export interface BureauWorkflows {
   /** The deployment's owner of record, which every workflow file belongs to. */
   readonly owner: string;
+  /** The step, activity, and trigger kinds this runtime supports. */
+  readonly catalog: () => WorkflowCatalog;
   readonly list: () => readonly WorkflowListing[];
   readonly get: (id: string) => Promise<WorkflowDetail | undefined>;
   readonly create: (
@@ -366,6 +370,12 @@ export interface BureauWorkflows {
     id: string,
     definition: WorkflowFileDefinition,
     options: { readonly expectedHash: string } & WorkflowWriteContext,
+  ) => Promise<WorkflowFileWriteResult>;
+  /** Validate a draft with the same parser and conflict checks as a write, without writing. */
+  readonly validate: (
+    id: string,
+    definition: WorkflowFileDefinition,
+    expectedHash?: string,
   ) => Promise<WorkflowFileWriteResult>;
   readonly pause: (
     id: string,
@@ -1665,6 +1675,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
   const workflows: BureauWorkflows = {
     owner,
+    catalog: () => workflowCatalogOf(host, contributions),
     list: () => catalog.list(),
 
     async get(id) {
@@ -1694,6 +1705,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         (onWritten) => catalog.update(id, definition, { ...update, onWritten }),
         id,
       ),
+    validate: (id, definition, expectedHash) => catalog.validate(id, definition, expectedHash),
     pause: (id, guard) =>
       write(
         'workflow.paused',

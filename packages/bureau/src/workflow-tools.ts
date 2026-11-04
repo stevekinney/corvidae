@@ -39,6 +39,8 @@ import { type BureauWorkflows, WorkflowApplyError } from './workflow-runtime';
 export const WORKFLOW_TOOL_NAMES = [
   'workflows-create',
   'workflows-update',
+  'workflows-validate',
+  'workflows-catalog',
   'workflows-pause',
   'workflows-resume',
   'workflows-list',
@@ -81,6 +83,24 @@ export type WorkflowToolResult =
       readonly issues: readonly WorkflowToolIssue[];
     }
   | { readonly status: 'not-found'; readonly id: string }
+  | { readonly status: 'forbidden'; readonly message: string }
+  | {
+      readonly status: 'ok';
+      readonly stepKinds: readonly {
+        readonly kind: string;
+        readonly fields: Readonly<Record<string, unknown>>;
+      }[];
+      readonly activities: readonly {
+        readonly id: string;
+        readonly description: string | null;
+        readonly inputSchema: Readonly<Record<string, unknown>> | null;
+      }[];
+      readonly triggerKinds: readonly {
+        readonly id: string;
+        readonly description: string;
+        readonly configuration: Readonly<Record<string, unknown>> | null;
+      }[];
+    }
   | { readonly status: 'unavailable'; readonly reason: 'workflow-apply-failed' };
 
 /** One workflow as `workflows-list` shows it. */
@@ -328,6 +348,78 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     steps: stepsSchema,
     paused: pausedSchema,
   });
+  const validateInput = z.object({
+    id: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('The workflow identifier, or omit it for a new draft.'),
+    expectedHash: expectedHashSchema.optional(),
+    title: titleSchema,
+    description: descriptionSchema,
+    inputSchema: inputSchemaSchema,
+    outputSchema: outputSchemaSchema,
+    trigger: triggerSchema,
+    steps: stepsSchema,
+    paused: pausedSchema,
+  });
+
+  const validate = createTool({
+    name: 'workflows-validate',
+    version: '1.0.0',
+    description: 'Validate a workflow draft without writing it or registering it with the engine.',
+    input: validateInput,
+    metadata: {
+      readOnly: true,
+      title: 'Validate workflow',
+      shortDescription: 'Validate a workflow draft without saving it.',
+    },
+    execute: async (input, context): Promise<WorkflowToolResult> => {
+      const id = input.id ?? 'draft';
+      const calling = await caller(context, id, 'bureau.workflows:read');
+      if ('refusal' in calling) {
+        return calling.refusal.status === 'not-found'
+          ? { status: 'forbidden', message: 'Validating workflows requires bureau.workflows:read.' }
+          : calling.refusal;
+      }
+      try {
+        return {
+          status: 'ok',
+          ...(await calling.workflows.validate(
+            input.id ?? 'draft',
+            definition(calling.agent, input),
+            input.expectedHash,
+          )),
+        };
+      } catch (error) {
+        return resultOfFailure(error, id);
+      }
+    },
+  });
+
+  const catalog = createTool({
+    name: 'workflows-catalog',
+    version: '1.0.0',
+    description: 'List the workflow step, activity, and trigger kinds this deployment supports.',
+    input: z.object({}),
+    metadata: {
+      readOnly: true,
+      title: 'Catalog workflow kinds',
+      shortDescription: 'List supported workflow kinds.',
+    },
+    execute: async (_input, context): Promise<WorkflowToolResult> => {
+      const calling = await caller(context, '', 'bureau.workflows:read');
+      if ('refusal' in calling) {
+        return calling.refusal.status === 'not-found'
+          ? {
+              status: 'forbidden',
+              message: 'Reading the workflow catalog requires bureau.workflows:read.',
+            }
+          : calling.refusal;
+      }
+      return { status: 'ok', ...calling.workflows.catalog() };
+    },
+  });
 
   const create = createTool({
     name: 'workflows-create',
@@ -476,6 +568,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   return {
     [create.name]: create,
     [update.name]: update,
+    [validate.name]: validate,
+    [catalog.name]: catalog,
     'workflows-pause': guarded('workflows-pause', true),
     'workflows-resume': guarded('workflows-resume', false),
     [list.name]: list,

@@ -36,10 +36,12 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the fifteen workflow operations, with their scopes registered', () => {
+  it('serves the seventeen workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
+      'bureau.workflows.validate',
+      'bureau.workflows.catalog',
       'bureau.workflows.pause',
       'bureau.workflows.resume',
       'bureau.workflows.delete',
@@ -124,6 +126,12 @@ const CALLS: readonly Call[] = [
     scope: 'read',
   },
   { method: 'bureau.workflows.signal', params: () => ({ name: 'go' }), scope: 'write' },
+  {
+    method: 'bureau.workflows.validate',
+    params: (hash) => ({ id: 'digest', expectedHash: hash, definition: DEFINITION }),
+    scope: 'read',
+  },
+  { method: 'bureau.workflows.catalog', params: () => ({}), scope: 'read' },
 ];
 
 describe('the owner predicate, with several principals', () => {
@@ -151,7 +159,11 @@ describe('the owner predicate, with several principals', () => {
           expect(response.error).toBeUndefined();
           const key = call.method === 'bureau.workflows.list' ? 'workflows' : 'runs';
           expect(response.result?.[key]).toEqual([]);
-        } else if (call.method === 'bureau.workflows.create') {
+        } else if (
+          call.method === 'bureau.workflows.create' ||
+          call.method === 'bureau.workflows.validate' ||
+          call.method === 'bureau.workflows.catalog'
+        ) {
           expect(response.error?.data?.httpStatus).toBe(403);
         } else {
           expect(response.error?.data?.httpStatus).toBe(404);
