@@ -713,14 +713,23 @@ const BUREAU_AGENT_NAME = 'bureau';
 function createBureauMemoryTools(
   memory: Parameters<typeof createGovernedMemoryTools>[0] | undefined,
   memoryAuthority: Parameters<typeof createToolMemoryAuthority>[2],
+  tenantId: string,
+  ownerForRun: (runId: string | undefined) => Promise<string | undefined>,
 ): Record<string, Tool> {
   if (memory === undefined) return {};
   return createGovernedMemoryTools(memory, {
-    resolveContext: ({ toolName, requestContext }) => {
+    resolveContext: async ({ toolName, requestContext }) => {
       if (requestContext === undefined) return undefined;
+      const ownerId =
+        requestContext.runId === undefined
+          ? requestContext.authority.ownerId
+          : ((await ownerForRun(requestContext.runId)) ?? requestContext.authority.ownerId);
       return {
         collection: requestContext.agentId ?? BUREAU_AGENT_NAME,
-        authority: createToolMemoryAuthority(requestContext, toolName, memoryAuthority),
+        authority: createToolMemoryAuthority(requestContext, toolName, memoryAuthority, {
+          tenantId,
+          ownerId,
+        }),
       };
     },
   });
@@ -3350,11 +3359,19 @@ async function constructBureau<const D extends AgentDefinitions>(
       settings: () => settingsOf().settings,
       ownerOf: (runId) => ownerOf({ kind: 'run', id: runId }),
     });
-    const memoryTools = createBureauMemoryTools(runtime.memory, options.memoryAuthority);
-    assertNoMemoryToolCollision(options.agentSource, memoryTools);
+    const memoryTools = createBureauMemoryTools(
+      runtime.memory,
+      options.memoryAuthority,
+      bureauId,
+      async (runId) => (runId === undefined ? undefined : ownerOf({ kind: 'run', id: runId })),
+    );
+    const memoryToolsByName = Object.fromEntries(
+      Object.values(memoryTools).map((tool) => [tool.name, tool]),
+    );
+    assertNoMemoryToolCollision(options.agentSource, memoryToolsByName);
     agentToolCatalog = {
       ...options.agentSource?.tools,
-      ...memoryTools,
+      ...memoryToolsByName,
       // COR-1879: the plugins' tools, by the `plugin:name` an agent file names them with.
       ...composedPlugins.tools,
       ...settingsTools,

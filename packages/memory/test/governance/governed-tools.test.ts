@@ -217,17 +217,54 @@ describe('createGovernedMemoryTools (model-facing, untrusted)', () => {
       { content: 'beta-only memory' },
       { requestContext: { ...requestContext('owner-a'), agentId: 'beta' } },
     );
-    const alpha = await tools.recall.execute(
-      { query: 'only memory' },
-      { requestContext: { ...requestContext('owner-a'), agentId: 'alpha' } },
+    const alpha = recallOutput.parse(
+      await tools.recall.execute(
+        { query: 'only memory' },
+        { requestContext: { ...requestContext('owner-a'), agentId: 'alpha' } },
+      ),
     );
-    const beta = await tools.recall.execute(
-      { query: 'only memory' },
-      { requestContext: { ...requestContext('owner-a'), agentId: 'beta' } },
+    const beta = recallOutput.parse(
+      await tools.recall.execute(
+        { query: 'only memory' },
+        { requestContext: { ...requestContext('owner-a'), agentId: 'beta' } },
+      ),
     );
     expect(alpha.evidence).toContain('alpha-only memory');
     expect(alpha.evidence).not.toContain('beta-only memory');
     expect(beta.evidence).toContain('beta-only memory');
     expect(beta.evidence).not.toContain('alpha-only memory');
+  });
+
+  it('honors an explicit resolver denial even when legacy options would allow the call', async () => {
+    const tools = createGovernedMemoryTools(fixture.memory, {
+      collection: 'house',
+      resolveContext: () => undefined,
+      resolveAuthority: () => principalA,
+    });
+    expect(
+      await tools.recall.execute(
+        { query: 'spare key' },
+        { requestContext: requestContext('owner-a') },
+      ),
+    ).toEqual({
+      found: false,
+      evidence: '',
+      withheld: 0,
+    });
+    expect(
+      await tools.store.execute(
+        { content: 'denied' },
+        { requestContext: requestContext('owner-a') },
+      ),
+    ).toEqual({ stored: false });
+    expect(
+      await tools.correct.execute(
+        { id: 'missing', content: 'denied' },
+        { requestContext: requestContext('owner-a') },
+      ),
+    ).toEqual({ corrected: false, id: 'missing' });
+    expect(
+      await tools.forget.execute({ id: 'missing' }, { requestContext: requestContext('owner-a') }),
+    ).toEqual({ deleted: false, reason: 'refused' });
   });
 });

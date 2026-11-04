@@ -779,6 +779,7 @@ export function createToolMemoryAuthority(
   requestContext: ToolRequestContext,
   toolName: string,
   options: BureauMemoryAuthorityOptions = {},
+  identity?: Pick<MemoryAuthority, 'tenantId' | 'ownerId'>,
 ): MemoryAuthority {
   const deployment = options.toolCapabilities ?? DEFAULT_TOOL_MEMORY_CAPABILITIES;
   const known = new Set<string>(MEMORY_CAPABILITIES);
@@ -795,8 +796,8 @@ export function createToolMemoryAuthority(
   const granted = ceiling.filter((capability) => required.includes(capability));
   return createMemoryAuthority({
     principal: { kind: 'tool', id: toolName },
-    tenantId: requestContext.authority.tenantId,
-    ownerId: requestContext.authority.ownerId,
+    tenantId: identity?.tenantId ?? requestContext.authority.tenantId,
+    ownerId: identity?.ownerId ?? requestContext.authority.ownerId,
     purpose: 'tool',
     capabilities: granted,
     policyRevision: requestContext.authority.authorizationRevision,
