@@ -14,6 +14,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
+import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import { createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools.ts';
@@ -86,6 +87,8 @@ export interface WorkflowToolsOptions {
   readonly overrides?: Partial<BureauOptions<AgentDefinitions>>;
   /** The file agents to create, by identifier. Defaults to `scribe`. */
   readonly agents?: readonly string[];
+  /** Optional file operations used by workflow-source tests to simulate read failures. */
+  readonly workflowOperations?: AgentFileOperations;
 }
 
 export async function startWorkflowToolsBureau(
@@ -135,7 +138,10 @@ export async function startWorkflowToolsBureau(
       }),
     },
     agentSource: agentFileDirectory(agentsPath),
-    workflowSource: workflowFileDirectory(workflowsPath),
+    workflowSource: workflowFileDirectory(
+      workflowsPath,
+      options.workflowOperations === undefined ? {} : { operations: options.workflowOperations },
+    ),
     models: { generate: (_descriptor: BackendDescriptor) => generate },
     storage: new MemoryStorage(),
     durable: true,

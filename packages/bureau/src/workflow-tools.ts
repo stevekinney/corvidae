@@ -549,7 +549,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       const calling = await caller(context, input.id, 'bureau.workflows:read');
       if ('refusal' in calling) return calling.refusal;
       const detail = await calling.workflows.get(input.id);
-      if (detail === undefined || detail.hash === undefined) {
+      if (detail === undefined) {
         return { status: 'not-found', id: input.id };
       }
       if (detail.state === 'invalid') {

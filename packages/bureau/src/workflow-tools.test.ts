@@ -24,12 +24,14 @@ import {
 } from './workflow-tools';
 import { mayRunAccess } from './run-authority';
 import { agentFileDirectory } from './sources/agent-file-directory';
+import { nodeAgentFileOperations } from './sources/agent-file-operations';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
 import {
   contributionCatalog,
   createTickerController,
 } from './testing/workflow-contributions.test-support';
+import { WORKFLOW_FILE_SIZE_LIMIT } from './workflow-file';
 
 const harnesses: WorkflowToolsHarness[] = [];
 afterEach(async () => {
@@ -352,6 +354,7 @@ describe('workflows-get and workflow revisions', () => {
       id: 'digest',
       text: '{"trigger":{"kind":"bad"}}',
     });
+    expect((read.result as { hash: string }).hash).toHaveLength(64);
     const result = await harness.callTool('bureau__workflows-update', {
       id: 'digest',
       expectedHash: (read.result as { hash: string }).hash,
@@ -407,6 +410,34 @@ describe('workflows-get and workflow revisions', () => {
       id: 'Bad_Name',
       code: 'invalid-identifier',
     });
+  });
+
+  it('reports oversized and unreadable registered workflow files without hash or text', async () => {
+    const harness = await start({
+      workflowOperations: {
+        ...nodeAgentFileOperations,
+        read: async (path) => {
+          if (path.endsWith('locked.json')) throw new Error('EACCES: permission denied');
+          return nodeAgentFileOperations.read(path);
+        },
+      },
+    });
+    await Bun.write(
+      join(harness.workflowsPath, 'huge.json'),
+      'x'.repeat(WORKFLOW_FILE_SIZE_LIMIT + 1),
+    );
+    await Bun.write(join(harness.workflowsPath, 'locked.json'), workflowFileText('locked'));
+
+    for (const [id, code] of [
+      ['huge', 'file-too-large'],
+      ['locked', 'unreadable'],
+    ] as const) {
+      const read = await harness.callTool('bureau__workflows-get', { id });
+      expect(read.result).toMatchObject({ status: 'invalid', id, code });
+      expect(read.result).not.toHaveProperty('hash');
+      expect(read.result).not.toHaveProperty('text');
+      expect(read.result).not.toHaveProperty('document');
+    }
   });
 
   it('preserves activity-version pins in workflow and revision documents', async () => {
