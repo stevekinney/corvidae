@@ -1,5 +1,6 @@
 /** Startup configuration and host tools for authenticated A2A peers. */
 
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { createPeerCallTool, type PeerCallJournal } from '@lostgradient/operative';
 import { createA2APeerClient, type EgressPolicy } from '@lostgradient/weft/a2a';
 import type { Tool } from 'armorer';
@@ -23,6 +24,12 @@ export type ConfiguredA2APeer = {
 
 const NO_PEERS: readonly ConfiguredA2APeer[] = Object.freeze([]);
 
+function peerToolVersion(peer: ConfiguredA2APeer): string {
+  return sha256HexSync(
+    JSON.stringify(['a2a-peer', peer.id, peer.url, ['message:string'], { mutates: true }]),
+  );
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -36,6 +43,10 @@ function redactSecret(value: unknown, secret: string): unknown {
     );
   }
   return value;
+}
+
+function redactText(value: string, secret: string): string {
+  return value.split(secret).join('[REDACTED]');
 }
 
 function parsePeer(value: unknown, location: string, field: string): ConfiguredA2APeer {
@@ -178,12 +189,12 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
       durable,
       ...(secret === undefined
         ? {}
-        : { redactPeerText: (value: string) => redactSecret(value, secret) as string }),
+        : { redactPeerText: (value: string) => redactText(value, secret) }),
     });
     tools[peerTool.name] = createTool({
       name: peer.id,
       namespace: 'a2a-peer',
-      version: '1.0.0',
+      version: peerToolVersion(peer),
       description: peer.description,
       input: z.object({ message: z.string().describe('What to tell the peer agent.') }).strict(),
       metadata: { mutates: true, title: `Call A2A peer ${peer.id}` },

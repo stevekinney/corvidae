@@ -226,4 +226,147 @@ describe('configured A2A peer approval', () => {
       for (const home of homes) await rm(home, { recursive: true, force: true });
     }
   });
+
+  test('rejects a parked approval after restart when the peer destination changes', async () => {
+    const homes: string[] = [];
+    const hosts: Host[] = [];
+    try {
+      const peerHomeA = await mkdtemp(join(tmpdir(), 'interborough-peer-a-'));
+      const peerHomeB = await mkdtemp(join(tmpdir(), 'interborough-peer-b-'));
+      homes.push(peerHomeA, peerHomeB);
+      let sendsB = 0;
+      const peerA = await startHost({
+        environment: { INTERBOROUGH_HOME: peerHomeA },
+        port: 0,
+        extraAgents: {
+          agents: {
+            peer: createAgent({
+              name: 'peer',
+              description: 'Peer A.',
+              generate: async () => ({ content: 'A', toolCalls: [] }),
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
+        },
+        a2aAgents: ['peer'],
+      });
+      const peerB = await startHost({
+        environment: { INTERBOROUGH_HOME: peerHomeB },
+        port: 0,
+        extraAgents: {
+          agents: {
+            peer: createAgent({
+              name: 'peer',
+              description: 'Peer B.',
+              generate: async () => {
+                sendsB += 1;
+                return { content: 'B', toolCalls: [] };
+              },
+              stopWhen: stopWhen.noToolCalls(),
+            }),
+          },
+        },
+        a2aAgents: ['peer'],
+      });
+      hosts.push(peerA, peerB);
+
+      const callerHome = await mkdtemp(join(tmpdir(), 'interborough-caller-restart-'));
+      homes.push(callerHome);
+      await writeProviderHome(callerHome);
+      await mkdir(join(callerHome, 'agents'), { recursive: true });
+      await writeFile(
+        join(callerHome, 'agents', 'caller.md'),
+        '---\nname: Caller\nmodel: anthropic/sonnet\ntools: [a2a-peer:peer]\n---\nDelegate the work.\n',
+      );
+      const configurationPath = join(callerHome, 'configuration.json');
+      const writeConfiguration = async (peer: Host) => {
+        const configuration = JSON.parse(await readFile(configurationPath, 'utf8')) as Record<
+          string,
+          unknown
+        >;
+        configuration['a2aPeers'] = [
+          {
+            id: 'peer',
+            description: 'Start work.',
+            url: new URL('/bureau/a2a/peer', peer.url).href,
+          },
+        ];
+        await writeFile(configurationPath, JSON.stringify(configuration));
+      };
+      await writeConfiguration(peerA);
+      const client = {
+        messages: {
+          create: async () => ({
+            id: 'caller-message',
+            type: 'message',
+            role: 'assistant',
+            model: 'claude-sonnet-5',
+            content: [
+              {
+                type: 'tool_use',
+                id: 'peer-call-1',
+                name: 'a2a-peer:peer',
+                input: { message: 'start' },
+              },
+            ],
+            stop_reason: 'tool_use',
+            stop_sequence: null,
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      };
+      const resolver: NonNullable<HostOptions['resolveProviderGenerate']> = (
+        definitions,
+        provider,
+        streamEventTarget,
+        streaming,
+      ) =>
+        resolveProviderGenerate(
+          definitions,
+          Object.assign({}, provider, { client }),
+          streamEventTarget,
+          streaming,
+        );
+      const startCaller = () =>
+        startHost({
+          environment: { INTERBOROUGH_HOME: callerHome },
+          port: 0,
+          resolveProviderGenerate: resolver,
+          a2aPeerEgressPolicy: createEgressPolicy({
+            allowInsecureHttp: true,
+            allowlist: [`127.0.0.1:${peerA.url.port}`, `127.0.0.1:${peerB.url.port}`],
+          }),
+        });
+      const first = await startCaller();
+      hosts.push(first);
+      const task = await first.bureau.tasks.start('caller', 'Delegate the work.', {
+        principal: 'anonymous:local',
+      });
+      await waitUntil(
+        () => first.bureau.reviews.list().some((review) => review.runId === task.id),
+        {
+          message: 'peer approval before restart',
+        },
+      );
+      const firstReview = first.bureau.reviews.list().find((review) => review.runId === task.id);
+      if (firstReview === undefined) throw new Error('peer approval was not recorded');
+      await first.close();
+      hosts.splice(hosts.indexOf(first), 1);
+      await writeConfiguration(peerB);
+      const second = await startCaller();
+      hosts.push(second);
+      await waitUntil(
+        async () => {
+          const workflow = await second.bureau.tasks.workflow(task.id);
+          return workflow?.status !== 'running';
+        },
+        { message: 'changed peer approval rejection' },
+      );
+      expect(second.bureau.reviews.list()).toEqual([]);
+      expect(sendsB).toBe(0);
+    } finally {
+      for (const host of hosts.reverse()) await host.close();
+      for (const home of homes) await rm(home, { recursive: true, force: true });
+    }
+  });
 });

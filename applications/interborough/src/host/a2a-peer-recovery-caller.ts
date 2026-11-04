@@ -3,7 +3,7 @@ import { createEgressPolicy } from '@lostgradient/weft/a2a';
 
 import { startHost, type HostOptions } from './host.ts';
 
-const environment = process.env as Record<string, string>;
+const environment = process.env;
 const required = [
   'READY_FILE',
   'RUN_FILE',
@@ -74,7 +74,8 @@ await Bun.write(value('READY_FILE'), 'ready');
 await Bun.write(environment['URL_FILE'] ?? `${home}/caller-url`, host.url.href);
 
 if (environment['RESTART'] === '1') {
-  const runId = (await Bun.file(value('RUN_FILE')).text()).trim();
+  const runText = await Bun.file(value('RUN_FILE')).text();
+  const runId = runText.trim();
   const result = await host.bureau.tasks.wait(runId);
   await Bun.write(value('RESULT_FILE'), JSON.stringify(result));
 } else {

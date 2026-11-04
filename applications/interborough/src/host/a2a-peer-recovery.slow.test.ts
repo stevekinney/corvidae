@@ -14,7 +14,9 @@ const hosts: Host[] = [];
 const children: ReturnType<typeof spawnWithHangGuard>[] = [];
 async function exists(path: string, text?: string): Promise<boolean> {
   try {
-    return text === undefined || (await readFile(path, 'utf8')).includes(text);
+    if (text === undefined) return true;
+    const contents = await readFile(path, 'utf8');
+    return contents.includes(text);
   } catch {
     return false;
   }
