@@ -2,6 +2,7 @@ import { accessSync, constants, existsSync, lstatSync, realpathSync, statSync } 
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import type { BungalowEnvironment } from '@lostgradient/bungalow';
 import { environmentalist } from '@lostgradient/environmentalist';
 import type { Source } from '@lostgradient/environmentalist/types';
 import { z } from 'zod';
@@ -35,6 +36,7 @@ const HELP = `Usage: interborough start [options]
 
 function configurationSource(id: string, values: Record<string, string | undefined>): Source {
   const read = () => ({
+    location: id,
     values: Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)),
   });
   return { id, kind: 'string', load: read, loadSync: read };
@@ -110,7 +112,7 @@ function startEnvironment(arguments_: string[], cwd: string) {
       'defaults',
     ],
   });
-  const environment = {
+  const environment: BungalowEnvironment = {
     ...exported,
     [PORT_VARIABLE]: settings.port,
     [HOME_VARIABLE]: settings.home === undefined ? undefined : resolveHome(settings.home, cwd),
@@ -148,8 +150,9 @@ async function run(arguments_: string[]): Promise<number> {
     return 0;
   }
   const executable = realpathSync(process.execPath);
-  const buildDirectory = result.environment[BUILD_DIRECTORY_VARIABLE]
-    ? resolve(cwd, result.environment[BUILD_DIRECTORY_VARIABLE])
+  const buildOverride = result.environment[BUILD_DIRECTORY_VARIABLE];
+  const buildDirectory = buildOverride
+    ? resolve(cwd, buildOverride)
     : join(dirname(executable), '..', 'share', 'interborough', 'browser');
   return supervise({
     command: [executable, INTERNAL_HOST_COMMAND],
