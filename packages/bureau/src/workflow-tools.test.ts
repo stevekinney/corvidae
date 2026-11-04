@@ -78,13 +78,16 @@ describe('which agents are offered the tools', () => {
     expect(workflowToolsOf(harness.offered.at(-1))).toEqual([]);
   });
 
-  it('names the five tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
+  it('names the workflow tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
     expect([...WORKFLOW_TOOL_NAMES]).toEqual([
       'workflows-create',
       'workflows-update',
       'workflows-pause',
       'workflows-resume',
       'workflows-list',
+      'workflows-get',
+      'workflows-revisions-list',
+      'workflows-revisions-get',
     ]);
     const harness = await start();
     await harness.callTool('bureau__workflows-list', {});
@@ -314,6 +317,111 @@ describe('what a model is shown of a tool’s input', () => {
       });
     },
   );
+});
+
+describe('workflows-get and workflow revisions', () => {
+  it('reads a workflow and updates it with the returned hash', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({ status: 'ok', id: 'digest', document: { name: 'digest' } });
+    const result = await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: (read.result as { hash: string }).hash,
+      trigger: { kind: 'schedule', spec: '2h' },
+      steps: STEPS,
+    });
+    expect(result.result).toMatchObject({ status: 'ok', id: 'digest' });
+  });
+
+  it('reads an invalid file and repairs it with its hash', async () => {
+    const harness = await start();
+    await Bun.write(join(harness.workflowsPath, 'digest.json'), '{"trigger":{"kind":"bad"}}');
+    await harness.bureau.workflows!.refresh();
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({
+      status: 'invalid',
+      id: 'digest',
+      text: '{"trigger":{"kind":"bad"}}',
+    });
+    const result = await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: (read.result as { hash: string }).hash,
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(result.result).toMatchObject({ status: 'ok', id: 'digest' });
+  });
+
+  it('lists and reads the revisions that have run', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const first = await harness.bureau.durableEngine()!.start('digest', null, { id: 'first-run' });
+    await first.result();
+    await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: hashOf(harness, 'digest'),
+      trigger: { kind: 'schedule', spec: '2h' },
+      steps: STEPS,
+    });
+    const second = await harness.bureau
+      .durableEngine()!
+      .start('digest', null, { id: 'second-run' });
+    await second.result();
+    const listed = await harness.callTool('bureau__workflows-revisions-list', { id: 'digest' });
+    const revisions = (listed.result as { revisions: Array<{ workflowVersion: string }> })
+      .revisions;
+    expect(revisions).toHaveLength(2);
+    const read = await harness.callTool('bureau__workflows-revisions-get', {
+      id: 'digest',
+      workflowVersion: revisions[0]!.workflowVersion,
+    });
+    expect(read.result).toMatchObject({
+      status: 'ok',
+      workflowVersion: revisions[0]!.workflowVersion,
+    });
+  });
+
+  it('hides reads from a2a and reports owner misses with their distinct shapes', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    for (const [tool, input] of [
+      ['workflows-get', { id: 'digest' }],
+      ['workflows-revisions-get', { id: 'digest', workflowVersion: 'missing' }],
+    ] as const) {
+      const result = await harness.callTool(`bureau__${tool}`, input, { principal: 'api-key:a2a' });
+      expect(result.result, tool).toEqual({ status: 'not-found', id: 'digest' });
+    }
+    const hiddenRevisions = await harness.callTool(
+      'bureau__workflows-revisions-list',
+      { id: 'digest' },
+      { principal: 'api-key:a2a' },
+    );
+    expect(hiddenRevisions.result).toEqual({ status: 'ok', revisions: [] });
+    for (const [tool, input] of [
+      ['workflows-get', { id: 'missing' }],
+      ['workflows-revisions-list', { id: 'missing' }],
+      ['workflows-revisions-get', { id: 'missing', workflowVersion: 'missing' }],
+    ] as const) {
+      const missing = await harness.callTool(`bureau__${tool}`, input);
+      expect(missing.result, tool).toEqual({
+        status: 'not-found',
+        id: 'missing',
+      });
+    }
+  });
 });
 
 describe('workflows-update, workflows-pause, workflows-resume', () => {

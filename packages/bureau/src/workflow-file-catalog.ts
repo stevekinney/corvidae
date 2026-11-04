@@ -124,6 +124,10 @@ export interface WorkflowFileCatalog {
   readonly read: (
     id: string,
   ) => Promise<{ readonly hash: string; readonly text: string } | undefined>;
+  /** The file's bytes as text, including a file that does not parse as a workflow. */
+  readonly readRaw: (
+    id: string,
+  ) => Promise<{ readonly hash: string; readonly text: string } | undefined>;
   readonly create: (
     id: string,
     definition: WorkflowFileDefinition,
@@ -387,6 +391,17 @@ export function createWorkflowFileCatalog(
           `The file for "${id}" cannot be read: ${entry.problem.message}`,
         );
       }
+      const text = decodeWorkflowFile(entry.bytes);
+      if (text === undefined) {
+        throw new WorkflowFileError('not-utf8', `The file for "${id}" is not valid UTF-8.`);
+      }
+      return { hash: entry.hash, text };
+    },
+
+    async readRaw(id) {
+      if (!isNamespacedIdentifier(id)) checkIdentifier(id);
+      const entry = await readFresh(id);
+      if (entry === undefined) return undefined;
       const text = decodeWorkflowFile(entry.bytes);
       if (text === undefined) {
         throw new WorkflowFileError('not-utf8', `The file for "${id}" is not valid UTF-8.`);

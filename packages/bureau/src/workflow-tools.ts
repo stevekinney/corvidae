@@ -1,6 +1,7 @@
 /**
  * The tools an agent manages its workflows with (COR-1529): `workflows-create`, `workflows-update`,
- * `workflows-pause`, `workflows-resume`, and `workflows-list`. The built-in `bureau` plugin
+ * `workflows-pause`, `workflows-resume`, `workflows-list`, `workflows-get`,
+ * `workflows-revisions-list`, and `workflows-revisions-get`. The built-in `bureau` plugin
  * contributes them when `workflowSource` is set (COR-1890), so an agent file receives them only when
  * it lists them in `tools` as `bureau:workflows-create` and so on, and a provider calls them
  * `bureau__workflows-create`. They write through `Bureau.workflows`, the same operations HTTP callers
@@ -42,6 +43,9 @@ export const WORKFLOW_TOOL_NAMES = [
   'workflows-pause',
   'workflows-resume',
   'workflows-list',
+  'workflows-get',
+  'workflows-revisions-list',
+  'workflows-revisions-get',
 ] as const;
 
 /** What the tools read from the Bureau that owns them. */
@@ -82,6 +86,23 @@ export type WorkflowToolResult =
     }
   | { readonly status: 'not-found'; readonly id: string }
   | { readonly status: 'unavailable'; readonly reason: 'workflow-apply-failed' };
+
+/** A parsed workflow document returned by `workflows-get` or `workflows-revisions-get`. */
+export interface WorkflowToolDocument {
+  readonly name: string;
+  readonly trigger: Record<string, unknown>;
+  readonly steps: readonly Record<string, unknown>[];
+  readonly inputSchema?: Readonly<Record<string, unknown>> | undefined;
+  readonly outputSchema?: Readonly<Record<string, unknown>> | undefined;
+}
+
+/** One revision returned by the workflow revision tools. */
+export interface WorkflowToolRevision {
+  readonly workflowVersion: string;
+  readonly firstRunAt: string;
+  readonly lastRunAt: string;
+  readonly compatibility: unknown;
+}
 
 /** One workflow as `workflows-list` shows it. */
 export interface WorkflowToolListing {
@@ -203,6 +224,42 @@ function issuesOf(error: WorkflowFileError): readonly WorkflowToolIssue[] {
   return issues === undefined || issues.length === 0
     ? [{ path: '', message: error.message }]
     : issues.map((issue) => ({ path: issue.path, message: issue.message }));
+}
+
+function documentOf(document: WorkflowToolDocument): WorkflowToolDocument {
+  return {
+    name: document.name,
+    trigger: { ...document.trigger },
+    steps: document.steps.map((step) => ({ ...step })),
+    ...(document.inputSchema === undefined ? {} : { inputSchema: { ...document.inputSchema } }),
+    ...(document.outputSchema === undefined ? {} : { outputSchema: { ...document.outputSchema } }),
+  };
+}
+
+function revisionOf(revision: {
+  readonly workflowVersion: string;
+  readonly firstRunAt: string;
+  readonly lastRunAt: string;
+  readonly compatibility: unknown;
+}): WorkflowToolRevision {
+  return {
+    workflowVersion: revision.workflowVersion,
+    firstRunAt: revision.firstRunAt,
+    lastRunAt: revision.lastRunAt,
+    compatibility:
+      revision.compatibility === null ||
+      (revision.compatibility as { readonly compatible?: boolean }).compatible === true
+        ? revision.compatibility
+        : revision.compatibility === undefined
+          ? null
+          : {
+              compatible: false,
+              reasons: [
+                ...((revision.compatibility as { readonly reasons: readonly string[] }).reasons ??
+                  []),
+              ],
+            },
+  };
 }
 
 /** The result a failed write is reported as, or rethrows an error that is not one of the five. */
@@ -473,11 +530,111 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     },
   });
 
+  const get = createTool({
+    name: 'workflows-get',
+    version: '1.0.0',
+    description:
+      'Read a workflow file, including its hash, text, and parsed document. Pass the hash to workflows-update as expectedHash. An invalid file returns its text, hash, code, and issues so you can repair it.',
+    input: z.object({ id: z.string().min(1).describe('The workflow identifier.') }),
+    metadata: {
+      readOnly: true,
+      title: 'Read workflow',
+      shortDescription: 'Read a workflow file and its parsed document.',
+    },
+    execute: async (input, context): Promise<WorkflowToolResult | Record<string, unknown>> => {
+      const calling = await caller(context, input.id, 'bureau.workflows:read');
+      if ('refusal' in calling) return calling.refusal;
+      const detail = await calling.workflows.get(input.id);
+      if (detail === undefined || detail.text === undefined || detail.hash === undefined) {
+        return { status: 'not-found', id: input.id };
+      }
+      if (detail.state === 'invalid') {
+        return {
+          status: 'invalid',
+          id: input.id,
+          hash: detail.hash,
+          text: detail.text,
+          code: detail.problem?.code ?? 'invalid-document',
+          issues:
+            detail.problem?.issues?.map((issue) => ({
+              path: issue.path,
+              message: issue.message,
+            })) ?? [],
+        };
+      }
+      return {
+        status: 'ok',
+        id: input.id,
+        hash: detail.hash,
+        text: detail.text,
+        document: documentOf(detail.document!),
+      };
+    },
+  });
+
+  const revisionsList = createTool({
+    name: 'workflows-revisions-list',
+    version: '1.0.0',
+    description:
+      'List the workflow revisions that have run, with their run times and compatibility verdicts.',
+    input: z.object({ id: z.string().min(1).describe('The workflow identifier.') }),
+    metadata: {
+      readOnly: true,
+      title: 'List workflow revisions',
+      shortDescription: 'List revisions that have run.',
+    },
+    execute: async (input, context): Promise<WorkflowToolResult | Record<string, unknown>> => {
+      const calling = await caller(context, input.id, 'bureau.workflows:read');
+      if ('refusal' in calling) {
+        return calling.refusal.status === 'not-found'
+          ? { status: 'ok', revisions: [] }
+          : calling.refusal;
+      }
+      const revisions = await calling.workflows.revisions(input.id);
+      if (revisions === undefined) return { status: 'not-found', id: input.id };
+      return { status: 'ok', revisions: revisions.map(revisionOf) };
+    },
+  });
+
+  const revisionsGet = createTool({
+    name: 'workflows-revisions-get',
+    version: '1.0.0',
+    description:
+      'Read one workflow revision that has run, including its document and compatibility verdict.',
+    input: z.object({
+      id: z.string().min(1).describe('The workflow identifier.'),
+      workflowVersion: z.string().min(1).describe('The revision workflowVersion.'),
+    }),
+    metadata: {
+      readOnly: true,
+      title: 'Read workflow revision',
+      shortDescription: 'Read a workflow revision document.',
+    },
+    execute: async (input, context): Promise<WorkflowToolResult | Record<string, unknown>> => {
+      const calling = await caller(context, input.id, 'bureau.workflows:read');
+      if ('refusal' in calling) return calling.refusal;
+      const revisions = await calling.workflows.revisions(input.id);
+      const revision = revisions?.find(
+        (candidate) => candidate.workflowVersion === input.workflowVersion,
+      );
+      if (revision === undefined) return { status: 'not-found', id: input.id };
+      return {
+        status: 'ok',
+        workflowVersion: revision.workflowVersion,
+        document: documentOf(revision.document),
+        compatibility: revision.compatibility,
+      };
+    },
+  });
+
   return {
     [create.name]: create,
     [update.name]: update,
     'workflows-pause': guarded('workflows-pause', true),
     'workflows-resume': guarded('workflows-resume', false),
     [list.name]: list,
+    [get.name]: get,
+    [revisionsList.name]: revisionsList,
+    [revisionsGet.name]: revisionsGet,
   };
 }
