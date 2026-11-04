@@ -34,7 +34,7 @@ import {
 import { type BureauWorkflows, WorkflowApplyError } from './workflow-runtime';
 
 /**
- * The names of the five tools within the `bureau` plugin. Hyphens, because provider tool-name
+ * The names of the eight tools within the `bureau` plugin. Hyphens, because provider tool-name
  * grammars exclude dots.
  */
 export const WORKFLOW_TOOL_NAMES = [
@@ -545,7 +545,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       const calling = await caller(context, input.id, 'bureau.workflows:read');
       if ('refusal' in calling) return calling.refusal;
       const detail = await calling.workflows.get(input.id);
-      if (detail === undefined || detail.text === undefined || detail.hash === undefined) {
+      if (detail === undefined || detail.hash === undefined) {
         return { status: 'not-found', id: input.id };
       }
       if (detail.state === 'invalid') {
@@ -553,13 +553,14 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           status: 'invalid',
           id: input.id,
           hash: detail.hash,
-          text: detail.text,
+          ...(detail.text === undefined ? {} : { text: detail.text }),
           code: detail.problem?.code ?? 'invalid-document',
           issues:
             detail.problem?.issues?.map((issue) => ({
               path: issue.path,
               message: issue.message,
-            })) ?? [],
+            })) ??
+            (detail.problem === undefined ? [] : [{ path: '$', message: detail.problem.message }]),
         };
       }
       return {

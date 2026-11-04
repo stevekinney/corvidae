@@ -1670,14 +1670,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     list: () => catalog.list(),
 
     async get(id) {
-      const listing = catalog.list().find((entry) => entry.id === id);
-      if (listing === undefined) return undefined;
-      const read = await catalog.readRaw(id).catch(() => undefined);
-      const file = catalog.find(id);
+      const snapshot = await catalog.readSnapshot(id);
+      if (snapshot === undefined) return undefined;
       return {
-        ...listing,
-        ...(read === undefined ? {} : { text: read.text }),
-        ...(file === undefined ? {} : { document: file.document }),
+        ...snapshot.listing,
+        ...(snapshot.text === undefined ? {} : { text: snapshot.text }),
+        ...(snapshot.file === undefined ? {} : { document: snapshot.file.document }),
         schedule: await liveSchedule(id),
       };
     },

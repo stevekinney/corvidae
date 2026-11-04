@@ -1,6 +1,6 @@
 /**
  * A Bureau with a workflow directory and an agent directory, for the tests of the workflow tools
- * (COR-1529). One file agent lists the five tools; its model is scripted to make one tool call a
+ * (COR-1529). One file agent lists the eight tools; its model is scripted to make one tool call a
  * test names and to record what the tool answered. No provider key is used.
  */
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -68,7 +68,7 @@ export interface WorkflowToolsHarness {
   /** The names of the tools each model call was offered, in order. */
   readonly offered: string[][];
   /**
-   * Writes an agent file under the identifier `id` that lists `tools` (the five workflow tools by
+   * Writes an agent file under the identifier `id` that lists `tools` (the eight workflow tools by
    * default). Each tool is set to `never`, so a call runs without waiting for a person; pass
    * `approval: 'default'` to leave `toolApproval` out and take the agent default (COR-1913).
    */

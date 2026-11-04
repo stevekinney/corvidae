@@ -128,6 +128,15 @@ export interface WorkflowFileCatalog {
   readonly readRaw: (
     id: string,
   ) => Promise<{ readonly hash: string; readonly text: string } | undefined>;
+  /** A single source snapshot of the listing and file text, for a coherent read. */
+  readonly readSnapshot: (id: string) => Promise<
+    | {
+        readonly listing: WorkflowListing;
+        readonly text?: string;
+        readonly file?: ReadyWorkflowFile;
+      }
+    | undefined
+  >;
   readonly create: (
     id: string,
     definition: WorkflowFileDefinition,
@@ -407,6 +416,54 @@ export function createWorkflowFileCatalog(
         throw new WorkflowFileError('not-utf8', `The file for "${id}" is not valid UTF-8.`);
       }
       return { hash: entry.hash, text };
+    },
+
+    async readSnapshot(id) {
+      if (!isNamespacedIdentifier(id)) checkIdentifier(id);
+      const entry = await readFresh(id);
+      if (entry === undefined) return undefined;
+      const text = decodeWorkflowFile(entry.bytes);
+      const parsed =
+        text === undefined ? undefined : parseWorkflowFile(id, text, host, entry.plugin);
+      const file =
+        entry.problem === undefined && parsed?.ok === true
+          ? {
+              ...parsed.file,
+              id,
+              hash: entry.hash,
+              version: workflowVersionOf(parsed.file.document),
+            }
+          : undefined;
+      const problem: WorkflowFileProblem | undefined =
+        entry.problem === undefined
+          ? parsed?.ok === false
+            ? parsed.problem
+            : text === undefined
+              ? { code: 'not-utf8', message: `The file for "${id}" is not valid UTF-8.` }
+              : undefined
+          : { code: entry.problem.code, message: entry.problem.message };
+      const listing: WorkflowListing = {
+        id,
+        state: file === undefined ? 'invalid' : 'ready',
+        owner,
+        title: file?.title ?? null,
+        description: file?.description ?? null,
+        agent: file?.agent ?? null,
+        paused: file?.paused ?? false,
+        inputSchema: file?.inputSchema ?? null,
+        outputSchema: file?.outputSchema ?? null,
+        triggerKind: file?.document.trigger.kind ?? null,
+        trigger: file?.trigger ?? null,
+        steps: file?.steps ?? null,
+        ...(entry.hash === '' ? {} : { hash: entry.hash }),
+        ...(file === undefined ? {} : { version: file.version }),
+        ...(problem === undefined ? {} : { problem }),
+      };
+      return {
+        listing,
+        ...(text === undefined ? {} : { text }),
+        ...(file === undefined ? {} : { file }),
+      };
     },
 
     create(id, definition, observer) {

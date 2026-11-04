@@ -357,6 +357,42 @@ describe('workflows-get and workflow revisions', () => {
     expect(result.result).toMatchObject({ status: 'ok', id: 'digest' });
   });
 
+  it('reads one coherent snapshot when an external edit arrives without a watcher refresh', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await Bun.write(join(harness.workflowsPath, 'digest.json'), '{"trigger":{"kind":"bad"}}');
+
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({
+      status: 'invalid',
+      id: 'digest',
+      text: '{"trigger":{"kind":"bad"}}',
+      code: 'invalid-document',
+    });
+    expect(read.result).not.toHaveProperty('document');
+  });
+
+  it('returns an invalid hash and explanation when external bytes are not UTF-8', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await Bun.write(join(harness.workflowsPath, 'digest.json'), new Uint8Array([0xff]));
+
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({ status: 'invalid', id: 'digest', code: 'not-utf8' });
+    expect(read.result).toHaveProperty('hash');
+    expect(read.result).toMatchObject({
+      issues: [{ path: '$', message: 'The file for "digest" is not valid UTF-8.' }],
+    });
+  });
+
   it('lists and reads the revisions that have run', async () => {
     const harness = await start();
     await harness.callTool('bureau__workflows-create', {
