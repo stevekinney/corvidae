@@ -300,39 +300,17 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     return { workflows, agent, actor: `agent-run:${runId}`, hookOrigin: identity.hookOrigin };
   }
 
-  const definition = (
-    agent: string,
-    input: {
-      trigger: Record<string, unknown>;
-      steps: Record<string, unknown>[];
-      title?: string | undefined;
-      description?: string | undefined;
-      paused?: boolean | undefined;
-      inputSchema?: Record<string, unknown> | undefined;
-      outputSchema?: Record<string, unknown> | undefined;
-    },
-  ): WorkflowFileDefinition => ({
-    ...(input.title === undefined ? {} : { title: input.title }),
-    ...(input.description === undefined ? {} : { description: input.description }),
-    agent,
-    ...(input.paused === undefined ? {} : { paused: input.paused }),
-    ...(input.inputSchema === undefined ? {} : { inputSchema: input.inputSchema }),
-    ...(input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema }),
-    trigger: input.trigger as WorkflowFileDefinition['trigger'],
-    steps: input.steps,
-  });
-
-  const validationDefinition = (agent: string, input: Record<string, unknown>) => {
-    const { id: _id, expectedHash: _expectedHash, ...candidate } = input;
+  const definition = (agent: string, input: Record<string, unknown>): WorkflowFileDefinition => {
+    const { name: _name, id: _id, expectedHash: _expectedHash, ...candidate } = input;
     return {
       ...candidate,
       agent,
       trigger: candidate['trigger'] as WorkflowFileDefinition['trigger'],
       steps: candidate['steps'] as WorkflowFileDefinition['steps'],
-    } as WorkflowFileDefinition;
+    };
   };
 
-  const createInput = z.object({
+  const createInput = z.looseObject({
     name: z.string().min(1).describe('What the workflow is called.'),
     id: z
       .string()
@@ -349,7 +327,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     steps: stepsSchema,
     paused: pausedSchema,
   });
-  const updateInput = guardedInput.extend({
+  const updateInput = z.looseObject({
+    ...guardedInput.shape,
     title: titleSchema,
     description: descriptionSchema,
     inputSchema: inputSchemaSchema,
@@ -400,7 +379,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           status: 'ok',
           ...(await calling.workflows.validate(
             input.id ?? 'draft',
-            validationDefinition(calling.agent, input),
+            definition(calling.agent, input),
             input.expectedHash,
           )),
         };

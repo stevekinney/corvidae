@@ -469,6 +469,36 @@ describe('workflows-validate and workflows-catalog', () => {
     expect(harness.bureau.workflows!.list()).toEqual(before);
   });
 
+  it('shares undeclared-key validation across create and update, without changing stored state', async () => {
+    const harness = await start();
+    const created = await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(created.result).toMatchObject({ status: 'ok', id: 'digest' });
+    const before = hashOf(harness, 'digest');
+
+    const update = await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: before,
+      trigger: TRIGGER,
+      steps: STEPS,
+      retries: 3,
+    });
+    expect(update.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(hashOf(harness, 'digest')).toBe(before);
+
+    const create = await harness.callTool('bureau__workflows-create', {
+      name: 'New draft',
+      trigger: TRIGGER,
+      steps: STEPS,
+      retries: 3,
+    });
+    expect(create.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(harness.bureau.workflows!.list().map((entry) => entry.id)).toEqual(['digest']);
+  });
+
   it('derives the catalog step kinds from Weft and includes the built-in activity and triggers', async () => {
     const harness = await start();
     const { result } = await harness.callTool('bureau__workflows-catalog', {});
