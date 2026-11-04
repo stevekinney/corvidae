@@ -101,6 +101,8 @@ function createChatProofBarrier(): ChatProofBarrier {
   const waiting = new Map<string, () => void>();
   return {
     wait(runId, signal) {
+      if (signal?.aborted)
+        return Promise.reject(new Error('The chat-proof barrier step was aborted.'));
       return new Promise<void>((resolve, reject) => {
         const release = (): void => {
           signal?.removeEventListener('abort', abort);
@@ -111,6 +113,7 @@ function createChatProofBarrier(): ChatProofBarrier {
           waiting.delete(runId);
           reject(new Error('The chat-proof barrier step was aborted.'));
         };
+        waiting.get(runId)?.();
         waiting.set(runId, release);
         signal?.addEventListener('abort', abort, { once: true });
       });
