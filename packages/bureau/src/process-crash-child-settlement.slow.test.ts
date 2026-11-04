@@ -37,7 +37,11 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     await crashed.exited;
     expect(crashed.signalCode).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
-    const { runId, childRunId } = readChildJson<{ runId: string; childRunId: string }>(markerPath);
+    const { runId, childRunId, contextId } = readChildJson<{
+      runId: string;
+      childRunId: string;
+      contextId: string;
+    }>(markerPath);
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     let generations = 0;
@@ -92,6 +96,15 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       expect(generations).toBe(1);
       const childRecord = await bureau.children.get({ parentRunId: runId, childRunId });
       expect(childRecord?.status).toBe('completed');
+      const inspection = await bureau.tasks.inspect(runId, { step: 0 });
+      expect(inspection?.steps).toHaveLength(1);
+      expect(inspection?.steps[0]).toMatchObject({ step: 0, messageId: expect.any(String) });
+      const session = await bureau.contexts.get(contextId);
+      expect(
+        Object.values(session?.conversationHistory.messages ?? {}).some((message) =>
+          JSON.stringify(message).includes('recovered'),
+        ),
+      ).toBe(true);
     } finally {
       await bureau.shutdown();
     }

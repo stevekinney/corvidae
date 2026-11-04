@@ -583,7 +583,7 @@ async function childWaitParked(): Promise<void> {
   if (child.outcome !== 'started') throw new Error(`child did not start: ${child.outcome}`);
   publishChildFile(
     markerPath as string,
-    JSON.stringify({ runId: parent.id, childRunId: 'child-1' }),
+    JSON.stringify({ runId: parent.id, childRunId: 'child-1', contextId: parent.contextId }),
   );
   allowParent.resolve();
   await pollUntil('parent park', async () => {
