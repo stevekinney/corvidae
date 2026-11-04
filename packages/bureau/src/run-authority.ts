@@ -28,12 +28,20 @@ export function createRunPrincipal(owner: string | undefined): AuthenticatedPrin
   return Object.freeze({ ...principal, owner });
 }
 
+/** Whether a run may use an operation against a resource. */
+export type RunAccessOptions = {
+  /** Whether the operation's scope may authorize access to a foreign owner. */
+  readonly allowOperatorScope?: boolean;
+};
+
 /** Answers a run's scope or owner-equality authorization request. */
 export function mayRunAccess(
   owner: string | undefined,
   operationScope: BureauScope,
   resourceOwner?: string,
+  options: RunAccessOptions = {},
 ): boolean {
+  if (options.allowOperatorScope === false) return owner !== undefined && owner === resourceOwner;
   const principal = createRunPrincipal(owner);
   return mayAccessOwnedResource({ principal, resourceOwner, operatorScope: operationScope });
 }
