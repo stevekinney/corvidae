@@ -5,6 +5,7 @@ import {
   type RuntimeServices,
   type RuntimeTimeoutHandle,
 } from '@lostgradient/lifecycle';
+import { createGovernedMemoryTools } from '@lostgradient/memory';
 import {
   AbortAgentRunError,
   type ActiveRun,
@@ -365,6 +366,7 @@ import type {
 } from './runtime-composition';
 import {
   createMaintenanceMemoryAuthority,
+  createToolMemoryAuthority,
   createRuntimeComposition,
   decodeScheduleRunMarker,
   isScheduledFireAuthority,
@@ -707,6 +709,46 @@ import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
 
 const BUREAU_AGENT_NAME = 'bureau';
+
+function createBureauMemoryTools(
+  memory: Parameters<typeof createGovernedMemoryTools>[0] | undefined,
+  memoryAuthority: Parameters<typeof createToolMemoryAuthority>[2],
+  tenantId: string,
+  ownerForRun: (runId: string | undefined) => Promise<string | undefined>,
+): Record<string, Tool> {
+  if (memory === undefined) return {};
+  return createGovernedMemoryTools(memory, {
+    resolveContext: async ({ toolName, requestContext }) => {
+      if (requestContext === undefined) return undefined;
+      const ownerId =
+        requestContext.runId === undefined
+          ? requestContext.authority.ownerId
+          : ((await ownerForRun(requestContext.runId)) ?? requestContext.authority.ownerId);
+      return {
+        collection: requestContext.agentId ?? BUREAU_AGENT_NAME,
+        authority: createToolMemoryAuthority(requestContext, toolName, memoryAuthority, {
+          tenantId,
+          ownerId,
+        }),
+      };
+    },
+  });
+}
+
+function assertNoMemoryToolCollision(
+  source: AgentSource | undefined,
+  memoryTools: Readonly<Record<string, Tool>>,
+): void {
+  const collision = Object.keys(memoryTools).find((name) =>
+    Object.hasOwn(source?.tools ?? {}, name),
+  );
+  if (collision !== undefined) {
+    throw new BureauError(
+      `"options.agentSource.tools" names a tool "${collision}", which Bureau provides itself`,
+      'BAD_REQUEST',
+    );
+  }
+}
 
 /** COR-1937: how many of a context's newest tasks `contexts.window` looks through for its latest step. */
 const CONTEXT_WINDOW_TASK_SCAN_LIMIT = 50;
@@ -3317,8 +3359,19 @@ async function constructBureau<const D extends AgentDefinitions>(
       settings: () => settingsOf().settings,
       authorityForRun: async (runId) => (await ownerOf({ kind: 'run', id: runId })) ?? undefined,
     });
+    const memoryTools = createBureauMemoryTools(
+      runtime.memory,
+      options.memoryAuthority,
+      bureauId,
+      async (runId) => (runId === undefined ? undefined : ownerOf({ kind: 'run', id: runId })),
+    );
+    const memoryToolsByName = Object.fromEntries(
+      Object.values(memoryTools).map((tool) => [tool.name, tool]),
+    );
+    assertNoMemoryToolCollision(options.agentSource, memoryToolsByName);
     agentToolCatalog = {
       ...options.agentSource?.tools,
+      ...memoryToolsByName,
       // COR-1879: the plugins' tools, by the `plugin:name` an agent file names them with.
       ...composedPlugins.tools,
       ...settingsTools,

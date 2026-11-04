@@ -1,6 +1,6 @@
 /**
  * COR-1890 — Bureau's own tools reach agents as the built-in `bureau` plugin's contributions:
- * `bureau:discover-agents` and the six `bureau:workflows-*` tools. The plugin is required, holds the
+ * `bureau:discover-agents` and the eight `bureau:workflows-*` tools. The plugin is required, holds the
  * name `bureau` before any other plugin, and the events its tools cause carry `source: 'bureau'`.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -57,6 +57,9 @@ const WORKFLOW_TOOLS = [
   'workflows-pause',
   'workflows-resume',
   'workflows-list',
+  'workflows-get',
+  'workflows-revisions-list',
+  'workflows-revisions-get',
 ];
 
 function twin(source: BureauPluginEntry['source'], location: string): BureauPluginEntry {
@@ -82,7 +85,7 @@ function twin(source: BureauPluginEntry['source'], location: string): BureauPlug
 }
 
 describe('the built-in bureau plugin', () => {
-  it('is a required, running, built-in plugin whose contributions are the six tools, by versioned id', async () => {
+  it('is a required, running, built-in plugin whose contributions are the nine tools, by versioned id', async () => {
     const harness = await start();
     const [listing] = await harness.bureau.plugins.list();
 
@@ -167,7 +170,7 @@ describe('the built-in bureau plugin', () => {
     ]);
   });
 
-  it('lists the six workflow tools in the tool catalog as Bureau’s, under bureau:', async () => {
+  it('lists the eight workflow tools in the tool catalog as Bureau’s, under bureau:', async () => {
     const harness = await start();
     const names = harness.bureau.agents.tools().map((tool) => tool.name);
     for (const name of WORKFLOW_TOOLS) expect(names).toContain(`bureau:${name}`);

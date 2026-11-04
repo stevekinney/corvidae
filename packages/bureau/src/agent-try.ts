@@ -38,6 +38,7 @@ export function isTryAgentName(agentName: string): boolean {
  */
 const REFUSED_TOOLS: Readonly<Record<string, string>> = Object.freeze({
   memory_store: 'writes memory',
+  memory_correct: 'writes memory',
   memory_forget: 'writes memory',
   scheduleSelf: 'schedules work',
   scheduleWakeup: 'schedules work',

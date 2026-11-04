@@ -24,10 +24,16 @@ import {
 } from './workflow-tools';
 import { mayRunAccess } from './run-authority';
 import { agentFileDirectory } from './sources/agent-file-directory';
+import { nodeAgentFileOperations } from './sources/agent-file-operations';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createBureauHandler } from './http/create-bureau-handler.ts';
 import { authentication, rpc } from './http/management/management-fixtures.test-support.ts';
+import {
+  contributionCatalog,
+  createTickerController,
+} from './testing/workflow-contributions.test-support';
+import { WORKFLOW_FILE_SIZE_LIMIT } from './workflow-file';
 
 const harnesses: WorkflowToolsHarness[] = [];
 afterEach(async () => {
@@ -80,7 +86,7 @@ describe('which agents are offered the tools', () => {
     expect(workflowToolsOf(harness.offered.at(-1))).toEqual([]);
   });
 
-  it('names the seven tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
+  it('names the workflow tools with hyphens, and lists them in the deployment’s tool catalog', async () => {
     expect([...WORKFLOW_TOOL_NAMES]).toEqual([
       'workflows-create',
       'workflows-update',
@@ -89,6 +95,9 @@ describe('which agents are offered the tools', () => {
       'workflows-pause',
       'workflows-resume',
       'workflows-list',
+      'workflows-get',
+      'workflows-revisions-list',
+      'workflows-revisions-get',
     ]);
     const harness = await start();
     await harness.callTool('bureau__workflows-list', {});
@@ -318,6 +327,225 @@ describe('what a model is shown of a tool’s input', () => {
       });
     },
   );
+});
+
+describe('workflows-get and workflow revisions', () => {
+  it('reads a workflow and updates it with the returned hash', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({ status: 'ok', id: 'digest', document: { name: 'digest' } });
+    const result = await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: (read.result as { hash: string }).hash,
+      trigger: { kind: 'schedule', spec: '2h' },
+      steps: STEPS,
+    });
+    expect(result.result).toMatchObject({ status: 'ok', id: 'digest' });
+  });
+
+  it('reads an invalid file and repairs it with its hash', async () => {
+    const harness = await start();
+    await Bun.write(join(harness.workflowsPath, 'digest.json'), '{"trigger":{"kind":"bad"}}');
+    await harness.bureau.workflows!.refresh();
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({
+      status: 'invalid',
+      id: 'digest',
+      text: '{"trigger":{"kind":"bad"}}',
+    });
+    expect((read.result as { hash: string }).hash).toHaveLength(64);
+    const result = await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: (read.result as { hash: string }).hash,
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(result.result).toMatchObject({ status: 'ok', id: 'digest' });
+  });
+
+  it('reads one coherent snapshot when an external edit arrives without a watcher refresh', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await Bun.write(join(harness.workflowsPath, 'digest.json'), '{"trigger":{"kind":"bad"}}');
+
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({
+      status: 'invalid',
+      id: 'digest',
+      text: '{"trigger":{"kind":"bad"}}',
+      code: 'invalid-document',
+    });
+    expect(read.result).not.toHaveProperty('document');
+  });
+
+  it('returns an invalid hash and explanation when external bytes are not UTF-8', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    await Bun.write(join(harness.workflowsPath, 'digest.json'), new Uint8Array([0xff]));
+
+    const read = await harness.callTool('bureau__workflows-get', { id: 'digest' });
+    expect(read.result).toMatchObject({ status: 'invalid', id: 'digest', code: 'not-utf8' });
+    expect(read.result).toHaveProperty('hash');
+    expect(read.result).toMatchObject({
+      issues: [{ path: '$', message: 'The file is not valid UTF-8.' }],
+    });
+  });
+
+  it('returns invalid details for an externally written identifier that cannot be loaded', async () => {
+    const harness = await start();
+    await Bun.write(join(harness.workflowsPath, 'Bad_Name.json'), workflowFileText('Bad_Name'));
+
+    const read = await harness.callTool('bureau__workflows-get', { id: 'Bad_Name' });
+    expect(read.result).toMatchObject({
+      status: 'invalid',
+      id: 'Bad_Name',
+      code: 'invalid-identifier',
+    });
+  });
+
+  it('reports oversized and unreadable registered workflow files without hash or text', async () => {
+    const harness = await start({
+      workflowOperations: {
+        ...nodeAgentFileOperations,
+        read: async (path) => {
+          if (path.endsWith('locked.json')) throw new Error('EACCES: permission denied');
+          return nodeAgentFileOperations.read(path);
+        },
+      },
+    });
+    await Bun.write(
+      join(harness.workflowsPath, 'huge.json'),
+      'x'.repeat(WORKFLOW_FILE_SIZE_LIMIT + 1),
+    );
+    await Bun.write(join(harness.workflowsPath, 'locked.json'), workflowFileText('locked'));
+
+    for (const [id, code] of [
+      ['huge', 'file-too-large'],
+      ['locked', 'unreadable'],
+    ] as const) {
+      const read = await harness.callTool('bureau__workflows-get', { id });
+      expect(read.result).toMatchObject({ status: 'invalid', id, code });
+      expect(read.result).not.toHaveProperty('hash');
+      expect(read.result).not.toHaveProperty('text');
+      expect(read.result).not.toHaveProperty('document');
+    }
+  });
+
+  it('preserves activity-version pins in workflow and revision documents', async () => {
+    const ticker = createTickerController();
+    const harness = await start({
+      overrides: { contributionCatalog: contributionCatalog({ activityVersion: '1', ticker }) },
+    });
+    await Bun.write(
+      join(harness.workflowsPath, 'pipeline.json'),
+      workflowFileText('pipeline', {
+        trigger: { kind: 'x:ticker', channel: 'alerts' },
+        steps: [{ kind: 'activity', handler: 'x:y', input: 'hello' }],
+      }),
+    );
+    await harness.bureau.workflows!.refresh();
+    const detail = await harness.callTool('bureau__workflows-get', { id: 'pipeline' });
+    expect(detail.result).toMatchObject({
+      status: 'ok',
+      document: { activityVersions: { 'x:y': '1' } },
+    });
+
+    const run = await harness.bureau
+      .durableEngine()!
+      .start('pipeline', null, { id: 'pipeline-run' });
+    await ticker.fire(null);
+    await run.result();
+    const listed = await harness.callTool('bureau__workflows-revisions-list', { id: 'pipeline' });
+    const revision = (listed.result as { revisions: Array<{ workflowVersion: string }> })
+      .revisions[0];
+    const revisionDetail = await harness.callTool('bureau__workflows-revisions-get', {
+      id: 'pipeline',
+      workflowVersion: revision!.workflowVersion,
+    });
+    expect(revisionDetail.result).toMatchObject({
+      status: 'ok',
+      document: { activityVersions: { 'x:y': '1' } },
+    });
+  });
+
+  it('lists and reads the revisions that have run', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const first = await harness.bureau.durableEngine()!.start('digest', null, { id: 'first-run' });
+    await first.result();
+    await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: hashOf(harness, 'digest'),
+      trigger: { kind: 'schedule', spec: '2h' },
+      steps: STEPS,
+    });
+    const second = await harness.bureau
+      .durableEngine()!
+      .start('digest', null, { id: 'second-run' });
+    await second.result();
+    const listed = await harness.callTool('bureau__workflows-revisions-list', { id: 'digest' });
+    const revisions = (listed.result as { revisions: Array<{ workflowVersion: string }> })
+      .revisions;
+    expect(revisions).toHaveLength(2);
+    const read = await harness.callTool('bureau__workflows-revisions-get', {
+      id: 'digest',
+      workflowVersion: revisions[0]!.workflowVersion,
+    });
+    expect(read.result).toMatchObject({
+      status: 'ok',
+      workflowVersion: revisions[0]!.workflowVersion,
+    });
+  });
+
+  it('hides reads from a2a and reports owner misses with their distinct shapes', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    for (const [tool, input] of [
+      ['workflows-get', { id: 'digest' }],
+      ['workflows-revisions-get', { id: 'digest', workflowVersion: 'missing' }],
+    ] as const) {
+      const result = await harness.callTool(`bureau__${tool}`, input, { principal: 'api-key:a2a' });
+      expect(result.result, tool).toEqual({ status: 'not-found', id: 'digest' });
+    }
+    const hiddenRevisions = await harness.callTool(
+      'bureau__workflows-revisions-list',
+      { id: 'digest' },
+      { principal: 'api-key:a2a' },
+    );
+    expect(hiddenRevisions.result).toEqual({ status: 'ok', revisions: [] });
+    for (const [tool, input] of [
+      ['workflows-get', { id: 'missing' }],
+      ['workflows-revisions-list', { id: 'missing' }],
+      ['workflows-revisions-get', { id: 'missing', workflowVersion: 'missing' }],
+    ] as const) {
+      const missing = await harness.callTool(`bureau__${tool}`, input);
+      expect(missing.result, tool).toEqual({
+        status: 'not-found',
+        id: 'missing',
+      });
+    }
+  });
 });
 
 describe('workflows-update, workflows-pause, workflows-resume', () => {

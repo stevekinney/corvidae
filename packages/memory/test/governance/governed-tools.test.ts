@@ -150,4 +150,121 @@ describe('createGovernedMemoryTools (model-facing, untrusted)', () => {
       principal: { kind: 'tool', id: 'memory_recall' },
     });
   });
+
+  it('corrects through supersession and preserves the original in history', async () => {
+    const tools = createGovernedMemoryTools(fixture.memory, {
+      resolveContext: ({ toolName, requestContext }) =>
+        requestContext === undefined
+          ? undefined
+          : {
+              collection: requestContext.agentId ?? 'house',
+              authority: createMemoryAuthority({
+                principal: { kind: 'tool', id: toolName },
+                tenantId: requestContext.authority.tenantId,
+                ownerId: requestContext.authority.ownerId,
+                purpose: 'tool',
+                capabilities: ['memory:get', 'memory:write'],
+                policyRevision: requestContext.authority.authorizationRevision,
+                projection: 'tool',
+              }),
+            },
+    });
+    const context = { requestContext: { ...requestContext('owner-a'), agentId: 'house' } };
+    const [hit] = await fixture.memory.search(principalA, 'spare key', { collection: 'house' });
+    expect(
+      await tools.correct.execute(
+        { id: hit!.record.id, content: 'The spare key is in the desk.' },
+        context,
+      ),
+    ).toEqual({
+      corrected: true,
+      id: hit!.record.id,
+    });
+    const corrected = await fixture.memory.search(principalA, 'spare key', { collection: 'house' });
+    expect(corrected.map(({ record }) => record.content)).toContain(
+      'The spare key is in the desk.',
+    );
+    const original = await fixture.memory.get(principalA, {
+      id: hit!.record.id,
+      collection: 'house',
+    });
+    expect(original?.content).toContain('under the mat');
+  });
+
+  it('isolates collections resolved from each agent call', async () => {
+    const tools = createGovernedMemoryTools(fixture.memory, {
+      resolveContext: ({ requestContext }) =>
+        requestContext === undefined
+          ? undefined
+          : {
+              collection: requestContext.agentId ?? 'unknown',
+              authority: createMemoryAuthority({
+                principal: { kind: 'tool', id: 'memory_store' },
+                tenantId: requestContext.authority.tenantId,
+                ownerId: requestContext.authority.ownerId,
+                purpose: 'tool',
+                capabilities: ['memory:write', 'memory:search'],
+                policyRevision: requestContext.authority.authorizationRevision,
+                projection: 'tool',
+              }),
+            },
+    });
+    await tools.store.execute(
+      { content: 'alpha-only memory' },
+      { requestContext: { ...requestContext('owner-a'), agentId: 'alpha' } },
+    );
+    await tools.store.execute(
+      { content: 'beta-only memory' },
+      { requestContext: { ...requestContext('owner-a'), agentId: 'beta' } },
+    );
+    const alpha = recallOutput.parse(
+      await tools.recall.execute(
+        { query: 'only memory' },
+        { requestContext: { ...requestContext('owner-a'), agentId: 'alpha' } },
+      ),
+    );
+    const beta = recallOutput.parse(
+      await tools.recall.execute(
+        { query: 'only memory' },
+        { requestContext: { ...requestContext('owner-a'), agentId: 'beta' } },
+      ),
+    );
+    expect(alpha.evidence).toContain('alpha-only memory');
+    expect(alpha.evidence).not.toContain('beta-only memory');
+    expect(beta.evidence).toContain('beta-only memory');
+    expect(beta.evidence).not.toContain('alpha-only memory');
+  });
+
+  it('honors an explicit resolver denial even when legacy options would allow the call', async () => {
+    const tools = createGovernedMemoryTools(fixture.memory, {
+      collection: 'house',
+      resolveContext: () => undefined,
+      resolveAuthority: () => principalA,
+    });
+    expect(
+      await tools.recall.execute(
+        { query: 'spare key' },
+        { requestContext: requestContext('owner-a') },
+      ),
+    ).toEqual({
+      found: false,
+      evidence: '',
+      withheld: 0,
+    });
+    expect(
+      await tools.store.execute(
+        { content: 'denied' },
+        { requestContext: requestContext('owner-a') },
+      ),
+    ).toEqual({ stored: false });
+    expect(
+      await tools.correct.execute(
+        { id: 'missing', content: 'denied' },
+        { requestContext: requestContext('owner-a') },
+      ),
+    ).toEqual({ corrected: false, id: 'missing' });
+    expect(
+      await tools.forget.execute({ id: 'missing' }, { requestContext: requestContext('owner-a') }),
+    ).toEqual({ deleted: false, reason: 'refused' });
+  });
 });

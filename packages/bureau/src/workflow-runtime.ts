@@ -124,6 +124,8 @@ const RUNS_READ_LIMIT_PER_WORKFLOW = 1000;
 export interface WorkflowDetail extends WorkflowListing {
   /** The file's text, for an editor that writes it back with `expectedHash`. */
   readonly text?: string;
+  /** The parsed Weft document, when the file is ready. */
+  readonly document?: WorkflowDocument;
   /** The workflow's native schedule, when it has a live one. */
   readonly schedule: {
     readonly id: string;
@@ -1679,12 +1681,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     list: () => catalog.list(),
 
     async get(id) {
-      const listing = catalog.list().find((entry) => entry.id === id);
-      if (listing === undefined) return undefined;
-      const read = await catalog.read(id).catch(() => undefined);
+      const snapshot = await catalog.readSnapshot(id);
+      if (snapshot === undefined) return undefined;
       return {
-        ...listing,
-        ...(read === undefined ? {} : { text: read.text }),
+        ...snapshot.listing,
+        ...(snapshot.text === undefined ? {} : { text: snapshot.text }),
+        ...(snapshot.file === undefined ? {} : { document: snapshot.file.document }),
         schedule: await liveSchedule(id),
       };
     },

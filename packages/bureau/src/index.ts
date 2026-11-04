@@ -597,8 +597,10 @@ export {
   createMemoryPersistHook,
   createMemoryRecallHook,
   createRunMemoryAuthority,
+  createToolMemoryAuthority,
   createRuntimeComposition,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
+  DEFAULT_TOOL_MEMORY_CAPABILITIES,
   resolveProviderGenerate,
 } from './runtime-composition';
 export {

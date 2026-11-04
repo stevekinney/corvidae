@@ -226,6 +226,7 @@ describe('trying an unsaved agent definition (COR-1911)', () => {
 describe('what a tried run cannot do (COR-1911)', () => {
   it.each([
     ['memory_store', 'writes memory'],
+    ['memory_correct', 'writes memory'],
     ['memory_forget', 'writes memory'],
     ['scheduleSelf', 'schedules work'],
     ['scheduleWakeup', 'schedules work'],

@@ -254,6 +254,8 @@ export interface BureauMemoryAuthorityOptions {
    * {@link BureauOptions.memory} unset to attach no memory hooks.
    */
   readonly runCapabilities?: readonly MemoryCapability[];
+  /** The independent ceiling for file-agent memory tools. Defaults to all tool capabilities. */
+  readonly toolCapabilities?: readonly MemoryCapability[];
   /** Recorded on every memory operation. Defaults to `'conversation-memory'`. */
   readonly purpose?: string;
 }
@@ -1835,7 +1837,7 @@ export interface BureauAgents<D extends AgentDefinitions> extends BureauAgentCat
    * catalog entry. The context's origin is `try`: it is left out of `contexts.list` unless that is
    * asked for, and its tasks out of `tasks.list` unless asked for by context or agent. Its runs
    * remember nothing, offer no `scheduleWakeup` or `decide`, start no child, and a definition that
-   * lists a tool that writes memory, schedules, or delegates (`memory_store`, `memory_forget`,
+   * lists a tool that writes memory, schedules, or delegates (`memory_store`, `memory_correct`, `memory_forget`,
    * `scheduleSelf`, `scheduleWakeup`, `workflows-*`, `settings-update`, `transfer_to_*`) is
    * refused. The agent lives in memory, for the context: deleting the context removes it, and a
    * restart ends it, leaving a context that can be read and deleted but not continued.
