@@ -628,6 +628,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   const cancelledParents = new Set<string>();
   const pendingRecovery = new Map<string, BureauChildRecord>();
   const pendingRecoveryToolCapabilities = new Map<string, readonly string[]>();
+  const pendingRecoveryAuthorizationFailures = new Map<string, string>();
 
   // -------------------------------------------------------------------------
   // Bookkeeping
@@ -1727,16 +1728,47 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   }
 
   async function prepareRecovery(): Promise<void> {
+    pendingRecovery.clear();
+    pendingRecoveryToolCapabilities.clear();
+    pendingRecoveryAuthorizationFailures.clear();
     const records = await store.listAll();
     for (const record of records) {
       if (record.status !== 'running') continue;
       pendingRecovery.set(record.childRunId, record);
-      if (record.grantId !== undefined && delegation !== undefined) {
-        const loaded = await store.loadGrant(record.grantId);
-        if (loaded.status === 'found' && loaded.grant.effectiveCapabilities.tools !== undefined) {
-          pendingRecoveryToolCapabilities.set(
+      if (record.grantId !== undefined) {
+        try {
+          if (delegation === undefined) {
+            pendingRecoveryAuthorizationFailures.set(
+              record.childRunId,
+              'no delegation secret is configured',
+            );
+          } else {
+            const loaded = await store.loadGrant(record.grantId);
+            if (loaded.status !== 'found') {
+              pendingRecoveryAuthorizationFailures.set(
+                record.childRunId,
+                `grant ${record.grantId} is ${loaded.status}`,
+              );
+            } else {
+              const verification = verifyDelegationGrant(
+                loaded.grant,
+                delegation.secret,
+                runtime.clock.now(),
+              );
+              if (!verification.valid) {
+                pendingRecoveryAuthorizationFailures.set(record.childRunId, verification.reason);
+              } else if (loaded.grant.effectiveCapabilities.tools !== undefined) {
+                pendingRecoveryToolCapabilities.set(
+                  record.childRunId,
+                  loaded.grant.effectiveCapabilities.tools,
+                );
+              }
+            }
+          }
+        } catch (error) {
+          pendingRecoveryAuthorizationFailures.set(
             record.childRunId,
-            loaded.grant.effectiveCapabilities.tools,
+            `could not read grant ${record.grantId}: ${describeError(error)}`,
           );
         }
       }
@@ -1771,6 +1803,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     }
     pendingRecovery.clear();
     pendingRecoveryToolCapabilities.clear();
+    pendingRecoveryAuthorizationFailures.clear();
   }
 
   function recoveredRunContext(
@@ -1780,6 +1813,10 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     | undefined {
     const record = pendingRecovery.get(runId);
     if (!record) return undefined;
+    const authorizationFailure = pendingRecoveryAuthorizationFailures.get(runId);
+    if (authorizationFailure !== undefined) {
+      throw new Error(`Child "${runId}" cannot resume: ${authorizationFailure}`);
+    }
     const channel = tracked.get(runId)?.channel;
     const delegatedToolCapabilities = pendingRecoveryToolCapabilities.get(runId);
     return {
