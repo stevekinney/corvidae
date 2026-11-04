@@ -32,4 +32,24 @@ describe('workspace runtime identity', () => {
     expect(second.bureau.id).toBe(first.bureau.id);
     expect(second.runtimeInstanceId).not.toBe(firstRuntime);
   });
+
+  test('keeps two homes isolated when names overlap, and closing B leaves A usable', async () => {
+    const homeA = await mkdtemp(join(tmpdir(), 'interborough-workspace-a-'));
+    const homeB = await mkdtemp(join(tmpdir(), 'interborough-workspace-b-'));
+    homes.push(homeA, homeB);
+    const [hostA, hostB] = await Promise.all([
+      startHost({ environment: { INTERBOROUGH_HOME: homeA }, port: 0 }),
+      startHost({ environment: { INTERBOROUGH_HOME: homeB }, port: 0 }),
+    ]);
+    hosts.push(hostA, hostB);
+
+    expect(hostA.workspaceId).not.toBe(hostB.workspaceId);
+    expect(hostA.database).not.toEqual(hostB.database);
+    expect(hostA.bureau.id).not.toBe(hostB.bureau.id);
+
+    await hostB.close();
+    hosts.splice(hosts.indexOf(hostB), 1);
+    expect(hostA.bureau.lifecycle).toBe('ready');
+    expect(hostA.bureau.id).toBe(hostA.workspaceId);
+  });
 });

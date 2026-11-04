@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { Bungalow } from './bungalow.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
 import { secretVariable, type RemoteConfiguration } from './remote-configuration.ts';
@@ -134,6 +136,41 @@ async function bindWorkspaceId(
   return expected;
 }
 
+/** Claim the workspace and S3 prefix together in the raw Postgres database. */
+export async function claimDatabaseWorkspace(
+  databaseUrl: string,
+  prefix: string,
+  workspaceId: string,
+): Promise<void> {
+  const databaseKey = createHash('sha256').update(databaseUrl).digest('hex');
+  const sql = new Bun.SQL(databaseUrl);
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS bungalow_workspace_markers (
+        database_key text PRIMARY KEY,
+        workspace_id text NOT NULL,
+        resource_prefix text NOT NULL
+      )
+    `;
+    await sql`
+      INSERT INTO bungalow_workspace_markers (database_key, workspace_id, resource_prefix)
+      VALUES (${databaseKey}, ${workspaceId}, ${prefix})
+      ON CONFLICT (database_key) DO NOTHING
+    `;
+    const rows = await sql`
+      SELECT workspace_id, resource_prefix
+      FROM bungalow_workspace_markers
+      WHERE database_key = ${databaseKey}
+    `;
+    const row = rows[0] as { workspace_id?: unknown; resource_prefix?: unknown } | undefined;
+    if (row?.workspace_id !== workspaceId || row.resource_prefix !== prefix) {
+      throw new BungalowStateError('The Postgres database is already bound to another workspace.');
+    }
+  } finally {
+    await sql.close();
+  }
+}
+
 /**
  * The deployment ID stored at `key`, created on the first open. Overlapping first opens each try
  * a conditional create and then all read the one value the store kept, so they agree. An object
@@ -236,6 +273,11 @@ export async function openRemoteBungalow(
   name: string,
   configuration: RemoteConfiguration,
   configuredWorkspaceId?: string,
+  databaseWorkspaceClaim: (
+    databaseUrl: string,
+    prefix: string,
+    workspaceId: string,
+  ) => Promise<void> = async () => {},
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
   const client = s3Client(configuration);
@@ -254,9 +296,12 @@ export async function openRemoteBungalow(
   }
   const existingWorkspace = await readObject(client, workspaceKey, 'read workspace identity');
   if (existingDeployment === undefined && existingWorkspace !== undefined) {
-    throw new BungalowStateError(
-      'The workspace identity exists without its persisted deployment identity.',
-    );
+    const racedDeployment = await readObject(client, deploymentKey, 'read deployment ID');
+    if (racedDeployment === undefined) {
+      throw new BungalowStateError(
+        'The workspace identity exists without its persisted deployment identity.',
+      );
+    }
   }
   const deploymentId = await loadDeploymentId(client, deploymentKey);
   const workspaceId = await bindWorkspaceId(
@@ -265,6 +310,7 @@ export async function openRemoteBungalow(
     deploymentId,
     configuredWorkspaceId,
   );
+  await databaseWorkspaceClaim(configuration.databaseUrl, prefix, workspaceId);
 
   let closed = false;
   const assertOpen = (): void => {

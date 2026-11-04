@@ -84,7 +84,7 @@ describe('openBungalow layout', () => {
   test('reopens an existing root without altering what is in it', async () => {
     const root = temporaryDirectory();
     await openAndClose(root);
-    writeFileSync(join(root, 'database.sqlite'), 'existing database');
+    writeFileSync(join(root, 'configuration.json'), '{}');
     using handle = await openIn(root);
     expect(await handle.readConfiguration()).toBe('{}');
   });
@@ -159,7 +159,7 @@ describe('deploymentId', () => {
 
   test('refuses a nonempty root without a persisted identity', async () => {
     const root = temporaryDirectory();
-    writeFileSync(join(root, 'configuration.json'), '{}');
+    writeFileSync(join(root, 'database.sqlite'), 'existing database');
     expect(await throwingRejectionOf(openIn(root))).toThrow(BungalowStateError);
     expect(existsSync(join(root, 'deployment-id'))).toBe(false);
     expect(readFileSync(join(root, 'database.sqlite'), 'utf8')).toBe('existing database');
@@ -441,7 +441,7 @@ describe('resolveOpenRoot', () => {
 describe('a root that already exists', () => {
   test('is tightened to 0700, along with its secrets directory', async () => {
     const root = temporaryDirectory();
-    mkdirSync(join(root, 'secrets'), { mode: 0o755 });
+    await openAndClose(root);
     chmodSync(root, 0o755);
     chmodSync(join(root, 'secrets'), 0o755);
     using handle = await openIn(root);

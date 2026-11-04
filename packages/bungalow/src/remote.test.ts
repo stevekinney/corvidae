@@ -70,7 +70,11 @@ function remoteEnvironment(endpoint: string, overrides: Environment = {}): Envir
 }
 
 function openRemote(endpoint: string, overrides: Environment = {}) {
-  return openBungalow({ name: TEST_NAME, environment: remoteEnvironment(endpoint, overrides) });
+  return openBungalow({
+    name: TEST_NAME,
+    environment: remoteEnvironment(endpoint, overrides),
+    databaseWorkspaceClaim: async () => {},
+  });
 }
 
 /** The message and `cause` of a failure hold no bucket, prefix, URL, credential, or secret. */
@@ -236,7 +240,7 @@ describe('remote mode: the lock', () => {
     };
     using remote = await openBungalowWithDependencies(
       { name: TEST_NAME, environment: remoteEnvironment(server.endpoint) },
-      { acquireLock },
+      { acquireLock, claimDatabaseWorkspace: async () => {} },
     );
     expect(remote.mode).toBe('remote');
     const local = await throwingRejectionOf(
@@ -505,7 +509,11 @@ describe('remote mode: the handle', () => {
   test('secrets are read from the environment as it was when the open began', async () => {
     const server = startServer();
     const environment = remoteEnvironment(server.endpoint);
-    const opening = openBungalow({ name: TEST_NAME, environment });
+    const opening = openBungalow({
+      name: TEST_NAME,
+      environment,
+      databaseWorkspaceClaim: async () => {},
+    });
     environment['BUNGALOW_TEST_SECRET_API_KEY'] = 'changed-after-the-open-began';
     environment['BUNGALOW_TEST_SECRET_LATE'] = 'added-after-the-open-began';
     using bungalow = await opening;

@@ -10,7 +10,11 @@ import { TEST_NAME } from './fixtures.test-support.ts';
 const environment: Record<string, string | undefined> = JSON.parse(process.argv[2] ?? '{}');
 
 try {
-  using bungalow = await openBungalow({ name: TEST_NAME, environment });
+  using bungalow = await openBungalow({
+    name: TEST_NAME,
+    environment,
+    databaseWorkspaceClaim: async () => {},
+  });
   const url = new URL(bungalow.s3Client()?.presign('probe') ?? 'http://invalid');
   process.stdout.write(
     `${JSON.stringify({

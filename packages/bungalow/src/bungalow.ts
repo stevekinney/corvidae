@@ -1,7 +1,6 @@
 import {
   closeSync,
   constants,
-  existsSync,
   fsyncSync,
   mkdtempSync,
   readdirSync,
@@ -15,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { ensureDirectory, openEntry, readEntry, syncDirectory } from './entry-guard.ts';
 import { processEnvironment } from './environment-configuration.ts';
-import { errorCode, sanitizeCause } from './error-code.ts';
+import { sanitizeCause } from './error-code.ts';
 import {
   BungalowError,
   BungalowFilesystemError,
@@ -24,7 +23,7 @@ import {
 } from './errors.ts';
 import { acquireRootLock, type RootLock } from './lock.ts';
 import { remoteConfiguration } from './remote-configuration.ts';
-import { openRemoteBungalow } from './remote.ts';
+import { claimDatabaseWorkspace, openRemoteBungalow } from './remote.ts';
 import {
   bungalowHomeVariable,
   resolveBungalowRoot,
@@ -39,7 +38,7 @@ const TEMPORARY_SUFFIX =
   '\\.\\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp';
 /** The only temporary files Bungalow writes in the root: beside `deployment-id` and `configuration.json`. */
 const ROOT_TEMPORARY_FILE = new RegExp(
-  `^(?:deployment-id|configuration\\.json)${TEMPORARY_SUFFIX}$`,
+  `^(?:deployment-id|configuration\\.json|workspace-id)${TEMPORARY_SUFFIX}$`,
 );
 /** The only temporary files Bungalow writes in `secrets/`: beside a valid secret key. */
 const SECRET_TEMPORARY_FILE = new RegExp(`^[a-z0-9][a-z0-9-]*${TEMPORARY_SUFFIX}$`);
@@ -128,6 +127,12 @@ export type OpenBungalowOptions = {
   readonly homeDirectory?: string;
   /** An operator-supplied workspace identity; omitted means the persisted deployment identity. */
   readonly workspaceId?: string;
+  /** Internal test seam for remote stores; production uses Bungalow's database claim. */
+  readonly databaseWorkspaceClaim?: (
+    databaseUrl: string,
+    prefix: string,
+    workspaceId: string,
+  ) => Promise<void>;
 };
 
 export type OpenTemporaryBungalowOptions = {
@@ -242,28 +247,7 @@ function bindWorkspaceId(path: string, deploymentId: string, configured?: string
     throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
   }
   if (marker === undefined) {
-    let descriptor: number | undefined;
-    try {
-      descriptor = openEntry(
-        path,
-        'workspace identity file',
-        'file',
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
-        SECRET_MODE,
-      );
-      writeFully(descriptor, Buffer.from(`${expected}\n`));
-      fsyncSync(descriptor);
-      closeSync(descriptor);
-      descriptor = undefined;
-      syncDirectory(dirname(path));
-    } catch (error) {
-      if (descriptor !== undefined) closeSync(descriptor);
-      if (errorCode(error) !== 'EEXIST') throw error;
-      const claimed = readEntry(path, 'workspace identity file')?.trim();
-      if (claimed !== expected) {
-        throw new BungalowStateError('The backing store belongs to a different workspace.');
-      }
-    }
+    writePrivateFile(path, `${expected}\n`);
   }
   return expected;
 }
@@ -275,6 +259,11 @@ export type OpenAtRootDependencies = {
   /** Replaces the rename that publishes a written configuration, so a test can fail it. */
   readonly renameConfiguration?: (from: string, to: string) => void;
   readonly workspaceId?: string;
+  readonly claimDatabaseWorkspace?: (
+    databaseUrl: string,
+    prefix: string,
+    workspaceId: string,
+  ) => Promise<void>;
 };
 
 /**
@@ -304,7 +293,8 @@ export function openAtRoot(
   try {
     const deploymentPath = join(root, 'deployment-id');
     const deployment = readEntry(deploymentPath, 'deployment-id file')?.trim();
-    if (deployment === undefined && existsSync(join(root, 'database.sqlite'))) {
+    const existingEntries = readdirSync(root).filter((entry) => entry !== 'lock');
+    if (deployment === undefined && existingEntries.length > 0) {
       throw new BungalowStateError(
         'The existing backing store has no persisted deployment identity.',
       );
@@ -457,7 +447,16 @@ export async function openBungalowWithDependencies(
   assertBungalowName(options.name);
   const environment = options.environment ?? processEnvironment();
   const remote = remoteConfiguration(options.name, environment);
-  if (remote !== undefined) return openRemoteBungalow(options.name, remote, options.workspaceId);
+  if (remote !== undefined) {
+    return openRemoteBungalow(
+      options.name,
+      remote,
+      options.workspaceId,
+      options.databaseWorkspaceClaim ??
+        dependencies.claimDatabaseWorkspace ??
+        claimDatabaseWorkspace,
+    );
+  }
   const variable = bungalowHomeVariable(options.name);
   const underTest =
     environment['NODE_ENV'] === 'test' || processEnvironment()['NODE_ENV'] === 'test';
