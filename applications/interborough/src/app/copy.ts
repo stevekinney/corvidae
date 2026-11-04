@@ -269,14 +269,16 @@ export const RUN_PAGE_COPY = {
 } as const;
 
 /**
- * What the application says when the server does not answer: the banner above the page, the title
- * a turned-off control shows, and the page that replaces a view with nothing to show.
+ * What the application says when the server does not answer: the title a turned-off control shows,
+ * and the page that replaces a view with nothing to show. The banner's own words come from Cinder's
+ * `offline`, `unreachable` and `stopped` presets, so no page words them differently.
  */
 export const CONNECTION_COPY = {
-  /** The banner's sentence; the age of the data on screen follows it. */
-  banner: 'The server is not answering. Changes are turned off until it is back.',
-  /** The title of a control that changes something while the server is unreachable. */
-  changesOff: 'Turned off while the server is unreachable',
+  /**
+   * The reason a control that changes something is off while the server is unreachable: its title,
+   * and the visible text beside a composer's Send.
+   */
+  changesOff: 'Off until it’s back',
   /** The page of a view that has nothing to show because its first request got no answer. */
   page: {
     title: 'Server unreachable',

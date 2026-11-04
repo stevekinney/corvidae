@@ -30,7 +30,12 @@
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { subscribeBureauInvalidation } from '../bureau-event-queries.ts';
   import { CONNECTION_COPY } from '../copy.ts';
-  import { ConnectionMonitor, provideConnection } from '../connection.svelte.ts';
+  import {
+    CONNECTION_MAX_ATTEMPTS,
+    connectionBannerPreset,
+    ConnectionMonitor,
+    provideConnection,
+  } from '../connection.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
@@ -108,17 +113,23 @@
   onDestroy(disarmWriteGuard);
   $effect(() => {
     const stopObserving = connection.observe(queryClient);
-    const goOffline = () => connection.reportUnreachable();
-    const comeOnline = () => void connection.check();
+    const goOffline = () => connection.setBrowserOffline(true);
+    const comeOnline = () => connection.setBrowserOffline(false);
+    // A page opened while the browser is already offline gets no `offline` event to say so.
+    // Untracked: a change to the monitor's own state must not re-run this effect.
+    untrack(() => {
+      if (connection.browserOffline) connection.reportUnreachable();
+    });
     window.addEventListener('offline', goOffline);
     window.addEventListener('online', comeOnline);
     return () => {
       stopObserving();
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('online', comeOnline);
-      connection.dispose();
     };
   });
+  // Disposed with the shell, not with the effect: the monitor outlives a re-run of the effect.
+  onDestroy(() => connection.dispose());
 
   const theme = new ThemeStore();
   const layout = provideLayoutPreferences(new LayoutPreferences());
@@ -256,12 +267,18 @@
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen />
     {#if connection.unreachable}
+      <!-- The preset writes the words (`bannerPresetCopy`): the browser offline, the server not
+           answering with its countdown, or the retries stopped. Retry now is always there. -->
       <Banner
-        preset="unreachable"
-        dismissible={false}
+        preset={connectionBannerPreset(connection)}
         dataUpdatedAt={connection.lastHealthyAt}
-        onRetry={() => void connection.check()}>{CONNECTION_COPY.banner}</Banner
-      >
+        retryInSeconds={connection.retryInSeconds}
+        attempt={connection.browserOffline || connection.attempt === 0
+          ? undefined
+          : connection.attempt}
+        maxAttempts={CONNECTION_MAX_ATTEMPTS}
+        onRetry={() => void connection.retryNow()}
+      />
     {/if}
     <AuthModeBanner mode={principalStore.bannerMode} />
     <PluginProblemsBanner unreachable={connection.unreachable} />

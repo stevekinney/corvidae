@@ -79,7 +79,7 @@ function mountSchedules(view: ViewName = 'schedules') {
 }
 
 describe('the view frame and the connection monitor', () => {
-  test('host stops while a loaded page is open: the data stays, dimmed, and the host is unreachable', async () => {
+  test('host stops while a loaded page is open: the data stays at full contrast, and the host is unreachable', async () => {
     const state = host('answers');
     const page = mountSchedules();
     await page.findByTestId('content');

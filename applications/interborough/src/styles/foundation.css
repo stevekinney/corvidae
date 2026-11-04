@@ -755,11 +755,9 @@ body:has(.weft-shell[data-connection='unreachable'])
 }
 
 /* A view that is showing what it showed last time (`data-stale`, set by the frame while the server
- * does not answer or its own request failed) is dimmed, so what is on screen reads as old. The one
- * thing left at full strength is what the frame says about the failure. */
-.weft-view[data-stale='true'] > :not(.weft-view__refresh-error) {
-  opacity: 0.6;
-}
+ * does not answer or its own request failed) keeps its text at full contrast: never dimmed with
+ * opacity, so old data stays readable. The banner says how old it is, and only the controls that
+ * change something read as off (the rule above). */
 
 .weft-view__stale-age {
   margin: 0 0 var(--cinder-space-3, 0.75rem);

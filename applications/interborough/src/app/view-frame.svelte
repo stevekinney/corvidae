@@ -13,8 +13,9 @@
    * gone, as every other 403 in the application does.
    *
    * A view that has shown its data keeps showing it when the next request fails. It stays ready
-   * and carries `data-stale`, which one rule in `foundation.css` dims, beside `data-stale-since`,
-   * the time of the data on screen. A view that was empty stays empty and is dimmed the same way.
+   * and carries `data-stale` beside `data-stale-since`, the time of the data on screen. Nothing
+   * dims it: old data keeps full contrast, and only the controls that change something are held
+   * back (`shell/changing-actions.ts`). A view that was empty stays empty the same way.
    * The server not answering (`../app/connection.svelte.ts`) makes every ready or empty view
    * stale, and the shell's banner says so. A server that answers with a fault makes only this view
    * stale, with no banner, and the frame says what failed above it, with Retry and the age of the

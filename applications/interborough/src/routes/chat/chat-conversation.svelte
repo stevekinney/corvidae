@@ -46,7 +46,7 @@
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY, CONNECTION_COPY, REVIEWS_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
@@ -830,6 +830,7 @@
       streaming={session.streaming}
       surfaceMode="transparent"
       disabled={connection.unreachable || session.disconnected || gone}
+      pausedReason={connection.unreachable ? CONNECTION_COPY.changesOff : undefined}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
         attachments: attachable && !gone,

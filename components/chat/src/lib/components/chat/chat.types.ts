@@ -311,6 +311,10 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    */
   disabled?: boolean | undefined;
   /**
+   * Why the composer is paused, as muted text beside Send while {@link ChatProps.disabled} is set, such as "Off until it’s back" while the server is unreachable. Send's accessible description includes it. Without it the composer pauses with no visible reason.
+   */
+  pausedReason?: string | undefined;
+  /**
    * Override or supplement the reasoning text for a message. Called per-message;
    * return a non-empty string or `{ content, summary? }` to show one reasoning
    * body, `undefined` to fall back to `message.metadata['cinder:reasoning']`,

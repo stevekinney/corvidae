@@ -1,6 +1,6 @@
 /**
  * What the application does when the server stops answering and when it comes back: the banner, the
- * data kept and dimmed, the controls that change something held back, the full page for a view
+ * data kept at full contrast, the controls that change something held back, the full page for a view
  * with nothing to keep, and a chat that gives up reconnecting after eight tries and offers
  * Reconnect (COR-1839).
  *
@@ -83,7 +83,7 @@ function recordOperations(page: Page): string[] {
 }
 
 test.describe('the server stops answering while a page with data is open', () => {
-  test('keeps the data, dimmed with its age, shows the banner, and clears when the probe finds the host', async ({
+  test('keeps the data at full contrast with its age, shows the banner, and clears when the probe finds the host', async ({
     page,
     pageErrors,
   }) => {
@@ -92,7 +92,7 @@ test.describe('the server stops answering while a page with data is open', () =>
     const frame = page.locator('[data-view="agents"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
     const row = page.locator('[data-agent="demo:assistant"]');
-    // What the frame dims is the page it frames: its direct children.
+    // What the frame frames: its direct children, which are never dimmed.
     const content = frame.locator(':scope > *').first();
     await expect(row).toBeVisible();
     await expect(banner(page)).toHaveCount(0);
@@ -102,14 +102,17 @@ test.describe('the server stops answering while a page with data is open', () =>
     await refocus(page);
 
     await expect(banner(page)).toBeVisible();
-    await expect(banner(page)).toContainText(CONNECTION_COPY.banner);
-    await expect(banner(page)).toContainText('Showing data from');
+    await expect(banner(page)).toContainText('Can’t reach the Interborough server.');
+    await expect(banner(page)).toContainText('Changes are off until it’s back.');
+    await expect(banner(page)).toContainText('Showing what loaded as of');
+    await expect(banner(page)).toContainText('Retrying in');
+    await expect(banner(page).getByRole('button', { name: 'Retry now' })).toBeVisible();
     await expect(frame).toHaveAttribute('data-stale', 'true');
     await expect(frame).toHaveAttribute('data-stale-since', /^\d{4}-\d{2}-\d{2}T/);
     await expect(frame).toHaveAttribute('data-state', 'ready');
-    // The last data is still on screen, and dimmed.
+    // The last data is still on screen, at full contrast.
     await expect(row).toBeVisible();
-    await expect(content).toHaveCSS('opacity', '0.6');
+    await expect(content).toHaveCSS('opacity', '1');
 
     await startHost(page);
 

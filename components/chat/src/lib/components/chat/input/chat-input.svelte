@@ -40,6 +40,11 @@
      * disabled, so it keeps focus and its text, and takes keys again once this clears.
      */
     paused?: boolean;
+    /**
+     * Why typing and sending are paused, as muted text beside Send. Shown only while `paused`, and
+     * named by Send's `aria-describedby`, so a screen reader hears the reason on the button.
+     */
+    pausedReason?: string | undefined;
     /** Whether a submission is in progress */
     sending?: boolean;
     /**
@@ -209,6 +214,7 @@
     composerAriaAutocomplete,
     disabled = false,
     paused = false,
+    pausedReason,
     sending = false,
     allowFollowUp = false,
     error,
@@ -329,6 +335,9 @@
   // Derived state
   const errorId = $derived(`${id}-error`);
   const shortcutDescriptionId = $derived(`${id}-shortcut-description`);
+  const pausedReasonId = $derived(`${id}-paused-reason`);
+  /** The reason Send is off, while the host has paused the composer and said why. */
+  const shownPausedReason = $derived(paused && pausedReason ? pausedReason : undefined);
   const isWhitespaceOnly = $derived(value.trim().length === 0);
   const hasPendingAttachments = $derived(
     attachments.some((a) => a.status === 'pending' || a.status === 'uploading'),
@@ -1232,6 +1241,10 @@
         />
       {/if}
 
+      {#if shownPausedReason !== undefined}
+        <span id={pausedReasonId} class="chat-input-paused-reason">{shownPausedReason}</span>
+      {/if}
+
       <!-- Send/Stop trigger stays mounted so Tooltip does not tear down while focus leaves it. -->
       <button
         bind:this={sendButtonRef}
@@ -1245,7 +1258,9 @@
           : showSendingSpinner
             ? 'Sending message'
             : 'Send message'}
-        aria-describedby={shortcutDescriptionId}
+        aria-describedby={shownPausedReason === undefined
+          ? shortcutDescriptionId
+          : `${shortcutDescriptionId} ${pausedReasonId}`}
       >
         {#if showStopButton}
           <Square class="cinder-icon-sm" />
@@ -1510,6 +1525,15 @@
     display: flex;
     align-items: center;
     gap: 2px;
+  }
+
+  /* The reason may wrap on a narrow composer, so it never pushes Send past the composer's edge. */
+  .chat-input-paused-reason {
+    min-width: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: 1.3;
+    text-align: end;
+    color: var(--cinder-text-muted);
   }
 
   .chat-input-status {
