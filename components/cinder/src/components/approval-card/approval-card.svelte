@@ -33,13 +33,11 @@
 </script>
 
 <script lang="ts">
-  import SignalHigh from '@lucide/svelte/icons/signal-high';
-  import SignalLow from '@lucide/svelte/icons/signal-low';
-  import SignalMedium from '@lucide/svelte/icons/signal-medium';
+  import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 
   import { classNames } from '../../utilities/class-names.ts';
+  import { formatRelativeTime, formatTimeOfDay } from '../../utilities/format-date.ts';
   import Badge from '../badge/badge.svelte';
-  import Button from '../button/button.svelte';
   import Card from '../card/card.svelte';
   import CodeBlock from '../code-block/code-block.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
@@ -48,8 +46,10 @@
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import ApprovalCardActions from './approval-card-actions.svelte';
+  import ApprovalCardRow from './approval-card-row.svelte';
   import {
     RISK_LABELS,
+    RISK_WORDS,
     STATE_DOT_STATUS,
     STATE_LABELS,
     dedupeFilePaths,
@@ -60,21 +60,13 @@
     prepareArgumentsPreview,
     resolveEffectiveApprovalState,
     sanitizeEnvironmentNames,
+    summarizeInput,
   } from './approval-card-state.ts';
   import type {
     ApprovalCardProps,
     ApprovalResolution,
     ApprovalState,
   } from './approval-card.types.ts';
-
-  // Stacked-bar signal icon in place of a text badge: the shape itself scans
-  // faster than reading "Medium risk", and the tooltip/aria-label carries the
-  // same word for anyone who needs it named explicitly.
-  const RISK_ICONS = {
-    low: SignalLow,
-    medium: SignalMedium,
-    high: SignalHigh,
-  } as const;
 
   const generatedId = $props.id();
 
@@ -92,6 +84,15 @@
     headingLevel = 3,
     layout = 'card',
     question,
+    source,
+    requestedAt,
+    consequence,
+    rememberScope,
+    decidedBy,
+    decidedAt,
+    disabledReason,
+    unavailableReason,
+    now,
     onResolve,
     id,
     class: customClassName,
@@ -99,8 +100,6 @@
   }: ApprovalCardProps = $props();
 
   const rootId = $derived(id ?? generatedId);
-  const rowInputId = $derived(`${rootId}-input`);
-  let rowInputOpen = $state(false);
   const rowQuestion = $derived(question ?? `Run ${tool.name}?`);
   const titleId = $derived(`${rootId}-title`);
 
@@ -130,10 +129,39 @@
   const hasResolutionCallback = $derived(typeof onResolve === 'function');
 
   const riskLabel = $derived(RISK_LABELS[tool.risk]);
-  const RiskIcon = $derived(RISK_ICONS[tool.risk]);
+  const riskWord = $derived(RISK_WORDS[tool.risk]);
+  const sourceText = $derived(source === undefined ? undefined : `Approval from ${source}`);
+  // How long ago the request was made only matters while someone can still answer it.
+  const requestedDate = $derived(requestedAt === undefined ? undefined : new Date(requestedAt));
+  const requestedValid = $derived(
+    requestedDate !== undefined && !Number.isNaN(requestedDate.getTime()),
+  );
+  const requestedText = $derived(
+    requestedValid &&
+      (effectiveState === 'pending' || effectiveState === 'unavailable') &&
+      requestedDate !== undefined
+      ? formatRelativeTime(requestedDate, { now })
+      : undefined,
+  );
+  const requestedIso = $derived(
+    requestedValid && requestedDate !== undefined ? requestedDate.toISOString() : undefined,
+  );
+  const decidedDate = $derived(decidedAt === undefined ? undefined : new Date(decidedAt));
+  const outcomeText = $derived(
+    effectiveState === 'pending' || effectiveState === 'unavailable'
+      ? undefined
+      : `${STATE_LABELS[effectiveState]}${decidedBy === undefined ? '' : ` by ${decidedBy}`}`,
+  );
+  const outcomeTime = $derived(
+    decidedDate !== undefined && !Number.isNaN(decidedDate.getTime())
+      ? formatTimeOfDay(decidedDate)
+      : undefined,
+  );
   const stateText = $derived(STATE_LABELS[effectiveState]);
   const readonlySummary = $derived(
-    `No approval actions are available because this request is ${stateText.toLowerCase()}.`,
+    effectiveState === 'unavailable' && unavailableReason !== undefined
+      ? unavailableReason
+      : `No approval actions are available because this request is ${stateText.toLowerCase()}.`,
   );
   // Only a live countdown is shown. Once the state itself reads "Expired" (via
   // StatusDot's label), a second "Expired" badge would just repeat the same word.
@@ -152,13 +180,14 @@
   const hasArgumentsPreview = $derived(operation.argsPreview !== undefined);
   const editableArgumentsValue = $derived(normalizeArgumentsPreviewValue(operation.argsPreview));
   const argumentsPreview = $derived(prepareArgumentsPreview(editableArgumentsValue));
+  const inputPairs = $derived(hasArgumentsPreview ? summarizeInput(operation.argsPreview) : []);
   const canEditArguments = $derived(editableArgs && hasArgumentsPreview);
   const filesTouched = $derived(dedupeFilePaths(operation.filesTouched ?? []));
   const filesTouchedLabel = $derived(
     `${filesTouched.length} file${filesTouched.length === 1 ? '' : 's'}`,
   );
   const environmentNames = $derived(sanitizeEnvironmentNames(env));
-  // The row's View input discloses only what the operation carries.
+  // The row's Input discloses only what the operation carries.
   const hasRowInput = $derived(
     (operation.kind === 'command' && Boolean(operation.command)) ||
       (operation.kind === 'patch' && Boolean(operation.diff)) ||
@@ -261,6 +290,20 @@
   {/if}
 {/snippet}
 
+{#snippet rowInputBody()}
+  {@render operationPreview()}
+  {@render filesTouchedSection()}
+  {#if hasArgumentsPreview}
+    <div class="cinder-approval-card__section">
+      <PayloadInspector
+        value={argumentsPreview.value}
+        truncated={argumentsPreview.truncated}
+        label="Input"
+      />
+    </div>
+  {/if}
+{/snippet}
+
 {#if layout === 'row'}
   <article
     {...rest}
@@ -271,59 +314,27 @@
     data-cinder-risk={tool.risk}
     data-cinder-layout="row"
   >
-    <div class="cinder-approval-card__row">
-      <span
-        class="cinder-approval-card__risk-icon"
-        role="img"
-        aria-label={riskLabel}
-        data-cinder-risk={tool.risk}
-      >
-        <RiskIcon size={16} strokeWidth={2.25} aria-hidden="true" />
-      </span>
-      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__row-question">
-        {rowQuestion}
-      </svelte:element>
-      {#if !isActionable || !hasResolutionCallback}
-        <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
-      {/if}
-      {#if hasRowInput}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-expanded={rowInputOpen}
-          aria-controls={rowInputId}
-          onclick={() => (rowInputOpen = !rowInputOpen)}
-        >
-          View input
-        </Button>
-      {/if}
-      {#if isActionable && hasResolutionCallback}
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          mutating
-          onclick={() => resolveIfActionable({ decision: 'deny', remember: false })}
-        >
-          Deny
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          mutating
-          onclick={() => resolveIfActionable({ decision: 'approve', remember: false })}
-        >
-          Approve
-        </Button>
-      {/if}
-    </div>
-    <div id={rowInputId} class="cinder-approval-card__row-input" hidden={!rowInputOpen}>
-      {@render operationPreview()}
-      {@render filesTouchedSection()}
-      {@render argumentsPreviewSection()}
-    </div>
+    <ApprovalCardRow
+      {rootId}
+      {titleTag}
+      {titleId}
+      {tool}
+      approvalState={effectiveState}
+      question={rowQuestion}
+      {source}
+      {requestedText}
+      {requestedIso}
+      {consequence}
+      {rememberScope}
+      {outcomeText}
+      {outcomeTime}
+      {disabledReason}
+      {unavailableReason}
+      requestKey={idempotencyKey}
+      {inputPairs}
+      inputBody={hasRowInput ? rowInputBody : undefined}
+      resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
+    />
   </article>
 {:else}
   <article
@@ -337,26 +348,59 @@
     <Card padding="none" class="cinder-approval-card__surface">
       {#snippet header()}
         <div class="cinder-approval-card__header">
+          <Tooltip text={riskLabel} describe={false}>
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
+            <span
+              class="cinder-approval-card__risk-icon"
+              role="img"
+              tabindex="0"
+              aria-label={riskLabel}
+              data-cinder-risk={tool.risk}
+            >
+              <ShieldAlert size={16} strokeWidth={2} aria-hidden="true" />
+            </span>
+          </Tooltip>
           <div class="cinder-approval-card__title-group">
+            {#if sourceText !== undefined || requestedText !== undefined}
+              <p class="cinder-approval-card__eyebrow">
+                {#if sourceText !== undefined}<span>{sourceText}</span>{/if}
+                {#if sourceText !== undefined && requestedText !== undefined}
+                  <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+                {/if}
+                {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time
+                  >{/if}
+              </p>
+            {/if}
             <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title">
-              Approval required for
-              <span class="cinder-approval-card__title-tool">{tool.name}</span>
+              {#if question !== undefined}
+                {question}
+              {:else}
+                Approval required for
+                <span class="cinder-approval-card__title-tool">{tool.name}</span>
+              {/if}
             </svelte:element>
+            {#if question !== undefined}
+              <p class="cinder-approval-card__tool-line">
+                {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
+                    >{tool.label}</span
+                  >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code>
+              </p>
+            {/if}
+            <p class="cinder-approval-card__risk-line">
+              <span class="cinder-approval-card__risk-word">{riskWord}</span>
+              {#if tool.irreversible}
+                <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+                <span class="cinder-approval-card__undone">Can't be undone</span>
+              {/if}
+            </p>
+            {#if consequence !== undefined}
+              <p class="cinder-approval-card__consequence">{consequence}</p>
+            {/if}
           </div>
           <div class="cinder-approval-card__badges" role="group" aria-label="Approval status">
-            <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
-            <Tooltip text={riskLabel} describe={false}>
-              <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
-              <span
-                class="cinder-approval-card__risk-icon"
-                role="img"
-                tabindex="0"
-                aria-label={riskLabel}
-                data-cinder-risk={tool.risk}
-              >
-                <RiskIcon size={16} strokeWidth={2.25} aria-hidden="true" />
-              </span>
-            </Tooltip>
+            {#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
+              <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
+            {/if}
             {#if expirationText}
               <Badge variant="warning" size="sm">
                 {expirationText}
@@ -449,6 +493,9 @@
           <ApprovalCardActions
             idBase={rootId}
             requestKey={idempotencyKey}
+            toolName={tool.label ?? tool.name}
+            {rememberScope}
+            {disabledReason}
             {canEditArguments}
             argumentsValue={editableArgumentsValue}
             resolve={resolveIfActionable}

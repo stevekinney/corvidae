@@ -1,7 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Button from '../button/button.svelte';
+  import Checkbox from '../checkbox/checkbox.svelte';
   import { default as JsonEditor } from '../json-editor/index.ts';
+  import Textarea from '../textarea/textarea.svelte';
   import { formatEditableArguments, parseJsonText } from './approval-card-state.ts';
   import type { ApprovalResolution, ApprovalResolutionDecision } from './approval-card.types.ts';
 
@@ -10,6 +12,12 @@
     idBase: string;
     /** Identity of the approval request; form state resets when it changes. */
     requestKey: string;
+    /** The tool's name as the approver reads it, written in the checkbox label. */
+    toolName: string;
+    /** The checkbox's scope ("the rest of this chat"), or `undefined` when the tool never offers it. */
+    rememberScope: string | undefined;
+    /** Why Deny and Approve are off, when they are. */
+    disabledReason: string | undefined;
     /** Whether the approve-with-edits flow is available. */
     canEditArguments: boolean;
     /** Normalized arguments value used to seed the JSON editor. */
@@ -18,10 +26,19 @@
     resolve: (resolution: ApprovalResolution) => void;
   };
 
-  let { idBase, requestKey, canEditArguments, argumentsValue, resolve }: ApprovalCardActionsProps =
-    $props();
+  let {
+    idBase,
+    requestKey,
+    toolName,
+    rememberScope,
+    disabledReason,
+    canEditArguments,
+    argumentsValue,
+    resolve,
+  }: ApprovalCardActionsProps = $props();
 
   const reasonId = $derived(`${idBase}-resolution-reason`);
+  const disabledReasonId = $derived(`${idBase}-disabled-reason`);
   const editRegionId = $derived(`${idBase}-edit-region`);
 
   let resolutionReason = $state('');
@@ -103,31 +120,37 @@
 
 <div class="cinder-approval-card__actions">
   <div class="cinder-approval-card__resolution-controls">
-    <label class="cinder-approval-card__control-label" for={reasonId}>Reason</label>
-    <textarea
+    <Textarea
       id={reasonId}
-      class="cinder-approval-card__textarea cinder-approval-card__textarea--reason"
       bind:value={resolutionReason}
-      rows="2"></textarea>
+      label="Note (optional)"
+      description="Saved with your decision. If you deny, the agent reads it as the reason."
+      placeholder="Add a note for the agent or the record"
+      rows={2}
+    />
   </div>
-
+  {#if rememberScope !== undefined}
+    <div class="cinder-approval-card__remember">
+      <Checkbox
+        bind:checked={rememberResolution}
+        label={`Allow ${toolName} for ${rememberScope}`}
+        mutating
+      />
+    </div>
+  {/if}
+  {#if disabledReason !== undefined}
+    <p id={disabledReasonId} class="cinder-approval-card__reason">{disabledReason}</p>
+  {/if}
   <div class="cinder-approval-card__action-row" role="group" aria-label="Approval actions">
-    <label class="cinder-approval-card__remember-control">
-      <input type="checkbox" bind:checked={rememberResolution} />
-      <span>Don't ask again for operations like this</span>
-    </label>
-
     <div class="cinder-approval-card__action-buttons">
       <Button
         type="button"
-        variant="ghost"
+        variant="secondary"
         mutating
-        class="cinder-approval-card__dismiss"
-        onclick={() => emitResolution('cancel')}
+        disabled={disabledReason !== undefined}
+        aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
+        onclick={() => emitResolution('deny')}
       >
-        Dismiss
-      </Button>
-      <Button type="button" variant="soft-danger" mutating onclick={() => emitResolution('deny')}>
         Deny
       </Button>
       {#if canEditArguments}
@@ -142,12 +165,18 @@
           Approve with edits
         </Button>
       {/if}
-      <Button type="button" variant="primary" mutating onclick={() => emitResolution('approve')}>
+      <Button
+        type="button"
+        variant="primary"
+        mutating
+        disabled={disabledReason !== undefined}
+        aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
+        onclick={() => emitResolution('approve')}
+      >
         Approve
       </Button>
     </div>
   </div>
-
   {#if editingArguments && canEditArguments}
     <div id={editRegionId} class="cinder-approval-card__editor">
       <JsonEditor

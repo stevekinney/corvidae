@@ -23,9 +23,27 @@
     },
     {
       "id": "row",
-      "title": "Row approval",
-      "description": "One compact row for an approval inside a chat transcript whose reply already explains the request.",
-      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Run issue-refund for $42.10?\"\n  tool={{ name: 'issue-refund', risk: 'medium' }}\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: '4471', amount: 42.1 },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+      "title": "Approval row",
+      "description": "The shared approval row: risk glyph and question, the tool and where it came from, the consequence, Input, Add a note, Deny and Approve.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4471 for $42.00?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:38:00.000Z\"\n  consequence=\"Sends $42.00 back to the original card\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4471, amount: '$42.00', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-01\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-remember",
+      "title": "Approval row with Allow for this chat",
+      "description": "A tool set to On changes offers a checkbox on its own line before Deny and Approve; a tool set to Always never does.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Triage the refund request for order 4398?\"\n  tool={{ name: 'triage-refunds', label: 'Triage refunds', risk: 'medium' }}\n  source=\"Tool runner\"\n  requestedAt=\"2026-11-02T10:44:00.000Z\"\n  rememberScope=\"the rest of this chat\"\n  operation={{\n    kind: 'other',\n    argsPreview: { orderId: 4398, amount: '$27.25', reason: 'Arrived damaged' },\n  }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-02\"\n  state=\"pending\"\n  onResolve={() => undefined}\n/>\n"
+    },
+    {
+      "id": "row-unavailable",
+      "title": "Unavailable approval",
+      "description": "A held approval nobody can answer now shows a neutral word and the reason, with no decision buttons.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Publish notes for 2.4?\"\n  tool={{ name: 'publish-notes', label: 'Publish notes', risk: 'medium' }}\n  source=\"Release helper\"\n  requestedAt=\"2026-11-02T10:30:00.000Z\"\n  operation={{ kind: 'other', argsPreview: { version: '2.4', changes: 12 } }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-03\"\n  state=\"unavailable\"\n  unavailableReason=\"Release helper is unavailable, so this can't be answered now. It returns when the Demo plugin is enabled.\"\n/>\n"
+    },
+    {
+      "id": "row-denied",
+      "title": "Denied approval",
+      "description": "A decided approval stays in the transcript as a neutral decision with who decided and when.",
+      "code": "<script lang=\"ts\">\n  import { ApprovalCard } from '@lostgradient/cinder';\n</script>\n\n<ApprovalCard\n  layout=\"row\"\n  question=\"Refund order 4398 for $27.25?\"\n  tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}\n  source=\"Tool runner\"\n  operation={{ kind: 'other', argsPreview: { orderId: 4398, amount: '$27.25' } }}\n  policyVersion=\"policy-2026-06\"\n  idempotencyKey=\"approval-row-04\"\n  state=\"denied\"\n  decidedBy=\"you\"\n  decidedAt=\"2026-11-02T10:40:00.000Z\"\n/>\n"
     }
   ]
 }

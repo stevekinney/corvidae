@@ -7,11 +7,19 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Human-readable tool name requesting approval."
+          "description": "The tool's identifier, such as `issue-refund`. The `row` layout writes it small and monospaced."
+        },
+        "label": {
+          "type": "string",
+          "description": "The tool's human name, such as `Issue refund`, written before the identifier. Omit it when the surrounding rows already name the call."
         },
         "risk": {
           "enum": ["low", "medium", "high"],
-          "description": "Risk level assigned by the policy evaluator."
+          "description": "Risk level assigned by the policy evaluator. Read as Reads, Changes things or Dangerous in muted text; the glyph carries the alert."
+        },
+        "irreversible": {
+          "type": "boolean",
+          "description": "True when the operation cannot be reversed. Adds \"Can't be undone\", which never breaks across lines."
         }
       },
       "additionalProperties": false,
@@ -160,7 +168,15 @@
       "description": "Optional ISO timestamp after which a pending approval is treated as expired."
     },
     "state": {
-      "enum": ["pending", "approved", "approved_with_edits", "denied", "expired", "cancelled"],
+      "enum": [
+        "pending",
+        "approved",
+        "approved_with_edits",
+        "denied",
+        "expired",
+        "cancelled",
+        "unavailable"
+      ],
       "description": "Persisted approval state."
     },
     "editableArgs": {
@@ -175,12 +191,44 @@
     },
     "layout": {
       "enum": ["card", "row"],
-      "description": "Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`.",
+      "description": "Layout: the full `card`, or the shared `row`, one approval inside a transcript or beneath a tool call. Default `'card'`.",
       "default": "card"
     },
     "question": {
       "type": "string",
-      "description": "Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`."
+      "description": "The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`."
+    },
+    "source": {
+      "type": "string",
+      "description": "Who asked, written after \"Approval from\": `Tool runner`, or `the agent`."
+    },
+    "requestedAt": {
+      "type": "string",
+      "description": "When the approval was asked, as an ISO timestamp. Written as relative time (\"4 min ago\") while the approval is pending."
+    },
+    "consequence": {
+      "type": "string",
+      "description": "What approving does, in one line, such as `Sends $42.00 back to the original card`."
+    },
+    "rememberScope": {
+      "type": "string",
+      "description": "Offers \"Allow <tool> for <scope>\" as a checkbox on its own line before Deny and Approve, with the scope written after \"for\", such as `the rest of this chat`. Leave it out for a tool set to Always."
+    },
+    "decidedBy": {
+      "type": "string",
+      "description": "Who decided, once the approval is decided: `you`. Written as \"Denied by you\"."
+    },
+    "decidedAt": {
+      "type": "string",
+      "description": "When the approval was decided, as an ISO timestamp, written as a time of day after the outcome."
+    },
+    "disabledReason": {
+      "type": "string",
+      "description": "Why Deny and Approve are off while the approval is still pending. Written above the actions and named by both buttons."
+    },
+    "unavailableReason": {
+      "type": "string",
+      "description": "Why an `unavailable` approval cannot be answered now, written beneath it."
     },
     "class": {
       "type": "string",
@@ -194,7 +242,7 @@
       {
         "name": "onResolve",
         "reason": "function-or-snippet",
-        "description": "Called for approve, approve-with-edits, deny, and dismiss with the complete resolution payload."
+        "description": "Called for approve, approve-with-edits, and deny with the complete resolution payload."
       }
     ]
   }

@@ -7,10 +7,14 @@ export type ApprovalCardHeadingLevel = 2 | 3 | 4 | 5 | 6;
 
 /** @schemaObject */
 export type ApprovalTool = {
-  /** Human-readable tool name requesting approval. */
+  /** The tool's identifier, such as `issue-refund`. The `row` layout writes it small and monospaced. */
   name: string;
-  /** Risk level assigned by the policy evaluator. */
+  /** The tool's human name, such as `Issue refund`, written before the identifier. Omit it when the surrounding rows already name the call. */
+  label?: string;
+  /** Risk level assigned by the policy evaluator. Read as Reads, Changes things or Dangerous in muted text; the glyph carries the alert. */
   risk: ApprovalToolRisk;
+  /** True when the operation cannot be reversed. Adds "Can't be undone", which never breaks across lines. */
+  irreversible?: boolean;
 };
 
 /** @schemaObject */
@@ -93,8 +97,19 @@ export type ApprovalOperation =
 
 export type ApprovalOperationSchema = ApprovalOperation;
 
+/**
+ * Where an approval stands. `unavailable` is a held approval nobody can answer right now, such
+ * as one that belongs to an agent whose plugin is disabled; it shows a neutral word and
+ * `unavailableReason`, and no Deny or Approve.
+ */
 export type ApprovalState =
-  'pending' | 'approved' | 'approved_with_edits' | 'denied' | 'expired' | 'cancelled';
+  | 'pending'
+  | 'approved'
+  | 'approved_with_edits'
+  | 'denied'
+  | 'expired'
+  | 'cancelled'
+  | 'unavailable';
 
 export type ApprovalResolutionDecision = 'approve' | 'approve_with_edits' | 'deny' | 'cancel';
 
@@ -108,21 +123,21 @@ export type ApprovalResolution = {
    * @schemaPermissive
    */
   editedArgs?: unknown;
-  /** Optional human-readable reason supplied by the approver. */
+  /** The approver's note, saved with the decision. When the decision is Deny, the agent reads it as the reason. */
   reason?: string;
   /** Whether the approver asked the host to remember this approval boundary. */
   remember: boolean;
 };
 
 /**
- * Layout of an approval. `card` is the full review surface; `row` is one compact
- * row (question, View input, Deny, Approve) for an approval inside a transcript
- * whose reply already explains the request.
+ * Layout of an approval. `card` is the full review surface; `row` is the shared approval row
+ * (glyph and question, a line naming the tool and where it came from, the consequence, Input,
+ * Add a note, Deny and Approve) for an approval inside a transcript or beneath a tool call.
  */
 export type ApprovalCardLayout = 'card' | 'row';
 
 export type ApprovalCardCallbacks = {
-  /** Called for approve, approve-with-edits, deny, and dismiss with the complete resolution payload. */
+  /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
 };
 
@@ -151,10 +166,32 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     editableArgs?: boolean;
     /** Heading level for the card title; section headings render one level deeper. Default `3`. */
     headingLevel?: ApprovalCardHeadingLevel;
-    /** Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`. */
+    /** Layout: the full `card`, or the shared `row`, one approval inside a transcript or beneath a tool call. Default `'card'`. */
     layout?: ApprovalCardLayout;
-    /** Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`. */
+    /** The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. */
     question?: string;
+    /** Who asked, written after "Approval from": `Tool runner`, or `the agent`. */
+    source?: string;
+    /** When the approval was asked. Written as relative time ("4 min ago") while the approval is pending. */
+    requestedAt?: string | number | Date;
+    /** What approving does, in one line, such as `Sends $42.00 back to the original card`. */
+    consequence?: string;
+    /**
+     * Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with
+     * the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to
+     * Always, which never offers it. Checking it sets `remember` on the resolution.
+     */
+    rememberScope?: string;
+    /** Who decided, once the approval is decided: `you`. Written as "Denied by you". */
+    decidedBy?: string;
+    /** When the approval was decided, written as a time of day after the outcome ("Denied by you · 10:40 AM"). */
+    decidedAt?: string | number | Date;
+    /** Why Deny and Approve are off while the approval is still pending, such as `Approving is off until Interborough is reachable`. Written above the actions and named by both buttons. */
+    disabledReason?: string;
+    /** Why an `unavailable` approval cannot be answered now, written beneath it. */
+    unavailableReason?: string;
+    /** The reference time for relative times. Defaults to now. */
+    now?: Date | number;
     /** Additional CSS classes applied to the root element. */
     class?: string;
   };
@@ -188,11 +225,27 @@ export type ApprovalCardSchemaProps = {
   editableArgs?: boolean;
   /** Heading level for the card title; section headings render one level deeper. Default `3`. @default 3 */
   headingLevel?: ApprovalCardHeadingLevel;
-  /** Layout: the full `card`, or one compact `row` with View input, Deny, and Approve. Default `'card'`. @default 'card' */
+  /** Layout: the full `card`, or the shared `row`, one approval inside a transcript or beneath a tool call. Default `'card'`. @default 'card' */
   layout?: ApprovalCardLayout;
-  /** Question the `row` layout asks, such as `Run issue-refund for $42.10?`. Default `Run <tool>?`. */
+  /** The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. */
   question?: string;
-  /** Called for approve, approve-with-edits, deny, and dismiss with the complete resolution payload. */
+  /** Who asked, written after "Approval from": `Tool runner`, or `the agent`. */
+  source?: string;
+  /** When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending. */
+  requestedAt?: string;
+  /** What approving does, in one line, such as `Sends $42.00 back to the original card`. */
+  consequence?: string;
+  /** Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always. */
+  rememberScope?: string;
+  /** Who decided, once the approval is decided: `you`. Written as "Denied by you". */
+  decidedBy?: string;
+  /** When the approval was decided, as an ISO timestamp, written as a time of day after the outcome. */
+  decidedAt?: string;
+  /** Why Deny and Approve are off while the approval is still pending. Written above the actions and named by both buttons. */
+  disabledReason?: string;
+  /** Why an `unavailable` approval cannot be answered now, written beneath it. */
+  unavailableReason?: string;
+  /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
   /** Additional CSS classes applied to the root element. */
   class?: string;
