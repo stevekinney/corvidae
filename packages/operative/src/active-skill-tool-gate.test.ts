@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
-import { withActiveSkillToolPolicy } from './agent-policy';
+import { withActiveSkillToolPolicy, withDelegatedToolCapabilities } from './agent-policy';
 import { createActiveRun } from './create-run';
 import type { ToolSettledBubbleEvent } from './events';
 import { createMockGenerate } from './test/index';
@@ -523,6 +523,58 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
       ['call-write', 'error'],
       ['call-search', 'success'],
     ]);
+  });
+});
+
+describe('withDelegatedToolCapabilities (COR-2026)', () => {
+  it('allows listed identities, refuses unlisted identities before invocation, and treats absent as unrestricted', async () => {
+    const executed: string[] = [];
+    const toolbox = createToolbox([
+      createTool({
+        name: 'bureau:workflows-list',
+        description: 'list',
+        input: z.object({}),
+        execute: async () => {
+          executed.push('list');
+          return 'listed';
+        },
+      }),
+      createTool({
+        name: 'bureau:workflows-create',
+        description: 'create',
+        input: z.object({}),
+        execute: async () => {
+          executed.push('create');
+          return 'created';
+        },
+      }),
+    ]);
+    const gated = withDelegatedToolCapabilities(toolbox, ['bureau:workflows-list']);
+    const result = await gated.execute([
+      { id: 'list-call', name: 'bureau:workflows-list', arguments: {} },
+      { id: 'create-call', name: 'bureau:workflows-create', arguments: {} },
+    ]);
+    expect(result.map((item) => item.outcome)).toEqual(['success', 'error']);
+    expect(result[1]?.error?.code).toBe('DELEGATED_TOOL_DENIED');
+    expect(executed).toEqual(['list']);
+    expect(withDelegatedToolCapabilities(toolbox, undefined).tools()).toHaveLength(2);
+  });
+
+  it('treats an empty list as deny-all', async () => {
+    const toolbox = createToolbox([
+      createTool({
+        name: 'read',
+        description: 'read',
+        input: z.object({}),
+        execute: async () => 'read',
+      }),
+    ]);
+    const result = await withDelegatedToolCapabilities(toolbox, []).execute({
+      id: 'read-call',
+      name: 'read',
+      arguments: {},
+    });
+    expect(result).toMatchObject({ outcome: 'error', error: { code: 'DELEGATED_TOOL_DENIED' } });
   });
 });
 

@@ -322,6 +322,7 @@ export interface ChildTopologyStart {
   readonly childRunId: string;
   readonly principal?: string | undefined;
   readonly context: Pick<AgentRunContext, 'parentSignals' | 'childCorrelation'>;
+  readonly delegatedToolCapabilities?: readonly string[] | undefined;
   /** The origin of the child's task: the parent run that dispatched it (COR-1868). */
   readonly taskOrigin: AgentTaskOrigin;
 }
@@ -394,7 +395,9 @@ export interface ChildTopology {
   /** The context a recovered child's re-resolved run options must carry. */
   recoveredRunContext(
     runId: string,
-  ): Pick<AgentRunContext, 'parentSignals' | 'childCorrelation'> | undefined;
+  ):
+    | Pick<AgentRunContext, 'parentSignals' | 'childCorrelation' | 'delegatedToolCapabilities'>
+    | undefined;
   /** Settles, re-authorizes, or reattaches every record `prepareRecovery` loaded. */
   reconcileRecovery(): Promise<void>;
   /** Resolves once every in-flight settlement write has landed. */
@@ -624,6 +627,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   /** Parents whose cancellation has been requested: none admits another child. */
   const cancelledParents = new Set<string>();
   const pendingRecovery = new Map<string, BureauChildRecord>();
+  const pendingRecoveryToolCapabilities = new Map<string, readonly string[]>();
 
   // -------------------------------------------------------------------------
   // Bookkeeping
@@ -1483,6 +1487,9 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
           childCorrelation: correlationOf(record),
           ...(entry.channel === undefined ? {} : { parentSignals: entry.channel.child }),
         },
+        ...(grant?.effectiveCapabilities.tools === undefined
+          ? {}
+          : { delegatedToolCapabilities: grant.effectiveCapabilities.tools }),
         taskOrigin: {
           kind: 'agent',
           parentRunId: request.parentRunId,
@@ -1724,6 +1731,15 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     for (const record of records) {
       if (record.status !== 'running') continue;
       pendingRecovery.set(record.childRunId, record);
+      if (record.grantId !== undefined && delegation !== undefined) {
+        const loaded = await store.loadGrant(record.grantId);
+        if (loaded.status === 'found' && loaded.grant.effectiveCapabilities.tools !== undefined) {
+          pendingRecoveryToolCapabilities.set(
+            record.childRunId,
+            loaded.grant.effectiveCapabilities.tools,
+          );
+        }
+      }
       if (record.workflow.kind !== 'durable') continue;
       const entry = ensureTracked(record.childRunId);
       const contract = contractFor(record.childAgentName);
@@ -1758,13 +1774,17 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
 
   function recoveredRunContext(
     runId: string,
-  ): Pick<AgentRunContext, 'parentSignals' | 'childCorrelation'> | undefined {
+  ):
+    | Pick<AgentRunContext, 'parentSignals' | 'childCorrelation' | 'delegatedToolCapabilities'>
+    | undefined {
     const record = pendingRecovery.get(runId);
     if (!record) return undefined;
     const channel = tracked.get(runId)?.channel;
+    const delegatedToolCapabilities = pendingRecoveryToolCapabilities.get(runId);
     return {
       childCorrelation: correlationOf(record),
       ...(channel === undefined ? {} : { parentSignals: channel.child }),
+      ...(delegatedToolCapabilities === undefined ? {} : { delegatedToolCapabilities }),
     };
   }
 

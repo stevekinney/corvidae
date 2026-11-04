@@ -186,6 +186,38 @@ export function withActiveSkillToolPolicy(
   });
 }
 
+/** Applies a delegation grant's tool allow-list at invocation time. */
+export function withDelegatedToolCapabilities(
+  toolbox: AnyToolbox,
+  allowedToolIds: readonly string[] | undefined,
+): AnyToolbox {
+  if (allowedToolIds === undefined) return toolbox;
+  const allowed = new Set(allowedToolIds);
+  const visibleTools = () =>
+    toolbox.tools().filter((tool) => allowed.has(tool.id) || allowed.has(tool.name));
+  return new Proxy(toolbox, {
+    get(target, property, receiver) {
+      if (property === 'tools') return visibleTools;
+      if (property === 'execute') {
+        const execute = Reflect.get(target, property, receiver) as (
+          calls: unknown,
+          options?: unknown,
+        ) => Promise<unknown>;
+        return createGatedExecute(
+          target,
+          (calls, options) => Reflect.apply(execute, receiver, [calls, options]),
+          visibleTools,
+          (toolName) => ({
+            code: 'DELEGATED_TOOL_DENIED',
+            message: `Tool "${toolName}" is not available: the delegation grant excludes it.`,
+          }),
+        );
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+}
+
 /**
  * Priority placing an agent policy registration behind the agent's own hooks
  * on the same hook point.
