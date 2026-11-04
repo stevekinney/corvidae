@@ -88,7 +88,7 @@ test.describe('the notification bell, about the person and not the engine', () =
   }) => {
     await page.goto('/agents');
     await expect(bell(page, 'Notifications')).toBeVisible();
-    await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(0);
 
     await bell(page, 'Notifications').click();
     await expect(page.getByText(NOTIFICATION_COPY.empty.title)).toBeVisible();
@@ -128,24 +128,24 @@ test.describe('the notification bell, about the person and not the engine', () =
 
     // Not a chat: opening a chat reads its items.
     await page.goto('/agents');
-    await expect(bell(page, 'Notifications, 2 need you')).toBeVisible();
-    await expect(page.locator('.weft-notification-bell__count')).toHaveText('2');
+    await expect(bell(page, 'Notifications, 2 unread')).toBeVisible();
+    await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(1);
 
-    await bell(page, 'Notifications, 2 need you').click();
+    await bell(page, 'Notifications, 2 unread').click();
     await expect(rows(page)).toHaveCount(3);
     const panel = page.locator('.weft-notification-panel');
+    await expect(panel.getByRole('heading', { name: 'Notifications · 2 unread' })).toBeVisible();
+    // A review is what it asks, then whose wait it is; an answer is the agent, then its chat.
     await expect(
-      panel.getByRole('link', {
-        name: /^demo:tool-runner needs your approval in Refund order 1234/,
-      }),
+      panel.getByRole('link').filter({ hasText: /Waiting for your approval · .*Tool runner/i }),
     ).toHaveCount(1);
     await expect(
-      panel.getByRole('link', {
-        name: /^demo:request-human-input asked a question in Ship the release/,
-      }),
+      panel
+        .getByRole('link')
+        .filter({ hasText: /Waiting for your answer · .*Request human input/i }),
     ).toHaveCount(1);
     await expect(
-      panel.getByRole('link', { name: /^demo:echo answered in Hello echo, say this back/ }),
+      panel.getByRole('link').filter({ hasText: /answered.*Hello echo, say this back/i }),
     ).toHaveCount(1);
 
     // The engine's own events, and its run identifiers, stay out of the panel.
@@ -158,7 +158,7 @@ test.describe('the notification bell, about the person and not the engine', () =
 
   test('approving from the chat clears that item and brings the badge down', async ({ page }) => {
     await page.goto('/agents');
-    await expect(bell(page, 'Notifications, 2 need you')).toBeVisible();
+    await expect(bell(page, 'Notifications, 2 unread')).toBeVisible();
 
     await page.goto(`/chats/${approvalThread}`);
     const approval = page.locator('.ib-decision');
@@ -168,40 +168,41 @@ test.describe('the notification bell, about the person and not the engine', () =
 
     // Within the default five-second expectation: the decision refreshes the bell at once, and its
     // poll would after five seconds anyway.
-    await expect(bell(page, 'Notifications, 1 needs you')).toBeVisible();
-    await bell(page, 'Notifications, 1 needs you').click();
+    await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
+    await bell(page, 'Notifications, 1 unread').click();
     // The question, the echo's answer, and the run's own answer. The approval is gone, and the
     // answer that landed in the chat that is open was read on arrival, so it is not new on leaving.
     await expect(rows(page)).toHaveCount(3);
     await expect(
-      page.getByRole('link', { name: /^demo:tool-runner needs your approval/ }),
+      page.getByRole('link').filter({ hasText: 'Waiting for your approval' }),
     ).toHaveCount(0);
     await expect(
-      page.getByRole('link', { name: /^demo:tool-runner answered in Refund order 1234/ }),
+      page.getByRole('link').filter({ hasText: /answered.*Refund order 1234/i }),
     ).toHaveAttribute('data-read', 'true');
   });
 
   test('opening an item goes to its chat and reads it', async ({ page }) => {
     await page.goto('/agents');
-    await bell(page, 'Notifications, 1 needs you').click();
+    await bell(page, 'Notifications, 1 unread').click();
     await page
       .locator('.weft-notification-panel')
-      .getByRole('link', { name: /^demo:request-human-input asked a question/ })
+      .getByRole('link')
+      .filter({ hasText: 'Waiting for your answer' })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/chats/${questionThread}$`));
     await expect(bell(page, 'Notifications')).toBeVisible();
-    await expect(page.locator('.weft-notification-bell__count')).toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(0);
   });
 
   test('a finished run is listed once the chat is left, and never counts', async ({ page }) => {
     await page.goto('/agents');
     // A fresh page has read nothing, so the question still counts, and the two answers do not.
-    await expect(bell(page, 'Notifications, 1 needs you')).toBeVisible();
-    await bell(page, 'Notifications, 1 needs you').click();
+    await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
+    await bell(page, 'Notifications, 1 unread').click();
     await expect(rows(page)).toHaveCount(3);
     await expect(
-      page.getByRole('link', { name: /^demo:tool-runner answered in Refund order 1234/ }),
+      page.getByRole('link').filter({ hasText: /answered.*Refund order 1234/i }),
     ).toHaveCount(1);
   });
 

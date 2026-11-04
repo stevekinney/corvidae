@@ -222,6 +222,8 @@ export const queryKeys = {
   /** What needs attention now (`bureau.health.attention`), for the sidebar's Health dot. */
   bureauAttention: {
     count: () => ['bureau-attention', 'count'] as const,
+    /** The rules that are firing, for the notification bell. */
+    alerts: () => ['bureau-attention', 'alerts'] as const,
   },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {

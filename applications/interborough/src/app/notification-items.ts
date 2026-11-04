@@ -1,7 +1,7 @@
 /**
  * What the notification bell holds, derived from what the Bureau says is waiting on the person
- * and what has finished: four kinds, each one line that names the chat or the schedule and never a
- * run. The engine's own event feed (a run starting, a signal arriving) is not here; it lives on the
+ * and what has finished: each item is a sentence and a second line, `Waiting for your approval ·
+ * Tool runner` (design row 02w), and never a run. The engine's own event feed (a run starting, a signal arriving) is not here; it lives on the
  * Engine view's activity feed.
  *
  * - `approval`: a tool the agent wants to run is waiting for a decision (`bureau.reviews.list`).
@@ -11,7 +11,11 @@
  *   ends, for the top-level run only, so a run that fans out into children is one item and the
  *   items do not depend on how many tasks a run creates.
  * - `missed`: a schedule did not fire at its time (the host was down or too slow, or the clock
- *   skipped it), the newest miss of each schedule, for a day (`bureau.schedules.missed`).
+ *   skipped it), one item for each schedule that missed any, naming how many and since when, at the
+ *   time its newest miss was due, for a day (`bureau.schedules.missed`).
+ * - `alert`: a rule of the host's that is firing and that Health shows, such as storage over its
+ *   warning level (`bureau.health.attention`). It is a standing condition and not news, so it is
+ *   listed read and never counts.
  * - `notice`: any other notification the Bureau holds for the person, such as one a host wrote.
  * - `answered`: the latest run of a chat finished (`bureau.tasks.list`). It is listed, but nothing is waiting on the
  *   person, so it never counts. Opening the chat reads it, including one that finishes while the
@@ -28,12 +32,17 @@
  * are derived, not accumulated, so a decision made anywhere removes the item at the next read, and
  * a review the Bureau asks again (an approval's next round) is a new item.
  */
+import { formatTimeOfDay } from '@lostgradient/cinder';
+
+import type { AttentionAlert } from '../lib/bureau-attention.ts';
 import type { BureauNotification } from '../lib/bureau-notifications.ts';
 import type { BureauReview } from '../lib/bureau-reviews.ts';
 import type { TaskView } from '../lib/bureau-tasks.ts';
+import { formatBytes } from '../lib/format/index.ts';
 import { chatSessionPath } from '../lib/identifier-paths.ts';
 import { latestRunByChat } from '../lib/recent-tasks.ts';
 import { scheduleDetailPath } from '../lib/router.svelte.ts';
+import { reviewTitle } from '../routes/reviews/review-items.ts';
 import { CHAT_COPY, NOTIFICATION_COPY } from './copy.ts';
 import type { MissedFireSource } from './notification-sources.ts';
 
@@ -41,7 +50,15 @@ import type { MissedFireSource } from './notification-sources.ts';
 export type NotificationTier = 'critical' | 'warning' | 'info';
 
 export type NotificationKind =
-  'approval' | 'question' | 'failed' | 'budget' | 'missed' | 'notice' | 'answered' | 'engine';
+  | 'approval'
+  | 'question'
+  | 'failed'
+  | 'budget'
+  | 'missed'
+  | 'notice'
+  | 'answered'
+  | 'alert'
+  | 'engine';
 
 /** An item before the store decides whether it was read. */
 export interface NotificationEntry {
@@ -55,14 +72,17 @@ export interface NotificationEntry {
   readonly tier: NotificationTier;
   /** The Lucide icon the row shows, by name. */
   readonly icon: string;
-  /** The sentence: who needs the person, or what happened. */
+  /** The sentence: what is being asked of the person, or what happened. */
   readonly title: string;
-  /** The parts of the title that are identifiers (an agent's name), which are set in monospace. */
-  readonly identifiers: readonly string[];
-  /** What the sentence is about: the chat's title, or the first line of an error. */
+  /** The second line: what kind of wait it is and who it is for, or what the sentence is about. */
   readonly detail: string;
-  /** What reads between title and detail for a screen reader: `' in '`, or `': '`. */
-  readonly joiner: string;
+  /** The title of the chat the item is about, which the palette finds a waiting item by as well. */
+  readonly chat?: string;
+  /**
+   * The condition is standing and not news (a firing alert Health shows), so the item is listed
+   * read, whatever the person has read, and never counts.
+   */
+  readonly standing?: boolean;
   /** The chat the item belongs to, so opening that chat reads it. */
   readonly sessionId?: string;
   /** Deep link path (router-relative). */
@@ -83,6 +103,9 @@ export interface ScheduleName {
   readonly identifier: boolean;
 }
 
+/** The name to show for an agent given its identifier, or an agent no name is known for. */
+export type AgentDisplayName = (agentName: string) => string;
+
 export interface NotificationSources {
   /** The Bureau's pending reviews. */
   readonly reviews: readonly BureauReview[];
@@ -98,13 +121,21 @@ export interface NotificationSources {
   readonly chats: ReadonlyMap<string, string | null>;
   /** A schedule's name by its id, for the notifications that name one. */
   readonly scheduleNames: ReadonlyMap<string, ScheduleName>;
-  /** The newest fire each schedule that missed one recorded. */
+  /** The fires each schedule that missed any recorded. */
   readonly missedFires?: readonly MissedFireSource[];
+  /** The host's rules that are firing, which Health shows (`bureau.health.attention`). */
+  readonly alerts?: readonly AttentionAlert[];
+  /** The name each agent goes by on screen (the catalog's display name); its identifier where unknown. */
+  readonly agentName?: AgentDisplayName;
   readonly nowMs: number;
 }
 
-function agentOf(name: string | undefined | null): string {
-  return name ?? NOTIFICATION_COPY.unnamedAgent;
+/** An agent's name on screen: its display name where the catalog has one, else the words for an unnamed agent. */
+function agentOf(
+  name: string | undefined | null,
+  display: AgentDisplayName = (identifier) => identifier,
+): string {
+  return name === undefined || name === null ? NOTIFICATION_COPY.unnamedAgent : display(name);
 }
 
 function chatTitle(
@@ -117,10 +148,10 @@ function chatTitle(
 function reviewEntry(
   review: BureauReview,
   chats: ReadonlyMap<string, string | null>,
+  display: AgentDisplayName,
 ): NotificationEntry {
   const sessionId = review.sessionId;
   const approval = review.kind === 'tool-approval';
-  const agent = agentOf(review.agentName);
   return {
     // A superseded approval comes back under the same review id with a higher round, and it is a
     // new question for the person, so the round is part of what was read.
@@ -131,12 +162,14 @@ function reviewEntry(
     kind: approval ? 'approval' : 'question',
     tier: 'warning',
     icon: approval ? 'shield-question-mark' : 'message-circle-question-mark',
-    title: approval
-      ? NOTIFICATION_COPY.needsApproval(agent)
-      : NOTIFICATION_COPY.askedQuestion(agent),
-    identifiers: review.agentName === undefined ? [] : [review.agentName],
-    detail: chatTitle(chats, sessionId),
-    joiner: NOTIFICATION_COPY.inJoiner,
+    // What is asked, as the Reviews page words it; the second line says what kind of wait it is and
+    // whose it is.
+    title: reviewTitle(review),
+    detail: NOTIFICATION_COPY.waiting(
+      approval ? 'approval' : 'answer',
+      agentOf(review.agentName, display),
+    ),
+    chat: chatTitle(chats, sessionId),
     ...(sessionId === undefined ? {} : { sessionId }),
     href: sessionId === undefined ? '/reviews' : chatSessionPath(sessionId),
     emittedAtMs: review.requestedAt,
@@ -146,6 +179,7 @@ function reviewEntry(
 function answeredEntry(
   task: TaskView,
   chats: ReadonlyMap<string, string | null>,
+  display: AgentDisplayName,
 ): NotificationEntry {
   return {
     id: `task:${task.id}`,
@@ -155,10 +189,8 @@ function answeredEntry(
     kind: 'answered',
     tier: 'info',
     icon: 'message-circle-check',
-    title: NOTIFICATION_COPY.answered(agentOf(task.agentName)),
-    identifiers: task.agentName === null ? [] : [task.agentName],
+    title: NOTIFICATION_COPY.answered(agentOf(task.agentName, display)),
     detail: chatTitle(chats, task.contextId),
-    joiner: NOTIFICATION_COPY.inJoiner,
   };
 }
 
@@ -171,6 +203,7 @@ function notificationEntry(
   notification: BureauNotification,
   chats: ReadonlyMap<string, string | null>,
   scheduleNames: ReadonlyMap<string, ScheduleName>,
+  display: AgentDisplayName,
 ): NotificationEntry | undefined {
   if (notification.kind === 'review.waiting') return undefined;
   const subject = notification.subject;
@@ -189,9 +222,7 @@ function notificationEntry(
       tier: 'warning',
       icon: 'triangle-alert',
       title: notification.title,
-      identifiers: [],
       detail: notification.body ?? '',
-      joiner: NOTIFICATION_COPY.errorJoiner,
       href: link !== null && link.startsWith('/') ? link : '/',
     };
   }
@@ -208,46 +239,77 @@ function notificationEntry(
   } as const;
   const href = contextId === undefined ? '/' : chatSessionPath(contextId);
   if (schedule !== undefined) {
+    const name = scheduleLabel(schedule, display);
     return {
       ...common,
-      title: budget
-        ? NOTIFICATION_COPY.budgetExceeded(schedule.name)
-        : NOTIFICATION_COPY.failed(schedule.name),
-      identifiers: schedule.identifier ? [schedule.name] : [],
+      title: budget ? NOTIFICATION_COPY.budgetExceeded(name) : NOTIFICATION_COPY.failed(name),
       detail: notification.body ?? NOTIFICATION_COPY.noErrorText,
-      joiner: NOTIFICATION_COPY.errorJoiner,
       href,
     };
   }
-  const agent = subject?.agentName;
+  const agent = agentOf(subject?.agentName, display);
   return {
     ...common,
-    title: budget
-      ? NOTIFICATION_COPY.budgetExceeded(agentOf(agent))
-      : NOTIFICATION_COPY.failed(agentOf(agent)),
-    identifiers: agent === undefined ? [] : [agent],
+    title: budget ? NOTIFICATION_COPY.budgetExceeded(agent) : NOTIFICATION_COPY.failed(agent),
     detail: chatTitle(chats, contextId),
-    joiner: NOTIFICATION_COPY.inJoiner,
     href,
   };
 }
 
-/** The item for the newest fire a schedule missed. */
-function missedEntry(source: MissedFireSource): NotificationEntry {
-  const { scheduleId, name, missed } = source;
+/** What a schedule is called on screen: its description, or the display name of the agent it runs. */
+function scheduleLabel(schedule: ScheduleName, display: AgentDisplayName): string {
+  return schedule.identifier ? display(schedule.name) : schedule.name;
+}
+
+/** The month and day a miss began on, in the viewer's zone: `Oct 30`. */
+function dayOf(milliseconds: number): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+    new Date(milliseconds),
+  );
+}
+
+/**
+ * The item for a schedule that missed fires: how many it missed and since when, at the time its
+ * newest miss was due, in the viewer's zone ("Daily summary missed its 3:00 AM run", "4 missed
+ * since Oct 30 · Assistant").
+ */
+function missedEntry(source: MissedFireSource, display: AgentDisplayName): NotificationEntry {
+  const { scheduleId, name, fires, agentName } = source;
+  const [newest] = fires;
+  const oldest = fires.at(-1) ?? newest;
+  const count = fires.reduce((total, fire) => total + fire.count, 0);
+  const agent = agentOf(agentName, display);
+  const label = scheduleLabel(name, display);
+  const summary =
+    newest.reason === 'dst-gap' && count === 1
+      ? NOTIFICATION_COPY.missedClockGap
+      : NOTIFICATION_COPY.missedSince(count, dayOf(oldest.occurrence));
   return {
-    // The instant the miss is recorded at is part of what was read: the next miss is news again.
-    id: `schedule-missed:${scheduleId}:${String(missed.occurrence)}`,
+    // The instant the newest miss is recorded at is part of what was read: the next miss is news again.
+    id: `schedule-missed:${scheduleId}:${String(newest.occurrence)}`,
     kind: 'missed',
     tier: 'warning',
     icon: 'calendar-x',
-    title: NOTIFICATION_COPY.missedFire(name.name),
-    identifiers: name.identifier ? [name.name] : [],
-    detail:
-      missed.reason === 'dst-gap' ? NOTIFICATION_COPY.missedClockGap : NOTIFICATION_COPY.missedLate,
-    joiner: NOTIFICATION_COPY.errorJoiner,
+    title: NOTIFICATION_COPY.missedRun(label, formatTimeOfDay(newest.occurrence)),
+    detail: `${summary} · ${agent}`,
     href: scheduleDetailPath(scheduleId),
-    emittedAtMs: missed.recordedAt,
+    emittedAtMs: newest.occurrence,
+  };
+}
+
+/** The item for a rule of the host's that is firing, if the bell words it; the others are Health's alone. */
+function alertEntry(alert: AttentionAlert): NotificationEntry | undefined {
+  if (alert.metric !== 'storage.size') return undefined;
+  return {
+    id: `alert:${alert.metric}:${String(alert.at)}`,
+    kind: 'alert',
+    tier: 'info',
+    standing: true,
+    icon: 'triangle-alert',
+    title: NOTIFICATION_COPY.storageOverWarning,
+    detail: NOTIFICATION_COPY.storageUsed(formatBytes(alert.currentValue)),
+    href: '/health',
+    emittedAtMs: alert.at,
   };
 }
 
@@ -299,10 +361,11 @@ function onePerChat(pending: readonly BureauReview[]): BureauReview[] {
  */
 export function buildNotificationEntries(sources: NotificationSources): NotificationEntry[] {
   const { reviews, tasks, notifications, chats, scheduleNames, nowMs } = sources;
+  const display = sources.agentName ?? ((identifier: string) => identifier);
   const missedFires = sources.missedFires ?? [];
   const pending = reviews.filter((review) => review.status === 'pending');
   const entries: NotificationEntry[] = onePerChat(pending).map((review) =>
-    reviewEntry(review, chats),
+    reviewEntry(review, chats, display),
   );
   const waiting = new Set(
     pending.flatMap((review) => (review.sessionId === undefined ? [] : [review.sessionId])),
@@ -318,13 +381,20 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
     ) {
       continue;
     }
-    const entry = notificationEntry(notification, chats, scheduleNames);
+    const entry = notificationEntry(notification, chats, scheduleNames, display);
     if (entry !== undefined) entries.push(entry);
   }
 
-  // A schedule that did not fire is news for a day, like a finished run.
+  // A schedule that did not fire is news for a day after its newest miss was recorded, like a finished run.
   for (const source of missedFires) {
-    if (nowMs - source.missed.recordedAt <= RECENT_RUN_WINDOW_MS) entries.push(missedEntry(source));
+    if (nowMs - source.fires[0].recordedAt <= RECENT_RUN_WINDOW_MS) {
+      entries.push(missedEntry(source, display));
+    }
+  }
+
+  for (const alert of sources.alerts ?? []) {
+    const entry = alertEntry(alert);
+    if (entry !== undefined) entries.push(entry);
   }
 
   // The latest run of each chat stands for it; a chat that is waiting on the person says so once.
@@ -334,13 +404,19 @@ export function buildNotificationEntries(sources: NotificationSources): Notifica
     // A run started without a chat (`bureau.run()` from the catalog) names a context the Bureau
     // does not hold, and there is no chat to open for it.
     if (!chats.has(task.contextId)) continue;
-    entries.push(answeredEntry(task, chats));
+    entries.push(answeredEntry(task, chats, display));
   }
 
-  const needsPerson = (entry: NotificationEntry) => entry.tier !== 'info';
   return entries.sort(
-    (left, right) =>
-      Number(needsPerson(right)) - Number(needsPerson(left)) ||
-      right.emittedAtMs - left.emittedAtMs,
+    (left, right) => rank(left) - rank(right) || right.emittedAtMs - left.emittedAtMs,
   );
+}
+
+/**
+ * Where an item sits in the list (design row 02w): what waits on the person first, then the
+ * failures and missed schedules, then what only finished or is standing.
+ */
+function rank(entry: NotificationEntry): number {
+  if (entry.kind === 'approval' || entry.kind === 'question') return 0;
+  return entry.tier === 'info' ? 2 : 1;
 }

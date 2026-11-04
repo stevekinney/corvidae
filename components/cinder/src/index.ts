@@ -304,6 +304,7 @@ export type { CopyButtonProps } from './components/copy-button/index.ts';
 export { copyToClipboard } from './utilities/clipboard.ts';
 
 export {
+  formatCompactAge,
   formatDate,
   formatDateTime,
   formatDayAndTime,

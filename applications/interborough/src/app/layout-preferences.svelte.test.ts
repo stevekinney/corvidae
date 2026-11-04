@@ -1,10 +1,10 @@
 /**
- * The shell's layout preferences (COR-1834): the density and the sidebar's icon rail survive a
- * reload because they are read back from storage, and storage that refuses is not fatal.
+ * The shell's layout preference (COR-1834): the sidebar's icon rail survives a reload because it
+ * is read back from storage, and storage that refuses is not fatal.
  */
 import { describe, expect, test } from 'bun:test';
 
-import { effectiveDensity, LayoutPreferences } from './layout-preferences.svelte.ts';
+import { LayoutPreferences } from './layout-preferences.svelte.ts';
 
 class MemoryStorage implements Storage {
   readonly #items = new Map<string, string>();
@@ -38,19 +38,14 @@ class RefusingStorage extends MemoryStorage {
 }
 
 describe('layout preferences', () => {
-  test('start comfortable and expanded', () => {
-    const preferences = new LayoutPreferences(new MemoryStorage());
-    expect(preferences.density).toBe('comfortable');
-    expect(preferences.sidebarCollapsed).toBe(false);
+  test('start expanded', () => {
+    expect(new LayoutPreferences(new MemoryStorage()).sidebarCollapsed).toBe(false);
   });
 
   test('are read back by the next page load', () => {
     const storage = new MemoryStorage();
-    const first = new LayoutPreferences(storage);
-    first.setDensity('compact');
-    first.setSidebarCollapsed(true);
+    new LayoutPreferences(storage).setSidebarCollapsed(true);
     const reloaded = new LayoutPreferences(storage);
-    expect(reloaded.density).toBe('compact');
     expect(reloaded.sidebarCollapsed).toBe(true);
     reloaded.setSidebarCollapsed(false);
     expect(new LayoutPreferences(storage).sidebarCollapsed).toBe(false);
@@ -58,19 +53,13 @@ describe('layout preferences', () => {
 
   test('ignore a stored value they do not know', () => {
     const storage = new MemoryStorage();
-    storage.setItem('interborough-density', 'cosy');
-    expect(new LayoutPreferences(storage).density).toBe('comfortable');
+    storage.setItem('interborough-sidebar-collapsed', 'maybe');
+    expect(new LayoutPreferences(storage).sidebarCollapsed).toBe(false);
   });
 
   test('keep working for the session when storage refuses', () => {
     const preferences = new LayoutPreferences(new RefusingStorage());
-    preferences.setDensity('compact');
-    expect(preferences.density).toBe('compact');
-  });
-
-  test('comfortable keeps each view’s density, and compact forces compact', () => {
-    expect(effectiveDensity('comfortable', 'comfortable')).toBe('comfortable');
-    expect(effectiveDensity('compact', 'comfortable')).toBe('compact');
-    expect(effectiveDensity('comfortable', 'compact')).toBe('compact');
+    preferences.setSidebarCollapsed(true);
+    expect(preferences.sidebarCollapsed).toBe(true);
   });
 });

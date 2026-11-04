@@ -163,9 +163,7 @@ const WAITING: NotificationEntry = {
   tier: 'warning',
   icon: 'shield-question-mark',
   title: 'tool-runner needs your approval',
-  identifiers: ['tool-runner'],
   detail: 'Refund order 1234',
-  joiner: ' in ',
   sessionId: 'session-refund',
   href: '/chats/session-refund',
   emittedAtMs: Date.now() - 120_000,
@@ -342,7 +340,7 @@ describe('every kind of result, in order', () => {
 
     await waitFor(() => expect(groups(view)).toEqual(['Waiting on you', 'Actions']));
     expect(
-      view.getByRole('option', { name: 'tool-runner needs your approval in Refund order 1234' }),
+      view.getByRole('option', { name: 'tool-runner needs your approval · Refund order 1234' }),
     ).not.toBeNull();
     const search = view.getByRole('option', { name: 'Go to Reviews' });
     expect(search.getAttribute('aria-keyshortcuts')).toBe('G R');

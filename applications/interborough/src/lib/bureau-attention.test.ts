@@ -1,12 +1,13 @@
 /**
  * The attention count the sidebar's Health dot reads (`bureau.health.attention`): the count alone,
  * a refusal let through for the caller to leave the dot out, and an answer that is not a count
- * refused rather than shown.
+ * refused rather than shown. The notification bell reads the rules that are firing from the same
+ * answer.
  */
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import { getAttentionCount } from './bureau-attention.ts';
+import { getAttentionCount, listAttentionAlerts } from './bureau-attention.ts';
 
 function answering(
   result: unknown,
@@ -68,5 +69,65 @@ describe('getAttentionCount', () => {
       );
       expect(outcome, JSON.stringify(result)).toBe('refused');
     }
+  });
+});
+
+describe('listAttentionAlerts', () => {
+  const storage = {
+    kind: 'alert',
+    area: 'storage',
+    at: 1_000,
+    metric: 'storage.size',
+    currentValue: 1_717_986_918,
+    threshold: 1_073_741_824,
+  };
+
+  test('lists the rules that are firing and leaves every other kind of problem out', async () => {
+    const alerts = await listAttentionAlerts({
+      fetch: answering({
+        items: [
+          storage,
+          { kind: 'missed-runs', area: 'schedules', at: 900, scheduleId: 's-1', count: 4 },
+          { kind: 'no-provider', area: 'providers', at: null, provider: null },
+        ],
+        count: 3,
+        checks: [],
+      }),
+    });
+
+    expect(alerts).toEqual([{ metric: 'storage.size', at: 1_000, currentValue: 1_717_986_918 }]);
+  });
+
+  test('lists nothing when nothing needs attention', async () => {
+    expect(
+      await listAttentionAlerts({ fetch: answering({ items: [], count: 0, checks: [] }) }),
+    ).toEqual([]);
+  });
+
+  test('lets a refusal through, so the bell lists no such item', async () => {
+    const failure = await listAttentionAlerts({
+      fetch: async () =>
+        Response.json(
+          {
+            jsonrpc: '2.0',
+            id: 'bureau.health.attention',
+            error: { code: -32001, message: 'Forbidden', data: { httpStatus: 403 } },
+          },
+          { status: 403 },
+        ),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(HttpClientError);
+  });
+
+  test('refuses an answer that has no list of problems', async () => {
+    const outcome = await listAttentionAlerts({ fetch: answering({ count: 1 }) }).then(
+      () => 'listed',
+      () => 'refused',
+    );
+    expect(outcome).toBe('refused');
   });
 });

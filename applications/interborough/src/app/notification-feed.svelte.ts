@@ -10,8 +10,11 @@
  * Opening a chat reads the items about it, and that includes an answer that finishes while the
  * chat is open: it is listed, and it is read on arrival, so it is not new when the person leaves.
  */
+import { humanizeIdentifier } from '@lostgradient/cinder';
 import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+import { listAttentionAlerts } from '../lib/bureau-attention.ts';
+import { listAgents, type AgentSummary } from '../lib/bureau-client.ts';
 import {
   listBureauNotifications,
   markBureauNotificationsRead,
@@ -24,11 +27,25 @@ import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.t
 import { buildNotificationEntries } from './notification-items.ts';
 import { loadChats, loadMissedFires, loadScheduleNames } from './notification-sources.ts';
 import type { NotificationStore } from './notifications.svelte.ts';
+import { ATTENTION_POLL_MILLISECONDS } from './shell/attention-count.svelte.ts';
 
 /** The chat the person has open, or `undefined` on any other page (and on a chat not yet started). */
 function openChatSessionId(): string | undefined {
   const { route, params } = router.current;
   return route?.pattern === '/chats/:chat' ? params['chat'] : undefined;
+}
+
+/** A name written the way an identifier is: lower-case words joined by hyphens, underscores, dots or colons. */
+const IDENTIFIER_SHAPED = /^[a-z0-9][a-z0-9:_.-]*$/;
+
+/**
+ * The name an agent goes by in the bell: the catalog's display name, or the identifier where the
+ * catalog has none, and either one in words ("tool-runner" reads "Tool runner") when it is only an
+ * identifier, as a code agent's display name is.
+ */
+function agentLabel(identifier: string, catalog: readonly AgentSummary[] | undefined): string {
+  const name = catalog?.find((agent) => agent.name === identifier)?.displayName ?? identifier;
+  return IDENTIFIER_SHAPED.test(name) ? humanizeIdentifier(name, { casing: 'sentence' }) : name;
 }
 
 export interface NotificationFeedOptions {
@@ -116,6 +133,23 @@ export function connectNotificationFeed(
     };
   });
 
+  // The rules that are firing are Health's (`bureau.health.attention`): nothing in the event feeds
+  // announces one starting or stopping, so the list is asked for again on a timer. A caller the
+  // Bureau refuses it to gets no such item, and the bell is not called failed for it.
+  const alerts = createQuery(() => ({
+    queryKey: queryKeys.bureauAttention.alerts(),
+    queryFn: ({ signal }: { signal: AbortSignal }) => listAttentionAlerts({ signal }),
+    // poll-reason: fallback
+    refetchInterval: ATTENTION_POLL_MILLISECONDS,
+    retry: false,
+  }));
+  // The name an agent goes by on screen is the catalog's; the identifier stands in until it arrives.
+  const agents = createQuery(() => ({
+    queryKey: queryKeys.agents.list(),
+    queryFn: ({ signal }: { signal: AbortSignal }) => listAgents({ signal }),
+    retry: false,
+  }));
+
   const queryClient = useQueryClient();
   // Reading an item in the bell reads it in the Bureau, so another browser agrees. The store holds
   // the item as read at once and as unread again when the Bureau does not accept it, and the list
@@ -158,6 +192,8 @@ export function connectNotificationFeed(
         chats: chats.data ?? new Map(),
         scheduleNames: scheduleNames.data ?? new Map(),
         missedFires: missedFires.data ?? [],
+        alerts: alerts.data ?? [],
+        agentName: (identifier) => agentLabel(identifier, agents.data),
         nowMs: Date.now(),
       }),
     );

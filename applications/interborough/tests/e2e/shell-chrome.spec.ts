@@ -7,9 +7,13 @@
  *
  * Reviews shows the two reviews waiting on the person, and Health an amber dot named "Health, 3
  * need attention", which the sample world's attention feed (`bureau.health.attention`) holds.
+ *
+ * The top bar's two popovers (design rows 03l, 02w, 02x, 02y) are read on the same sample world at
+ * its "now": the notifications popover, and quick settings.
  */
 import type { Locator, Page } from '@playwright/test';
 
+import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -443,5 +447,176 @@ test.describe('at the limits', () => {
       state: 'drawer open at 200% text',
       source: SOURCE,
     });
+  });
+});
+
+test.describe('the top bar’s popovers on the sample world', () => {
+  // Relative times and the 24-hour windows read the browser's clock, so it is the sample "now" in
+  // the viewer's zone whether or not a capture pins it.
+  test.use({ timezoneId: SAMPLE_TIME_ZONE });
+  test.beforeEach(async ({ page }) => {
+    await page.clock.setFixedTime(SAMPLE_NOW);
+  });
+
+  test('the bell carries a dot, and its popover is titled with the unread count (03l, 02w, 02x)', async ({
+    page,
+    checkA11y,
+  }) => {
+    await open(page, '/', 1280);
+    const bell = page.getByRole('banner').getByRole('button', { name: /^Notifications/ });
+    await expect(bell).toHaveAccessibleName('Notifications, 3 unread');
+    const dot = bell.locator('.weft-notification-bell__dot');
+    await expect(dot).toBeVisible();
+    expect(await widthOf(dot)).toBe(9);
+    await expect(bell.locator('.weft-notification-bell__count')).toHaveCount(0);
+
+    await bell.click();
+    const panel = page.getByRole('dialog', { name: 'Notifications' });
+    await expect(panel).toBeVisible();
+    expect(await widthOf(panel)).toBe(420);
+    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Notifications · 3 unread');
+    await expect(panel.getByRole('button', { name: 'Mark all read' })).toBeVisible();
+    // What the person's own hooks announced was cleared; nothing else is a raw event.
+    await expect(panel.locator('[data-kind="notice"]')).toHaveCount(0);
+
+    // What waits on the person comes first, newest first: the refund approval, then the question.
+    const rows = panel.locator('.weft-notification-panel__item');
+    await expect(rows.nth(0)).toContainText('Refund order 4471');
+    await expect(rows.nth(0)).toContainText('Waiting for your approval · Tool runner');
+    await expect(rows.nth(0).locator('.weft-notification-panel__item-time')).toHaveText('4 min');
+    await expect(rows.nth(1)).toContainText('Which environment should the release go to?');
+    await expect(rows.nth(1)).toContainText('Waiting for your answer · Request human input');
+    await expect(rows.nth(1).locator('.weft-notification-panel__item-time')).toHaveText('1 h');
+    for (const index of [0, 1]) {
+      await expect(rows.nth(index)).toHaveAttribute('data-read', 'false');
+      await expect(rows.nth(index).getByRole('img', { name: 'Unread' })).toBeVisible();
+    }
+
+    // Then the schedule that missed runs, at the time its newest miss was due.
+    const missed = rows.nth(2);
+    await expect(missed).toHaveAttribute('data-kind', 'missed');
+    await expect(missed).toContainText('Daily summary missed its 3:00 AM run');
+    await expect(missed).toContainText('4 missed since Oct 30 · Assistant');
+    await expect(missed.locator('.weft-notification-panel__item-time')).toHaveText('7 h');
+
+    // The storage rule that is firing is listed read and does not count.
+    const storage = rows.nth(3);
+    await expect(storage).toHaveAttribute('data-kind', 'alert');
+    await expect(storage).toContainText('Storage passed its warning level');
+    await expect(storage).toContainText('1.6 GB used');
+    await expect(storage).toHaveAttribute('data-read', 'true');
+    await expect(storage.locator('.weft-notification-panel__item-time')).toHaveText('1 h');
+
+    // The footer: the bell’s settings, and Hooks for email or webhooks.
+    const links = panel.getByRole('navigation', { name: 'Where notifications are set up' });
+    await expect(links.getByRole('link')).toHaveText([
+      'Notification settings',
+      'Email or webhooks: set up a hook ›',
+    ]);
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'notifications open',
+      source: SOURCE,
+    });
+    await checkA11y('the notifications popover');
+  });
+
+  test('quick settings is the sliders icon: Theme, Sidebar and All settings, and no density (02y)', async ({
+    page,
+    checkA11y,
+  }) => {
+    await open(page, '/', 1280);
+    const button = page.getByRole('banner').getByRole('button', { name: 'Quick settings' });
+    await expect(button.locator('svg.lucide-sliders-horizontal')).toBeVisible();
+    await button.click();
+
+    const panel = page.getByRole('dialog', { name: 'Quick settings' });
+    await expect(panel).toBeVisible();
+    expect(await widthOf(panel)).toBe(300);
+    await expect(panel.getByRole('heading', { name: 'Quick settings' })).toBeVisible();
+    await expect(
+      panel.getByRole('radiogroup', { name: 'Color theme' }).getByRole('radio'),
+    ).toHaveCount(3);
+    for (const name of ['Light', 'System', 'Dark']) {
+      await expect(panel.getByRole('radio', { name })).toBeVisible();
+    }
+    await expect(panel.getByRole('radiogroup', { name: 'Sidebar' }).getByRole('radio')).toHaveText([
+      'Expanded',
+      'Collapsed',
+    ]);
+    await expect(panel.getByText(/density|comfortable|compact/i)).toHaveCount(0);
+    const all = panel.getByRole('link', { name: 'All settings' });
+    await expect(all.locator('svg.lucide-chevron-right')).toBeVisible();
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'quick settings open',
+      source: SOURCE,
+    });
+    await checkA11y('the quick settings popover');
+
+    await all.click();
+    await expect(page).toHaveURL(/\/settings$/);
+  });
+
+  test('the Sidebar choice folds the sidebar at 1024px and wider, and survives a reload (02y, 04b)', async ({
+    page,
+  }) => {
+    await open(page, '/', 1280);
+    await page.getByRole('banner').getByRole('button', { name: 'Quick settings' }).click();
+    const panel = page.getByRole('dialog', { name: 'Quick settings' });
+    await expect(panel.getByRole('radio', { name: 'Expanded' })).toBeChecked();
+
+    await panel.getByRole('radio', { name: 'Collapsed' }).click();
+    await expectWidth(sidebar(page), 56);
+    await page.reload();
+    await expectWidth(sidebar(page), 56);
+
+    await page.getByRole('banner').getByRole('button', { name: 'Quick settings' }).click();
+    await page
+      .getByRole('dialog', { name: 'Quick settings' })
+      .getByRole('radio', { name: 'Expanded' })
+      .click();
+    await expectWidth(sidebar(page), 190);
+  });
+
+  test('both popovers open as bottom sheets under 640px and fit the screen (05d)', async ({
+    page,
+  }) => {
+    await open(page, '/', 375, 812, false);
+    for (const [name, state] of [
+      [/^Notifications/, 'notifications open'],
+      ['Quick settings', 'quick settings open'],
+    ] as const) {
+      await page.getByRole('banner').getByRole('button', { name }).click();
+      const dialog = page.getByRole('dialog').last();
+      await expect(dialog).toBeVisible();
+      const box = await boxOf(dialog);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(375);
+      await expectNoSidewaysScroll(page, 'a popover on a phone');
+      await captureForDesignReview(page, { route: '/', state, source: SOURCE });
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+    }
+  });
+
+  // Last in this describe: Mark all read tells the Bureau, which then holds the showcase host's
+  // notifications as read for the rest of the run, and the specifications before it (and their
+  // captures) read them as the sample world leaves them. Another specification that reads the
+  // bell's unread state on the showcase host must not run after this one.
+  test('Mark all read clears the dot and keeps the rows (02w)', async ({ page }) => {
+    await open(page, '/', 1280);
+    const bell = page.getByRole('banner').getByRole('button', { name: /^Notifications/ });
+    await bell.click();
+    const panel = page.getByRole('dialog', { name: 'Notifications' });
+    const rows = panel.locator('.weft-notification-panel__item');
+    const before = await rows.count();
+
+    await panel.getByRole('button', { name: 'Mark all read' }).click();
+
+    await expect(rows.locator('[role="img"]')).toHaveCount(0);
+    await expect(rows).toHaveCount(before);
+    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Notifications');
+    await expect(page.getByRole('banner').locator('.weft-notification-bell__dot')).toHaveCount(0);
   });
 });

@@ -92,7 +92,7 @@ export class NotificationStore {
     const entries = this.#engineProblem === undefined ? [] : [this.#engineProblem];
     return [...entries, ...this.#activity].map((entry) => ({
       ...entry,
-      read: read.has(entry.id) || entry.serverRead === true,
+      read: read.has(entry.id) || entry.serverRead === true || entry.standing === true,
     }));
   });
 
@@ -163,8 +163,6 @@ export class NotificationStore {
     this.#engineProblem = {
       id: ENGINE_STATUS_ITEM_ID,
       kind: 'engine',
-      identifiers: [],
-      joiner: ': ',
       href: '/health',
       emittedAtMs: nowMs,
       ...problem,

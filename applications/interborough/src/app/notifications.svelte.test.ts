@@ -17,9 +17,7 @@ function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
     tier: 'warning',
     icon: 'shield-question-mark',
     title: 'tool-runner needs your approval',
-    identifiers: ['tool-runner'],
     detail: 'Refund order 1234',
-    joiner: ' in ',
     sessionId: 'session-refund',
     href: '/chats/session-refund',
     emittedAtMs: 1_000,
@@ -32,6 +30,38 @@ function storeWith(...entries: NotificationEntry[]): NotificationStore {
   store.setActivity(entries);
   return store;
 }
+
+describe('NotificationStore and a standing item', () => {
+  const standing = entry({
+    id: 'alert:storage.size:1',
+    kind: 'alert',
+    tier: 'info',
+    standing: true,
+    title: 'Storage passed its warning level',
+    detail: '1.6 GB used',
+  });
+
+  test('is listed read, however the person has read, and never counts', () => {
+    const store = storeWith(standing, entry());
+
+    expect(store.items.map((item) => [item.id, item.read])).toEqual([
+      ['alert:storage.size:1', true],
+      ['review:one', false],
+    ]);
+    expect(store.unreadCount).toBe(1);
+  });
+
+  test('stays read after Mark all read, and is not told to the Bureau', () => {
+    const told: string[][] = [];
+    const store = storeWith(standing);
+    store.setRemote({ markRead: (ids) => void told.push([...ids]) });
+
+    store.markAllRead();
+
+    expect(store.items[0]?.read).toBe(true);
+    expect(told).toEqual([]);
+  });
+});
 
 describe('NotificationStore and the Bureau’s notifications', () => {
   const stored = (id: string, overrides: Partial<NotificationEntry> = {}) =>

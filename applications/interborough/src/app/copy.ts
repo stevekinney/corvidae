@@ -3670,8 +3670,9 @@ export const PALETTE_COPY = {
 } as const;
 
 /**
- * The words of the notification bell: what needs the person, and what finished. Each sentence
- * names the agent and is followed by the chat or schedule it is about, never a run.
+ * The words of the notification bell: what needs the person, and what finished. Each item is a
+ * sentence and a second line that says what kind of wait it is and whose it is, or what the
+ * sentence is about, never a run.
  */
 export const NOTIFICATION_COPY = {
   panelTitle: 'Notifications',
@@ -3691,25 +3692,31 @@ export const NOTIFICATION_COPY = {
   /** Where email or webhooks are set up, and where the bell's own settings are. */
   linksLabel: 'Where notifications are set up',
   settingsLink: 'Notification settings',
-  hooksLink: 'Hooks for email or webhooks',
-  /** What the bell button is called; the count says how many items need the person. */
+  hooksLink: 'Email or webhooks: set up a hook ›',
+  /** What the bell button is called; the count says how many items are unread. */
   bellLabel: (count: number): string =>
-    count === 0 ? 'Notifications' : `Notifications, ${count} need${count === 1 ? 's' : ''} you`,
-  needsApproval: (agent: string): string => `${agent} needs your approval`,
-  askedQuestion: (agent: string): string => `${agent} asked a question`,
+    count === 0 ? 'Notifications' : `Notifications, ${String(count)} unread`,
+  /** The count after the popover's title, "Notifications · 3 unread"; nothing when none is unread. */
+  unreadSummary: (count: number): string => `· ${String(count)} unread`,
+  /** What the dot before an unread row is called, for a screen reader. */
+  unreadMark: 'Unread',
+  /** The second line of a review: what it waits for, and whose it is. */
+  waiting: (kind: 'approval' | 'answer', agent: string): string =>
+    `${kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer'} · ${agent}`,
   answered: (agent: string): string => `${agent} answered`,
   failed: (subject: string): string => `${subject} failed`,
   budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
-  missedFire: (subject: string): string => `${subject} missed a run`,
-  /** Why a schedule did not fire: the host was down or too slow to start it, or its time did not exist on the clock. */
-  missedLate: 'The host was down or too slow to start it',
+  /** A schedule that did not fire: "Daily summary missed its 3:00 AM run". */
+  missedRun: (subject: string, time: string): string => `${subject} missed its ${time} run`,
+  /** How many fires a schedule missed and since when: "4 missed since Oct 30". */
+  missedSince: (count: number, since: string): string => `${String(count)} missed since ${since}`,
+  /** The one fire a schedule missed because its time did not exist on the clock. */
   missedClockGap: 'Its time was skipped by a clock change',
+  /** The host's storage rule is firing; the second line says how much is used. */
+  storageOverWarning: 'Storage passed its warning level',
+  storageUsed: (size: string): string => `${size} used`,
   /** What an agent is called when the Bureau names none. */
   unnamedAgent: 'An agent',
-  /** Read between a sentence and the chat it is about, by a screen reader only. */
-  inJoiner: ' in ',
-  /** Read between a failed schedule and the first line of its error. */
-  errorJoiner: ': ',
   noErrorText: 'No reason was given',
 } as const;
 
@@ -3768,11 +3775,11 @@ export const SHORTCUT_COPY = {
 export const QUICK_SETTINGS_COPY = {
   trigger: 'Quick settings',
   theme: 'Theme',
-  density: 'Density',
-  comfortable: 'Comfortable',
-  compact: 'Compact',
+  /** The name of the theme switch's radiogroup (its positions are Light, System and Dark). */
+  themeLabel: 'Color theme',
   sidebar: 'Sidebar',
-  collapsed: 'Collapse to icons',
+  expanded: 'Expanded',
+  collapsed: 'Collapsed',
   allSettings: 'All settings',
 } as const;
 

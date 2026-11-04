@@ -176,7 +176,9 @@ export function matchWaiting(
     .filter(
       (item) =>
         (item.kind === 'approval' || item.kind === 'question') &&
-        (containsQuery(query, item.title) || containsQuery(query, item.detail)),
+        (containsQuery(query, item.title) ||
+          containsQuery(query, item.detail) ||
+          containsQuery(query, item.chat)),
     )
     .toSorted((left, right) => left.emittedAtMs - right.emittedAtMs)
     .slice(0, limit);
@@ -184,7 +186,7 @@ export function matchWaiting(
 
 /** The words a waiting item is found by and read as: the sentence, then what it is about. */
 export function waitingLabel(item: NotificationItem): string {
-  return item.detail === '' ? item.title : `${item.title}${item.joiner}${item.detail}`;
+  return item.detail === '' ? item.title : `${item.title} · ${item.detail}`;
 }
 
 /**

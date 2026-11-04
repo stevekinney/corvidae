@@ -35,9 +35,9 @@
 }
 
 /* The outlet is the one place a page is padded: a route adds none of its own, so padding never
- * doubles. `data-density` and `data-width` come from the view's declaration in `views.ts`
- * (`route-outlet.svelte`); Cinder's density tokens follow the first, and the
- * second centres a reading page in Cinder's reading column. The column is built from padding
+ * doubles. `data-width` comes from the route's kind of page in `views.ts`
+ * (`route-outlet.svelte`) and centres a reading page in Cinder's reading column; every page has the
+ * one density. The column is built from padding
  * rather than a max width on the children, so a page root keeps its own layout (the chat is
  * a column with a definite height) and a dialog or popover inside is never constrained.
  * `--weft-outlet-gutter` is the side gutter: Cinder's page gutter at desktop widths, narrower
@@ -335,43 +335,43 @@
   }
 }
 
-/* Notification bell + dropdown panel: one flat, one-line row per item. */
+/* Notification bell + popover (design rows 02w and 02x). The bell carries a dot, not a count: the
+ * popover's title says how many are unread. */
 
 .weft-notification-bell__icon {
   position: relative;
   display: inline-grid;
 }
 
-.weft-notification-bell__count {
+/* A 9px dot at the icon's top right, ringed in the bar's own surface so it reads against the bell. */
+.weft-notification-bell__dot {
   position: absolute;
-  inset-block-start: calc(-1 * var(--cinder-space-2));
-  inset-inline-end: calc(-1 * var(--cinder-space-2));
-  min-width: 1rem;
-  height: 1rem;
-  padding: 0 var(--cinder-space-1);
-  display: grid;
-  place-items: center;
+  inset-block-start: -2px;
+  inset-inline-end: -1px;
+  inline-size: 9px;
+  block-size: 9px;
   border-radius: 9999px;
-  background: var(--cinder-status-danger-solid);
-  color: var(--cinder-status-danger-contrast);
-  font-size: var(--cinder-text-2xs);
-  font-weight: 700;
+  background: var(--cinder-accent-solid);
+  box-shadow: 0 0 0 2px var(--cinder-surface);
 }
 
-/* Cinder's popover pads its panel and caps it at 28rem; the rows run edge to edge, in a panel one width on every screen. */
+/* Cinder's popover pads its panel and caps it at 28rem; the rows run edge to edge, in a panel 420px wide on every screen. */
 .weft-notification-popover {
   padding: 0;
-  width: 30rem;
-  max-width: calc(100vw - var(--cinder-space-8));
+  inline-size: 420px;
+  max-inline-size: calc(100vw - var(--cinder-space-8));
   overflow: hidden;
 }
 
+/* The header is 44px: the title with the unread count after it, and Mark all read at the end. */
 .weft-notification-panel__bar {
+  box-sizing: border-box;
+  min-block-size: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--cinder-space-2);
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
+  padding: 0 var(--cinder-space-2) 0 var(--cinder-space-3-5);
   border-bottom: 1px solid var(--cinder-border-muted);
 }
 
@@ -385,18 +385,35 @@
 }
 
 .weft-notification-panel__title {
-  font-size: var(--cinder-text-sm);
+  margin: 0;
+  font-size: var(--cinder-text-base);
+  line-height: 1.25rem;
   font-weight: 600;
 }
 
-/* A row is a marker, an icon, a sentence with what it is about, and the time. It wraps on a narrow screen. */
+.weft-notification-panel__unread {
+  font-weight: 400;
+  color: var(--cinder-text-secondary);
+}
+
+/* A row is an unread mark, an icon tile, a sentence with its second line, and the time. Unread rows are tinted. */
 .weft-notification-panel__item {
   display: flex;
-  gap: var(--cinder-space-2);
-  align-items: baseline;
-  padding: var(--cinder-space-2) var(--cinder-density-pad-inline);
+  gap: 10px;
+  align-items: flex-start;
+  padding: var(--cinder-space-2-5) var(--cinder-space-3-5);
+  border-bottom: 1px solid var(--cinder-border-faint);
   text-decoration: none;
   color: var(--cinder-text-default);
+}
+
+.weft-notification-panel__item:last-child {
+  border-bottom: 0;
+}
+
+.weft-notification-panel__item[data-read='false'] {
+  /* A faint tint of the accent, so the unread rows read as a group without shouting. */
+  background: color-mix(in oklch, var(--cinder-accent-background), transparent 60%);
 }
 
 @media (hover: hover) {
@@ -405,74 +422,85 @@
   }
 }
 
-/* The mark on an unread row; a read row keeps the space, so the icons stay in one column. */
-.weft-notification-panel__item::before {
-  content: '';
+/* The mark's column stays on a read row, so the tiles line up in one column. */
+.weft-notification-panel__item-mark {
   flex: none;
-  align-self: center;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 9999px;
+  inline-size: 8px;
+  padding-block-start: var(--cinder-space-1-5);
 }
 
-.weft-notification-panel__item[data-read='false']::before {
+.weft-notification-panel__item-dot {
+  display: block;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 9999px;
   background: var(--cinder-accent-solid);
 }
 
-.weft-notification-panel__item-icon {
+.weft-notification-panel__item-tile {
   flex: none;
-  align-self: center;
-  color: var(--cinder-text-subtle);
+  inline-size: 28px;
+  block-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--cinder-surface-inset);
+  color: var(--cinder-text-secondary);
 }
 
-.weft-notification-panel__item[data-tier='warning'] .weft-notification-panel__item-icon {
+.weft-notification-panel__item-tile[data-tone='warning'] {
+  background: var(--cinder-status-warning-background);
   color: var(--cinder-status-warning-text);
 }
 
-.weft-notification-panel__item[data-tier='critical'] .weft-notification-panel__item-icon {
+.weft-notification-panel__item-tile[data-tone='info'] {
+  background: var(--cinder-status-info-background);
+  color: var(--cinder-status-info-text);
+}
+
+.weft-notification-panel__item-tile[data-tone='danger'] {
+  background: var(--cinder-status-danger-background);
   color: var(--cinder-status-danger-text);
 }
 
 .weft-notification-panel__item-text {
   flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: var(--cinder-space-2);
-  font-size: var(--cinder-text-xs);
+  min-inline-size: 0;
 }
 
+/* The sentence wraps rather than clipping, so a long approval title is read whole. */
 .weft-notification-panel__item-title {
+  display: block;
+  font-size: var(--cinder-text-base);
+  line-height: 20px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
-/*
- * A read item drops to regular weight and fades its sentence, so the difference is never color
- * alone. The opacity is on the sentence only: the chat and the time are already in the subtle
- * text colors, and dimming those too would take them under WCAG AA's 4.5:1 (T9.4).
- */
+/* A read row's sentence drops to medium weight, so the difference is never colour alone. */
 .weft-notification-panel__item[data-read='true'] .weft-notification-panel__item-title {
-  font-weight: 400;
-  opacity: 0.65;
+  font-weight: 500;
 }
 
 .weft-notification-panel__item-detail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--cinder-text-subtle);
+  display: block;
+  font-size: var(--cinder-text-xs);
+  line-height: 18px;
+  color: var(--cinder-text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .weft-notification-panel__item-time {
   flex: none;
-  font-size: var(--cinder-text-2xs);
-  color: var(--cinder-text-subtle);
+  font-size: var(--cinder-text-xs);
+  line-height: 20px;
+  color: var(--cinder-text-secondary);
   white-space: nowrap;
 }
 
 .weft-notification-panel__alert {
-  margin: var(--cinder-space-2) var(--cinder-density-pad-inline);
+  margin: var(--cinder-space-2) 14px;
 }
 
 .weft-notification-panel__alert-title {
@@ -480,14 +508,47 @@
   font-weight: 600;
 }
 
+/* Under 640px the popover is a bottom sheet whose own header already carries the title, with the
+ * unread count, so the panel's repeats it for a screen reader only. */
+@media (max-width: 639.98px) {
+  .weft-notification-panel__title,
+  .weft-quick-settings__title {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .weft-notification-panel__bar {
+    justify-content: flex-end;
+  }
+}
+
+/* The footer: the bell's own settings at the start, and Hooks for email or webhooks at the end. */
 .weft-notification-panel__links {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--cinder-space-2) var(--cinder-space-4);
-  padding: var(--cinder-density-pad-block) var(--cinder-density-pad-inline);
+  padding: var(--cinder-space-2-5) var(--cinder-space-3-5);
   border-top: 1px solid var(--cinder-border-muted);
+  background: var(--cinder-surface-inset);
   font-size: var(--cinder-text-sm);
+}
+
+.weft-notification-panel__links a {
+  color: var(--cinder-accent-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.weft-notification-panel__links a:hover {
+  text-decoration: underline;
 }
 
 /* The keyboard map scrolls here, a focusable region, because Cinder's modal body scrolls without one. */
@@ -776,13 +837,27 @@ body:has(.weft-shell[data-connection='unreachable'])
   color: var(--cinder-text-muted);
 }
 
-/* The quick settings popover: one row for each preference, its name before its control. */
+/* The quick settings popover (design row 02y): a title, then one row for each preference with its
+ * name before its control, then the link to every setting under a rule. Cinder's popover pads its
+ * panel, so the panel carries no padding and the rows run to the rule's edge. */
+.weft-quick-settings-popover {
+  padding: 0;
+  inline-size: 300px;
+  max-inline-size: calc(100vw - var(--cinder-space-8));
+}
+
 .weft-quick-settings {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-3);
-  padding: var(--cinder-space-3);
-  min-inline-size: 16rem;
+  padding: var(--cinder-space-3) var(--cinder-space-3) 0;
+}
+
+.weft-quick-settings__title {
+  margin: 0;
+  font-size: var(--cinder-text-base);
+  line-height: 1.25rem;
+  font-weight: 600;
 }
 
 .weft-quick-settings__row {
@@ -794,5 +869,25 @@ body:has(.weft-shell[data-connection='unreachable'])
 
 .weft-quick-settings__label {
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text-muted);
+  font-weight: 600;
+  color: var(--cinder-text-secondary);
+}
+
+/* "All settings" runs the width of the panel, its gear before the words and its chevron at the end. */
+.weft-quick-settings .weft-quick-settings__all {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cinder-space-2);
+  margin-inline: calc(-1 * var(--cinder-space-3));
+  padding: var(--cinder-space-3);
+  border-block-start: 1px solid var(--cinder-border-muted);
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
+}
+
+.weft-quick-settings__all-label {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
 }

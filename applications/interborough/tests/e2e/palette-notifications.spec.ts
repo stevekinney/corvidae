@@ -148,7 +148,7 @@ test.describe('⌘K over every kind of record', () => {
     // The palette lists the eight longest-waiting, and other specifications leave their own
     // approvals waiting on this host, so what is first is not known here: it opens a chat.
     await waiting
-      .getByRole('option', { name: /needs your approval/ })
+      .getByRole('option', { name: /Waiting for your approval/ })
       .first()
       .click();
     await expect(page).toHaveURL(/\/chats\/(?!new)[^/?]+$/);
@@ -159,7 +159,7 @@ test.describe('⌘K over every kind of record', () => {
     await search(page).fill(MARKER);
     await palette(page)
       .getByRole('group', { name: PALETTE_COPY.groups.waiting })
-      .getByRole('option', { name: new RegExp(`needs your approval.*${MARKER}`) })
+      .getByRole('option', { name: /Waiting for your approval/ })
       .click();
     await expect(page).toHaveURL(new RegExp(`/chats/${waitingThread}$`));
   });
@@ -363,7 +363,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
 
     await expect(page.getByText(NOTIFICATION_COPY.readFailed)).toBeVisible();
     await expect(rowOf(page)).toHaveAttribute('data-read', 'false');
-    await expect(page.locator('.weft-notification-bell__count')).not.toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).not.toHaveCount(0);
   });
 
   test('a notification is unread, and marking it read in one browser reads it in another', async ({
@@ -372,7 +372,7 @@ test.describe('the bell keeps what is read in the Bureau', () => {
     checkA11y,
   }) => {
     await page.goto('/agents');
-    await expect(page.locator('.weft-notification-bell__count')).not.toHaveCount(0);
+    await expect(page.locator('.weft-notification-bell__dot')).not.toHaveCount(0);
     await bell(page, /^Notifications/).click();
     await expect(rowOf(page)).toHaveAttribute('data-read', 'false');
     await checkA11y('the notification panel with a notification');

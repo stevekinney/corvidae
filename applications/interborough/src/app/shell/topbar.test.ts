@@ -1,9 +1,9 @@
 /**
  * The top bar (design rows 03l, 04e, 14f): the menu button only while the navigation is a drawer,
- * the breadcrumb naming the page in words, and the field that opens the palette, which says
- * "Search everything" and nothing more.
+ * the breadcrumb naming the page in words, the field that opens the palette, which says "Search
+ * everything" and nothing more, then the notifications bell and quick settings.
  */
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -44,15 +44,16 @@ function viewport(matching: readonly string[]): void {
 function mount() {
   const layout = new LayoutPreferences(window.localStorage);
   const navigation = new ShellNavigation(layout);
+  const notifications = memoryStore();
   const view = render(Harness, {
     props: {
       navigation,
-      notifications: memoryStore(),
+      notifications,
       theme: new ThemeStore(document.documentElement, window.localStorage),
       layout,
     },
   });
-  return { ...view, navigation };
+  return { ...view, navigation, notifications };
 }
 
 describe('the top bar', () => {
@@ -103,5 +104,41 @@ describe('the top bar', () => {
     expect(search.querySelector('.weft-shell-search-trigger__kbd')?.textContent?.trim()).toBe('⌘K');
     await fireEvent.click(search);
     expect(getByTestId('palette-open').textContent).toBe('true');
+  });
+
+  test('ends with the search field, the bell and quick settings, in that order', () => {
+    viewport([EXPANDED_QUERY]);
+    landAt('/');
+    const { container } = mount();
+
+    const controls = Array.from(container.querySelectorAll('header button')).map(
+      (control) => control.getAttribute('aria-label') ?? control.textContent?.trim().slice(0, 17),
+    );
+    expect(controls).toEqual(['Search everything', 'Notifications', 'Quick settings']);
+  });
+
+  test('the bell carries a dot while anything is unread, and says how many in its name', () => {
+    viewport([EXPANDED_QUERY]);
+    landAt('/');
+    const { getByRole, container, notifications } = mount();
+    expect(container.querySelector('.weft-notification-bell__dot')).toBeNull();
+
+    notifications.setActivity([
+      {
+        id: 'review:one',
+        kind: 'approval',
+        tier: 'warning',
+        icon: 'shield-question-mark',
+        title: 'Refund order 4471 for $42.00?',
+        detail: 'Waiting for your approval · Tool runner',
+        href: '/reviews',
+        emittedAtMs: Date.now() - 240_000,
+      },
+    ]);
+
+    return waitFor(() => {
+      expect(getByRole('button', { name: 'Notifications, 1 unread' })).not.toBeNull();
+      expect(container.querySelector('.weft-notification-bell__dot')).not.toBeNull();
+    });
   });
 });

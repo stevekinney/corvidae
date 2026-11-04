@@ -291,9 +291,7 @@ function waitingItem(overrides: Partial<NotificationItem>): NotificationItem {
     tier: 'warning',
     icon: 'shield-question-mark',
     title: 'echo needs your approval',
-    identifiers: ['echo'],
     detail: 'Refund order 1234',
-    joiner: ' in ',
     href: '/chats/refund',
     emittedAtMs: 2_000,
     read: false,
@@ -359,8 +357,18 @@ describe('what is waiting and the actions', () => {
       'review:new',
     ]);
     expect(matchWaiting(items, 'zzz')).toEqual([]);
-    expect(waitingLabel(items[0]!)).toBe('tool-runner needs your approval in Refund order 1234');
+    expect(waitingLabel(items[0]!)).toBe('tool-runner needs your approval · Refund order 1234');
     expect(waitingLabel(waitingItem({ detail: '' }))).toBe('echo needs your approval');
+  });
+
+  test('a waiting item is found by the title of the chat it is about as well as by what it asks', () => {
+    const items = [
+      waitingItem({ id: 'review:a', title: 'Run issue-refund?', chat: 'Please refund order 4471' }),
+    ];
+
+    expect(matchWaiting(items, 'order 4471').map((item) => item.id)).toEqual(['review:a']);
+    expect(matchWaiting(items, 'issue-refund').map((item) => item.id)).toEqual(['review:a']);
+    expect(matchWaiting(items, 'nothing like it')).toEqual([]);
   });
 
   test('an action matches on its name, and an empty query lists them all up to the limit', () => {
