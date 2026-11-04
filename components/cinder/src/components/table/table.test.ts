@@ -4,6 +4,7 @@ import { tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { stripCinderComponentsLayer } from '../../test/css.ts';
+import { lengthToPixels } from './table.length.ts';
 import type { TableScrollContainerProps } from './table.types.ts';
 
 setupHappyDom();
@@ -1044,6 +1045,20 @@ describe('Table data display', () => {
   // These tests assert the contract that produces the layout instead: the
   // markup that marks a cell, and the CSS the table ships for that marker.
   const longValue = 'storage/'.concat('segment-'.repeat(250)); // about 2,000 characters
+
+  test('converts table lengths relative to the document and cell font sizes', () => {
+    const element = document.createElement('div');
+    document.body.append(element);
+    document.documentElement.style.fontSize = '20px';
+    element.style.fontSize = '12px';
+    expect(lengthToPixels('0', element)).toBe(0);
+    expect(lengthToPixels('2px', element)).toBe(2);
+    expect(lengthToPixels('2rem', element)).toBe(40);
+    expect(lengthToPixels('2em', element)).toBe(24);
+    expect(lengthToPixels('2vw', element)).toBeUndefined();
+    element.remove();
+    document.documentElement.style.removeProperty('font-size');
+  });
 
   function ruleBody(selector: string): string {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

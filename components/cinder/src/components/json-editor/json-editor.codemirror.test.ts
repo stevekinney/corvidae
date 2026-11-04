@@ -509,6 +509,21 @@ describe('JsonEditor — marked lines', () => {
     expect(view.container.querySelector('.cinder-json-editor__problem')).toBeNull();
   });
 
+  test('lets pointer events pass through an inline problem message', async () => {
+    const view = render(JsonEditor, {
+      id: 'payload',
+      label: 'Payload',
+      value: '{"agent":"release-helper"}',
+      diagnostics: [{ line: 1, message: 'The agent is unavailable.' }],
+    });
+    await mountedView(view);
+    const message = view.container.querySelector<HTMLElement>('.cinder-json-editor__problem');
+    expect(message).not.toBeNull();
+    await fireEvent.click(message as HTMLElement);
+    await fireEvent.mouseDown(message as HTMLElement);
+    expect(message?.textContent).toBe('The agent is unavailable.');
+  });
+
   test('focusProblem and focusLine take the caret to the marked line', async () => {
     let component: { focusLine: (line: number) => void; focusProblem: () => void } | undefined;
     const view = render(JsonEditor, { id: 'payload', label: 'Payload', value: missingComma });

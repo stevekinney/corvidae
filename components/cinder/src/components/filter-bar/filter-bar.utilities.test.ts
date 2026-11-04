@@ -152,6 +152,35 @@ describe('width estimates', () => {
       ),
     );
   });
+
+  test('accounts for select options and custom controls in wide layouts', () => {
+    const select = estimateFilterBarWidth(
+      contents({
+        segments: [],
+        searchVisible: false,
+        facets: [
+          {
+            type: 'select',
+            key: 'kind',
+            label: 'Kind',
+            placeholder: 'Any kind',
+            options: [{ value: 'long', label: 'A long option label' }],
+          },
+        ],
+      }),
+      'wide',
+    );
+    const custom = estimateFilterBarWidth(
+      contents({
+        segments: [],
+        searchVisible: false,
+        facets: [{ type: 'custom', key: 'date', label: 'Date', control: undefined as never }],
+      }),
+      'wide',
+    );
+    expect(select).toBeGreaterThan(0);
+    expect(custom).toBeGreaterThan(0);
+  });
 });
 
 describe('resolveFilterBarLayout', () => {
