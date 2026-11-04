@@ -32,7 +32,7 @@ bun run --filter=@lostgradient/interborough typecheck
 
 `src/host/host.ts` starts everything:
 
-- **State** lives in Bungalow's directory, `~/.interborough` or `INTERBOROUGH_HOME`, or in Postgres and S3 (see "Running on Postgres and S3"). Locally the Bureau runs on Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's `deploymentId`, so a restart keeps its tasks, sessions, schedules, and goals. The host takes Bungalow's single-instance lock, so a second host on the same directory refuses to start.
+- **State** lives in Bungalow's directory, `~/.interborough` or `INTERBOROUGH_HOME`, or in Postgres and S3 (see "Running on Postgres and S3"). Bungalow binds the backing store to a durable `workspaceId` marker seeded from its existing `deploymentId`; Bureau uses that workspace identity as its memory tenant. A process-local runtime identity is separate and never changes the workspace partition. The host takes Bungalow's single-instance lock, so a second host on the same local directory refuses to start.
 - **One caller.** There is no sign-in, and the host binds `127.0.0.1` only. Every request without a credential acts as `anonymous:local`, which holds every Weft scope and every Bureau scope. `weft.system.principal` reports that subject, and the shell names it in its top bar. The one credential the host knows is the operator's A2A key, which only A2A uses (see [A2A](#a2a)).
 - **Routes** on the public origin:
   - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents are Weft's engine operations.
@@ -71,12 +71,15 @@ Interborough reads none of the `S3_*` variables itself. Bungalow builds the `Bun
 
 | Object or folder | What it is |
 | --- | --- |
-| `P` + `deployment-id` | The deployment's identifier, written once with `If-None-Match: *`. Hosts that start together agree on the one value the store kept. Do not edit it. |
+| `P` + `deployment-id` | The deployment's existing stable identifier, written once with `If-None-Match: *`. Hosts that start together agree on the one value the store kept. Do not edit it. |
+| `P` + `workspace-id` | The immutable workspace marker, claimed atomically after `deployment-id`. A mismatch refuses startup before Bureau recovery or plugin setup. Do not edit it. |
 | `P` + `configuration.json` | The plugins' choices, with each provider plugin's allowlist, and the catalog edits (see "Model providers" and "Plugins"). A missing object means every plugin's defaults, and no model is offered until a provider has a key. Put it there yourself; a remote host cannot write it. |
 | `P` + `agents/<id>.md` | One agent per object, in the Markdown file format of "Agent files". The agent editor writes here. |
 | `P` + `workflows/<id>.json` | One workflow per object, in the format of "Workflow files". The Workflows pages write here. |
 
 The Settings page and the editors show these as `s3://<bucket>/<prefix>...`, and show a provider's key as its variable name. They never show the database URL or an S3 credential, and neither does `/host/paths`. It reports the `mode` and the `database` (a SQLite file's path, or a Postgres server's host, port, and database name), the same `database` the host hands its embedder.
+
+A different Bureau ID or S3 prefix does not isolate tenants when hosts point at the same raw database. Workspace identity is trusted deployment configuration, not request data: workspace administrators cannot install executable plugins, configure local commands, or select arbitrary filesystem roots through the workspace surface. Deployment operators own those resource selections.
 
 **Durability is locked.** In remote mode the host locks the `durableOwnership.ownership`, `maintenance`, `durable`, `engine.workflowClaimTtl`, and `engine.workflowClaimRenewInterval` settings, which the Settings page shows under Durability as locked and disabled. Bureau reports each as locked for the reason `shared-storage`; a key the host's caller locks reports `deployment`. Each is held to Bureau's code default (automatic maintenance, a durable engine, and a claim TTL above the renew interval), because a stored `maintenance: 'manual'` would start no scheduler on the next release, and a run parked by the old release would never finish on it. Several hosts share a run only because each holds a lease on the runs it works on. Turning that off (`none`) from one host's Settings page would make every host run every task, so the setting stays at Bureau's lease default and a stored change is refused. A local host keeps the control editable. To make a run one host detached run on another host, the other host needs no restart and no call: it claims the run on its next claim-renewal tick, at most 5 seconds (`workflowClaimRenewIntervalMs`) after the first host closes and releases its claims. It is the renewal interval, not the claim TTL, so nothing waits for a crashed host's claim to expire in this path.
 

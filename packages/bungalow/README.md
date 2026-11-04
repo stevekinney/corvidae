@@ -1,5 +1,7 @@
 # Bungalow
 
+Bungalow binds each local home or remote bucket prefix to one durable `workspaceId`. The marker is claimed atomically after the stable `deployment-id` is loaded and before the caller can compose recovery, plugins, or writes. An existing nonempty local home without its persisted deployment identity refuses to open; a marker mismatch is never repaired automatically. The workspace identity is trusted host configuration, not an HTTP request value.
+
 `@lostgradient/bungalow` resolves and prepares an application's home: where its database and content live, its configuration, its secrets, its logs, and its deployment identity. Locally the home is a directory, `~/.interborough` or wherever `INTERBOROUGH_HOME` points for Interborough. Remotely it is a Postgres database, an S3-compatible bucket, and environment variables (see [Remote mode](#remote-mode)). Bungalow targets macOS and Linux only, and it is a private source package that is not published.
 
 Bungalow hands out locations for the database and content, and reads the configuration, the secrets, and the deployment ID itself. It never connects to a database, parses configuration, or reads the contents of a content location. Storage engines belong in Weft. It has no runtime dependencies: remote mode uses Bun's built-in `Bun.S3Client` and `fetch`.

@@ -3,8 +3,8 @@
  * API for the Engine console, and a Bureau.
  *
  * The state lives in Bungalow's home (`~/.interborough`, or `INTERBOROUGH_HOME`): the Bureau runs on
- * Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's `deploymentId`,
- * so a restart finds its tasks, sessions, schedules, and goals where it left them.
+ * Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's stable
+ * `workspaceId`, so a restart finds its tasks, sessions, schedules, and goals where it left them.
  *
  * Setting `INTERBOROUGH_DATABASE_URL` and `INTERBOROUGH_BUCKET` selects remote mode instead
  * (README, "Running on Postgres and S3"): the Bureau runs on Postgres, the agent and workflow
@@ -90,7 +90,7 @@
  * @module host
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
@@ -305,6 +305,8 @@ export type RunAgentLookup = (runId: string) => Promise<string | undefined>;
 export type HostOptions = {
   /** The environment to read `INTERBOROUGH_HOME` and `INTERBOROUGH_PORT` from. Defaults to the process's. */
   readonly environment?: BungalowEnvironment;
+  /** The workspace identity to bind to the trusted backing store. */
+  readonly workspaceId?: string;
   /** The port to listen on; `0` asks for a free one. Defaults to `INTERBOROUGH_PORT`, then 7234. */
   readonly port?: number;
   /** The built application to serve. Defaults to `build/` at the package root. */
@@ -446,8 +448,12 @@ export type Host = {
   readonly engine: RegistryAgnosticEngine;
   /** Weft's server, which owns the listening socket. */
   readonly server: WeftServer;
-  /** The Bureau's identifier, which is Bungalow's `deploymentId`. */
+  /** The legacy deployment identifier persisted by Bungalow. */
   readonly deploymentId: string;
+  /** The stable logical workspace identity, distinct from this process's runtime instance. */
+  readonly workspaceId: string;
+  /** A process-local identity that is intentionally not used as the durable memory tenant. */
+  readonly runtimeInstanceId: string;
   /**
    * Where the Bureau and the engine share their database: the SQLite file, or the Postgres server
    * and database name with no credential. The connection URL carries the password, so the host
@@ -677,7 +683,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
   // and a malformed one stops the host before anything opens.
   const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
-  const bungalow: Bungalow = await openBungalow({ name: APPLICATION_NAME, environment });
+  const bungalow: Bungalow = await openBungalow({
+    name: APPLICATION_NAME,
+    environment,
+    ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
+  });
   const held: Held = { bungalow };
   try {
     // Read before the database opens, so a remote host without its approval secret stops before
@@ -837,7 +847,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         }),
     });
     const bureau = await createBureau({
-      id: bungalow.deploymentId,
+      id: bungalow.workspaceId,
       ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       agents: { ...options.extraAgents?.agents },
       ...(options.extraAgents?.withBureauTools === undefined
@@ -1215,6 +1225,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       engine,
       server,
       deploymentId: bungalow.deploymentId,
+      workspaceId: bungalow.workspaceId,
+      runtimeInstanceId: randomUUID(),
       database,
       generateFor,
       configurationQueue,

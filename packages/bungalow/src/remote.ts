@@ -11,7 +11,12 @@ const PRESIGN_SECONDS = 60;
 const SESSION_TOKEN_PARAMETER = 'X-Amz-Security-Token';
 
 /** The S3 operations Bungalow performs, which are all a failure's message may name. */
-type S3Operation = 'read configuration' | 'read deployment ID' | 'write deployment ID';
+type S3Operation =
+  | 'read configuration'
+  | 'read deployment ID'
+  | 'write deployment ID'
+  | 'read workspace identity'
+  | 'write workspace identity';
 
 /**
  * What a failed S3 operation keeps as its `cause`: the HTTP status of a response, or the code of
@@ -93,6 +98,40 @@ async function createDeploymentId(client: Bun.S3Client, key: string): Promise<vo
   await discard(response);
   if (response.ok || response.status === 412) return;
   throw s3Failure('write deployment ID', { status: response.status });
+}
+
+async function bindWorkspaceId(
+  client: Bun.S3Client,
+  workspaceKey: string,
+  deploymentId: string,
+  configured?: string,
+): Promise<string> {
+  const expected = (configured ?? deploymentId).trim();
+  if (expected === '' || expected.includes('\n')) {
+    throw new BungalowInputError('The workspace identity must be non-empty text.');
+  }
+  if (configured !== undefined && expected !== deploymentId) {
+    throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
+  }
+  let marker = await readObject(client, workspaceKey, 'read workspace identity');
+  if (marker !== undefined && marker.trim() !== expected) {
+    throw new BungalowStateError('The backing store belongs to a different workspace.');
+  }
+  if (marker === undefined) {
+    const response = await send(client, workspaceKey, 'write workspace identity', 'PUT', {
+      headers: { 'If-None-Match': '*' },
+      body: `${expected}\n`,
+    });
+    await discard(response);
+    if (!response.ok && response.status !== 412) {
+      throw s3Failure('write workspace identity', { status: response.status });
+    }
+    marker = await readObject(client, workspaceKey, 'read workspace identity');
+  }
+  if (marker === undefined || marker.trim() !== expected) {
+    throw new BungalowStateError('The backing store belongs to a different workspace.');
+  }
+  return expected;
 }
 
 /**
@@ -196,15 +235,36 @@ function assertNoAmbientSessionToken(
 export async function openRemoteBungalow(
   name: string,
   configuration: RemoteConfiguration,
+  configuredWorkspaceId?: string,
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
   const client = s3Client(configuration);
   const deploymentKey = `${prefix}deployment-id`;
+  const workspaceKey = `${prefix}workspace-id`;
   const configurationKey = `${prefix}configuration.json`;
   assertExactlyAddressed(client, bucket, deploymentKey);
+  assertExactlyAddressed(client, bucket, workspaceKey);
   assertExactlyAddressed(client, bucket, configurationKey);
   assertNoAmbientSessionToken(client, configuration, deploymentKey);
+  const existingDeployment = await readObject(client, deploymentKey, 'read deployment ID');
+  if (existingDeployment !== undefined && !isUlid(existingDeployment.trim())) {
+    throw new BungalowStateError(
+      'The deployment-id object does not hold a ULID. Remove it to generate a new identity.',
+    );
+  }
+  const existingWorkspace = await readObject(client, workspaceKey, 'read workspace identity');
+  if (existingDeployment === undefined && existingWorkspace !== undefined) {
+    throw new BungalowStateError(
+      'The workspace identity exists without its persisted deployment identity.',
+    );
+  }
   const deploymentId = await loadDeploymentId(client, deploymentKey);
+  const workspaceId = await bindWorkspaceId(
+    client,
+    workspaceKey,
+    deploymentId,
+    configuredWorkspaceId,
+  );
 
   let closed = false;
   const assertOpen = (): void => {
@@ -221,6 +281,7 @@ export async function openRemoteBungalow(
     configurationLocation: `s3://${bucket}/${configurationKey}`,
     logs: undefined,
     deploymentId,
+    workspaceId,
     s3Client() {
       assertOpen();
       return client;

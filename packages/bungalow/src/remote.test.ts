@@ -30,6 +30,7 @@ const SESSION_TOKEN = 'sentinel-session-token';
 const DATABASE_URL = 'postgres://bungalow:sentinel-database-password@127.0.0.1:5432/bungalow';
 const SECRET_VALUE = 'sentinel-secret-value';
 const DEPLOYMENT_KEY = `${PREFIX}/deployment-id`;
+const WORKSPACE_KEY = `${PREFIX}/workspace-id`;
 const CONFIGURATION_KEY = `${PREFIX}/configuration.json`;
 
 const DATABASE_VARIABLE = 'BUNGALOW_TEST_DATABASE_URL';
@@ -293,7 +294,10 @@ describe('remote mode: the bucket prefix', () => {
         prefix: `${normalized}agents/`,
       });
       expect(bungalow.configurationLocation).toBe(`s3://${BUCKET}/${normalized}configuration.json`);
-      expect([...server.objects().keys()]).toEqual([`${normalized}deployment-id`]);
+      expect([...server.objects().keys()].toSorted()).toEqual([
+        `${normalized}deployment-id`,
+        `${normalized}workspace-id`,
+      ]);
     });
   }
 });
@@ -309,8 +313,13 @@ describe('remote mode: the deployment ID outcome matrix', () => {
     );
     expect(proxy.requests).toEqual([
       { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'GET', key: DEPLOYMENT_KEY },
       { method: 'PUT', key: DEPLOYMENT_KEY },
       { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'PUT', key: WORKSPACE_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
     ]);
   });
 
@@ -321,7 +330,14 @@ describe('remote mode: the deployment ID outcome matrix', () => {
     server.put(DEPLOYMENT_KEY, `${stored}\n`);
     using bungalow = await openRemote(proxy.endpoint);
     expect(bungalow.deploymentId).toBe(stored);
-    expect(proxy.requests).toEqual([{ method: 'GET', key: DEPLOYMENT_KEY }]);
+    expect(proxy.requests).toEqual([
+      { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'PUT', key: WORKSPACE_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+    ]);
   });
 
   test('a stored value that is not a ULID is BungalowStateError and is left alone', async () => {
