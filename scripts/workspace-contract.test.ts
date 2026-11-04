@@ -83,6 +83,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/plugin-openai',
   '@lostgradient/plugin-typesafe',
   '@lostgradient/plugin-voyage',
+  '@lostgradient/plugin-workspace',
   '@lostgradient/memory',
   '@lostgradient/storage',
   '@lostgradient/storage-bun-sqlite',

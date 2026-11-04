@@ -157,6 +157,7 @@ describe('showcaseHostOptions', () => {
       'typesafe',
       'inspectors',
       'demo',
+      'workspace',
       'guardrails',
       'ollama',
       'voyage',

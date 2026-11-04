@@ -21,6 +21,7 @@ import gemini from '@lostgradient/plugin-gemini';
 import inspectors from '@lostgradient/plugin-inspectors';
 import openai from '@lostgradient/plugin-openai';
 import typesafe from '@lostgradient/plugin-typesafe';
+import workspace from '@lostgradient/plugin-workspace';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
@@ -37,6 +38,7 @@ export function workspacePlugins(): readonly BureauPluginEntry[] {
     { descriptor: typesafe, source: 'package', location: '@lostgradient/plugin-typesafe' },
     { descriptor: inspectors, source: 'package', location: '@lostgradient/plugin-inspectors' },
     { descriptor: demo, source: 'package', location: '@lostgradient/plugin-demo' },
+    { descriptor: workspace, source: 'package', location: '@lostgradient/plugin-workspace' },
   ];
 }
 
