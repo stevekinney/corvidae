@@ -231,8 +231,12 @@
     min-inline-size: 0;
   }
 
+  /* The cut key asks for no more than 10rem when the shared key column is sized, so one long key
+   * never pushes every value to the right: the column is as wide as the widest short key, or this
+   * cap, whichever is larger. */
   .cinder-payload-inspector__long-key {
     display: block;
+    max-inline-size: 10rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -354,9 +358,21 @@
       grid-template-columns: minmax(0, 1fr);
     }
 
+    /* A pair stays "key value" on one line and wraps its value only when it must, and the pairs are
+     * spaced further apart than a key is from its own value, so a value never reads as the next
+     * pair's key. */
+    .cinder-payload-inspector__fields[data-cinder-layout='grid'] {
+      row-gap: var(--cinder-space-2-5);
+    }
+
     .cinder-payload-inspector__fields[data-cinder-layout='grid']
       > .cinder-payload-inspector__field {
-      display: grid;
+      flex-wrap: wrap;
+      gap: var(--cinder-space-0-5) var(--cinder-space-2);
+    }
+
+    .cinder-payload-inspector__fields[data-cinder-layout='rows'] {
+      row-gap: var(--cinder-space-2);
     }
   }
 
@@ -423,6 +439,8 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);
+    padding-inline-start: var(--cinder-space-3);
+    border-inline-start: 2px solid var(--cinder-border-muted);
   }
 
   .cinder-payload-inspector__item {
@@ -431,9 +449,12 @@
     gap: var(--cinder-space-1);
   }
 
+  /* "Item 2 of 3" heads its block in small muted type, so it never reads as another key. */
   .cinder-payload-inspector__item-title {
     margin: 0;
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
   }
 
   /* An array of uniform objects: a small table in its own bordered box, which scrolls sideways when

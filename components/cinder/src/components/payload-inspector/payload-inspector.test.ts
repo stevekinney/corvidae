@@ -273,6 +273,21 @@ describe('PayloadInspector', () => {
       );
     });
 
+    test('at a phone width a pair stays on one line and the pairs sit further apart than a key from its value', () => {
+      const narrow = /@media \(max-width: 30rem\) \{(.*?)\n {2}\}\n/s.exec(readCss())?.[1] ?? '';
+      expect(narrow).toMatch(
+        /\[data-cinder-layout='grid'\]\s*\{[^}]*row-gap:\s*var\(--cinder-space-2-5\)/s,
+      );
+      expect(narrow).toMatch(
+        /\[data-cinder-layout='grid'\]\s*>\s*\.cinder-payload-inspector__field\s*\{[^}]*flex-wrap:\s*wrap;[^}]*gap:\s*var\(--cinder-space-0-5\)\s+var\(--cinder-space-2\)/s,
+      );
+      // The pair is never turned into a stacked grid, which put the key and its value further
+      // apart than the value and the next key.
+      expect(narrow).not.toMatch(
+        /\[data-cinder-layout='grid'\]\s*>\s*[^{]*\{[^}]*display:\s*grid/s,
+      );
+    });
+
     test('keys read as sentence case with acronyms kept, and ISO dates read as dates', () => {
       const { container } = renderInspector({ value: order });
       const labels = Array.from(container.querySelectorAll('dt')).map((label) =>
@@ -872,6 +887,10 @@ describe('PayloadInspector', () => {
       );
     });
 
+    test('a long key asks for at most 10rem of the shared key column, so it never pushes every value away', () => {
+      expect(readCss()).toMatch(/__long-key\s*\{[^}]*max-inline-size:\s*10rem/s);
+    });
+
     test('breaks a long unbroken value anywhere instead of overflowing sideways', () => {
       expect(readCss()).toMatch(/__field-value\s*\{[^}]*overflow-wrap:\s*anywhere/s);
     });
@@ -924,6 +943,12 @@ describe('PayloadInspector', () => {
             row.textContent?.replaceAll(/\s+/g, ' ').trim(),
           ),
       );
+      // One rule runs down the inline start of every item, and the title is small, so at a phone
+      // width "Item 2 of 3" never reads as another key.
+      expect(readCss()).toMatch(
+        /__items\s*\{[^}]*padding-inline-start:[^}]*border-inline-start:\s*2px solid var\(--cinder-border-muted\)/s,
+      );
+      expect(readCss()).toMatch(/__item-title\s*\{[^}]*font-size:\s*var\(--cinder-text-xs\)/s);
       expect(blocks).toEqual([
         ['Type refund', 'Order ID 4471', 'Amount $42.00'],
         ['Type note', 'Text Customer called about the photo', 'Author Dana Whitfield'],

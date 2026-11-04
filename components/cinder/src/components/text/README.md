@@ -35,7 +35,7 @@ A run of text in one of the typography variants `h1` to `h5`, `caption`, and `bo
 
 ## Cutting an identifier in the middle
 
-`truncate="middle"` keeps the end of a long identifier visible, because the end is what tells one from another: "payments-worker-eu-w…3a68". It takes the plain string as `text` (so it has no children), keeps the last `tailLength` characters (4 by default), and gives the head an ellipsis only when the line is too narrow. The full text is a Cinder tooltip unless `title` is set, and the cut text takes focus, so a keyboard or touch user can reach the whole value too. The whole string stays in the DOM for assistive technology and copying.
+`truncate="middle"` keeps the end of a long identifier visible, because the end is what tells one from another: "payments-worker-eu-w…3a68". It takes the plain string as `text` (so it has no children), keeps the last `tailLength` characters (4 by default), and gives the head an ellipsis only when the line is too narrow, and measures the cut so the ellipsis sits against the tail with no gap. The full text is a Cinder tooltip unless `title` is set, and the cut text takes focus, so a keyboard or touch user can reach the whole value too. The whole string stays in the DOM for assistive technology and copying.
 
 ```svelte
 <script lang="ts">

@@ -21,6 +21,7 @@
   import { classNames } from '../../utilities/class-names.ts';
 
   import Tooltip from '../tooltip/tooltip.svelte';
+  import { fitMiddleHead } from './text-middle.ts';
   import type { TextElement, TextProps, TextVariant } from './text.types.ts';
 
   const DEFAULT_TAIL_LENGTH = 4;
@@ -76,6 +77,41 @@
     return () => observer.disconnect();
   };
 
+  // `text-overflow: ellipsis` leaves up to one character of slack between the ellipsis and the tail.
+  // Once the head is known to be cut, the box is set to exactly the width of the longest cut that
+  // fits, so the ellipsis sits against the tail ("eu-w…3a68"). The box keeps the whole head as its
+  // text, so assistive technology still reads the full value and the CSS ellipsis stays the
+  // fallback until this has measured.
+  const fitMiddle: Attachment<HTMLElement> = (node) => {
+    const characters = middleParts === undefined ? undefined : Array.from(middleParts.head);
+    const head = node.querySelector<HTMLElement>('.cinder-text__head');
+    if (characters === undefined || head === null) return;
+
+    const fit = (): void => {
+      head.style.removeProperty('inline-size');
+      const available = head.clientWidth;
+      if (head.scrollWidth <= available) return;
+      const probe = document.createElement('span');
+      probe.setAttribute('aria-hidden', 'true');
+      probe.style.cssText =
+        'position:absolute;visibility:hidden;white-space:pre;pointer-events:none';
+      node.append(probe);
+      const width = fitMiddleHead(characters, available, (text) => {
+        probe.textContent = text;
+        return probe.getBoundingClientRect().width;
+      });
+      probe.remove();
+      // A pixel of room absorbs sub-pixel rounding, so the browser keeps the cut that was measured.
+      if (width !== undefined) head.style.inlineSize = `${Math.min(width + 1, available)}px`;
+    };
+
+    fit();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(fit);
+    observer.observe(node);
+    return () => observer.disconnect();
+  };
+
   // The tail is counted in characters a reader sees, so a surrogate pair is never split.
   const middleParts = $derived.by(() => {
     if (!isMiddle || text === undefined) return undefined;
@@ -103,6 +139,7 @@
       class={classNames('cinder-text', className)}
       data-cinder-variant={variant}
       data-cinder-truncate="middle"
+      {@attach fitMiddle}
     >
       <span class="cinder-text__head">{middleParts.head}</span><span class="cinder-text__tail"
         >{middleParts.tail}</span

@@ -265,3 +265,69 @@ describe('Text middle truncation', () => {
     expect(textCss).toMatch(/\.cinder-text__tail \{[^}]*flex: none;/);
   });
 });
+
+describe('Text middle truncation fit', () => {
+  const identifier = 'payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68';
+  const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const names = ['clientWidth', 'scrollWidth', 'getBoundingClientRect'] as const;
+  const originals = new Map<string, PropertyDescriptor | undefined>();
+
+  beforeEach(() => {
+    for (const name of names) {
+      originals.set(name, Object.getOwnPropertyDescriptor(prototype, name));
+    }
+  });
+
+  afterEach(() => {
+    for (const name of names) {
+      const original = originals.get(name);
+      if (original === undefined) delete prototype[name];
+      else Object.defineProperty(prototype, name, original);
+    }
+  });
+
+  /** A layout where the head's box is `box` pixels wide, its text is wider, and a character is 10px. */
+  function stubLayout(box: number): void {
+    const isHead = (element: HTMLElement): boolean =>
+      element.classList.contains('cinder-text__head');
+    Object.defineProperty(prototype, 'clientWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return isHead(this) ? box : 0;
+      },
+    });
+    Object.defineProperty(prototype, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return isHead(this) ? 600 : 0;
+      },
+    });
+    Object.defineProperty(prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value(this: HTMLElement) {
+        return { width: Array.from(this.textContent ?? '').length * 10 };
+      },
+    });
+  }
+
+  test('sizes the head to the longest cut that fits, so the ellipsis sits against the tail', () => {
+    stubLayout(155);
+    const { container } = render(Text, { truncate: 'middle', text: identifier });
+    const head = container.querySelector('.cinder-text__head') as HTMLElement;
+
+    // 155px holds fifteen characters: fourteen of the head and the ellipsis, plus a pixel of room.
+    expect(head.style.inlineSize).toBe('151px');
+    expect(head.textContent).toBe(identifier.slice(0, -4));
+    expect(container.querySelector('.cinder-text')?.querySelector('span[aria-hidden]')).toBeNull();
+  });
+
+  test('leaves the head alone when it fits whole', () => {
+    stubLayout(155);
+    Object.defineProperty(prototype, 'scrollWidth', { configurable: true, value: 100 });
+    const { container } = render(Text, { truncate: 'middle', text: identifier });
+
+    expect((container.querySelector('.cinder-text__head') as HTMLElement).style.inlineSize).toBe(
+      '',
+    );
+  });
+});
