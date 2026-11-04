@@ -6,7 +6,7 @@
  * after the resolution-started marker is durable and before the decision commits. The parent boots
  * a Bureau over the same SQLite database and reads the review back.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
@@ -22,10 +22,11 @@ import {
   CLAIM_TTL_MS,
   createHarnessBureau,
   createInterruptedApprovalToolbox,
+  createPeerApprovalToolbox,
   INTERRUPTED_APPROVAL_FILE,
 } from './test/process-crash-work-integrity-fixtures';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
-import type { Bureau } from './types';
+import type { Bureau, RecoverableStartedApprovalInput } from './types';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
 
@@ -88,11 +89,96 @@ async function interruptedApprovalScenario(scope: ScenarioScope): Promise<void> 
   }
 }
 
+async function peerApprovalRecoveryScenario(scope: ScenarioScope): Promise<void> {
+  const directory = createTemporaryDirectory('corvidae-peer-approval-recovery');
+  const storagePath = join(directory, 'bureau');
+  const markerPath = join(directory, 'marker.json');
+  const callbackPath = join(directory, 'attach-callbacks.txt');
+  const toolRunsPath = join(directory, 'tool-runs.txt');
+  const store = createSqliteStorageFixture({ path: storagePath });
+  const secondStore = createSqliteStorageFixture({ path: storagePath });
+  let recoverer: Bureau | undefined;
+  let secondRecoverer: Bureau | undefined;
+  scope.onHang(async () => {
+    await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
+    await Promise.allSettled(secondRecoverer === undefined ? [] : [secondRecoverer.shutdown()]);
+    await store.dispose();
+    await secondStore.dispose();
+    removeTemporaryPath(directory);
+  });
+  try {
+    const child = spawnWithHangGuard(
+      ['bun', CHILD, 'peer-approval-then-crash', 'sqlite', storagePath, markerPath],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
+    scope.onHang(() => child.kill());
+    await child.exited;
+    const stderr = await new Response(child.stderr).text();
+    expect(child.signalCode ?? stderr).toBe('SIGKILL');
+    const marker = readChildJson<{
+      runId: string;
+      sessionId: string;
+      reviewId: string;
+      revision: string;
+    }>(markerPath);
+    const toolbox = createPeerApprovalToolbox(() => appendFileSync(toolRunsPath, 'ran\n', 'utf8'));
+    const attach = {
+      version: 1 as const,
+      attach: async (input: RecoverableStartedApprovalInput) => {
+        appendFileSync(callbackPath, `${input.journalEntry.taskId}\n`, 'utf8');
+        return {
+          callId: input.callId,
+          toolCallId: input.callId,
+          toolName: 'ask-peer',
+          outcome: 'success' as const,
+          content: 'peer answer',
+          result: 'peer answer',
+        };
+      },
+    };
+    const options = {
+      generate: async () => ({ content: 'recovered', toolCalls: [] }),
+      toolbox,
+      recoverableStartedApprovals: new Map([[marker.revision, attach]]),
+    };
+    [recoverer, secondRecoverer] = await Promise.all([
+      createHarnessBureau({ ...options, storage: store.storage }),
+      createHarnessBureau({ ...options, storage: secondStore.storage }),
+    ]);
+    await Promise.all([recoverer.recovery(), secondRecoverer.recovery()]);
+    await waitUntil(
+      () => existsSync(callbackPath) && readFileSync(callbackPath, 'utf8').trim() === 'peer-task-1',
+    );
+    expect(readFileSync(callbackPath, 'utf8').trim().split('\n')).toHaveLength(1);
+    expect(existsSync(toolRunsPath)).toBe(false);
+    expect(recoverer.reviews.list().some((review) => review.id === marker.reviewId)).toBe(false);
+    const session = await recoverer.contexts.get(marker.sessionId);
+    expect(JSON.stringify(session?.conversationHistory)).toContain('peer answer');
+    const audit = await recoverer.internals.auditTrail?.query({ runId: marker.runId });
+    expect(audit?.filter((record) => record.type === 'review.tool-approval.approved')).toHaveLength(
+      1,
+    );
+  } finally {
+    if (recoverer !== undefined) await Promise.allSettled([recoverer.shutdown()]);
+    if (secondRecoverer !== undefined) await Promise.allSettled([secondRecoverer.shutdown()]);
+    await store.dispose();
+    await secondStore.dispose();
+    removeTemporaryPath(directory);
+  }
+}
+
 // A real SIGKILLed child and a claim-lapse wait: run whole, once, at module scope.
 const outcome = await settleScenario(interruptedApprovalScenario, 120_000);
 
 describe('an approval interrupted mid-resolution (COR-1717)', () => {
   it('is listed again as interrupted after SIGKILL and does not re-run its tool', () => {
+    expectScenarioPassed(outcome);
+  });
+});
+
+describe('a journaled peer approval interrupted mid-resolution (COR-2051)', () => {
+  it('attaches once after SIGKILL and commits the peer result without executing a tool', async () => {
+    const outcome = await settleScenario(peerApprovalRecoveryScenario, 120_000);
     expectScenarioPassed(outcome);
   });
 });

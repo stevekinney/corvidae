@@ -31,6 +31,7 @@ import type {
   HumanInputSchema,
   LivenessSnapshot,
   PeerCallJournal,
+  PeerCallJournalEntry,
   PlanReason,
   ProviderConfigurationBase,
   RunEvent,
@@ -76,7 +77,12 @@ import type {
   WorkflowSummary,
   WorkerDeploymentCatalog,
 } from '@lostgradient/weft';
-import type { PendingToolApproval, SignedPendingToolApproval, ToolRequestContext } from 'armorer';
+import type {
+  PendingToolApproval,
+  SignedPendingToolApproval,
+  ToolExecutionResult,
+  ToolRequestContext,
+} from 'armorer';
 import type { ConversationHistory, Message, MultiModalContent } from 'conversationalist';
 
 import type {
@@ -91,6 +97,7 @@ import type { BureauAssetOptions } from './assets/asset-service';
 import type { McpResourceRegistration } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
+import type { ReviewDecisionRequest } from './review-decision-record';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
 import type { RunCreationReceipt, RunCreationReceiptLocation } from './command-ledger';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
@@ -787,6 +794,8 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
+  /** Trusted, version-pinned adapters used only to attach to journaled peer tasks after a crash. */
+  recoverableStartedApprovals?: ReadonlyMap<string, RecoverableStartedApproval>;
   /**
    * AB-13 — declarative flow control gating run ADMISSION, composed over
    * operative's `createFlowController`: a per-key concurrency cap, a rate
@@ -1302,6 +1311,36 @@ export interface ResolveReviewInput {
    * and on a `deny` or `reject`.
    */
   remember?: boolean;
+}
+
+/** The durable peer-attachment marker carried by an interrupted approval. */
+export interface ApprovalPeerRecovery {
+  readonly version: 1;
+  readonly toolDefinitionRevision: string;
+  readonly durableOperationKey: string;
+  readonly request: ReviewDecisionRequest;
+  readonly arguments: { readonly message: string };
+}
+
+/** The callback input supplied to a trusted host adapter during approval recovery. */
+export interface RecoverableStartedApprovalInput {
+  readonly sessionId: string;
+  readonly runId: string;
+  readonly reviewId: string;
+  readonly callId: string;
+  readonly toolDefinitionRevision: string;
+  readonly durableOperationKey: string;
+  readonly arguments: { readonly message: string };
+  readonly journalEntry: PeerCallJournalEntry;
+  readonly signal: AbortSignal;
+}
+
+/** A version-pinned, attach-only peer recovery adapter. */
+export interface RecoverableStartedApproval {
+  readonly version: 1;
+  readonly attach: (
+    input: RecoverableStartedApprovalInput,
+  ) => Promise<ToolExecutionResult | undefined>;
 }
 
 export interface ResolveReviewResult {

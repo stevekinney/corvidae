@@ -35,6 +35,7 @@ import {
   createHarnessBureau,
   firstUserMessage,
   createInterruptedApprovalToolbox,
+  createPeerApprovalToolbox,
   HUMAN_WAIT_PROMPT,
   HUMAN_WAIT_SIGNAL,
   openGovernedMemory,
@@ -507,6 +508,56 @@ async function approveThenCrash(): Promise<void> {
   process.stderr.write('child: the approved tool did not end the process\n');
   process.exit(6);
 }
+
+/** COR-2051: journals a peer task, then dies while the approved peer call is in flight. */
+async function peerApprovalThenCrash(): Promise<void> {
+  const toolbox = createPeerApprovalToolbox(killSelf);
+  const tool = toolbox.tools().find((candidate) => candidate.name === 'ask-peer');
+  if (tool === undefined) {
+    process.stderr.write('child: peer tool was not registered\n');
+    process.exit(4);
+  }
+  const revision = tool.id;
+  const bureau = await createHarnessBureau({
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
+    generate: async () => ({
+      content: '',
+      toolCalls: [{ id: 'peer-call', name: 'ask-peer', arguments: { message: 'hello peer' } }],
+    }),
+    toolbox,
+    recoverableStartedApprovals: new Map([
+      [revision, { version: 1, attach: async () => undefined }],
+    ]),
+  });
+  const run = await bureau.tasks.start('default', 'crash harness peer approval', {
+    principal: 'alice',
+  });
+  await pollUntil('the peer approval review', () =>
+    bureau.reviews.list().some((review) => review.runId === run.id),
+  );
+  const review = bureau.reviews.list().find((candidate) => candidate.runId === run.id);
+  if (review?.kind !== 'tool-approval') {
+    process.stderr.write('child: peer approval review was not found\n');
+    process.exit(4);
+  }
+  const operationKey = `approval-resume:v1:${review.id}`;
+  await bureau.peerCalls.write(
+    { parentRunId: run.id, operationKey },
+    { taskId: 'peer-task-1', contextId: 'peer-context-1', requestDigest: 'a'.repeat(64) },
+  );
+  writeMarker({ runId: run.id, sessionId: run.contextId, reviewId: review.id, revision });
+  await bureau.reviews.resolve({
+    id: review.id,
+    decision: 'approve',
+    principal: 'operator',
+    arguments: { message: 'hello peer' },
+  });
+  process.stderr.write('child: the peer tool did not end the process\n');
+  process.exit(6);
+}
 let reviewId: string | undefined;
 
 const scenarios: Record<string, () => Promise<void>> = {
@@ -517,6 +568,7 @@ const scenarios: Record<string, () => Promise<void>> = {
   'human-wait-parked': () => humanWaitParked(),
   'human-wait-two-calls-parked': () => humanWaitParked(true),
   'approve-then-crash': approveThenCrash,
+  'peer-approval-then-crash': peerApprovalThenCrash,
   'relaunch-recover': relaunchRecover,
   'race-recover': raceRecover,
   verify,

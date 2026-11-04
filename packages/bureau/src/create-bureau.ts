@@ -88,6 +88,7 @@ import {
   type SteeringRequestedValue,
   type StepRecord,
   type PeerCallJournal,
+  type PeerCallJournalEntry,
   type Store,
   StoreActionEvent,
   type Subscription,
@@ -623,6 +624,7 @@ import type {
   AbortingRun,
   Bureau,
   BureauOptions,
+  ApprovalPeerRecovery,
   BureauRecoveryReport,
   BureauShutdownOptions,
   BureauShutdownOwnerReport,
@@ -849,6 +851,7 @@ function stringValues(values: readonly JSONValue[]): string[] {
 interface ApprovalResolutionStartedRecord {
   id: string;
   startedAt: number | undefined;
+  peerRecovery?: ApprovalPeerRecovery;
 }
 
 /** Reads the started marker in either form, dropping entries that are neither. */
@@ -865,6 +868,24 @@ function readApprovalResolutionStarted(
       records.push({
         id: entry['id'],
         startedAt: typeof startedAt === 'number' ? startedAt : undefined,
+        ...(isJsonObject(entry['peerRecovery']) &&
+        entry['peerRecovery']['version'] === 1 &&
+        typeof entry['peerRecovery']['toolDefinitionRevision'] === 'string' &&
+        entry['peerRecovery']['toolDefinitionRevision'].length > 0 &&
+        typeof entry['peerRecovery']['durableOperationKey'] === 'string' &&
+        isJsonObject(entry['peerRecovery']['request']) &&
+        typeof entry['peerRecovery']['request']['reviewId'] === 'string' &&
+        typeof entry['peerRecovery']['request']['round'] === 'number' &&
+        Number.isInteger(entry['peerRecovery']['request']['round']) &&
+        entry['peerRecovery']['request']['round'] >= 0 &&
+        entry['peerRecovery']['request']['decision'] === 'approve' &&
+        typeof entry['peerRecovery']['request']['principal'] === 'string' &&
+        typeof entry['peerRecovery']['request']['digest'] === 'string' &&
+        isJsonObject(entry['peerRecovery']['arguments']) &&
+        typeof entry['peerRecovery']['arguments']['message'] === 'string' &&
+        entry['peerRecovery']['arguments']['message'].trim().length > 0
+          ? { peerRecovery: entry['peerRecovery'] as unknown as ApprovalPeerRecovery }
+          : {}),
       });
     }
   }
@@ -877,8 +898,19 @@ function writeApprovalResolutionStarted(
 ): JSONValue[] {
   return records.map((record) =>
     record.startedAt === undefined
-      ? { id: record.id }
-      : { id: record.id, startedAt: record.startedAt },
+      ? {
+          id: record.id,
+          ...(record.peerRecovery === undefined
+            ? {}
+            : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
+        }
+      : {
+          id: record.id,
+          startedAt: record.startedAt,
+          ...(record.peerRecovery === undefined
+            ? {}
+            : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
+        },
   );
 }
 
@@ -6496,6 +6528,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function persistApprovalResolutionStarted(
     sessionId: string,
     reviewId: string,
+    peerRecovery?: ApprovalPeerRecovery,
   ): Promise<void> {
     if (!runtime.sessionStore) return;
     await runtime.sessionStore.update(sessionId, (session) => {
@@ -6509,8 +6542,18 @@ async function constructBureau<const D extends AgentDefinitions>(
           ...session.metadata,
           approvalResolutionStartedIds: writeApprovalResolutionStarted(
             started.some((record) => record.id === reviewId)
-              ? started
-              : [...started, { id: reviewId, startedAt: runtimeServices.clock.now() }],
+              ? started.map((record) =>
+                  record.id === reviewId && peerRecovery !== undefined
+                    ? { ...record, peerRecovery }
+                    : record,
+                )
+              : [
+                  {
+                    id: reviewId,
+                    startedAt: runtimeServices.clock.now(),
+                    ...(peerRecovery === undefined ? {} : { peerRecovery }),
+                  },
+                ],
           ),
         },
       };
@@ -6685,11 +6728,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function persistApprovalResolutionStartedWithRetry(
     sessionId: string,
     reviewId: string,
+    peerRecovery?: ApprovalPeerRecovery,
   ): Promise<void> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
       try {
-        await persistApprovalResolutionStarted(sessionId, reviewId);
+        await persistApprovalResolutionStarted(sessionId, reviewId, peerRecovery);
         return;
       } catch (error) {
         lastError = error;
@@ -6699,6 +6743,30 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     throw lastError;
+  }
+
+  function peerRecoveryForApproval(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    input: ResolveReviewInput,
+    request: ReviewDecisionRequest,
+  ): ApprovalPeerRecovery | undefined {
+    if (input.decision !== 'approve') return undefined;
+    const revision = review.approval.approvalBinding?.toolDefinitionRevision;
+    if (revision === undefined || !options.recoverableStartedApprovals?.has(revision)) {
+      return undefined;
+    }
+    const argumentsRecord = isJsonObject(input.arguments as JSONValue)
+      ? (input.arguments as Record<string, JSONValue>)
+      : undefined;
+    const message = argumentsRecord?.['message'];
+    if (typeof message !== 'string' || message.trim().length === 0) return undefined;
+    return {
+      version: 1,
+      toolDefinitionRevision: revision,
+      durableOperationKey: `approval-resume:v1:${review.id}`,
+      request,
+      arguments: { message },
+    };
   }
 
   async function persistReviewResolution(
@@ -7838,6 +7906,237 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (pendingApprovalOverrides.size > 0) ensureLazyExpirySweep();
   }
 
+  /** COR-2051 — attach to a journaled peer task after an approved resolution lost its caller. */
+  async function recoverPeerApproval(
+    sessionId: string,
+    runId: string,
+    metadata: Record<string, JSONValue>,
+  ): Promise<void> {
+    const kv = runtime.kv;
+    const leaseTtlMilliseconds = 30_000;
+    const started = readApprovalResolutionStarted(metadata['approvalResolutionStartedIds']);
+    for (const marker of started) {
+      let journalEntry: PeerCallJournalEntry | undefined;
+      try {
+        const recovery = marker.peerRecovery;
+        if (recovery === undefined || recovery.request.reviewId !== marker.id) continue;
+        const session = await runtime.sessionStore?.load(sessionId);
+        const currentMetadata = session?.metadata;
+        const currentMarker = readApprovalResolutionStarted(
+          currentMetadata?.['approvalResolutionStartedIds'],
+        ).find((candidate) => candidate.id === marker.id);
+        if (
+          currentMarker?.peerRecovery === undefined ||
+          currentMarker.peerRecovery.request.reviewId !== marker.id
+        )
+          continue;
+        const currentRecovery = currentMarker.peerRecovery;
+        const persisted = persistedApprovalOf(currentMetadata, marker.id);
+        if (persisted === undefined || persisted.approval.callId === undefined) continue;
+        if (
+          persisted.round !== currentRecovery.request.round ||
+          persisted.approval.approvalBinding?.toolDefinitionRevision !==
+            currentRecovery.toolDefinitionRevision ||
+          persisted.approval.approvalToken === undefined
+        )
+          continue;
+        const adapter = options.recoverableStartedApprovals?.get(
+          currentRecovery.toolDefinitionRevision,
+        );
+        if (adapter === undefined || adapter.version !== 1) continue;
+        const decision = await reviewDecisions.inspect(currentRecovery.request);
+        if (decision.outcome !== 'matching' || decision.recorded) continue;
+        const authority = runRequestContexts.get(runId);
+        if (
+          authority !== undefined &&
+          isTransportIssuedAuthority(authority) &&
+          (requestAuthorityValidator === undefined || !(await requestAuthorityValidator(authority)))
+        )
+          continue;
+        const review: Extract<PendingReview, { kind: 'tool-approval' }> = {
+          kind: 'tool-approval',
+          id: marker.id,
+          runId,
+          sessionId,
+          agentName: terminalReviewSessions.get(runId)?.agentName,
+          approval: persisted.approval,
+          requestedAt: 0,
+          ageMilliseconds: 0,
+          status: 'pending',
+          round: persisted.round,
+        };
+        const policyToolbox = await skillPolicyToolboxOf(review, runToolboxesByRunId.get(runId));
+        if (!policyToolbox.resolveTool(currentRecovery.toolDefinitionRevision).ok) continue;
+        journalEntry = await peerCalls.read({
+          parentRunId: runId,
+          operationKey: currentRecovery.durableOperationKey,
+        });
+        if (
+          journalEntry === undefined ||
+          typeof journalEntry.taskId !== 'string' ||
+          journalEntry.taskId.length === 0 ||
+          typeof journalEntry.contextId !== 'string' ||
+          journalEntry.contextId.length === 0 ||
+          !/^[0-9a-f]{64}$/.test(journalEntry.requestDigest)
+        )
+          continue;
+
+        const leaseKey = `approval-recovery:v1:${marker.id.replace(/[^a-zA-Z0-9_.:-]/g, '_')}:${String(persisted.round)}`;
+        const token = runtimeServices.identifiers.next('approval-recovery');
+        const leaseValue = () =>
+          JSON.stringify({ token, expiresAt: runtimeServices.clock.now() + leaseTtlMilliseconds });
+        const acquireLease = async (): Promise<boolean> => {
+          if (kv === undefined) return true;
+          const current = await kv.get(leaseKey);
+          if (current !== null) {
+            try {
+              const parsed = JSON.parse(current) as { expiresAt?: unknown };
+              if (
+                typeof parsed.expiresAt !== 'number' ||
+                parsed.expiresAt > runtimeServices.clock.now()
+              )
+                return false;
+            } catch {
+              return false;
+            }
+          }
+          return kv.conditionalBatch(
+            [{ key: leaseKey, expectedValue: current }],
+            [{ type: 'set', key: leaseKey, value: leaseValue() }],
+          );
+        };
+        const ownsLease = async (): Promise<boolean> => {
+          if (kv === undefined) return true;
+          const current = await kv.get(leaseKey);
+          if (current === null) return false;
+          try {
+            const parsed = JSON.parse(current) as { token?: unknown; expiresAt?: unknown };
+            return (
+              parsed.token === token &&
+              typeof parsed.expiresAt === 'number' &&
+              parsed.expiresAt > runtimeServices.clock.now()
+            );
+          } catch {
+            return false;
+          }
+        };
+        if (!(await acquireLease())) continue;
+        const controller = new AbortController();
+        const renewal = runtimeServices.timers.setInterval(
+          () => {
+            void (async () => {
+              if (kv === undefined) return;
+              const current = await kv.get(leaseKey);
+              if (current === null) return controller.abort();
+              let currentToken: unknown;
+              try {
+                currentToken = (JSON.parse(current) as { token?: unknown }).token;
+              } catch {
+                return controller.abort();
+              }
+              if (currentToken !== token) return controller.abort();
+              const renewed = await kv.conditionalBatch(
+                [{ key: leaseKey, expectedValue: current }],
+                [{ type: 'set', key: leaseKey, value: leaseValue() }],
+              );
+              if (!renewed) controller.abort();
+            })();
+          },
+          Math.max(1, Math.floor(leaseTtlMilliseconds / 3)),
+        );
+        try {
+          if (!(await ownsLease())) continue;
+          const result = await adapter.attach({
+            sessionId,
+            runId,
+            reviewId: marker.id,
+            callId: persisted.approval.callId,
+            toolDefinitionRevision: currentRecovery.toolDefinitionRevision,
+            durableOperationKey: currentRecovery.durableOperationKey,
+            arguments: currentRecovery.arguments,
+            journalEntry,
+            signal: controller.signal,
+          });
+          if (!(await ownsLease())) continue;
+          if (
+            result === undefined ||
+            result === null ||
+            typeof result !== 'object' ||
+            result.callId !== persisted.approval.callId ||
+            result.toolCallId !== persisted.approval.callId ||
+            result.toolName !== persisted.approval.toolName ||
+            !Object.prototype.hasOwnProperty.call(result, 'content') ||
+            (result.outcome !== 'success' && result.outcome !== 'error')
+          )
+            continue;
+          const input: ResolveReviewInput = {
+            id: marker.id,
+            decision: 'approve',
+            principal: currentRecovery.request.principal,
+            round: currentRecovery.request.round,
+            arguments: currentRecovery.arguments,
+            ...(currentRecovery.request.reason === undefined
+              ? {}
+              : { reason: currentRecovery.request.reason }),
+          };
+          const auditAttachment = buildReviewDecisionAuditRecord(
+            review,
+            'approve',
+            input.principal,
+            input.reason,
+            [],
+            currentRecovery.request.digest,
+            await ownerForRecord(runId),
+          );
+          const committed = await persistReviewResolutionWithRetry(
+            sessionId,
+            marker.id,
+            true,
+            runId,
+            'approve',
+            input.principal,
+            input.reason,
+            auditAttachment,
+          );
+          if (!committed || !(await ownsLease())) continue;
+          markReviewResolvedLocally(review);
+          await releaseDecidedReview(runId, marker.id);
+          await writeApprovalOutcomeToSession(review, input, result);
+          await recordReviewDecision(review, 'approve', input.principal, input.reason, {
+            auditAlreadyAppended: true,
+            answerDigest: currentRecovery.request.digest,
+          });
+          await recordApprovedCall(approvedCallAuditOf(review, persisted.approval, result));
+          await reviewDecisions.markRecorded(currentRecovery.request);
+        } finally {
+          runtimeServices.timers.clearInterval(renewal);
+          if (kv !== undefined) {
+            const current = await kv.get(leaseKey);
+            if (current !== null) {
+              try {
+                if ((JSON.parse(current) as { token?: unknown }).token === token) {
+                  await kv.conditionalBatch(
+                    [{ key: leaseKey, expectedValue: current }],
+                    [{ type: 'delete', key: leaseKey }],
+                  );
+                }
+              } catch {
+                // A replaced or malformed lease is not ours to release.
+              }
+            }
+          }
+        }
+      } catch (error) {
+        diagnose({
+          level: 'warn',
+          scope: 'approval-recovery',
+          message: `[bureau] Peer approval recovery for "${marker.id}" did not complete; leaving it interrupted.`,
+          cause: error,
+        });
+      }
+    }
+  }
+
   function persistedApprovalRunIds(metadata: unknown): Set<string> {
     const metadataRecord =
       metadata && typeof metadata === 'object' && !Array.isArray(metadata)
@@ -7893,10 +8192,22 @@ async function constructBureau<const D extends AgentDefinitions>(
         ? stringValues(metadataRecord['resolvedReviewIds'])
         : [],
     );
+    // A peer approval marker is written after the binding has been consumed by the original
+    // process. `restoreApproval` quite correctly refuses consumed bindings, but removing the
+    // persisted approval here would also remove the only durable handle the trusted adapter can
+    // use to attach to the already-started task.
+    const peerRecoveryIds = new Set(
+      readApprovalResolutionStarted(
+        metadataRecord?.['approvalResolutionStartedIds'] as JSONValue | undefined,
+      )
+        .filter((record) => record.peerRecovery !== undefined)
+        .map((record) => record.id),
+    );
     for (const [reviewId, approval] of Object.entries(overrides as Record<string, unknown>)) {
       if (!reviewId.startsWith(`approval:${runId}:`)) continue;
       if (decidedReviewIds.has(reviewId)) continue;
       if (committed !== undefined && !committed.has(reviewId)) continue;
+      if (peerRecoveryIds.has(reviewId)) continue;
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
         if (!(approval as { approvalBinding?: unknown }).approvalBinding) continue;
         try {
@@ -18558,7 +18869,12 @@ async function constructBureau<const D extends AgentDefinitions>(
               'CONFLICT',
             );
           }
-          await persistApprovalResolutionStartedWithRetry(review.sessionId, review.id);
+          const peerRecovery = peerRecoveryForApproval(review, input, claimRequest);
+          await persistApprovalResolutionStartedWithRetry(
+            review.sessionId,
+            review.id,
+            peerRecovery,
+          );
           actionStarted = true;
           result = await approvalToolbox.resumeApproval(
             { ...approval, approvalToken: approval.approvalToken },
@@ -18570,6 +18886,9 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1920: the approved call is the run's, so a secret answer it names resolves for
               // that run, as it would have had the call not waited for approval.
               executionContext: { parentRunId: review.runId },
+              ...(peerRecovery === undefined
+                ? {}
+                : { durableOperationKey: peerRecovery.durableOperationKey }),
             },
           );
 
@@ -22755,6 +23074,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             });
             await restoreTerminalReviewSession(session, restoredRunId, committed);
           }
+          await recoverPeerApproval(session.id, restoredRunId, metadata);
         }
         if (!requestAuthorityValidator && hasRecoverableTransportAuthority(session.metadata)) {
           hasDeferredGatewayAuthority = true;
