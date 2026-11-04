@@ -192,6 +192,8 @@ export interface CreatePeerCallToolOptions {
   description: string;
   /** The client for the peer, from `createA2APeerClient` in `@lostgradient/weft/a2a`. */
   peer: A2APeerClient;
+  /** The canonical configured base URL, included in the durable request binding. */
+  peerUrl?: string | undefined;
   /**
    * The child's name in the registry and in child-workflow events. Defaults to the tool's
    * `name`.
@@ -255,7 +257,7 @@ function isTerminalFailure(state: A2APeerStopState): state is 'failed' | 'reject
  * {@link CreatePeerCallToolOptions.durable}).
  */
 export function createPeerCallTool(options: CreatePeerCallToolOptions) {
-  const { name, description, peer, parentContext, durable } = options;
+  const { name, description, peer, peerUrl, parentContext, durable } = options;
   const agentName = options.agentName ?? name;
   // Children stopped at a question, by remote task id, until a later call continues the task.
   const interrupted = new Map<string, (reason: string) => void>();
@@ -275,8 +277,6 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
           ? executionParentRunId
           : (parentContext?.parentRunId ?? '');
 
-      // Reading the card first means a peer this client must refuse never becomes a child.
-      const card = await peer.card();
       // A call that cannot be keyed is not journaled: it has nothing a replay could find.
       const operationKey = context.durableOperationKey;
       const journalKey: PeerCallJournalKey | undefined =
@@ -288,7 +288,12 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
         journalKey === undefined
           ? ''
           : await sha256Hex(
-              JSON.stringify([params.message, params.taskId ?? '', params.contextId ?? '']),
+              JSON.stringify([
+                peerUrl ?? '',
+                params.message,
+                params.taskId ?? '',
+                params.contextId ?? '',
+              ]),
             );
       const recorded =
         durable !== undefined && journalKey !== undefined
@@ -299,6 +304,8 @@ export function createPeerCallTool(options: CreatePeerCallToolOptions) {
       if (recorded !== undefined && recorded.requestDigest !== requestDigest) {
         throw new PeerCallMismatchError(recorded.taskId);
       }
+      // Bind a replay to the configured destination before reading a card from a replacement.
+      const card = await peer.card();
       const childRunId = `peer-${crypto.randomUUID()}`;
       const controller = new AbortController();
       const signal =

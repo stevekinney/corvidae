@@ -111,13 +111,18 @@ function memoryJournal(
   };
 }
 
-function toolOver(client: A2APeerClient, journal: PeerCallJournal | undefined) {
+function toolOver(
+  client: A2APeerClient,
+  journal: PeerCallJournal | undefined,
+  peerUrl = 'https://peer.example/',
+) {
   const registry = createChildRunRegistry();
   const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
   const tool = createPeerCallTool({
     name: 'ask_researcher',
     description: 'Ask the researcher agent.',
     peer: client,
+    peerUrl,
     durable: journal,
     parentContext: { emitter, parentAgentName: 'orchestrator', parentRunId: 'run-1', registry },
   });
@@ -194,6 +199,33 @@ describe('a durable peer call', () => {
     expect(restarted.sends).toEqual([]);
     expect(restarted.attaches).toHaveLength(1);
     expect(restarted.attaches[0]).toMatchObject({ taskId: 'task-1', contextId: 'context-1' });
+  });
+
+  it('rejects a replay whose configured destination changed before reading the card', async () => {
+    const journal = memoryJournal();
+    await toolOver(fakePeer().client, journal, 'https://peer.example/').call(
+      { message: 'find it' },
+      { durableOperationKey: KEY },
+    );
+
+    let cards = 0;
+    const replacement = fakePeer();
+    const originalCard = replacement.client.card;
+    replacement.client.card = async () => {
+      cards += 1;
+      return originalCard();
+    };
+    const error = await rejection(
+      toolOver(replacement.client, journal, 'https://replacement.example/').call(
+        { message: 'find it' },
+        { durableOperationKey: KEY },
+      ),
+    );
+
+    expect(error).toBeInstanceOf(PeerCallMismatchError);
+    expect(cards).toBe(0);
+    expect(replacement.sends).toEqual([]);
+    expect(replacement.attaches).toEqual([]);
   });
 
   it('resends with the same message id when the crash came before the record was written', async () => {

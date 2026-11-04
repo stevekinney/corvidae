@@ -121,11 +121,13 @@ import {
   type ServeOptions,
   type WeftServer,
 } from '@lostgradient/weft';
+import { createEgressPolicy, type EgressPolicy } from '@lostgradient/weft/a2a';
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
+import { createA2APeerTools, readA2APeersConfiguration } from './a2a-peers.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -327,6 +329,8 @@ export type HostOptions = {
   >;
   /** Agents to define beside the ones the plugins contribute, for tests that need an agent of their own. */
   readonly extraAgents?: ExtraAgents;
+  /** Egress policy for configured A2A peers; tests may allow an explicit loopback destination. */
+  readonly a2aPeerEgressPolicy?: EgressPolicy;
   /**
    * The code-defined agents that opt into A2A (COR-1819): each is served at
    * `/bureau/a2a/<name>` with an Agent Card, as a file agent with `a2a: true` is. Every name must
@@ -807,6 +811,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.toolSources = toolSources;
     await toolSources.start();
+    const configuredPeers = readA2APeersConfiguration(
+      await bungalow.readConfiguration(),
+      bungalow.configurationLocation,
+    );
+    const peerTools = createA2APeerTools({
+      peers: configuredPeers,
+      readSecret: (key) => bungalow.readSecret(key),
+      egressPolicy: options.a2aPeerEgressPolicy ?? createEgressPolicy(),
+      bureau: () => held.bureau,
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
@@ -886,7 +901,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: createAgentSource(bungalow, agentContent, toolSources.tools()),
+      agentSource: createAgentSource(bungalow, agentContent, {
+        ...toolSources.tools(),
+        ...peerTools,
+      }),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
       pluginAgentSource: createPluginAgentSource,
