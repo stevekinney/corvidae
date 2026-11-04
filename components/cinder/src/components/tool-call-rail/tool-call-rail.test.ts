@@ -232,7 +232,7 @@ describe('ToolCallRail rows', () => {
       { id: 'wait', name: 'B', input: '2', status: 'waiting' },
       { id: 'deny', name: 'C', input: '3', status: 'denied', result: 'Denied by you' },
       { id: 'fail', name: 'D', input: '4', status: 'failed', result: 'Boom' },
-      { id: 'ok', name: 'E', input: '5', status: 'approved', result: 'Approved by you 10:33 AM' },
+      { id: 'ok', name: 'E', input: '5', status: 'approved', decision: 'Approved by you 10:33 AM' },
     ];
     const { container } = render(ToolCallRail, { props: { calls } });
     const byId = (id: string): HTMLElement =>
@@ -249,7 +249,7 @@ describe('ToolCallRail rows', () => {
     expect(text(byId('fail').querySelector('.cinder-tool-call-rail__name'))).toBe('Failed: D');
     expect(text(byId('fail').querySelector('.cinder-tool-call-rail__result'))).toBe('→ Boom');
     expect(byId('ok').querySelector('[data-cinder-status="approved"]')).not.toBeNull();
-    // An approved call says what was decided, so it has no arrow.
+    // A decision is the person's words, so it has no arrow.
     expect(text(byId('ok').querySelector('.cinder-tool-call-rail__result'))).toBe(
       'Approved by you 10:33 AM',
     );
@@ -280,6 +280,20 @@ describe('ToolCallRail rows', () => {
     expect(onSelect).toHaveBeenCalledWith('mail');
     expect(onRetry).toHaveBeenCalledWith('mail');
     expect(onCopyInput).toHaveBeenCalledWith('mail');
+  });
+
+  test('an approved call without a decision shows what came back after an arrow', () => {
+    const { container } = render(ToolCallRail, {
+      props: {
+        calls: [
+          { id: 'wf', name: 'Create workflow', status: 'approved', result: 'Morning briefing' },
+        ],
+      },
+    });
+
+    expect(text(container.querySelector('.cinder-tool-call-rail__result'))).toBe(
+      '→ Morning briefing',
+    );
   });
 
   test('the failed call stacks its links beneath the danger text', () => {

@@ -202,9 +202,9 @@ const schema = {
       default: 3,
     },
     layout: {
-      enum: ['card', 'row'],
+      enum: ['card', 'row', 'detail'],
       description:
-        "Layout: the full `card`, or the shared `row`, one approval inside a transcript or beneath a tool call. Default `'card'`.",
+        "Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`.",
       default: 'card',
     },
     question: {
@@ -214,7 +214,22 @@ const schema = {
     },
     source: {
       type: 'string',
-      description: 'Who asked, written after "Approval from": `Tool runner`, or `the agent`.',
+      description: 'Who asked, written after the source prefix: `Tool runner`, or `the agent`.',
+    },
+    sourcePrefix: {
+      type: 'string',
+      description:
+        'The words before `source`. Default `Approval from`, or `Asked by` in the `detail` layout.',
+    },
+    eyebrow: {
+      type: 'string',
+      description:
+        'The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`.',
+    },
+    toolPrefix: {
+      type: 'string',
+      description:
+        'The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`.',
     },
     requestedAt: {
       type: 'string',
@@ -239,6 +254,11 @@ const schema = {
       type: 'string',
       description:
         'When the approval was decided, as an ISO timestamp, written as a time of day after the outcome.',
+    },
+    decisionNote: {
+      type: 'string',
+      description:
+        'The note the approver left with the decision, written under the outcome as "Your note", the note, and a caption saying where it went.',
     },
     disabledReason: {
       type: 'string',
@@ -296,6 +316,12 @@ const schema = {
       type: 'string',
       description:
         'What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card.',
+    },
+    view: {
+      enum: ['fields', 'json'],
+      description:
+        'Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch can govern every payload on a page. Default `fields`.',
+      default: 'fields',
     },
     class: {
       type: 'string',

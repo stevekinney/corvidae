@@ -24,7 +24,7 @@
       name: 'Issue refund',
       identifier: 'issue-refund',
       input: '4472',
-      result: 'Approved by you 10:33 AM · $18.50 refunded',
+      decision: 'Approved by you 10:33 AM · $18.50 refunded',
       duration: '0.6s',
       status: 'approved',
     },

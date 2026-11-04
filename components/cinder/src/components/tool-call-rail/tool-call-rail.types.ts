@@ -32,6 +32,13 @@ export type ToolCallRailCall = {
    * you", unless this is set.
    */
   result?: string | undefined;
+  /**
+   * What a person decided, in their own words and without an arrow: "Approved by you 10:33 AM ·
+   * $18.50 refunded" on an `approved` call, or "Denied by you 10:40 AM · nothing refunded" on a
+   * `denied` one. It takes the place of `result` on the row; without it an `approved` call shows
+   * its `result` after an arrow like a `done` one.
+   */
+  decision?: string | undefined;
   /** How long the call took, formatted by the caller ("0.2s"), at the end of the row. Elapsed while `running`. */
   duration?: string | undefined;
   /** Where the call stands. */

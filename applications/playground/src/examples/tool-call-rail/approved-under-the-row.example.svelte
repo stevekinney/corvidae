@@ -17,7 +17,7 @@
       input: 'Morning briefing',
       result: 'Morning briefing',
       duration: '0.8s',
-      status: 'done',
+      status: 'approved',
       nested: true,
     },
   ]}

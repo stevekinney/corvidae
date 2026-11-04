@@ -58,7 +58,7 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 `status` picks the glyph on the rail and the words:
 
 - `done`: a neutral grey dot, the result after an arrow.
-- `approved`: a green dot, for a call a person approved (`Approved by you 10:33 AM · $18.50 refunded`).
+- `approved`: a green dot, for a call a person approved. `decision` writes what was decided in the person's words, without an arrow (`Approved by you 10:33 AM · $18.50 refunded`); without it the row shows `result` after an arrow like a `done` call.
 - `running`: a spinner in place of the dot, `Running…` in place of a result, and the elapsed time.
 - `waiting`: an amber shield and `Waiting on you`, as its own row.
 - `denied`: a prohibition glyph and neutral words. It is not called failed and carries no error block.
@@ -136,6 +136,7 @@ name        string   required  The tool's name as a person reads it.
 identifier  string   optional  The tool's identifier, in a tooltip on the name.
 input       string   optional  The key input, muted and truncated.
 result      string   optional  What came back, in one line.
+decision    string   optional  What a person decided, in their own words and without an arrow.
 duration    string   optional  How long it took, formatted by the caller.
 status      done | approved | running | waiting | denied | failed   required
 failure     string   optional  A failed call's consequence, in one danger line.

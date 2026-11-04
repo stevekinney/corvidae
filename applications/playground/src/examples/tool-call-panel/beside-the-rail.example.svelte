@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Beside the rail';
   export const description =
-    'The rail and its panel together: the selected Send email row is tinted and its panel docks to the right. Esc or the X closes the panel and Close hands focus back to the row; choosing the row again closes it too.';
+    'The rail and its panel together: the selected Send email row is tinted and, at 1280px and wider, its panel docks to the right. Below that it opens over the page on a scrim, and on a phone as a bottom sheet, so it never covers the rail. Esc or the X closes the panel and Close hands focus back to the row; choosing the row again closes it too.';
 </script>
 
 <script lang="ts">
@@ -56,7 +56,7 @@
   <ToolCallPanel
     bind:open
     onClose={() => rail?.focusCall('send-email')}
-    placement="docked"
+    placement="auto"
     name="Send email"
     identifier="send-email"
     status="failed"

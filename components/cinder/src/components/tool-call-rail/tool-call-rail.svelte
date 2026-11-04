@@ -121,11 +121,13 @@
   const resultText = (call: ToolCallRailCall): string => {
     if (call.status === 'running') return call.result ?? words.running;
     if (call.status === 'waiting') return call.result ?? words.waitingResult;
-    if (call.status === 'denied') return call.result ?? words.denied;
-    if (call.result === undefined || call.result === '') return '';
-    // An approved call says what was decided ("Approved by you 10:33 AM · $18.50 refunded"), not
-    // what the call returned, so it carries no arrow.
-    return call.status === 'approved' ? call.result : `→ ${call.result}`;
+    if (call.status === 'denied') return call.decision ?? call.result ?? words.denied;
+    // A decision is the person's words ("Approved by you 10:33 AM · $18.50 refunded"), not what
+    // the call returned, so it carries no arrow.
+    if (call.status === 'approved' && call.decision !== undefined && call.decision !== '') {
+      return call.decision;
+    }
+    return call.result === undefined || call.result === '' ? '' : `→ ${call.result}`;
   };
   const statusWord = (call: ToolCallRailCall): string =>
     call.status === 'failed' ? 'Failed' : call.status === 'approved' ? 'Approved' : '';
