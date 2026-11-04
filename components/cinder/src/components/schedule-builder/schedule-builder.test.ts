@@ -1110,6 +1110,17 @@ describe('ScheduleBuilder', () => {
       expect(css).toContain('@layer cinder.components');
     });
 
+    test('the seven day toggles shrink to the width they have, so none runs off a narrow screen', async () => {
+      const { readFileSync } = await import('node:fs');
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      expect(css).toMatch(
+        /\.cinder-schedule-builder__weekday-group \{[^}]*flex-wrap: nowrap;[^}]*max-inline-size: 100%;/,
+      );
+      expect(css).toMatch(
+        /\.cinder-schedule-builder__weekday-group > \.cinder-chip \{[^}]*inline-size: 3rem;[^}]*flex: 0 1 auto;[^}]*min-inline-size: 0;/,
+      );
+    });
+
     test('aggregates the styles of the fields it composes before the component layer', async () => {
       const { readFileSync } = await import('node:fs');
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');

@@ -358,6 +358,11 @@
     max-inline-size: none;
   }
 
+  /* A cell's detail flows with its content, as if it were written beside it. */
+  .cinder-table__cell-detail {
+    display: contents;
+  }
+
   .cinder-table__cell[data-cinder-align='center'] {
     text-align: center;
   }
@@ -449,6 +454,12 @@
     border-bottom: 0;
     text-align: start;
     overflow-wrap: break-word;
+  }
+
+  /* A cell's detail (an identifier, a description) is not drawn on a card: line one is the name
+   * and its facts (row 40a). */
+  .cinder-table[data-cinder-stacked] .cinder-table__cell-detail {
+    display: none;
   }
 
   /* The first cell without a control is the name and takes the line; any other is a muted word

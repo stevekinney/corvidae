@@ -26,6 +26,7 @@
     as = 'td',
     truncate = false,
     controls = false,
+    detail,
     title,
     class: className,
     children,
@@ -57,6 +58,7 @@
   };
 </script>
 
+<!-- The detail follows the content with no whitespace between them, so the cell's text has no stray space. -->
 <svelte:element
   this={as}
   {...rest}
@@ -73,5 +75,5 @@
     </span>
   {:else}
     {@render children?.()}
-  {/if}
+  {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}
 </svelte:element>

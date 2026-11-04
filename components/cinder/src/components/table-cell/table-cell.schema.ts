@@ -41,6 +41,12 @@ const schema = {
         description:
           "Cell content. Optional so that empty `<td>` cells (used in spanning\ntable layouts) are a valid, non-throwing state. When omitted the cell\nrenders empty, which is valid HTML for a `<td>`.\n\n**Note for TypeScript consumers:** the Snippet type is never called externally\nby consuming code — Svelte's compiler handles invocation internally. Making\nthis optional is therefore safe as an API change: no external caller calls\n`props.children()` on a Svelte component's props.",
       },
+      {
+        name: 'detail',
+        reason: 'function-or-snippet',
+        description:
+          "Secondary content that follows `children` in the same cell: an identifier, a description, a\nnote. It reads as part of the cell until the table stacks its rows into cards, where it is\ndropped, so the first line of a card carries the name and its one-word facts only (a tool's\nname and risk, not its identifier and description). It is not a place for anything the reader\nneeds on a phone, because it is not drawn there.",
+      },
     ],
   },
 } satisfies ComponentSchema;

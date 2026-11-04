@@ -173,6 +173,11 @@ describe('Table stackBelow', () => {
     expect(css).toMatch(
       /\.cinder-table-scroll > \.cinder-table\[data-cinder-stacked\] \{\s*flex: 1 1 auto;\s*min-inline-size: 0;/,
     );
+    // A cell's detail flows with its content, and a card drops it so line one is the name and its facts.
+    expect(css).toMatch(/\.cinder-table__cell-detail \{\s*display: contents;/);
+    expect(css).toMatch(
+      /\.cinder-table\[data-cinder-stacked\] \.cinder-table__cell-detail \{\s*display: none;/,
+    );
     // Only an unbroken string breaks, not every character.
     expect(css).toMatch(/overflow-wrap: break-word;/);
     expect(css).not.toMatch(/overflow-wrap: anywhere;/);

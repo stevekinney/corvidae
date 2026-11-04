@@ -93,16 +93,23 @@
    * Custom days: seven toggles joined into one group
    * ---------------------------------------- */
 
+  /* The seven toggles share the group's width, so on a narrow screen they shrink together
+     instead of pushing Sun past the edge; given room, each is 3rem wide. The width (not the flex
+     basis) is what the group's own size is measured from. */
   .cinder-schedule-builder__weekday-group {
     display: inline-flex;
     flex-wrap: nowrap;
+    max-inline-size: 100%;
+    min-inline-size: 0;
   }
 
   .cinder-schedule-builder__weekday-group > .cinder-chip {
+    inline-size: 3rem;
+    flex: 0 1 auto;
     border-radius: 0;
     justify-content: center;
-    min-inline-size: 3rem;
-    padding-inline: var(--cinder-space-2);
+    min-inline-size: 0;
+    padding-inline: var(--cinder-space-1);
     font-size: var(--cinder-text-sm);
   }
 

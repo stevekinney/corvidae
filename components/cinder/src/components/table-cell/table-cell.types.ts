@@ -24,6 +24,14 @@ export type TableCellProps = Omit<HTMLTdAttributes, 'class' | 'align' | 'scope'>
    * @default false
    */
   controls?: boolean | 'fit';
+  /**
+   * Secondary content that follows `children` in the same cell: an identifier, a description, a
+   * note. It reads as part of the cell until the table stacks its rows into cards, where it is
+   * dropped, so the first line of a card carries the name and its one-word facts only (a tool's
+   * name and risk, not its identifier and description). It is not a place for anything the reader
+   * needs on a phone, because it is not drawn there.
+   */
+  detail?: Snippet;
   /** Visual alignment for numeric columns. @default "left" */
   align?: 'left' | 'center' | 'right';
   /**

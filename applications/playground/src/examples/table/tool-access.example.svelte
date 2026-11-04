@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Table with controls';
   export const description =
-    'A table whose cells hold a checkbox and a select. It never scrolls: below 640px of its own width each row becomes a card with the name and its risk on top and the controls at 44px beneath. Asks is disabled while a tool is off.';
+    'A table whose cells hold a checkbox and a select. It never scrolls: below 640px of its own width each row becomes a card with the name and its risk on top (the identifier and description, passed as `detail`, are dropped) and the controls at 44px beneath. Asks is disabled while a tool is off.';
 </script>
 
 <script lang="ts">
@@ -70,8 +70,11 @@
           <Checkbox bind:checked={tool.on} aria-label={`Allow ${tool.name}`} />
         </Table.Cell>
         <Table.Cell as="th">
-          <strong>{tool.name}</strong> <code>{tool.identifier}</code>
-          <span class="muted">{tool.description}</span>
+          <strong>{tool.name}</strong>
+          {#snippet detail()}
+            <code>{tool.identifier}</code>
+            <span class="muted">{tool.description}</span>
+          {/snippet}
         </Table.Cell>
         <Table.Cell><span class="muted">{tool.risk}</span></Table.Cell>
         <Table.Cell controls>
