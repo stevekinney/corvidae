@@ -428,6 +428,12 @@ const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<string> = new Set([
   'cancelled',
   'timed-out',
 ]);
+
+interface RecoveryAuthorizationFailure {
+  readonly code: string;
+  readonly reason: string;
+  readonly canDenyBeforeRecovery: boolean;
+}
 const PARENT_CANCELLATIONS: readonly string[] = ['cascade', 'detach'];
 const LIST_CAPABILITIES = ['tools', 'pathPatterns', 'secrets'] as const;
 const SWITCH_CAPABILITIES = ['network', 'admin'] as const;
@@ -628,7 +634,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   const cancelledParents = new Set<string>();
   const pendingRecovery = new Map<string, BureauChildRecord>();
   const pendingRecoveryToolCapabilities = new Map<string, readonly string[]>();
-  const pendingRecoveryAuthorizationFailures = new Map<string, string>();
+  const pendingRecoveryAuthorizationFailures = new Map<string, RecoveryAuthorizationFailure>();
 
   // -------------------------------------------------------------------------
   // Bookkeeping
@@ -1738,17 +1744,19 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       if (record.grantId !== undefined) {
         try {
           if (delegation === undefined) {
-            pendingRecoveryAuthorizationFailures.set(
-              record.childRunId,
-              'no delegation secret is configured',
-            );
+            pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+              code: 'delegation-unavailable',
+              reason: 'no delegation secret is configured',
+              canDenyBeforeRecovery: true,
+            });
           } else {
             const loaded = await store.loadGrant(record.grantId);
             if (loaded.status !== 'found') {
-              pendingRecoveryAuthorizationFailures.set(
-                record.childRunId,
-                `grant ${record.grantId} is ${loaded.status}`,
-              );
+              pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+                code: loaded.status,
+                reason: `grant ${record.grantId} is ${loaded.status}`,
+                canDenyBeforeRecovery: true,
+              });
             } else {
               const verification = verifyDelegationGrant(
                 loaded.grant,
@@ -1756,7 +1764,11 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
                 runtime.clock.now(),
               );
               if (!verification.valid) {
-                pendingRecoveryAuthorizationFailures.set(record.childRunId, verification.reason);
+                pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+                  code: verification.code,
+                  reason: verification.reason,
+                  canDenyBeforeRecovery: true,
+                });
               } else if (loaded.grant.effectiveCapabilities.tools !== undefined) {
                 pendingRecoveryToolCapabilities.set(
                   record.childRunId,
@@ -1766,10 +1778,30 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
             }
           }
         } catch (error) {
-          pendingRecoveryAuthorizationFailures.set(
-            record.childRunId,
-            `could not read grant ${record.grantId}: ${describeError(error)}`,
-          );
+          pendingRecoveryAuthorizationFailures.set(record.childRunId, {
+            code: 'grant-read-failed',
+            reason: `could not read grant ${record.grantId}: ${describeError(error)}`,
+            canDenyBeforeRecovery: false,
+          });
+        }
+      }
+      const failure = pendingRecoveryAuthorizationFailures.get(record.childRunId);
+      if (failure?.canDenyBeforeRecovery && record.workflow.kind === 'durable') {
+        const engine = dependencies.getEngine();
+        if (engine) {
+          try {
+            const state = await engine.get(record.workflow.workflowId);
+            if (state && !TERMINAL_WORKFLOW_STATUSES.has(state.status)) {
+              await deny(record, failure.code, failure.reason);
+            }
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'recovery',
+              message: `[bureau] Could not pre-deny child "${record.childRunId}" during recovery: ${describeError(error)}`,
+              cause: error,
+            });
+          }
         }
       }
       if (record.workflow.kind !== 'durable') continue;
@@ -1815,7 +1847,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     if (!record) return undefined;
     const authorizationFailure = pendingRecoveryAuthorizationFailures.get(runId);
     if (authorizationFailure !== undefined) {
-      throw new Error(`Child "${runId}" cannot resume: ${authorizationFailure}`);
+      throw new Error(`Child "${runId}" cannot resume: ${authorizationFailure.reason}`);
     }
     const channel = tracked.get(runId)?.channel;
     const delegatedToolCapabilities = pendingRecoveryToolCapabilities.get(runId);
