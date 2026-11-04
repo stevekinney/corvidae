@@ -190,4 +190,44 @@ describe('createGovernedMemoryTools (model-facing, untrusted)', () => {
     });
     expect(original?.content).toContain('under the mat');
   });
+
+  it('isolates collections resolved from each agent call', async () => {
+    const tools = createGovernedMemoryTools(fixture.memory, {
+      resolveContext: ({ requestContext }) =>
+        requestContext === undefined
+          ? undefined
+          : {
+              collection: requestContext.agentId ?? 'unknown',
+              authority: createMemoryAuthority({
+                principal: { kind: 'tool', id: 'memory_store' },
+                tenantId: requestContext.authority.tenantId,
+                ownerId: requestContext.authority.ownerId,
+                purpose: 'tool',
+                capabilities: ['memory:write', 'memory:search'],
+                policyRevision: requestContext.authority.authorizationRevision,
+                projection: 'tool',
+              }),
+            },
+    });
+    await tools.store.execute(
+      { content: 'alpha-only memory' },
+      { requestContext: { ...requestContext('owner-a'), agentId: 'alpha' } },
+    );
+    await tools.store.execute(
+      { content: 'beta-only memory' },
+      { requestContext: { ...requestContext('owner-a'), agentId: 'beta' } },
+    );
+    const alpha = await tools.recall.execute(
+      { query: 'only memory' },
+      { requestContext: { ...requestContext('owner-a'), agentId: 'alpha' } },
+    );
+    const beta = await tools.recall.execute(
+      { query: 'only memory' },
+      { requestContext: { ...requestContext('owner-a'), agentId: 'beta' } },
+    );
+    expect(alpha.evidence).toContain('alpha-only memory');
+    expect(alpha.evidence).not.toContain('beta-only memory');
+    expect(beta.evidence).toContain('beta-only memory');
+    expect(beta.evidence).not.toContain('alpha-only memory');
+  });
 });
