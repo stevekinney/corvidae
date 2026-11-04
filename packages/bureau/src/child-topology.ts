@@ -1061,7 +1061,6 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     await audit(`child.${record.status}`, record, {
       dedupeKey: `child.${record.status}:${record.childRunId}`,
     });
-    await announce('settled', record);
     try {
       await releaseReservation(record);
     } catch (error) {
@@ -1072,6 +1071,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         cause: error,
       });
     }
+    await announce('settled', record);
     if (record.status === 'aborted') {
       await parentCancelled(record.childRunId, record.outcome?.reason ?? 'aborted');
     }

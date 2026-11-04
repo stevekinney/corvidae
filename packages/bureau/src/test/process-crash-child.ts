@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createCheckpointStore, stopWhen, createAgent } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
+import { spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
@@ -556,15 +557,22 @@ async function childWaitParked(): Promise<void> {
       workflowClaimTtlMs: CLAIM_TTL_MS,
       workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
     },
-    children: {
-      beforeWake: async () => {
-        const directory = dirname(markerPath as string);
-        publishChildFile(join(directory, 'afterChildSettlementBeforeParentWake'), 'pending');
-        killSelf();
-      },
-    },
   });
   const parent = await bureau.tasks.start('planner', 'wait for child', { principal: 'alice' });
+  const engine = bureau.durableEngine();
+  if (engine === undefined) throw new Error('child: durable engine unavailable');
+  const signalTarget = engine as {
+    signal: (runId: string, signalName: string, payload?: unknown) => Promise<void>;
+  };
+  const parentSignal = signalTarget.signal.bind(engine);
+  spyOn(signalTarget, 'signal').mockImplementation(async (runId, signalName, payload) => {
+    if (runId === parent.id && signalName === `durable-child:${parent.id}:child-1`) {
+      const directory = dirname(markerPath as string);
+      publishChildFile(join(directory, 'afterChildSettlementBeforeParentWake'), 'pending');
+      killSelf();
+    }
+    return parentSignal(runId, signalName, payload);
+  });
   await parentReady.promise;
   const child = await bureau.children.dispatch({
     parentRunId: parent.id,

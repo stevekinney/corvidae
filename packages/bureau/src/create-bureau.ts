@@ -2925,6 +2925,37 @@ async function constructBureau<const D extends AgentDefinitions>(
     current: undefined,
   };
   let childTopologyForWait: ChildTopology | undefined;
+  function configureChildWaitServices(services: DurableRunDeps, principal: string): void {
+    services.deferredChildCallIds ??= new Set<string>();
+    services.childWaitPrincipal = principal;
+    services.requestChildWait = (request) => {
+      if (services.childWaitPrincipal !== request.principal)
+        return { parked: false, reason: 'unauthorized' };
+      if (
+        services.pendingChildWait !== undefined ||
+        services.pendingHumanWait !== undefined ||
+        services.pendingWakeup !== undefined
+      )
+        return { parked: false, reason: 'already-parked' };
+      services.pendingChildWait = { schemaVersion: 1, ...request };
+      services.deferredChildCallIds?.add(request.toolCallId);
+      return { parked: true };
+    };
+    services.resolveChildWait = async (request) => {
+      const topology = childTopologyForWait;
+      if (topology === undefined) return { outcome: 'not-found' };
+      const outcome = await topology.children.wait({
+        parentRunId: request.parentRunId,
+        childRunId: request.childRunId,
+      });
+      if (outcome.outcome === 'settled')
+        return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'unobservable')
+        return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
+      return { outcome: 'not-found' };
+    };
+  }
   const assetServiceHolder: { current: AssetService | undefined } = {
     current: assetServiceInstance,
   };
@@ -2965,33 +2996,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     {
       configureDurableRun: (_runId, services, principal) => {
-        services.childWaitPrincipal = principal;
-        services.requestChildWait = (request) => {
-          if (services.childWaitPrincipal !== request.principal)
-            return { parked: false, reason: 'unauthorized' };
-          if (
-            services.pendingChildWait !== undefined ||
-            services.pendingHumanWait !== undefined ||
-            services.pendingWakeup !== undefined
-          )
-            return { parked: false, reason: 'already-parked' };
-          services.pendingChildWait = { schemaVersion: 1, ...request };
-          return { parked: true };
-        };
-        services.resolveChildWait = async (request) => {
-          const topology = childTopologyForWait;
-          if (topology === undefined) return { outcome: 'not-found' };
-          const outcome = await topology.children.wait({
-            parentRunId: request.parentRunId,
-            childRunId: request.childRunId,
-          });
-          if (outcome.outcome === 'settled')
-            return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
-          if (outcome.outcome === 'unobservable')
-            return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
-          if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
-          return { outcome: 'not-found' };
-        };
+        configureChildWaitServices(services, principal);
       },
       // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
       // on every line, so a change to `logs.maximumLinesPerRun` applies to the next one.
@@ -9015,21 +9020,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       const durableServicesOnServices = runtime.durable
         ? (services: DurableRunDeps) => {
             servicesRef.current = services;
-            services.childWaitPrincipal = owner;
-            services.resolveChildWait = async (childWaitRequest) => {
-              const topology = childTopologyForWait;
-              if (topology === undefined) return { outcome: 'not-found' };
-              const outcome = await topology.children.wait({
-                parentRunId: childWaitRequest.parentRunId,
-                childRunId: childWaitRequest.childRunId,
-              });
-              if (outcome.outcome === 'settled')
-                return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
-              if (outcome.outcome === 'unobservable')
-                return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
-              if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
-              return { outcome: 'not-found' };
-            };
+            configureChildWaitServices(services, owner);
           }
         : undefined;
 
@@ -21803,33 +21794,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         void childTopology.parentCancelled(runId, reason);
       },
       configureDurableRun: (_runId, services, principal) => {
-        services.childWaitPrincipal = principal;
-        services.requestChildWait = (request) => {
-          if (services.childWaitPrincipal !== request.principal)
-            return { parked: false, reason: 'unauthorized' };
-          if (
-            services.pendingChildWait !== undefined ||
-            services.pendingHumanWait !== undefined ||
-            services.pendingWakeup !== undefined
-          )
-            return { parked: false, reason: 'already-parked' };
-          services.pendingChildWait = { schemaVersion: 1, ...request };
-          return { parked: true };
-        };
-        services.resolveChildWait = async (request) => {
-          const topology = childTopologyForWait;
-          if (topology === undefined) return { outcome: 'not-found' };
-          const outcome = await topology.children.wait({
-            parentRunId: request.parentRunId,
-            childRunId: request.childRunId,
-          });
-          if (outcome.outcome === 'settled')
-            return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
-          if (outcome.outcome === 'unobservable')
-            return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
-          if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
-          return { outcome: 'not-found' };
-        };
+        configureChildWaitServices(services, principal);
       },
     });
 
@@ -22036,7 +22001,6 @@ async function constructBureau<const D extends AgentDefinitions>(
         store.recordAction(announcement.record.parentRunId, action.type, action.detail);
       }
       if (announcement.kind === 'settled') {
-        await options.children?.beforeWake?.();
         void runtime.durable?.engine
           .signal(
             announcement.record.parentRunId,

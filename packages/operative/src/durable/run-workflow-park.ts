@@ -123,7 +123,11 @@ export function* runWorkflowPark(
     deps.deferredChildCallIds?.delete(request.toolCallId);
     deps.emitter?.dispatch(
       new ToolSettledBubbleEvent(
-        { agentName: deps.options.agentName ?? '', runId: state.runId, step: state.cursor.step },
+        {
+          agentName: deps.options.agentName ?? '',
+          runId: state.runId,
+          step: state.pendingChildStepRecord?.step ?? state.cursor.step,
+        },
         {
           toolName: tool?.name ?? 'durable-child-wait',
           toolCallId: request.toolCallId,
