@@ -17,6 +17,7 @@
   import EventsTab from '../detail/events-tab.svelte';
   import RunTimeline from './run-timeline.svelte';
   import RunToolCalls from './run-tool-calls.svelte';
+  import { threadIdForTask } from './run-activity.ts';
   import type { RunEngine } from './run-engine.svelte.ts';
 
   interface RunActivityProps {
@@ -36,6 +37,8 @@
 
   let { task, threadId, taskEvents = 0, note, engine, workflow }: RunActivityProps = $props();
 
+  const taskThreadId = $derived(task === undefined ? undefined : threadIdForTask(task, threadId));
+
   const principal = getPrincipalStore();
   const canReadEvents = $derived(principal.hasScope('events:read'));
 
@@ -49,7 +52,7 @@
   {#if task !== undefined}
     <h3 class="ib-run__heading-3">{TASK_COPY.toolCallsHeading}</h3>
     <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
-    <RunToolCalls {task} {threadId} events={taskEvents} />
+    <RunToolCalls {task} threadId={taskThreadId} events={taskEvents} />
   {:else if note !== undefined}
     <p class="ib-run__note">{note}</p>
   {/if}
