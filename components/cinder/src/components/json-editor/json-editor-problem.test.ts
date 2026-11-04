@@ -28,6 +28,13 @@ describe('locateJsonProblem', () => {
     expect(locateJsonProblem(source)?.line).toBe(2);
   });
 
+  test('keeps CRLF line breaks as line endings and non-ASCII text on the same line', () => {
+    expect(locateJsonProblem('{\r\n  "a": 1\r\n  "b": 2\r\n}')?.detail).toBe(
+      'Missing comma at the end of this line.',
+    );
+    expect(locateJsonProblem('{"a": 1 é "b": 2}')?.detail).toBe('Missing comma after this value.');
+  });
+
   test('keeps a missing comma on its own line when the next token shares the line', () => {
     const problem = locateJsonProblem('{\n  "a": 1 "b": 2\n}');
     expect(problem?.line).toBe(2);
@@ -64,6 +71,15 @@ describe('locateJsonProblem', () => {
     ['{} {}', 'extra'],
   ] as const)('classifies %j as %s', (source, kind) => {
     expect(locateJsonProblem(source)?.kind).toBe(kind);
+  });
+
+  test('accepts supported escapes and rejects malformed unicode escapes', () => {
+    expect(locateJsonProblem('{"a": "line\\nbreak"} trailing')?.kind).toBe('extra');
+    expect(locateJsonProblem('{"a": "\\u1234"} trailing')?.kind).toBe('extra');
+    expect(locateJsonProblem('{"a": "\\u12xz"}')?.kind).toBe('token');
+    expect(locateJsonProblem('{"a": true} trailing')?.kind).toBe('extra');
+    expect(locateJsonProblem('[] trailing')?.kind).toBe('extra');
+    expect(locateJsonProblem('[1] trailing')?.kind).toBe('extra');
   });
 
   test('puts the mark on the line of the offending token for a stray character', () => {

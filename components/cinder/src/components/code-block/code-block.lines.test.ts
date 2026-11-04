@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { Highlighter } from '../../utilities/highlighter.ts';
+import { decorateHighlightedLines } from './code-block-lines.ts';
 
 setupHappyDom();
 
@@ -158,6 +159,7 @@ describe('CodeBlock — line annotations (row 62l)', () => {
       annotations: [
         { line: 2, message: 'First.' },
         { line: 2, message: 'Second.' },
+        { line: 2, message: 'Third.' },
       ],
     });
 
@@ -165,7 +167,24 @@ describe('CodeBlock — line annotations (row 62l)', () => {
       [...container.querySelectorAll('.cinder-code-block__annotation')].map((note) =>
         note.textContent?.trim(),
       ),
-    ).toEqual(['First.', 'Second.']);
+    ).toEqual(['First.', 'Second.', 'Third.']);
+  });
+
+  test('keeps multiple annotations adjacent when decorating highlighted lines directly', () => {
+    const container = document.createElement('div');
+    container.innerHTML = '<pre><code><span class="line">const value = 1;</span></code></pre>';
+    const attachment = decorateHighlightedLines(
+      [
+        { line: 1, message: 'First.' },
+        { line: 1, message: 'Second.' },
+        { line: 1, message: 'Third.' },
+      ],
+      (found) => expect(found).toBe(true),
+    );
+    const cleanup = attachment(container);
+    expect(container.querySelectorAll('.cinder-code-block__annotation')).toHaveLength(3);
+    if (cleanup) cleanup();
+    expect(container.querySelectorAll('.cinder-code-block__annotation')).toHaveLength(0);
   });
 
   test('decorates highlighted code the same way, and removes its notes when they change', async () => {

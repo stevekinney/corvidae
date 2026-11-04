@@ -261,6 +261,26 @@ describe('readSchemaFields', () => {
     expect(readSchemaFields('string')).toEqual([]);
   });
 
+  test('keeps non-object alternatives readable without treating them as choice branches', () => {
+    expect(readSchemaFields({ oneOf: [true, { type: 'string' }] })).toMatchObject([
+      { key: 'value', type: 'text' },
+    ]);
+  });
+
+  test('expands object alternatives declared at the schema root', () => {
+    const fields = readSchemaFields({
+      oneOf: [
+        { properties: { email: { type: 'string' } } },
+        { properties: { webhook: { type: 'string' } } },
+      ],
+    });
+    expect(fields.map((field) => field.label)).toEqual([
+      'If option 1: Email',
+      'If option 2: Webhook',
+    ]);
+    expect(fields.map((field) => field.path)).toEqual(['option 1:email', 'option 2:webhook']);
+  });
+
   test('keeps the file order and puts the required fields first only on request', () => {
     const fields = readSchemaFields(workflowSchema);
     expect(fields.map((field) => field.key)).toEqual([
@@ -475,6 +495,13 @@ describe('splitDescription', () => {
     expect(splitDescription('One\nline.\n\nSecond\nparagraph.\n  \nThird.')).toEqual({
       summary: 'One line.',
       detail: 'Second paragraph. Third.',
+    });
+  });
+
+  test('drops blank detail paragraphs while joining the remaining text', () => {
+    expect(splitDescription('Summary\n\n   \n\nDetail')).toEqual({
+      summary: 'Summary',
+      detail: 'Detail',
     });
   });
 });
