@@ -245,8 +245,9 @@
   }
 
   /* The same theme paints a number in the key blue (#79b8ff), so `{ "total": 42.0 }` reads as one
-   * hue. The design draws a number in amber, oklch(82% 0.14 75), which is the dark warning fill
-   * (`--cinder-status-warning-solid`, oklch(82% 0.156 75)); the warning text role is a pale 90%
+   * hue. The design draws a number in amber, oklch(82% 0.14 75), which is close to the dark warning
+   * fill (oklch(82% 0.156 75)), written as a literal because the fill token must not be consumed as
+   * text (scripts/status-solid-foreground.test.ts); this rule is dark-only. The warning text role is a pale 90%
    * step that reads almost as the plain text beside it. The fill clears AA on the inset by a wide
    * margin. The stylesheet cannot read a token's text, so `code-block-lines.ts` marks the tokens
    * that are numeric literals, and only a marked token painted in that blue is lifted: a number a
@@ -254,7 +255,7 @@
   .cinder-code-block
     :where(pre.shiki)
     span.cinder-code-block__number[style*='--shiki-dark:#79b8ff' i] {
-    --shiki-dark: var(--cinder-status-warning-solid) !important;
+    --shiki-dark: oklch(82% 0.14 75) !important;
   }
 
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just
