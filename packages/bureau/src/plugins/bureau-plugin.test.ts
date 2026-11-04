@@ -1,6 +1,6 @@
 /**
  * COR-1890 — Bureau's own tools reach agents as the built-in `bureau` plugin's contributions:
- * `bureau:discover-agents` and the five `bureau:workflows-*` tools. The plugin is required, holds the
+ * `bureau:discover-agents` and the six `bureau:workflows-*` tools. The plugin is required, holds the
  * name `bureau` before any other plugin, and the events its tools cause carry `source: 'bureau'`.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -52,6 +52,8 @@ const STEPS = [
 const WORKFLOW_TOOLS = [
   'workflows-create',
   'workflows-update',
+  'workflows-validate',
+  'workflows-catalog',
   'workflows-pause',
   'workflows-resume',
   'workflows-list',
@@ -165,7 +167,7 @@ describe('the built-in bureau plugin', () => {
     ]);
   });
 
-  it('lists the five workflow tools in the tool catalog as Bureau’s, under bureau:', async () => {
+  it('lists the six workflow tools in the tool catalog as Bureau’s, under bureau:', async () => {
     const harness = await start();
     const names = harness.bureau.agents.tools().map((tool) => tool.name);
     for (const name of WORKFLOW_TOOLS) expect(names).toContain(`bureau:${name}`);

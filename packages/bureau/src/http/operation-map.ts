@@ -114,7 +114,6 @@ export const OPERATION_MAP = {
   'bureau.workflows.create': { member: 'workflows.create' },
   'bureau.workflows.update': { member: 'workflows.update' },
   'bureau.workflows.validate': { member: 'workflows.validate' },
-  'bureau.workflows.catalog': { member: 'workflows.catalog' },
   'bureau.workflows.pause': { member: 'workflows.pause' },
   'bureau.workflows.resume': { member: 'workflows.resume' },
   'bureau.workflows.delete': { member: 'workflows.delete' },

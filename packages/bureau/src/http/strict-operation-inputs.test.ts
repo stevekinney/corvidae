@@ -26,6 +26,10 @@ const LOOSE_BY_DESIGN: Readonly<Record<string, Readonly<Record<string, string>>>
     'definition.trigger':
       'a registered trigger kind owns its own keys, so its validator refuses the unknown ones (Unprocessable)',
   },
+  'bureau.workflows.validate': {
+    'definition.trigger':
+      'a registered trigger kind owns its own keys, so its validator refuses the unknown ones (Unprocessable)',
+  },
   'bureau.workflows.impact': {
     'definition.trigger':
       'the same definition `update` takes, judged by the same trigger validators (Unprocessable)',

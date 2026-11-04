@@ -194,24 +194,6 @@ const validationResultSchema = z.discriminatedUnion('status', [
     currentHash: z.string().optional(),
   }),
 ]);
-const catalogInput = z.object({});
-const catalogResultSchema = z.object({
-  stepKinds: z.array(z.object({ kind: z.string(), fields: z.record(z.string(), z.unknown()) })),
-  activities: z.array(
-    z.object({
-      id: z.string(),
-      description: z.string().nullable(),
-      inputSchema: jsonSchemaField.nullable(),
-    }),
-  ),
-  triggerKinds: z.array(
-    z.object({
-      id: z.string(),
-      description: z.string(),
-      configuration: jsonSchemaField.nullable(),
-    }),
-  ),
-});
 
 const runStatusSchema = z.enum([
   'pending',
@@ -456,7 +438,7 @@ const updateInput = z.object({
 const validateInput = z.object({
   id: workflowId.optional(),
   expectedHash: hash.optional(),
-  definition: z.looseObject(definitionSchema.shape),
+  definition: definitionSchema,
   surface,
 });
 
@@ -504,37 +486,6 @@ export const workflowsValidateOperation = defineOperation<
     } catch (error) {
       return validationResultOf(error, id);
     }
-  },
-});
-
-export const workflowsCatalogOperation = defineOperation<
-  typeof catalogInput,
-  typeof catalogResultSchema,
-  BureauWorkflowsOperationHost
->({
-  name: 'bureau.workflows.catalog',
-  mcpExposable: true,
-  summary: 'List workflow kinds',
-  description:
-    'Lists the workflow step kinds, activities, and trigger kinds supported by this deployment. Requires bureau.workflows:read.',
-  destructive: false,
-  tags: ['Workflows'],
-  inputSchema: catalogInput,
-  outputSchema: catalogResultSchema,
-  producibleFaults: ['Forbidden', 'UnsupportedCapability'],
-  access: { kind: 'authenticated' },
-  discoverable: true,
-  transports,
-  unknownKeyPolicy,
-  invoke: async ({ host, principal }) => {
-    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
-      throw {
-        code: 'Forbidden',
-        message: 'Reading the workflow catalog requires bureau.workflows:read',
-        data: { reason: 'missing scope bureau.workflows:read' },
-      } satisfies OperationFault;
-    }
-    return workflowsOf(host).catalog() as z.infer<typeof catalogResultSchema>;
   },
 });
 
@@ -1340,7 +1291,6 @@ export const bureauWorkflowsOperations = [
   workflowsCreateOperation,
   workflowsUpdateOperation,
   workflowsValidateOperation,
-  workflowsCatalogOperation,
   workflowsPauseOperation,
   workflowsResumeOperation,
   workflowsDeleteOperation,
