@@ -24,6 +24,7 @@ export async function serveHost(
   /** Stop the host, then exit with `code`. A host that did not stop cleanly exits 1, which ends the supervisor. */
   async function stop(code: number): Promise<never> {
     try {
+      const host = await starting;
       await host.close();
     } catch (error) {
       console.error('The host did not stop cleanly.', error);
@@ -32,12 +33,14 @@ export async function serveHost(
     process.exit(code);
   }
 
-  const host = await startHost({
+  // The restart route can receive a request before startHost returns.
+  const starting = startHost({
     environment,
     buildDirectory,
     development: false,
     onRestartRequested: () => stop(RESTART_EXIT_CODE),
   });
+  const host = await starting;
   // URL normalizes away HTTP’s default port, but the startup line always names the bound port.
   console.info(
     `Interborough is listening on ${host.url.protocol}//${host.url.hostname}:${host.url.port || 80}`,

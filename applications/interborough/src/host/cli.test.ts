@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { HOST_RESTART_ROUTE } from './restart.ts';
+import { HOST_RESTART_ROUTE, RESTART_EXIT_CODE } from './restart.ts';
 
 const directory = mkdtempSync(join(tmpdir(), 'interborough-cli-'));
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
@@ -141,4 +141,37 @@ test('starts itself, resolves the port and relative home flags, restarts and for
   expect(started.html).toContain('<title>Interborough</title>');
   expect(started.exitCode).toBe(0);
   expect(started.output.match(/Started the host/g)).toHaveLength(2);
+});
+
+const startingFixture = join(directory, 'restart-during-start.test.ts');
+const hostModule = JSON.stringify(join(import.meta.dir, 'host.ts'));
+const serveModule = JSON.stringify(join(import.meta.dir, 'serve.ts'));
+writeFileSync(
+  startingFixture,
+  `import { mock, test } from 'bun:test';
+mock.module(${hostModule}, () => ({
+  async startHost({ onRestartRequested }) {
+    queueMicrotask(() => { void onRestartRequested(); });
+    await new Promise((resolve) => setImmediate(resolve));
+    return {
+      url: new URL('http://127.0.0.1:7234'),
+      database: { kind: 'postgres' },
+      async close() { console.info('Closed the host after startup.'); },
+    };
+  },
+}));
+const { serveHost } = await import(${serveModule});
+test('restart requested before startup resolves', async () => {
+  await serveHost({}, '.');
+  await new Promise((resolve) => setImmediate(resolve));
+});
+`,
+);
+const earlyRestart = await runWithHangGuard([process.execPath, 'test', startingFixture], {
+  cwd: directory,
+});
+
+test('a restart received during startup closes the host before requesting a relaunch', () => {
+  expect(earlyRestart.exitCode).toBe(RESTART_EXIT_CODE);
+  expect(earlyRestart.stdout.toString()).toContain('Closed the host after startup.');
 });
