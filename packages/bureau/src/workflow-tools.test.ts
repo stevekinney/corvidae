@@ -26,6 +26,8 @@ import { mayRunAccess } from './run-authority';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
+import { createBureauHandler } from './http/create-bureau-handler.ts';
+import { authentication, rpc } from './http/management/management-fixtures.test-support.ts';
 
 const harnesses: WorkflowToolsHarness[] = [];
 afterEach(async () => {
@@ -456,16 +458,26 @@ describe('workflows-validate and workflows-catalog', () => {
   it('retains undeclared draft keys so validation agrees with the strict HTTP operation', async () => {
     const harness = await start();
     const before = harness.bureau.workflows!.list();
-    const result = await harness.callTool('bureau__workflows-validate', {
-      id: 'draft',
+    const definition = {
       trigger: TRIGGER,
       steps: STEPS,
       retries: 3,
+    };
+    const tool = await harness.callTool('bureau__workflows-validate', {
+      id: 'draft',
+      ...definition,
     });
-    expect(result.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
-    expect(result.result).toMatchObject({
+    const http = await rpc(
+      createBureauHandler(harness.bureau, { authentication }),
+      'bureau.workflows.validate',
+      { id: 'draft', definition },
+      'workflows-reader-key',
+    );
+    expect(tool.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(tool.result).toMatchObject({
       issues: [expect.objectContaining({ path: '', message: expect.stringContaining('retries') })],
     });
+    expect(http.result as Record<string, unknown>).toEqual(tool.result as Record<string, unknown>);
     expect(harness.bureau.workflows!.list()).toEqual(before);
   });
 

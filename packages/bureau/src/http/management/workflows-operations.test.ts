@@ -563,8 +563,6 @@ describe('faults', () => {
       id: 'digest',
       definition: { ...DEFINITION, retries: 3 },
     });
-    expect(response.error?.data?.httpStatus).toBe(400);
-    expect(response.error?.data?.['weftCode']).toBe('InvalidParams');
     expect(response.error?.data?.['issues']).toContainEqual(
       expect.objectContaining({
         code: 'unrecognized_keys',
@@ -584,8 +582,10 @@ describe('faults', () => {
       expectedHash: before.hash,
       definition: { ...DEFINITION, retries: 3 },
     });
-    expect(response.error?.data?.httpStatus).toBe(400);
-    expect(response.error?.data?.['weftCode']).toBe('InvalidParams');
+    expect(response.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(response.result?.['issues']).toContainEqual(
+      expect.objectContaining({ path: '', message: expect.stringContaining('retries') }),
+    );
     expect(served.bureau.workflows?.list()[0]?.hash).toBe(before.hash);
   });
 

@@ -438,7 +438,14 @@ const updateInput = z.object({
 const validateInput = z.object({
   id: workflowId.optional(),
   expectedHash: hash.optional(),
-  definition: definitionSchema,
+  // Keep the draft lossless until the shared parser can report undeclared document keys. The
+  // operation envelope remains strict; only this nested draft is open because validation owns the
+  // document's unknown-key contract (the write operations still reject it at their boundary).
+  definition: definitionSchema
+    .loose()
+    .describe(
+      'The workflow draft to validate. Unknown document keys are retained so canonical validation can report them as invalid-document issues.',
+    ),
   surface,
 });
 

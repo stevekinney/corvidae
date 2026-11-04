@@ -27,6 +27,8 @@ const LOOSE_BY_DESIGN: Readonly<Record<string, Readonly<Record<string, string>>>
       'a registered trigger kind owns its own keys, so its validator refuses the unknown ones (Unprocessable)',
   },
   'bureau.workflows.validate': {
+    definition:
+      'validation must preserve undeclared draft keys until the shared document parser reports them',
     'definition.trigger':
       'a registered trigger kind owns its own keys, so its validator refuses the unknown ones (Unprocessable)',
   },
