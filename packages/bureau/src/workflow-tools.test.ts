@@ -22,6 +22,7 @@ import {
   deriveWorkflowIdentifier,
   WORKFLOW_TOOL_NAMES,
 } from './workflow-tools';
+import { mayRunAccess } from './run-authority';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -667,6 +668,56 @@ describe('who the tools act for', () => {
       }
     ).execute({}, {});
     expect(answer).toEqual({ status: 'ok', workflows: [] });
+  });
+
+  it('keeps workflow tools owner-only when the shared authority has local operator scopes', () => {
+    expect(
+      mayRunAccess('anonymous:local', 'bureau.workflows:read', 'library:custom', {
+        allowOperatorScope: false,
+      }),
+    ).toBe(false);
+    expect(
+      mayRunAccess('library:custom', 'bureau.workflows:write', 'library:custom', {
+        allowOperatorScope: false,
+      }),
+    ).toBe(true);
+    expect(
+      mayRunAccess('api-key:a2a', 'bureau.workflows:read', 'library:custom', {
+        allowOperatorScope: false,
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['workflows-create', { name: 'New workflow', trigger: TRIGGER, steps: STEPS }],
+    ['workflows-update', { id: 'digest', expectedHash: 'hash', trigger: TRIGGER, steps: STEPS }],
+    ['workflows-pause', { id: 'digest', expectedHash: 'hash' }],
+    ['workflows-resume', { id: 'digest', expectedHash: 'hash' }],
+    ['workflows-list', {}],
+  ] as const)('authorizes %s for local runs and denies api-key:a2a', async (tool, input) => {
+    const local = await withWorkflow();
+    const localInput =
+      tool === 'workflows-create' || tool === 'workflows-list'
+        ? input
+        : { ...input, expectedHash: hashOf(local, 'digest') };
+    const localCall = await local.callTool(`bureau__${tool}`, localInput);
+    expect(localCall.outcome, tool).toBe('success');
+    expect(localCall.result, tool).toMatchObject({ status: 'ok' });
+
+    const foreign = await withWorkflow();
+    const foreignInput =
+      tool === 'workflows-create' || tool === 'workflows-list'
+        ? input
+        : { ...input, expectedHash: hashOf(foreign, 'digest') };
+    const foreignCall = await foreign.callTool(`bureau__${tool}`, foreignInput, {
+      principal: 'api-key:a2a',
+    });
+    expect(foreignCall.outcome, tool).toBe('success');
+    expect(foreignCall.result, tool).toEqual(
+      tool === 'workflows-list'
+        ? { status: 'ok', workflows: [] }
+        : { status: 'not-found', id: tool === 'workflows-create' ? 'new-workflow' : 'digest' },
+    );
   });
 });
 

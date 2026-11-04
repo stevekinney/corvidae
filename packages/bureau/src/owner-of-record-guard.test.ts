@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { dirname, join } from 'node:path';
 
 const sourceRoot = dirname(import.meta.path);
-const exempt = new Set(['workflow-tools.ts', 'run-authority.ts']);
+const exempt = new Set(['run-authority.ts']);
 
 function directOwnerRead(fileName: string, source: string): boolean {
   return !exempt.has(fileName) && /\bownerOf\s*\(/.test(source);
