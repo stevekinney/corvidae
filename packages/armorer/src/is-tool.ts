@@ -154,6 +154,12 @@ export type ToolMetadata = JsonObject & {
    * `readToolShortDescription`.
    */
   shortDescription?: string;
+  /**
+   * The tool's name for a person, such as "Issue refund" for `issue-refund`: shown where a screen
+   * names the tool, with the identifier small beside it. Read it with `readToolTitle`, which also
+   * takes an MCP tool's own `title`.
+   */
+  title?: string;
   mutates?: boolean;
   readOnly?: boolean;
   dangerous?: boolean;

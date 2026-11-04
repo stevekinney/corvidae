@@ -91,7 +91,7 @@ describe('a workflow file with schemas', () => {
     expect(parsed.outputSchema).toEqual(OUTPUT_SCHEMA);
   });
 
-  it('is written with the schemas after paused and before the trigger, and reads back the same', () => {
+  it('is written with the schemas after the trigger and before the steps, and reads back the same', () => {
     const definition: WorkflowFileDefinition = {
       description: 'Digest.',
       agent: 'writer',
@@ -109,9 +109,9 @@ describe('a workflow file with schemas', () => {
       'description',
       'agent',
       'paused',
+      'trigger',
       'inputSchema',
       'outputSchema',
-      'trigger',
       'steps',
     ]);
     const parsed = parseWorkflowFile('digest', text, host);
@@ -199,13 +199,19 @@ function nested(depth: number): Record<string, unknown> {
 }
 
 describe('the input a schema describes', () => {
-  it('is the input of a manual start, the payload of a signal, and null for a schedule fire', () => {
+  it('is the input of a manual start, the payload of a signal, and a schedule fire’s fixed input or null', () => {
     const origin = { kind: 'person', principal: 'p', surface: 'api' };
     expect(workflowInputOf({ kind: 'manual', input: { a: 1 }, origin })).toEqual({ a: 1 });
     expect(workflowInputOf({ kind: 'manual', origin })).toBeNull();
     expect(workflowInputOf({ kind: 'signal', name: 'go', payload: 'p' })).toBe('p');
     expect(workflowInputOf({ kind: 'signal', name: 'go' })).toBeNull();
     expect(workflowInputOf({ kind: 'schedule', scheduleId: 's' })).toBeNull();
+    // COR-2009: a schedule whose trigger gives an `input` carries it beside the schedule id.
+    expect(
+      workflowInputOf({ kind: 'schedule', scheduleId: 's', input: { branch: 'main' } }),
+    ).toEqual({ branch: 'main' });
+    expect(workflowInputOf({ kind: 'schedule', scheduleId: 's', fireId: 'f', input: 3 })).toBe(3);
+    expect(workflowInputOf({ kind: 'schedule', scheduleId: 's', input: null })).toBeNull();
   });
 
   it('is a raw start’s input as it is', () => {

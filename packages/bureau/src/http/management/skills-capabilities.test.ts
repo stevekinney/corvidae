@@ -114,6 +114,7 @@ describe('bureau.skills.list', () => {
         available: false,
         unavailableReason: 'source-untrusted',
         allowedTools: ['run_shell'],
+        tools: [],
       },
       expect.objectContaining({
         name: 'summarize',
@@ -444,7 +445,7 @@ describe('bureau.agents.catalog', () => {
     for (const tool of tools) {
       expect(tool['inputSchema']).toMatchObject({ type: 'object' });
       expect(['allow', 'ask']).toContain(String(tool['defaultApproval']));
-      expect(['host', 'bureau', 'plugin']).toContain(String(tool['source']));
+      expect(['host', 'bureau', 'plugin', 'skill']).toContain(String(tool['source']));
       expect(Array.isArray(tool['users'])).toBe(true);
     }
     expect(byName['lookup-order']).toMatchObject({
@@ -470,6 +471,87 @@ describe('bureau.agents.catalog', () => {
     // Bureau's own tools are in the catalog, as Bureau's.
     expect(byName['settings-update']).toMatchObject({ source: 'bureau', users: [] });
     expect(byName['settings-get']).toMatchObject({ source: 'bureau' });
+  });
+
+  it('gives each tool its title, and lists a skill’s tools with the skill as their source (COR-2009)', async () => {
+    const findCustomer = createTool({
+      name: 'find_customer',
+      description: 'Finds a customer by email.',
+      input: z.object({ email: z.string() }),
+      metadata: { readOnly: true, title: 'Find customer', skill: 'customer-lookup' },
+      execute: async () => 'customer',
+    });
+    const mergeCustomers = createTool({
+      name: 'merge_customers',
+      description: 'Merges two customer records into one.',
+      input: z.object({ keep: z.string(), drop: z.string() }),
+      metadata: { dangerous: true, title: 'Merge customers', skill: 'customer-lookup' },
+      execute: async () => 'merged',
+    });
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-tool-catalog-skill-'));
+    roots.push(directory);
+    const skills = await skillsDirectory({ 'customer-lookup': undefined, summarize: undefined });
+    const sources: readonly SkillSource[] = [
+      { id: 'built-in', kind: 'built-in', location: skills, precedence: 40 },
+    ];
+    const catalog = await discoverSkills({ sources, now });
+    const standing: SkillsStanding = {
+      catalog,
+      sources: sources.map((source) => ({
+        id: source.id,
+        kind: source.kind,
+        location: source.location,
+        trust: 'trusted',
+        trustReason: 'test',
+      })),
+    };
+    const served = await serve({
+      directory,
+      overrides: {
+        agentSource: agentFileDirectory(directory, {
+          tools: {
+            find_customer: findCustomer,
+            merge_customers: mergeCustomers,
+            'issue-refund': refund,
+          },
+        }),
+      },
+    });
+    const handler = createBureauHandler(served.bureau, {
+      unauthenticatedAccess: 'allow',
+      skills: { standing: () => standing },
+    });
+
+    const tools = listOf(await callAs(handler, 'bureau.agents.catalog', {}), 'tools');
+    const byName = Object.fromEntries(tools.map((tool) => [String(tool['name']), tool]));
+    // The Tools tab lists a skill's tools with the skill as their source.
+    expect(byName['find_customer']).toMatchObject({
+      title: 'Find customer',
+      tier: 'read-only',
+      source: 'skill',
+      skill: 'customer-lookup',
+      plugin: null,
+    });
+    expect(byName['merge_customers']).toMatchObject({
+      title: 'Merge customers',
+      tier: 'dangerous',
+      source: 'skill',
+      skill: 'customer-lookup',
+    });
+    // A tool with no title has none, and keeps its own source.
+    expect(byName['issue-refund']).toMatchObject({ title: null, source: 'host', skill: null });
+    // Bureau's own tools carry their names for a person.
+    expect(byName['bureau:discover-agents']).toMatchObject({
+      title: 'Discover agents',
+      source: 'bureau',
+    });
+
+    // The skill lists the tools it brings; a skill of instructions only brings none.
+    const listed = listOf(await callAs(handler, 'bureau.skills.list', {}), 'skills');
+    expect(listed.map((skill) => [skill['name'], skill['tools']])).toEqual([
+      ['customer-lookup', ['find_customer', 'merge_customers']],
+      ['summarize', []],
+    ]);
   });
 
   it('never reads a tool that declares nothing as read-only', async () => {

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   getPlugins,
+  getRestartStanding,
   HOST_PLUGINS_ROUTE,
   HOST_RESTART_ROUTE,
   HostPluginError,
@@ -19,6 +20,7 @@ const SNAPSHOT = {
     {
       descriptor: {
         name: 'linear',
+        title: 'linear',
         version: '0.3.0',
         description: 'Linear issues.',
         required: false,
@@ -187,5 +189,24 @@ describe('restartHost', () => {
   test('fails when the host will not restart', async () => {
     const { fetch } = recording(() => Response.json({}, { status: 404 }));
     expect(await failureOf(restartHost({ fetch }))).toBeInstanceOf(HostPluginError);
+  });
+});
+
+describe('getRestartStanding', () => {
+  test('reads whether the host can restart and the command it was launched with', async () => {
+    const standing = { available: true, launch: { command: 'bun run start', directory: '/work' } };
+    const { seen, fetch } = recording(() => Response.json(standing));
+    expect(await getRestartStanding({ fetch })).toEqual(standing);
+    expect(seen).toEqual([{ path: HOST_RESTART_ROUTE, method: undefined, body: undefined }]);
+  });
+
+  test('reads a host no supervisor started, and fails for an answer it cannot read', async () => {
+    const unsupervised = recording(() => Response.json({ available: false, launch: null }));
+    expect(await getRestartStanding({ fetch: unsupervised.fetch })).toEqual({
+      available: false,
+      launch: null,
+    });
+    const broken = recording(() => Response.json({ available: 'yes' }));
+    expect(await failureOf(getRestartStanding({ fetch: broken.fetch }))).toBeInstanceOf(Error);
   });
 });

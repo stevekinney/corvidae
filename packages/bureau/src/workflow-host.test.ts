@@ -58,13 +58,13 @@ describe('composeAgentMessage', () => {
 });
 
 describe('the workflow host', () => {
-  it('is frozen, with the agent activity and the schedule and signal trigger kinds', () => {
+  it('is frozen, with the agent activity and the schedule, signal, and manual trigger kinds', () => {
     const host = createWorkflowDocumentHost({ runAgentStep: async () => unreachable() });
     expect(Object.isFrozen(host)).toBe(true);
     expect(Object.isFrozen(host.activities)).toBe(true);
     expect(Object.isFrozen(host.triggerKinds)).toBe(true);
     expect(Object.keys(host.activities)).toEqual(['agent']);
-    expect(Object.keys(host.triggerKinds)).toEqual(['schedule', 'signal']);
+    expect(Object.keys(host.triggerKinds)).toEqual(['schedule', 'signal', 'manual']);
   });
 
   it('hands the agent step the composed message and the instance and step it runs as', async () => {

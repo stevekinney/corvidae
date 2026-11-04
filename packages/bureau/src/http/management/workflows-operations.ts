@@ -5,7 +5,7 @@
  *
  * Every workflow file belongs to the deployment's owner of record, and there is no owner field in
  * a file. A caller reaches workflows it owns without any scope; `bureau.workflows:read` grants
- * `get`, `list`, `revisions`, `runs.list`, and `runs.get` to any caller, and
+ * `get`, `list`, `revisions`, `history`, `impact`, `runs.list`, and `runs.get` to any caller, and
  * `bureau.workflows:write` grants `create`, `update`, `pause`, `resume`, and `delete`, and neither
  * implies the other. A caller that may not see workflows is answered as if there were none: an
  * empty page, or `NotFound`. `create` has no workflow to hide, so a caller who may not write is
@@ -99,6 +99,8 @@ const workflowListingSchema = z.object({
   state: z.enum(['ready', 'invalid']),
   owner: z.string(),
   hash: z.string().nullable(),
+  /** The workflow's `title`, the name a person reads, or `null` when the file gives none. */
+  title: z.string().nullable(),
   description: z.string().nullable(),
   agent: z.string().nullable(),
   paused: z.boolean(),
@@ -107,8 +109,13 @@ const workflowListingSchema = z.object({
   /** The JSON Schema an instance's result must satisfy, or `null` when the file declares none. */
   outputSchema: jsonSchemaField.nullable(),
   version: z.string().nullable(),
-  /** The file's trigger as written, `{ kind, ... }`, for a `ready` file, else `null`. */
+  /**
+   * The file's trigger as written, `{ kind, ... }` with a schedule's `timezone`, `catchUp`, `name`, and `input`, for
+   * a `ready` file, else `null`.
+   */
   trigger: z.record(z.string(), z.unknown()).nullable(),
+  /** The file's steps as written, each step's `title` and `review` included, for a `ready` file. */
+  steps: z.array(z.record(z.string(), z.unknown())).nullable(),
   problem: problemSchema.nullable(),
 });
 
@@ -138,24 +145,38 @@ const workflowDetailSchema = workflowListingSchema.extend({
  */
 const definitionSchema = z
   .strictObject({
+    title: z
+      .string()
+      .optional()
+      .describe(
+        'The name a person reads, shown as the heading with the identifier beside it. Bureau strips it before Weft sees the document.',
+      ),
     description: z.string().optional(),
     agent: z.string().optional(),
     paused: z.boolean().optional(),
     inputSchema: jsonSchemaField
       .optional()
       .describe(
-        'A JSON Schema (draft 2020-12) for the input an instance starts with: the `input` of `bureau.workflows.start` or the `payload` of a signal; a schedule fire starts with `null`. At most 32 KiB, 8 levels deep, with no `$id`, `pattern`, or `patternProperties`.',
+        'A JSON Schema (draft 2020-12) for the input an instance starts with: the `input` of `bureau.workflows.start`, the `payload` of a signal, or a schedule trigger’s `input` (`null` when it gives none), which must satisfy it when the file is written. At most 32 KiB, 8 levels deep, with no `$id`, `pattern`, or `patternProperties`.',
       ),
     outputSchema: jsonSchemaField
       .optional()
       .describe(
         'A JSON Schema (draft 2020-12) for the value an instance finishes with, under the same limits. An instance whose result breaks it fails with `output-invalid`.',
       ),
-    trigger: z.looseObject({ kind: z.string() }),
-    steps: z.array(z.record(z.string(), z.unknown())),
+    trigger: z
+      .looseObject({ kind: z.string() })
+      .describe(
+        'What starts the workflow: `{ kind: "schedule", name?, spec, timezone?, overlap?, catchUp?, input? }`, `{ kind: "signal", name }`, or `{ kind: "manual" }` for a workflow only a person starts. A schedule’s `name` is its display name; `timezone` is an IANA zone for a cron `spec`; `catchUp: true` runs what was missed while the host was off; `input` is the fixed value every fire starts with.',
+      ),
+    steps: z
+      .array(z.record(z.string(), z.unknown()))
+      .describe(
+        'The steps, run in order. Any step may carry a `title`; an `await-signal` step with `review: true` waits for a person and shows in Reviews.',
+      ),
   })
   .describe(
-    'The workflow file’s contents: an optional `description`, `agent` and `paused`, optional `inputSchema` and `outputSchema`, the `trigger` (an object with a `kind`), and the `steps`.',
+    'The workflow file’s contents: an optional `title`, `description`, `agent` and `paused`, the `trigger` (an object with a `kind`), optional `inputSchema` and `outputSchema`, and the `steps`.',
   );
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
@@ -245,6 +266,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     state: listing.state,
     owner: listing.owner,
     hash: listing.hash ?? null,
+    title: listing.title,
     description: listing.description,
     agent: listing.agent,
     paused: listing.paused,
@@ -252,6 +274,7 @@ function listingView(listing: ReturnType<BureauWorkflows['list']>[number]) {
     outputSchema: listing.outputSchema === null ? null : { ...listing.outputSchema },
     version: listing.version ?? null,
     trigger: listing.trigger === null ? null : { ...listing.trigger },
+    steps: listing.steps === null ? null : listing.steps.map((step) => ({ ...step })),
     problem:
       listing.problem === undefined
         ? null
@@ -314,7 +337,14 @@ function faultOf(error: unknown, id: string, expectedHash?: string): never {
   throw error;
 }
 
-const createInput = z.object({ id: workflowId, definition: definitionSchema });
+const surface = z
+  .enum(TASK_PERSON_SURFACES)
+  .optional()
+  .describe(
+    'Where the person saving the workflow is (`web`, `palette`, or `api`); recorded with the version the save makes, for the workflow’s history.',
+  );
+
+const createInput = z.object({ id: workflowId, definition: definitionSchema, surface });
 
 export const workflowsCreateOperation = defineOperation<
   typeof createInput,
@@ -354,6 +384,7 @@ export const workflowsCreateOperation = defineOperation<
     try {
       return await workflows.create(input.id, input.definition, {
         actor: ownerOfPrincipal(principal),
+        ...(input.surface === undefined ? {} : { surface: input.surface }),
       });
     } catch (error) {
       return faultOf(error, input.id);
@@ -365,6 +396,7 @@ const updateInput = z.object({
   id: workflowId,
   expectedHash: hash,
   definition: definitionSchema,
+  surface,
 });
 
 export const workflowsUpdateOperation = defineOperation<
@@ -399,6 +431,7 @@ export const workflowsUpdateOperation = defineOperation<
       return await workflows.update(input.id, input.definition, {
         expectedHash: input.expectedHash,
         actor: ownerOfPrincipal(principal),
+        ...(input.surface === undefined ? {} : { surface: input.surface }),
       });
     } catch (error) {
       return faultOf(error, input.id, input.expectedHash);
@@ -955,6 +988,214 @@ export const workflowsSignalOperation = defineOperation<
   },
 });
 
+/** A trigger as written, on the wire. */
+const triggerField = z.record(z.string(), z.unknown());
+
+/** One change between two saved versions: see `WorkflowRevisionChange`. */
+const revisionChangeSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('title'),
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+    breaking: z.literal(false),
+  }),
+  z.object({ kind: z.literal('description'), breaking: z.literal(false) }),
+  z.object({
+    kind: z.literal('trigger'),
+    from: triggerField,
+    to: triggerField,
+    breaking: z.literal(false),
+  }),
+  z.object({ kind: z.literal('input-schema'), breaking: z.literal(true) }),
+  z.object({ kind: z.literal('output-schema'), breaking: z.literal(true) }),
+  z.object({ kind: z.literal('step-added'), step: z.number().int(), breaking: z.literal(false) }),
+  z.object({ kind: z.literal('step-removed'), step: z.number().int(), breaking: z.literal(true) }),
+  z.object({ kind: z.literal('step-replaced'), step: z.number().int(), breaking: z.literal(true) }),
+  z.object({
+    kind: z.literal('step-renamed'),
+    step: z.number().int(),
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+    breaking: z.literal(false),
+  }),
+  z.object({
+    kind: z.literal('step-reworded'),
+    step: z.number().int(),
+    breaking: z.literal(false),
+  }),
+  z.object({
+    kind: z.literal('step-agent'),
+    step: z.number().int(),
+    from: z.string(),
+    to: z.string(),
+    breaking: z.literal(false),
+  }),
+  z.object({ kind: z.literal('step-input'), step: z.number().int(), breaking: z.literal(true) }),
+  z.object({
+    kind: z.literal('step-signal'),
+    step: z.number().int(),
+    from: z.string(),
+    to: z.string(),
+    breaking: z.literal(true),
+  }),
+  z.object({
+    kind: z.literal('step-review'),
+    step: z.number().int(),
+    from: z.boolean(),
+    to: z.boolean(),
+    breaking: z.literal(false),
+  }),
+  z.object({
+    kind: z.literal('step-duration'),
+    step: z.number().int(),
+    breaking: z.literal(false),
+  }),
+]);
+
+const revisionCompatibilitySchema = z
+  .enum(['compatible', 'breaking'])
+  .nullable()
+  .describe(
+    'Whether a run started on the version before can carry on under this one: `breaking` when any change is. `null` for the first version, or when nothing changes.',
+  );
+
+const historyOutput = z.object({
+  revisions: z.array(
+    z.object({
+      version: z.string().describe('The version’s number: `1.0.0`, `1.1.0`, … in the order saved.'),
+      current: z.boolean().describe('Whether the workflow’s file holds this version now.'),
+      savedAt: z.string(),
+      hash: z.string(),
+      workflowVersion: z.string(),
+      origin: z
+        .enum(['write', 'file'])
+        .describe('`write` for a save through Bureau, `file` for a file Bureau found changed.'),
+      actor: z.string().nullable(),
+      surface: z.enum(TASK_PERSON_SURFACES).nullable(),
+      title: z.string().nullable(),
+      description: z.string().nullable(),
+      trigger: triggerField,
+      steps: z.array(z.record(z.string(), z.unknown())),
+      inputSchema: jsonSchemaField.nullable(),
+      outputSchema: jsonSchemaField.nullable(),
+      previousVersion: z.string().nullable(),
+      changes: z.array(revisionChangeSchema),
+      compatibility: revisionCompatibilitySchema,
+      runs: z.object({
+        count: z.number().int(),
+        firstRunAt: z.string().nullable(),
+        lastRunAt: z.string().nullable(),
+      }),
+    }),
+  ),
+});
+
+export const workflowsHistoryOperation = defineOperation<
+  typeof getInput,
+  typeof historyOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.history',
+  mcpExposable: false,
+  summary: 'List the saved versions of a workflow',
+  description:
+    'Lists every saved version of the workflow’s file, newest first (COR-2009). Bureau numbers the versions `1.0.0`, `1.1.0`, `1.2.0`, … in the order they were saved, and records one whenever the file’s content changes, whether through Bureau or by hand; pausing, resuming, or reformatting adds none, and a title or step name change does. Each entry carries its content as written, when and how it was saved (`origin`, `actor`, and `surface`), every change from the version before, its `compatibility`, `compatible` or `breaking` (whether a run started on the version before can carry on), and the runs started while it was the newest. `current` marks the version the file holds now. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else, and an identifier with neither a file nor a recorded version, is answered `NotFound`.',
+  destructive: false,
+  tags: ['Workflows'],
+  inputSchema: getInput,
+  outputSchema: historyOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
+    const history = await workflows.history(input.id);
+    if (history === undefined) throw resourceNotFound('workflow', input.id);
+    return {
+      revisions: history.map((entry) => ({
+        version: entry.version,
+        current: entry.current,
+        savedAt: entry.savedAt,
+        hash: entry.hash,
+        workflowVersion: entry.workflowVersion,
+        origin: entry.origin,
+        actor: entry.actor,
+        surface: entry.surface,
+        title: entry.content.title,
+        description: entry.content.description,
+        trigger: { ...entry.content.trigger },
+        steps: entry.content.steps.map((step) => ({ ...step })),
+        inputSchema: entry.content.inputSchema === null ? null : { ...entry.content.inputSchema },
+        outputSchema:
+          entry.content.outputSchema === null ? null : { ...entry.content.outputSchema },
+        previousVersion: entry.previousVersion,
+        changes: entry.changes.map((change) => ({ ...change })),
+        compatibility: entry.compatibility,
+        runs: { ...entry.runs },
+      })),
+    };
+  },
+});
+
+const impactInput = z.object({ id: workflowId, definition: definitionSchema });
+
+const impactOutput = z.object({
+  version: z
+    .string()
+    .nullable()
+    .describe('The version saving makes, or `null` when it changes nothing that makes one.'),
+  previousVersion: z
+    .string()
+    .nullable()
+    .describe('The version it replaces, or `null` for a workflow with none.'),
+  changes: z.array(revisionChangeSchema),
+  compatibility: revisionCompatibilitySchema,
+  inFlight: z
+    .number()
+    .int()
+    .describe(
+      'How many instances of the workflow have not finished: pending, running, or suspended.',
+    ),
+});
+
+export const workflowsImpactOperation = defineOperation<
+  typeof impactInput,
+  typeof impactOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.impact',
+  mcpExposable: false,
+  summary: 'Say what saving a workflow would do',
+  description:
+    'Answers what saving `definition` as the workflow `id` would do, and writes nothing (COR-2009): the `version` the save would make (`null` when it changes nothing that makes one; `1.0.0` for a workflow with none), the `previousVersion` it replaces, every change from it, whether the save is `compatible` or `breaking` for a run in flight, and how many instances are `inFlight`. Renaming a step is never breaking; changing the signal a step waits for, removing a step, or changing either schema is. A definition that would not load is `Unprocessable`, its message listing every issue, as `update` answers. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
+  destructive: false,
+  tags: ['Workflows'],
+  inputSchema: impactInput,
+  outputSchema: impactOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'Unprocessable', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
+    try {
+      const impact = await workflows.impact(input.id, input.definition);
+      return {
+        version: impact.version,
+        previousVersion: impact.previousVersion,
+        changes: impact.changes.map((change) => ({ ...change })),
+        compatibility: impact.compatibility,
+        inFlight: impact.inFlight,
+      };
+    } catch (error) {
+      return faultOf(error, input.id);
+    }
+  },
+});
+
 /** The workflow operations, in the order the handler serves them. */
 export const bureauWorkflowsOperations = [
   workflowsCreateOperation,
@@ -965,6 +1206,8 @@ export const bureauWorkflowsOperations = [
   workflowsGetOperation,
   workflowsListOperation,
   workflowsRevisionsOperation,
+  workflowsHistoryOperation,
+  workflowsImpactOperation,
   workflowsRunsListOperation,
   workflowsRunsGetOperation,
   workflowsStartOperation,

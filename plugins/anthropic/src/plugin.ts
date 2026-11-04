@@ -21,6 +21,7 @@ export const anthropicConfiguration = z
  */
 export default definePlugin({
   name: 'anthropic',
+  title: 'Anthropic',
   version: '0.1.0',
   description: 'Anthropic Claude models for agents.',
   configuration: anthropicConfiguration,

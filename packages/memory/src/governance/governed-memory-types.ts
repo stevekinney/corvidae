@@ -433,6 +433,21 @@ export interface MemoryGovernanceNotification {
   readonly projection?: string;
   /** The run, session, and context epoch of the operation, when its caller named them. */
   readonly correlation?: MemoryCorrelation;
+  /**
+   * On a `memory.forgotten` event that a correction raised (mode `supersession`): the collection the
+   * successor was written to and the source it was written as, so a host can say whose memory was
+   * corrected and whether a person or an agent corrected it (COR-2009). `recordIds` names the
+   * original first and the successor second. Absent on every other event.
+   */
+  readonly supersession?: MemorySupersessionNotice;
+}
+
+/** What a correction's notification says beyond its record identifiers. */
+export interface MemorySupersessionNotice {
+  /** The collection the successor was written to: the agent whose memory was corrected. */
+  readonly collection: string;
+  /** The source the successor was written as: `operator` for a person, otherwise the agent's. */
+  readonly source: string;
 }
 
 export interface CreateGovernedMemoryOptions {

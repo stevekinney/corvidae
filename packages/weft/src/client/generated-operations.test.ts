@@ -408,7 +408,9 @@ describe('HttpClient catalog operations', () => {
         retryCount: 1,
         requeueCount: 1,
         availableAt: delayed.availableAt,
-        evidence: [`Task is delayed until ${delayed.availableAt} on queue "payments"`],
+        evidence: [
+          `Task is delayed until ${new Date(delayed.availableAt).toISOString()} on queue "payments"`,
+        ],
       });
       expect(result.items).toContainEqual(
         expect.objectContaining({

@@ -28,6 +28,25 @@ export const SQLITE_SELECT_VALUE_BY_KEY = 'SELECT value FROM kv WHERE key = ?';
 export const SQLITE_UPSERT_VALUE_BY_KEY =
   'INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value';
 
+/**
+ * Names the `kv` table's columns, so an adapter that records write times can tell whether a table
+ * created before it did has the `updated_at` column yet.
+ */
+export const SQLITE_SELECT_KEY_VALUE_COLUMNS = "SELECT name FROM pragma_table_info('kv')";
+
+/**
+ * Adds the nullable `updated_at` column (milliseconds since the Unix epoch) to a `kv` table that
+ * lacks it. Rows written before it was added read back `NULL`, which means "unknown".
+ */
+export const SQLITE_ADD_UPDATED_AT_COLUMN = 'ALTER TABLE kv ADD COLUMN updated_at INTEGER';
+
+/** Writes one value and its write time, replacing any value and time already stored at the key. */
+export const SQLITE_UPSERT_VALUE_WITH_WRITE_TIME =
+  'INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at';
+
+/** Reads one key's write time; no row means the key is absent. */
+export const SQLITE_SELECT_WRITE_TIME_BY_KEY = 'SELECT updated_at FROM kv WHERE key = ?';
+
 /** Deletes one key. */
 export const SQLITE_DELETE_VALUE_BY_KEY = 'DELETE FROM kv WHERE key = ?';
 
@@ -201,6 +220,18 @@ export function buildSqliteKeyValueRangeSelect(
   return {
     parameters,
     sql: `SELECT key, value FROM kv ${sqlSuffix}`,
+  };
+}
+
+/** Build the `SELECT key, value, updated_at` that a metadata scan of `prefix` runs. */
+export function buildSqliteKeyValueMetadataRangeSelect(
+  prefix: string,
+  options: ScanOptions = {},
+): SqliteBuiltQuery {
+  const { parameters, sqlSuffix } = buildSqliteKeyRangeQuery(prefix, options);
+  return {
+    parameters,
+    sql: `SELECT key, value, updated_at FROM kv ${sqlSuffix}`,
   };
 }
 

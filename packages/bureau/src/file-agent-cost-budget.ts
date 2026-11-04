@@ -90,16 +90,22 @@ export function costBudgetOptions(
     // a second provider serving the default's name never changes what the default is counted at.
     if (!Object.hasOwn(customPricing, row.model)) customPricing[row.model] = pricing;
   }
-  const runBudget: RunCostBudget = {
+  return {
+    costBudget: runCostBudgetOf(budget),
+    costEstimation: { model: descriptor.model, pricing: { customPricing } },
+  };
+}
+
+/**
+ * An agent's `costBudget` as Operative's run option states it. The chat's earlier spend is not
+ * known to an agent, only to the Bureau that starts a chat's run: it passes it as
+ * `priorChatSpendUsd` (`chat-spend-ledger.ts`).
+ */
+export function runCostBudgetOf(budget: AgentCostBudget): RunCostBudget {
+  return {
     perRunUsd: budget.perRunUsd,
-    // The chat's earlier spend is not known to an agent, only to the Bureau that starts a chat's
-    // run: it passes it as `priorChatSpendUsd` (`chat-spend-ledger.ts`).
     ...(budget.perChatUsd === undefined ? {} : { perChatUsd: budget.perChatUsd }),
     ...(budget.warnAt === undefined ? {} : { warnAt: [...budget.warnAt] }),
-  };
-  return {
-    costBudget: runBudget,
-    costEstimation: { model: descriptor.model, pricing: { customPricing } },
   };
 }
 

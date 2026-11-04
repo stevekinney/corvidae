@@ -131,6 +131,8 @@ const AGENT_DEFINITION_PARAMETERS = {
   definition: { model: 'nobody/none', instructions: '' },
   // `bureau.agents.try` starts a chat with the definition; one that names no model never starts.
   message: 'x',
+  // `bureau.agents.overrides.update` saves overrides whose model the catalog lacks, so it never writes.
+  overrides: { model: 'nobody/none' },
 } as const;
 
 /**
@@ -208,14 +210,17 @@ const CONTEXT_COMMAND_PARAMETERS = {
 function namesAnAgent(operation: CatalogOperation): boolean {
   return (
     operation.name.startsWith('bureau.agents.definitions.') ||
-    operation.name.startsWith('bureau.agents.versions.')
+    operation.name.startsWith('bureau.agents.versions.') ||
+    operation.name.startsWith('bureau.agents.overrides.')
   );
 }
 
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
 function definitionParameters(operation: CatalogOperation) {
-  // The one agent operation that names an agent and nothing else (COR-1559).
-  if (operation.name === 'bureau.agents.models') return { agentName: 'x' };
+  // The agent operations that name an agent and nothing else (COR-1559, COR-2009).
+  if (operation.name === 'bureau.agents.models' || operation.name === 'bureau.agents.references') {
+    return { agentName: 'x' };
+  }
   // COR-1709: a complete request, so the call reaches its own check instead of failing validation.
   if (operation.name === 'bureau.decisions.decide') return { kind: 'boolean', question: 'Is it?' };
   // COR-1710: a complete patch, so the call reaches its own check instead of failing validation.

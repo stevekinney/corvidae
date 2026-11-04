@@ -23,6 +23,7 @@ import {
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { SESSION_END_REASONS, sessionEndReasonOf } from '../../bureau-session-persistence.ts';
 import { BureauShuttingDownError } from '../../create-bureau.ts';
 import {
   aggregateCleanup,
@@ -208,6 +209,13 @@ export const contextSummarySchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   activity: contextActivitySchema,
+  /**
+   * Why the context's last run ended when it did not end itself (COR-2009): `host-stopped` when
+   * the host shut down while the run was still going, such as a restart that interrupted it, so a
+   * chat list can say Ended and why. `null` while a run goes on, after a run that ended on its own,
+   * and once a new run starts.
+   */
+  endReason: z.enum(SESSION_END_REASONS).nullable(),
 });
 
 /**
@@ -242,6 +250,7 @@ function projectContext(
     createdAt: summary.createdAt,
     updatedAt: summary.updatedAt,
     activity: activity ?? 'idle',
+    endReason: sessionEndReasonOf(summary.metadata),
   };
 }
 

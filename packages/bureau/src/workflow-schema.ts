@@ -7,10 +7,11 @@
  * The input is the value that started the instance, not the trigger object the engine records it
  * under. A manual start (`bureau.workflows.start`) supplies `input`; a signal trigger supplies the
  * signal's `payload`; a contributed trigger kind (`plugin:name`, COR-1874) supplies the `payload`
- * its `fire` was given; a schedule fire supplies nothing, which is `null`. A raw start through the
- * engine (`weft.workflows.start`) supplies whatever it was given, taken as the input as it is. A
- * schedule-triggered workflow whose `inputSchema` does not accept `null` would therefore fail every
- * fire with `input-invalid`, so `parseWorkflowFile` refuses such a file when it is written.
+ * its `fire` was given; a schedule fire supplies its trigger's fixed `input` (COR-2009), or `null`
+ * when the trigger gives none. A raw start through the engine (`weft.workflows.start`) supplies
+ * whatever it was given, taken as the input as it is. A schedule-triggered workflow whose
+ * `inputSchema` refuses what its fires supply would therefore fail every fire with
+ * `input-invalid`, so `parseWorkflowFile` refuses such a file when it is written.
  *
  * ## Where it is enforced
  *
@@ -106,7 +107,7 @@ function onlyKeys(record: Readonly<Record<string, unknown>>, allowed: readonly s
  * the module comment for what each start supplies.
  *
  * Only the exact envelopes Bureau and Weft write are unwrapped: `{ kind: 'manual', input, origin }`,
- * `{ kind: 'signal', name, payload }`, `{ kind: 'schedule', scheduleId }`, and a contributed
+ * `{ kind: 'signal', name, payload }`, `{ kind: 'schedule', scheduleId, input? }`, and a contributed
  * trigger kind's `{ kind: 'plugin:name', payload }`, each with its required fields and no others. A raw start whose input merely has a `kind` of `manual`, `signal`
  * or `schedule` (`{ kind: 'manual', city: 'Oslo' }`) is its own input. A raw input that spells out
  * a whole envelope is indistinguishable from one, which is why the trigger is the one place the
@@ -129,9 +130,11 @@ export function workflowInputOf(trigger: unknown): unknown {
         ? (record['payload'] ?? null)
         : trigger;
     case 'schedule':
+      // A schedule whose trigger gives an `input` carries it in the envelope; one that gives none,
+      // as every schedule did before COR-2009, starts with `null`.
       return typeof record['scheduleId'] === 'string' &&
-        onlyKeys(record, ['kind', 'scheduleId', 'fireId'])
-        ? null
+        onlyKeys(record, ['kind', 'scheduleId', 'fireId', 'input'])
+        ? (record['input'] ?? null)
         : trigger;
     default:
       return typeof record['kind'] === 'string' &&

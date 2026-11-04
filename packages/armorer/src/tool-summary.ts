@@ -67,3 +67,24 @@ export function readToolShortDescription(metadata: ToolMetadata | undefined): st
   const trimmed = value.trim();
   return trimmed === '' ? undefined : trimmed;
 }
+
+/**
+ * A tool's name for a person: its `metadata.title`, else the `title` an MCP server gave it
+ * (`metadata.mcp.title`). Returns `undefined` when it has neither, or only whitespace, so a caller
+ * shows the identifier instead.
+ */
+export function readToolTitle(metadata: ToolMetadata | undefined): string | undefined {
+  const own = trimmedText(metadata?.['title']);
+  if (own !== undefined) return own;
+  const mcp: unknown = metadata?.['mcp'];
+  return typeof mcp === 'object' && mcp !== null && !Array.isArray(mcp)
+    ? trimmedText(Reflect.get(mcp, 'title'))
+    : undefined;
+}
+
+/** `value` trimmed, when it is a string with something besides whitespace in it. */
+function trimmedText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}

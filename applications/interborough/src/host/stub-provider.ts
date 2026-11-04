@@ -44,7 +44,7 @@ export async function writeProviderHome(
 
 /**
  * The words that make the stub's model call fail when a message carries them, so a chat whose run
- * failed can be made on purpose (the showcase seed, `fixtures/showcase-seed.ts`). They are plain
+ * failed can be made on purpose. They are plain
  * words a person could type, because the message that carries them is shown in the chat. They are
  * matched anywhere in the request the client is sent, so they can sit in any message of the thread.
  */

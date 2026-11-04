@@ -44,7 +44,22 @@ import { taskOriginTag, type TaskOrigin, type TaskPersonSurface } from './task-o
 import { ownerOrLocal } from './owner-of-record';
 import type { DefinitionChange, DefinitionScannerHealth } from './definition-scanner';
 import type { WorkflowSource } from './sources/definition-source';
-import { triggerHasUnrecognizedKeys, type WorkflowFileDefinition } from './workflow-file';
+import {
+  parseWorkflowFile,
+  serializeWorkflowFile,
+  triggerHasUnrecognizedKeys,
+  type WorkflowFileDefinition,
+  WorkflowFileError,
+} from './workflow-file';
+import {
+  createWorkflowRevisionLedger,
+  planWorkflowRevision,
+  revisionContentOf,
+  type WorkflowRevisionAttribution,
+  type WorkflowRevisionLedger,
+  type WorkflowRevisionPlan,
+  type WorkflowRevisionRecord,
+} from './workflow-revision-ledger';
 import {
   createWorkflowFileCatalog,
   type ReadyWorkflowFile,
@@ -53,6 +68,8 @@ import {
   type WorkflowListing,
 } from './workflow-file-catalog';
 import type { ScheduleHookOrigins } from './hooks/schedule-hook-origins';
+import type { WorkflowRevisionSteps } from './workflow-review-waits';
+import { createWorkflowScheduleHolds, type WorkflowScheduleHolds } from './workflow-schedule-holds';
 import { toWeftDocument, validateBureauWorkflowDocument } from './workflow-document-handlers';
 import { bureauNameOf, weftNameOf } from './namespaced-identifier';
 import { NO_WORKFLOW_CONTRIBUTIONS, type WorkflowContributions } from './workflow-contributions';
@@ -68,6 +85,7 @@ import {
   type ScheduleOverlapPolicy,
 } from './workflow-host';
 import {
+  DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE,
   type DesiredWorkflowSchedule,
   parseWorkflowScheduleId,
   reconcileWorkflowSchedules,
@@ -231,6 +249,33 @@ export interface WorkflowRevisionReport extends WorkflowRevision {
   readonly compatibility: WorkflowCompatibilityVerdict | null;
 }
 
+/** How many runs started on one saved version, and when. */
+export interface WorkflowHistoryRuns {
+  /** The runs of the workflow created while this version was the newest. */
+  readonly count: number;
+  /** When the first of them was created, or `null` when there is none. */
+  readonly firstRunAt: string | null;
+  /** When the last of them was created, or `null` when there is none. */
+  readonly lastRunAt: string | null;
+}
+
+/** One saved version of a workflow, for its History tab (COR-2009). */
+export interface WorkflowHistoryEntry extends WorkflowRevisionRecord {
+  /** Whether this is the version the workflow's file holds now: the newest, while the file exists. */
+  readonly current: boolean;
+  /**
+   * The runs that started while this version was the newest. A run started on the version current
+   * when it was created, so a run's version is the newest one saved at or before its start.
+   */
+  readonly runs: WorkflowHistoryRuns;
+}
+
+/** What saving a definition would do, for the builder's compatibility notice (COR-2009). */
+export interface WorkflowImpact extends WorkflowRevisionPlan {
+  /** How many instances of the workflow have not finished: pending, running, or suspended. */
+  readonly inFlight: number;
+}
+
 /** How busy one workflow is: what the workflow list shows beside each row. */
 export interface WorkflowRunCounts {
   /** Instances that have not finished: pending, running, or suspended. */
@@ -264,6 +309,11 @@ export interface WorkflowWriteContext {
    * without it leaves the origin as it is.
    */
   readonly hookOrigin?: string | undefined;
+  /**
+   * Where a person made the write from (`web`, `palette`, or `api`), recorded with the version it
+   * saves (COR-2009), so the workflow's history can say it was edited in Interborough.
+   */
+  readonly surface?: TaskPersonSurface | undefined;
   /**
    * The plugin whose own tool made the write (COR-1890: `bureau`, for the workflow tools), set by
    * those tools and by nothing else. A `definitions.changed` event a write causes names it as its
@@ -334,6 +384,20 @@ export interface BureauWorkflows {
    * the workflow's current revision; `undefined` when there is no such workflow.
    */
   readonly revisions: (id: string) => Promise<readonly WorkflowRevisionReport[] | undefined>;
+  /**
+   * The saved versions of `id`, newest first, each with its number (`1.0.0`, `1.1.0`, …), when and
+   * how it was saved, what changed from the version before and whether a run in flight could carry
+   * on (COR-2009), and the runs started on it. `undefined` when `id` has neither a file nor a
+   * recorded version.
+   */
+  readonly history: (id: string) => Promise<readonly WorkflowHistoryEntry[] | undefined>;
+  /**
+   * What saving `definition` as `id` would do, without saving it: the version it would make
+   * (`null` when it changes nothing that makes one), every change from the current version, whether
+   * the change is breaking, and how many instances are in flight. A definition that would not load
+   * throws {@link WorkflowFileError} with the problem, as a write would.
+   */
+  readonly impact: (id: string, definition: WorkflowFileDefinition) => Promise<WorkflowImpact>;
   readonly listRuns: (filter: WorkflowRunFilter) => Promise<{
     readonly runs: readonly WorkflowRunSummary[];
     readonly nextOffset: number | null;
@@ -464,6 +528,21 @@ interface Unrecoverable {
 }
 
 /** What {@link createWorkflowRuntime} builds. */
+/** Why a workflow file's schedule won't start (COR-2009): its file can't load. */
+export interface WorkflowScheduleBlocker {
+  /** What blocks it: the workflow's file is there but does not parse. */
+  readonly kind: 'workflow-cannot-load';
+  /** The workflow's identifier. */
+  readonly workflow: string;
+  /** What is wrong with the file, as its listing says. */
+  readonly message: string;
+  /**
+   * The status the schedule holds while it is blocked: `active` when Bureau paused it for the file
+   * problem (it was active, and resumes once the file parses), else the engine's own status.
+   */
+  readonly status: 'active' | 'paused';
+}
+
 export interface WorkflowRuntime {
   readonly workflows: BureauWorkflows;
   /**
@@ -484,10 +563,29 @@ export interface WorkflowRuntime {
   readonly isRegisteredType: (type: string) => boolean;
   /** Whether `scheduleId` is a Bureau workflow schedule that exists. */
   readonly scheduleExists: (scheduleId: string) => Promise<boolean>;
+  /**
+   * COR-2009 — why Bureau workflow schedule `scheduleId` won't start: its workflow's file is there
+   * but does not parse, so the schedule is kept from the last good version and held. `undefined`
+   * when it is no workflow file's schedule or its file loads.
+   */
+  readonly scheduleBlocker: (scheduleId: string) => Promise<WorkflowScheduleBlocker | undefined>;
   /** Delete the stored revisions nothing holds and nothing used since `cutoff` (epoch milliseconds). */
   readonly pruneSnapshots: (cutoff: number) => Promise<number>;
   /** When the workflow directory was last scanned and the message of that scan's error (COR-1731). */
   readonly health: () => DefinitionScannerHealth;
+  /**
+   * COR-2009 — the steps as written of the revision an instance runs on: `type` is the instance's
+   * engine type and `workflowVersion` the Weft revision it is pinned to. Read from the current file
+   * when it is that revision, else from the newest saved version that registered as it (titles and
+   * `review` leave the Weft revision unchanged, so the newest wins). `undefined` when `type` is no
+   * workflow file's, or no file or saved version is that revision.
+   */
+  readonly revisionSteps: (
+    type: string,
+    workflowVersion: string,
+  ) => Promise<WorkflowRevisionSteps | undefined>;
+  /** COR-2009 — the ids of every instance of a workflow file that has not finished. */
+  readonly inFlightRunIds: () => Promise<string[]>;
   /** Stop watching and wait for work in flight. */
   readonly close: () => Promise<void>;
 }
@@ -504,6 +602,16 @@ export interface WorkflowRuntimeOptions {
   readonly contributions?: WorkflowContributions | undefined;
   /** Where snapshots live; durable in a Bureau, since this needs the durable engine. */
   readonly snapshotStore: WorkflowSnapshotStore;
+  /**
+   * Where the saved versions of each workflow are recorded (COR-2009); one that lasts as long as
+   * the process when omitted.
+   */
+  readonly revisionLedger?: WorkflowRevisionLedger | undefined;
+  /**
+   * Where the schedules held for a file that stopped parsing are recorded (COR-2009); one that
+   * lasts as long as the process when omitted.
+   */
+  readonly scheduleHolds?: WorkflowScheduleHolds | undefined;
   readonly runtime: RuntimeServices;
   readonly diagnose: (message: string, cause: unknown) => void;
   /**
@@ -537,11 +645,21 @@ export interface WorkflowRuntimeOptions {
 }
 
 function scheduleOf(file: ReadyWorkflowFile): DesiredWorkflowSchedule | undefined {
-  const trigger = file.document.trigger;
+  // The trigger as written: its `timezone`, `catchUp`, `name`, and `input` are not in the document
+  // Weft is handed.
+  const trigger = file.trigger;
   if (trigger.kind !== 'schedule') return undefined;
   return {
     spec: typeof trigger['spec'] === 'string' ? trigger['spec'] : '',
     overlap: (trigger['overlap'] ?? 'skip') as ScheduleOverlapPolicy,
+    timeZone:
+      typeof trigger['timezone'] === 'string'
+        ? trigger['timezone']
+        : DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE,
+    backfill: trigger['catchUp'] === true,
+    description: typeof trigger['name'] === 'string' ? trigger['name'] : undefined,
+    // `null` is the same as no input: a fire starts with `null` either way.
+    input: trigger['input'] ?? undefined,
     paused: file.paused,
   };
 }
@@ -550,6 +668,12 @@ export { createWorkflowSnapshotStore };
 
 export function createWorkflowRuntime(options: WorkflowRuntimeOptions): WorkflowRuntime {
   const { engine, snapshotStore: snapshots } = options;
+  const revisionLedger =
+    options.revisionLedger ??
+    createWorkflowRevisionLedger({ nowISO: () => options.runtime.clock.nowISO() });
+  const scheduleHolds =
+    options.scheduleHolds ??
+    createWorkflowScheduleHolds({ nowISO: () => options.runtime.clock.nowISO() });
   /** The host a file is read against: a trigger kind a file names must be loaded. */
   const host = bridgeEngineActivities(engine, options.host);
   /** The host a revision is registered against, whether it is a file's or has instances (COR-1874). */
@@ -642,10 +766,30 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return unreadable;
   }
 
-  /** Put the schedules in line with the files, leaving the unreadable ones as they are. */
+  /**
+   * The workflows whose file is there but does not parse (COR-2009): any problem but a key this
+   * host does not know, which {@link unreadableWorkflows} answers for.
+   */
+  function brokenWorkflows(): Set<string> {
+    const broken = new Set<string>();
+    for (const listing of catalog.list()) {
+      if (listing.problem !== undefined && listing.problem.unrecognizedKeys !== true) {
+        broken.add(listing.id);
+      }
+    }
+    return broken;
+  }
+
+  /**
+   * Put the schedules in line with the files, leaving the unreadable ones as they are and holding
+   * the schedule of a file that stopped parsing.
+   */
   async function reconcileSchedules(): Promise<void> {
     const unreadable = unreadableWorkflows();
-    await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadable);
+    await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadable, {
+      broken: brokenWorkflows(),
+      holds: scheduleHolds,
+    });
     await triggers.reconcile(desiredTriggers(), unreadable);
     await forgetVanishedHookOrigins();
   }
@@ -790,11 +934,24 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return byVersion;
   }
 
+  /**
+   * How the bytes `file` holds reached the disk: a write through Bureau that is still in flight,
+   * with its actor and surface, or a change Bureau found.
+   */
+  function attributionOf(file: ReadyWorkflowFile): WorkflowRevisionAttribution {
+    const writer = writesInFlight.get(file.id)?.find((pending) => pending.hashes.has(file.hash));
+    return writer === undefined
+      ? { origin: 'file' }
+      : { origin: 'write', actor: writer.actor, surface: writer.surface };
+  }
+
   /** Register the files' documents, and the older revisions that still have an instance in flight. */
   async function register(retained: readonly WorkflowDocument[]): Promise<void> {
     const files = readyFiles();
     // The snapshot first: a revision never reaches the engine without one behind it.
     for (const file of files) await snapshots.ensure(file.id, file.document);
+    // Each file's version too, before the engine runs it, so a run never starts on an unrecorded one.
+    for (const file of files) await revisionLedger.observe(file, attributionOf(file));
     await withRegistration(async () => {
       try {
         const registered: readonly RegisteredWorkflowDocument[] =
@@ -1182,7 +1339,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    */
   const writesInFlight = new Map<
     string,
-    { readonly source: string | undefined; readonly hashes: Set<string> }[]
+    {
+      readonly source: string | undefined;
+      readonly actor: string | undefined;
+      readonly surface: TaskPersonSurface | undefined;
+      readonly hashes: Set<string>;
+    }[]
   >();
 
   /**
@@ -1191,10 +1353,15 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    */
   function attributeWrite(
     id: string | undefined,
-    source: string | undefined,
+    context: WorkflowWriteContext | undefined,
   ): { readonly wrote: (hash: string) => void; readonly stop: () => void } {
     if (id === undefined) return { wrote: () => {}, stop: () => {} };
-    const entry = { source, hashes: new Set<string>() };
+    const entry = {
+      source: context?.source,
+      actor: context?.actor,
+      surface: context?.surface,
+      hashes: new Set<string>(),
+    };
     writesInFlight.set(id, [...(writesInFlight.get(id) ?? []), entry]);
     return {
       wrote: (hash) => void entry.hashes.add(hash),
@@ -1302,7 +1469,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     // The workflow a write names for attribution when it takes no serialization (pause, resume).
     attributedId: string | undefined = id,
   ): Promise<WorkflowFileWriteResult> {
-    const attribution = attributeWrite(attributedId, context?.source);
+    const attribution = attributeWrite(attributedId, context);
     try {
       return await writeAttributed(type, context, previousHash, () => work(attribution.wrote), id);
     } finally {
@@ -1560,6 +1727,55 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       return stored.length > 0 ? [] : undefined;
     },
 
+    async history(id) {
+      const records = await revisionLedger.list(id);
+      if (records.length === 0) {
+        return catalog.list().some((entry) => entry.id === id) ? [] : undefined;
+      }
+      const starts: number[] = [];
+      for (let offset = 0; offset < RUNS_READ_LIMIT_PER_WORKFLOW;) {
+        const page = await engine.list({ type: weftNameOf(id), limit: 100, offset });
+        starts.push(...page.items.map((summary) => summary.createdAt));
+        offset += page.items.length;
+        if (page.items.length === 0 || offset >= page.total) break;
+      }
+      const savedAt = records.map((record) => Date.parse(record.savedAt));
+      const runsOf = (index: number): WorkflowHistoryRuns => {
+        const from = savedAt[index]!;
+        const until = savedAt[index + 1] ?? Number.POSITIVE_INFINITY;
+        const mine = starts.filter((at) => at >= from && at < until).toSorted((a, b) => a - b);
+        return {
+          count: mine.length,
+          firstRunAt: mine.length === 0 ? null : new Date(mine[0]!).toISOString(),
+          lastRunAt: mine.length === 0 ? null : new Date(mine.at(-1)!).toISOString(),
+        };
+      };
+      const exists = catalog.list().some((entry) => entry.id === id);
+      return records
+        .map((record, index): WorkflowHistoryEntry => ({
+          ...record,
+          current: exists && index === records.length - 1,
+          runs: runsOf(index),
+        }))
+        .toReversed();
+    },
+
+    async impact(id, definition) {
+      const parsed = parseWorkflowFile(id, serializeWorkflowFile(id, definition), host);
+      if (!parsed.ok) {
+        throw new WorkflowFileError(parsed.problem.code, parsed.problem.message, parsed.problem);
+      }
+      await settled();
+      const plan = planWorkflowRevision(
+        await revisionLedger.latest(id),
+        revisionContentOf(parsed.file),
+      );
+      let inFlight = 0;
+      const inFlightByVersion = await inFlightRuns(id);
+      for (const { runIds } of inFlightByVersion.values()) inFlight += runIds.length;
+      return { ...plan, inFlight };
+    },
+
     async listRuns(filter) {
       const types =
         filter.workflow === undefined
@@ -1595,7 +1811,8 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
     async runCounts(id) {
       try {
-        const now = Date.now();
+        // The Bureau's clock, which the engine stamps each run's `createdAt` by (COR-2009).
+        const now = options.runtime.clock.now();
         // Two index-narrowed reads answer the counts. The engine intersects the type index with the
         // status or created-at index before it loads any state, so each read loads only the
         // instances it counts, and `limit: 1` bounds the reply.
@@ -1790,11 +2007,51 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     isWorkflowType,
     isRegisteredType: (type) => registeredTypes.has(bureauNameOf(type)),
 
+    async revisionSteps(type, workflowVersion) {
+      if (!(await isWorkflowType(type))) return undefined;
+      const id = bureauNameOf(type);
+      const file = catalog.find(id);
+      if (file?.version === workflowVersion) {
+        return { workflow: id, title: file.title, steps: file.steps };
+      }
+      const records = await revisionLedger.list(id);
+      const saved = records.findLast((record) => record.workflowVersion === workflowVersion);
+      return saved === undefined
+        ? undefined
+        : { workflow: id, title: saved.content.title, steps: saved.content.steps };
+    },
+
+    async inFlightRunIds() {
+      const runIds: string[] = [];
+      for (const id of await knownTypes()) {
+        const byVersion = await inFlightRuns(id);
+        for (const { runIds: ofVersion } of byVersion.values()) runIds.push(...ofVersion);
+      }
+      return runIds;
+    },
+
     health: catalog.health,
 
     async scheduleExists(scheduleId) {
       if (parseWorkflowScheduleId(scheduleId) === undefined) return false;
       return (await engine.getSchedule(scheduleId)) !== null;
+    },
+
+    async scheduleBlocker(scheduleId) {
+      const identifier = parseWorkflowScheduleId(scheduleId)?.identifier;
+      if (identifier === undefined) return undefined;
+      const listing = catalog.list().find((entry) => entry.id === identifier);
+      const problem = listing?.problem;
+      if (problem === undefined || problem.unrecognizedKeys === true) return undefined;
+      const summary = await engine.getSchedule(scheduleId);
+      if (summary === null || summary.status === 'cancelled') return undefined;
+      const hold = await scheduleHolds.held(identifier);
+      return {
+        kind: 'workflow-cannot-load',
+        workflow: identifier,
+        message: problem.message,
+        status: hold?.scheduleId === scheduleId ? 'active' : summary.status,
+      };
     },
 
     async pruneSnapshots(cutoff) {

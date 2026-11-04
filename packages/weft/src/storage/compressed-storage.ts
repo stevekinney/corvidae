@@ -16,10 +16,14 @@ import {
 
 import {
   assertStorageBatchOperationCount,
+  storageScanWithMetadata,
+  storageStat,
   type BatchOperation,
   type ScanOptions,
   type Storage,
   type StorageCapabilities,
+  type StorageEntryMetadata,
+  type StorageScanEntryWithMetadata,
 } from '@lostgradient/storage';
 
 /**
@@ -118,6 +122,25 @@ export class CompressedStorage implements Storage {
   async *scan(prefix: string, options?: ScanOptions): AsyncIterable<[string, Uint8Array]> {
     for await (const [key, value] of this.#inner.scan(prefix, options)) {
       yield [key, await decompressPayload(value)];
+    }
+  }
+
+  /** What the inner store knows about `key`; compression changes the value, never its write time. */
+  async stat(key: string): Promise<StorageEntryMetadata | null> {
+    return storageStat(this.#inner, key);
+  }
+
+  /** {@link CompressedStorage.scan} with each entry's metadata from the inner store. */
+  async *scanWithMetadata(
+    prefix: string,
+    options?: ScanOptions,
+  ): AsyncIterable<StorageScanEntryWithMetadata> {
+    for await (const [key, value, metadata] of storageScanWithMetadata(
+      this.#inner,
+      prefix,
+      options,
+    )) {
+      yield [key, await decompressPayload(value), metadata];
     }
   }
 

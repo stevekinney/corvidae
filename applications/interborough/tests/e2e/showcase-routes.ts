@@ -1,23 +1,21 @@
 /**
  * What the showcase specification (`showcase.spec.ts`) needs to know about the route table without
- * a browser: an address for each route and for a few of its states, with the identifiers the
- * showcase seed (`fixtures/showcase-seed.ts`) made filled in. `tests/showcase-routes.test.ts` keeps
- * the table honest in the unit lane, so a new route cannot be added without an address.
+ * a browser: an address for each route and for a few of its states, with the identifiers of the
+ * sample world's records (`fixtures/sample-world-records.ts`) filled in. `tests/showcase-routes.test.ts`
+ * keeps the table honest in the unit lane, so a new route cannot be added without an address.
  */
 
-import type { ShowcaseSeed } from '../../fixtures/showcase-seed.ts';
+import type { SampleWorldRecords } from '../../fixtures/sample-world-records.ts';
 
-/** The address of each route in `routes.ts`, by pattern, with the seeded identifiers filled in. */
-export function showcaseAddresses(seed: ShowcaseSeed): Readonly<Record<string, string>> {
-  const agent = encodeURIComponent(seed.instructionsAgent);
-  const memoryAgent = encodeURIComponent(seed.memoryAgent);
-  const digest = encodeURIComponent(seed.workflows.digest);
-  const review = encodeURIComponent(seed.workflows.review);
-  const succeeded = encodeURIComponent(seed.runs.succeeded);
-  const chat = encodeURIComponent(seed.chats['release'] ?? '');
-  const schedule = encodeURIComponent(seed.schedules[0] ?? '');
-  const goal = encodeURIComponent(seed.goals[0] ?? '');
-  const hook = encodeURIComponent(seed.hooks[0] ?? '');
+/** The address of each route in `routes.ts`, by pattern, with the sample world's identifiers filled in. */
+export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<string, string>> {
+  const agent = encodeURIComponent(world.agent);
+  const workflow = encodeURIComponent(world.workflows.releaseNotes);
+  const failed = encodeURIComponent(world.runs.failed);
+  const chat = encodeURIComponent(world.chats.refund);
+  const schedule = encodeURIComponent(world.schedules.dailySummary);
+  const goal = encodeURIComponent(world.goals.sayHello);
+  const hook = encodeURIComponent(world.hooks.pageOnCall);
   return {
     '/chats': '/chats',
     '/chats/new': '/chats/new',
@@ -26,19 +24,19 @@ export function showcaseAddresses(seed: ShowcaseSeed): Readonly<Record<string, s
     '/agents/new': '/agents/new',
     '/capabilities': '/capabilities',
     '/agents/:agent/edit': `/agents/${agent}/edit`,
-    '/agents/:agent/memories': `/agents/${memoryAgent}/memories`,
-    '/agents/:agent/memories/:memory': `/agents/${memoryAgent}/memories/${encodeURIComponent(seed.memory)}`,
+    '/agents/:agent/memories': `/agents/${agent}/memories`,
+    '/agents/:agent/memories/:memory': `/agents/${agent}/memories/${encodeURIComponent(world.memory)}`,
     '/agents/:agent': `/agents/${agent}`,
     '/workflows': '/workflows',
     '/workflows/new': '/workflows/new',
-    '/workflows/:workflow': `/workflows/${digest}`,
-    '/workflows/:workflow/runs': `/workflows/${digest}/runs`,
-    '/workflows/:workflow/runs/:run': `/workflows/${digest}/runs/${succeeded}`,
-    '/workflows/:workflow/run': `/workflows/${review}/run`,
-    '/workflows/:workflow/edit': `/workflows/${digest}/edit`,
+    '/workflows/:workflow': `/workflows/${workflow}`,
+    '/workflows/:workflow/runs': `/workflows/${workflow}/runs`,
+    '/workflows/:workflow/runs/:run': `/workflows/${workflow}/runs/${failed}`,
+    '/workflows/:workflow/run': `/workflows/${workflow}/run`,
+    '/workflows/:workflow/edit': `/workflows/${workflow}/edit`,
     '/internal-workflows': '/internal-workflows',
     '/runs': '/runs',
-    '/runs/:run': `/runs/${succeeded}`,
+    '/runs/:run': `/runs/${encodeURIComponent(world.runs.done)}`,
     '/schedules': '/schedules',
     '/schedules/new': '/schedules/new',
     '/schedules/:schedule': `/schedules/${schedule}`,
@@ -66,59 +64,66 @@ export function showcaseAddresses(seed: ShowcaseSeed): Readonly<Record<string, s
 }
 
 /**
- * Addresses of a route in another state, by `<pattern> (<state>)`: the chats that hold a tool call,
- * a waiting approval, a question, a picture and a failed run, an agent's tabs, a workflow's tabs,
- * a run in each state it can be in, the Reviews page with a review open, and a paused schedule, a
- * failed hook and a goal that is still evaluating. Each is captured like a route of its own.
+ * Addresses of a route in another state, by `<pattern> (<state>)`: the sample world's other chats
+ * (the release question, the lookup, the chat a restart ended), Tool runner's tabs, Release notes'
+ * tabs and Order refund, which can't load, a run in each state the sample world holds, the Reviews
+ * page with a review open, the schedules that are paused, missed runs and can't load, the goals
+ * that gave up and were stopped, and the hook that is off. Each is captured like a route of its own.
  */
-export function showcaseVariants(seed: ShowcaseSeed): Readonly<Record<string, string>> {
-  const agent = `/agents/${encodeURIComponent(seed.instructionsAgent)}`;
-  const file = `/workflows/${encodeURIComponent(seed.workflows.review)}`;
-  const thread = (key: string): string => `/chats/${encodeURIComponent(seed.chats[key] ?? '')}`;
+export function showcaseVariants(world: SampleWorldRecords): Readonly<Record<string, string>> {
+  const agent = `/agents/${encodeURIComponent(world.agent)}`;
+  const workflow = `/workflows/${encodeURIComponent(world.workflows.releaseNotes)}`;
+  const thread = (id: string): string => `/chats/${encodeURIComponent(id)}`;
+  const run = (id: string): string => `/runs/${encodeURIComponent(id)}`;
+  const schedule = (id: string): string => `/schedules/${encodeURIComponent(id)}`;
+  const goal = (id: string): string => `/goals/${encodeURIComponent(id)}`;
   return {
-    '/chats/:chat (tool call, approval denied)': thread('refund-denied'),
-    '/chats/:chat (approval waiting)': thread('refund-waiting'),
-    '/chats/:chat (approval approved)': thread('refund-approved'),
-    '/chats/:chat (question waiting)': thread('question'),
-    '/chats/:chat (model picker)': thread('model-picker'),
-    '/chats/:chat (attachment)': thread('attachment'),
-    '/chats/:chat (failed run)': thread('failed'),
+    '/chats/:chat (question waiting)': thread(world.chats.release),
+    '/chats/:chat (lookup done)': thread(world.chats.lookUp4468),
+    '/chats/:chat (ended by a restart)': thread(world.chats.billing),
     '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
     '/agents/:agent (access tab)': `${agent}?tab=access`,
     '/agents/:agent (hooks tab)': `${agent}?tab=hooks`,
     '/agents/:agent (settings tab)': `${agent}?tab=settings`,
-    '/workflows/:workflow (code tab)': `${file}?tab=code`,
-    '/workflows/:workflow (runs tab)': `${file}?tab=runs`,
-    '/workflows/:workflow (history tab)': `${file}?tab=history`,
-    '/runs/:run (failed)': `/runs/${encodeURIComponent(seed.runs.failed)}`,
-    '/runs/:run (running)': `/runs/${encodeURIComponent(seed.runs.running)}`,
-    '/runs/:run (cancelled)': `/runs/${encodeURIComponent(seed.runs.cancelled)}`,
-    '/reviews (review open)': `/reviews?review=${encodeURIComponent(seed.reviews.waiting)}`,
-    '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(seed.reviews.decided)}`,
-    '/schedules/:schedule (paused)': `/schedules/${encodeURIComponent(seed.schedules[2] ?? '')}`,
-    '/goals/:goal (evaluating)': `/goals/${encodeURIComponent(seed.goals[1] ?? '')}`,
-    '/hooks/:hook (failed delivery)': `/hooks/${encodeURIComponent(seed.hooks[1] ?? '')}`,
+    '/workflows/:workflow (code tab)': `${workflow}?tab=code`,
+    '/workflows/:workflow (runs tab)': `${workflow}?tab=runs`,
+    '/workflows/:workflow (history tab)': `${workflow}?tab=history`,
+    '/workflows/:workflow (can’t load)': `/workflows/${encodeURIComponent(world.workflows.orderRefund)}`,
+    '/runs/:run (failed)': run(world.runs.failed),
+    '/runs/:run (waiting on you)': run(world.runs.waiting),
+    '/runs/:run (canceled)': run(world.runs.canceled),
+    '/reviews (review open)': `/reviews?review=${encodeURIComponent(world.reviews.waiting)}`,
+    '/reviews (done tab, review open)': `/reviews?tab=done&review=${encodeURIComponent(world.reviews.decided)}`,
+    '/schedules/:schedule (paused)': schedule(world.schedules.inboxTriage),
+    '/schedules/:schedule (file-defined)': schedule(world.schedules.releaseNotesDigest),
+    '/schedules/:schedule (can’t load)': schedule(world.schedules.weeklyRefundAudit),
+    '/goals/:goal (gave up)': goal(world.goals.draftReleaseNotes),
+    '/goals/:goal (stopped)': goal(world.goals.summarizeRefunds),
+    '/hooks/:hook (off)': `/hooks/${encodeURIComponent(world.hooks.refundAudit)}`,
   };
 }
 
-/** A seed holding no identifiers, for the parts of the specification that need only the names. */
-const BLANK_SEED: ShowcaseSeed = {
-  agents: [],
-  instructionsAgent: '',
-  memoryAgent: '',
+/** Sample world records holding no identifiers, for the parts that need only the names. */
+const BLANK_WORLD: SampleWorldRecords = {
+  chats: { refund: '', release: '', sayHello: '', lookUp4468: '', billing: '' },
+  agent: '',
   memory: '',
-  memories: [],
-  chats: {},
-  workflows: { digest: '', review: '', sync: '' },
-  runs: { succeeded: '', failed: '', running: '', cancelled: '' },
-  schedules: [],
-  hooks: [],
-  goals: [],
+  workflows: { releaseNotes: '', triageInbox: '', orderRefund: '' },
+  runs: { failed: '', done: '', waiting: '', canceled: '' },
+  schedules: { dailySummary: '', inboxTriage: '', releaseNotesDigest: '', weeklyRefundAudit: '' },
+  goals: { sayHello: '', draftReleaseNotes: '', summarizeRefunds: '' },
+  hooks: {
+    pageOnCall: '',
+    notifySlack: '',
+    triageFinishes: '',
+    scheduleMisses: '',
+    refundAudit: '',
+  },
   reviews: { waiting: '', decided: '' },
-  created: [],
+  toolSource: '',
 };
 
-/** The names of {@link showcaseVariants}, which do not depend on the seed's values, only the addresses do. */
+/** The names of {@link showcaseVariants}, which do not depend on the identifiers, only the addresses do. */
 export function showcaseVariantNames(): readonly string[] {
-  return Object.keys(showcaseVariants(BLANK_SEED));
+  return Object.keys(showcaseVariants(BLANK_WORLD));
 }

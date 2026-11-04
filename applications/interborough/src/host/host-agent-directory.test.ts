@@ -118,6 +118,8 @@ describe('the host’s agent directory', () => {
       'demo:echo',
       'demo:model-switcher',
       'demo:internal',
+      'demo:release-helper',
+      'demo:changelog-writer',
     ]);
     const created = await host.bureau.agents.create('writer', {
       model: 'anthropic/sonnet',

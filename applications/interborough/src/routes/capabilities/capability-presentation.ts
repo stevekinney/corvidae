@@ -49,6 +49,7 @@ export function approvalLabel(tool: CatalogTool): string {
 /** The words for where a tool comes from. */
 export function toolSourceLabel(tool: CatalogTool): string {
   if (tool.source === 'plugin') return TOOL.sources.plugin(tool.plugin ?? '');
+  if (tool.source === 'skill') return TOOL.sources.skill(tool.skill ?? '');
   return TOOL.sources[tool.source];
 }
 

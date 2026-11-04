@@ -22,6 +22,7 @@ async function compose(
     readonly storage?: MemoryStorage;
     readonly locked?: Readonly<Partial<Record<SettingKey, SettingLockReason>>>;
     readonly defaults?: SettingsDependencies['defaults'];
+    readonly builtInDefaults?: SettingsDependencies['builtInDefaults'];
     readonly persisted?: boolean;
   } = {},
 ) {
@@ -45,6 +46,7 @@ async function compose(
     store,
     persisted: options.persisted ?? store !== undefined,
     defaults,
+    builtInDefaults: options.builtInDefaults ?? {},
     locked,
     boot,
     nowISO: () => '2026-10-27T00:00:00.000Z',
@@ -59,6 +61,48 @@ async function compose(
   });
   return { ...composition, diagnostics, audits, applied };
 }
+
+describe('bureau.settings effective values', () => {
+  test('reports the stored value, else the code option, else the built-in default, and nothing for a key with none', async () => {
+    const { settings } = await compose({
+      storage: new MemoryStorage(),
+      defaults: { 'tools.wakeup': true, 'retention.audit': { olderThan: 1_000 } },
+      builtInDefaults: {
+        'tools.wakeup': true,
+        'retention.audit': 'forever',
+        'retention.events': { olderThan: 7 },
+        maintenance: 'automatic',
+      },
+    });
+    const before = await settings.get();
+    expect(before.values['retention.events']).toBeUndefined();
+    expect(before.effective).toEqual({
+      'tools.wakeup': true,
+      'retention.audit': { olderThan: 1_000 },
+      'retention.events': { olderThan: 7 },
+      maintenance: 'automatic',
+    });
+    await settings.update(
+      { 'retention.events': 'forever', maintenance: 'manual' },
+      { expectedRevision: 0 },
+    );
+    const after = await settings.get();
+    expect(after.effective['retention.events']).toBe('forever');
+    // A restart key reports its stored value while it waits, as `values` does.
+    expect(after.effective.maintenance).toBe('manual');
+    expect(after.keys.maintenance.pendingRestart).toBe(true);
+    expect(Object.hasOwn(after.effective, 'modelPolicy')).toBe(false);
+  });
+
+  test('ignores a stored value for a locked key, as `values` does', async () => {
+    const storage = new MemoryStorage();
+    const first = await compose({ storage });
+    await first.settings.update({ 'tools.wakeup': false }, { expectedRevision: 0 });
+    const locked = await compose({ storage, locked: { 'tools.wakeup': 'deployment' } });
+    const { effective } = await locked.settings.get();
+    expect(effective['tools.wakeup']).toBe(true);
+  });
+});
 
 describe('bureau.settings update outcomes', () => {
   test('a live key applies at once and is audited with its keys and revision, never its value', async () => {

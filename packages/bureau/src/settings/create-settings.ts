@@ -227,6 +227,11 @@ export interface SettingsDependencies {
   readonly persisted: boolean;
   /** The code options, as settings. */
   readonly defaults: SettingsValues;
+  /**
+   * What each key applies by when neither the store nor a code option sets it
+   * (`builtInSettingDefaults`), reported under the snapshot's `effective`.
+   */
+  readonly builtInDefaults: SettingsValues;
   readonly locked: ReadonlyMap<SettingKey, SettingLockReason>;
   /** The names a `decisions.model` may take; see {@link SettingsContext.decisionModels}. */
   readonly decisionModels?: ReadonlySet<string>;
@@ -354,6 +359,7 @@ export function createSettings(dependencies: SettingsDependencies): SettingsComp
     get: () =>
       Promise.resolve({
         values: configured,
+        effective: { ...dependencies.builtInDefaults, ...configured },
         revision: revisionOf(stored),
         persisted: dependencies.persisted,
         keys: Object.fromEntries(

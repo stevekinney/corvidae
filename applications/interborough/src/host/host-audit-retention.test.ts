@@ -1,7 +1,7 @@
 /**
  * COR-1810 — the host keeps its audit trail 90 days by default: the Bureau starts with a
- * `retention.audit` window of 90 days, the maintenance sweep prunes older records and keeps newer
- * ones, and a stored setting replaces the default.
+ * `retention.audit` window of 90 days, the nightly clean-up (COR-2009) removes older records and
+ * keeps newer ones, and a stored setting replaces the default.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -48,7 +48,7 @@ describe('the host’s audit retention', () => {
     });
   });
 
-  test('the maintenance sweep prunes audit records older than 90 days and keeps newer ones', async () => {
+  test('the nightly clean-up removes audit records older than 90 days and keeps newer ones; a maintenance pass leaves them', async () => {
     const host = await start();
     const trail = host.bureau.internals.auditTrail!;
     const now = Date.now();
@@ -66,8 +66,13 @@ describe('the host’s audit retention', () => {
       timestampMs: now - 89 * DAY,
     });
 
+    // Expired records go once a night (COR-2009), not on every maintenance pass.
     await host.bureau.maintain();
+    expect(await trail.query({ type: 'schedule.note' })).toHaveLength(2);
 
+    const cleanUp = await host.cleanUp.cleanUpNow();
+
+    expect(cleanUp.byKind.audit).toBe(1);
     const remaining = await trail.query({ type: 'schedule.note' });
     expect(remaining.map((record) => record.runId)).toEqual(['schedule:recent']);
   });

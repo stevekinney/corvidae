@@ -84,6 +84,8 @@ const workerSummarySchema = z.object({
   deploymentName: z.string().optional(),
   buildId: z.string().optional(),
   runtimeVersion: z.string().optional(),
+  drainFinishedTasks: z.number().optional(),
+  drainedAt: z.number().optional(),
 }) satisfies z.ZodType<WorkerSummary>;
 
 const workerDeploymentSummarySchema = z.object({

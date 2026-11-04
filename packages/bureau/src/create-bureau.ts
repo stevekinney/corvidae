@@ -23,6 +23,7 @@ import {
   appendAgentInput,
   payloadText,
   assertAgentInput,
+  type BackendDescriptor,
   type CombinedOperativeEventMap,
   createActiveRun,
   createAgentRun,
@@ -104,6 +105,7 @@ import {
   readDurableRunResult,
   humanInputSchemaOf,
   sessionOwnerOf,
+  type ScheduleTick,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -157,12 +159,18 @@ import {
   validateBuiltInPluginOptions,
   withBuiltInPlugin,
 } from './plugins/bureau-plugin';
+import { bureauOwnTools, withAgentsBuiltFromBureauTools } from './agents-with-bureau-tools';
 import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createPluginRegistry } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
-import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
+import {
+  type AgentDefinitions,
+  type AgentNames,
+  createAgentCatalog,
+  type CreateAgentCatalogOptions,
+} from './agent-catalog';
 import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
@@ -234,8 +242,13 @@ import {
   forwardMissedFires,
   subscribeEventFeed,
 } from './bureau-event-forwarders.ts';
+import { publishWorkflowScheduleOutcomes } from './workflow-schedule-outcomes';
+import { auditMemoryCorrections } from './memory-correction-audit.ts';
 import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
-import { createSessionPersistence } from './bureau-session-persistence';
+import {
+  createSessionPersistence,
+  SESSION_END_REASON_HOST_STOPPED,
+} from './bureau-session-persistence';
 import {
   type BureauChildren,
   type ChildTopologyParent,
@@ -315,6 +328,11 @@ import {
 } from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
+import {
+  builtInSettingDefaults,
+  DEFAULT_EVENT_RETENTION_MS,
+  DEFAULT_TASK_RETENTION_MS,
+} from './settings/setting-defaults';
 import type { SettingsValues } from './settings/settings-schema';
 import { summarizerFailures } from './settings/settings-validation';
 import { createMemoryEmbedderSetting, type MemoryEmbedderSetting } from './memory-embedder-setting';
@@ -436,12 +454,18 @@ import {
   payloadMaximumBytesOf,
   type BureauWorkflows,
   type WorkflowRuntime,
+  type WorkflowScheduleBlocker,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
+import { everySchedule, readAttention } from './attention-feed';
+import { isScheduleTickRunId, startScheduleTick } from './schedule-tick';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
+import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
+import { createWorkflowScheduleHolds } from './workflow-schedule-holds';
+import { createAgentOverrideStore } from './agent-override-store';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   type AgentStepRequest,
@@ -515,6 +539,7 @@ import {
   humanWaitDecisionRequest,
   humanWaitDeliveryId,
 } from './run-human-waits';
+import { createWorkflowReviewWaits } from './workflow-review-waits';
 import {
   countCheckpointParks,
   humanWaitParkOrdinal as sharedHumanWaitParkOrdinal,
@@ -630,6 +655,8 @@ import type {
   ResolveReviewInput,
   ResolveReviewResult,
   BureauRetentionOptions,
+  ExpiredRecordKind,
+  ExpiredRecordRemoval,
   ReviewResolutionFields,
   ReviewStatus,
   RunSummary,
@@ -2168,12 +2195,6 @@ function rejectOptInToolOption(name: 'humanInput' | 'wakeup' | 'decide', value: 
   );
 }
 
-/** COR-1477 — {@link BureauRetentionOptions.events}'s default window: 7 days. */
-const DEFAULT_EVENT_RETENTION_MS = 7 * 86_400_000;
-
-/** COR-1477 — {@link BureauRetentionOptions.tasks}'s default window: 30 days. */
-const DEFAULT_TASK_RETENTION_MS = 30 * 86_400_000;
-
 /** {@link BureauRetentionOptions.tasks}, or its default window when none was given. */
 function taskRetentionOf(values: SettingsValues) {
   return values['retention.tasks'] ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
@@ -2283,6 +2304,41 @@ export function createScheduledFireApprovalHook(
   };
 }
 
+/** COR-2009 — refuses a {@link BureauOptions.expiredRecords} that names neither of its two choices. */
+function validateExpiredRecordsOption(value: unknown): void {
+  if (value === undefined || value === 'maintenance' || value === 'on-request') return;
+  throw new BureauError(
+    `expiredRecords must be 'maintenance' or 'on-request', not ${JSON.stringify(value)}.`,
+    'BAD_REQUEST',
+  );
+}
+
+/** Which pass a retention sweep runs in, as its diagnostics name it. */
+type MaintenancePassName = 'Manual' | 'Automatic' | 'Requested';
+
+/** A pass's count of removed records, or zero for one that failed, which the removal lists apart. */
+function removedCount(result: number | 'failed'): number {
+  return result === 'failed' ? 0 : result;
+}
+
+/**
+ * COR-2009 — what {@link Bureau.removeExpiredRecords} reports from each pass's result: how many
+ * records of each kind went, their total, and the kinds whose pass failed.
+ */
+function expiredRecordRemovalOf(
+  results: Readonly<Record<ExpiredRecordKind, number | 'failed'>>,
+): ExpiredRecordRemoval {
+  const kinds = Object.keys(results) as ExpiredRecordKind[];
+  const byKind = Object.fromEntries(
+    kinds.map((kind) => [kind, removedCount(results[kind])]),
+  ) as Record<ExpiredRecordKind, number>;
+  return {
+    removed: kinds.reduce((total, kind) => total + byKind[kind], 0),
+    byKind,
+    failed: kinds.filter((kind) => results[kind] === 'failed'),
+  };
+}
+
 /**
  * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
  * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
@@ -2357,6 +2413,13 @@ function watcherHealthOf(
   const { lastScanAt, lastScanError } = watched.health();
   return { source, lastScanAt: lastScanAt ?? null, lastScanError: lastScanError ?? null };
 }
+
+/** COR-2009: the audit record of an approved tool call that ran (`tool.settled`, with its review). */
+type ApprovedCallAudit = {
+  readonly runId: string;
+  readonly type: 'tool.settled';
+  readonly detail: Readonly<Record<string, unknown>>;
+};
 
 /**
  * How a construction that fails part-way stops what it started (COR-1781). `constructBureau` names
@@ -2530,6 +2593,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   validateDecisionsOptions(options.decisions, toBadRequest);
   validateHumanInputOption(options.humanInput);
   validateRetentionOptions(options.retention, toBadRequest);
+  validateExpiredRecordsOption(options.expiredRecords);
   validateLogsMaximumLinesPerRun(options.logs?.maximumLinesPerRun, toBadRequest);
   validateChildrenOption(options.children, toBadRequest);
   assertMemoryTenantIsStable(options);
@@ -2584,6 +2648,16 @@ async function constructBureau<const D extends AgentDefinitions>(
           }),
         )),
   ];
+  // COR-2009 — the code-defined agents built from Bureau's own tools join `agents` before any
+  // plugin is composed, so a plugin agent of the same name is a clash, as with any host agent.
+  const agentsWithOwnTools = withAgentsBuiltFromBureauTools(
+    options.agents,
+    options.agentsWithBureauTools,
+    bureauOwnTools(bureauTools),
+    BUREAU_AGENT_NAME,
+    toBadRequest,
+  );
+  if (agentsWithOwnTools !== undefined) options = { ...options, agents: agentsWithOwnTools };
   // COR-1879 — plugin setup runs once the caller's options are known to be usable, and what the
   // running plugins contribute is folded into the options the rest of construction reads.
   const composedPlugins = await composePlugins({
@@ -2644,7 +2718,10 @@ async function constructBureau<const D extends AgentDefinitions>(
   // (not `runtime`) to avoid colliding with the pre-existing local `runtime`
   // below, which names the unrelated `RuntimeComposition` value.
   const runtimeServices: RuntimeServices = options.runtime ?? createDefaultRuntimeServices();
-  // COR-1524: when this Bureau was built, for telling a reference left by an earlier process apart.
+  // COR-1524: when this Bureau was built, on its own clock, for telling a reference left by an
+  // earlier process apart. COR-2009: a plugin that did not load needs attention from here, and a
+  // missed window that began before it is the catch-up after the host was off. Every time it is
+  // compared with is the Bureau's clock's or the engine's, which reads the same one.
   const constructedAtMilliseconds = runtimeServices.clock.now();
   // AB-388: ONE resolver shared by `createAuditTrail` and
   // `createDurableEventProducer` below — see `event-timestamp.ts`. Declared
@@ -2985,7 +3062,8 @@ async function constructBureau<const D extends AgentDefinitions>(
   // settling after the engine and the store are closed (or fenced off) leaves the run in its
   // persisted state for a correctly configured boot to resume.
   let models: Models;
-  let agentToolCatalog: Readonly<Record<string, Tool>>;
+  /** The deployment's tool catalog; mutable only through `agents.addTools` (COR-2009). */
+  let agentToolCatalog: Record<string, Tool>;
   let fileAgents: FileAgentRuntime | undefined;
   /** COR-1911 — the agents being tried, held in memory for the contexts that started them. */
   const tryAgents = createTryAgents();
@@ -3076,14 +3154,39 @@ async function constructBureau<const D extends AgentDefinitions>(
       stopForwarding.push(
         forwardMemoryGovernance(runtime.memory, (event) => emitter.dispatch(event), diagnose),
       );
+      // COR-2009 — every correction, a person's or an agent's, as the audit log's "Corrected a memory".
+      stopForwarding.push(
+        auditMemoryCorrections(
+          runtime.memory,
+          (entry) => auditTrailInstance?.record(entry),
+          diagnose,
+        ),
+      );
     }
     if (runtime.durable !== undefined) {
+      // COR-2009: a run a workflow file's schedule started publishes its outcome, as a fire does.
+      stopForwarding.push(
+        publishWorkflowScheduleOutcomes(runtime.durable.engine, (event) => emitter.dispatch(event)),
+      );
       stopForwarding.push(
         forwardMissedFires(
           // COR-1721: the composition listens from the moment the engine exists, and replays here.
           runtime.durable.missedFires,
           (scheduleId) => getSchedule(scheduleId),
-          (event) => emitter.dispatch(event),
+          (event) => {
+            emitter.dispatch(event);
+            // COR-2009: the notice is also a schedule tick, the Bureau's own run.
+            void recordScheduleTick(event.scheduleId, (scheduleName) => ({
+              event: 'missed-runs',
+              scheduleId: event.scheduleId,
+              scheduleName,
+              missedRuns: event.missedCount,
+              reason: event.reason,
+              since: event.windowStart,
+              until: event.windowEnd,
+              whileStopped: event.windowStart < constructedAtMilliseconds,
+            }));
+          },
           diagnose,
         ),
       );
@@ -3150,6 +3253,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       store: runtime.kv,
       persisted: booted.persisted,
       defaults: settingsDefaults,
+      builtInDefaults: builtInSettingDefaults({ persistentStorage: booted.persisted }),
       locked: settingsLocked,
       decisionModels: decisionModelNames(options.decisions),
       // A summarizer must name a row of the catalog as it is at the write (COR-1899), and an
@@ -3231,6 +3335,39 @@ async function constructBureau<const D extends AgentDefinitions>(
     const pluginToolNames: ReadonlySet<string> = new Set(
       Object.keys(composedPlugins.tools).filter((name) => !bureauToolNames.has(name)),
     );
+    /**
+     * COR-1961: the run's owner decides whether a default effort its model cannot do fails the step
+     * or is lowered; a run with no owner on record, or an owner whose profile says nothing, rejects.
+     * A file agent's and an overridden built-in agent's runs ask it alike.
+     */
+    async function effortFallbackModeOfRun(
+      runId: string | undefined,
+    ): Promise<'reject' | 'degrade'> {
+      if (runId === undefined) return 'reject';
+      const owner = ownerOrLocal(await ownerOf({ kind: 'run', id: runId }));
+      const users = modelPolicyOf(currentSettings())?.users;
+      const profile = users !== undefined && Object.hasOwn(users, owner) ? users[owner] : undefined;
+      return profile?.effortFallbackMode ?? 'reject';
+    }
+    /**
+     * COR-2009 — a built-in agent's overrides apply to its runs as an agent file's settings do: the
+     * same model resolver, tool catalog, plugin guardrails, approval secret and effort fallback.
+     */
+    function codeAgentRunsDeployment(): NonNullable<CreateAgentCatalogOptions['codeAgentRuns']> {
+      return {
+        ...(options.models?.generate === undefined
+          ? {}
+          : { resolveGenerate: (row: BackendDescriptor) => models.generate(row) }),
+        toolCatalog: () => agentToolCatalog,
+        contributions: options.agentContributions,
+        approvalSecret: options.agentApprovalSecret,
+        ...(runtime.secretAnswers === undefined
+          ? {}
+          : { secretResolver: secretResolverOf(runtime.secretAnswers) }),
+        effortFallbackMode: effortFallbackModeOfRun,
+        runtime: runtimeServices,
+      };
+    }
     // COR-1815: built before the catalog, which asks it which revisions a retained run references.
     const agentSnapshots = createAgentSnapshotStore({
       store: runtime.kv,
@@ -3250,17 +3387,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               resolveGenerate: (row) => models.generate(row),
               // COR-1980: the settings are live, so a write is judged by the policy as it is now.
               modelPolicy: () => modelPolicyOf(currentSettings()),
-              // COR-1961: the run's owner decides whether a default effort its model cannot do
-              // fails the step or is lowered; a run with no owner on record, or an owner whose
-              // profile says nothing, rejects.
-              effortFallbackMode: async (runId) => {
-                if (runId === undefined) return 'reject';
-                const owner = ownerOrLocal(await ownerOf({ kind: 'run', id: runId }));
-                const users = modelPolicyOf(currentSettings())?.users;
-                const profile =
-                  users !== undefined && Object.hasOwn(users, owner) ? users[owner] : undefined;
-                return profile?.effortFallbackMode ?? 'reject';
-              },
+              effortFallbackMode: effortFallbackModeOfRun,
               ...(options.agentApprovalSecret === undefined
                 ? {}
                 : { approvalSecret: options.agentApprovalSecret }),
@@ -3307,13 +3434,47 @@ async function constructBureau<const D extends AgentDefinitions>(
             track: (promise, label) => runtimeServices.deferred.track(promise, label),
           });
     await fileAgents?.files.refresh();
+    /**
+     * COR-2009 — adds a tool source the host connected while the Bureau runs: the tools join the
+     * catalog as the host's, and every agent file is checked again, so a file that names one of
+     * them is ready without a restart. A name Bureau or a plugin holds is refused, and nothing is
+     * added; a name the host already holds is replaced.
+     */
+    async function addHostTools(tools: Readonly<Record<string, Tool>>): Promise<void> {
+      const files = fileAgents?.files;
+      if (files === undefined) {
+        throw new BureauError(
+          'Tools can be added only to a Bureau with an agent source and a model catalog.',
+          'UNSUPPORTED_CAPABILITY',
+        );
+      }
+      const added = Object.entries(tools);
+      const held = added.find(([name]) => bureauToolNames.has(name) || pluginToolNames.has(name));
+      if (held !== undefined) {
+        throw new BureauError(
+          `Cannot add tool "${held[0]}": the name belongs to ${bureauToolNames.has(held[0]) ? 'Bureau' : 'a plugin'}.`,
+          'CONFLICT',
+        );
+      }
+      for (const [name, tool] of added) agentToolCatalog[name] = tool;
+      await files.revalidate();
+    }
     agentCatalog = createAgentCatalog(agentsSnapshot, {
       selectorAvailable: true,
+      addTools: addHostTools,
       files: fileAgents?.files,
       snapshots: fileAgents?.snapshots,
       descriptors: () => models.catalog().descriptors,
       modelPolicy: () => modelPolicyOf(currentSettings()),
+      unavailable: composedPlugins.unavailableAgents,
+      overrides: createAgentOverrideStore({
+        store: runtime.kv,
+        nowISO: runtimeServices.clock.nowISO,
+      }),
+      codeAgentRuns: codeAgentRunsDeployment(),
     });
+    // COR-2009: the overrides in force of the built-in agents, read before any run can start.
+    await agentCatalog.overrides.load();
     // COR-1721 — after the first scan, so the files present at boot are not reported as added.
     stopForwarding.push(
       forwardDefinitionChanges('agents', agentCatalog, (event) => emitter.dispatch(event)),
@@ -3336,6 +3497,14 @@ async function constructBureau<const D extends AgentDefinitions>(
             }),
             contributions: workflowContributions,
             snapshotStore: createWorkflowSnapshotStore({
+              store: runtime.kv,
+              nowISO: runtimeServices.clock.nowISO,
+            }),
+            revisionLedger: createWorkflowRevisionLedger({
+              store: runtime.kv,
+              nowISO: runtimeServices.clock.nowISO,
+            }),
+            scheduleHolds: createWorkflowScheduleHolds({
               store: runtime.kv,
               nowISO: runtimeServices.clock.nowISO,
             }),
@@ -3470,6 +3639,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * every durable run: only the tasks a process started are its own to cancel (COR-1707).
    */
   const recoveredActiveRuns = new WeakSet<ActiveRun>();
+  /**
+   * COR-2009 — the runs a shutdown aborted. Their session records why the run ended
+   * (`lastRunEndReason: 'host-stopped'`), so a chat the host stopped reads as ended by it.
+   */
+  const runsStoppedByShutdown = new WeakSet<ActiveRun>();
   // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
   // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
   // not the arbitrary `AgentRun` a catalog `RunnableAgent` may return on the
@@ -5981,6 +6155,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     sleep: sessionPersistenceSleep,
     diagnose,
     serializeError: serializeUnknownError,
+    runtime: runtimeServices,
   });
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
 
@@ -8181,6 +8356,22 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * The refusal of a run of `agentName`, which no catalog agent resolves. A disabled plugin's agent
+   * is listed `unavailable` (COR-2009), so the refusal says why it cannot run.
+   */
+  function missingAgentError(agentName: string): BureauError {
+    const unavailable = agentCatalog
+      .list()
+      .find((listing) => listing.id === agentName)?.unavailable;
+    return new BureauError(
+      unavailable === undefined
+        ? `Unknown agent "${agentName}"`
+        : `Agent "${agentName}" is unavailable: ${unavailable.message}.`,
+      'NOT_FOUND',
+    );
+  }
+
+  /**
    * COR-1911 — a tried agent belongs to the one context that was started with it: a name that is
    * held for another context, or for none, is an agent that does not exist.
    */
@@ -8429,9 +8620,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
     const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
-    if (resolution.status === 'missing-agent') {
-      throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
-    }
+    if (resolution.status === 'missing-agent') throw missingAgentError(agentName);
     if (resolution.status === 'not-durable-capable') {
       throw new BureauError(
         `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,
@@ -8569,6 +8758,15 @@ async function constructBureau<const D extends AgentDefinitions>(
       // call can observe this run) rather than relying on the tool-bubble-event
       // heuristic, which cannot see a run that never calls a tool.
       runAttribution.set(runId, { agentName, principal: owner });
+      // COR-2009 — the audit log's "Started a run": who started it, the agent, and the chat it runs
+      // in, which the log names by its title. Best effort and not awaited, so starting a run takes
+      // no extra turn (AB-13 above); the trail tracks the write until it is disposed.
+      void auditTrailInstance?.record({
+        runId,
+        type: 'run.started',
+        principal: owner,
+        detail: { agentName, sessionId },
+      });
       const runRuntime = await runtime.createRunRuntime(
         {
           ...request,
@@ -9197,6 +9395,11 @@ async function constructBureau<const D extends AgentDefinitions>(
                 // so the field must be written here, not only on the old recovery path.
                 lastFinishReason: 'aborted',
                 lastError: serializeUnknownError(event.error),
+                // COR-2009 — why the run ended, when the run did not end itself: the host
+                // stopped it. Written on every abort, so an earlier run's reason never lingers.
+                lastRunEndReason: runsStoppedByShutdown.has(activeRun)
+                  ? SESSION_END_REASON_HOST_STOPPED
+                  : null,
               },
               agentName,
               baseConversationHistory,
@@ -10866,6 +11069,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         // COR-1527: an instance of a workflow file carries a document's trigger, not an agent
         // run's input, so the classification below would read it as a foreign run and cancel it.
         // The workflow runtime registered its revision before this recovery; the engine resumes it.
+        // COR-2009: a schedule tick carries what it records, and is the Bureau's own; the engine
+        // resumes it too. Its id says what it is, so this costs no read.
+        if (isScheduleTickRunId(handle.id)) continue;
         if (workflowRuntime !== undefined) {
           const instance = await durable.engine.get(handle.id);
           if (instance !== null && (await workflowRuntime.isWorkflowType(instance.type))) continue;
@@ -11429,6 +11635,13 @@ async function constructBureau<const D extends AgentDefinitions>(
    * {@link scheduleInputPreview}); an input of media alone has none, and its schedule has no
    * preview.
    */
+  /** COR-2009 — why a workflow file's schedule won't start: its file stopped parsing. */
+  async function getScheduleBlocker(
+    scheduleId: string,
+  ): Promise<WorkflowScheduleBlocker | undefined> {
+    return workflowRuntime?.scheduleBlocker(scheduleId);
+  }
+
   async function getScheduleInputPreview(scheduleId: string): Promise<string | undefined> {
     const stored = await readScheduledAgentInput(scheduleId);
     if (stored === undefined) return undefined;
@@ -12780,11 +12993,14 @@ async function constructBureau<const D extends AgentDefinitions>(
    * and the destructive operation it gates, narrowed from this pass's
    * entire duration down to one async tick.
    */
-  async function pruneAuditTrail(): Promise<void> {
-    await pruneResolvedReviews();
-    if (!auditTrailInstance) return;
+  async function pruneAuditTrail(): Promise<{
+    readonly audit: number;
+    readonly reviews: number | 'failed';
+  }> {
+    const reviews = await pruneResolvedReviews();
+    if (!auditTrailInstance) return { audit: 0, reviews };
     const retention = currentSettings()['retention.audit'];
-    if (!retention || retention === 'forever') return;
+    if (!retention || retention === 'forever') return { audit: 0, reviews };
 
     await durableEventProducerInstance?.waitForAllActiveWrites();
 
@@ -12851,22 +13067,26 @@ async function constructBureau<const D extends AgentDefinitions>(
         }
       : undefined;
 
-    await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
+    const pruned = await auditTrailInstance.prune(effectiveCutoff, { protectRunId });
     // COR-1934 — the tombstones of runs purged before the same cutoff: an entry or event older
     // than it is pruned anyway.
     await chatContentPurge.pruneTombstones(effectiveCutoff);
+    return { audit: pruned?.prunedCount ?? 0, reviews };
   }
 
   /**
    * COR-1828 — retires the resolved-review records decided before `retention.audit` allows, on the
    * same pass and the same setting as the audit entries of those decisions. Kept for ever under
    * `'forever'` or no setting. A failure is diagnosed and does not stop the audit prune that follows.
+   * Resolves how many records it retired, or `'failed'`.
    */
-  async function pruneResolvedReviews(): Promise<void> {
+  async function pruneResolvedReviews(): Promise<number | 'failed'> {
     const retention = currentSettings()['retention.audit'];
-    if (!retention || retention === 'forever') return;
+    if (!retention || retention === 'forever') return 0;
     try {
-      await resolvedReviewStore.pruneBefore(runtimeServices.clock.now() - retention.olderThan);
+      return await resolvedReviewStore.pruneBefore(
+        runtimeServices.clock.now() - retention.olderThan,
+      );
     } catch (error) {
       diagnose({
         level: 'error',
@@ -12874,6 +13094,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] Could not prune the resolved-review records: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13269,6 +13490,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   // this function's own re-thrown `engineMaintenanceError`) before backend
   // teardown, alongside the automatic timer's own await.
   const manualDurableMaintenancePasses = new Set<Promise<void>>();
+  // COR-2009 — whether the maintenance passes remove expired records, or the host does it through
+  // `removeExpiredRecords` on a schedule of its own.
+  const expiredRecordsByMaintenance = options.expiredRecords !== 'on-request';
   // AB-388 (Codex review, PR #597, "Fence maintenance admission once
   // shutdown starts"): closed SYNCHRONOUSLY (no `await` in between) as the
   // very first step of the "stop background work" section of `shutdown()`
@@ -13639,7 +13863,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   // same expired record, so a caller that arrives while one runs waits for it instead of starting
   // another. Within one Bureau this is the whole guard, as `automaticRunOwnershipPruneCurrentPass`
   // is for the timer's own passes.
-  let memoryRetentionSweepInFlight: Promise<void> | undefined;
+  let memoryRetentionSweepInFlight: Promise<number | 'failed'> | undefined;
 
   /**
    * COR-1629 — expires the tenant's records that have outlived their retention, so a collection that
@@ -13647,11 +13871,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * of its own, so every maintenance pass calls this before `propagateMemoryDeletions`, which then
    * starts advancing the deletions the sweep opened. A sweep that throws, or that governed memory
    * refuses, is reported once, by the pass that started it, and never stops the rest of any pass
-   * that waited on it.
+   * that waited on it. Resolves how many expired memories it opened a deletion for, or `'failed'`.
    */
-  function sweepMemoryRetention(pass: 'Manual' | 'Automatic'): Promise<void> {
+  function sweepMemoryRetention(pass: MaintenancePassName): Promise<number | 'failed'> {
     if (runtime.memory === undefined || maintenanceMemoryAuthority === undefined) {
-      return Promise.resolve();
+      return Promise.resolve(0);
     }
     if (memoryRetentionSweepInFlight !== undefined) return memoryRetentionSweepInFlight;
     const memory = runtime.memory;
@@ -13674,7 +13898,9 @@ async function constructBureau<const D extends AgentDefinitions>(
               `[bureau] ${pass} memory retention sweep was ${result.status}` +
               `${result.reason === undefined ? '' : ` (${result.reason})`}, so no expired record was deleted.`,
           });
+          return 'failed' as const;
         }
+        return result.deletionIds.length;
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -13682,6 +13908,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           message: `[bureau] ${pass} memory retention sweep failed: ${serializeUnknownError(error)}`,
           cause: error,
         });
+        return 'failed' as const;
       }
     })().finally(() => {
       memoryRetentionSweepInFlight = undefined;
@@ -13695,12 +13922,13 @@ async function constructBureau<const D extends AgentDefinitions>(
    * than `retention.logs`, read per pass so a change applies to the next one. With the setting unset the
    * lines stay until their run is purged. A failure is reported and never stops the rest of a pass.
    */
-  async function pruneWorkflowLogs(pass: 'Manual' | 'Automatic'): Promise<void> {
+  async function pruneWorkflowLogs(pass: MaintenancePassName): Promise<number | 'failed'> {
     const logs = runtime.durable?.workflowLogs;
     const window = currentSettings()['retention.logs'];
-    if (logs === undefined || window === undefined) return;
+    if (logs === undefined || window === undefined) return 0;
     try {
-      await logs.prune({ olderThan: window.olderThan });
+      const pruned = await logs.prune({ olderThan: window.olderThan });
+      return pruned.runs;
     } catch (error: unknown) {
       diagnose({
         level: 'error',
@@ -13708,6 +13936,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] ${pass} workflow log retention pass failed: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13716,11 +13945,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * pass so a change applies to the next one. With the setting unset an owner keeps up to 1000. A
    * failure is reported and never stops the rest of a pass.
    */
-  async function pruneNotifications(pass: 'Manual' | 'Automatic'): Promise<void> {
+  async function pruneNotifications(pass: MaintenancePassName): Promise<number | 'failed'> {
     const window = currentSettings()['retention.notifications'];
-    if (window === undefined) return;
+    if (window === undefined) return 0;
     try {
-      await notificationsComposition.prune(window.olderThan);
+      return await notificationsComposition.prune(window.olderThan);
     } catch (error: unknown) {
       diagnose({
         level: 'error',
@@ -13728,6 +13957,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] ${pass} notification retention pass failed: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13737,11 +13967,11 @@ async function constructBureau<const D extends AgentDefinitions>(
    * unset, or no hooks, nothing is removed; a pending delivery never is. A failure is reported and
    * never stops the rest of a pass.
    */
-  async function pruneHookDeliveries(pass: 'Manual' | 'Automatic'): Promise<void> {
+  async function pruneHookDeliveries(pass: MaintenancePassName): Promise<number | 'failed'> {
     const window = currentSettings()['retention.hookDeliveries'];
-    if (window === undefined || hooksInstance === undefined) return;
+    if (window === undefined || hooksInstance === undefined) return 0;
     try {
-      await hooksInstance.prune(window.olderThan);
+      return await hooksInstance.prune(window.olderThan);
     } catch (error: unknown) {
       diagnose({
         level: 'error',
@@ -13749,6 +13979,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         message: `[bureau] ${pass} hook delivery retention pass failed: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return 'failed';
     }
   }
 
@@ -13888,15 +14119,18 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       }
-      try {
-        await pruneAuditTrail();
-      } catch (error: unknown) {
-        diagnose({
-          level: 'error',
-          scope: 'durable-maintenance',
-          message: `[bureau] Manual audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
+      // COR-2009 — expired records go with this pass unless the host removes them itself.
+      if (expiredRecordsByMaintenance) {
+        try {
+          await pruneAuditTrail();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Manual audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
       }
       // COR-1622 — expired reviews go with a manual host's maintenance, as they do with the
       // automatic timer's: ahead of task retention, which holds a task open for a review it lists.
@@ -13957,14 +14191,16 @@ async function constructBureau<const D extends AgentDefinitions>(
           cause: error,
         });
       }
-      // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
-      await sweepMemoryRetention('Manual');
-      // COR-1811 — persisted workflow log lines past `retention.logs`.
-      await pruneWorkflowLogs('Manual');
-      // COR-1941 — notifications past `retention.notifications`.
-      await pruneNotifications('Manual');
-      // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
-      await pruneHookDeliveries('Manual');
+      if (expiredRecordsByMaintenance) {
+        // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
+        await sweepMemoryRetention('Manual');
+        // COR-1811 — persisted workflow log lines past `retention.logs`.
+        await pruneWorkflowLogs('Manual');
+        // COR-1941 — notifications past `retention.notifications`.
+        await pruneNotifications('Manual');
+        // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+        await pruneHookDeliveries('Manual');
+      }
       // COR-1898 — governed memory's embedder switch advances only when asked to.
       await memoryEmbedder?.reconcile();
       // COR-1546 — governed memory's deletions advance only when asked to.
@@ -14011,6 +14247,58 @@ async function constructBureau<const D extends AgentDefinitions>(
     })
       ? true
       : undefined;
+  }
+
+  /**
+   * COR-2009 — removes every record past its retention window now: audit records and the resolved
+   * reviews they describe (`retention.audit`), expired memories (`retention.memory`, or the memory
+   * policy), finished runs' log lines (`retention.logs`), notifications (`retention.notifications`)
+   * and settled hook deliveries (`retention.hookDeliveries`), with the windows read afresh. Each
+   * kind's pass is isolated as in `maintain`, so one that fails is diagnosed, listed in `failed`,
+   * and stops none of the others. Shutdown waits for a removal in flight, as for `maintain`.
+   */
+  async function removeExpiredRecords(): Promise<ExpiredRecordRemoval> {
+    if (maintenanceAdmissionClosed) {
+      throw new BureauError('Cannot remove expired records: bureau is shutting down', 'CONFLICT');
+    }
+    let removal: ExpiredRecordRemoval | undefined;
+    const pass = (async () => {
+      try {
+        await settingsComposition?.reload();
+      } catch (error: unknown) {
+        diagnoseSettings(
+          `[bureau] Settings re-read before removing expired records failed: ${serializeUnknownError(error)}`,
+          error,
+        );
+      }
+      let audit: number | 'failed' = 'failed';
+      let reviews: number | 'failed' = 'failed';
+      try {
+        ({ audit, reviews } = await pruneAuditTrail());
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Requested audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+      removal = expiredRecordRemovalOf({
+        audit,
+        reviews,
+        memories: await sweepMemoryRetention('Requested'),
+        logs: await pruneWorkflowLogs('Requested'),
+        notifications: await pruneNotifications('Requested'),
+        hookDeliveries: await pruneHookDeliveries('Requested'),
+      });
+    })();
+    manualDurableMaintenancePasses.add(pass);
+    try {
+      await pass;
+    } finally {
+      manualDurableMaintenancePasses.delete(pass);
+    }
+    return removal!;
   }
 
   // AB-363 — Codex review PR #568, "Run ownership pruning in the automatic
@@ -14217,15 +14505,18 @@ async function constructBureau<const D extends AgentDefinitions>(
             cause: error,
           });
         }
-        try {
-          await pruneAuditTrail();
-        } catch (error: unknown) {
-          diagnose({
-            level: 'error',
-            scope: 'durable-maintenance',
-            message: `[bureau] Automatic audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
+        // COR-2009 — expired records go with this pass unless the host removes them itself.
+        if (expiredRecordsByMaintenance) {
+          try {
+            await pruneAuditTrail();
+          } catch (error: unknown) {
+            diagnose({
+              level: 'error',
+              scope: 'durable-maintenance',
+              message: `[bureau] Automatic audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
         }
         // COR-1613 — expired reviews go without a host calling `sweepExpiredReviews`: a fire's
         // or a session run's approval whose binding ran out is expired, and its state released.
@@ -14287,14 +14578,16 @@ async function constructBureau<const D extends AgentDefinitions>(
             cause: error,
           });
         }
-        // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
-        await sweepMemoryRetention('Automatic');
-        // COR-1811 — persisted workflow log lines past `retention.logs`.
-        await pruneWorkflowLogs('Automatic');
-        // COR-1941 — notifications past `retention.notifications`.
-        await pruneNotifications('Automatic');
-        // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
-        await pruneHookDeliveries('Automatic');
+        if (expiredRecordsByMaintenance) {
+          // COR-1629 — governed memory's retention expires only when asked to, before its deletions advance.
+          await sweepMemoryRetention('Automatic');
+          // COR-1811 — persisted workflow log lines past `retention.logs`.
+          await pruneWorkflowLogs('Automatic');
+          // COR-1941 — notifications past `retention.notifications`.
+          await pruneNotifications('Automatic');
+          // COR-1943 — settled hook deliveries past `retention.hookDeliveries`.
+          await pruneHookDeliveries('Automatic');
+        }
         // COR-1898 — governed memory's embedder switch advances only when asked to.
         await memoryEmbedder?.reconcile();
         // COR-1546 — governed memory's deletions advance only when asked to.
@@ -18175,6 +18468,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     let actionStarted = false;
     // COR-1920: what the audit entry says of each secret answer this delivery stored.
     let secretAnswerAudit: readonly SecretAnswerAuditEntry[] = [];
+    // COR-2009: the audit record of the approved call, once it has run.
+    let approvedCallAudit: ApprovedCallAudit | undefined;
 
     let result: unknown;
     let keepPending = false;
@@ -18355,6 +18650,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               `Cannot approve: ${failedResult.error?.message ?? failedResult.errorMessage ?? 'tool approval resume failed before execution admission.'}`,
               'CONFLICT',
             );
+          } else {
+            // Written once the decision is recorded, below, so the log reads approval, then the
+            // call it let run.
+            approvedCallAudit = approvedCallAuditOf(review, approval, result);
           }
         } else if (review.approval.approvalBinding && review.approval.approvalToken !== undefined) {
           await persistApprovalResolutionStartedWithRetry(review.sessionId, review.id);
@@ -18503,6 +18802,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-1828: a superseded call decided nothing, so it keeps no resolved-review record.
       decisionIsFinal: !keepPending,
     });
+    await recordApprovedCall(approvedCallAudit);
 
     if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
 
@@ -18597,6 +18897,39 @@ async function constructBureau<const D extends AgentDefinitions>(
    * couple to, to write it directly. Kept as one function so the two paths
    * can never drift on shape.
    */
+  /**
+   * COR-2009 — the audit record of an approved call that ran. It ran outside the run's step loop,
+   * so the action stream that audits a run's own tool calls never sees it; the audit log's
+   * "Refunded order 4472" is this record: the tool, its call, the review that approved it and how
+   * it ended, never its arguments or result.
+   */
+  function approvedCallAuditOf(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    approval: { readonly toolName: string; readonly callId: string },
+    result: unknown,
+  ): ApprovedCallAudit {
+    const outcome =
+      result !== null && typeof result === 'object' && 'outcome' in result
+        ? result.outcome
+        : undefined;
+    return {
+      runId: review.runId,
+      type: 'tool.settled',
+      detail: {
+        agentName: review.agentName,
+        toolName: approval.toolName,
+        toolCallId: approval.callId,
+        reviewId: review.id,
+        ...(typeof outcome === 'string' ? { status: outcome } : {}),
+      },
+    };
+  }
+
+  /** Writes an approved call's audit record, when the resolution ran one. Best effort. */
+  async function recordApprovedCall(audit: ApprovedCallAudit | undefined): Promise<void> {
+    if (audit !== undefined) await auditTrailInstance?.record(audit);
+  }
+
   function buildReviewDecisionAuditRecord(
     review: PendingReview,
     decision: 'approve' | 'deny' | 'reject',
@@ -19029,6 +19362,9 @@ async function constructBureau<const D extends AgentDefinitions>(
    * {@link Bureau.pendingHumanWaitsOfRun} doc comment.
    */
   async function pendingHumanWaitsOfRun(runId: string): Promise<PendingHumanWaitReview[]> {
+    // COR-2009: a workflow file's instance waiting at a review step.
+    const workflowWaits = workflowReviewWaits.ofRun(runId);
+    if (workflowWaits.length > 0) return workflowWaits;
     if (store.getRun(runId) !== undefined || runHumanWaits.holds(runId)) {
       const local: PendingReview[] = [...listPendingReviews(), ...runHumanWaits.list()];
       return local.filter(
@@ -19192,6 +19528,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       assertExpectedReviewRound(input, { id: input.id, kind: 'human-wait' });
       return runHumanWaits.resolve(input);
     }
+    // COR-2009: a workflow file's review step resolves through the engine by run id, fenced and
+    // audited as a run's park is.
+    const workflowWait = await workflowReviewOf(input.id);
+    if (workflowWait !== undefined) {
+      assertExpectedReviewRound(input, workflowWait);
+      return resolveWorkflowReview(input, workflowWait);
+    }
     const derived = await derivedHumanWait(input.id);
     // COR-1613: a schedule fire's wait goes through the engine by run id, as a catalog run's does,
     // though it names the session the fire runs in; a session run's keeps the session path.
@@ -19209,6 +19552,41 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-2009 — the workflow review `id` names. A review the session index lists, or one of a run
+   * this process holds in its run store, is never a workflow's, and is answered without reading the
+   * engine: an extra read would let the index hear of a settlement before its own path decides.
+   */
+  async function workflowReviewOf(id: string): Promise<PendingHumanWaitReview | undefined> {
+    const held = workflowReviewWaits.find(id);
+    if (held !== undefined) return held;
+    const runId = reviewRunId(id);
+    if (runId === undefined || store.getRun(runId) !== undefined) return undefined;
+    if (listPendingReviews().some((review) => review.id === id)) return undefined;
+    return workflowReviewWaits.lookup(id);
+  }
+
+  /**
+   * COR-2009 — resolves the review of a workflow file's review step. The decision is claimed,
+   * delivered on the step's signal, and audited by `runHumanWaits.resolve`, as a run's park is;
+   * once it lands the review leaves the list, and a refusal reads the instance again, since the
+   * engine then says the wait is over or the review was decided elsewhere.
+   */
+  async function resolveWorkflowReview(
+    input: ResolveReviewInput,
+    review: PendingHumanWaitReview,
+  ): Promise<ResolveReviewResult> {
+    let result: ResolveReviewResult;
+    try {
+      result = await runHumanWaits.resolve(input, review);
+    } catch (error) {
+      await workflowReviewWaits.refresh(review.runId).catch(() => undefined);
+      throw error;
+    }
+    workflowReviewWaits.markResolved(review.id);
+    return result;
+  }
+
+  /**
    * Look up one review by id, live or resolved (AB-46). See the
    * {@link Bureau.getReview} doc comment.
    */
@@ -19220,6 +19598,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
     const runWait = runHumanWaits.find(id);
     if (runWait) return runWait;
+    // COR-2009: a workflow file's instance waiting at a review step.
+    const workflowWait = await workflowReviewOf(id);
+    if (workflowWait) return workflowWait;
     // COR-1579: the park of a run another process holds.
     const derived = await derivedHumanWait(id);
     if (derived) return derived;
@@ -19482,6 +19863,30 @@ async function constructBureau<const D extends AgentDefinitions>(
       return await handle.describe();
     } catch (cause) {
       throw new ScheduleLocatorUnavailableError(handle.id, { cause });
+    }
+  }
+
+  /**
+   * COR-2009 — starts the schedule tick that records what the scheduler did, naming the schedule by
+   * its description as it is now. Best effort: a tick that cannot be recorded is diagnosed and never
+   * holds up the fire or the notice it records.
+   */
+  async function recordScheduleTick(
+    scheduleId: string,
+    tickOf: (scheduleName: string | null) => ScheduleTick,
+  ): Promise<void> {
+    const engine = runtime.durable?.engine;
+    if (engine === undefined) return;
+    try {
+      const schedule = await engine.getSchedule(scheduleId);
+      await startScheduleTick(engine, tickOf(schedule?.description ?? null));
+    } catch (error) {
+      diagnose({
+        level: 'warn',
+        scope: 'schedules',
+        message: `[bureau] Could not record the schedule tick of schedule "${scheduleId}":`,
+        cause: error,
+      });
     }
   }
 
@@ -19950,6 +20355,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           // A run this process recovered is left running for the next one, as under 'detach'.
           if (runtime.durable && recoveredActiveRuns.has(activeRun)) continue;
           abortedRunTerminals.push(whenActiveRunTerminal(activeRun));
+          runsStoppedByShutdown.add(activeRun);
           activeRun.abort('Bureau disposed');
         }
         // A run that already reported its error is over; it is not aborted, only waited for
@@ -21105,6 +21511,32 @@ async function constructBureau<const D extends AgentDefinitions>(
     diagnose,
   });
 
+  // COR-2009 — the reviews of workflow files: an instance waiting at an `await-signal` step its file
+  // writes with `"review": true`. They list beside the run human waits, waiting on the workflow's
+  // owner, and resolve through `runHumanWaits.resolve` by run id: the same decision-record fence,
+  // delivery and audit entry as a `bureau.run()` run's park.
+  const workflowReviewWaits = createWorkflowReviewWaits({
+    engine: () => (workflowRuntime === undefined ? undefined : runtime.durable?.engine),
+    revisionSteps: async (type, workflowVersion) =>
+      workflowRuntime?.revisionSteps(type, workflowVersion),
+    inFlightRunIds: async () => (await workflowRuntime?.inFlightRunIds()) ?? [],
+    now: runtimeServices.clock.now,
+    announce: (review) => {
+      emitter.dispatch(
+        new ReviewRequestedEvent(
+          review.id,
+          review.runId,
+          workflowRuntime?.workflows.owner ?? ANONYMOUS_LOCAL_OWNER,
+          'human-wait',
+          { signalName: review.signalName },
+        ),
+      );
+    },
+    released: (runId) => runHumanWaits.forget(runId),
+    track: (promise, label) => runtimeServices.deferred.track(promise, label),
+    diagnose,
+  });
+
   /**
    * COR-1596 — registers a schedule fire's human waits and tool approvals as pending reviews,
    * live and recovered alike: the composition builds a fire's services the same way for a tick
@@ -21586,7 +22018,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         .toSorted((a, b) => b.decidedAt - a.decidedAt || (a.review.id < b.review.id ? -1 : 1));
     },
     listSessionReviews: listPendingReviews,
-    listRunHumanWaits: () => runHumanWaits.list(),
+    listRunHumanWaits: () => [...runHumanWaits.list(), ...workflowReviewWaits.list()],
     get: getReview,
     pendingOf: pendingHumanWaitsOfRun,
     resolve: resolveAnyReview,
@@ -21658,6 +22090,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     missed: listScheduleMissed,
     agentName: getScheduleAgentName,
     inputPreview: getScheduleInputPreview,
+    blocker: getScheduleBlocker,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
   });
@@ -21724,6 +22157,19 @@ async function constructBureau<const D extends AgentDefinitions>(
   const bureau: Bureau<D> = {
     id: bureauId,
     plugins: pluginRegistry.plugins,
+    // COR-2009: what needs attention, read now from the parts this Bureau has.
+    attention: () =>
+      readAttention({
+        // The Bureau's clock, which the engine stamps the missed occurrences it compares with by.
+        now: runtimeServices.clock.now,
+        activeAlerts: () => durableEngine()?.getActiveAlerts() ?? [],
+        schedules: () => everySchedule(schedules),
+        missed: (scheduleId) => schedules.missed(scheduleId),
+        hooks: async () => (await hooksInstance?.hooks.list()) ?? [],
+        plugins: () => pluginRegistry.plugins.list(),
+        pluginsComposedAt: constructedAtMilliseconds,
+        ...(options.attention === undefined ? {} : { contributed: options.attention }),
+      }),
     reviews,
     schedules,
     contexts,
@@ -21823,6 +22269,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     ownerOf,
     durableEngine,
     maintain,
+    removeExpiredRecords,
     setRequestAuthorityValidator(validator) {
       requestAuthorityValidator = validator;
       runtime.setRequestAuthorityValidator(validator);
@@ -22126,6 +22573,17 @@ async function constructBureau<const D extends AgentDefinitions>(
         cause: error,
       });
     }
+    // COR-2009: an agent schedule that came due is a schedule tick, the Bureau's own run. A fire a
+    // person started with `schedules.runNow` did not come due, so it records none.
+    const { scheduleId } = fire;
+    if (scheduleId !== undefined && fire.manual !== true) {
+      await recordScheduleTick(scheduleId, (scheduleName) => ({
+        event: 'came-due',
+        scheduleId,
+        scheduleName,
+        fireRunId: fire.runId,
+      }));
+    }
     const trail = auditTrailInstance;
     if (trail === undefined) return;
     try {
@@ -22403,6 +22861,10 @@ async function constructBureau<const D extends AgentDefinitions>(
   // `startScheduler` in `runtime-composition.ts`) and starts as soon as it is done.
   if (workflowRuntime !== undefined) {
     await workflowRuntime.start();
+    // COR-2009 — after registration, so the sweep reads each in-flight instance against its
+    // revision; before recovery, so no wait that begins from here on goes unheard.
+    await workflowReviewWaits.start();
+    stopForwarding.push(() => workflowReviewWaits.close());
     // COR-1721 — after the first scan `start()` made, as for the agent files.
     stopForwarding.push(
       forwardDefinitionChanges('workflows', workflowRuntime.workflows, (event) =>

@@ -156,6 +156,7 @@ export type SchedulesMembers = AssertNever<
     | 'missed'
     | 'agentName'
     | 'inputPreview'
+    | 'blocker'
     | 'events'
     | 'subscribeEvents'
   >
@@ -308,7 +309,11 @@ type TopLevelMembers =
   // COR-1941: the owner's notifications.
   | 'notifications'
   // COR-1879: the plugins it loaded.
-  | 'plugins';
+  | 'plugins'
+  // COR-2009: what needs attention.
+  | 'attention'
+  // COR-2009: the host's clean-up of expired records.
+  | 'removeExpiredRecords';
 
 export type BureauTopLevelMembersAreExact = AssertTrue<Equals<keyof Bureau, TopLevelMembers>>;
 

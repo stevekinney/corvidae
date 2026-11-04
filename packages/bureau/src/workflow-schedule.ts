@@ -1,6 +1,8 @@
 /**
  * The native schedule a workflow file with a `schedule` trigger owns (COR-1527). The file is the
- * only source of truth: every scan and every startup puts the schedule back to match it.
+ * only source of truth: every scan and every startup puts the schedule back to match it. A file
+ * that stops parsing keeps the schedule its last good version made, held so it starts nothing
+ * until the file parses again (COR-2009, `workflow-schedule-holds.ts`).
  *
  * ## The id
  *
@@ -15,8 +17,12 @@
  * @module workflow-schedule
  */
 
+import { isDeepStrictEqual } from 'node:util';
+
 import {
+  decode,
   type Engine,
+  KEYS,
   normalizeScheduleSpec,
   type NormalizedScheduleSpec,
   type ScheduleSummary,
@@ -26,6 +32,7 @@ import { toScheduleSpec } from './schedule-spec';
 import { weftNameOf } from './namespaced-identifier';
 import { WORKFLOW_IDENTIFIER_PATTERN } from './workflow-file';
 import type { ScheduleOverlapPolicy } from './workflow-host';
+import type { WorkflowScheduleHolds } from './workflow-schedule-holds';
 
 export const WORKFLOW_SCHEDULE_ID_PREFIX = 'bureau-workflow-schedule:';
 
@@ -51,12 +58,77 @@ export interface DesiredWorkflowSchedule {
   /** The trigger's `spec`: a cron expression or a duration. */
   readonly spec: string;
   readonly overlap: ScheduleOverlapPolicy;
+  /** The IANA zone a cron `spec` is read in: the trigger's `timezone`, or `UTC` when it has none. */
+  readonly timeZone: string;
+  /** Whether runs missed while the host was off are caught up: the trigger's `catchUp`, Weft's `backfill`. */
+  readonly backfill: boolean;
+  /**
+   * The schedule's display name, which Weft keeps as its `description`: the trigger's `name`. When
+   * it is absent the schedule is described as {@link defaultWorkflowScheduleDescription} says.
+   */
+  readonly description?: string | undefined;
+  /**
+   * The fixed value every fire starts its instance with: the trigger's `input`. When it is absent a
+   * fire starts with `null`. Weft fixes a schedule's input when it is created, so a changed one
+   * replaces the schedule with the next generation.
+   */
+  readonly input?: unknown;
   readonly paused: boolean;
 }
 
-/** The trigger a fire starts the instance with. Static: a schedule's input is fixed at creation. */
-export function scheduleTrigger(scheduleId: string): { kind: 'schedule'; scheduleId: string } {
-  return { kind: 'schedule', scheduleId };
+/** The `description` of the schedule of workflow `identifier` whose trigger gives no `name`. */
+export function defaultWorkflowScheduleDescription(identifier: string): string {
+  return `Workflow ${identifier}`;
+}
+
+/** The zone a schedule whose trigger names none runs in, which is Weft's default. */
+export const DEFAULT_WORKFLOW_SCHEDULE_TIME_ZONE = 'UTC';
+
+/** The trigger a fire starts its instance with: Weft fixes a schedule's input when it is created. */
+export interface WorkflowScheduleTrigger {
+  readonly kind: 'schedule';
+  /** The schedule that fired. */
+  readonly scheduleId: string;
+  /** The file trigger's `input` (COR-2009), present only when the trigger gives one. */
+  readonly input?: unknown;
+}
+
+/**
+ * The trigger a fire of `scheduleId` starts the instance with, carrying `input` when the file's
+ * trigger gives one. Static: a schedule's input is fixed at creation.
+ */
+export function scheduleTrigger(scheduleId: string, input?: unknown): WorkflowScheduleTrigger {
+  return input === undefined
+    ? { kind: 'schedule', scheduleId }
+    : { kind: 'schedule', scheduleId, input };
+}
+
+/** The `description` the schedule of workflow `identifier` carries when `want` is its file's. */
+function descriptionOf(identifier: string, want: DesiredWorkflowSchedule): string {
+  return want.description ?? defaultWorkflowScheduleDescription(identifier);
+}
+
+/**
+ * The Weft options for `want`, the file of workflow `identifier`: its description, overlap and
+ * backfill, and its zone when the spec is a cron one.
+ */
+function scheduleOptionsOf(
+  identifier: string,
+  want: DesiredWorkflowSchedule,
+): {
+  description: string;
+  overlap: ScheduleOverlapPolicy;
+  backfill: boolean;
+  timeZone?: string;
+} {
+  // Weft refuses a zone for an interval, which counts elapsed time.
+  const cron = 'cron' in toScheduleSpec(want.spec);
+  return {
+    description: descriptionOf(identifier, want),
+    overlap: want.overlap,
+    backfill: want.backfill,
+    ...(cron ? { timeZone: want.timeZone } : {}),
+  };
 }
 
 function sameCadence(summary: ScheduleSummary, wanted: NormalizedScheduleSpec): boolean {
@@ -82,6 +154,19 @@ async function allWorkflowSchedules(engine: Engine): Promise<Map<string, Schedul
   return byIdentifier;
 }
 
+/**
+ * The input schedule `scheduleId` starts each fire with, read from its stored state: Weft's
+ * `getSchedule` answers a summary, which leaves the input out. `undefined` when nothing is stored.
+ */
+async function storedScheduleInput(engine: Engine, scheduleId: string): Promise<unknown> {
+  const bytes = await engine.storage.get(KEYS.schedule(scheduleId));
+  if (bytes === null || bytes === undefined) return undefined;
+  const state: unknown = decode(bytes);
+  return typeof state === 'object' && state !== null
+    ? (state as { readonly input?: unknown }).input
+    : undefined;
+}
+
 function generationOf(summary: ScheduleSummary): number {
   return parseWorkflowScheduleId(summary.id)?.generation ?? 0;
 }
@@ -93,30 +178,57 @@ export interface ScheduleReconciliation {
   readonly paused: readonly string[];
   readonly resumed: readonly string[];
   readonly cancelled: readonly string[];
+  /** The schedules held because their workflow file stopped parsing (paused, and recorded). */
+  readonly held: readonly string[];
+}
+
+/**
+ * The workflows whose file is there but does not parse (COR-2009), and where a hold is recorded.
+ * Their schedules are kept from the last good version and held: see `workflow-schedule-holds.ts`.
+ */
+export interface BrokenWorkflowFiles {
+  /** The identifiers whose file has a problem other than a key this host does not know. */
+  readonly broken: ReadonlySet<string>;
+  /** The hold records. */
+  readonly holds: WorkflowScheduleHolds;
 }
 
 /**
  * Put every Bureau workflow schedule in `engine` back to match `desired`, keyed by workflow
- * identifier: create what is missing, update a changed `spec` or `overlap`, pause or resume to match
- * `paused`, and cancel a schedule whose file is gone, invalid, or has no `schedule` trigger, along
- * with any extra live schedule of a workflow. Idempotent: a second call changes nothing.
+ * identifier: create what is missing, update a changed `spec`, `overlap`, `timeZone`, `backfill`, or
+ * `description`, pause or resume to match `paused`, and cancel a schedule whose file is gone or
+ * has no `schedule` trigger, along with any extra live schedule of a workflow. A file that no
+ * longer parses keeps its schedule, held (`files` below), when the caller names it. A
+ * changed `input` cannot be updated, because Weft fixes a schedule's input when it is created, so
+ * the schedule is cancelled and the next generation created with the new one. Idempotent: a second
+ * call changes nothing.
  *
  * `unreadable` names the workflows whose file this host cannot read because it holds a key it does
  * not know, which a newer Bureau wrote (COR-1927). Their schedules are not this host's to judge, so
  * none is created, updated, paused, resumed, or cancelled: the file is neither wanting a schedule
  * nor refusing one as far as this host can tell.
+ *
+ * `files.broken` names the workflows whose file is there but does not parse (COR-2009). Their
+ * schedule is the one the last good version made, so it is kept: never cancelled, created, or
+ * updated. An active one is held: the hold is recorded, then the schedule paused, so it starts
+ * nothing until the file parses again. Once it does, the file wants its schedule again and the
+ * paused schedule is resumed as any other is, and the hold record goes.
  */
 export async function reconcileWorkflowSchedules(
   engine: Engine,
   desired: ReadonlyMap<string, DesiredWorkflowSchedule>,
   unreadable: ReadonlySet<string> = new Set(),
+  files?: BrokenWorkflowFiles,
 ): Promise<ScheduleReconciliation> {
   const created: string[] = [];
+  const held: string[] = [];
   const updated: string[] = [];
   const paused: string[] = [];
   const resumed: string[] = [];
   const cancelled: string[] = [];
   const existing = await allWorkflowSchedules(engine);
+  /** Workflows whose live schedule was cancelled for a changed `input`, to be created again below. */
+  const replaced = new Set<string>();
 
   for (const [identifier, group] of existing) {
     if (unreadable.has(identifier)) continue;
@@ -124,6 +236,22 @@ export async function reconcileWorkflowSchedules(
     const live = group
       .filter((summary) => summary.status !== 'cancelled')
       .toSorted((left, right) => generationOf(right) - generationOf(left));
+    if (files?.broken.has(identifier) === true) {
+      const kept = live[0];
+      if (kept?.status === 'active') {
+        // Recorded first: a pause with no record would read as the file's own `paused`.
+        await files.holds.hold(identifier, kept.id);
+        await engine.pauseSchedule(kept.id);
+        paused.push(kept.id);
+        held.push(kept.id);
+      }
+      continue;
+    }
+    // The file parses again, or is gone: a hold, if there was one, is over. The paused schedule is
+    // resumed below when the file wants it active, and cancelled when the file no longer wants it.
+    if (files !== undefined && (await files.holds.held(identifier)) !== undefined) {
+      await files.holds.release(identifier);
+    }
     // The newest live schedule is the one that stays, and only when the file still wants one.
     const keep = want === undefined ? undefined : live[0];
     const extras = want === undefined ? live : live.slice(1);
@@ -132,9 +260,26 @@ export async function reconcileWorkflowSchedules(
       cancelled.push(extra.id);
     }
     if (want === undefined || keep === undefined) continue;
+    const storedInput = await storedScheduleInput(engine, keep.id);
+    if (!isDeepStrictEqual(storedInput, scheduleTrigger(keep.id, want.input))) {
+      await engine.cancelSchedule(keep.id);
+      cancelled.push(keep.id);
+      replaced.add(identifier);
+      continue;
+    }
     const wanted = normalizeScheduleSpec(toScheduleSpec(want.spec));
-    if (!sameCadence(keep, wanted) || keep.overlap !== want.overlap) {
-      await engine.updateSchedule(keep.id, toScheduleSpec(want.spec), { overlap: want.overlap });
+    if (
+      !sameCadence(keep, wanted) ||
+      keep.overlap !== want.overlap ||
+      keep.backfill !== want.backfill ||
+      keep.description !== descriptionOf(identifier, want) ||
+      (wanted.kind === 'cron' && keep.timeZone !== want.timeZone)
+    ) {
+      await engine.updateSchedule(
+        keep.id,
+        toScheduleSpec(want.spec),
+        scheduleOptionsOf(identifier, want),
+      );
       updated.push(keep.id);
     }
     if (want.paused && keep.status === 'active') {
@@ -149,20 +294,23 @@ export async function reconcileWorkflowSchedules(
   for (const [identifier, want] of desired) {
     if (unreadable.has(identifier)) continue;
     const group = existing.get(identifier) ?? [];
-    if (group.some((summary) => summary.status !== 'cancelled')) continue;
+    if (!replaced.has(identifier) && group.some((summary) => summary.status !== 'cancelled')) {
+      continue;
+    }
     const generation =
       group.reduce((highest, summary) => Math.max(highest, generationOf(summary)), 0) + 1;
     const id = workflowScheduleId(identifier, generation);
-    await engine.schedule(weftNameOf(identifier), scheduleTrigger(id), toScheduleSpec(want.spec), {
-      id,
-      overlap: want.overlap,
-      description: `Workflow ${identifier}`,
-    });
+    await engine.schedule(
+      weftNameOf(identifier),
+      scheduleTrigger(id, want.input),
+      toScheduleSpec(want.spec),
+      { id, ...scheduleOptionsOf(identifier, want) },
+    );
     created.push(id);
     if (want.paused) {
       await engine.pauseSchedule(id);
       paused.push(id);
     }
   }
-  return { created, updated, paused, resumed, cancelled };
+  return { created, updated, paused, resumed, cancelled, held };
 }

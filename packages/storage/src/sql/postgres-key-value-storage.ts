@@ -1,5 +1,6 @@
 import { type StorageCapabilities } from '../capabilities.ts';
 import { normalizeDeleteRangeOptions, type DeleteRangeOptions } from '../delete-range.ts';
+import type { StorageEntryMetadata, StorageScanEntryWithMetadata } from '../entry-metadata.ts';
 import {
   assertStorageBatchOperationCount,
   type BatchOperation,
@@ -11,10 +12,10 @@ import { scopedStorage } from '../scoped-storage.ts';
 import { conditionsHold, writeBatchNetEffect } from './neon-batch.ts';
 import {
   affectedRowCount,
+  metadataFromWriteTime,
   resolveBatchNetEffect,
   toBytea,
   toStorageValue,
-  type NeonQueryResult,
 } from './neon-value-mapping.ts';
 import {
   buildPostgresCreateSchema,
@@ -28,93 +29,31 @@ import {
   resolvePostgresTableReference,
   type PostgresKeyValueQueries,
 } from './postgres-key-value-queries.ts';
+import type {
+  PostgresKeyValueStorageOptions,
+  PostgresPool,
+  PostgresPoolClient,
+} from './postgres-pool.ts';
 import { assertReadOnlyQuery } from './read-only-query.ts';
 import {
   isRetryableTransactionFailure,
   MAX_SERIALIZATION_RETRIES,
   serializationRetryDelay,
   sleep,
-  type SerializationRetryOptions,
 } from './serialization-retry.ts';
 
 /**
- * A connection that can run a single interactive transaction. Obtained from
- * {@link PostgresPool.connect}; `release()` returns it to the pool. Both
- * `batch()` and `conditionalBatch()` drive `BEGIN`/`COMMIT`/`ROLLBACK` over one
- * of these so every statement in a transaction lands on the same connection —
- * `pool.query()` alone may scatter statements across pooled connections, which
- * would make a multi-statement batch non-atomic.
- */
-export type PostgresPoolClient = {
-  query(sql: string, parameters?: unknown[]): Promise<NeonQueryResult>;
-  release(): void;
-};
-
-/**
- * Minimal structural view of a node-postgres `Pool`. Both the `pg` `Pool` and
- * the Neon serverless `Pool` satisfy this; the PGlite test backend is wrapped to
- * satisfy it too. `query()` runs a single statement on a pooled connection (used
- * for the single-statement hot paths); `connect()` pins a connection for an
- * interactive transaction; `end()` tears the pool down.
- */
-export type PostgresPool = {
-  query(sql: string, parameters?: unknown[]): Promise<NeonQueryResult>;
-  connect(): Promise<PostgresPoolClient>;
-  end(): Promise<void>;
-};
-
-/**
- * Configuration shared by every Postgres-wire storage adapter (the native `pg`
- * {@link PostgresPool}-backed adapter and the Neon serverless one).
- */
-export type PostgresKeyValueStorageOptions = {
-  /**
-   * Postgres connection string. Required only when no `pool` is supplied — the
-   * adapter builds its own pool from this via the subclass's `poolFactory`. When
-   * `pool` is given, `url` is ignored and may be omitted entirely.
-   */
-  url?: string;
-  /**
-   * Optional pre-built pool. Pass this to reuse a pool you manage (for example a
-   * test backend such as PGlite, or a shared application pool), instead of having
-   * the adapter construct its own from `url`. When supplied, `url` is ignored and
-   * **ownership stays with the caller**: disposing the adapter does NOT close an
-   * injected pool, so it can be shared across adapters and the caller remains
-   * responsible for ending it. A pool the adapter constructs itself (from `url`)
-   * IS closed on disposal.
-   */
-  pool?: PostgresPool;
-  /**
-   * Postgres schema to contain the kv table. Default: unqualified — the table
-   * resolves through `search_path` (in practice `public`). When set, the adapter
-   * creates the schema if absent (`CREATE SCHEMA IF NOT EXISTS`) and qualifies
-   * every statement as `"schema"."table"`. Lets Weft live in its own schema
-   * alongside the application's tables in one database — one PITR line, no Drizzle
-   * drift/drop risk. Validated as a strict Postgres identifier at construction.
-   */
-  schema?: string;
-  /**
-   * Table name. Default: `'kv'`. Validated as a strict Postgres identifier at
-   * construction. With neither `schema` nor `table` set, the adapter emits
-   * byte-identical SQL against the unqualified `kv` table (existing deployments
-   * are unaffected).
-   */
-  table?: string;
-  /**
-   * How `conditionalBatch` backs off between `SERIALIZABLE` attempts. Defaults to a real
-   * `setTimeout` sleep and `Math.random`; inject both to keep tests deterministic.
-   */
-  serializationRetry?: SerializationRetryOptions;
-};
-
-/**
  * Driver-agnostic base for Weft's Postgres-wire storage adapters. Implements the
- * full `Storage` interface over a single `kv(key TEXT COLLATE "C", value BYTEA)`
- * table using the structural {@link PostgresPool} seam, so switching between the
+ * full `Storage` interface over a single `kv(key TEXT COLLATE "C", value BYTEA, updated_at
+ * BIGINT)` table using the structural {@link PostgresPool} seam, so switching between the
  * native `pg` driver and the Neon serverless driver is a subclass choice, not a
  * behavior change. Everything driver-specific — the driver import and the default
  * connection-pool construction — lives in the concrete subclass, which passes a
  * `poolFactory` to this constructor; the base itself carries no driver dependency.
+ *
+ * **Write times.** Every write records its time in `updated_at`, which `stat` and
+ * `scanWithMetadata` read. A table created before the column existed gains it on first use,
+ * and its rows read back an unknown (`null`) write time until they are written again.
  *
  * **Endpoint assumption.** `capabilities()` reports `readAfterWrite:
  * 'linearizable'`, which holds for the **primary** endpoint. A read-replica
@@ -149,6 +88,7 @@ export class PostgresKeyValueStorage implements Storage {
   // Backoff between SERIALIZABLE attempts; see SerializationRetryOptions.
   #retryDelay: (milliseconds: number) => Promise<void>;
   #retryRandom: () => number;
+  #now: () => number;
 
   /**
    * @param options Connection configuration ({@link PostgresKeyValueStorageOptions}).
@@ -173,6 +113,7 @@ export class PostgresKeyValueStorage implements Storage {
     this.#schema = options.schema;
     this.#retryDelay = options.serializationRetry?.delay ?? sleep;
     this.#retryRandom = options.serializationRetry?.random ?? Math.random;
+    this.#now = options.now ?? Date.now;
     // Resolve + validate the table reference once. With no schema/table set this
     // is the bare `kv` (byte-identical default SQL); otherwise a quoted,
     // identifier-validated `"schema"."table"`.
@@ -229,6 +170,14 @@ export class PostgresKeyValueStorage implements Storage {
         await client.query(buildPostgresCreateSchema(this.#schema));
       }
       await client.query(this.#queries.createTable);
+      // Check before altering: `ALTER TABLE` takes an exclusive lock even when the column exists,
+      // which every later start would otherwise wait on behind live readers.
+      const column = await client.query(this.#queries.selectWriteTimeColumn, [
+        this.#queries.tableReference,
+      ]);
+      if (column.rows.length === 0) {
+        await client.query(this.#queries.addWriteTimeColumn);
+      }
     });
   }
 
@@ -278,7 +227,7 @@ export class PostgresKeyValueStorage implements Storage {
 
   async put(key: string, value: Uint8Array): Promise<void> {
     await this.#ensureTable();
-    await this.#pool.query(this.#queries.upsertValueByKey, [key, toBytea(value)]);
+    await this.#pool.query(this.#queries.upsertValueByKey, [key, toBytea(value), this.#now()]);
   }
 
   async delete(key: string): Promise<void> {
@@ -290,6 +239,31 @@ export class PostgresKeyValueStorage implements Storage {
     await this.#ensureTable();
     const result = await this.#pool.query(this.#queries.selectKeyPresence, [key]);
     return result.rows.length > 0;
+  }
+
+  /** When `key` was last written, or `null` when it is absent. */
+  async stat(key: string): Promise<StorageEntryMetadata | null> {
+    await this.#ensureTable();
+    const result = await this.#pool.query(this.#queries.selectWriteTimeByKey, [key]);
+    const row = result.rows[0];
+    return row === undefined ? null : metadataFromWriteTime(row['updated_at']);
+  }
+
+  /** `scan` with each entry's write time, read in the same statement. */
+  async *scanWithMetadata(
+    prefix: string,
+    options: ScanOptions = {},
+  ): AsyncIterable<StorageScanEntryWithMetadata> {
+    await this.#ensureTable();
+    const { parameters, sql } = this.#queries.keyValueMetadataRangeSelect(prefix, options);
+    const result = await this.#pool.query(sql, parameters);
+    for (const row of result.rows) {
+      yield [
+        row['key'] as string,
+        toStorageValue(row['value']),
+        metadataFromWriteTime(row['updated_at']),
+      ];
+    }
   }
 
   async deletePrefix(prefix: string): Promise<number> {
@@ -377,9 +351,11 @@ export class PostgresKeyValueStorage implements Storage {
   async batch(operations: BatchOperation[]): Promise<void> {
     assertStorageBatchOperationCount('batch operations', operations.length);
     if (operations.length === 0) return;
+    const netEffect = resolveBatchNetEffect(operations);
+    const writtenAt = this.#now();
     await this.#ensureTable();
     await this.#withTransaction(PG_BEGIN_READ_COMMITTED, async (client) => {
-      await writeBatchNetEffect(client, this.#queries, resolveBatchNetEffect(operations));
+      await writeBatchNetEffect(client, this.#queries, netEffect, writtenAt);
     });
   }
 
@@ -396,6 +372,8 @@ export class PostgresKeyValueStorage implements Storage {
     // reuses its arrays while the call is pending must not change what later attempts do.
     const netEffect = resolveBatchNetEffect(operations);
     const checkedConditions = conditions.map((condition) => ({ ...condition }));
+    // One reading for every attempt, so a retried transaction stamps the time the call was made.
+    const writtenAt = this.#now();
 
     await this.#ensureTable();
 
@@ -415,7 +393,7 @@ export class PostgresKeyValueStorage implements Storage {
             if (!(await conditionsHold(client, this.#queries, checkedConditions))) {
               return false;
             }
-            await writeBatchNetEffect(client, this.#queries, netEffect);
+            await writeBatchNetEffect(client, this.#queries, netEffect, writtenAt);
             return true;
           },
           // Only COMMIT when the CAS actually wrote (returned true). A precondition

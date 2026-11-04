@@ -117,12 +117,14 @@ const invariants = z
 export const settingsSchema = z
   .object({
     'tools.humanInput': humanInputSetting.describe(
-      '`false` withholds `requestHumanInput` from tasks started from now on; an object offers it, with optional answer schemas per signal. The tool teaches the agent the kinds of question it can ask (pick one, pick one or something else, pick several, free text, yes or no, a number, a date or time, a rating, a few fields, a secret, a file): each call may carry its own `answerSchema`, which replaces the signal’s schema for that call, and a signal’s schema applies only when a call gives none. A started task keeps the grant it started with.',
+      'Let agents ask a person a question mid-task. Tasks started from now on get the setting; a running task keeps the one it started with.',
     ),
-    'tools.wakeup': z
+    'tools.wakeup': z.boolean().describe('Let agents schedule themselves to continue later.'),
+    'tools.decide': z
       .boolean()
-      .describe('Whether tasks started from now on are offered `scheduleWakeup`.'),
-    'tools.decide': z.boolean().describe('Whether tasks started from now on are offered `decide`.'),
+      .describe(
+        'Let agents ask the decision model a quick question while they work. Tasks started from now on get the setting.',
+      ),
     modelPolicy: z
       .object({
         deployment: invariants.optional(),
@@ -131,62 +133,64 @@ export const settingsSchema = z
         policyRevision: z.number().int().nonnegative(),
       })
       .strict()
-      .describe('The model policy the next plan or step is selected under.'),
+      .describe(
+        'Which models agents may use and which to prefer. The next plan or step follows it.',
+      ),
     'decisions.model': z
       .string()
       .min(1)
       .describe(
-        'The decision model that answers the kinds it serves: a name registered in `decisions.models`, or `catalog` for the language-model fallback alone. Resolved on every decision.',
+        'The model that answers yes-or-no and classification questions, apart from the models agents chat with. Choose the chat model fallback to have a chat model answer them instead.',
       ),
     'decisions.fallbackModel': z
       .string()
       .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
       .describe(
-        'The model-catalog row, `<provider>/<model>`, that answers a decision no decision model serves.',
+        'Used when the decision model can’t answer. Written as a provider and a model with a slash between them.',
       ),
     'decisions.maximumPerTask': positiveInteger.describe(
-      'How many decisions one task may make through the `decide` tool.',
+      'The most decision calls one task may make.',
     ),
     'context.summarizerModel': z
       .string()
       .regex(/^[^/\s]+\/\S+$/, 'must be "<provider>/<model>"')
       .describe(
-        'The model-catalog row, `<provider>/<model>`, that summarizes a conversation when an agent compacts its context. Unset by default; a change must name an available row of the catalog as it is now.',
+        'The model that summarizes a long conversation so an agent can keep going. Unset, none does; a new choice must be a model you can use now.',
       ),
     'retention.audit': retentionWindow.describe(
-      'How long audit records are kept, swept by the next maintenance pass.',
+      'How long audit records are kept before they are deleted.',
     ),
     'retention.events': retentionWindow.describe(
-      "How long Bureau's fleet event feed keeps events. Independent of `engine.retention`, Weft's workflow-history policy.",
+      'How long recent activity is kept for the pages that follow it live. Run history has its own setting.',
     ),
-    'retention.tasks': retentionWindow.describe('How long a settled task is kept.'),
+    'retention.tasks': retentionWindow.describe('How long a finished task is kept.'),
     'retention.receipts': z
       .object({ olderThan: z.number().int().positive() })
       .strict()
-      .describe('How long a run-creation receipt is kept.'),
+      .describe(
+        'How long the record that a run was started is kept, so the same request sent again starts no second run.',
+      ),
     'retention.memory': z
       .object({ olderThan: z.number().int().positive() })
       .strict()
-      .describe(
-        'How long governed memory keeps an episodic memory, in milliseconds, in place of the memory policy’s own window; the next maintenance pass sweeps by it. Unset, the policy decides.',
-      ),
+      .describe('Memories an agent saved. Agents can correct them.'),
     'retention.logs': z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe(
-        'How long a finished run keeps its workflow log lines after it last wrote one, in milliseconds; the next maintenance pass sweeps by it. A run that is still active keeps its lines. Has effect only on a Bureau that persists workflow logs.',
+        'How long a finished run keeps its log lines after it last wrote one. A run that is still going keeps them.',
       ),
     'retention.notifications': z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe(
-        'How long a notification is kept after it was written, in milliseconds, whether or not it was read; the next maintenance pass sweeps by it. Unset, an owner keeps up to 1000 and the oldest go first.',
+        'How long a notification is kept, read or not. Unset, the newest 1,000 for each person are kept.',
       ),
     'retention.hookDeliveries': z
       .object({ olderThan: z.number().int().positive() })
       .strict()
       .describe(
-        'How long a settled hook delivery record (delivered, exhausted, aborted, or failed) is kept after it was last written, in milliseconds; the next maintenance pass sweeps by it. A pending delivery is never removed. Unset, delivery records are kept until their hook is deleted.',
+        'How long the record of a finished hook delivery is kept. A delivery still being tried is never removed. Unset, the records are kept until their hook is deleted.',
       ),
     'retention.checkpoints': z
       .union([
@@ -198,26 +202,26 @@ export const settingsSchema = z
           })
           .strict(),
       ])
-      .describe('How many checkpoints of a durable run are kept.'),
+      .describe('How many saved points of a running workflow are kept.'),
     'memory.embedder': z
       .string()
       .min(1)
       .describe(
-        'The registry id of the embedder governed memory embeds with: `hashing`, the built-in default, or one a plugin contributes. A change starts a background switch that re-embeds every stored memory into a new embedding while recall keeps the current one, and makes the new one active once it holds every memory. A write is refused while the embedder is not loaded or needs setup, or while a switch runs. A switch that fails or is cancelled sets this back to the embedder memory still uses.',
+        'How memories are indexed for search: the built-in index, or one a plugin adds. A change re-indexes every memory in the background while search keeps the current index, and switches once every memory is in the new one. It can’t change while the new one isn’t loaded or needs setup, or while a change is still running. A change that fails or is canceled goes back to the index in use.',
       ),
     'logs.maximumLinesPerRun': positiveInteger
       .max(MAXIMUM_WORKFLOW_LOG_LINES_PER_RUN)
       .describe(
-        'How many workflow log lines a run keeps, at most 5000; past it the oldest line is evicted and counted as dropped. Applies to the next line written.',
+        'How many log lines a run keeps, at most 5,000. Past it, the oldest line goes first.',
       ),
     'sessionInput.sessionBacklogLimit': positiveInteger.describe(
-      'How many undelivered inputs one context may hold. Live from the next session: a session started after the change admits against the new limit, and a running session keeps the limit its mailbox was built with.',
+      'How many messages one chat can hold before its agent reads them. A chat started after a change uses the new limit; one already running keeps its own.',
     ),
     'sessionInput.principalBacklogLimit': positiveInteger.describe(
-      'How many undelivered inputs one principal may hold across contexts, checked at the next admission.',
+      'How many unread messages one person can have waiting across every chat.',
     ),
     'children.delegation.defaultTimeToLiveMilliseconds': positiveMilliseconds.describe(
-      'How long a delegation token minted at the next dispatch lives.',
+      'How long an agent’s permission to hand work to another agent lasts.',
     ),
     'engine.retention': z
       .object({
@@ -228,13 +232,13 @@ export const settingsSchema = z
       })
       .strict()
       .describe(
-        "Weft's workflow-history retention, by terminal status, in milliseconds. Independent of `retention.events`.",
+        'How long run history is kept, by how the run ended. Recent activity has its own setting.',
       ),
     'engine.retentionSweepInterval': positiveMilliseconds.describe(
-      "How often Weft's retention sweep runs, in milliseconds.",
+      'How often old run history is removed.',
     ),
     'engine.retentionSweepBatchSize': positiveInteger.describe(
-      'How many workflows one Weft retention sweep removes at most.',
+      'The most runs one removal of old run history takes.',
     ),
     'engine.history': z
       .object({
@@ -242,49 +246,46 @@ export const settingsSchema = z
         retentionWindow: nonNegativeInteger.optional(),
       })
       .strict()
-      .describe("Weft's per-workflow history circuit breaker."),
+      .describe('Stops a run whose history grows too long.'),
     'engine.payloadSize': z
       .object({ maxBytes: nonNegativeInteger.nullable().optional() })
       .strict()
-      .describe('The largest payload Weft accepts, in bytes; `null` removes the cap.'),
+      .describe('The largest input or result a run accepts. No limit removes the cap.'),
     'engine.checkpointSizeWarningThreshold': positiveInteger.describe(
-      'The checkpoint size, in bytes, above which Weft warns.',
+      'The size of a saved point above which a warning is shown.',
     ),
     'engine.schedulerPollIntervalMs': positiveInteger.describe(
-      "How often Weft's scheduler polls for due work, in milliseconds.",
+      'How often scheduled work that is due is looked for.',
     ),
     'engine.checkpointHistory': positiveInteger.describe(
-      'How many checkpoints Weft keeps per workflow. Applies at restart.',
+      'How many saved points each workflow keeps.',
     ),
     'engine.maxNestingDepth': positiveInteger.describe(
-      'How deeply workflows may nest. Applies at restart.',
+      'How deeply workflows may start other workflows.',
     ),
     'engine.workflowClaimTtl': positiveMilliseconds.describe(
-      'How long a workflow claim lasts without renewal, in milliseconds. Applies at restart.',
+      'How long a worker’s claim on a running workflow lasts without being renewed.',
     ),
     'engine.workflowClaimRenewInterval': positiveMilliseconds.describe(
-      'How often a workflow claim is renewed, in milliseconds. Applies at restart.',
+      'How often a worker renews its claim on a running workflow. Shorter intervals recover from a crashed worker sooner.',
     ),
-    durable: z.boolean().describe('Whether the Bureau runs a durable engine. Applies at restart.'),
+    durable: z.boolean().describe('Whether runs pick up where they stopped after a restart.'),
     maintenance: z
       .enum(['automatic', 'manual'])
-      .describe('Who drives maintenance: Bureau on a timer, or the host. Applies at restart.'),
+      .describe('Whether tidying up runs on its own timer or waits to be asked.'),
     'durableOwnership.ownership': z
       .enum(['none', 'workflow-lease'])
-      .describe('How processes on one store share workflows. Applies at restart.'),
-    workflowVersion: z
-      .string()
-      .min(1)
-      .describe('The version recorded on new durable runs. Applies at restart.'),
+      .describe('How servers that share storage divide the work between them.'),
+    workflowVersion: z.string().min(1).describe('The version recorded on new runs.'),
     'a2a.push.enabled': z
       .boolean()
       .describe(
-        'Whether the host delivers A2A push notifications: an opted-in agent then declares `pushNotifications` on its card and accepts push configurations. Applies at restart.',
+        'Whether other agents can ask to be told when a task they started changes. An agent that allows it says so on its agent card.',
       ),
     'a2a.push.sweepIntervalMs': positiveInteger
       .max(2_147_483_647)
       .describe(
-        'How often, in milliseconds, the host sweeps A2A push configurations of tasks that no longer exist. At most 2147483647. Applies at restart.',
+        'How often requests to be told about tasks that no longer exist are removed. At most about 24 days.',
       ),
   })
   .partial()

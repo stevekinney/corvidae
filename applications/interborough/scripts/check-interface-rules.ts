@@ -15,8 +15,11 @@
  * A string compared with `===`, `in` or `case` is a key, not copy, and is skipped. The copy rules
  * are:
  *
- * - `product-word`: Engine and Bureau are internal names, not words a person using the product
- *   knows. A scope or package name such as `bureau.memory:write` is an identifier and passes.
+ * - `product-word`: Engine, Bureau and Weft are internal names, not words a person using the product
+ *   knows. A scope or package name such as `bureau.memory:write` is an identifier and passes, and
+ *   so does the lowercase `weft`, the command a person types (`weft codegen`). The
+ *   Bureau's settings descriptions, which Settings shows, are held to it by a test
+ *   (`settings-descriptions.test.ts`).
  * - `issue-reference`: a COR number, `repository#123`, or a maintainer.
  * - `lowercase-acronym`: an acronym from Cinder's `IDENTIFIER_ACRONYMS` (read from Cinder's
  *   source, not copied) that is not in its canonical spelling.
@@ -186,8 +189,12 @@ const ACRONYM_PATTERN = new RegExp(
     .join('|')})(?![\\w@#$/-]|\\.\\w|:[\\w/])`,
   'gi',
 );
-const PRODUCT_WORD_PATTERN =
-  /(?<![\w.:/@#-])(engine|bureau)(?:s|['’]s)?(?!\w|\.[A-Za-z]|:[A-Za-z])/gi;
+const PRODUCT_WORD_PATTERNS = [
+  /(?<![\w.:/@#-])(engine|bureau)(?:s|['’]s)?(?!\w|\.[A-Za-z]|:[A-Za-z])/gi,
+  // Weft only capitalized: the lowercase `weft` is the command a person types (`weft codegen`)
+  // and the package's name, an identifier like `bureau.memory:write`.
+  /(?<![\w.:/@#-])Weft(?:s|['’]s)?(?!\w|\.[A-Za-z]|:[A-Za-z])/g,
+];
 const ISSUE_PATTERNS = [
   /\bCOR-\d+\b/g,
   /\bGH-\d+\b/g,
@@ -464,6 +471,17 @@ function matchesOf(pattern: RegExp, text: string): string[] {
   return [...text.matchAll(new RegExp(pattern.source, pattern.flags))].map((match) => match[0]);
 }
 
+/** The internal product names (Engine, Bureau, Weft) a piece of copy uses, in order. */
+export function productWords(text: string): string[] {
+  return PRODUCT_WORD_PATTERNS.flatMap((pattern) =>
+    [...text.matchAll(new RegExp(pattern.source, pattern.flags))].map(
+      (match) => [match.index, match[0]] as const,
+    ),
+  )
+    .toSorted(([left], [right]) => left - right)
+    .map(([, word]) => word);
+}
+
 /** The copy rules a single string breaks, as `[rule, subject]` pairs. */
 function copyRulesFor(text: string, code: boolean): Array<[InterfaceRule, string]> {
   const found: Array<[InterfaceRule, string]> = [];
@@ -475,7 +493,7 @@ function copyRulesFor(text: string, code: boolean): Array<[InterfaceRule, string
     }
     return found;
   }
-  for (const word of matchesOf(PRODUCT_WORD_PATTERN, text)) found.push(['product-word', word]);
+  for (const word of productWords(text)) found.push(['product-word', word]);
   for (const pattern of ISSUE_PATTERNS) {
     for (const reference of matchesOf(pattern, text)) found.push(['issue-reference', reference]);
   }

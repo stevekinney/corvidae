@@ -56,12 +56,6 @@
       "reason": "the brand is four bytes decoded to four characters, and no inherited name is four characters long"
     },
     {
-      "file": "src/audit/create-audit.ts",
-      "expression": "(detail as Record<string, unknown>)[key]",
-      "count": 1,
-      "reason": "the keys come from the DETAIL_ALLOWLIST literal list"
-    },
-    {
       "file": "src/child-topology-store.ts",
       "expression": "value[field]",
       "count": 1,

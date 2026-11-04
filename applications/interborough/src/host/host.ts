@@ -82,7 +82,8 @@
  *   `deployment`.
  * - `POST /host/restart`: asks the host to restart. It is registered only for a host started with
  *   `onRestartRequested` (the entries, which run under the supervisor), and answers `202` before
- *   the callback runs.
+ *   the callback runs. `GET /host/restart` says whether it is registered, and the terminal command
+ *   the supervisor recorded when it started this host (`launch-command.ts`), or `null`.
  * - `/assets/*` and the client routes: the built application, with `index.html` for every route
  *   the client router owns.
  *
@@ -101,15 +102,21 @@ import {
   createDurableAssetStorage,
   resolveProviderGenerate,
   type AgentDefinitions,
+  type AgentWithBureauTools,
   type Bureau,
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
-import { type GenerateFunction } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  type RuntimeServices,
+  type Validator,
+} from '@lostgradient/operative';
 import { DEMO_AGENT_NAMES } from '@lostgradient/plugin-demo';
 import { type Storage } from '@lostgradient/storage';
 import {
   serve,
+  type AlertingOptions,
   type RegistryAgnosticEngine,
   type ServeOptions,
   type WeftServer,
@@ -151,6 +158,7 @@ import {
   type BureauHandler,
   type HostSocketData,
 } from './host-websocket.ts';
+import { resolveLaunchCommand } from './launch-command.ts';
 import {
   createAgentSource,
   createHostStorage,
@@ -166,14 +174,17 @@ import {
 import { mcpAppMounts } from './mcp-app-mounts.ts';
 import { mcpAppRoutes } from './mcp-app-routes.ts';
 import { createHostMemory } from './memory.ts';
+import { cleanUpRoutes, startNightlyCleanUp, type NightlyCleanUp } from './nightly-clean-up.ts';
+import { pluginAttention } from './plugin-attention.ts';
 import { createPluginManager, pluginStartupLines, type PluginManager } from './plugin-manager.ts';
 import { pluginRoutes } from './plugin-routes.ts';
 import { defaultDecisionOptions, workspacePlugins } from './plugins.ts';
+import { providerAttention } from './provider-attention.ts';
 import { createProviderManager, type ProviderManager } from './provider-manager.ts';
 import { providerRoutes } from './provider-routes.ts';
 import { contributedProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
-import { HOST_RESTART_ROUTE } from './restart.ts';
+import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
@@ -208,6 +219,13 @@ const REMOTE_LOCKED_SETTINGS = {
   'engine.workflowClaimTtl': 'shared-storage',
   'engine.workflowClaimRenewInterval': 'shared-storage',
 } as const satisfies NonNullable<SettingsOptions['locked']>;
+
+/**
+ * The actor of what the host itself does, as the audit trail names it: `host.started` (COR-2009).
+ * It sits in the `system:` namespace Bureau reserves for its own actors, so no credential can
+ * claim it, and the audit log shows it as Interborough.
+ */
+export const HOST_ACTOR = 'system:host';
 
 /**
  * How long the host keeps its audit trail by default: 90 days, in milliseconds (COR-1810). It is
@@ -257,8 +275,28 @@ export const BUREAU_PATH_PREFIX = '/bureau';
 
 /** Agents a host serves beside the ones its plugins contribute. */
 export type ExtraAgents = {
+  /** The agents, by name. */
   readonly agents: Readonly<Record<string, AgentDefinitions[string]>>;
+  /**
+   * Agents that hold Bureau's own tools (COR-2009), by name: each function builds its agent from
+   * them (`bureau:workflows-create`, `bureau:discover-agents`, …), once the Bureau has made them.
+   * They are served as {@link ExtraAgents.agents} are, and a name may be in only one of the two.
+   */
+  readonly withBureauTools?: Readonly<Record<string, AgentWithBureauTools>>;
+  /**
+   * Goal validators to register beside the ones the plugins contribute (COR-2009), passed through
+   * as `BureauOptions.validators`: a goal names one by its exact name and version. The showcase's
+   * built-in checks are registered this way.
+   */
+  readonly validators?: readonly Validator[];
 };
+
+/**
+ * The agent a run belongs to, by the run's id, read from the host's Bureau: its name, or
+ * `undefined` for a run the Bureau holds no task of (one it never started, one recovered before the
+ * Bureau finished starting, or one whose record has expired).
+ */
+export type RunAgentLookup = (runId: string) => Promise<string | undefined>;
 
 /**
  * What `startHost` reads to start a host. Every field is optional and defaults to the environment
@@ -316,6 +354,15 @@ export type HostOptions = {
    * definitions and the provider, model, and API key from Bungalow's secret. For tests that stand a fake client in for the SDK.
    */
   readonly resolveProviderGenerate?: typeof resolveProviderGenerate;
+  /**
+   * Builds the provider resolver from the host's {@link RunAgentLookup}, in place of
+   * {@link HostOptions.resolveProviderGenerate}, for a resolver whose generate answers by whose run
+   * it is. The showcase host passes it, so a built-in agent's step that a model override sent to the
+   * provider still answers from the agent's script (`showcase.ts`).
+   */
+  readonly resolveProviderGenerateFor?: (
+    agentOfRun: RunAgentLookup,
+  ) => typeof resolveProviderGenerate;
   /** Receives the host's startup warnings. Defaults to `console.warn`. */
   readonly warn?: (message: string) => void;
   /**
@@ -337,7 +384,8 @@ export type HostOptions = {
    * the process stops the host and exits with `RESTART_EXIT_CODE`, which its supervisor answers by
    * starting the host again. The host calls it once, after it has answered the request, so a second
    * request while the first is in flight is answered and ignored. A host without it registers no
-   * such route, so the path is a 404.
+   * `POST` on the route, so a restart request is a 404, and `GET /host/restart` reports it
+   * unavailable.
    */
   readonly onRestartRequested?: () => void | Promise<void>;
   /**
@@ -346,6 +394,43 @@ export type HostOptions = {
    * answer. Defaults to ten seconds.
    */
   readonly toolSourceProbeTimeoutMilliseconds?: number;
+  /**
+   * Alert rules the Bureau's engine evaluates against its own metrics, passed through as
+   * `BureauOptions.alerts`, such as a `storage.size` rule. A firing rule is listed under Needs
+   * attention. Omitted, the host configures none.
+   */
+  readonly alerts?: AlertingOptions;
+  /**
+   * How often, in milliseconds, the Bureau's engine reports its storage's size, passed through as
+   * `BureauOptions.storageSizeReportIntervalMs` (COR-2009). Omitted, every minute; `0` turns the
+   * report off, which the showcase does so its sample world's one 1.6 GB reading stands.
+   */
+  readonly storageSizeReportIntervalMilliseconds?: number;
+  /**
+   * The runtime services the host and its Bureau run on, passed through as `BureauOptions.runtime`
+   * (COR-2009): its clock stamps every record the Bureau and its engine write, and the host's own
+   * times (when its plugins loaded, its workers' ages, the nightly clean-up) read it too. The
+   * showcase runs its sample world on an offset clock this way. Omitted, the process's own clock and
+   * timers.
+   */
+  readonly runtime?: RuntimeServices;
+  /**
+   * The HTTP client hook deliveries send with, passed through as `BureauOptions.webhooks.fetch`
+   * (COR-2009). The showcase answers every delivery itself, so its sample hooks keep delivery
+   * records without ever posting to the real addresses they name. Omitted, the global `fetch`.
+   */
+  readonly hookFetch?: typeof fetch;
+  /**
+   * The nightly clean-up of expired records (COR-2009): the IANA time zone its 3:00 AM is in, which
+   * defaults to the process's, and the clock it reads, which defaults to `Date.now`. The showcase
+   * pins both to its sample world.
+   */
+  readonly nightlyCleanUp?: {
+    /** The IANA time zone the nightly time is in, such as `America/Chicago`. */
+    readonly timeZone?: string;
+    /** The clock the clean-up reads, in milliseconds since the epoch. */
+    readonly now?: () => number;
+  };
 };
 
 /**
@@ -391,6 +476,11 @@ export type Host = {
    * change with {@link PluginWriteLockedError}, reason `deployment`. See {@link PluginManager}.
    */
   readonly plugins: Pick<PluginManager, 'snapshot' | 'update' | 'saveSecret'>;
+  /**
+   * The nightly clean-up of expired records (COR-2009): its standing, which `GET /host/clean-up`
+   * serves, and a clean-up by hand, which `POST /host/clean-up` runs. See {@link NightlyCleanUp}.
+   */
+  readonly cleanUp: Pick<NightlyCleanUp, 'standing' | 'cleanUpNow'>;
   /**
    * The queue every writer of `configuration.json` runs its read-change-write through, so two
    * writers never start from text the other is about to replace. The provider manager uses it;
@@ -561,12 +651,15 @@ type EngineUpstream = { readonly url: string; readonly key: string };
 
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
+  // The clock the host's own times are read from: its runtime's, so they agree with its Bureau's.
+  const clock = options.runtime?.clock ?? { now: () => Date.now() };
   // The demo plugin's agents are named `demo:<name>`, and Bureau skips a plugin whose contribution
   // takes a name a host option already holds. That is a mistake in whoever named the extra agent,
   // so it stops the host before anything opens, rather than silently dropping the plugin.
   for (const name of DEMO_AGENT_NAMES) {
     const id = `demo:${name}`;
-    if (options.extraAgents?.agents !== undefined && id in options.extraAgents.agents) {
+    const extra = { ...options.extraAgents?.agents, ...options.extraAgents?.withBureauTools };
+    if (Object.hasOwn(extra, id)) {
       throw new Error(
         `The extra agent "${id}" has the name of an agent the demo plugin contributes, which would clash with it. Give it another name.`,
       );
@@ -610,6 +703,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     // The folder plugins load now, once: Bungalow's `plugins/` folder, then the development ones.
     // A folder that cannot load is reported and skipped, never a reason to stop the host.
     const content = bungalow.content(PLUGIN_FOLDER_NAME);
+    // When the host loaded its plugins: a plugin that did not load needs attention from here (COR-2009).
+    const pluginsLoadedAt = clock.now();
     const folderPlugins = await loadFolderPlugins({
       directory: content.kind === 'directory' ? content.path : undefined,
       dependencies: HOST_DEPENDENCIES,
@@ -620,6 +715,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const plugins = [BUREAU_PLUGIN_ENTRY, ...packagePlugins, ...folderPlugins.entries];
     // The plugins read their choices from the same file, before the Bureau composes them. A secret
     // the provider routes store reaches a plugin that waits on it through the same watchers.
+    const isProviderPlugin = (plugin: string): boolean =>
+      held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true;
     const pluginManager = await createPluginManager({
       bungalow,
       plugins,
@@ -636,11 +733,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       })),
       configurationQueue,
       // A provider plugin's allowlist applies without a restart: the provider manager reloads the catalog.
-      appliesConfigurationLive: (plugin) =>
-        held.providers?.current().providers.some((provider) => provider.plugin === plugin) === true,
+      appliesConfigurationLive: isProviderPlugin,
       checkDocument: (document) => held.providers?.checkDocument(document),
       applyConfiguration: async () => {
         await held.providers?.reload();
+      },
+      // So does its key saved on the plugin's own route (Plugins › Add the key, COR-2009): the
+      // provider manager reads keys when it loads, so it loads again.
+      applySecret: async (plugin) => {
+        if (isProviderPlugin(plugin)) await held.providers?.reload();
       },
       listing: async () => (held.bureau === undefined ? [] : held.bureau.plugins.list()),
       reservedSecretKeys: [APPROVAL_SECRET_KEY, A2A_API_KEY_SECRET_KEY],
@@ -648,6 +749,16 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.plugins = pluginManager;
     await pluginManager.ensureGeneratedSecrets();
+    // The Bureau is built after the providers, so a run's agent is read through `held`.
+    const agentOfRun: RunAgentLookup = async (runId) => {
+      const bureau = held.bureau;
+      if (bureau === undefined) return undefined;
+      // A run this process holds answers at once; any other is read from the task registry.
+      const live = bureau.tasks.detail(runId)?.agentName;
+      if (live !== undefined) return live;
+      const recorded = await bureau.tasks.get(runId);
+      return recorded?.agentName ?? undefined;
+    };
     const providers = createProviderManager({
       bungalow: {
         mode: bungalow.mode,
@@ -660,7 +771,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       configurationQueue,
       afterConfigurationWrite: () => pluginManager.reload(),
       warn: options.warn ?? ((message) => console.warn(message)),
-      resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
+      resolveProviderGenerate:
+        options.resolveProviderGenerateFor?.(agentOfRun) ??
+        options.resolveProviderGenerate ??
+        resolveProviderGenerate,
+      // The Bureau is built after the providers, so the trail is read through `held`.
+      audit: async (entry) => {
+        await held.bureau?.internals.auditTrail?.record(entry);
+      },
     });
     held.providers = providers;
     const generateFor = (selection: ModelSelection): GenerateFunction =>
@@ -720,7 +838,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     const bureau = await createBureau({
       id: bungalow.deploymentId,
+      ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
       agents: { ...options.extraAgents?.agents },
+      ...(options.extraAgents?.withBureauTools === undefined
+        ? {}
+        : { agentsWithBureauTools: { ...options.extraAgents.withBureauTools } }),
+      ...(options.extraAgents?.validators === undefined
+        ? {}
+        : { validators: options.extraAgents.validators }),
       // The default of the `decisions.model` setting is the plugin's Jev model, while that plugin
       // is loaded and enabled; the other choice is Bureau's own `catalog`, the language-model fallback.
       ...defaultDecisionOptions(pluginManager.loadable(), pluginManager.settings()),
@@ -741,6 +866,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       answerEncryption: answerKeys,
       // The audit trail is kept 90 days (COR-1810); a person changes it on the Settings page, and
       // the stored value then replaces this default.
+      // Expired records go once a night, at 3:00 AM in the host's zone, not on every maintenance
+      // pass (COR-2009): the host's nightly clean-up removes them.
+      expiredRecords: 'on-request',
       retention: {
         audit: { olderThan: AUDIT_RETENTION_MILLISECONDS },
         logs: { olderThan: WORKFLOW_LOG_RETENTION_MILLISECONDS },
@@ -752,7 +880,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       logs: { maximumLinesPerRun: WORKFLOW_LOG_MAXIMUM_LINES_PER_RUN },
       // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
       // the Memory page lists, searches, forgets, and corrects what it remembers.
-      memory: (contributions) => createHostMemory(storage, contributions),
+      memory: (contributions) => createHostMemory(storage, contributions, options.runtime),
       // Managed assets (COR-1547): the handler serves uploads and an asset's content, and a chat
       // attachment is one, so the Bureau keeps them in the same database as everything else.
       assets: { storage: createDurableAssetStorage(storage) },
@@ -774,8 +902,37 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // User-defined hooks (COR-1939): signed webhooks, started workflows and notifications over the
       // Bureau's events, with what a remote home needs of them (COR-1978).
       hooks: hookOptionsFor(bungalow.mode),
+      ...(options.hookFetch === undefined
+        ? {}
+        : { webhooks: { targets: [], fetch: options.hookFetch } }),
+      ...(options.alerts === undefined ? {} : { alerts: options.alerts }),
+      ...(options.storageSizeReportIntervalMilliseconds === undefined
+        ? {}
+        : { storageSizeReportIntervalMs: options.storageSizeReportIntervalMilliseconds }),
+      // Needs attention (COR-2009): no model provider connected is the host's to see, and so is a
+      // plugin the host skipped before the Bureau composed the rest.
+      attention: async () => [
+        ...(await providerAttention({
+          modelCount: () => providers.current().rows.length,
+          auditTrail: () => held.bureau?.internals.auditTrail,
+        })),
+        ...pluginAttention(await pluginManager.snapshot(), pluginsLoadedAt),
+      ],
     });
     held.bureau = bureau;
+    // The records past their retention window go once a night (COR-2009): the Bureau leaves them
+    // to this clean-up (`expiredRecords: 'on-request'`), and Data and retention reports it.
+    const nightlyCleanUp = startNightlyCleanUp({
+      storage,
+      removeExpiredRecords: () => bureau.removeExpiredRecords(),
+      now: clock.now,
+      ...options.nightlyCleanUp,
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
+    held.nightlyCleanUp = nightlyCleanUp;
+    // A tool source connected from now on is loaded at once, and its tools join the Bureau's
+    // catalog without a restart (COR-2009).
+    toolSources.goLive((tools) => bureau.agents.addTools(tools));
     // One line per plugin with its status and problem codes, once Bureau has composed them.
     for (const line of pluginStartupLines(await pluginManager.snapshot())) {
       log(line);
@@ -863,6 +1020,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const devReload = options.development === true ? createDevReload() : undefined;
     if (devReload !== undefined) held.devReload = devReload;
     const shell = shellResponder(buildDirectory, devReload !== undefined);
+    // Handed over by the supervisor when it started (`launch-command.ts`), for the page to show
+    // after a restart that does not come back.
+    const launchCommand = resolveLaunchCommand(environment);
     const restart =
       options.onRestartRequested === undefined
         ? undefined
@@ -908,15 +1068,26 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }
           return bureauHandler(bureauRequest);
         },
-        // The restart request. The guard answers first, so a page on another origin cannot restart
-        // the host.
-        ...(restart === undefined
-          ? {}
-          : { [HOST_RESTART_ROUTE]: { POST: (request: Request) => refuse(request) ?? restart() } }),
+        // Whether the host can restart, and the command it was launched with (COR-2009), and the
+        // restart request itself. The guard answers first, so a page on another origin cannot
+        // restart the host. A host no supervisor started has no `POST`, so that path is a 404.
+        [HOST_RESTART_ROUTE]: {
+          GET: (request: Request) =>
+            refuse(request) ??
+            Response.json({
+              available: restart !== undefined,
+              launch: launchCommand ?? null,
+            } satisfies HostRestartStanding),
+          ...(restart === undefined
+            ? {}
+            : { POST: (request: Request) => refuse(request) ?? restart() }),
+        },
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
         ...providerRoutes(providers, refuse),
         ...pluginRoutes(pluginManager, refuse),
+        // The nightly clean-up's standing, and "Clean up now" (COR-2009).
+        ...cleanUpRoutes(nightlyCleanUp, refuse),
         // A plugin's panel on the run page: its page, and the Bureau tools it declared (COR-1894).
         ...mcpAppRoutes(
           mcpMounts.apps,
@@ -982,6 +1153,14 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       options.warn ?? ((message) => console.warn(message)),
     );
     if (pushDelivery !== undefined) held.pushDelivery = pushDelivery;
+    // COR-2009 — the audit log's "Server started", recorded once the listener is up. The missed
+    // schedule occurrences this start finds are recorded by the Bureau as `schedule.missed`.
+    await bureau.internals.auditTrail?.record({
+      runId: 'host',
+      type: 'host.started',
+      principal: HOST_ACTOR,
+      detail: {},
+    });
     bureauHandler = createBureauHandler(bureau, {
       // The local caller, unless the request carries a credential. With an A2A key configured
       // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
@@ -1060,6 +1239,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         update: (name, request) => pluginManager.update(name, request),
         saveSecret: (name, secretKey, value) => pluginManager.saveSecret(name, secretKey, value),
       },
+      cleanUp: {
+        standing: () => nightlyCleanUp.standing(),
+        cleanUpNow: () => nightlyCleanUp.cleanUpNow(),
+      },
       providers: {
         connect: (connection) => providers.connect(connection),
         disconnect: (provider) => providers.disconnect(provider),
@@ -1071,7 +1254,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         bureau: bureau.internals.diagnostics(),
         weft: {
           lease: engine.getLeaseHealth(),
-          workers: server.registry.getWorkerSummaries(Date.now()),
+          workers: server.registry.getWorkerSummaries(clock.now()),
           connections: server.connections(),
         },
         build: buildDiagnostics(buildDirectory),
@@ -1103,6 +1286,7 @@ type Held = {
   replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   pushDelivery?: HostPushDelivery;
+  nightlyCleanUp?: NightlyCleanUp;
   publicServer?: Bun.Server<HostSocketData>;
   devReload?: DevReload;
   closing?: Promise<void>;
@@ -1127,6 +1311,7 @@ async function teardown(held: Held): Promise<void> {
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
   await step(held.pushDelivery && (() => held.pushDelivery?.stop()));
+  await step(held.nightlyCleanUp && (() => held.nightlyCleanUp?.close()));
   await step(held.bureau && (() => held.bureau?.shutdown({ policy: 'detach' })));
   // After the Bureau: a run still in flight may be calling a source's tool.
   await step(held.toolSources && (() => held.toolSources?.close()));

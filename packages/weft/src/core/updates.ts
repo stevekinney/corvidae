@@ -205,9 +205,15 @@ const DEFAULT_CLEANUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
  */
 export class UpdateCoordinator {
   #storage: Storage;
+  #getNow: () => number;
 
-  constructor(storage: Storage) {
+  /**
+   * @param getNow The clock a request's and a response's `createdAt` are read from, and that the
+   *   expired-response clean-up measures against: the engine's `getNow`. Defaults to `Date.now`.
+   */
+  constructor(storage: Storage, getNow: () => number = Date.now) {
     this.#storage = storage;
+    this.#getNow = getNow;
   }
 
   /** Create and persist an update request. Returns the update ID. */
@@ -240,7 +246,7 @@ export class UpdateCoordinator {
       workflowId,
       name,
       payload,
-      createdAt: Date.now(),
+      createdAt: this.#getNow(),
     };
 
     if (options?.idempotencyKey !== undefined) {
@@ -298,7 +304,7 @@ export class UpdateCoordinator {
     idempotencyKey: string | undefined,
     history: UpdateHistoryContext,
   ): BatchOperation[] {
-    const completedAt = Date.now();
+    const completedAt = this.#getNow();
     const response: UpdateResponse = {
       updateId,
       result,
@@ -399,7 +405,7 @@ export class UpdateCoordinator {
   /** Clean up expired responses and their orphaned idempotency mappings. */
   async cleanupExpiredResponses(ttlMs?: number): Promise<number> {
     const effectiveTtl = ttlMs ?? DEFAULT_CLEANUP_TTL_MS;
-    const cutoff = Date.now() - effectiveTtl;
+    const cutoff = this.#getNow() - effectiveTtl;
 
     const expiredResponseKeys: string[] = [];
     const expiredUpdateIds = new Set<string>();

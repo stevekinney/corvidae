@@ -96,7 +96,7 @@
       class="weft-shell-boot-skeleton"
       role="status"
       aria-busy="true"
-      aria-label="Loading Weft UI"
+      aria-label="Loading Interborough"
     >
       <Skeleton height="100vh" radius="0" />
     </div>

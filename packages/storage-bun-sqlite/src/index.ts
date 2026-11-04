@@ -3,4 +3,4 @@
  *
  * @module storage-bun-sqlite
  */
-export { BunSQLiteStorage } from './bun-sql.ts';
+export { BunSQLiteStorage, type BunSQLiteStorageOptions } from './bun-sql.ts';

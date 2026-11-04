@@ -115,9 +115,11 @@ describe('extra agents', () => {
       .toSorted(([left], [right]) => left.localeCompare(right));
     expect(listed).toEqual([
       ['demo:assistant', 'code', false],
+      ['demo:changelog-writer', 'code', false],
       ['demo:echo', 'code', false],
       ['demo:internal', 'code', false],
       ['demo:model-switcher', 'code', false],
+      ['demo:release-helper', 'code', false],
       ['demo:request-human-input', 'code', false],
       ['demo:tool-runner', 'code', false],
       ['extra', 'code', false],

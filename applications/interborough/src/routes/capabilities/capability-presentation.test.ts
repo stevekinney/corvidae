@@ -34,6 +34,8 @@ const TOOL: CatalogTool = {
   defaultApproval: 'allow',
   source: 'host',
   plugin: null,
+  title: null,
+  skill: null,
   users: [],
 };
 
@@ -77,6 +79,9 @@ describe('a tool’s approval, source and summary', () => {
     expect(toolSourceLabel(TOOL)).toBe('MCP server');
     expect(toolSourceLabel({ ...TOOL, source: 'bureau' })).toBe('Built in');
     expect(toolSourceLabel({ ...TOOL, source: 'plugin', plugin: 'gemini' })).toBe('Plugin gemini');
+    expect(toolSourceLabel({ ...TOOL, source: 'skill', skill: 'customer-lookup' })).toBe(
+      'Skill customer-lookup',
+    );
   });
 
   test('is the one-line description, or the first line of the model’s when there is none', () => {

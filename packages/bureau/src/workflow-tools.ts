@@ -91,6 +91,8 @@ export interface WorkflowToolListing {
   readonly paused: boolean;
   /** The trigger's `kind`, or `null` for an `invalid` file. */
   readonly triggerKind: string | null;
+  /** The workflow's title, or `null` when it has none; passed back like `description`. */
+  readonly title: string | null;
   /**
    * What the workflow is for, or `null` when it has none. `workflows-update` replaces the whole
    * definition, so an agent that updates a workflow passes this back to keep it.
@@ -141,13 +143,20 @@ export function deriveWorkflowIdentifier(
 const triggerSchema = z
   .record(z.string(), z.unknown())
   .describe(
-    'When the workflow starts: { "kind": "schedule", "spec": "0 6 * * *" } for a cron expression or a duration such as "1h", or { "kind": "signal", "name": "..." } to start when that signal is sent.',
+    'When the workflow starts: { "kind": "schedule", "spec": "0 6 * * *" } for a cron expression or a duration such as "1h", with an optional "name" (the schedule’s display name, such as "Morning digest"), "timezone" (an IANA zone such as "America/Chicago", for a cron expression), "overlap" ("skip", "queue", "cancel-running", or "allow"), "catchUp" (true to run what was missed while Bureau was off) and "input" (the fixed value every fire starts the workflow with, which inputSchema must accept); { "kind": "signal", "name": "..." } to start when that signal is sent; or { "kind": "manual" } for a workflow that only starts when someone starts it.',
   );
 
 const stepsSchema = z
   .array(z.record(z.string(), z.unknown()))
   .describe(
-    'The steps, run in order: { "kind": "activity", "handler": "agent", "input": { "agent": "...", "message": "..." } }, { "kind": "sleep", "duration": "5m" }, or { "kind": "await-signal", "signal": "..." }.',
+    'The steps, run in order: { "kind": "activity", "handler": "agent", "input": { "agent": "...", "message": "..." } }, { "kind": "sleep", "duration": "5m" }, or { "kind": "await-signal", "signal": "..." }. Give each step a "title", the name a person reads. An await-signal step with "review": true waits for a person and shows in Reviews; without it, it waits for an outside signal.',
+  );
+
+const titleSchema = z
+  .string()
+  .optional()
+  .describe(
+    'The name a person reads, shown as the workflow’s heading with its identifier beside it. Leave it out to show the identifier.',
   );
 
 const descriptionSchema = z
@@ -161,7 +170,7 @@ const inputSchemaSchema = z
   .record(z.string(), z.unknown())
   .optional()
   .describe(
-    'A JSON Schema (draft 2020-12) for the input an instance starts with: what a signal carries as its payload or a person gives when they start it; a schedule starts with null, so a workflow with a schedule trigger needs a schema that accepts null or none at all. At most 32 KiB and 8 levels deep, with no $id, pattern, or patternProperties. Leave it out for none. An input that breaks it starts nothing.',
+    'A JSON Schema (draft 2020-12) for the input an instance starts with: what a signal carries as its payload or a person gives when they start it; a schedule starts with its trigger’s "input", or null when it gives none, and the schema must accept that. At most 32 KiB and 8 levels deep, with no $id, pattern, or patternProperties. Leave it out for none. An input that breaks it starts nothing.',
   );
 
 const outputSchemaSchema = z
@@ -267,12 +276,14 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     input: {
       trigger: Record<string, unknown>;
       steps: Record<string, unknown>[];
+      title?: string | undefined;
       description?: string | undefined;
       paused?: boolean | undefined;
       inputSchema?: Record<string, unknown> | undefined;
       outputSchema?: Record<string, unknown> | undefined;
     },
   ): WorkflowFileDefinition => ({
+    ...(input.title === undefined ? {} : { title: input.title }),
     ...(input.description === undefined ? {} : { description: input.description }),
     agent,
     ...(input.paused === undefined ? {} : { paused: input.paused }),
@@ -291,6 +302,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       .describe(
         'The identifier, lowercase letters, digits, and hyphens, starting with a letter and at most 64 characters. Derived from `name` when you leave it out.',
       ),
+    title: titleSchema,
     description: descriptionSchema,
     inputSchema: inputSchemaSchema,
     outputSchema: outputSchemaSchema,
@@ -299,6 +311,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     paused: pausedSchema,
   });
   const updateInput = guardedInput.extend({
+    title: titleSchema,
     description: descriptionSchema,
     inputSchema: inputSchemaSchema,
     outputSchema: outputSchemaSchema,
@@ -315,6 +328,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     input: createInput,
     metadata: {
       mutates: true,
+      title: 'Create workflow',
       shortDescription: 'Create a workflow Bureau runs on a schedule or a signal.',
     },
     execute: async (input, context): Promise<WorkflowToolResult> => {
@@ -349,9 +363,13 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-update',
     version: '1.0.0',
     description:
-      'Replace a workflow with a new trigger and steps, if its file still has the `hash` bureau__workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `description`, `inputSchema`, and `outputSchema` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
+      'Replace a workflow with a new trigger and steps, if its file still has the `hash` bureau__workflows-list returned. The whole definition is replaced, description and schemas included, and you become the agent that wrote it. Pass back the `title`, `description`, `inputSchema`, and `outputSchema` workflows-list returned to keep them; leave one out for none, and `paused` out to leave the workflow running.',
     input: updateInput,
-    metadata: { mutates: true, shortDescription: 'Replace a workflow’s trigger and steps.' },
+    metadata: {
+      mutates: true,
+      title: 'Update workflow',
+      shortDescription: 'Replace a workflow’s trigger and steps.',
+    },
     execute: async (input, context): Promise<WorkflowToolResult> => {
       const calling = await caller(context, input.id);
       if ('refusal' in calling) return calling.refusal;
@@ -381,6 +399,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       input: guardedInput,
       metadata: {
         mutates: true,
+        title: paused ? 'Pause workflow' : 'Resume workflow',
         shortDescription: paused
           ? 'Pause a workflow so it starts nothing new.'
           : 'Resume a paused workflow.',
@@ -411,9 +430,13 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-list',
     version: '1.0.0',
     description:
-      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its description, and its `inputSchema` and `outputSchema` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
+      'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, its trigger kind, its title and description, and its `inputSchema` and `outputSchema` (pass them back to bureau__workflows-update to keep them, because an update replaces the whole definition). A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
     input: z.object({}),
-    metadata: { readOnly: true, shortDescription: 'List the workflows and their state.' },
+    metadata: {
+      readOnly: true,
+      title: 'List workflows',
+      shortDescription: 'List the workflows and their state.',
+    },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
       const calling = await caller(context, '');
       if ('refusal' in calling) {
@@ -431,6 +454,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           state: listing.state,
           paused: listing.paused,
           triggerKind: listing.triggerKind,
+          title: listing.title,
           description: listing.description,
           inputSchema: listing.inputSchema,
           outputSchema: listing.outputSchema,

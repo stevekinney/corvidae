@@ -458,6 +458,10 @@ export {
 export type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 export type { RecoverAllOptions, RecoveredWorkflowInfo } from './lifecycle.ts';
 export {
+  DEFAULT_WORKFLOW_CLAIM_RENEW_INTERVAL_MS,
+  DEFAULT_WORKFLOW_CLAIM_TTL_MS,
+} from './ownership-options.ts';
+export {
   EagerRecoveryRevisionRefusedError,
   WorkflowRevisionUnavailableError,
 } from './revision-errors.ts';
@@ -841,7 +845,7 @@ export class Engine<
     getInternals(this).interceptors = resolveEngineInterceptors(options);
     getInternals(this).composedWorkflowInterceptor = undefined;
     getInternals(this).composedActivityInterceptor = undefined;
-    getInternals(this).updateCoordinator = new UpdateCoordinator(storage);
+    getInternals(this).updateCoordinator = new UpdateCoordinator(storage, getNow);
     getInternals(this).activityRegistry = new ActivityRegistry();
     getInternals(this).activityRegistriesByWorkflow = new Map();
     getInternals(this).workflowDefinitionsByName = new Map();

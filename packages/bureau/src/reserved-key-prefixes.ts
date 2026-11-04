@@ -97,6 +97,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'bureau-a2a-task:v1:',
     'a task’s A2A record (ids, incarnation) is kept beside the task record, with its history emptied by the purge (clearContext), so GetTask still answers the task’s state',
   ),
+  kept(
+    'bureau-agent-override-version:v1:',
+    'a built-in agent’s saved overrides and their versions, not a chat’s',
+  ),
   kept('bureau-agent-revision:v1:', 'an agent’s definition history, not a chat’s'),
   contentFree('bureau-agent-run:v1:', 'the hash of the definition a run started with'),
   kept(
@@ -157,6 +161,14 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'a task’s record (ids, status, cleanup) is kept as proof the task happened; its history is emptied at the delete (COR-1481) and its settlement’s message and answer text are dropped by the purge',
   ),
   kept('bureau-workflow-cancelled-run:v1:', 'a workflow run’s cancellation record, not a chat’s'),
+  kept(
+    'bureau-workflow-revision:v1:',
+    'a workflow’s saved version (its file content, who saved it, and what changed), not a chat’s',
+  ),
+  kept(
+    'bureau-workflow-schedule-hold:v1:',
+    'a workflow schedule’s hold while its file can’t load (the schedule id and when), not a chat’s',
+  ),
   kept('bureau-workflow-schedule:', 'a workflow’s schedule, not a chat’s'),
   kept('bureau-workflow-snapshot:v1:', 'a workflow’s definition snapshot, not a chat’s'),
   contentFree(
