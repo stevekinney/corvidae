@@ -7979,11 +7979,10 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function recoverPeerApproval(
     sessionId: string,
     runId: string,
-    metadata: Record<string, JSONValue>,
+    initialMetadata: Record<string, JSONValue>,
   ): Promise<void> {
-    const kv = runtime.kv;
     const leaseTtlMilliseconds = 30_000;
-    const started = readApprovalResolutionStarted(metadata['approvalResolutionStartedIds']);
+    const started = readApprovalResolutionStarted(initialMetadata['approvalResolutionStartedIds']);
     for (const marker of started) {
       let journalEntry: PeerCallJournalEntry | undefined;
       try {
@@ -8066,44 +8065,53 @@ async function constructBureau<const D extends AgentDefinitions>(
         )
           continue;
 
-        const leaseKey = `approval-recovery:v1:${marker.id.replace(/[^a-zA-Z0-9_.:-]/g, '_')}:${String(persisted.round)}`;
         const token = runtimeServices.identifiers.next('approval-recovery');
-        const leaseValue = () =>
-          JSON.stringify({ token, expiresAt: runtimeServices.clock.now() + leaseTtlMilliseconds });
+        const leaseOf = (
+          leaseMetadata: Record<string, JSONValue>,
+        ): Record<string, JSONValue> | undefined => {
+          const leases = leaseMetadata['approvalPeerRecoveryLeases'];
+          const lease = isJsonObject(leases) ? ownEntry(leases, marker.id) : undefined;
+          return isJsonObject(lease) ? lease : undefined;
+        };
+        const leaseValue = (): Record<string, JSONValue> => ({
+          token,
+          round: persisted.round,
+          expiresAt: runtimeServices.clock.now() + leaseTtlMilliseconds,
+          operationKey: currentRecovery.durableOperationKey,
+        });
         const acquireLease = async (): Promise<boolean> => {
-          if (kv === undefined) return true;
-          const current = await kv.get(leaseKey);
-          if (current !== null) {
-            try {
-              const parsed = JSON.parse(current) as { expiresAt?: unknown };
-              if (
-                typeof parsed.expiresAt !== 'number' ||
-                parsed.expiresAt > runtimeServices.clock.now()
-              )
-                return false;
-            } catch {
-              return false;
-            }
-          }
-          return kv.conditionalBatch(
-            [{ key: leaseKey, expectedValue: current }],
-            [{ type: 'set', key: leaseKey, value: leaseValue() }],
-          );
+          const committed = await runtime.sessionStore?.update(sessionId, (leaseSession) => {
+            if (leaseSession === undefined) return undefined;
+            const current = leaseOf(leaseSession.metadata);
+            if (
+              current !== undefined &&
+              typeof current['expiresAt'] === 'number' &&
+              current['expiresAt'] > runtimeServices.clock.now()
+            )
+              return undefined;
+            const leases = isJsonObject(leaseSession.metadata['approvalPeerRecoveryLeases'])
+              ? leaseSession.metadata['approvalPeerRecoveryLeases']
+              : {};
+            return {
+              ...leaseSession,
+              metadata: {
+                ...leaseSession.metadata,
+                approvalPeerRecoveryLeases: { ...leases, [marker.id]: leaseValue() },
+              },
+            };
+          });
+          return committed !== undefined;
         };
         const ownsLease = async (): Promise<boolean> => {
-          if (kv === undefined) return true;
-          const current = await kv.get(leaseKey);
-          if (current === null) return false;
-          try {
-            const parsed = JSON.parse(current) as { token?: unknown; expiresAt?: unknown };
-            return (
-              parsed.token === token &&
-              typeof parsed.expiresAt === 'number' &&
-              parsed.expiresAt > runtimeServices.clock.now()
-            );
-          } catch {
-            return false;
-          }
+          const leaseSession = await runtime.sessionStore?.load(sessionId);
+          const lease = leaseSession === undefined ? undefined : leaseOf(leaseSession.metadata);
+          return (
+            lease?.['token'] === token &&
+            lease['round'] === persisted.round &&
+            lease['operationKey'] === currentRecovery.durableOperationKey &&
+            typeof lease['expiresAt'] === 'number' &&
+            lease['expiresAt'] > runtimeServices.clock.now()
+          );
         };
         const recoveryStateCurrent = async (): Promise<boolean> => {
           if (!(await ownsLease())) return false;
@@ -8150,21 +8158,22 @@ async function constructBureau<const D extends AgentDefinitions>(
         const renewal = runtimeServices.timers.setInterval(
           () => {
             void (async () => {
-              if (kv === undefined) return;
-              const current = await kv.get(leaseKey);
-              if (current === null) return controller.abort();
-              let currentToken: unknown;
-              try {
-                currentToken = (JSON.parse(current) as { token?: unknown }).token;
-              } catch {
-                return controller.abort();
-              }
-              if (currentToken !== token) return controller.abort();
-              const renewed = await kv.conditionalBatch(
-                [{ key: leaseKey, expectedValue: current }],
-                [{ type: 'set', key: leaseKey, value: leaseValue() }],
-              );
-              if (!renewed) controller.abort();
+              const renewed = await runtime.sessionStore?.update(sessionId, (renewalSession) => {
+                if (renewalSession === undefined) return undefined;
+                const current = leaseOf(renewalSession.metadata);
+                if (current?.['token'] !== token) return undefined;
+                const leases = isJsonObject(renewalSession.metadata['approvalPeerRecoveryLeases'])
+                  ? renewalSession.metadata['approvalPeerRecoveryLeases']
+                  : {};
+                return {
+                  ...renewalSession,
+                  metadata: {
+                    ...renewalSession.metadata,
+                    approvalPeerRecoveryLeases: { ...leases, [marker.id]: leaseValue() },
+                  },
+                };
+              });
+              if (renewed === undefined) controller.abort();
             })().catch((error: unknown) => {
               controller.abort();
               diagnose({
@@ -8222,8 +8231,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? {}
               : { reason: currentRecovery.request.reason }),
           };
-          const outcomeError = await writeApprovalOutcomeToSession(review, input, result);
-          if (outcomeError !== undefined) continue;
+          const materialized = await materializeToolResultAsync(result);
           const auditAttachment = buildReviewDecisionAuditRecord(
             review,
             'approve',
@@ -8233,19 +8241,105 @@ async function constructBureau<const D extends AgentDefinitions>(
             currentRecovery.request.digest,
             await ownerForRecord(runId),
           );
-          const committed = await persistReviewResolutionWithRetry(
+          const committed = await runtime.sessionStore?.update(
             sessionId,
-            marker.id,
-            true,
-            runId,
-            'approve',
-            input.principal,
-            input.reason,
-            auditAttachment,
-            undefined,
-            recoveryStateCurrent,
+            async (finalSession) => {
+              if (finalSession === undefined) return undefined;
+              const lease = leaseOf(finalSession.metadata);
+              if (
+                lease?.['token'] !== token ||
+                lease['round'] !== persisted.round ||
+                lease['operationKey'] !== currentRecovery.durableOperationKey ||
+                typeof lease['expiresAt'] !== 'number' ||
+                lease['expiresAt'] <= runtimeServices.clock.now()
+              )
+                return undefined;
+              const finalMarker = readApprovalResolutionStarted(
+                finalSession.metadata['approvalResolutionStartedIds'],
+              ).find((candidate) => candidate.id === marker.id);
+              const currentApproval = persistedApprovalOf(finalSession.metadata, marker.id);
+              if (
+                finalMarker?.peerRecovery === undefined ||
+                finalMarker.peerRecovery.durableOperationKey !==
+                  currentRecovery.durableOperationKey ||
+                currentApproval === undefined ||
+                currentApproval.round !== persisted.round
+              )
+                return undefined;
+              const finalDecision = await reviewDecisions.inspect(currentRecovery.request);
+              if (finalDecision.outcome !== 'matching' || finalDecision.recorded) return undefined;
+              const recoveredContext = recoveredRequestContextFromMetadata(
+                finalSession.metadata,
+                runId,
+                sessionId,
+                finalSession.agentName,
+                runtimeServices.clock.now,
+              );
+              if (recoveredContext === undefined) return undefined;
+              if (
+                isTransportIssuedAuthority(recoveredContext) &&
+                (requestAuthorityValidator === undefined ||
+                  !(await requestAuthorityValidator(recoveredContext)))
+              )
+                return undefined;
+              const leases = isJsonObject(finalSession.metadata['approvalPeerRecoveryLeases'])
+                ? finalSession.metadata['approvalPeerRecoveryLeases']
+                : {};
+              const results = isJsonObject(finalSession.metadata['approvalPeerRecoveryResults'])
+                ? finalSession.metadata['approvalPeerRecoveryResults']
+                : {};
+              const pending = isJsonObject(finalSession.metadata['pendingApprovalOverrides'])
+                ? finalSession.metadata['pendingApprovalOverrides']
+                : {};
+              const rounds = isJsonObject(finalSession.metadata['pendingApprovalRounds'])
+                ? finalSession.metadata['pendingApprovalRounds']
+                : {};
+              const resolved = Array.isArray(finalSession.metadata['resolvedReviewIds'])
+                ? stringValues(finalSession.metadata['resolvedReviewIds'])
+                : [];
+              const priorDecisions = isJsonObject(finalSession.metadata['resolvedReviewDecisions'])
+                ? finalSession.metadata['resolvedReviewDecisions']
+                : {};
+              return {
+                ...finalSession,
+                conversationHistory: resolveToolResult(
+                  finalSession.conversationHistory,
+                  currentApproval.approval.callId,
+                  materialized,
+                ),
+                metadata: {
+                  ...finalSession.metadata,
+                  approvalResolutionStartedIds: omitStartedRecord(
+                    finalSession.metadata['approvalResolutionStartedIds'],
+                    marker.id,
+                  ),
+                  pendingApprovalOverrides: omitKey(pending, marker.id),
+                  pendingApprovalRounds: omitKey(rounds, marker.id),
+                  approvalPeerRecoveryResults: omitKey(results, marker.id),
+                  approvalPeerRecoveryLeases: omitKey(leases, marker.id),
+                  resolvedReviewIds: [...new Set([...resolved, marker.id])],
+                  resolvedReviewDecisions: {
+                    ...priorDecisions,
+                    [marker.id]: {
+                      decision: 'approve',
+                      principal: input.principal,
+                      ...(input.reason === undefined ? {} : { reason: input.reason }),
+                    },
+                  },
+                },
+              };
+            },
+            {
+              outbox: reviewAuditOutboxAttachment({
+                ...auditAttachment,
+                detail: {
+                  ...(auditAttachment.detail as Record<string, unknown>),
+                  decisionRequest: currentRecovery.request,
+                },
+              }),
+            },
           );
-          if (!committed) continue;
+          if (committed === undefined) continue;
           markReviewResolvedLocally(review);
           await releaseDecidedReview(runId, marker.id);
           await recordReviewDecision(review, 'approve', input.principal, input.reason, {
@@ -8256,21 +8350,21 @@ async function constructBureau<const D extends AgentDefinitions>(
           await reviewDecisions.markRecorded(currentRecovery.request);
         } finally {
           runtimeServices.timers.clearInterval(renewal);
-          if (kv !== undefined) {
-            const current = await kv.get(leaseKey);
-            if (current !== null) {
-              try {
-                if ((JSON.parse(current) as { token?: unknown }).token === token) {
-                  await kv.conditionalBatch(
-                    [{ key: leaseKey, expectedValue: current }],
-                    [{ type: 'delete', key: leaseKey }],
-                  );
-                }
-              } catch {
-                // A replaced or malformed lease is not ours to release.
-              }
-            }
-          }
+          await runtime.sessionStore?.update(sessionId, (cleanupSession) => {
+            if (cleanupSession === undefined) return undefined;
+            const current = leaseOf(cleanupSession.metadata);
+            if (current?.['token'] !== token) return undefined;
+            const leases = isJsonObject(cleanupSession.metadata['approvalPeerRecoveryLeases'])
+              ? cleanupSession.metadata['approvalPeerRecoveryLeases']
+              : {};
+            return {
+              ...cleanupSession,
+              metadata: {
+                ...cleanupSession.metadata,
+                approvalPeerRecoveryLeases: omitKey(leases, marker.id),
+              },
+            };
+          });
         }
       } catch (error) {
         diagnose({

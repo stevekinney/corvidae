@@ -534,6 +534,7 @@ async function peerApprovalThenCrash(): Promise<void> {
   });
   const run = await bureau.tasks.start('default', 'crash harness peer approval', {
     principal: 'alice',
+    requestContext: requestContext(),
   });
   await pollUntil('the peer approval review', () =>
     bureau.reviews.list().some((review) => review.runId === run.id),
