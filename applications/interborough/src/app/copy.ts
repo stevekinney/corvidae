@@ -2011,6 +2011,16 @@ export const MODEL_POLICY_COPY = {
 
 /** The words the settings page (`/settings`) uses outside its view states. */
 export const SETTINGS_COPY = {
+  /**
+   * The keyboard preference on the General page (design row 03f): it lives in this browser, so it is
+   * not one of the deployment's settings above it.
+   */
+  keyboard: {
+    title: 'Keyboard',
+    singleKeyLabel: 'Use single-key shortcuts',
+    singleKeyDescription:
+      'Press G then a letter to go somewhere, or C for a new chat. They never act while you type in a field. Shortcuts held with ⌘ and the ? map always work. This applies to this browser only.',
+  },
   /** What the A2A section asks before it saves. */
   confirmA2a: {
     title: 'Save the A2A settings?',
@@ -3642,8 +3652,11 @@ export const PALETTE_COPY = {
   label: 'Command palette',
   /** The top bar's search field, which opens the palette: its words are the design's, no hints. */
   trigger: 'Search everything',
-  placeholder: 'Search everything, > for actions, @ for agents',
+  /** The palette's own field says the same; the footer carries the `>` and `@` hints (design row 03c). */
+  placeholder: 'Search everything',
   untitledChat: CHAT_COPY.untitled,
+  /** What a run no chat began and no agent ran is called. */
+  untitledRun: 'Run',
   emptyTitle: 'Search the console',
   emptyDescription: 'Type the name of a chat or an agent, or an ID, to jump to it.',
   noMatchesTitle: 'No matches',
@@ -3663,10 +3676,31 @@ export const PALETTE_COPY = {
     reviews: 'Reviews',
     agents: 'Agents',
     tools: 'Tools',
+    /** One heading for the agents and the tools, in that order (design row 03g). */
+    agentsAndTools: 'Agents and tools',
     actions: 'Actions',
   },
-  /** What reads between a shortcut's keys when they are pressed one after the other. */
-  keysThen: ' then ',
+  /** What a waiting row says after its sentence: the kind of wait. */
+  waitingMeta: {
+    approval: 'Approval · waiting',
+    question: 'Question',
+  },
+  /** What a run row says about how it stands, after its agent. */
+  runWaiting: {
+    approval: 'waiting for approval',
+    answer: 'waiting for your answer',
+  },
+  /** What an agent's row and a tool's row call themselves, after their identifier. */
+  agentKind: 'agent',
+  toolKind: 'tool',
+  /** The action that starts a chat on what was typed ("New chat about refund"). */
+  newChatAbout: (topic: string): string => `New chat about ${topic}`,
+  /** The key hints under the list: the prefixes that narrow a search, and the key that opens a row. */
+  footer: {
+    actions: 'actions',
+    agents: 'agents',
+    open: 'Enter to open',
+  },
 } as const;
 
 /**

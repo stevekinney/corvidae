@@ -12,7 +12,9 @@
    * and `Dropdown` (both close on Escape internally). Every key goes through
    * the shortcut registry (`../../lib/shortcuts.ts`): the shell registers ⌘K
    * for the palette, `g` then a letter for each destination and `?` for the
-   * map (`./destinations.ts`), and reads each key press against it.
+   * map (`./destinations.ts`), and reads each key press against it. ⌘K acts from inside a field,
+   * the composer included, and never under Shift (⌘⇧K is the composer's link shortcut); the plain
+   * keys never act inside a field, and a person can turn them off in Settings.
    */
   import { Banner } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
@@ -33,6 +35,10 @@
   import { connectFleetInvalidation } from '../fleet-invalidation.svelte.ts';
   import { provideBureauEventSource } from '../live-polling.svelte.ts';
   import { connectNotificationFeed } from '../notification-feed.svelte.ts';
+  import {
+    KeyboardPreferences,
+    provideKeyboardPreferences,
+  } from '../keyboard-preferences.svelte.ts';
   import { LayoutPreferences, provideLayoutPreferences } from '../layout-preferences.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
@@ -116,6 +122,7 @@
 
   const theme = new ThemeStore();
   const layout = provideLayoutPreferences(new LayoutPreferences());
+  const keyboard = provideKeyboardPreferences(new KeyboardPreferences());
   const notifications = new NotificationStore();
   const engineStatus = new EngineStatusController(initialClient);
   // Additive Track B workaround — see `engine-status.svelte.ts`'s
@@ -157,6 +164,13 @@
     }),
   );
 
+  // "Use single-key shortcuts" in Settings: with it off the registry ignores the plain keys, and
+  // the palette stops printing them beside its actions (design row 03f).
+  $effect(() => {
+    shortcuts.setSingleKeyShortcuts(keyboard.singleKeyShortcuts);
+    return () => shortcuts.setSingleKeyShortcuts(true);
+  });
+
   // Every key press is read against the registry, in the scope of the route on screen and the
   // focus regions (`data-shortcut-region`) around the focus.
   $effect(() => {
@@ -184,6 +198,7 @@
           metaKey: event.metaKey,
           ctrlKey: event.ctrlKey,
           altKey: event.altKey,
+          shiftKey: event.shiftKey,
           editable,
           repeat: event.repeat,
         },

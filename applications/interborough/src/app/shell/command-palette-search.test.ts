@@ -17,15 +17,21 @@ import {
   matchChats,
   matchDefinitions,
   matchNewChats,
+  matchRuns,
   matchTools,
   matchWaiting,
   memoizeRead,
+  newChatAboutPath,
   newChatLabel,
+  newChatTopic,
   NO_RESULTS as NOTHING,
   parseQuery,
+  runMeta,
+  runTitle,
   searchConsole,
   toolPath,
   waitingLabel,
+  waitingMeta,
   type CatalogTool,
 } from './command-palette-search.ts';
 
@@ -334,7 +340,7 @@ describe('the workflow and tool matches', () => {
 });
 
 describe('what is waiting and the actions', () => {
-  test('lists only what needs a decision or an answer, the oldest first, and every one for an empty query', () => {
+  test('lists only what needs a decision or an answer, the newest first, and every one for an empty query', () => {
     const items = [
       waitingItem({
         id: 'review:new',
@@ -355,11 +361,11 @@ describe('what is waiting and the actions', () => {
       }),
       waitingItem({ id: 'task:failed', kind: 'failed', title: 'echo failed' }),
     ];
-    expect(matchWaiting(items, '').map((item) => item.id)).toEqual(['review:old', 'review:new']);
+    expect(matchWaiting(items, '').map((item) => item.id)).toEqual(['review:new', 'review:old']);
     expect(matchWaiting(items, 'tool-runner').map((item) => item.id)).toEqual(['review:new']);
     expect(matchWaiting(items, 'refund order').map((item) => item.id)).toEqual([
-      'review:old',
       'review:new',
+      'review:old',
     ]);
     expect(matchWaiting(items, 'zzz')).toEqual([]);
     expect(waitingLabel(items[0]!)).toBe('tool-runner needs your approval · Refund order 1234');
@@ -381,6 +387,7 @@ describe('what is waiting and the actions', () => {
     const actions = Array.from({ length: 12 }, (_, index) => ({
       label: index === 3 ? 'Go to Reviews' : `Do thing ${String(index)}`,
       keys: ['G', 'R'],
+      group: 'Go to',
       run,
     }));
     expect(matchActions(actions, 'reviews').map((action) => action.label)).toEqual([
@@ -388,6 +395,133 @@ describe('what is waiting and the actions', () => {
     ]);
     expect(matchActions(actions, '')).toHaveLength(8);
     expect(matchActions(actions, '', 20)).toHaveLength(12);
+  });
+});
+
+describe('the order of the actions (row 03c)', () => {
+  const run = () => {};
+  const action = (label: string, group: string) => ({ label, keys: [], group, run });
+  const registered = [
+    action('Show keyboard shortcuts', 'General'),
+    action('New chat', 'Chat'),
+    action('Go to Home', 'Go to'),
+    action('Do a thing', 'Elsewhere'),
+    action('Go to Chat', 'Go to'),
+  ];
+
+  test('lists the Go to rows, then New chat, then the rest, with the shortcut map last', () => {
+    expect(matchActions(registered, '').map((match) => match.label)).toEqual([
+      'Go to Home',
+      'Go to Chat',
+      'New chat',
+      'Do a thing',
+      'Show keyboard shortcuts',
+    ]);
+  });
+
+  test('reads the topic of a "New chat about" action from what was typed', () => {
+    expect(newChatTopic('  refund ')).toBe('refund');
+    expect(newChatTopic('   ')).toBeUndefined();
+    expect(newChatAboutPath('refund & more')).toBe('/chats/new?about=refund%20%26%20more');
+  });
+});
+
+describe('what a waiting row says after its sentence (rows 03c, 03g)', () => {
+  test('an approval is "Approval · waiting" and a question is "Question"', () => {
+    expect(waitingMeta(waitingItem({ kind: 'approval' }))).toBe('Approval · waiting');
+    expect(waitingMeta(waitingItem({ kind: 'question' }))).toBe('Question');
+  });
+});
+
+describe('runs (row 03g)', () => {
+  const refundChat = chat({
+    id: 'refund-chat',
+    agentName: 'tool-runner',
+    title: 'Please refund order 4471, it arrived damaged.',
+  });
+  const task = (overrides: Record<string, unknown>) =>
+    ({
+      id: 'run-1',
+      contextId: 'refund-chat',
+      agentName: 'tool-runner',
+      owner: 'me',
+      actor: null,
+      kind: 'chat',
+      status: 'input-required',
+      finishReason: null,
+      statusMessage: null,
+      createdAt: '2026-11-02T16:42:00.000Z',
+      updatedAt: '2026-11-02T16:42:00.000Z',
+      cleanup: null,
+      openWaits: [{ kind: 'tool-approval', reviewId: 'review-1', callId: 'call-1' }],
+      ...overrides,
+    }) as Parameters<typeof matchRuns>[0][number];
+  const names = new Map([['tool-runner', 'Tool runner']]);
+
+  test('a run is called after the first clause of the chat that began it', () => {
+    expect(runTitle(refundChat, 'Tool runner')).toBe('Refund order 4471');
+    expect(runTitle(chat({ title: 'Please refund order 4472, $18.50.' }), undefined)).toBe(
+      'Refund order 4472',
+    );
+    expect(runTitle(chat({ title: 'Ship the release notes fix.' }), undefined)).toBe(
+      'Ship the release notes fix',
+    );
+    expect(runTitle(chat({ title: 'Say hello' }), undefined)).toBe('Say hello');
+    expect(runTitle(chat({ title: 'Check v1.2 today' }), undefined)).toBe('Check v1.2 today');
+  });
+
+  test('a run no chat began is called after its agent, and a run with neither is "Run"', () => {
+    expect(runTitle(undefined, 'Tool runner')).toBe('Tool runner');
+    expect(runTitle(chat({ title: null }), undefined)).toBe('Run');
+  });
+
+  test('finds a run by its title, its agent or its identifier, and says what it waits on', () => {
+    const tasks = [
+      task({}),
+      task({ id: 'run-2', contextId: 'other', status: 'completed', openWaits: [] }),
+    ];
+    const [found] = matchRuns(tasks, [refundChat], names, 'refund order');
+    expect(found).toEqual({
+      id: 'run-1',
+      title: 'Refund order 4471',
+      agentName: 'tool-runner',
+      status: 'input-required',
+      waiting: 'approval',
+    });
+    expect(matchRuns(tasks, [refundChat], names, 'Tool runner').map((run) => run.id)).toEqual([
+      'run-1',
+      'run-2',
+    ]);
+    expect(matchRuns(tasks, [refundChat], names, 'run-2').map((run) => run.id)).toEqual(['run-2']);
+    expect(matchRuns(tasks, [refundChat], names, 'zzz')).toEqual([]);
+  });
+
+  test('a run row says its agent, then how it stands, and never names its agent twice', () => {
+    const run = {
+      id: 'run-1',
+      title: 'Refund order 4471',
+      agentName: 'tool-runner',
+      status: 'input-required' as const,
+      waiting: 'approval' as const,
+    };
+    expect(runMeta(run, 'Tool runner')).toBe('Tool runner · waiting for approval');
+    expect(runMeta({ ...run, waiting: 'answer' }, 'Tool runner')).toBe(
+      'Tool runner · waiting for your answer',
+    );
+    expect(runMeta({ ...run, status: 'completed', waiting: null }, 'Tool runner')).toBe(
+      'Tool runner · done',
+    );
+    expect(
+      runMeta({ ...run, title: 'Tool runner', status: 'canceled', waiting: null }, 'Tool runner'),
+    ).toBe('canceled');
+    expect(runMeta({ ...run, agentName: null }, undefined)).toBe('waiting for approval');
+  });
+
+  test('a run that waits for an answer says so, and one that is over waits for nothing', () => {
+    const answer = task({ openWaits: [{ kind: 'human-wait', reviewId: 'r', signalName: 's' }] });
+    const done = task({ status: 'completed', openWaits: [] });
+    expect(matchRuns([answer], [], names, '')[0]?.waiting).toBe('answer');
+    expect(matchRuns([done], [], names, '')[0]?.waiting).toBeNull();
   });
 });
 

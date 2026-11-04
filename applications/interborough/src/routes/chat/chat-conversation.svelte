@@ -39,7 +39,7 @@
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
 
   import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
   import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
@@ -647,6 +647,10 @@
     );
     // A new chat has no thread yet, so there is nothing to attach to or to read back.
     if (!untrack(() => isNew)) void session.attach();
+    // "New chat about <topic>" in the palette (`?about=`) opens with the topic in the box, for the
+    // person to send or change. It sends nothing.
+    const about = untrack(() => (isNew ? router.current.search.get('about') : null));
+    if (about !== null && about.trim() !== '') void tick().then(() => fillComposer(about));
     // A branch made to resend an edited message opens with that message to send.
     const edited = untrack(() => (isNew ? undefined : takeEdit(sessionId)));
     if (edited !== undefined) void session.send(edited).catch(() => undefined);

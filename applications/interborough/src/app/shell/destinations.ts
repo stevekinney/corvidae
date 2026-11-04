@@ -11,8 +11,10 @@ import {
   HeartPulse,
   House,
   Inbox,
+  Keyboard,
   MessageSquare,
   Play,
+  Plus,
   Settings,
   Target,
   Webhook,
@@ -93,6 +95,21 @@ export const HEALTH_SHORTCUTS: readonly {
   { view: 'audit', path: '/health/audit', letter: 'd' },
 ];
 
+/**
+ * The glyph the command palette draws before an action: the destination's own icon for a "Go to"
+ * row (the pages under Health use Health's), a plus for New chat, and the keyboard for the map.
+ */
+export function actionIcon(label: string): typeof Workflow {
+  const destination = DESTINATIONS.find(
+    (candidate) => SHORTCUT_COPY.goTo(VIEW_COPY[candidate.view].label) === label,
+  );
+  if (destination !== undefined) return destination.icon;
+  if (HEALTH_SHORTCUTS.some((page) => SHORTCUT_COPY.goTo(VIEW_COPY[page.view].label) === label)) {
+    return HeartPulse;
+  }
+  return label === SHORTCUT_COPY.newChat ? Plus : Keyboard;
+}
+
 /** What the shell's shortcuts do when they run. */
 export interface ShellShortcutActions {
   /** Opens a path. */
@@ -126,6 +143,7 @@ export function registerShellShortcuts(
       label: SHORTCUT_COPY.openMap,
       group: SHORTCUT_COPY.generalGroup,
       scope: 'global',
+      alwaysOn: true,
       handler: actions.openShortcutMap,
     }),
     // C starts a chat, wherever the person is; typing a "c" into a field never reaches it.

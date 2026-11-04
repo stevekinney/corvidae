@@ -10,7 +10,7 @@ bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both] [-
 
 - `--out` defaults to `<repository>/tmp/design-review/<time stamp>`, which Git ignores.
 - `--scheme` defaults to `both`, which runs the specifications twice, once per color scheme, through Playwright's `colorScheme`.
-- `--data` chooses the content the pages hold. `showcase` captures every route with believable content (`tests/e2e/showcase.spec.ts`) and the shell's chrome in each form (`tests/e2e/shell-chrome.spec.ts`) and Home on a fresh installation (`tests/e2e/first-run.spec.ts`); `stress` captures the pathological seed and the view states (`responsive.spec.ts` and `15-view-states.spec.ts`); `both`, the default, captures all five.
+- `--data` chooses the content the pages hold. `showcase` captures every route with believable content (`tests/e2e/showcase.spec.ts`) and the shell's chrome in each form (`tests/e2e/shell-chrome.spec.ts`), the search palette (`tests/e2e/shell-search.spec.ts`) and Home on a fresh installation (`tests/e2e/first-run.spec.ts`); `stress` captures the pathological seed and the view states (`responsive.spec.ts` and `15-view-states.spec.ts`); `both`, the default, captures all six.
 - `--specs responsive` captures the stress-seeded pages on every tab and `--specs states` captures the view states. It narrows the stress data, so on its own it means `--data stress`, and it is refused with `--data showcase`.
 - `--grep` is Playwright's title filter. Responsive tests are titled by route pattern (`/agents/:agent fits at…`), and view-state tests by view name (`agents is empty at 375 pixels…`), so `--grep 'agents'` takes both for the agent pages. Playwright matches the full title, which begins with the file name, so never anchor a pattern with `^`; a filter that matches nothing exits 1 with no captures.
 
@@ -31,6 +31,7 @@ The same showcase content loads into a running development host with `bun run de
 | --- | --- | --- | --- |
 | `tests/e2e/showcase.spec.ts` | every route in `src/app/routes.ts` except redirects, plus named variants (a chat with a waiting approval, a failed run, an attachment; an agent's tabs; a run that failed, was cancelled, is running; a review open; a paused schedule; a failed hook) | ready with believable content | 375, 768, 1280 |
 | `tests/e2e/shell-chrome.spec.ts` | the shell on its own: the 190px sidebar, the collapsed rail with its tooltip, the rail's overlay, the phone and touch-tablet drawer, a back button, 320 pixels and 200% text | each named state | 375 to 1280, and 320 |
+| `tests/e2e/shell-search.spec.ts` | the search palette: with nothing typed, for "refund", and as a phone's bottom sheet | each named state | 375 and 1280 |
 | `tests/e2e/responsive.spec.ts` | every route in `src/app/routes.ts` except redirects, plus named variants (pickers open, a review open, a tab chosen) | ready with the stress data, then each tab the page offers | 375, 768, 1280 |
 | `tests/e2e/15-view-states.spec.ts` | each view's index route (`PATHS` in the spec) | loading, empty (when the view can be empty), error, forbidden, ready | 375, 1280 |
 | the same | `/health` | refused reads, locked reads, waiting on the engine | 375, 1280 |

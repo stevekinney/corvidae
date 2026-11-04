@@ -10,11 +10,11 @@
  * Opening a chat reads the items about it, including one that arrives while the chat is open: it is
  * read on arrival, so it is not new when the person leaves.
  */
-import { humanizeIdentifier } from '@lostgradient/cinder';
 import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+import { agentLabel } from '../lib/agent-label.ts';
 import { listAttentionAlerts } from '../lib/bureau-attention.ts';
-import { listAgents, type AgentSummary } from '../lib/bureau-client.ts';
+import { listAgents } from '../lib/bureau-client.ts';
 import {
   listBureauNotifications,
   markBureauNotificationsRead,
@@ -32,19 +32,6 @@ import { ATTENTION_POLL_MILLISECONDS } from './shell/attention-count.svelte.ts';
 function openChatSessionId(): string | undefined {
   const { route, params } = router.current;
   return route?.pattern === '/chats/:chat' ? params['chat'] : undefined;
-}
-
-/** A name written the way an identifier is: lower-case words joined by hyphens, underscores, dots or colons. */
-const IDENTIFIER_SHAPED = /^[a-z0-9][a-z0-9:_.-]*$/;
-
-/**
- * The name an agent goes by in the bell: the catalog's display name, or the identifier where the
- * catalog has none, and either one in words ("tool-runner" reads "Tool runner") when it is only an
- * identifier, as a code agent's display name is.
- */
-function agentLabel(identifier: string, catalog: readonly AgentSummary[] | undefined): string {
-  const name = catalog?.find((agent) => agent.name === identifier)?.displayName ?? identifier;
-  return IDENTIFIER_SHAPED.test(name) ? humanizeIdentifier(name, { casing: 'sentence' }) : name;
 }
 
 export interface NotificationFeedOptions {

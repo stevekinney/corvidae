@@ -56,7 +56,46 @@ function stubEngine(unreachable?: string): void {
                 updatedAt: '2026-10-23T14:00:00.000Z',
                 activity: 'idle',
               },
+              {
+                id: 'refund-chat',
+                owner: null,
+                agentName: 'tool-runner',
+                title: 'Please refund order 4471, it arrived damaged.',
+                lastMessagePreview: 'I need your approval to refund it.',
+                parentContextId: null,
+                forkedFromMessageId: null,
+                messageCount: 2,
+                createdAt: '2026-10-23T14:00:00.000Z',
+                updatedAt: '2026-10-23T14:01:00.000Z',
+                activity: 'awaiting-input',
+              },
             ],
+          },
+        });
+      }
+      if (call.method === 'bureau.tasks.list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: call.id,
+          result: {
+            tasks: [
+              {
+                id: 'task-refund',
+                contextId: 'refund-chat',
+                agentName: 'tool-runner',
+                owner: 'me',
+                actor: null,
+                kind: 'chat',
+                status: 'input-required',
+                finishReason: null,
+                statusMessage: null,
+                createdAt: '2026-10-23T14:00:00.000Z',
+                updatedAt: '2026-10-23T14:01:00.000Z',
+                cleanup: null,
+                openWaits: [{ kind: 'tool-approval', reviewId: 'review-1', callId: 'call-1' }],
+              },
+            ],
+            nextPageToken: null,
           },
         });
       }
@@ -69,6 +108,7 @@ function stubEngine(unreachable?: string): void {
             tools: [
               {
                 name: 'issue-refund',
+                title: 'Issue refund',
                 description: 'Refunds an order to the card it was paid with.',
                 shortDescription: 'Refunds an order',
                 inputSchema: null,
@@ -76,7 +116,7 @@ function stubEngine(unreachable?: string): void {
                 defaultApproval: 'ask',
                 source: 'host',
                 plugin: null,
-                users: [],
+                users: ['tool-runner'],
               },
             ],
           },
@@ -115,6 +155,15 @@ function stubEngine(unreachable?: string): void {
                 name: 'echo',
                 displayName: 'echo',
                 description: 'Repeats the last message it was sent.',
+                definitionRevision: 1,
+                kind: 'code',
+                a2a: false,
+                media: null,
+              },
+              {
+                name: 'tool-runner',
+                displayName: 'Tool runner',
+                description: 'Looks an order up, then asks for approval to refund it.',
                 definitionRevision: 1,
                 kind: 'code',
                 a2a: false,
@@ -186,30 +235,30 @@ async function choose(query: string, resultName: RegExp, registry?: ShortcutRegi
 
 describe('the command palette', () => {
   test('opens the selected run', async () => {
-    await choose('run-7', /run-7/);
+    await choose('run-7', /^run-7/);
     await waitFor(() => expect(router.pathname).toBe('/runs/run-7'));
   });
 
   test('opens the selected schedule, not the list of schedules', async () => {
-    await choose('schedule-7', /schedule-7/);
+    await choose('schedule-7', /^schedule-7/);
     await waitFor(() => expect(router.pathname).toBe(schedulePath('schedule-7')));
   });
 
   test('opens the selected worker, not the list of workers', async () => {
-    await choose('worker-7', /worker-7/);
+    await choose('worker-7', /^worker-7/);
     await waitFor(() =>
       expect(router.pathname + '?' + router.search.toString()).toBe(workerPath('worker-7')),
     );
   });
 
   test('opens the reviews page for a review, which has no page of its own', async () => {
-    await choose('review-7', /review-7/);
+    await choose('review-7', /^review-7/);
     await waitFor(() => expect(router.pathname).toBe('/reviews'));
   });
 });
 
 describe('the chats, agents, and commands', () => {
-  test('lists the chat, then the agent, then the command, and nothing else, for a few letters', async () => {
+  test('lists the chat, then the agent, then the commands, and nothing else, for a few letters', async () => {
     stubEngine();
     landAt('/chats');
     const view = render(CommandPaletteLauncher, {
@@ -218,15 +267,16 @@ describe('the chats, agents, and commands', () => {
     expect(view.getByPlaceholderText(PALETTE_COPY.placeholder)).not.toBeNull();
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'ech' } });
 
-    await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));
+    await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(4));
     expect(view.getAllByRole('option').map((option) => option.getAttribute('aria-label'))).toEqual([
-      'Hello echo, say this back, echo',
-      'echo, Repeats the last message it was sent.',
+      'Hello echo, say this back, Echo',
+      'Echo, echo, agent',
       'New chat with echo',
+      'New chat about ech',
     ]);
     expect(view.getAllByRole('group').map((group) => group.getAttribute('aria-label'))).toEqual([
       'Chats',
-      'Agents',
+      'Agents and tools',
       'Actions',
     ]);
   });
@@ -237,7 +287,7 @@ describe('the chats, agents, and commands', () => {
   });
 
   test('opens the agent’s page', async () => {
-    await choose('ech', /^echo, Repeats/);
+    await choose('ech', /^Echo, echo, agent/);
     await waitFor(() => expect(router.pathname).toBe('/agents/echo'));
   });
 
@@ -264,7 +314,7 @@ describe('choosing with the keyboard', () => {
     });
     const input = await view.findByRole('combobox');
     await fireEvent.input(input, { target: { value: 'ech' } });
-    await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(3));
+    await waitFor(() => expect(view.getAllByRole('option')).toHaveLength(4));
     await fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(router.pathname).toBe('/chats/echo-chat'));
   });
@@ -320,6 +370,16 @@ describe('the paths of a record', () => {
   });
 });
 
+/** A row's title and its meta: the two parts the design draws on one line, the second after a "·". */
+function rowText(option: HTMLElement): [string, string] {
+  const text = option.querySelector('.cinder-command-item__text');
+  const meta = option.querySelector('.cinder-command-item__meta');
+  return [
+    (text?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    (meta?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+  ];
+}
+
 describe('every kind of result, in order', () => {
   function open(props: Record<string, unknown> = {}) {
     stubEngine();
@@ -332,7 +392,7 @@ describe('every kind of result, in order', () => {
   const groups = (view: ReturnType<typeof open>) =>
     view.getAllByRole('group').map((group) => group.getAttribute('aria-label'));
 
-  test('lists what is waiting on the person and the actions with their keys before anything is typed', async () => {
+  test('lists what is waiting on the person, then the Go to rows and New chat with their keys, before anything is typed', async () => {
     const store = memoryStore();
     store.setActivity([WAITING]);
     const { registry } = shellRegistry();
@@ -342,8 +402,40 @@ describe('every kind of result, in order', () => {
     expect(
       view.getByRole('option', { name: 'tool-runner needs your approval · Refund order 1234' }),
     ).not.toBeNull();
-    const search = view.getByRole('option', { name: 'Go to Reviews' });
-    expect(search.getAttribute('aria-keyshortcuts')).toBe('G R');
+    // The Go to rows come first, then New chat, and the map of every shortcut is last (row 03c).
+    const labels = view
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('aria-label') ?? '');
+    expect(labels.slice(1, 4)).toEqual(['Go to Home', 'Go to Chat', 'Go to Reviews']);
+    expect(labels.indexOf('New chat')).toBeGreaterThan(labels.indexOf('Go to Settings'));
+    expect(labels.at(-1)).toBe('Show keyboard shortcuts');
+    // The keys read "G then R" and one key reads alone, as Cinder's keys prop draws them.
+    const reviews = view.getByRole('option', { name: 'Go to Reviews' });
+    expect(reviews.textContent?.replace(/\s+/g, ' ').trim()).toBe('Go to Reviews G then R');
+    expect(
+      view.getByRole('option', { name: 'New chat' }).textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe('New chat C');
+    // The actions carry no heading of their own while nothing is typed, only their group's name.
+    expect(view.queryByText(PALETTE_COPY.groups.actions)).toBeNull();
+  });
+
+  test('the key hints are gone while single-key shortcuts are off, and the rows still run', async () => {
+    const { registry, opened } = shellRegistry();
+    registry.setSingleKeyShortcuts(false);
+    const view = open({ registry });
+
+    const reviews = await view.findByRole('option', { name: 'Go to Reviews' });
+    expect(reviews.textContent?.replace(/\s+/g, ' ').trim()).toBe('Go to Reviews');
+    await fireEvent.click(reviews);
+    expect(opened).toEqual(['/reviews']);
+  });
+
+  test('the footer names the prefixes and the key that opens a row', async () => {
+    const view = open();
+    const footer = await view.findByText('Enter to open');
+    expect(footer.parentElement?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      '> actions @ agents Enter to open',
+    );
   });
 
   test('a waiting item opens where it is waiting', async () => {
@@ -356,19 +448,71 @@ describe('every kind of result, in order', () => {
     await waitFor(() => expect(router.pathname).toBe('/chats/session-refund'));
   });
 
-  test('reaches chats, workflows, runs, schedules, workers, reviews, agents, tools and actions, waiting first', async () => {
+  test('groups a search for "refund" as waiting, chats, runs, workflows, agents and tools, then actions', async () => {
     const store = memoryStore();
     store.setActivity([WAITING]);
     const { registry } = shellRegistry();
     const view = open({ store, registry });
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
 
-    await waitFor(() => expect(groups(view)).toContain('Tools'));
-    // The refund workflow, the refund tool and the waiting refund each show once; a waiting item is first.
-    expect(groups(view)).toEqual(['Waiting on you', 'Workflows', 'Tools']);
-    await fireEvent.click(view.getByRole('option', { name: /^issue-refund/ }));
+    await waitFor(() => expect(groups(view)).toContain('Agents and tools'));
+    // The five groups of row 03g keep their order; the workflow type sits between runs and tools.
+    expect(groups(view)).toEqual([
+      'Waiting on you',
+      'Chats',
+      'Runs',
+      'Workflows',
+      'Agents and tools',
+      'Actions',
+    ]);
+    const label = (index: number) => view.getAllByRole('option')[index]?.getAttribute('aria-label');
+    expect(label(0)).toBe('tool-runner needs your approval · Refund order 1234');
+    expect(
+      view.getByRole('option', {
+        name: 'Please refund order 4471, it arrived damaged., Tool runner',
+      }),
+    ).not.toBeNull();
+    // A run is titled after the chat that began it, and says what it waits for.
+    const run = view.getByRole('option', {
+      name: 'Refund order 4471, Tool runner, waiting for approval',
+    });
+    expect(rowText(run)).toEqual(['Refund order 4471', 'Tool runner · waiting for approval']);
+    // A tool reads as its name for a person, the identifier small and monospaced, and who uses it.
+    const tool = view.getByRole('option', {
+      name: 'Issue refund, issue-refund, tool, Tool runner',
+    });
+    expect(rowText(tool)).toEqual(['Issue refund', 'issue-refund · tool · Tool runner']);
+    expect(tool.querySelector('code.ib-identifier')?.textContent).toBe('issue-refund');
+    expect(view.getByRole('option', { name: 'New chat about refund' })).not.toBeNull();
+    await fireEvent.click(tool);
     await waitFor(() =>
       expect(router.pathname + '?' + router.search.toString()).toBe(toolPath('issue-refund')),
+    );
+  });
+
+  test('the first result is highlighted, and a waiting item leads with its amber glyph', async () => {
+    const store = memoryStore();
+    store.setActivity([WAITING]);
+    const view = open({ store });
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
+
+    const first = await view.findByRole('option', {
+      name: 'tool-runner needs your approval · Refund order 1234',
+    });
+    await waitFor(() => expect(first.getAttribute('aria-selected')).toBe('true'));
+    expect(
+      first.querySelector('.cinder-command-item__leading')?.getAttribute('data-cinder-tone'),
+    ).toBe('warning');
+  });
+
+  test('New chat about the query opens a new chat holding the topic', async () => {
+    const view = open();
+    await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
+
+    await fireEvent.click(await view.findByRole('option', { name: 'New chat about refund' }));
+
+    await waitFor(() =>
+      expect(router.pathname + '?' + router.search.toString()).toBe('/chats/new?about=refund'),
     );
   });
 
@@ -409,11 +553,13 @@ describe('every kind of result, in order', () => {
     const view = open({ registry: shellRegistry().registry });
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: '@' } });
 
-    await waitFor(() => expect(groups(view)).toEqual(['Agents']));
+    await waitFor(() => expect(groups(view)).toEqual(['Agents and tools']));
+    expect(groups(view)).toEqual(['Agents and tools']);
     expect(view.getAllByRole('option').map((option) => option.getAttribute('aria-label'))).toEqual([
-      'echo, Repeats the last message it was sent.',
+      'Echo, echo, agent',
+      'Tool runner, tool-runner, agent',
     ]);
-    await fireEvent.click(view.getByRole('option', { name: /^echo/ }));
+    await fireEvent.click(view.getByRole('option', { name: /^Echo/ }));
     await waitFor(() => expect(router.pathname).toBe('/agents/echo'));
   });
 
@@ -427,6 +573,11 @@ describe('every kind of result, in order', () => {
     });
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
 
-    await waitFor(() => expect(groups(view)).toEqual(['Tools']));
+    await waitFor(() => expect(groups(view)).toContain('Agents and tools'));
+    // What is behind a scope is not read: no workflows, schedules, workers or reviews.
+    expect(groups(view)).not.toContain('Workflows');
+    expect(groups(view)).not.toContain('Schedules');
+    expect(groups(view)).not.toContain('Workers');
+    expect(groups(view)).not.toContain('Reviews');
   });
 });

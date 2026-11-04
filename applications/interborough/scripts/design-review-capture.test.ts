@@ -22,13 +22,14 @@ import { endToEndPort } from './environment-configuration.ts';
 const NOW = new Date('2026-11-02T08:30:00.000Z');
 
 describe('parseArguments', () => {
-  test('captures all five specifications in both schemes into a time-stamped directory by default', () => {
+  test('captures all six specifications in both schemes into a time-stamped directory by default', () => {
     const options = parseArguments([], NOW);
     if (typeof options === 'string') throw new Error(options);
     expect(options.schemes).toEqual(['light', 'dark']);
     expect(options.specifications).toEqual([
       'tests/e2e/showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
+      'tests/e2e/shell-search.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
@@ -58,6 +59,7 @@ describe('parseArguments', () => {
     expect(specificationsOf(['--data', 'showcase'])).toEqual([
       'tests/e2e/showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
+      'tests/e2e/shell-search.spec.ts',
       'tests/e2e/first-run.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
@@ -71,6 +73,7 @@ describe('parseArguments', () => {
     expect(specificationsOf(['--specs', 'responsive', '--data', 'both'])).toEqual([
       'tests/e2e/showcase.spec.ts',
       'tests/e2e/shell-chrome.spec.ts',
+      'tests/e2e/shell-search.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);

@@ -645,22 +645,6 @@
   cursor: pointer;
 }
 
-/* Command palette result groups: chats and agents first, then the records found by id. */
-
-.weft-command-meta {
-  display: flex;
-  align-items: baseline;
-  gap: var(--cinder-space-2);
-}
-
-.weft-command-group__label {
-  display: block;
-  padding: var(--cinder-space-2) var(--cinder-density-pad-inline) var(--cinder-space-1);
-  font-size: var(--cinder-text-2xs);
-  font-weight: 700;
-  color: var(--cinder-text-subtle);
-}
-
 /* Fault treatment (plan §10.4) — shared by `src/app/fault-boundary.svelte`
  * and `src/routes/system/query-fault-banner.svelte`, so these rules live in
  * this plain global stylesheet, not a component's scoped \3c style> block

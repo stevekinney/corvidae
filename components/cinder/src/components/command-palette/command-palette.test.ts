@@ -1002,21 +1002,18 @@ describe('CommandPalette — visual contract', () => {
     );
   });
 
-  test('search input padding-block matches the command item rhythm (both use --cinder-space-2-5)', async () => {
+  test('rows are 36px targets and the search input keeps its own padding (row 03c)', async () => {
     const paletteCss = await Bun.file(new URL('./command-palette.css', import.meta.url)).text();
     const commandItemCss = await Bun.file(
       new URL('../command-item/command-item.css', import.meta.url),
     ).text();
 
-    // The search input's own vertical padding must agree with the block padding
-    // of the rows beneath it — both use --cinder-space-2-5 (0.625rem), not the
-    // old --cinder-space-4 (1rem) that produced an uneven gap before the first
-    // result row.
+    // A row is a 36px target (row 03c); the sheet below raises it to 44px.
     expect(paletteCss).toMatch(
       /\.cinder-command-palette__input\s*\{[\s\S]*?padding-block:\s*var\(--cinder-space-2-5\);/,
     );
     expect(commandItemCss).toMatch(
-      /\.cinder-command-item\s*\{[\s\S]*?padding:\s*var\(--cinder-space-2-5\)\s+var\(--cinder-space-5\);/,
+      /\.cinder-command-item\s*\{[\s\S]*?min-block-size:\s*2\.25rem;[\s\S]*?padding:\s*var\(--cinder-space-1-5\)\s+var\(--cinder-space-2-5\);/,
     );
   });
 
@@ -1029,12 +1026,12 @@ describe('CommandPalette — visual contract', () => {
     ).text();
 
     expect(paletteCss).toMatch(
-      /\.cinder-command-palette__listbox\s*\{[\s\S]*?padding:\s*var\(--cinder-space-2\)\s*0;/,
+      /\.cinder-command-palette__listbox\s*\{[\s\S]*?padding:\s*var\(--cinder-space-1\)\s*var\(--cinder-space-1-5\)\s*var\(--cinder-space-2\);/,
     );
     // CommandItem rules now live in command-item.css (imported by command-palette.css).
     expect(commandItemCss).toMatch(/\.cinder-command-item\s*\{[\s\S]*?margin:\s*0;/);
     expect(commandItemCss).toMatch(
-      /\.cinder-command-item\[data-cinder-active\]\s*\{[\s\S]*?background:\s*var\(--cinder-accent-solid\);[\s\S]*?color:\s*var\(--cinder-accent-contrast\);/,
+      /\.cinder-command-item\[data-cinder-active\]\s*\{[\s\S]*?background:\s*var\(--cinder-accent-background\);[\s\S]*?color:\s*var\(--cinder-text-default\);/,
     );
     // Confirm command-palette.css now @imports command-item.css (import chain).
     expect(paletteCss).toMatch(/@import\s+['"]\.\.\/command-item\/command-item\.css['"]/);

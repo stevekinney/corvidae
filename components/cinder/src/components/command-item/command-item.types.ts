@@ -20,6 +20,18 @@ type CommandItemBaseProps = {
   keys?: readonly string[] | undefined;
   /** Leading content (icon, avatar). Rendered with aria-hidden. */
   leading?: Snippet;
+  /**
+   * How the leading content is drawn. `neutral` is a bare glyph in muted ink; `warning` is the
+   * glyph on a small amber tile, for a row that is waiting on the person.
+   * @default "neutral"
+   */
+  leadingTone?: 'neutral' | 'warning' | undefined;
+  /**
+   * Secondary text on the label's own line, after it and muted ("Refund order 4471 for $42.00?
+   * · Approval · waiting"). The label and the meta truncate together as one line. Rendered with
+   * aria-hidden, so name the row with `accessibleLabel` when the meta carries meaning.
+   */
+  meta?: Snippet;
   /** Trailing content (kbd hint, badge). Rendered with aria-hidden. */
   trailing?: Snippet;
   /** Main label content. */

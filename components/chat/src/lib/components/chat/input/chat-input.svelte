@@ -188,7 +188,7 @@
     { format: 'bold', label: 'Bold', keyshortcuts: 'Meta+B Control+B', icon: Bold },
     { format: 'italic', label: 'Italic', keyshortcuts: 'Meta+I Control+I', icon: Italic },
     { format: 'code', label: 'Code', keyshortcuts: 'Meta+E Control+E', icon: Code },
-    { format: 'link', label: 'Link', keyshortcuts: 'Meta+K Control+K', icon: LinkIcon },
+    { format: 'link', label: 'Link', keyshortcuts: 'Meta+Shift+K Control+Shift+K', icon: LinkIcon },
     { format: 'list', label: 'List', keyshortcuts: undefined, icon: List },
   ] as const satisfies readonly {
     format: ChatComposerFormat;

@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { SETTINGS_COPY, VIEW_COPY } from '../../app/copy.ts';
+import { KeyboardPreferences } from '../../app/keyboard-preferences.svelte.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   catalogFixture,
@@ -47,6 +48,7 @@ function open(
   stream?: SettingsStream,
   extra: Record<string, (params: Record<string, unknown>) => unknown> = {},
   hostMode?: 'local' | 'remote',
+  keyboard?: KeyboardPreferences,
 ) {
   stub = installSettingsBureau(served, extra, stream, hostMode);
   landAt('/settings');
@@ -54,6 +56,7 @@ function open(
     props: {
       client: new HttpClient({ baseUrl: 'http://localhost/api' }),
       scopes: AUTHORIZATION_SCOPES,
+      ...(keyboard === undefined ? {} : { keyboard }),
     },
   } as never);
   return view;
@@ -102,6 +105,7 @@ describe('the page', () => {
       'Children',
       'Workflows',
       'Durability',
+      SETTINGS_COPY.keyboard.title,
       SETTINGS_COPY.hostPaths.title,
     ]);
     const durability = container.querySelector(
@@ -161,6 +165,24 @@ describe('the page', () => {
   test('says a Bureau that keeps nothing does not keep the settings', async () => {
     const { findByTestId } = open(servedSettings({ persisted: false }));
     expect(await findByTestId('settings-not-persisted')).not.toBeNull();
+  });
+});
+
+describe('the keyboard preference (row 03f)', () => {
+  test('"Use single-key shortcuts" is on by default and turns the plain keys off and on', async () => {
+    window.localStorage.clear();
+    const keyboard = new KeyboardPreferences();
+    const { findByRole } = open(servedSettings(), undefined, {}, undefined, keyboard);
+
+    const toggle = await findByRole('switch', { name: SETTINGS_COPY.keyboard.singleKeyLabel });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+
+    await fireEvent.click(toggle);
+    expect(keyboard.singleKeyShortcuts).toBe(false);
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+    await fireEvent.click(toggle);
+    expect(keyboard.singleKeyShortcuts).toBe(true);
   });
 });
 

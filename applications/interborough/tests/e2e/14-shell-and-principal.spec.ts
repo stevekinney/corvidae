@@ -247,12 +247,12 @@ test('the palette lists the chat before the agent a few letters name, and the ac
   await search.fill('ech');
 
   const options = page.getByRole('option');
-  await expect(page.getByRole('option', { name: /^demo:echo, / })).toHaveCount(1);
+  await expect(page.getByRole('option', { name: /^Echo, demo:echo, agent$/ })).toHaveCount(1);
   const names = await options.evaluateAll((elements) =>
     elements.map((element) => element.getAttribute('aria-label') ?? ''),
   );
   const chatIndex = names.findIndex((label) => label.startsWith('Hello echo, say this back'));
-  const agentIndex = names.findIndex((label) => label.startsWith('demo:echo, '));
+  const agentIndex = names.findIndex((label) => /^Echo, demo:echo, agent$/.test(label));
   expect(chatIndex).toBeGreaterThanOrEqual(0);
   expect(agentIndex).toBeGreaterThan(chatIndex);
   // Chats come before agents, and the actions (New chat with demo:echo) after both.
@@ -261,8 +261,8 @@ test('the palette lists the chat before the agent a few letters name, and the ac
     .getByRole('group')
     .evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-label')));
   expect(groups.indexOf('Chats')).toBeGreaterThanOrEqual(0);
-  expect(groups.indexOf('Agents')).toBeGreaterThan(groups.indexOf('Chats'));
-  expect(groups.indexOf('Actions')).toBeGreaterThan(groups.indexOf('Agents'));
+  expect(groups.indexOf('Agents and tools')).toBeGreaterThan(groups.indexOf('Chats'));
+  expect(groups.indexOf('Actions')).toBeGreaterThan(groups.indexOf('Agents and tools'));
   await checkA11y('the palette');
 });
 

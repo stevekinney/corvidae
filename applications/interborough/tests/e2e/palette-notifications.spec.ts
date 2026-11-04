@@ -96,17 +96,21 @@ test.describe('⌘K over every kind of record', () => {
     await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.workers);
 
     await search(page).fill('echo');
-    await expect(palette(page).getByRole('option', { name: /^demo:echo, / })).toBeVisible();
-    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.agents);
+    await expect(
+      palette(page).getByRole('option', { name: /^Echo, demo:echo, agent$/ }),
+    ).toBeVisible();
+    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.agentsAndTools);
 
     await search(page).fill(toolName);
     await expect(
-      palette(page).getByRole('option', { name: new RegExp(`^${toolName}`) }),
+      palette(page).getByRole('option', { name: new RegExp(`${toolName}, tool`) }),
     ).toBeVisible();
-    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.tools);
+    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.agentsAndTools);
 
     await search(page).fill('go to reviews');
-    await expect(palette(page).getByRole('option', { name: 'Go to Reviews' })).toBeVisible();
+    await expect(
+      palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }),
+    ).toBeVisible();
     await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.actions);
     await checkA11y('the palette with a result of every kind');
   });
@@ -117,7 +121,7 @@ test.describe('⌘K over every kind of record', () => {
 
     await search(page).fill(toolName);
     await palette(page)
-      .getByRole('option', { name: new RegExp(`^${toolName}`) })
+      .getByRole('option', { name: new RegExp(`${toolName}, tool`) })
       .click();
     await expect(page).toHaveURL(
       new RegExp(`/capabilities\\?tool=${encodeURIComponent(toolName)}`),
@@ -132,7 +136,7 @@ test.describe('⌘K over every kind of record', () => {
 
     await openPalette(page);
     await search(page).fill('go to reviews');
-    await palette(page).getByRole('option', { name: 'Go to Reviews' }).click();
+    await palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).click();
     await expect(page).toHaveURL(/\/reviews$/);
   });
 
@@ -171,17 +175,18 @@ test.describe('⌘K over every kind of record', () => {
     await search(page).fill('>keyboard');
     await expect.poll(() => groupsOf(page)).toEqual([PALETTE_COPY.groups.actions]);
     const action = palette(page).getByRole('option', { name: SHORTCUT_COPY.openMap });
-    await expect(action).toHaveAttribute('aria-keyshortcuts', '?');
+    await expect(action.locator('kbd')).toHaveText(['?']);
 
     await search(page).fill('>go to rev');
-    await expect(palette(page).getByRole('option', { name: 'Go to Reviews' })).toHaveAttribute(
-      'aria-keyshortcuts',
-      'G R',
-    );
+    await expect(
+      palette(page).getByRole('option', { name: 'Go to Reviews', exact: true }).locator('kbd'),
+    ).toHaveText(['G', 'R']);
 
     await search(page).fill('@');
-    await expect(palette(page).getByRole('option', { name: /^demo:echo, / })).toBeVisible();
-    await expect.poll(() => groupsOf(page)).toEqual([PALETTE_COPY.groups.agents]);
+    await expect(
+      palette(page).getByRole('option', { name: /^Echo, demo:echo, agent$/ }),
+    ).toBeVisible();
+    await expect.poll(() => groupsOf(page)).toEqual([PALETTE_COPY.groups.agentsAndTools]);
 
     await search(page).fill('@zzzzqqqq');
     await expect(palette(page).getByText(PALETTE_COPY.noMatchesTitle)).toBeVisible();

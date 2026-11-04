@@ -2,7 +2,7 @@
  * Captures every page of Interborough for the design review (`.agents/skills/design-review`): every
  * route holding believable content (`tests/e2e/showcase.spec.ts`, at 375, 768 and 1280 pixels, the
  * data for layout, hierarchy and density) and the shell's chrome in each form it takes
- * (`tests/e2e/shell-chrome.spec.ts`: the sidebar, the rail, the drawer, 320 pixels, 200% text), Home on a
+ * (`tests/e2e/shell-chrome.spec.ts`: the sidebar, the rail, the drawer, 320 pixels, 200% text; `tests/e2e/shell-search.spec.ts`: the search palette), Home on a
  * fresh installation (`tests/e2e/first-run.spec.ts`), every route on every tab holding the stress seed's
  * 300-character words (`tests/e2e/responsive.spec.ts`, the same widths, the data for overflow and
  * truncation), and every view loading, empty, failed, forbidden and ready, plus Health's band
@@ -23,7 +23,7 @@
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
  *
  * `--data` chooses the content: `showcase` runs only the showcase specifications, `stress` runs the
- * responsive and view-states specifications, and `both` (the default) runs all five. `--specs`
+ * responsive and view-states specifications, and `both` (the default) runs all six. `--specs`
  * narrows the stress data to one of its two specifications, so it means `--data stress` when
  * `--data` is not given, and is refused with `--data showcase`.
  *
@@ -58,6 +58,7 @@ const SPECIFICATIONS = {
 const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/showcase.spec.ts',
   'tests/e2e/shell-chrome.spec.ts',
+  'tests/e2e/shell-search.spec.ts',
   'tests/e2e/first-run.spec.ts',
 ] as const;
 
