@@ -1770,6 +1770,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       }
     }
     pendingRecovery.clear();
+    pendingRecoveryToolCapabilities.clear();
   }
 
   function recoveredRunContext(

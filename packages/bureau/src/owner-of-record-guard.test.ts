@@ -15,9 +15,10 @@ describe('Bureau owner-of-record authority boundary', () => {
   });
 
   it('keeps direct owner reads out of Bureau tools', () => {
-    const files = [...new Bun.Glob('**/*tool.ts').scanSync(sourceRoot)].map((file) =>
-      file.startsWith('/') ? file : join(sourceRoot, file),
-    );
+    const files = [
+      ...new Bun.Glob('**/*tool.ts').scanSync(sourceRoot),
+      ...new Bun.Glob('**/*tools.ts').scanSync(sourceRoot),
+    ].map((file) => (file.startsWith('/') ? file : join(sourceRoot, file)));
     const offenders = files
       .filter((file) =>
         directOwnerRead(file.slice(sourceRoot.length + 1), readFileSync(file, 'utf8')),
