@@ -31,9 +31,13 @@
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
   import X from '@lucide/svelte/icons/x';
 
+  import { SvelteMap } from 'svelte/reactivity';
+  import type { Attachment } from 'svelte/attachments';
+
   import { classNames } from '../../utilities/class-names.ts';
   import { planFold, summarizeFoldedNames } from '../../utilities/fold-middle.ts';
   import Spinner from '../spinner/spinner.svelte';
+  import Tooltip from '../tooltip/tooltip.svelte';
   import type { ToolCallRailCall, ToolCallRailProps } from './tool-call-rail.types.ts';
 
   let {
@@ -103,11 +107,25 @@
     plan.some((entry) => entry.kind === 'group' && openedGroups.has(entry.items[0]?.id ?? '')),
   );
 
+  // The row elements, so each row's tooltip can anchor to its row and show on hover and on focus.
+  const rowElements = new SvelteMap<string, HTMLElement>();
+  const trackRow =
+    (id: string): Attachment<HTMLElement> =>
+    (node) => {
+      rowElements.set(id, node);
+      return () => {
+        if (rowElements.get(id) === node) rowElements.delete(id);
+      };
+    };
+
   const resultText = (call: ToolCallRailCall): string => {
     if (call.status === 'running') return call.result ?? words.running;
     if (call.status === 'waiting') return call.result ?? words.waitingResult;
     if (call.status === 'denied') return call.result ?? words.denied;
-    return call.result === undefined || call.result === '' ? '' : `→ ${call.result}`;
+    if (call.result === undefined || call.result === '') return '';
+    // An approved call says what was decided ("Approved by you 10:33 AM · $18.50 refunded"), not
+    // what the call returned, so it carries no arrow.
+    return call.status === 'approved' ? call.result : `→ ${call.result}`;
   };
   const statusWord = (call: ToolCallRailCall): string =>
     call.status === 'failed' ? 'Failed' : call.status === 'approved' ? 'Approved' : '';
@@ -150,10 +168,7 @@
 
 {#snippet cells(call: ToolCallRailCall)}
   {@render marker(call)}
-  <span
-    class="cinder-tool-call-rail__name"
-    title={call.identifier === undefined ? call.name : `${call.name} (${call.identifier})`}
-  >
+  <span class="cinder-tool-call-rail__name">
     {#if statusWord(call) !== ''}<span class="cinder-sr-only">{statusWord(call)}:</span
       >{' '}{/if}{call.name}
   </span>
@@ -182,14 +197,27 @@
         data-cinder-tool-call-row={call.id}
         aria-pressed={selected}
         onclick={() => onSelect(call.id)}
+        {@attach trackRow(call.id)}
       >
         {@render cells(call)}
       </button>
     {:else}
-      <div class="cinder-tool-call-rail__row" data-cinder-tool-call-row={call.id}>
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -- a row that cannot be chosen still takes focus, so a keyboard or touch user can reach the tool's identifier in its tooltip. -->
+      <div
+        class="cinder-tool-call-rail__row"
+        data-cinder-tool-call-row={call.id}
+        tabindex="0"
+        {@attach trackRow(call.id)}
+      >
         {@render cells(call)}
       </div>
     {/if}
+    <!-- The name never wraps, so the tooltip carries the tool's identifier, or its whole name when it has none. -->
+    <Tooltip
+      text={call.identifier ?? call.name}
+      placement="top"
+      triggerRef={rowElements.get(call.id) ?? null}
+    />
     {#if call.status === 'failed' && call.failure !== undefined && call.failure !== ''}
       <div class="cinder-tool-call-rail__failure">
         <span class="cinder-tool-call-rail__failure-text">

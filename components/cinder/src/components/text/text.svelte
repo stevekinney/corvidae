@@ -20,6 +20,7 @@
 
   import { classNames } from '../../utilities/class-names.ts';
 
+  import Tooltip from '../tooltip/tooltip.svelte';
   import type { TextElement, TextProps, TextVariant } from './text.types.ts';
 
   const DEFAULT_TAIL_LENGTH = 4;
@@ -88,18 +89,26 @@
 </script>
 
 {#if middleParts !== undefined}
-  <svelte:element
-    this={element}
-    title={text}
-    {...rest}
-    class={classNames('cinder-text', className)}
-    data-cinder-variant={variant}
-    data-cinder-truncate="middle"
+  <!-- The cut text is focusable, so a keyboard or touch user reaches the whole value in the tooltip. -->
+  <Tooltip
+    text={typeof rest.title === 'string' && rest.title !== '' ? rest.title : (text ?? '')}
+    class="cinder-text__tooltip"
   >
-    <span class="cinder-text__head">{middleParts.head}</span><span class="cinder-text__tail"
-      >{middleParts.tail}</span
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the text is cut, so focusing it opens the tooltip with the whole value. -->
+    <svelte:element
+      this={element}
+      tabindex="0"
+      {...rest}
+      title={undefined}
+      class={classNames('cinder-text', className)}
+      data-cinder-variant={variant}
+      data-cinder-truncate="middle"
     >
-  </svelte:element>
+      <span class="cinder-text__head">{middleParts.head}</span><span class="cinder-text__tail"
+        >{middleParts.tail}</span
+      >
+    </svelte:element>
+  </Tooltip>
 {:else if clampLines !== undefined}
   <svelte:element
     this={element}

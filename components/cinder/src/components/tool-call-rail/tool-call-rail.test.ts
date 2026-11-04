@@ -5,7 +5,7 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
+const { render, fireEvent, cleanup, waitFor } = await import('@testing-library/svelte');
 const { createRawSnippet, tick } = await import('svelte');
 const { default: ToolCallRail } = await import('./tool-call-rail.svelte');
 
@@ -216,9 +216,8 @@ describe('ToolCallRail rows', () => {
       },
     });
     const row = requiredInstance(rows(container)[0], HTMLElement);
-    expect(row.querySelector('.cinder-tool-call-rail__name')?.getAttribute('title')).toBe(
-      'Lookup order (lookup-order)',
-    );
+    // The identifier is a Cinder tooltip anchored to the row, not a native title nobody can reach.
+    expect(row.querySelector('.cinder-tool-call-rail__name')?.hasAttribute('title')).toBe(false);
     expect(text(row.querySelector('.cinder-tool-call-rail__input'))).toBe('4471');
     expect(text(row.querySelector('.cinder-tool-call-rail__result'))).toBe(
       '→ $42.00, delivered Mon',
@@ -250,8 +249,9 @@ describe('ToolCallRail rows', () => {
     expect(text(byId('fail').querySelector('.cinder-tool-call-rail__name'))).toBe('Failed: D');
     expect(text(byId('fail').querySelector('.cinder-tool-call-rail__result'))).toBe('→ Boom');
     expect(byId('ok').querySelector('[data-cinder-status="approved"]')).not.toBeNull();
+    // An approved call says what was decided, so it has no arrow.
     expect(text(byId('ok').querySelector('.cinder-tool-call-rail__result'))).toBe(
-      '→ Approved by you 10:33 AM',
+      'Approved by you 10:33 AM',
     );
   });
 
@@ -280,6 +280,53 @@ describe('ToolCallRail rows', () => {
     expect(onSelect).toHaveBeenCalledWith('mail');
     expect(onRetry).toHaveBeenCalledWith('mail');
     expect(onCopyInput).toHaveBeenCalledWith('mail');
+  });
+
+  test('the failed call stacks its links beneath the danger text', () => {
+    expect(cssText).toMatch(
+      /\.cinder-tool-call-rail__failure \{[^}]*flex-direction: column;[^}]*\}/,
+    );
+  });
+
+  test('a row shows the identifier in a Cinder tooltip on hover and on focus', async () => {
+    const { container } = render(ToolCallRail, {
+      props: {
+        calls: [
+          { id: 'a', name: 'Lookup order', identifier: 'lookup-order', status: 'done' },
+          { id: 'b', name: 'Check inventory', status: 'done' },
+        ],
+        onSelect: () => undefined,
+      },
+    });
+    const [first, second] = rows(container).map((row) => requiredInstance(row, HTMLElement));
+    // The row is described by its own tooltip, so the identifier reaches assistive technology too.
+    const describedBy = (row: HTMLElement): string | null | undefined =>
+      document.getElementById(row.getAttribute('aria-describedby') ?? '')?.textContent;
+
+    await waitFor(() =>
+      expect(describedBy(requiredInstance(first, HTMLElement))).toBe('lookup-order'),
+    );
+    await waitFor(() =>
+      expect(describedBy(requiredInstance(second, HTMLElement))).toBe('Check inventory'),
+    );
+
+    const tooltip = (row: HTMLElement): HTMLElement | null =>
+      document.getElementById(row.getAttribute('aria-describedby') ?? '');
+    expect(tooltip(requiredInstance(first, HTMLElement))?.hasAttribute('data-cinder-visible')).toBe(
+      false,
+    );
+    await fireEvent.focusIn(requiredInstance(first, HTMLElement));
+    await waitFor(() =>
+      expect(
+        tooltip(requiredInstance(first, HTMLElement))?.hasAttribute('data-cinder-visible'),
+      ).toBe(true),
+    );
+  });
+
+  test('a row that cannot be chosen still takes focus so its tooltip is reachable', () => {
+    const { container } = render(ToolCallRail, { props: { calls: turn(3) } });
+
+    expect(rows(container).map((row) => row.getAttribute('tabindex'))).toEqual(['0', '0', '0']);
   });
 
   test('the retry and copy links only show when their handlers are set', () => {

@@ -5,7 +5,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const { render, cleanup } = await import('@testing-library/svelte');
+const { render, cleanup, fireEvent, waitFor } = await import('@testing-library/svelte');
 
 afterEach(() => {
   cleanup();
@@ -221,13 +221,26 @@ describe('Text middle truncation', () => {
     expect(root.getAttribute('data-cinder-truncate')).toBe('middle');
   });
 
-  test('carries the full text as its tooltip unless the page sets one', () => {
+  test('carries the full text as a Cinder tooltip unless the page sets one', async () => {
     const { container } = render(Text, { truncate: 'middle', text: identifier });
-    expect(container.querySelector('.cinder-text')?.getAttribute('title')).toBe(identifier);
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+
+    // Not a native `title`: that is unreachable by keyboard and touch.
+    expect(root.hasAttribute('title')).toBe(false);
+    expect(root.getAttribute('tabindex')).toBe('0');
+    await fireEvent.focus(root);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(identifier),
+    );
 
     cleanup();
     const custom = render(Text, { truncate: 'middle', text: identifier, title: 'Worker id' });
-    expect(custom.container.querySelector('.cinder-text')?.getAttribute('title')).toBe('Worker id');
+    const customRoot = custom.container.querySelector('.cinder-text') as HTMLElement;
+    expect(customRoot.hasAttribute('title')).toBe(false);
+    await fireEvent.focus(customRoot);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Worker id'),
+    );
   });
 
   test('keeps a longer tail when asked and never splits a surrogate pair', () => {

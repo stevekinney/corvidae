@@ -278,7 +278,7 @@
 
   .cinder-tool-call-rail__failure {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     align-items: flex-start;
     gap: var(--cinder-space-0-5) 0.875rem;
     margin: 0 0 var(--cinder-space-1) var(--_cinder-tool-call-rail-indent);
@@ -301,10 +301,12 @@
     margin-block-start: 0.125rem;
   }
 
+  /* The links sit on their own line beneath the danger text, lined up with the text, not the glyph. */
   .cinder-tool-call-rail__links {
     display: inline-flex;
     flex-wrap: wrap;
     gap: 0 0.75rem;
+    padding-inline-start: calc(0.875rem + var(--cinder-space-1-5));
   }
 
   .cinder-tool-call-rail__link {

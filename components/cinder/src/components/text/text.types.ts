@@ -43,7 +43,7 @@ type TextContentProps =
       /**
        * Cuts the text in the middle when it is too long for one line, so the end stays visible
        * ("payments-worker-eu-w…3a68"), for an identifier whose end tells one from another. Needs
-       * `text`. The full text is the tooltip unless `title` is set.
+       * `text`. The full text is a tooltip, reachable by keyboard and touch because the cut text takes focus, unless `title` is set.
        */
       truncate: 'middle';
       /** The plain text to cut in the middle. */
