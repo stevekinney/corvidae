@@ -8,8 +8,8 @@
 import type { Page } from '@playwright/test';
 
 import { conversation, deleteChats, newThreadId, runToEnd } from './chat-support.ts';
-import { E2E_BARRIER_URL } from './e2e-constants.ts';
-import { expect, test } from './fixtures.ts';
+import { E2E_BARRIER_URL, E2E_BUREAU_URL } from './e2e-constants.ts';
+import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const TOOL_RUNNER = 'demo:tool-runner';
 const CHAT_PROOF_PARENT = 'e2e:chat-proof-parent';
@@ -177,12 +177,13 @@ test.describe('the transcript', () => {
 
 test('shows a durable specialist child while held, then restores its completed card after reload', async ({
   page,
+  pageErrors,
   request,
 }) => {
   let parentId: string | undefined;
   let childRunId: string | undefined;
   try {
-    await page.goto(`/chats/new?agent=${encodeURIComponent(CHAT_PROOF_PARENT)}`);
+    await page.goto(`${E2E_BUREAU_URL}/chats/new?agent=${encodeURIComponent(CHAT_PROOF_PARENT)}`);
     await page.getByRole('textbox').fill('Review the fixture workflow');
     await page.getByRole('textbox').press('Enter');
     await expect(page).toHaveURL(/\/chats\/(?!new(?:$|\?))[^/?]+$/);
@@ -210,22 +211,33 @@ test('shows a durable specialist child while held, then restores its completed c
       data: { childRunId },
     });
     expect(release.ok()).toBe(true);
-    await expect(conversation(page).getByText('Completed', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('Finished', { exact: true })).toHaveCount(1);
 
+    pageErrors.expect({
+      pattern: loggedFailedResponse(
+        404,
+        new RegExp(`/bureau/ag-ui/threads/${childRunId}/messages`),
+      ),
+      count: 1,
+      reason: 'child runs expose their durable details but have no standalone chat transcript',
+    });
     await childLink.click();
     await expect(page).toHaveURL(new RegExp(`/runs/${childRunId}$`));
+    const details = page.getByRole('complementary', { name: 'Details' });
+    await expect(details.locator(`code[title="${childRunId}"]`)).toHaveCount(1);
+    await expect(details.getByRole('link', { name: 'Review the fixture workflow' })).toBeVisible();
 
     await page.goto(parentUrl);
     await page.reload();
     const restoredLink = conversation(page).getByRole('link', { name: 'View run' });
     await expect(restoredLink).toHaveCount(1);
     await expect(conversation(page).getByText(CHAT_PROOF_CHILD, { exact: true })).toHaveCount(1);
-    await expect(conversation(page).getByText('Completed', { exact: true })).toHaveCount(1);
+    await expect(conversation(page).getByText('Finished', { exact: true })).toHaveCount(1);
     await expect(restoredLink).toHaveAttribute('href', `/runs/${childRunId}`);
   } finally {
     if (childRunId !== undefined) {
       await request.post(`${E2E_BARRIER_URL}/chat-proof/release`, { data: { childRunId } });
     }
-    if (parentId !== undefined) await deleteChats([parentId]);
+    if (parentId !== undefined) await deleteChats([parentId], E2E_BUREAU_URL);
   }
 });

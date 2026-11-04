@@ -30,8 +30,8 @@ import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
-import { startHost, type Host } from '../../src/host/host.ts';
 import { enableDemoPlugin } from '../../src/host/demo-plugin-home.ts';
+import { startHost, type Host } from '../../src/host/host.ts';
 import { fakeProvider, writeProviderHome } from '../../src/host/stub-provider.ts';
 import { createAccessProviderResolver } from './access-provider.ts';
 import { createBarrier, createBarrierAgents } from './barrier-agent.ts';
@@ -201,8 +201,6 @@ const host = await startHost({
       ...createTextEchoAgents(),
       ...createQuestionAgents(),
       ...createModelAgents(),
-      [CHAT_PROOF_PARENT]: chatProofParent,
-      [CHAT_PROOF_CHILD]: chatProofReviewer,
     },
   },
   environment: { INTERBOROUGH_HOME: home },
@@ -339,11 +337,18 @@ await writeFile(
 );
 await enableDemoPlugin(bureauHome);
 const bureauHost = await startHost({
+  extraAgents: {
+    agents: {
+      [CHAT_PROOF_PARENT]: chatProofParent,
+      [CHAT_PROOF_CHILD]: chatProofReviewer,
+    },
+  },
   environment: { INTERBOROUGH_HOME: bureauHome },
   port: E2E_BUREAU_PORT,
   buildDirectory,
 });
 await bureauHost.bureau.plugins.ready();
+chatProofBureau = bureauHost.bureau;
 
 // The third host, which only the journey opens (`90-journey.spec.ts`). Its console is the Bureau's
 // own engine, because the journey follows an agent-authored workflow's schedule into the Workflows
