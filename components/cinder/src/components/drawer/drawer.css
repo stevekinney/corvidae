@@ -126,6 +126,9 @@
   /* Width tokens size the side placements. The bottom-placement block below
    is declared LATER at equal specificity, so its full-viewport width wins
    over any size token without per-rule exclusions. */
+  .cinder-drawer__panel[data-cinder-size='xs'] {
+    width: min(17.5rem, 100vw);
+  }
   .cinder-drawer__panel[data-cinder-size='sm'] {
     width: min(20rem, 100vw);
   }

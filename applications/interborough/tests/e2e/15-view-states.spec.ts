@@ -49,6 +49,7 @@ test.afterAll(async ({ playwright }) => {
 });
 
 const PATHS: Readonly<Record<ViewName, string>> = {
+  home: '/',
   chat: '/chats',
   agents: '/agents',
   'agent-editor': '/agents/new',
@@ -96,8 +97,11 @@ function bureauProbe(method: string, empty: unknown): ProbeRoute {
   };
 }
 
-/** Every view that has a probe: Health reads its bands apart and has none. */
-type ProbedView = Exclude<ViewName, 'health'>;
+/**
+ * Every view that has a probe: Health reads its bands apart and has none, and Home reads what other
+ * views read, each card on its own, so it has none either.
+ */
+type ProbedView = Exclude<ViewName, 'health' | 'home'>;
 
 const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   // The view asks for one chat to learn whether the caller has any. The shell's notification bell
@@ -182,7 +186,7 @@ async function holdOnlyScopes(page: Page, scopes: readonly string[]): Promise<vo
 
 /** The probe a view asks, which Health does not have. */
 function probeOf(view: ViewName): ProbeRoute {
-  const probe = view === 'health' ? undefined : PROBES[view];
+  const probe = view === 'health' || view === 'home' ? undefined : PROBES[view];
   if (probe === undefined) throw new Error(`${view} has no probe to answer`);
   return probe;
 }
@@ -256,6 +260,8 @@ function statesOf(view: ViewName): Outcome[] {
   // Health has no probe, so it is never loading, empty or failing as a view; it is ready, or locked
   // when the principal lacks both scopes. Its bands' own states are covered below.
   if (view === 'health') return ['forbidden', 'ready'];
+  // Home has no probe either: each of its cards reads on its own, so the view is only ever ready.
+  if (view === 'home') return ['ready'];
   // The reviews probe swallows a Bureau failure such as a 5xx, and the page shows it in a banner
   // beside the engine's reviews (`31-reviews.spec.ts`), so the view is not in the error state for
   // it. A 401 does reach the error state (`view-frame.test.ts`, "the Reviews view").
@@ -483,7 +489,7 @@ for (const width of WIDTHS) {
     );
     // Beside the page on a desktop, behind the menu button on a phone.
     if (width < 640) {
-      await page.getByRole('button', { name: 'Toggle navigation menu' }).click();
+      await page.getByRole('button', { name: 'Open navigation' }).click();
     }
     const navigation = page.getByRole('navigation', { name: 'Views' });
     await expect(navigation).toBeVisible();

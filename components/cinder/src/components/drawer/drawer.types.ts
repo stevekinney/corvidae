@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { HTMLDialogAttributes } from 'svelte/elements';
 export type DrawerPlacement = 'left' | 'right' | 'bottom';
-export type DrawerSize = 'sm' | 'md' | 'lg' | 'xl';
+export type DrawerSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 export type DrawerProps = {
   /** Whether the drawer is open. Bindable via `bind:open`. */
   open?: boolean;
@@ -14,9 +14,17 @@ export type DrawerProps = {
    * Drawer width token for `left`/`right` placements.
    * Ignored for `placement="bottom"`, which always spans the full viewport
    * width and caps its height at 90dvh.
+   * `xs` is 280px, the width of a navigation drawer; `sm` is 320px, `md` 448px, `lg` 576px and `xl`
+   * 768px.
    * @default 'md'
    */
   size?: DrawerSize;
+  /**
+   * Accessible name of the close button, for a drawer that is not a generic one, such as "Close
+   * navigation" on a sidebar's drawer.
+   * @default 'Close drawer'
+   */
+  closeLabel?: string;
   /**
    * Whether the drawer is modal. Modal drawers use the native dialog top layer,
    * backdrop, body scroll lock, and focus trap. Non-modal drawers render as an

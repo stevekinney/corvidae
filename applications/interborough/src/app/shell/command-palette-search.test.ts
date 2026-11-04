@@ -367,7 +367,7 @@ describe('what is waiting and the actions', () => {
     const run = () => {};
     const actions = Array.from({ length: 12 }, (_, index) => ({
       label: index === 3 ? 'Go to Reviews' : `Do thing ${String(index)}`,
-      keys: ['G', 'V'],
+      keys: ['G', 'R'],
       run,
     }));
     expect(matchActions(actions, 'reviews').map((action) => action.label)).toEqual([

@@ -19,9 +19,8 @@
     gap: var(--cinder-space-2);
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
-    /* Single-line stopgap: clip a long trail with an ellipsis instead of
-     wrapping to a second row. True earliest-first priority needs the deferred
-     `maxVisible` prop. */
+    /* A long trail never wraps to a second row: earlier ancestors fold into the "…" menu
+     (`maxVisible`), and what is left clips with an ellipsis. */
     overflow: hidden;
     white-space: nowrap;
   }
@@ -238,5 +237,61 @@
     .cinder-breadcrumbs__item:not(:first-child):not(:last-child) .cinder-breadcrumbs__link {
       max-inline-size: 100%;
     }
+  }
+
+  /* The "…" button that stands for the ancestors folded out of a narrow trail. It is the width
+   * of its glyph, so it never shrinks to a fragment. */
+  .cinder-breadcrumbs__item--overflow {
+    flex-shrink: 0;
+  }
+
+  .cinder-breadcrumbs__overflow {
+    appearance: none;
+    min-inline-size: 1.5rem;
+    padding-block: 0;
+    padding-inline: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    font: inherit;
+    line-height: inherit;
+    background: transparent;
+    border: none;
+    border-radius: var(--cinder-radius-sm);
+    cursor: pointer;
+  }
+
+  .cinder-breadcrumbs__overflow:hover {
+    color: var(--cinder-text-default);
+    background-color: var(--cinder-surface-hover);
+  }
+
+  .cinder-breadcrumbs__overflow:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-breadcrumbs__overflow-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-breadcrumbs__overflow-link {
+    display: block;
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    color: var(--cinder-text-default);
+    text-decoration: none;
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-breadcrumbs__overflow-link:hover {
+    background-color: var(--cinder-surface-hover);
+  }
+
+  .cinder-breadcrumbs__overflow-link:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 }

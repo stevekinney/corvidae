@@ -345,7 +345,7 @@ describe('every kind of result, in order', () => {
       view.getByRole('option', { name: 'tool-runner needs your approval in Refund order 1234' }),
     ).not.toBeNull();
     const search = view.getByRole('option', { name: 'Go to Reviews' });
-    expect(search.getAttribute('aria-keyshortcuts')).toBe('G V');
+    expect(search.getAttribute('aria-keyshortcuts')).toBe('G R');
   });
 
   test('a waiting item opens where it is waiting', async () => {

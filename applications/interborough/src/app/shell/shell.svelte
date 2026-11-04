@@ -14,11 +14,10 @@
    * for the palette, `g` then a letter for each destination and `?` for the
    * map (`./destinations.ts`), and reads each key press against it.
    */
-  import { Banner, SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
+  import { Banner } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
-  import { MediaQuery } from 'svelte/reactivity';
 
   import { provideClient } from '../../lib/client.ts';
   import { BureauEventSource } from '../../lib/live-source/bureau-event-source.svelte.ts';
@@ -46,6 +45,7 @@
   import PluginProblemsBanner from './plugin-problems-banner.svelte';
   import RouteOutlet from './route-outlet.svelte';
   import ShortcutMap from './shortcut-map.svelte';
+  import { provideShellNavigation, ShellNavigation } from './shell-navigation.svelte.ts';
   import Sidebar from './sidebar.svelte';
   import Topbar from './topbar.svelte';
 
@@ -222,25 +222,9 @@
   // The Bureau's feed, applied for every page: a review requested or decided, a run settling.
   $effect(() => subscribeBureauInvalidation(bureauEvents, queryClient));
 
-  /**
-   * On a desktop viewport the sidebar's `collapsed` is the person's icon-rail preference, which
-   * the shell keeps in storage. Below `SIDEBAR_MOBILE_MEDIA_QUERY` Cinder's `Sidebar` becomes a
-   * drawer and `collapsed` means "drawer closed" (its own `open = !collapsed`), which starts
-   * closed on every page load and is never stored: a phone must not open on a drawer over the
-   * whole screen, and closing the drawer must not fold the desktop sidebar.
-   */
-  const isMobileViewport = new MediaQuery(SIDEBAR_MOBILE_MEDIA_QUERY, false);
-
-  let drawerOpen = $state(false);
-
-  function sidebarCollapsed(): boolean {
-    return isMobileViewport.current ? !drawerOpen : layout.sidebarCollapsed;
-  }
-
-  function setSidebarCollapsed(collapsed: boolean): void {
-    if (isMobileViewport.current) drawerOpen = !collapsed;
-    else layout.setSidebarCollapsed(collapsed);
-  }
+  // How the navigation is shown at this width and pointer: the column, the rail, or the drawer
+  // (`./shell-navigation.svelte.ts`). The sidebar and the top bar's menu button share it.
+  provideShellNavigation(new ShellNavigation(layout));
 
   // While the server does not answer, every control that changes something is held back: dimmed by
   // the shell's `data-connection` attribute, refused on activation, and marked `aria-disabled`.
@@ -253,13 +237,9 @@
 </script>
 
 <div class="weft-shell" data-connection={connection.unreachable ? 'unreachable' : 'reachable'}>
-  <Sidebar
-    {client}
-    engineStatus={engineStatus.status}
-    bind:collapsed={sidebarCollapsed, setSidebarCollapsed}
-  />
+  <Sidebar {client} />
   <div class="weft-shell-main">
-    <Topbar {notifications} {theme} {layout} bind:paletteOpen bind:drawerOpen />
+    <Topbar {notifications} {theme} {layout} bind:paletteOpen />
     {#if connection.unreachable}
       <Banner
         preset="unreachable"

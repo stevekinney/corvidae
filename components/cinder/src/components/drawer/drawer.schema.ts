@@ -14,10 +14,16 @@ const schema = {
       default: 'right',
     },
     size: {
-      enum: ['sm', 'md', 'lg', 'xl'],
+      enum: ['xs', 'sm', 'md', 'lg', 'xl'],
       description:
-        'Drawer width token for `left`/`right` placements.\nIgnored for `placement="bottom"`, which always spans the full viewport\nwidth and caps its height at 90dvh.',
+        'Drawer width token for `left`/`right` placements.\nIgnored for `placement="bottom"`, which always spans the full viewport\nwidth and caps its height at 90dvh.\n`xs` is 280px, the width of a navigation drawer; `sm` is 320px, `md` 448px, `lg` 576px and `xl`\n768px.',
       default: 'md',
+    },
+    closeLabel: {
+      type: 'string',
+      description:
+        'Accessible name of the close button, for a drawer that is not a generic one, such as "Close\nnavigation" on a sidebar\'s drawer.',
+      default: 'Close drawer',
     },
     modal: {
       type: 'boolean',

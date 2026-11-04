@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { createRawSnippet } from 'svelte';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import {
@@ -125,6 +126,23 @@ describe('Drawer', () => {
     expect(closeButton?.getAttribute('aria-label')).toBe('Close drawer');
   });
 
+  test('closeLabel names the close button, and the xs panel is 280px', () => {
+    const { container } = render(Drawer, {
+      props: {
+        open: true,
+        title: 'Test',
+        size: 'xs',
+        closeLabel: 'Close navigation',
+        children: emptySnippet,
+      },
+    });
+    expect(container.querySelector('.cinder-drawer__close')?.getAttribute('aria-label')).toBe(
+      'Close navigation',
+    );
+    const css = readFileSync(new URL('./drawer.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/data-cinder-size='xs'\]\s*\{\s*width:\s*min\(17\.5rem,\s*100vw\)/);
+  });
+
   // ---- Initial focus on open: host-managed body focus (the Modal policy) ----
   // The trap runs with `manageInitialFocus: false`; the drawer's own open
   // effect focuses the body container, so opening never lands focus on the
@@ -209,8 +227,8 @@ describe('Drawer', () => {
       'md',
     );
   });
-  test('data-cinder-size reflects all four size values', () => {
-    for (const size of ['sm', 'md', 'lg', 'xl'] as const) {
+  test('data-cinder-size reflects all five size values', () => {
+    for (const size of ['xs', 'sm', 'md', 'lg', 'xl'] as const) {
       const { container } = render(Drawer, {
         props: { open: true, title: 'Test', size, children: emptySnippet },
       });

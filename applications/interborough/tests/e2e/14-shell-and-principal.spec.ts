@@ -1,7 +1,7 @@
 /**
  * The shell as a person meets it: one loopback origin, no sign-in, and one local caller. The top
  * bar holds no principal and no scope count (Settings › API reference › Your scopes names that caller from
- * `weft.system.principal`), the sidebar holds one ordered list, Chat is the home screen, the palette
+ * `weft.system.principal`), the sidebar groups Home, Work, Build and System, Home is the page at `/`, the palette
  * searches chats and agents first, and Bureau answers beside the engine on the same origin. The
  * notification bell is about the person: what is waiting on them, and what finished.
  */
@@ -23,11 +23,12 @@ const WIDTHS = [
 ] as const;
 
 const DESTINATIONS = [
+  'Home',
   'Chat',
   'Reviews',
+  'Runs',
   'Agents',
   'Workflows',
-  'Runs',
   'Schedules',
   'Goals',
   'Capabilities',
@@ -280,7 +281,7 @@ test('New chat with echo, from the palette, opens a new chat with that agent', a
   await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Aecho$/);
 });
 
-test('g then a letter opens a view, and the sidebar names the keys', async ({ page }) => {
+test('g then a letter opens a view', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
   await page.keyboard.press('g');
@@ -289,19 +290,25 @@ test('g then a letter opens a view, and the sidebar names the keys', async ({ pa
   await page.keyboard.press('g');
   await page.keyboard.press('c');
   await expect(page).toHaveURL(/\/chats$/);
-  await expect(page.getByRole('link', { name: /^Agents/ })).toHaveAttribute(
-    'title',
-    'Agents (g a)',
-  );
+  await page.keyboard.press('g');
+  await page.keyboard.press('h');
+  await expect(page).toHaveURL(/\/$/);
 });
 
-test('the engine status is a dot on Health, with its words in the link’s name', async ({
+test('Health carries a dot, and the words of what it says are in the link’s name', async ({
   page,
 }) => {
   await page.goto('/');
-  const engine = page.getByRole('link', { name: /^Health\s*Server (healthy|connecting)/ });
-  await expect(engine).toHaveCount(1);
-  await expect(engine.locator('.cinder-status-dot')).toHaveCount(1);
+  const health = page
+    .getByRole('navigation', { name: 'Views' })
+    .getByRole('link', { name: /^Health, (\d+ need attention|nothing needs attention)$/ });
+  await expect(health).toHaveCount(1);
+  await expect(health.locator('.cinder-status-dot')).toHaveCount(1);
+  // The dot is decoration over the name.
+  await expect(health.locator('.cinder-side-navigation-item__dot')).toHaveAttribute(
+    'aria-hidden',
+    'true',
+  );
 });
 
 test('an uncredentialed JSON-RPC call is served as that same caller', async ({ request }) => {
@@ -322,34 +329,51 @@ test('Bureau answers beside the engine on the same origin', async ({ request }) 
   expect(reviews.ok()).toBe(true);
 });
 
-test('the sidebar holds one ordered list, with Settings pinned to the bottom', async ({ page }) => {
+test('the sidebar groups Home, Work, Build and System, with System pinned to the bottom', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: 'Views' });
-  await expect(navigation.locator('.cinder-side-navigation-group')).toHaveCount(0);
   const links = navigation.getByRole('link');
   await expect(links).toHaveCount(DESTINATIONS.length);
   for (const [index, label] of DESTINATIONS.entries()) {
     await expect(links.nth(index)).toHaveAccessibleName(new RegExp(`^${label}`));
   }
-  // Settings sits below the rest, with the space between them.
-  const capabilities = await links.nth(7).boundingBox();
-  const hooks = await links.nth(8).boundingBox();
-  const health = await links.nth(9).boundingBox();
-  const settings = await links.nth(10).boundingBox();
-  expect((settings?.y ?? 0) - (health?.y ?? 0)).toBeGreaterThan(
+  await expect(navigation.locator('.cinder-side-navigation-group__heading')).toHaveText([
+    'Work',
+    'Build',
+    'System',
+  ]);
+  // System sits below the rest, with the space between them.
+  const capabilities = await links.nth(8).boundingBox();
+  const hooks = await links.nth(9).boundingBox();
+  const health = await links.nth(10).boundingBox();
+  const settings = await links.nth(11).boundingBox();
+  expect((health?.y ?? 0) - (hooks?.y ?? 0)).toBeGreaterThan(
     ((hooks?.y ?? 0) - (capabilities?.y ?? 0)) * 2,
   );
+  expect((settings?.y ?? 0) - (health?.y ?? 0)).toBeLessThan(40);
 });
 
-test('Chat is the home screen, and a session lives under /chats/:chat', async ({ page }) => {
-  // The sidebar's item, not the top bar's breadcrumb, which links to the chats from a session.
-  const chat = page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Chat/ });
+test('Home is the page at /, and a chat session lives under /chats/:chat', async ({ page }) => {
+  const navigation = page.getByRole('navigation', { name: 'Views' });
   await page.goto('/');
-  await expect(page.locator('[data-view="chat"]')).toBeVisible();
-  await expect(chat).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('[data-view="home"]')).toBeVisible();
+  await expect(navigation.getByRole('link', { name: /^Home/ })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(navigation.getByRole('link', { name: /^Chat/ })).not.toHaveAttribute(
+    'aria-current',
+    'page',
+  );
   await page.goto('/chats/session-1');
   await expect(page.locator('[data-view="chat"]')).toBeVisible();
-  await expect(chat).toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('link', { name: /^Chat/ })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 });
 
 test('runs live at /runs and /runs/:run, and /workflows is the catalog of definitions', async ({

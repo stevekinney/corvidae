@@ -193,7 +193,7 @@ test.describe('the audit log', () => {
   });
 });
 
-test('G T opens Storage and G U opens the audit log', async ({ page }) => {
+test('G T opens Storage and G D opens the audit log', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/agents');
   await expect(page.getByRole('navigation', { name: 'Views' })).toBeVisible();
@@ -204,7 +204,7 @@ test('G T opens Storage and G U opens the audit log', async ({ page }) => {
   await expect(page.locator('[data-view="storage"]')).toHaveAttribute('data-state', 'ready');
 
   await page.keyboard.press('g');
-  await page.keyboard.press('u');
+  await page.keyboard.press('d');
   await expect(page).toHaveURL(/\/health\/audit$/);
   await expect(page.locator('[data-view="audit"]')).toHaveAttribute('data-state', 'ready');
 });

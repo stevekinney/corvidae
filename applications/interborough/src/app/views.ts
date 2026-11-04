@@ -7,6 +7,7 @@ import type { AuthorizationScope } from '../lib/scopes.svelte.ts';
  * can render one view, such as a run's list and one run's detail.
  */
 export const VIEW_NAMES = [
+  'home',
   'chat',
   'agents',
   'agent-editor',
@@ -94,6 +95,9 @@ export type ViewDefinition = {
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
+  // The page at `/`, first in the sidebar. It reads what other views read, each card on its own, so
+  // the view itself has nothing to probe and is never empty.
+  home: { density: 'comfortable', scopes: [], canBeEmpty: false },
   chat: { density: 'comfortable', scopes: [], canBeEmpty: true },
   agents: { density: 'comfortable', scopes: [], canBeEmpty: true },
   // `/agents/new` and `/agents/:agent/edit`. Never empty: it is where an agent is made.

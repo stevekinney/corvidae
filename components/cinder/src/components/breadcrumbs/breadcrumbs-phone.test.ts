@@ -224,3 +224,63 @@ describe('Breadcrumbs current page popover', () => {
     expect(container.querySelector('.cinder-breadcrumbs__trigger')).toBeNull();
   });
 });
+
+describe('Breadcrumbs maxVisible (sweep S18)', () => {
+  const deep = [
+    { label: 'Home', href: '/' },
+    { label: 'Agents', href: '/agents' },
+    { label: 'Tool runner', href: '/agents/tool-runner' },
+    { label: 'Memory' },
+  ];
+
+  test('shows every ancestor when the container is not measured as narrow', () => {
+    const { container } = render(Breadcrumbs, { items: deep });
+
+    expect(container.querySelector('.cinder-breadcrumbs__overflow')).toBeNull();
+    expect(container.querySelectorAll('.cinder-breadcrumbs__link')).toHaveLength(3);
+  });
+
+  test('folds the earliest ancestors into a "…" button, keeping the nearest ones', () => {
+    const { container } = render(Breadcrumbs, { items: deep, maxVisible: 1 });
+
+    const links = [...container.querySelectorAll('.cinder-breadcrumbs__link')];
+    expect(links.map((link) => link.textContent)).toEqual(['Tool runner']);
+    const button = container.querySelector('.cinder-breadcrumbs__overflow');
+    expect(button?.getAttribute('aria-label')).toBe('Show earlier pages');
+    expect(container.querySelector('[aria-current="page"]')?.textContent).toBe('Memory');
+  });
+
+  test('the "…" button lists the hidden ancestors as links and reports a click', async () => {
+    const opened: string[] = [];
+    const { container } = render(Breadcrumbs, {
+      items: deep,
+      maxVisible: 1,
+      onOverflowNavigate: (item: { label: string }, event: MouseEvent) => {
+        event.preventDefault();
+        opened.push(item.label);
+      },
+    });
+
+    await fireEvent.click(container.querySelector('.cinder-breadcrumbs__overflow') as Element);
+    flushSync();
+    const hidden = [...document.querySelectorAll('.cinder-breadcrumbs__overflow-link')];
+    expect(hidden.map((link) => link.textContent)).toEqual(['Home', 'Agents']);
+    await fireEvent.click(hidden[1] as Element);
+    expect(opened).toEqual(['Agents']);
+  });
+
+  test('maxVisible of zero folds every ancestor, and a trail that fits folds none', () => {
+    const none = render(Breadcrumbs, { items: deep, maxVisible: 0 });
+    expect(none.container.querySelectorAll('.cinder-breadcrumbs__link')).toHaveLength(0);
+    expect(none.container.querySelector('.cinder-breadcrumbs__overflow')).not.toBeNull();
+    none.unmount();
+
+    const fits = render(Breadcrumbs, { items: deep, maxVisible: 5 });
+    expect(fits.container.querySelector('.cinder-breadcrumbs__overflow')).toBeNull();
+  });
+
+  test('a maxVisible that is not a whole number is refused', () => {
+    expect(() => render(Breadcrumbs, { items: deep, maxVisible: -1 })).toThrow('maxVisible');
+    expect(() => render(Breadcrumbs, { items: deep, maxVisible: 1.5 })).toThrow('maxVisible');
+  });
+});

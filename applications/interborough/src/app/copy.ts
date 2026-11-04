@@ -3640,6 +3640,8 @@ export const REVIEWS_COPY = {
 /** The words of the ⌘K palette. */
 export const PALETTE_COPY = {
   label: 'Command palette',
+  /** The top bar's search field, which opens the palette: its words are the design's, no hints. */
+  trigger: 'Search everything',
   placeholder: 'Search everything, > for actions, @ for agents',
   untitledChat: CHAT_COPY.untitled,
   emptyTitle: 'Search the console',
@@ -3724,7 +3726,21 @@ export const NAVIGATION_COPY = {
   /** The button that folds the sidebar to its icon rail, and opens it again. */
   collapseSidebar: 'Collapse sidebar',
   expandSidebar: 'Expand sidebar',
-  /** What the engine status dot says, by the state of the live feed. */
+  /** The product's name, as text at the top of the sidebar and of its drawer. */
+  productName: 'Interborough',
+  /** The names of the sidebar's sections; Home sits above them with none. */
+  groups: { work: 'Work', build: 'Build', system: 'System' },
+  /** The top bar's button that opens the navigation drawer. */
+  openNavigation: 'Open navigation',
+  /** The drawer's own button that closes it again. */
+  closeNavigation: 'Close navigation',
+  /** What follows "Reviews" in the row's name and tooltip: "Reviews, 2 need you". */
+  reviewsCountLabel: 'need you',
+  /** What follows "Health" in the row's name and tooltip: "Health, 3 need attention". */
+  healthCountLabel: 'need attention',
+  /** What follows "Health" in the row's name when nothing needs attention. */
+  healthEmptyLabel: 'nothing needs attention',
+  /** What the engine status says in the notification bell, by the state of the live feed. */
   engineStatus: {
     connecting: 'Server connecting',
     live: 'Server healthy',
@@ -4127,6 +4143,15 @@ export const CAPABILITIES_COPY = {
  * frame writes it from the scopes the view requires.
  */
 export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
+  home: {
+    label: 'Home',
+    loading: { title: 'Loading Home', description: 'Reading what needs you and what is running.' },
+    error: {
+      title: 'Home is unavailable',
+      description: 'The server did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'Home is locked' },
+  },
   chat: {
     label: 'Chat',
     loading: {

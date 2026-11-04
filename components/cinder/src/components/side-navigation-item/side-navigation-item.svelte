@@ -38,6 +38,7 @@
       label: _label,
       count: _count,
       countLabel: _countLabel,
+      emptyLabel: _emptyLabel,
       countTone: _countTone,
       dot: _dot,
       collapsed: _collapsed,
@@ -67,12 +68,19 @@
         ? String(countValue)
         : `${countValue} ${countWords}`,
   );
+  const emptyWords = $derived(props.emptyLabel?.trim() ? props.emptyLabel.trim() : undefined);
   // The count names the row ("Health, 3 need attention") so colour is never the only signal: the
-  // dot and the pill are decoration over this name. A consumer's own aria-label still wins.
+  // dot and the pill are decoration over this name. With nothing to count, the row names the state
+  // instead when it has words for it ("Health, nothing needs attention"), so a green dot is never
+  // the only sign that all is well. A consumer's own aria-label still wins.
   const composedName = $derived(
-    props.label !== undefined && countPhrase !== undefined
-      ? `${props.label}, ${countPhrase}`
-      : undefined,
+    props.label === undefined
+      ? undefined
+      : countPhrase !== undefined
+        ? `${props.label}, ${countPhrase}`
+        : emptyWords !== undefined
+          ? `${props.label}, ${emptyWords}`
+          : undefined,
   );
   const accessibleName = $derived(props['aria-label'] ?? composedName);
   // A collapsed row shows its label (and count) in a tooltip, since the label is not drawn; an
@@ -81,9 +89,9 @@
     props.label === undefined
       ? undefined
       : collapsed
-        ? countPhrase === undefined
+        ? (countPhrase ?? emptyWords) === undefined
           ? props.label
-          : `${props.label} · ${countPhrase}`
+          : `${props.label} · ${countPhrase ?? emptyWords}`
         : composedName,
   );
   const hasIcon = $derived(props.icon !== undefined);

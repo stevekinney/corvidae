@@ -176,7 +176,7 @@ test.describe('⌘K over every kind of record', () => {
     await search(page).fill('>go to rev');
     await expect(palette(page).getByRole('option', { name: 'Go to Reviews' })).toHaveAttribute(
       'aria-keyshortcuts',
-      'G V',
+      'G R',
     );
 
     await search(page).fill('@');

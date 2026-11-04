@@ -1,110 +1,78 @@
 <script lang="ts">
   /**
-   * Left sidebar (design rows 01a to 01d, 24a): one ordered list of destinations
-   * (`./destinations.ts`) on one left edge, with Settings pinned to the bottom. Health is the
-   * engine's overview, and its dot is the engine's status, with the words in its label. Each
-   * item's title names its keyboard shortcut. On a desktop viewport the header button folds the
-   * sidebar to its icon rail, and the shell remembers it (`../layout-preferences.svelte.ts`).
-   * Badge counts (reviews pending, workers unhealthy) are TanStack queries — a fetch failure (e.g.
-   * a 403 from a scope this principal lacks) just hides the count rather than showing a
-   * stale/wrong number or breaking the nav.
+   * Left sidebar (design rows 03a to 03m, 04a to 04c, 05r, 07h, 07k): the product's name as text,
+   * Home on its own, then Work, Build and System, which sits at the bottom of the column. Each
+   * destination is one Cinder `SideNavigationItem`, so its rows, its active state, its count and
+   * its dot are Cinder's (`(destinations.ts)` lists them, in order).
    *
-   * "Unhealthy" for the workers badge has no dedicated wire field —
-   * `WorkerSummary.health` is `'active' | 'draining' | 'drained'` (an
-   * operator-intent state, not a liveness one). This counts `'drained'`
-   * (fully disconnected) plus workers whose heartbeat is stale beyond
-   * `STALE_HEARTBEAT_MS`, a documented v1 heuristic, and shows it on Health, the way in to the
-   * workers page; the Workers page owns the authoritative staleness presentation.
+   * Reviews carries Needs you: the reviews waiting on the caller, which disappears at zero and never
+   * counts system problems. Health carries a dot that follows `bureau.health.attention`: amber while
+   * anything needs attention, green when nothing does, and left out while the count is unknown (a
+   * caller without `bureau.diagnostics:read` is refused it). The dot is hidden from assistive
+   * technology; the row's name says it ("Health, 3 need attention").
+   *
+   * The sidebar takes one of three forms (`./shell-navigation.svelte.ts`): the 190px column, the
+   * 56px rail with an overlay that opens the column over the page, and the 280px drawer.
    */
   import {
-    Badge,
     Button,
     Sidebar,
-    SIDEBAR_MOBILE_MEDIA_QUERY,
     SideNavigation,
+    SideNavigationGroup,
     SideNavigationItem,
-    StatusDot,
-    type StatusDotStatus,
   } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { PanelLeftClose, PanelLeftOpen } from '@lucide/svelte';
-  import { MediaQuery } from 'svelte/reactivity';
 
-  import { createQuery } from '@tanstack/svelte-query';
-
-  import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { usePendingReviewsCount } from '../../routes/reviews/pending-reviews-count.svelte.ts';
-  import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import { NAVIGATION_COPY, VIEW_COPY } from '../copy.ts';
-  import { DESTINATIONS, destinationKeys, type Destination } from './destinations.ts';
+  import { getLayoutPreferences, LayoutPreferences } from '../layout-preferences.svelte.ts';
+  import { useAttentionCount } from './attention-count.svelte.ts';
+  import {
+    DESTINATIONS,
+    DESTINATION_GROUPS,
+    type Destination,
+    type DestinationGroup,
+  } from './destinations.ts';
+  import {
+    getShellNavigation,
+    ShellNavigation,
+    TOUCH_DRAWER_QUERY,
+  } from './shell-navigation.svelte.ts';
 
   interface SidebarNavProps {
     client: HttpClient;
-    engineStatus: LiveSourceStatus;
-    collapsed?: boolean;
   }
 
-  let { client, engineStatus, collapsed = $bindable(false) }: SidebarNavProps = $props();
+  let { client }: SidebarNavProps = $props();
 
-  /**
-   * On a mobile viewport, `collapsed` doubles as "drawer closed" (Cinder
-   * `Sidebar`'s own `open = !collapsed`) — a nav click there should close
-   * the drawer after navigating, same as any other mobile drawer nav
-   * pattern. On desktop, `collapsed` is the user's icon-rail preference and
-   * must NOT be touched by a nav click.
-   */
-  const isMobileViewport = new MediaQuery(SIDEBAR_MOBILE_MEDIA_QUERY, false);
-
-  /**
-   * App-owned collapsed/mobile layout hooks for `foundation.css`'s width
-   * rules. Derived from state this component already owns (`collapsed`,
-   * bound straight into `Sidebar`, and `isMobileViewport`, computed from the
-   * same public `SIDEBAR_MOBILE_MEDIA_QUERY` breakpoint Sidebar itself uses)
-   * rather than reading back Cinder's rendered mobile class or
-   * collapsed-state attribute on the sidebar root.
-   */
-  const sidebarStateClass = $derived(
-    `weft-shell-sidebar${collapsed ? ' weft-shell-sidebar--collapsed' : ''}${isMobileViewport.current ? ' weft-shell-sidebar--mobile' : ''}`,
-  );
-
-  const STALE_HEARTBEAT_MS = 30_000;
+  // The shell provides one object that the top bar's menu button shares. A sidebar mounted without
+  // the shell, as the standalone views and most tests are, keeps its own.
+  const shell: ShellNavigation =
+    getShellNavigation() ?? new ShellNavigation(getLayoutPreferences() ?? new LayoutPreferences());
 
   // What is waiting on the caller: the same number the Health overview shows as Needs you.
   const reviewsPending = usePendingReviewsCount(() => client);
+  // What needs attention: system problems, never reviews.
+  const attention = useAttentionCount();
 
-  const workersQuery = createQuery(
-    () => ({
-      queryKey: queryKeys.workers.list(),
-      queryFn: () => client.operations['weft.workers.list']({}),
-      staleTime: 15_000,
-    }),
-    undefined,
+  const mode = $derived(shell.mode);
+  const collapsed = $derived(shell.collapsed);
+  const overlay = $derived(mode === 'rail' && !collapsed);
+
+  /** The class that gives the sidebar's one element its form, for the shell's stylesheet. */
+  const sidebarClass = $derived(
+    `weft-shell-sidebar weft-shell-sidebar--${mode}${collapsed ? ' weft-shell-sidebar--collapsed' : ''}${overlay ? ' weft-shell-sidebar--overlay' : ''}`,
   );
 
-  const workersUnhealthyCount = $derived(
-    workersQuery.data?.items.filter(
-      (worker) => worker.health === 'drained' || worker.heartbeatAgeMs > STALE_HEARTBEAT_MS,
-    ).length,
-  );
-
-  /** The count a destination's item shows, and its tone; none for a destination without one. */
-  function badgeOf(
-    destination: Destination,
-  ): { readonly count: number; readonly variant: 'warning' | 'danger' } | undefined {
-    const waiting = reviewsPending.count();
-    if (destination.view === 'reviews' && waiting !== undefined) {
-      return { count: waiting, variant: 'warning' };
-    }
-    if (destination.view === 'health' && workersUnhealthyCount !== undefined) {
-      return { count: workersUnhealthyCount, variant: 'danger' };
-    }
-    return undefined;
+  function destinationsIn(group: DestinationGroup): readonly Destination[] {
+    return DESTINATIONS.filter((destination) => destination.group === group);
   }
 
   function isActivePath(path: string): boolean {
-    // The home screen is Chat, so Chat is also active at `/`.
-    if (path === '/chats' && router.pathname === '/') return true;
+    // Home is only `/`: every other path begins with it.
+    if (path === '/') return router.pathname === '/';
     return router.pathname === path || router.pathname.startsWith(`${path}/`);
   }
 
@@ -114,85 +82,134 @@
     }
     event.preventDefault();
     router.navigate(path);
-    if (isMobileViewport.current) collapsed = true;
+    // A drawer and an overlay close on navigation; the person's own preference is never touched.
+    shell.close();
   }
 
-  /** The dot's color for each state of the live feed: green while the engine answers, red when it does not. */
-  const ENGINE_DOT_STATUS: Readonly<Record<LiveSourceStatus, StatusDotStatus>> = {
-    connecting: 'pending',
-    live: 'online',
-    reconnecting: 'warning',
-    polling: 'online',
-    stale: 'warning',
-    closed: 'danger',
-  };
-
-  const engineStatusWords = $derived(NAVIGATION_COPY.engineStatus[engineStatus]);
+  /** The Reviews row's count: the reviews waiting on the caller, which never includes a problem. */
+  const reviewsCount = $derived(reviewsPending.count() ?? 0);
 
   /**
-   * The words of an item's title, which the browser shows as its tooltip: its name, and the keys
-   * that open it. Cinder's `Tooltip` wraps its trigger, which here is the text of a link, so its
-   * panel would become part of the link's own text.
+   * The Health row's signal: an amber dot while anything needs attention, a green one when nothing
+   * does, and nothing while the count is unknown, so a dot never claims what was not read.
    */
-  function titleText(destination: Destination): string {
-    return `${VIEW_COPY[destination.view].label} (${destinationKeys(destination).join(' ')})`;
+  const healthSignal = $derived.by(() => {
+    const count = attention.count();
+    if (count === undefined) return {};
+    return {
+      count,
+      countLabel: NAVIGATION_COPY.healthCountLabel,
+      emptyLabel: NAVIGATION_COPY.healthEmptyLabel,
+      dot: count === 0 ? ('success' as const) : ('warning' as const),
+    };
+  });
+
+  function toggleCollapsed(): void {
+    shell.collapsed = !shell.collapsed;
   }
 </script>
 
-<Sidebar label="Interborough" bind:collapsed class={sidebarStateClass}>
-  {#snippet navigation()}
-    {#if !isMobileViewport.current}
-      <div class="weft-shell-sidebar__brand">
-        <Button
-          variant="ghost"
-          iconOnly
-          size="sm"
-          aria-label={collapsed ? NAVIGATION_COPY.expandSidebar : NAVIGATION_COPY.collapseSidebar}
-          aria-expanded={!collapsed}
-          title={collapsed ? NAVIGATION_COPY.expandSidebar : NAVIGATION_COPY.collapseSidebar}
-          onclick={() => (collapsed = !collapsed)}
-        >
-          {#if collapsed}
-            <PanelLeftOpen aria-hidden="true" size={16} />
-          {:else}
-            <PanelLeftClose aria-hidden="true" size={16} />
-          {/if}
-        </Button>
-      </div>
-    {/if}
-    <SideNavigation ariaLabel={NAVIGATION_COPY.destinations} class="weft-shell-side-navigation">
-      {#each DESTINATIONS as destination (destination.path)}
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key === 'Escape' && overlay) shell.close();
+  }}
+/>
+
+{#if overlay}
+  <!-- The scrim over the page behind an expanded rail. Escape and the collapse button close it too. -->
+  <button
+    type="button"
+    class="weft-shell-sidebar-scrim"
+    aria-label={NAVIGATION_COPY.collapseSidebar}
+    tabindex="-1"
+    onclick={() => shell.close()}
+  ></button>
+{/if}
+<div class="weft-shell-sidebar-slot" data-mode={mode}>
+  <Sidebar
+    label={NAVIGATION_COPY.productName}
+    closeLabel={NAVIGATION_COPY.closeNavigation}
+    drawerQuery={TOUCH_DRAWER_QUERY}
+    bind:collapsed={() => shell.collapsed, (value) => (shell.collapsed = value)}
+    class={sidebarClass}
+  >
+    {#snippet navigation()}
+      {#if mode !== 'drawer'}
+        <div class="weft-shell-sidebar__brand">
+          <span class="weft-shell-sidebar__name">{NAVIGATION_COPY.productName}</span>
+          <Button
+            variant="ghost"
+            iconOnly
+            size="sm"
+            aria-label={collapsed ? NAVIGATION_COPY.expandSidebar : NAVIGATION_COPY.collapseSidebar}
+            aria-expanded={!collapsed}
+            onclick={toggleCollapsed}
+          >
+            {#if collapsed}
+              <PanelLeftOpen aria-hidden="true" size={16} />
+            {:else}
+              <PanelLeftClose aria-hidden="true" size={16} />
+            {/if}
+          </Button>
+        </div>
+      {/if}
+      {#snippet destinationItem(destination: Destination)}
         {@const Icon = destination.icon}
-        {@const badge = badgeOf(destination)}
-        <SideNavigationItem
-          href={router.href(destination.path)}
-          title={titleText(destination)}
-          active={isActivePath(destination.path)}
-          class="weft-shell-nav-item"
-          listItemClass={destination.pinned ? 'weft-shell-nav-pinned' : ''}
-          onclick={(event) => onNavClick(event, destination.path)}
-        >
-          <!-- The icon is the link's own child: on the icon rail Cinder keeps it and hides the rest,
-               whose words stay in the link's accessible name. -->
-          <Icon aria-hidden="true" size={16} class="weft-shell-nav-item__icon" />
-          <span class="weft-shell-nav-item__label">{VIEW_COPY[destination.view].label}</span>
-          {#if destination.view === 'health'}
-            <span class="weft-shell-nav-health" data-engine-status={engineStatus}>
-              <StatusDot
-                status={ENGINE_DOT_STATUS[engineStatus]}
-                label={engineStatusWords}
-                labelVisible={false}
-                live
-              />
-            </span>
-          {/if}
-          {#if badge !== undefined && badge.count > 0}
-            <Badge variant={badge.variant} size="sm" class="weft-shell-nav-badge"
-              >{badge.count}</Badge
+        {@const label = VIEW_COPY[destination.view].label}
+        {#if destination.view === 'reviews'}
+          <SideNavigationItem
+            href={router.href(destination.path)}
+            {label}
+            count={reviewsCount}
+            countLabel={NAVIGATION_COPY.reviewsCountLabel}
+            active={isActivePath(destination.path)}
+            onclick={(event) => onNavClick(event, destination.path)}
+          >
+            {#snippet icon()}<Icon size="1rem" />{/snippet}
+            {label}
+          </SideNavigationItem>
+        {:else if destination.view === 'health'}
+          <SideNavigationItem
+            href={router.href(destination.path)}
+            {label}
+            {...healthSignal}
+            active={isActivePath(destination.path)}
+            onclick={(event) => onNavClick(event, destination.path)}
+          >
+            {#snippet icon()}<Icon size="1rem" />{/snippet}
+            {label}
+          </SideNavigationItem>
+        {:else}
+          <SideNavigationItem
+            href={router.href(destination.path)}
+            {label}
+            active={isActivePath(destination.path)}
+            onclick={(event) => onNavClick(event, destination.path)}
+          >
+            {#snippet icon()}<Icon size="1rem" />{/snippet}
+            {label}
+          </SideNavigationItem>
+        {/if}
+      {/snippet}
+      <SideNavigation ariaLabel={NAVIGATION_COPY.destinations} class="weft-shell-side-navigation">
+        {#each DESTINATION_GROUPS as group (group)}
+          {#if group === 'home'}
+            {#each destinationsIn(group) as destination (destination.path)}
+              {@render destinationItem(destination)}
+            {/each}
+          {:else}
+            <SideNavigationGroup
+              label={NAVIGATION_COPY.groups[group]}
+              collapsible={false}
+              class={group === 'system' ? 'weft-shell-nav-system' : ''}
             >
+              {#each destinationsIn(group) as destination (destination.path)}
+                {@render destinationItem(destination)}
+              {/each}
+            </SideNavigationGroup>
           {/if}
-        </SideNavigationItem>
-      {/each}
-    </SideNavigation>
-  {/snippet}
-</Sidebar>
+        {/each}
+      </SideNavigation>
+    {/snippet}
+  </Sidebar>
+</div>

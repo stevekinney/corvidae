@@ -44,6 +44,8 @@
  * on a phone. */
 .weft-shell-outlet {
   --weft-outlet-gutter: var(--cinder-pad-page);
+  /* A page of text and a form stay one column up to 720px (design row 04d). */
+  --weft-outlet-reading-width: 45rem;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -53,7 +55,7 @@
 .weft-shell-outlet[data-width='reading'] {
   padding-inline: max(
     var(--weft-outlet-gutter),
-    calc((100% - var(--cinder-content-width-reading)) / 2)
+    calc((100% - var(--weft-outlet-reading-width)) / 2)
   );
 }
 
@@ -63,33 +65,26 @@
   gap: var(--cinder-space-3);
 }
 
-/* Sidebar (design: 232px, surface-inset background — Cinder's Sidebar
- * defaults to `--cinder-surface`; the class this component already accepts
- * is where an app overrides the background token, not a fork).
+/* Sidebar (design rows 03a to 03m, 04a to 04c). The widths are Cinder's own: the 190px column and
+ * the 56px rail (`sidebar.css`), and the 280px drawer (`drawer.css`, size `xs`). The rows, their
+ * counts and dots, the section labels that become hairlines on the rail, and the active tint are
+ * Cinder's too (`side-navigation-item.css`, `side-navigation-group.css`), so what is left here is
+ * where the sidebar sits and what the app puts in it.
  *
- * The 232px width is scoped to the plain expanded-desktop state
- * (`:not(.weft-shell-sidebar--mobile):not(.weft-shell-sidebar--collapsed)`)
- * rather than applied unconditionally. Cinder's own collapsed-width (`4rem`)
- * and mobile-drawer-width (`100%`) rules live inside `@layer
- * cinder.components` (`sidebar.css`), and every rule in this file is
- * unlayered — unlayered CSS always wins a cascade-layer conflict regardless
- * of selector specificity, so an unconditional `width: 232px` here silently
- * overrode Cinder's own per-state sizing while every OTHER collapsed-mode
- * rule (label hide/reposition, icon-only sizing) kept applying normally,
- * since none of those set `width`/`inline-size` on this element. The visible
- * symptom: toggling the icon rail (or loading at a narrow width that starts
- * collapsed) rendered a full-width sidebar shell with its nav labels
- * squashed to 0-height and shifted hundreds of pixels off-screen — verified
- * live via the dev harness (confirmed empirically: `getComputedStyle` on
- * the nav-item label reported `position: absolute` with a nonsensical
- * `width`/`x` matching Cinder's collapsed styling, while the `<aside>`
- * itself stayed pinned at this rule's 232px).
- *
- * `weft-shell-sidebar--collapsed`/`--mobile` are app-owned modifier classes
- * (`src/app/shell/sidebar.svelte`) derived from the app's own `collapsed`
- * state and a `MediaQuery` on Cinder's public `SIDEBAR_MOBILE_MEDIA_QUERY`
- * breakpoint export, not read back from Cinder's rendered mobile class or
- * collapsed-state attribute on the sidebar root. */
+ * The sidebar sits inside a slot that keeps its place in the row. On a tablet that place is the
+ * rail's 56px, so expanding the rail takes the sidebar out of the row (`--overlay`) without moving
+ * the page: the column opens over it, above a scrim, and closes on navigation. */
+
+.weft-shell-sidebar-slot {
+  display: contents;
+}
+
+.weft-shell-sidebar-slot[data-mode='rail'] {
+  position: relative;
+  display: block;
+  flex: none;
+  inline-size: 3.5rem;
+}
 
 .weft-shell-sidebar {
   flex: none;
@@ -102,16 +97,44 @@
   border-block-start: none;
 }
 
-.weft-shell-sidebar:not(.weft-shell-sidebar--mobile):not(.weft-shell-sidebar--collapsed) {
-  width: 232px;
+.weft-shell-sidebar--overlay {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 30;
+  inline-size: 11.875rem;
+  box-shadow: var(--cinder-shadow-lg);
 }
 
-/* The header holds the button that folds the sidebar to its icon rail and opens it again. It sits
- * at the inline end of the expanded sidebar, and centred over the icons on the rail. */
+.weft-shell-sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  padding: 0;
+  background: color-mix(in oklch, var(--cinder-surface-inverse, black), transparent 70%);
+  border: none;
+  cursor: default;
+}
+
+/* The top row holds the product's name as text, with no mark beside it, and the icon-only button
+ * that folds the sidebar to its rail and opens it again. On the rail the name steps aside and the
+ * button is centred over the icons. */
 .weft-shell-sidebar__brand {
   display: flex;
-  justify-content: flex-end;
-  padding: var(--cinder-space-2) var(--cinder-space-2) 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--cinder-space-1) var(--cinder-space-1) var(--cinder-space-1) var(--cinder-space-2);
+}
+
+.weft-shell-sidebar__name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cinder-text-default);
+  font-size: var(--cinder-text-base);
+  font-weight: var(--cinder-font-semibold);
+  line-height: 1.25rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .weft-shell-sidebar--collapsed .weft-shell-sidebar__brand {
@@ -119,8 +142,12 @@
   padding-inline: 0;
 }
 
-/* One ordered list with Settings pinned to the bottom (design row 01a): the navigation fills the
- * sidebar's height, and the pinned item takes the space above it. */
+.weft-shell-sidebar--collapsed .weft-shell-sidebar__name {
+  display: none;
+}
+
+/* One ordered column with System pinned to the bottom (design row 03h): the navigation fills the
+ * sidebar's height, and the System section takes the space above it. */
 .weft-shell-sidebar .cinder-sidebar__nav {
   display: flex;
   flex-direction: column;
@@ -138,7 +165,7 @@
   flex-direction: column;
 }
 
-.weft-shell-sidebar .weft-shell-nav-pinned {
+.weft-shell-sidebar .weft-shell-nav-system {
   margin-block-start: auto;
 }
 
@@ -154,66 +181,40 @@
   overflow-wrap: anywhere;
 }
 
-/* In the mobile drawer the navigation is the drawer's whole body. Cinder's drawer pads its body
- * and the sidebar paints the inset surface, so together they box the navigation in a gutter
- * inside the drawer; the drawer's own surface is the background here, and the body has no
- * padding of its own. */
-.weft-shell-sidebar--mobile {
+/* In the drawer the navigation is the drawer's whole body. Cinder's drawer pads its body and the
+ * sidebar paints the inset surface, so together they box the navigation in a gutter inside the
+ * drawer; the drawer's own surface is the background here, and the body has no padding of its own.
+ * Its header holds the product name and the close button and nothing else, so it is one compact
+ * row with no rule under it, and the drawer has no rule beside it. */
+.weft-shell-sidebar--drawer {
   background: transparent;
 }
 
-.cinder-drawer__body:has(> .weft-shell-sidebar--mobile) {
+.cinder-drawer__body:has(> .weft-shell-sidebar--drawer) {
   padding: 0;
 }
 
-/* The drawer's header holds the product name and the close button and nothing else, so it is one
- * compact row with no rule under it, and the drawer has no rule beside it. */
-.cinder-drawer:has(.weft-shell-sidebar--mobile) {
+.cinder-drawer:has(.weft-shell-sidebar--drawer) {
   border-inline-end: none;
 }
 
-.cinder-drawer:has(.weft-shell-sidebar--mobile) .cinder-drawer__header {
+.cinder-drawer:has(.weft-shell-sidebar--drawer) .cinder-drawer__header {
   padding: var(--cinder-space-2) var(--cinder-space-3);
   border-block-end: none;
 }
 
-.cinder-drawer:has(.weft-shell-sidebar--mobile) .cinder-drawer__title {
+.cinder-drawer:has(.weft-shell-sidebar--drawer) .cinder-drawer__title {
   font-size: var(--cinder-text-md);
-}
-
-/* A destination's link: its icon, its name, then the health dot or a count at the inline end. On
- * the icon rail Cinder keeps the icon and hides the rest. */
-.weft-shell-nav-item {
-  gap: 11px;
-  min-width: 0;
-}
-
-.weft-shell-nav-item__icon {
-  flex: none;
-}
-
-.weft-shell-nav-item__label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* A count is a round for one digit and a pill for more, with room either side of the number. */
-.weft-shell-nav-badge {
-  flex: none;
-  min-inline-size: 1.25rem;
-  justify-content: center;
-  padding-inline: var(--cinder-space-2);
-  border-radius: var(--cinder-radius-full);
 }
 
 /* Topbar: the breadcrumb trail, then the search trigger, the bell and the quick settings, which
  * are ghost buttons of one height. */
 
 .weft-shell-topbar {
-  height: 53px;
+  /* 52px with its rule (design row 03l). It is a minimum: at 200% text size the controls grow and
+   * the bar grows with them, so nothing in it clips (design row 05i). */
+  box-sizing: border-box;
+  min-block-size: 52px;
   flex: none;
   display: flex;
   align-items: center;
@@ -282,24 +283,14 @@
   flex: none;
 }
 
-/* Mobile navigation-drawer trigger — hidden above Cinder Sidebar's own
- * mobile breakpoint (`SIDEBAR_MOBILE_BREAKPOINT`, `639.98px`); below it,
- * `Sidebar` renders no trigger of its own, so this is the only way to
- * reopen the drawer once closed (`shell.svelte`'s module doc). */
-.weft-shell-topbar .weft-shell-menu-trigger {
-  display: none;
-}
-
-/* Responsive: PROJECT-BRIEF binding rules — no page-level horizontal
- * scroll ever; topbar condenses (icon-only ⌘K, menu trigger appears);
- * interactive targets ≥40px on touch. Kept aligned with Cinder Sidebar's
- * own `639.98px` mobile breakpoint (cinder#735/#801) so the menu trigger
- * appears exactly when `Sidebar` actually becomes a drawer. */
+/* Phone width (design rows 04e, 05h, 05i): the bar reads menu, title, then search, notifications
+ * and quick settings as icon buttons, and the search field with its ⌘K hint returns at 640px. The
+ * menu button is drawn only while the navigation is a drawer (`topbar.svelte`), which is also the
+ * case for a touch tablet, so it is not part of this width rule. No page scrolls sideways at 320px.
+ * Each control is a 44px touch target in pixels, not in `rem`: at 200% text size five targets that
+ * grew with the text would leave the title no room, and 44px is the target's size however large the
+ * text is. */
 @media (max-width: 639.98px) {
-  .weft-shell-topbar .weft-shell-menu-trigger {
-    display: inline-flex;
-  }
-
   .weft-shell-topbar {
     padding: 0 var(--cinder-space-2);
   }
@@ -307,13 +298,14 @@
   /* One size for every control in the bar, and a touch target. The search trigger is icon-only at
    * this width. */
   .weft-shell-topbar .weft-shell-topbar-control {
-    min-block-size: 2.5rem;
-    min-inline-size: 2.5rem;
+    block-size: 44px;
+    min-block-size: 44px;
+    min-inline-size: 44px;
   }
 
   .weft-shell-topbar .weft-shell-search-trigger {
-    min-width: 2.5rem;
-    inline-size: auto;
+    min-width: 44px;
+    inline-size: 44px;
     margin-inline-start: 0;
     padding-inline: 0;
     justify-content: center;

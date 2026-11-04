@@ -9,10 +9,11 @@
  * both surfaces because the inner regions render the same elements.
  * ======================================== */
 
+  /* The expanded column is 190px and the icon rail 56px, the widths of the shell design. */
   .cinder-sidebar {
     display: flex;
     flex-direction: column;
-    inline-size: 16rem;
+    inline-size: 11.875rem;
     /* Fill the parent's cross-axis. `align-self: stretch` makes a flex item
      fill its parent's cross-axis size. An explicit `block-size` here would
      opt out of stretch behavior, so we deliberately leave it off. */
@@ -29,6 +30,12 @@
     block-size: 100%;
     background: transparent;
     border-inline-end: none;
+  }
+
+  /* The drawer is the phone's navigation, so its rows are touch targets (44px) whatever the
+   * pointer: the list-row minimum that raises a row to 44px is zero only for a fine pointer. */
+  .cinder-sidebar--mobile .cinder-navigation-item[data-variant='vertical'] {
+    min-block-size: 2.75rem;
   }
 
   @media (max-width: 639.98px) {
@@ -53,7 +60,7 @@
  * surface ignores `data-cinder-collapsed` for sizing because drawer-closed is
  * the collapsed state on mobile. */
   .cinder-sidebar[data-cinder-collapsed]:not(.cinder-sidebar--mobile) {
-    inline-size: 4rem;
+    inline-size: 3.5rem;
   }
 
   .cinder-sidebar__nav {
@@ -83,6 +90,9 @@
  * Decorative chrome (group badge, chevron, panel) is hidden with `display:
  * none` because it carries no accessible name.
  *
+ * A row's count pill is the exception: it rides the icon's top-right corner on the rail
+ * (`side-navigation-item.css`), so the hide rules below leave it alone.
+ *
  * Label-bearing text is hidden using the visually-hidden technique rather
  * than `display: none` so the accessible name of each focusable element is
  * preserved in the accessibility tree. The visual result is icon-only, but a
@@ -105,19 +115,49 @@
   .cinder-sidebar[data-cinder-collapsed]
     .cinder-side-navigation
     a.cinder-navigation-item
-    > :not([aria-hidden='true']):not(svg):not(img),
+    > :not([aria-hidden='true']):not(svg):not(img):not(.cinder-side-navigation-item__count),
   .cinder-sidebar[data-cinder-collapsed]
     .cinder-side-navigation
     button.cinder-navigation-item
-    > :not([aria-hidden='true']):not(svg):not(img),
+    > :not([aria-hidden='true']):not(svg):not(img):not(.cinder-side-navigation-item__count),
   .cinder-sidebar[data-cinder-collapsed]
     .cinder-sidebar__footer
     a.cinder-navigation-item
-    > :not([aria-hidden='true']):not(svg):not(img),
+    > :not([aria-hidden='true']):not(svg):not(img):not(.cinder-side-navigation-item__count),
   .cinder-sidebar[data-cinder-collapsed]
     .cinder-sidebar__footer
     button.cinder-navigation-item
-    > :not([aria-hidden='true']):not(svg):not(img) {
+    > :not([aria-hidden='true']):not(svg):not(img):not(.cinder-side-navigation-item__count) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* A static section keeps its items on the icon rail, and its label becomes a hairline between
+ * sections: the words stay in the accessibility tree, clipped, and the rule marks where one
+ * section ends and the next begins. */
+  .cinder-sidebar[data-cinder-collapsed]
+    .cinder-side-navigation-group[data-cinder-static]
+    > .cinder-side-navigation-group__panel {
+    display: flex;
+  }
+
+  .cinder-sidebar[data-cinder-collapsed] .cinder-side-navigation-group[data-cinder-static] {
+    margin-block-start: var(--cinder-space-2);
+    padding-block-start: var(--cinder-space-2);
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-sidebar[data-cinder-collapsed]
+    .cinder-side-navigation-group[data-cinder-static]
+    > .cinder-side-navigation-group__heading {
     position: absolute;
     width: 1px;
     height: 1px;

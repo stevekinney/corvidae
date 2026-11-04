@@ -11,15 +11,16 @@ const DESKTOP = { width: 1280, height: 800 } as const;
 
 /** Each `g` shortcut U1 registers: its letter, the address it opens, and the sidebar item's name. */
 const SHORTCUTS = [
+  { letter: 'h', path: '/', label: VIEW_COPY.home.label },
   { letter: 'c', path: '/chats', label: VIEW_COPY.chat.label },
-  { letter: 'v', path: '/reviews', label: VIEW_COPY.reviews.label },
+  { letter: 'r', path: '/reviews', label: VIEW_COPY.reviews.label },
   { letter: 'a', path: '/agents', label: VIEW_COPY.agents.label },
   { letter: 'p', path: '/capabilities', label: VIEW_COPY.capabilities.label },
   { letter: 'w', path: '/workflows', label: VIEW_COPY.workflows.label },
-  { letter: 'r', path: '/runs', label: VIEW_COPY.runs.label },
+  { letter: 'u', path: '/runs', label: VIEW_COPY.runs.label },
   { letter: 's', path: '/schedules', label: VIEW_COPY.schedules.label },
   { letter: 'l', path: '/goals', label: VIEW_COPY.goals.label },
-  { letter: 'h', path: '/hooks', label: VIEW_COPY.hooks.label },
+  { letter: 'k', path: '/hooks', label: VIEW_COPY.hooks.label },
   { letter: 'e', path: '/health', label: VIEW_COPY.health.label },
   { letter: 'n', path: '/settings', label: VIEW_COPY.settings.label },
 ] as const;

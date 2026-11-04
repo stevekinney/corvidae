@@ -13,7 +13,7 @@ import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Placeholder from '../../routes/placeholder/index.svelte';
 import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY, VIEW_COPY } from '../copy.ts';
-import { routes } from '../routes.ts';
+import { routes, type RouteDefinition } from '../routes.ts';
 import { VIEWS } from '../views.ts';
 import { CHUNK_RELOAD_KEY } from './chunk-reload.ts';
 import Harness from './route-outlet.test-harness.svelte';
@@ -235,20 +235,6 @@ describe('a route whose chunk is gone after a rebuild', () => {
 });
 
 describe('a route that redirects', () => {
-  const context = (id: string) => ({
-    id,
-    owner: 'anonymous:local',
-    agentName: 'assistant',
-    title: 'Hello',
-    lastMessagePreview: null,
-    parentContextId: null,
-    forkedFromMessageId: null,
-    messageCount: 2,
-    createdAt: '2026-10-19T00:00:00.000Z',
-    updatedAt: '2026-10-19T00:00:00.000Z',
-    activity: 'idle',
-  });
-
   /** The pages the redirect lands on are not what these tests are about, so they render a stub. */
   function stubLandingPages(): void {
     for (const pattern of ['/chats', '/chats/:chat']) {
@@ -260,31 +246,31 @@ describe('a route that redirects', () => {
   }
 
   const spies: Array<{ mockRestore: () => void }> = [];
+  const added: RouteDefinition[] = [];
   afterEach(() => {
     for (const spy of spies.splice(0)) spy.mockRestore();
+    // The route table is a plain array, so a test's own routes leave it as they came.
+    for (const route of added.splice(0)) {
+      (routes as RouteDefinition[]).splice((routes as RouteDefinition[]).indexOf(route), 1);
+    }
   });
 
-  /** The Bureau as the redirect asks it. */
-  function bureau(contexts: unknown[]): void {
-    restore = installFetchImplementation(async (_input, init) => {
-      const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
-      const method = typeof body === 'object' && body !== null ? Reflect.get(body, 'method') : '';
-      const result =
-        method === 'bureau.contexts.list'
-          ? { contexts, nextOffset: null }
-          : method === 'bureau.contexts.get'
-            ? context('session-9')
-            : {};
-      return method === 'broken'
-        ? new Response('no', { status: 500 })
-        : Response.json({ jsonrpc: '2.0', id: method, result });
-    });
+  /** Adds a route that redirects, which the table no longer holds one of. */
+  function redirectRoute(pattern: string, redirect: RouteDefinition['redirect']): void {
+    const route: RouteDefinition = {
+      pattern,
+      kind: 'reading',
+      load: () => Promise.resolve({ default: Placeholder }),
+      ...(redirect === undefined ? {} : { redirect }),
+    };
+    added.push(route);
+    (routes as RouteDefinition[]).push(route);
   }
 
-  test('replaces its own history entry with the newest session', async () => {
+  test('replaces its own history entry with the address it resolves', async () => {
     stubLandingPages();
-    bureau([context('session-9')]);
-    landAt('/');
+    redirectRoute('/moved', () => Promise.resolve('/chats/session-9'));
+    landAt('/moved');
     const length = window.history.length;
 
     mount();
@@ -293,20 +279,10 @@ describe('a route that redirects', () => {
     expect(window.history.length).toBe(length);
   });
 
-  test('goes to the chat list when there is no session', async () => {
+  test('goes to the chat list, which says what is wrong, when it cannot say where', async () => {
     stubLandingPages();
-    bureau([]);
-    landAt('/');
-
-    mount();
-
-    await waitFor(() => expect(router.pathname).toBe('/chats'));
-  });
-
-  test('goes to the chat list, which says what is wrong, when the Bureau cannot say', async () => {
-    stubLandingPages();
-    restore = installFetchImplementation(async () => new Response('down', { status: 500 }));
-    landAt('/');
+    redirectRoute('/broken', () => Promise.reject(new Error('down')));
+    landAt('/broken');
 
     mount();
 

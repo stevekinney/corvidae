@@ -36,6 +36,8 @@
     collapsed = $bindable(false),
     label = 'Sidebar',
     mobileBreakpoint = SIDEBAR_MOBILE_BREAKPOINT,
+    drawerQuery,
+    closeLabel = 'Close navigation',
     class: className,
     navigation: navigationSnippet,
     footer: footerSnippet,
@@ -71,7 +73,14 @@
     return value;
   });
 
-  const mobileMediaQuery = $derived(`(max-width: ${validatedMobileBreakpoint})`);
+  // A comma in a media query list is "or", so the drawer shows below the breakpoint and wherever
+  // `drawerQuery` also matches. The extra query is read after hydration only; the server markup
+  // keeps the inline column, as it does for the breakpoint's own fallback style.
+  const mobileMediaQuery = $derived(
+    drawerQuery === undefined || drawerQuery.trim() === ''
+      ? `(max-width: ${validatedMobileBreakpoint})`
+      : `(max-width: ${validatedMobileBreakpoint}), ${drawerQuery.trim()}`,
+  );
   const responsiveFallbackCss = $derived(
     `@media (max-width: ${validatedMobileBreakpoint}) { .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint="${validatedMobileBreakpoint}"][data-cinder-ssr-mobile-fallback], .cinder-sidebar--desktop[data-cinder-sidebar-mobile-breakpoint="${validatedMobileBreakpoint}"][data-cinder-collapsed] { display: none; } }`,
   );
@@ -153,7 +162,8 @@
       }
     }
     placement="left"
-    size="md"
+    size="xs"
+    {closeLabel}
     title={drawerTitle}
     id={sidebarId}
   >

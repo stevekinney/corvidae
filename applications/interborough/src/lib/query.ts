@@ -219,6 +219,10 @@ export const queryKeys = {
     /** One step's reply details (`bureau.tasks.inspect` with `step`). */
     step: (taskId: string, step: number) => ['bureau-tasks', 'step', taskId, step] as const,
   },
+  /** What needs attention now (`bureau.health.attention`), for the sidebar's Health dot. */
+  bureauAttention: {
+    count: () => ['bureau-attention', 'count'] as const,
+  },
   /** The caller's notifications (`bureau.notifications.*`, COR-1941). */
   bureauNotifications: {
     list: () => ['bureau-notifications', 'list'] as const,

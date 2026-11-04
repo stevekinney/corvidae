@@ -1,7 +1,9 @@
 /**
  * Captures every page of Interborough for the design review (`.agents/skills/design-review`): every
  * route holding believable content (`tests/e2e/showcase.spec.ts`, at 375, 768 and 1280 pixels, the
- * data for layout, hierarchy and density), every route on every tab holding the stress seed's
+ * data for layout, hierarchy and density) and the shell's chrome in each form it takes
+ * (`tests/e2e/shell-chrome.spec.ts`: the sidebar, the rail, the drawer, 320 pixels, 200% text), Home on a
+ * fresh installation (`tests/e2e/first-run.spec.ts`), every route on every tab holding the stress seed's
  * 300-character words (`tests/e2e/responsive.spec.ts`, the same widths, the data for overflow and
  * truncation), and every view loading, empty, failed, forbidden and ready, plus Health's band
  * states and the not-found page (`tests/e2e/15-view-states.spec.ts`, at 375 and 1280 pixels), in
@@ -20,8 +22,8 @@
  *   bun scripts/design-review-capture.ts [--out <dir>] [--scheme light|dark|both]
  *     [--data showcase|stress|both] [--specs all|responsive|states] [--grep <pattern>]
  *
- * `--data` chooses the content: `showcase` runs only the showcase specification, `stress` runs the
- * responsive and view-states specifications, and `both` (the default) runs all three. `--specs`
+ * `--data` chooses the content: `showcase` runs only the showcase specifications, `stress` runs the
+ * responsive and view-states specifications, and `both` (the default) runs all five. `--specs`
  * narrows the stress data to one of its two specifications, so it means `--data stress` when
  * `--data` is not given, and is refused with `--data showcase`.
  *
@@ -48,8 +50,16 @@ const SPECIFICATIONS = {
   states: 'tests/e2e/15-view-states.spec.ts',
 } as const;
 
-/** The specification that holds believable content, which `--data showcase` runs alone. */
-const SHOWCASE_SPECIFICATION = 'tests/e2e/showcase.spec.ts';
+/**
+ * The specifications that hold believable content, which `--data showcase` runs alone: every route
+ * on the sample world, the shell's chrome in each form it takes and each width it is drawn at, and
+ * Home on a fresh installation (`first-run.spec.ts`, whose own host holds no provider, agent or chat).
+ */
+const SHOWCASE_SPECIFICATIONS = [
+  'tests/e2e/showcase.spec.ts',
+  'tests/e2e/shell-chrome.spec.ts',
+  'tests/e2e/first-run.spec.ts',
+] as const;
 
 type Scheme = 'light' | 'dark';
 
@@ -110,7 +120,7 @@ export function parseArguments(argv: readonly string[], now = new Date()): Optio
     return '--specs narrows the stress data, so it cannot be used with --data showcase';
   }
   const specifications = [
-    ...(data === 'stress' ? [] : [SHOWCASE_SPECIFICATION]),
+    ...(data === 'stress' ? [] : SHOWCASE_SPECIFICATIONS),
     ...(data === 'showcase' ? [] : stress),
   ];
   return { out, schemes, specifications, grep };

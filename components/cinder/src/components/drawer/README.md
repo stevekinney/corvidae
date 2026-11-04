@@ -72,11 +72,12 @@ A bottom drawer is a sheet, and every sheet follows the same rules (design rows 
 | --- | --- | --- | --- | --- |
 | `ariaLabelledby` | `string` | no | — | Optional id of an element that names the drawer. When supplied, drawer wires `aria-labelledby` to this id and renders no internal heading. Use this when a custom `header` snippet has its own visible heading — supply `ariaLabelledby` pointing to that heading's id so the visible and accessible names stay in sync. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-drawer`. |
+| `closeLabel` | `string` | no | `"Close drawer"` | Accessible name of the close button, for a drawer that is not a generic one, such as "Close navigation" on a sidebar's drawer. |
 | `dragHandleVisible` | `boolean` | no | `true` | Whether a `placement="bottom"` drawer shows the grabber, the small pill above the header that marks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance only. Ignored for `left`/`right` placements. Named `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML `draggable` attribute on the underlying `<dialog>`. |
 | `modal` | `boolean` | no | `true` | Whether the drawer is modal. Modal drawers use the native dialog top layer, backdrop, body scroll lock, and focus trap. Non-modal drawers render as an aside and leave the page interactive. |
 | `open` | `boolean` | no | — | Whether the drawer is open. Bindable via `bind:open`. |
 | `placement` | `"left"` \| `"right"` \| `"bottom"` | no | `"right"` | Edge the drawer slides in from. |
-| `size` | `"sm"` \| `"md"` \| `"lg"` \| `"xl"` | no | `"md"` | Drawer width token for `left`/`right` placements. Ignored for `placement="bottom"`, which always spans the full viewport width and caps its height at 90dvh. |
+| `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` \| `"xl"` | no | `"md"` | Drawer width token for `left`/`right` placements. Ignored for `placement="bottom"`, which always spans the full viewport width and caps its height at 90dvh. `xs` is 280px, the width of a navigation drawer; `sm` is 320px, `md` 448px, `lg` 576px and `xl` 768px. |
 | `title` | `string` | yes | — | Accessible name for the drawer. Required for screen-reader labelling. Rendered as a visible `<h2>` in the default header. When a custom `header` snippet is provided without `ariaLabelledby`, this text is rendered in a visually-hidden `<h2>` as the accessible name fallback. |
 | `children` | `(opaque)` | yes | — | Drawer body content. Required. Not expressible in JSON Schema; see the component types for the signature. |
 | `footer` | `(opaque)` | no | — | Optional footer (e.g. action buttons). Not expressible in JSON Schema; see the component types for the signature. |

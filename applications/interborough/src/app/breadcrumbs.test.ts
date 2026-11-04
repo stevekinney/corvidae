@@ -69,9 +69,11 @@ describe('the breadcrumb trail', () => {
     expect(breadcrumbTrail('/', NONE)).toEqual([]);
   });
 
-  test('every route that renders a page names its crumb, and only redirects have none', () => {
+  test('every route that renders a page names its crumb, and only Home, at the root, has none', () => {
     for (const route of routes) {
-      expect(route.crumb === undefined, route.pattern).toBe(route.redirect !== undefined);
+      expect(route.crumb === undefined, route.pattern).toBe(
+        route.redirect !== undefined || route.pattern === '/',
+      );
     }
   });
 

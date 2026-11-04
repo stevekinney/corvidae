@@ -28,6 +28,7 @@
   let {
     label,
     id: idProp,
+    collapsible = true,
     expanded = $bindable(true),
     disabled = false,
     icon,
@@ -51,7 +52,7 @@
   const panelId = $derived(`${id}-panel`);
 
   function toggle(): void {
-    if (disabled) return;
+    if (disabled || !collapsible) return;
     expanded = !expanded;
   }
 
@@ -100,45 +101,51 @@
   {...rest}
   {id}
   class={classNames('cinder-side-navigation-group', className)}
-  data-cinder-expanded={expanded ? '' : undefined}
+  data-cinder-expanded={collapsible && expanded ? '' : undefined}
+  data-cinder-static={collapsible ? undefined : ''}
   data-cinder-contains-active={containsActive ? '' : undefined}
 >
-  <button
-    type="button"
-    id={headerId}
-    class="cinder-side-navigation-group__trigger"
-    aria-expanded={expanded}
-    aria-controls={panelId}
-    {disabled}
-    onclick={toggle}
-  >
-    {#if icon}
-      <span class="cinder-side-navigation-group__icon" aria-hidden="true">{@render icon()}</span>
-    {/if}
-    <span class="cinder-side-navigation-group__label">{validatedLabel}</span>
-    {#if badge}
-      <span class="cinder-side-navigation-group__badge">{@render badge()}</span>
-    {/if}
-    <svg
-      class="cinder-side-navigation-group__chevron"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-      focusable="false"
+  {#if collapsible}
+    <button
+      type="button"
+      id={headerId}
+      class="cinder-side-navigation-group__trigger"
+      aria-expanded={expanded}
+      aria-controls={panelId}
+      {disabled}
+      onclick={toggle}
     >
-      <path
-        fill-rule="evenodd"
-        d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06z"
-        clip-rule="evenodd"
-      />
-    </svg>
-  </button>
+      {#if icon}
+        <span class="cinder-side-navigation-group__icon" aria-hidden="true">{@render icon()}</span>
+      {/if}
+      <span class="cinder-side-navigation-group__label">{validatedLabel}</span>
+      {#if badge}
+        <span class="cinder-side-navigation-group__badge">{@render badge()}</span>
+      {/if}
+      <svg
+        class="cinder-side-navigation-group__chevron"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          fill-rule="evenodd"
+          d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06z"
+          clip-rule="evenodd"
+        />
+      </svg>
+    </button>
+  {:else}
+    <!-- A static section names its list; the label is not a control, so it is plain text. -->
+    <span id={headerId} class="cinder-side-navigation-group__heading">{validatedLabel}</span>
+  {/if}
   <ul
     id={panelId}
     class="cinder-side-navigation-group__panel"
     aria-labelledby={headerId}
-    hidden={!expanded}
+    hidden={collapsible && !expanded}
   >
     {@render children()}
   </ul>

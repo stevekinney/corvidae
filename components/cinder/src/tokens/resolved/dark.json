@@ -4037,8 +4037,8 @@
   },
   "side-navigation.list-gap": {
     "$type": "dimension",
-    "$value": { "value": 0.25, "unit": "rem" },
-    "$description": "Gap between top-level navigation items.",
+    "$value": { "value": 0.125, "unit": "rem" },
+    "$description": "Gap between top-level navigation items: 2px, so a 30px row sits on a 32px pitch.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-side-navigation-list-gap",
