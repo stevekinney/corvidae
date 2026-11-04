@@ -230,6 +230,27 @@ A step that is under way (`running`) draws a ring, `now` as its time, and may ca
 
 The line above the timeline is a `StatusDot` word, not part of the list: `word="Live · last event 1 s ago"` while the stream is open, and `word="Reconnecting…"` with `label="Reconnecting… last event 40 s ago"` (a hollow ring) while it has dropped. A step whose entry may be behind shows how stale it is as its `time` ("last update 40 s ago").
 
+### Folding a long story
+
+A narrative timeline of many entries folds its middle with `fold`: the first 3 and last 3 entries stay, with one row between them that reads "3 more calls" and an action "Show all 9". Show all opens the middle in place. A step that failed, timed out, is waiting or is under way never folds and splits the folded middle into separate rows that each count what they hide. A fold hides at least two entries, so seven entries show all seven. Pass `label` and `actionLabel` to say what the entries are; the defaults read "3 more steps" and "Show all 9".
+
+```svelte
+<script lang="ts">
+  import { RunStepTimeline } from '@lostgradient/cinder';
+  import type { RunStep } from '@lostgradient/cinder';
+
+  let { steps }: { steps: RunStep[] } = $props();
+</script>
+
+<RunStepTimeline
+  {steps}
+  variant="narrative"
+  fold={{ first: 3, last: 3, label: (hidden) => `${hidden} more calls` }}
+/>
+```
+
+A `note` can carry `label` ("Your note") to read as somebody's words: "Your note · The customer already got a replacement."
+
 ## Step states
 
 `RunStepStatus` is intentionally domain-agnostic. Map your domain state onto one of these:
@@ -258,6 +279,7 @@ label      string             optional  Accessible label for the list (aria-labe
 selectedStepId string | null  optional  Step id to visually mark as selected.
 onStepSelect (stepId) => void optional  Fired when a rendered step row is clicked.
 variant    "detailed" | "narrative" optional  How a step reads. Defaults to "detailed".
+fold       RunStepTimelineFold optional  Folds the middle of a long narrative timeline behind one row.
 class      string             optional  Additional CSS classes on the root ol element.
 children   Snippet<[RunStep]> optional  Per-step body content rendered after step metadata.
 ```
@@ -299,6 +321,7 @@ languageLabelVisible boolean optional  Whether the CodeBlock language label is v
 
 ```
 title     string                  optional  Bold first line of the block.
+label     string                  optional  A muted word before the first line, joined by a middle dot ("Your note").
 lines     string[]                required  The lines of the block, one per line.
 tone      "neutral" | "danger"    optional  Danger tints the block for a failure. Defaults to neutral.
 streaming boolean                 optional  Follows the last line with a text cursor while lines are still arriving.

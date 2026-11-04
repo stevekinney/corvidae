@@ -91,6 +91,12 @@ export type RunStepNote = {
   /** `danger` tints the block for a failure. Default `neutral`. */
   tone?: 'neutral' | 'danger' | undefined;
   /**
+   * A muted word before the first line, joined to it by a middle dot: `Your note` reads "Your note
+   * · The customer already got a replacement." Use it when the block is somebody's words rather
+   * than a titled block.
+   */
+  label?: string | undefined;
+  /**
    * Whether the lines are still arriving. A text cursor follows the last line, so the block reads as
    * partial and growing.
    */
@@ -571,6 +577,25 @@ export type RunStepTimelineSchemaEntry =
 export type RunStepTimelineVariant = 'detailed' | 'narrative';
 
 /**
+ * Folds the middle of a long narrative timeline behind one row ("3 more calls", with a "Show all 9"
+ * action), so a run of many entries keeps the shape of the page. The first and last few entries
+ * stay; a step that failed, timed out, is waiting or is under way is never folded, and splits the
+ * folded middle into separate rows that each count what they hide. A fold hides at least two
+ * entries, because hiding one saves nothing. "Show all" opens every fold in place. Only the
+ * `narrative` variant folds.
+ */
+export type RunStepTimelineFold = {
+  /** How many entries stay visible at the start. @default 3 */
+  first?: number | undefined;
+  /** How many entries stay visible at the end. @default 3 */
+  last?: number | undefined;
+  /** The fold row's label for how many entries it hides. Defaults to "3 more steps". */
+  label?: ((hidden: number) => string) | undefined;
+  /** The fold row's action, given how many entries the timeline holds. Defaults to "Show all 9". */
+  actionLabel?: ((total: number) => string) | undefined;
+};
+
+/**
  * Props for the RunStepTimeline component.
  *
  * Renders an ordered list of execution steps with per-step status,
@@ -610,6 +635,8 @@ export type RunStepTimelineProps = Omit<HTMLAttributes<HTMLOListElement>, 'class
    * metadata lists. The status word is still read aloud.
    */
   variant?: RunStepTimelineVariant | undefined;
+  /** Folds the middle of a long `narrative` timeline behind one "N more" row. Ignored by `detailed`. */
+  fold?: RunStepTimelineFold | undefined;
   /**
    * Optional per-step body content rendered after the step metadata.
    */

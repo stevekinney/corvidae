@@ -27,6 +27,7 @@
     RunStepStatus,
     RunStepNote,
     RunStepTimelineEntry,
+    RunStepTimelineFold,
     RunStepTimelineProps,
     RunStepTimelineVariant,
   } from './run-step-timeline.types.ts';
@@ -96,6 +97,7 @@
     RunStepTimelineProps,
   } from './run-step-timeline.types.ts';
   import {
+    foldNarrativeEntries,
     actionsCountLabel,
     badgeVariant,
     branchGroupHasCurrentStep,
@@ -124,6 +126,7 @@
     selectedStepId,
     onStepSelect,
     variant = 'detailed',
+    fold,
     class: className,
     children,
     'aria-label': ariaLabel,
@@ -137,7 +140,13 @@
   const timelineInstanceId = $props.id();
   const narrative = $derived(variant === 'narrative');
 
-  const renderedEntries = $derived(flattenEntries(relocateCompensationEntries(steps)));
+  /** Whether the person has opened the folded rows with "Show all". */
+  let foldOpened = $state(false);
+  const folding = $derived(narrative && fold !== undefined && !foldOpened);
+  const folded = $derived(folding ? foldNarrativeEntries(steps, fold) : undefined);
+  const renderedEntries = $derived(
+    flattenEntries(relocateCompensationEntries(folded?.entries ?? steps)),
+  );
 
   function isBranchGroup(entry: RunStepTimelineEntry): entry is RunStepBranchGroup {
     return 'kind' in entry && entry.kind === 'branch';
@@ -439,6 +448,7 @@
     {@attach createStepSelectionAttachment(row.pathKey)}
     class="cinder-run-step-timeline__item"
     data-cinder-status={step.status}
+    data-cinder-fold={folded?.rows.has(step.id) ? '' : undefined}
     data-cinder-depth={row.depth}
     data-cinder-path={row.pathKey}
     data-cinder-terminal={terminal ? '' : undefined}
@@ -481,7 +491,8 @@
             </span>
           {/if}
           <span class="cinder-run-step-timeline__label"
-            >{#if narrative}<span class="cinder-sr-only">{`${statusLabel(step.status)}: `}</span
+            >{#if narrative && !folded?.rows.has(step.id)}<span class="cinder-sr-only"
+                >{`${statusLabel(step.status)}: `}</span
               >{/if}{step.label}</span
           >
           {#if step.link}
@@ -539,6 +550,18 @@
           {/if}
         </div>
 
+        {#if folded?.rows.get(step.id) !== undefined}
+          <p class="cinder-run-step-timeline__description">
+            <button
+              type="button"
+              class="cinder-run-step-timeline__fold-action"
+              onclick={() => (foldOpened = true)}
+            >
+              {folded.rows.get(step.id)}
+            </button>
+          </p>
+        {/if}
+
         {#if step.description !== undefined && step.description !== ''}
           <p class="cinder-run-step-timeline__description">
             {#each describeSegments(step.description) as segment, index (index)}
@@ -560,7 +583,9 @@
             {/if}
             {#each note.lines as line, index (index)}
               <p class="cinder-run-step-timeline__note-line">
-                {line}{#if note.streaming && index === note.lines.length - 1}<span
+                {#if index === 0 && note.label !== undefined && note.label !== ''}<span
+                    class="cinder-run-step-timeline__note-label">{note.label}{' · '}</span
+                  >{/if}{line}{#if note.streaming && index === note.lines.length - 1}<span
                     class="cinder-run-step-timeline__cursor"
                     aria-hidden="true"
                   ></span>{/if}

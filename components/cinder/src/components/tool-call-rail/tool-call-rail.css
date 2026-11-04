@@ -1,0 +1,543 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* The rail's running marker and summary spinner are Spinner arcs, so the styles travel with it. */
+@import '../spinner/spinner.css';
+@layer cinder.components {
+  /* ========================================
+ * TOOL CALL RAIL
+ * One turn's tool calls: a rail of one-line rows, the first and last few with the middle folded
+ * behind a dashed button, and the calls that failed or need a person always in view. It draws
+ * Timeline's marker column and connector around rows that have no timestamp to lead with.
+ * ======================================== */
+
+  .cinder-tool-call-rail {
+    --_cinder-tool-call-rail-marker-size: 0.875rem;
+    --_cinder-tool-call-rail-dot-size: 0.4375rem;
+    --_cinder-tool-call-rail-indent: calc(var(--_cinder-tool-call-rail-marker-size) + 0.625rem);
+    --_cinder-tool-call-rail-bleed: var(--cinder-space-1-5);
+
+    container: cinder-tool-call-rail / inline-size;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: 1.25rem;
+  }
+
+  /* ----------------------------------------
+ * Summary line: "Used 30 tools · 1 failed · 1 waiting on you · 18s"
+ * ---------------------------------------- */
+
+  .cinder-tool-call-rail__summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    margin: 0 0 var(--cinder-space-1-5);
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-weight: var(--cinder-font-semibold);
+    text-align: start;
+  }
+
+  button.cinder-tool-call-rail__summary {
+    align-self: flex-start;
+    cursor: pointer;
+  }
+
+  button.cinder-tool-call-rail__summary:focus-visible,
+  .cinder-tool-call-rail__row:focus-visible,
+  .cinder-tool-call-rail__more:focus-visible,
+  .cinder-tool-call-rail__link:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-tool-call-rail__summary-marker {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--_cinder-tool-call-rail-marker-size);
+    block-size: var(--_cinder-tool-call-rail-marker-size);
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-tool-call-rail .cinder-spinner[data-cinder-size='sm'] {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+  }
+
+  .cinder-tool-call-rail__chevron {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .cinder-tool-call-rail__summary-separator,
+  .cinder-tool-call-rail__summary-duration {
+    color: var(--cinder-text-subtle);
+    font-weight: var(--cinder-font-normal);
+  }
+
+  .cinder-tool-call-rail__count {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    color: var(--cinder-text-subtle);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-tool-call-rail__count-dot {
+    flex: none;
+    inline-size: var(--_cinder-tool-call-rail-dot-size);
+    block-size: var(--_cinder-tool-call-rail-dot-size);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-tool-call-rail__count[data-cinder-count='waiting'] .cinder-tool-call-rail__count-dot {
+    background: var(--cinder-status-warning-solid);
+  }
+
+  /* ----------------------------------------
+ * The rail and its rows
+ * ---------------------------------------- */
+
+  .cinder-tool-call-rail__list {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* The connector runs from the first marker to the last, behind them. One or two calls have none. */
+  .cinder-tool-call-rail:not([data-cinder-plain]) .cinder-tool-call-rail__list::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--_cinder-tool-call-rail-marker-size) / 2 - 0.5px);
+    inset-block: 0.8125rem;
+    inline-size: 1px;
+    background: var(--cinder-fill-disabled);
+  }
+
+  .cinder-tool-call-rail__item {
+    position: relative;
+  }
+
+  /* A row is one line that never wraps: marker, name, key input, result and duration. It bleeds
+     past the rail on both sides so a selected row's tint and ring wrap the marker too. */
+  .cinder-tool-call-rail__row {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns:
+      var(--_cinder-tool-call-rail-marker-size)
+      var(--cinder-tool-call-rail-name-width, 7.75rem)
+      var(--cinder-tool-call-rail-input-width, 7.25rem)
+      minmax(0, 1fr)
+      var(--cinder-tool-call-rail-duration-width, 3rem);
+    column-gap: var(--cinder-space-2-5);
+    align-items: center;
+    inline-size: calc(100% + 2 * var(--_cinder-tool-call-rail-bleed));
+    min-block-size: 1.625rem;
+    margin: 0 calc(-1 * var(--_cinder-tool-call-rail-bleed));
+    padding: 0 var(--_cinder-tool-call-rail-bleed);
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+
+  button.cinder-tool-call-rail__row {
+    cursor: pointer;
+  }
+
+  @media (hover: hover) {
+    button.cinder-tool-call-rail__row:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  /* The row whose panel is open: tinted, and it keeps the quiet ring while focus is elsewhere. */
+  .cinder-tool-call-rail__item[data-cinder-selected] > .cinder-tool-call-rail__row {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-tool-call-rail__marker {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--_cinder-tool-call-rail-marker-size);
+    block-size: var(--_cinder-tool-call-rail-marker-size);
+  }
+
+  .cinder-tool-call-rail__dot {
+    flex: none;
+    inline-size: var(--_cinder-tool-call-rail-dot-size);
+    block-size: var(--_cinder-tool-call-rail-dot-size);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-text-disabled);
+  }
+
+  .cinder-tool-call-rail__dot[data-cinder-faint] {
+    background: var(--cinder-fill-disabled);
+  }
+
+  .cinder-tool-call-rail__marker[data-cinder-status='approved'] .cinder-tool-call-rail__dot {
+    background: var(--cinder-status-success-solid);
+  }
+
+  .cinder-tool-call-rail__glyph {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .cinder-tool-call-rail__marker[data-cinder-status='failed'] {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-tool-call-rail__marker[data-cinder-status='failed'] .cinder-tool-call-rail__glyph {
+    stroke-width: 2.5;
+  }
+
+  .cinder-tool-call-rail__marker[data-cinder-status='waiting'] {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-tool-call-rail__marker[data-cinder-status='denied'] {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-tool-call-rail__name {
+    grid-column: 2;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Wide: input and result are cells of the row's grid. Narrow: they are one line under the name. */
+  .cinder-tool-call-rail__detail {
+    display: contents;
+  }
+
+  .cinder-tool-call-rail__input,
+  .cinder-tool-call-rail__result {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-tool-call-rail__input {
+    grid-column: 3;
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-tool-call-rail__result {
+    grid-column: 4;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__result {
+    color: var(--cinder-status-danger-text);
+  }
+
+  .cinder-tool-call-rail__item[data-cinder-status='waiting'] .cinder-tool-call-rail__result {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-tool-call-rail__item[data-cinder-status='running'] .cinder-tool-call-rail__result {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-tool-call-rail__duration {
+    grid-column: 5;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+  }
+
+  /* ----------------------------------------
+ * A failed call: one danger line with its consequence, then quiet links. No filled block.
+ * ---------------------------------------- */
+
+  .cinder-tool-call-rail__failure {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--cinder-space-0-5) 0.875rem;
+    margin: 0 0 var(--cinder-space-1) var(--_cinder-tool-call-rail-indent);
+    color: var(--cinder-status-danger-text);
+    font-size: var(--cinder-text-sm);
+    line-height: 1.1875rem;
+  }
+
+  .cinder-tool-call-rail__failure-text {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-tool-call-rail__failure-glyph {
+    flex: none;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    margin-block-start: 0.125rem;
+  }
+
+  .cinder-tool-call-rail__links {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0 0.75rem;
+  }
+
+  .cinder-tool-call-rail__link {
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-accent-text);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+  }
+
+  @media (hover: hover) {
+    .cinder-tool-call-rail__link:hover {
+      text-decoration: underline;
+    }
+  }
+
+  /* What sits under a row: the approval a waiting call is waiting on. */
+  .cinder-tool-call-rail__nested {
+    margin: var(--cinder-space-1) 0 var(--cinder-space-1) var(--_cinder-tool-call-rail-indent);
+    min-inline-size: 0;
+  }
+
+  /* ----------------------------------------
+ * A folded group: one dashed button and what it hides, counted from this turn only
+ * ---------------------------------------- */
+
+  .cinder-tool-call-rail__group {
+    display: grid;
+    grid-template-columns: var(--_cinder-tool-call-rail-marker-size) minmax(0, 1fr);
+    column-gap: var(--cinder-space-2-5);
+    align-items: center;
+    min-block-size: 1.875rem;
+  }
+
+  .cinder-tool-call-rail__group-body {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-tool-call-rail__more {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    block-size: 1.5rem;
+    padding: 0 var(--cinder-space-2-5);
+    border: 1px dashed var(--cinder-border-control);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-muted);
+    cursor: pointer;
+    font: inherit;
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-tool-call-rail__more-chevron {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+  }
+
+  .cinder-tool-call-rail__group-summary {
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--cinder-text-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-tool-call-rail__group-summary-short {
+    display: none;
+  }
+
+  /* "Show fewer" folds every open group again, after the last row. */
+  .cinder-tool-call-rail__fewer {
+    margin-block-start: var(--cinder-space-0-5);
+    padding-inline-start: var(--_cinder-tool-call-rail-indent);
+  }
+
+  .cinder-tool-call-rail__fewer .cinder-tool-call-rail__link {
+    block-size: 1.625rem;
+    padding: 0 var(--cinder-space-2-5);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  /* ----------------------------------------
+ * The run's end state, and a footnote
+ * ---------------------------------------- */
+
+  .cinder-tool-call-rail__end {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2-5);
+    min-block-size: 1.5rem;
+    margin: var(--cinder-space-1) 0 0;
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-tool-call-rail__end-glyph {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+  }
+
+  .cinder-tool-call-rail__footnote {
+    margin: var(--cinder-space-2-5) 0 0;
+    color: var(--cinder-text-subtle);
+  }
+
+  /* ----------------------------------------
+ * A narrow container (a phone): two lines per row, 44px tall, a hairline between rows, and no
+ * connector. Line one is the name and the duration; line two is the muted key input and result.
+ * ---------------------------------------- */
+
+  @container cinder-tool-call-rail (max-width: 28rem) {
+    .cinder-tool-call-rail:not([data-cinder-plain]) .cinder-tool-call-rail__list::before,
+    .cinder-tool-call-rail__summary-duration,
+    .cinder-tool-call-rail__summary-separator[data-cinder-duration],
+    .cinder-tool-call-rail__failure {
+      display: none;
+    }
+
+    .cinder-tool-call-rail__list {
+      gap: 0;
+    }
+
+    .cinder-tool-call-rail__item,
+    .cinder-tool-call-rail__group {
+      border-block-end: 1px solid var(--cinder-border-muted);
+    }
+
+    .cinder-tool-call-rail__item:last-child,
+    .cinder-tool-call-rail__group:last-child {
+      border-block-end: 0;
+    }
+
+    .cinder-tool-call-rail__row {
+      grid-template-columns: var(--_cinder-tool-call-rail-marker-size) minmax(0, 1fr) auto;
+      row-gap: 0;
+      min-block-size: var(--cinder-touch-target-min);
+      padding-block: var(--cinder-space-1-5);
+    }
+
+    .cinder-tool-call-rail__marker {
+      grid-row: 1;
+    }
+
+    .cinder-tool-call-rail__name {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .cinder-tool-call-rail__duration {
+      grid-column: 3;
+      grid-row: 1;
+    }
+
+    .cinder-tool-call-rail__detail {
+      display: block;
+      grid-column: 2 / 4;
+      grid-row: 2;
+      min-inline-size: 0;
+      overflow: hidden;
+      color: var(--cinder-text-subtle);
+      font-size: var(--cinder-text-sm);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cinder-tool-call-rail__input,
+    .cinder-tool-call-rail__result {
+      display: inline;
+      color: inherit;
+    }
+
+    .cinder-tool-call-rail__input:not(:last-child)::after {
+      content: ' · ';
+    }
+
+    .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__detail {
+      color: var(--cinder-status-danger-text);
+    }
+
+    .cinder-tool-call-rail__item[data-cinder-status='waiting'] .cinder-tool-call-rail__detail {
+      color: var(--cinder-status-warning-text);
+    }
+
+    .cinder-tool-call-rail__group {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+
+    .cinder-tool-call-rail__group-summary-long {
+      display: none;
+    }
+
+    .cinder-tool-call-rail__group-summary-short {
+      display: inline;
+    }
+
+    .cinder-tool-call-rail__more {
+      block-size: 2rem;
+    }
+
+    .cinder-tool-call-rail__nested {
+      margin-inline-start: var(--_cinder-tool-call-rail-indent);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-tool-call-rail__list::before {
+      background: ButtonText;
+    }
+
+    .cinder-tool-call-rail__dot,
+    .cinder-tool-call-rail__count-dot {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+
+    .cinder-tool-call-rail__item[data-cinder-selected] > .cinder-tool-call-rail__row {
+      outline: 1px solid Highlight;
+      box-shadow: none;
+    }
+
+    .cinder-tool-call-rail__row:focus-visible,
+    .cinder-tool-call-rail__more:focus-visible,
+    .cinder-tool-call-rail__link:focus-visible,
+    button.cinder-tool-call-rail__summary:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      box-shadow: none;
+    }
+  }
+}

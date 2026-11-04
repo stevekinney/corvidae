@@ -821,6 +821,7 @@ export type {
   RunStepNote,
   RunStepStatus,
   RunStepTimelineEntry,
+  RunStepTimelineFold,
   RunStepTimelineProps,
   RunStepTimelineVariant,
 } from './components/run-step-timeline/index.ts';
@@ -1180,6 +1181,14 @@ export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-swit
 
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';
+
+export { default as ToolCallRail } from './components/tool-call-rail/index.ts';
+export type {
+  ToolCallRailCall,
+  ToolCallRailLabels,
+  ToolCallRailProps,
+  ToolCallRailStatus,
+} from './components/tool-call-rail/index.ts';
 
 export { default as ToolPicker } from './components/tool-picker/index.ts';
 export type {

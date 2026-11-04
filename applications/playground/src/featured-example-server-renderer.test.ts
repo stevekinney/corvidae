@@ -126,8 +126,9 @@ describe('featured example server renderer', () => {
 
     expect(chat.body).toContain('Deploying version 2.4.1 to production');
     expect(chat.body).toContain('data-cinder-layout="row"');
-    expect(chat.body).toContain('View input');
-    expect(chat.body).toContain('deploy_to_production arguments');
+    expect(chat.body).toContain('cinder-approval-card__input-word');
+    expect(chat.body).toContain('cinder-payload-inspector');
+    expect(chat.body).toContain('Environment');
     expect(chat.body).toContain('data-cinder-state="pending"');
     expect(chat.body).toContain('Approve');
     expect(chat.body).toContain('Deny');

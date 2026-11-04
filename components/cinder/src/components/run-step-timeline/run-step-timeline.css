@@ -466,6 +466,15 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* "Your note · " before the first line of a note that is somebody's words. */
+  .cinder-run-step-timeline__note-label {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-run-step-timeline__note[data-cinder-tone='neutral'] .cinder-run-step-timeline__note-line {
+    color: var(--cinder-text-default);
+  }
+
   /* The text cursor of a note that is still arriving. */
   .cinder-run-step-timeline__cursor {
     display: inline-block;
@@ -519,6 +528,32 @@
 
   .cinder-run-step-timeline[data-cinder-variant='narrative'] .cinder-run-step-timeline__note {
     margin-block-start: var(--cinder-space-1-5);
+  }
+
+  /* A fold row ("3 more calls") has a faint filled marker and one quiet action. */
+  .cinder-run-step-timeline__item[data-cinder-fold] .cinder-run-step-marker {
+    --_cinder-rst-marker-color: var(--cinder-border-faint);
+  }
+
+  .cinder-run-step-timeline__fold-action {
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-accent-text);
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .cinder-run-step-timeline__fold-action:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (hover: hover) {
+    .cinder-run-step-timeline__fold-action:hover {
+      text-decoration: underline;
+    }
   }
 
   /* What has not run, or has not started, reads quieter than what has. */

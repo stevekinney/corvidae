@@ -1,3 +1,4 @@
+import { planFold } from '../../utilities/fold-middle.ts';
 import type { StatusDotStatus } from '../status-dot/status-dot.types.ts';
 import type {
   RunStep,
@@ -6,6 +7,7 @@ import type {
   RunStepBranchLaneOutcome,
   RunStepStatus,
   RunStepTimelineEntry,
+  RunStepTimelineFold,
 } from './run-step-timeline.types.ts';
 
 function assertNever(value: never): never {
@@ -363,4 +365,53 @@ export function describeSegments(description: string): DescriptionSegment[] {
   }
   if (last < description.length) segments.push({ text: description.slice(last), code: false });
   return segments;
+}
+
+/** The statuses a narrative fold never hides: something went wrong, is waiting on a person or a signal, or is under way. */
+const FOLD_PINNED_STATUSES: ReadonlySet<RunStepStatus> = new Set([
+  'failed',
+  'timed-out',
+  'waiting_approval',
+  'waiting',
+  'running',
+  'retrying',
+]);
+
+/** A narrative timeline with its middle folded, and the action each fold row carries. */
+export type FoldedNarrativeEntries = {
+  /** The entries to draw: the steps, with each folded run replaced by one row. */
+  readonly entries: RunStepTimelineEntry[];
+  /** The action text of each fold row, by the row's step id. */
+  readonly rows: ReadonlyMap<string, string>;
+};
+
+/**
+ * Replaces the middle of a long narrative timeline with fold rows: the first and last few entries
+ * stay, steps that failed or wait never fold, and each run of at least two entries that remains is
+ * one row, "3 more calls", whose action reads "Show all 9".
+ */
+export function foldNarrativeEntries(
+  entries: readonly RunStepTimelineEntry[],
+  fold: RunStepTimelineFold | undefined,
+): FoldedNarrativeEntries {
+  const label = fold?.label ?? ((hidden: number) => `${hidden} more steps`);
+  const actionLabel = fold?.actionLabel ?? ((total: number) => `Show all ${total}`);
+  const rows = new Map<string, string>();
+  const folded: RunStepTimelineEntry[] = [];
+  const plan = planFold(entries, {
+    first: fold?.first ?? 3,
+    last: fold?.last ?? 3,
+    // A branch group is never folded: it draws its own lanes.
+    isPinned: (entry) => 'kind' in entry || FOLD_PINNED_STATUSES.has(entry.status),
+  });
+  for (const part of plan) {
+    if (part.kind === 'item') {
+      folded.push(part.item);
+      continue;
+    }
+    const id = `__cinder-fold-${part.key}`;
+    rows.set(id, actionLabel(entries.length));
+    folded.push({ id, label: label(part.items.length), status: 'recorded' });
+  }
+  return { entries: folded, rows };
 }

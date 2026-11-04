@@ -12,6 +12,7 @@ export type {
   RunStepNote,
   RunStepStatus,
   RunStepTimelineEntry,
+  RunStepTimelineFold,
   RunStepTimelineProps,
   RunStepTimelineSchemaBranchGroup,
   RunStepTimelineSchemaBranchLane,

@@ -6234,6 +6234,36 @@
       }
     },
     {
+      "name": "ToolCallRail",
+      "id": "tool-call-rail",
+      "import": "@lostgradient/cinder",
+      "exportName": "ToolCallRail",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "One turn's tool calls on a rail: a one-line row per call, the first and last few with the middle folded, failures and calls that need a person always in view, and the run's end state.",
+      "tags": ["timeline", "tool-call", "agent"],
+      "useWhen": [
+        "Showing an agent's tool calls for one chat turn, where a failure or an approval must never fold away.",
+        "Opening a call's details in a side panel from a selectable row, with a failed call's next steps on the rail."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing the steps of a run with their own timing, retries and branches — use run-step-timeline."
+        },
+        {
+          "reason": "Listing dated events — use timeline."
+        }
+      ],
+      "related": ["timeline", "run-step-timeline", "approval-card", "status-dot"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/tool-call-rail/tool-call-rail.schema.json",
+        "variables": "src/components/tool-call-rail/tool-call-rail.variables.json",
+        "examples": "src/components/tool-call-rail/tool-call-rail.examples.json"
+      }
+    },
+    {
       "name": "ToolPicker",
       "id": "tool-picker",
       "import": "@lostgradient/cinder",
