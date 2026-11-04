@@ -7,10 +7,10 @@
  * use, never to the filesystem directly.
  *
  * Every workflow belongs to the deployment's owner of record. A tool acts only when the owner of
- * record of the run that called it, read through `ownerOf` and not from anything the request
- * carried, is that owner; for any other run `workflows-list` is empty and every write answers
- * `not-found`, as if no workflow existed. The `agent` field of a file a tool writes is the calling
- * run's own agent identifier.
+ * record of the run that called it, read through the shared run authority and not from anything
+ * the request carried, is that owner; for any other run `workflows-list` is empty and every write
+ * answers `not-found`, as if no workflow existed. The `agent` field of a file a tool writes is the
+ * calling run's own agent identifier.
  *
  * Every outcome is an ordinary tool result, never a thrown error, so a conflict or a document that
  * would not load reaches the model as something it can read and correct.
@@ -23,6 +23,7 @@ import { z } from 'zod';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
 import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
+import { mayRunAccess } from './run-authority.ts';
 import {
   checkWorkflowIdentifier,
   type WorkflowFileDefinition,
@@ -238,6 +239,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   async function caller(
     context: ToolContext | undefined,
     id: string,
+    operationScope: 'bureau.workflows:read' | 'bureau.workflows:write',
   ): Promise<
     | {
         readonly workflows: BureauWorkflows;
@@ -250,7 +252,14 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     const workflows = host.workflows();
     const runId = runIdOf(context);
     const identity = runId === undefined ? undefined : await host.runIdentity(runId);
-    if (workflows === undefined || runId === undefined || identity?.owner !== workflows.owner) {
+    if (
+      workflows === undefined ||
+      runId === undefined ||
+      identity === undefined ||
+      !mayRunAccess(identity.owner, operationScope, workflows.owner, {
+        allowOperatorScope: false,
+      })
+    ) {
       return { refusal: { status: 'not-found', id } };
     }
     const agent = identity.agent;
@@ -335,7 +344,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       const derived = input.id === undefined ? deriveWorkflowIdentifier(input.name) : undefined;
       const provisional =
         input.id ?? (derived !== undefined && 'id' in derived ? derived.id : input.name);
-      const calling = await caller(context, provisional);
+      const calling = await caller(context, provisional, 'bureau.workflows:write');
       if ('refusal' in calling) return calling.refusal;
       if (derived !== undefined && 'message' in derived) {
         return {
@@ -371,7 +380,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       shortDescription: 'Replace a workflow’s trigger and steps.',
     },
     execute: async (input, context): Promise<WorkflowToolResult> => {
-      const calling = await caller(context, input.id);
+      const calling = await caller(context, input.id, 'bureau.workflows:write');
       if ('refusal' in calling) return calling.refusal;
       try {
         return {
@@ -405,7 +414,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           : 'Resume a paused workflow.',
       },
       execute: async (input, context): Promise<WorkflowToolResult> => {
-        const calling = await caller(context, input.id);
+        const calling = await caller(context, input.id, 'bureau.workflows:write');
         if ('refusal' in calling) return calling.refusal;
         const guard = {
           expectedHash: input.expectedHash,
@@ -438,7 +447,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       shortDescription: 'List the workflows and their state.',
     },
     execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
-      const calling = await caller(context, '');
+      const calling = await caller(context, '', 'bureau.workflows:read');
       if ('refusal' in calling) {
         // Nothing to hide for a caller that is not the owner: it sees no workflows at all. A caller
         // that is the owner but has no usable identifier is told why.
