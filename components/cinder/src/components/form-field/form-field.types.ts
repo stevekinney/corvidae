@@ -5,6 +5,8 @@ export type FormFieldManaged = {
   by?: string | undefined;
   /** Human-readable explanation for the constraint. */
   reason?: string | undefined;
+  /** The whole line to show beside the lock glyph, replacing the "Managed by" wording, such as "Locked by your deployment (remote mode). Change it in the deployment's configuration." */
+  message?: string | undefined;
 };
 
 export type FormFieldProps = {
@@ -24,6 +26,18 @@ export type FormFieldProps = {
   warning?: string | undefined;
   /** Validation error; sets `aria-invalid="true"` on opted-in controls via context. */
   error?: string | undefined;
+  /**
+   * The glyph drawn before the error message: `warning` (a triangle, the default) for a value the
+   * person can fix, or `error` (a circle) for a conflict such as a URL that is already connected.
+   * @default "warning"
+   */
+  errorGlyph?: 'warning' | 'error' | undefined;
+  /** Rendered after the error message inside the same live region, such as a link to the record that conflicts ("Open GitHub") or a quiet Retry. */
+  errorAction?: Snippet | undefined;
+  /** Neutral explanation drawn under the helper text and wired into `aria-describedby`, such as why a field is cleared. Not an error and not a warning. */
+  note?: string | undefined;
+  /** Rendered beside the control on the same row, such as a Try again button after a failed test. The control takes the room the trailing content leaves. */
+  trailing?: Snippet | undefined;
   /** Policy ownership metadata displayed without disabling the control. */
   managed?: FormFieldManaged | undefined;
   /** Renders a visual required marker and exposes `required: true` on the context. */

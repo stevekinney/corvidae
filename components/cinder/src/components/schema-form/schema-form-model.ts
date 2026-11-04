@@ -163,9 +163,16 @@ function fieldFromJsonSchema(
   return baseField('json', normalizedSchema, path, key, required);
 }
 
-/** True when a numeric property is a duration in milliseconds, by `format` or by name suffix. */
-function isMillisecondsField(schema: JsonSchemaObject, key: string): boolean {
-  return schema['format'] === 'duration-ms' || MILLISECONDS_NAME_PATTERN.test(key);
+/**
+ * True when a numeric property is a duration in milliseconds: it says so with `format:
+ * "duration-ms"` or `unit: "milliseconds"`, or its name ends in `Ms`, `_ms` or `Milliseconds`.
+ */
+export function isMillisecondsField(schema: JsonSchemaObject, key: string): boolean {
+  return (
+    schema['format'] === 'duration-ms' ||
+    schema['unit'] === 'milliseconds' ||
+    MILLISECONDS_NAME_PATTERN.test(key)
+  );
 }
 
 /**

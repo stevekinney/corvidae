@@ -32,6 +32,7 @@
     heading,
     headingLevel = 2,
     description,
+    meta,
     columns = 2,
     class: className,
     children,
@@ -54,7 +55,9 @@
 {#if as === 'fieldset'}
   <fieldset class={classNames('cinder-form-section', className)} data-columns={columns}>
     {#if heading}
-      <legend class="cinder-form-section__legend">{heading}</legend>
+      <legend class="cinder-form-section__legend"
+        >{heading}{#if meta}<span class="cinder-form-section__meta">{meta}</span>{/if}</legend
+      >
     {/if}
     {#if description}
       <p class="cinder-form-section__description">{description}</p>
@@ -65,7 +68,14 @@
   </fieldset>
 {:else}
   <section class={classNames('cinder-form-section', className)} data-columns={columns}>
-    {#if heading}
+    {#if heading && meta}
+      <div class="cinder-form-section__title">
+        <svelte:element this={headingTag} class="cinder-form-section__heading">
+          {heading}
+        </svelte:element>
+        <span class="cinder-form-section__meta">{meta}</span>
+      </div>
+    {:else if heading}
       <svelte:element this={headingTag} class="cinder-form-section__heading">
         {heading}
       </svelte:element>

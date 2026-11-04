@@ -17,19 +17,31 @@ import {
   indentOnInput,
   syntaxHighlighting,
 } from '@codemirror/language';
-import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
-import { Annotation, Compartment, EditorState, type Extension } from '@codemirror/state';
 import {
+  Annotation,
+  Compartment,
+  EditorState,
+  type Extension,
+  RangeSet,
+  StateEffect,
+  StateField,
+} from '@codemirror/state';
+import {
+  Decoration,
+  type DecorationSet,
   drawSelection,
   EditorView,
+  gutterLineClass,
+  GutterMarker,
   keymap,
   lineNumbers,
   placeholder as placeholderExtension,
+  WidgetType,
 } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { formatJson, isBlankJson } from './json-editor-format.ts';
+import { formatJson } from './json-editor-format.ts';
 import { createSchemaCompletionSource } from './json-editor-schema-completion.ts';
-import type { JsonEditorSchema } from './json-editor.types.ts';
+import type { JsonEditorDiagnostic, JsonEditorSchema } from './json-editor.types.ts';
 
 /** The settings that can change while an editor stays mounted. */
 export interface JsonEditorDynamicOptions {
@@ -67,6 +79,10 @@ export interface JsonEditorHandle {
   update: (options: JsonEditorDynamicOptions) => void;
   /** Pretty-print the document. Returns `false` when it is empty, invalid, or read-only and nothing changed. */
   format: () => boolean;
+  /** Mark these lines as problems, each with the message shown under it. Replaces the earlier marks. */
+  setProblems: (problems: readonly JsonEditorDiagnostic[]) => void;
+  /** Move the caret to the start of a one-based line, scroll it into view, and focus the editor. */
+  focusLine: (line: number) => void;
   /** Move keyboard focus into the editor. */
   focus: () => void;
   /** Remove the editor and release its listeners and timers. */
@@ -74,6 +90,11 @@ export interface JsonEditorHandle {
 }
 
 const programmaticChange = Annotation.define<boolean>();
+
+const singleLineClass = 'cinder-json-editor__cm--single-line';
+const problemLineClass = 'cinder-json-editor__line--problem';
+const problemGutterClass = 'cinder-json-editor__gutter--problem';
+const problemMessageClass = 'cinder-json-editor__problem';
 
 const highlightStyle = HighlightStyle.define([
   { tag: tags.propertyName, color: 'var(--cinder-accent-text)' },
@@ -86,27 +107,54 @@ const highlightStyle = HighlightStyle.define([
   },
 ]);
 
+/** The editor's content height for `rows` lines: each is 1.5em tall, plus the content's own padding. */
+const contentHeight = (rows: string): string => `calc(${rows} * 1.5em + 2 * var(--cinder-space-2))`;
+
 // CodeMirror injects its own rules without a cascade layer, and an unlayered rule beats anything
 // inside `@layer cinder.components`, so the editor is themed here and not in `json-editor.css`.
+// The frame (border, radius, focus ring, toolbar) is the component's own element around the
+// editor, so this theme draws no border of its own: the frame clips the gutter to its radius.
 const theme = EditorView.theme({
   '&': {
     fontFamily: 'var(--cinder-font-mono)',
     fontSize: 'var(--cinder-text-sm)',
     color: 'var(--cinder-text-default)',
-    backgroundColor: 'var(--cinder-control-background)',
-    border: '1px solid var(--cinder-control-border)',
-    borderRadius: 'var(--cinder-control-radius)',
-    maxHeight: 'calc(var(--_cinder-json-editor-rows, 8) * 1.5em + 2 * var(--cinder-space-2) + 2px)',
+    backgroundColor: 'transparent',
+    minWidth: '0',
+    maxHeight: contentHeight('var(--_cinder-json-editor-rows, 8)'),
   },
-  '&.cm-focused': {
-    outline: 'var(--cinder-ring-width) solid transparent',
-    borderColor: 'transparent',
-    boxShadow: 'var(--_cinder-focus-ring-shadow)',
+  // The quiet focus ring wraps the whole frame, so the editor draws none of its own.
+  '&.cm-focused': { outline: 'none' },
+  '.cm-scroller': {
+    fontFamily: 'inherit',
+    lineHeight: '1.5',
+    overflow: 'auto',
   },
-  '@media (forced-colors: active)': {
-    '&.cm-focused': { outline: 'var(--cinder-ring-width) solid ButtonText', boxShadow: 'none' },
+  // An always-painted scrollbar, so a body that scrolls says so. Chrome and Safari draw a
+  // persistent bar only from the `::-webkit-scrollbar` rules (setting `scrollbar-width` or
+  // `scrollbar-color` there keeps the overlay bar that fades away), so the standard properties
+  // are left to engines that have no such pseudo-element.
+  '@supports not selector(::-webkit-scrollbar)': {
+    '.cm-scroller': {
+      scrollbarWidth: 'thin',
+      scrollbarColor: 'var(--cinder-scrollbar-thumb) var(--cinder-scrollbar-track)',
+    },
   },
-  '.cm-scroller': { fontFamily: 'inherit', lineHeight: '1.5', overflow: 'auto' },
+  '.cm-scroller::-webkit-scrollbar': {
+    inlineSize: 'var(--cinder-scrollbar-size)',
+    blockSize: 'var(--cinder-scrollbar-size)',
+  },
+  '.cm-scroller::-webkit-scrollbar-track': { background: 'var(--cinder-scrollbar-track)' },
+  '.cm-scroller::-webkit-scrollbar-thumb': {
+    background: 'var(--cinder-scrollbar-thumb)',
+    borderRadius: 'var(--cinder-radius-sm)',
+  },
+  '.cm-scroller::-webkit-scrollbar-thumb:hover': {
+    background: 'var(--cinder-scrollbar-thumb-hover)',
+  },
+  '.cm-scroller::-webkit-scrollbar-corner': { background: 'var(--cinder-scrollbar-track)' },
+  // Three rows is the least an editor shows, so an empty one still reads as an editor.
+  '.cm-content, .cm-gutter': { minHeight: contentHeight('3') },
   '.cm-content': {
     padding: 'var(--cinder-space-2) 0',
     caretColor: 'var(--cinder-text-default)',
@@ -118,19 +166,44 @@ const theme = EditorView.theme({
     border: 'none',
     borderRight: '1px solid var(--cinder-control-border)',
   },
+  '.cm-gutterElement': { padding: '0 var(--cinder-space-2) 0 var(--cinder-space-3)' },
+  // A single line has nothing to number, so its gutter is not drawn.
+  [`&.${singleLineClass} .cm-gutters`]: { display: 'none' },
   '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--cinder-text-default)' },
-  '.cm-foldGutter .cm-gutterElement': { cursor: 'pointer' },
+  // Fold markers appear while the pointer is over the gutter or the editor has focus.
+  '.cm-foldGutter .cm-gutterElement': { cursor: 'pointer', padding: '0 var(--cinder-space-1)' },
+  '.cm-foldGutter span': { opacity: '0' },
+  '.cm-gutters:hover .cm-foldGutter span, &.cm-focused .cm-foldGutter span': { opacity: '1' },
   '.cm-placeholder': { color: 'var(--cinder-text-muted)' },
   '&.cm-focused .cm-matchingBracket': {
     backgroundColor: 'transparent',
     outline: '1px solid var(--cinder-text-muted)',
   },
-  '.cm-lintRange-error': {
-    backgroundImage: 'none',
-    textDecoration: 'underline wavy var(--cinder-status-danger-solid)',
-    textDecorationThickness: '1px',
-    textUnderlineOffset: '2px',
+  // A marked line: the row is tinted, its number turns red, and the message sits under it.
+  [`.${problemLineClass}`]: { backgroundColor: 'var(--cinder-status-danger-background)' },
+  [`.cm-gutterElement.${problemGutterClass}`]: {
+    backgroundColor: 'var(--cinder-status-danger-background)',
+    color: 'var(--cinder-status-danger-text)',
+    fontWeight: '600',
   },
+  [`.${problemMessageClass}`]: {
+    // Zero width with a full-width minimum, so a long message wraps inside the visible editor
+    // instead of widening the scrolling content to fit it on one line.
+    boxSizing: 'border-box',
+    inlineSize: '0',
+    minInlineSize: '100%',
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 'var(--cinder-space-1-5)',
+    padding: '0 var(--cinder-space-2)',
+    backgroundColor: 'var(--cinder-status-danger-background)',
+    color: 'var(--cinder-status-danger-text)',
+    fontFamily: 'var(--cinder-font-sans)',
+    fontSize: 'var(--cinder-text-xs)',
+    fontWeight: '500',
+    whiteSpace: 'normal',
+  },
+  [`.${problemMessageClass} svg`]: { flex: 'none', marginBlockStart: '0.3em' },
   '.cm-tooltip': {
     backgroundColor: 'var(--cinder-surface-raised)',
     color: 'var(--cinder-text-default)',
@@ -143,50 +216,96 @@ const theme = EditorView.theme({
   },
 });
 
-/** Where `JSON.parse` says the source stopped making sense, falling back to the end of the source. */
-function errorPosition(source: string, error: unknown): number {
-  const message = error instanceof SyntaxError ? error.message : '';
-  const positionMatch = message.match(/position (\d+)/i);
-  if (positionMatch) return Number(positionMatch[1]);
-  const lineColumnMatch = message.match(/line\s+(\d+)\s+column\s+(\d+)/i);
-  if (lineColumnMatch) {
-    const line = Number(lineColumnMatch[1]);
-    const column = Number(lineColumnMatch[2]);
-    return (
-      source
-        .split('\n')
-        .slice(0, line - 1)
-        .reduce((offset, current) => offset + current.length + 1, 0) + Math.max(0, column - 1)
-    );
+/** Replace the lines the editor marks as a problem. */
+const setProblems = StateEffect.define<readonly JsonEditorDiagnostic[]>();
+
+/** The problems the component last sent, as line numbers and messages. */
+const problemField = StateField.define<readonly JsonEditorDiagnostic[]>({
+  create: () => [],
+  update(value, transaction) {
+    for (const effect of transaction.effects) if (effect.is(setProblems)) return effect.value;
+    return value;
+  },
+});
+
+/** The message block drawn under a marked line. */
+class ProblemMessage extends WidgetType {
+  constructor(private readonly message: string) {
+    super();
   }
-  return source.length;
+
+  override eq(other: ProblemMessage): boolean {
+    return other.message === this.message;
+  }
+
+  override toDOM(): HTMLElement {
+    const block = document.createElement('div');
+    block.className = problemMessageClass;
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    const icon = document.createElementNS(svgNamespace, 'svg');
+    for (const [name, value] of Object.entries({
+      width: '14',
+      height: '14',
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '2',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+      'aria-hidden': 'true',
+    })) {
+      icon.setAttribute(name, value);
+    }
+    for (const data of [
+      'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3',
+      'M12 9v4',
+      'M12 17h.01',
+    ]) {
+      const path = document.createElementNS(svgNamespace, 'path');
+      path.setAttribute('d', data);
+      icon.append(path);
+    }
+    const text = document.createElement('span');
+    text.textContent = this.message;
+    block.append(icon, text);
+    return block;
+  }
+
+  override ignoreEvent(): boolean {
+    return false;
+  }
 }
 
-/**
- * Report the first JSON syntax error as an inline diagnostic.
- *
- * An empty document yields no diagnostic: an optional field with no value is valid, so it earns
- * neither an underline nor a gutter glyph, and a required one reports "Enter valid JSON." in the
- * field's own feedback instead.
- */
-export function lintJsonDocument(view: EditorView): Diagnostic[] {
-  const source = view.state.doc.toString();
-  if (isBlankJson(source)) return [];
-  try {
-    JSON.parse(source);
-    return [];
-  } catch (error) {
-    const last = Math.max(0, source.length - 1);
-    const from = Math.min(errorPosition(source, error), last);
-    return [
-      {
-        from,
-        to: Math.min(from + 1, source.length),
-        severity: 'error',
-        message: 'Enter valid JSON.',
-      },
-    ];
+class ProblemGutterMarker extends GutterMarker {
+  override elementClass = problemGutterClass;
+}
+
+const problemGutterMarker = new ProblemGutterMarker();
+
+function problemDecorations(state: EditorState): DecorationSet {
+  const ranges = [];
+  for (const problem of state.field(problemField)) {
+    if (problem.line < 1 || problem.line > state.doc.lines) continue;
+    const line = state.doc.line(problem.line);
+    ranges.push(Decoration.line({ class: problemLineClass }).range(line.from));
+    ranges.push(
+      Decoration.widget({
+        widget: new ProblemMessage(problem.message),
+        block: true,
+        side: 1,
+      }).range(line.to),
+    );
   }
+  return Decoration.set(ranges, true);
+}
+
+function problemGutterMarkers(state: EditorState): RangeSet<GutterMarker> {
+  const markers = [];
+  for (const problem of state.field(problemField)) {
+    if (problem.line < 1 || problem.line > state.doc.lines) continue;
+    markers.push(problemGutterMarker.range(state.doc.line(problem.line).from));
+  }
+  return RangeSet.of(markers, true);
 }
 
 /** Pretty-print the whole document. Returns `false` when it is empty, invalid, or read-only. */
@@ -238,14 +357,18 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
       extensions: [
         lineNumbers(),
         foldGutter(),
-        lintGutter(),
+        problemField,
+        EditorView.decorations.compute([problemField], problemDecorations),
+        gutterLineClass.compute([problemField], problemGutterMarkers),
+        EditorView.editorAttributes.compute(['doc'], (state) =>
+          state.doc.lines < 2 ? { class: singleLineClass } : {},
+        ),
         history(),
         drawSelection(),
         indentOnInput(),
         bracketMatching(),
         json(),
         syntaxHighlighting(highlightStyle),
-        linter(lintJsonDocument),
         // Tab is deliberately unbound so keyboard users can always leave the editor.
         keymap.of([
           // CodeMirror names a shifted letter two ways: the capital letter where the key event
@@ -285,6 +408,16 @@ export function createJsonEditor(options: JsonEditorOptions): JsonEditorHandle {
       view.dispatch({ effects: dynamic.reconfigure(dynamicExtensions(next)) });
     },
     format: () => formatJsonDocument(view),
+    setProblems(problems) {
+      view.dispatch({ effects: setProblems.of(problems) });
+    },
+    focusLine(line) {
+      const target = view.state.doc.line(
+        Math.min(Math.max(1, Math.trunc(line)), view.state.doc.lines),
+      );
+      view.dispatch({ selection: { anchor: target.from }, scrollIntoView: true });
+      view.focus();
+    },
     focus: () => view.focus(),
     destroy: () => view.destroy(),
   };

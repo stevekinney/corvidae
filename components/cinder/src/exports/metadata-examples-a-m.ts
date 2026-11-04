@@ -57,6 +57,7 @@ import dockedActionBarExamplesJson from '../components/docked-action-bar/docked-
 import donutChartExamplesJson from '../components/donut-chart/donut-chart.examples.json' with { type: 'json' };
 import drawerExamplesJson from '../components/drawer/drawer.examples.json' with { type: 'json' };
 import dropdownExamplesJson from '../components/dropdown/dropdown.examples.json' with { type: 'json' };
+import durationFieldExamplesJson from '../components/duration-field/duration-field.examples.json' with { type: 'json' };
 import emptyStateExamplesJson from '../components/empty-state/empty-state.examples.json' with { type: 'json' };
 import errorStateExamplesJson from '../components/error-state/error-state.examples.json' with { type: 'json' };
 import feedBoundaryExamplesJson from '../components/feed-boundary/feed-boundary.examples.json' with { type: 'json' };
@@ -67,6 +68,7 @@ import findBarExamplesJson from '../components/find-bar/find-bar.examples.json' 
 import floatingActionExamplesJson from '../components/floating-action/floating-action.examples.json' with { type: 'json' };
 import focusTrapExamplesJson from '../components/focus-trap/focus-trap.examples.json' with { type: 'json' };
 import footerExamplesJson from '../components/footer/footer.examples.json' with { type: 'json' };
+import formActionsExamplesJson from '../components/form-actions/form-actions.examples.json' with { type: 'json' };
 import formFieldExamplesJson from '../components/form-field/form-field.examples.json' with { type: 'json' };
 import formSectionExamplesJson from '../components/form-section/form-section.examples.json' with { type: 'json' };
 import formExamplesJson from '../components/form/form.examples.json' with { type: 'json' };
@@ -217,6 +219,8 @@ export const drawerExamples = drawerExamplesJson;
 /** Code examples for this component. */
 export const dropdownExamples = dropdownExamplesJson;
 /** Code examples for this component. */
+export const durationFieldExamples = durationFieldExamplesJson;
+/** Code examples for this component. */
 export const emptyStateExamples = emptyStateExamplesJson;
 /** Code examples for this component. */
 export const errorStateExamples = errorStateExamplesJson;
@@ -238,6 +242,8 @@ export const focusTrapExamples = focusTrapExamplesJson;
 export const footerExamples = footerExamplesJson;
 /** Code examples for this component. */
 export const formExamples = formExamplesJson;
+/** Code examples for this component. */
+export const formActionsExamples = formActionsExamplesJson;
 /** Code examples for this component. */
 export const formFieldExamples = formFieldExamplesJson;
 /** Code examples for this component. */

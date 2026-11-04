@@ -7,6 +7,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { chooseFilterOption } from '../../../../tests/dom.test-support.ts';
 import { TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
@@ -25,7 +26,7 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
-import { FILTER_LABEL_LIMIT, filterLabelOf } from './run-rows.ts';
+import { FILTER_LABEL_LIMIT, filterLabelOf, SINCE_RANGES } from './run-rows.ts';
 import { STARTED_BY_LABELS } from './started-by.ts';
 
 let stub: BureauWorldStub | undefined;
@@ -73,26 +74,20 @@ const rowIds = (container: HTMLElement) =>
 
 describe('narrowing the runs', () => {
   test.each([
-    [TASK_COPY.statusLabel, 'failed', 'status', 'failed'],
-    [TASK_COPY.agentLabel, 'echo', 'agent', 'echo'],
-    [TASK_COPY.startedByLabel, 'goal', 'startedBy', 'goal'],
-    [TASK_COPY.sinceLabel, '7d', 'since', '7d'],
+    [TASK_COPY.statusLabel, 'Failed', TASK_COPY.anyStatus, 'status', 'failed'],
+    [TASK_COPY.agentLabel, 'echo', TASK_COPY.anyAgent, 'agent', 'echo'],
+    [TASK_COPY.startedByLabel, STARTED_BY_LABELS.goal, TASK_COPY.anyOrigin, 'startedBy', 'goal'],
+    [TASK_COPY.sinceLabel, SINCE_RANGES['7d'].label, TASK_COPY.anyTime, 'since', '7d'],
   ])(
     'choosing from %s puts it in the address, and choosing Any takes it out',
-    async (label, value, key, expected) => {
+    async (label, optionText, anyText, key, expected) => {
       const view = open('/runs');
       await waitFor(() => expect(rowIds(view.container).length).toBeGreaterThan(0));
-      const select = await view.findByLabelText(label);
-      await waitFor(() =>
-        expect(
-          [...select.querySelectorAll('option')].some((option) => option.value === value),
-        ).toBe(true),
-      );
 
-      await fireEvent.change(select, { target: { value } });
+      await chooseFilterOption(view, label, optionText);
       await waitFor(() => expect(router.search.get(key)).toBe(expected));
 
-      await fireEvent.change(await view.findByLabelText(label), { target: { value: '' } });
+      await chooseFilterOption(view, label, anyText);
       await waitFor(() => expect(router.search.get(key)).toBeNull());
     },
   );
@@ -111,32 +106,27 @@ describe('narrowing the runs', () => {
 describe('the Agent filter with a long agent name (COR-1862)', () => {
   const LONG = `responsive-agent-${'a'.repeat(47)}`;
 
-  test('shows the name once on its chip, cut to the filter’s limit, and keeps the whole name in the address', async () => {
+  test('shows the name once on the select, cut to the filter’s limit, and keeps the whole name in the address', async () => {
     const view = open(`/runs?agent=${LONG}`);
-    await waitFor(() => expect(view.container.querySelector('.cinder-chip')).not.toBeNull());
-
-    const chips = [...view.container.querySelectorAll('.cinder-chip')].map(
-      (chip) => chip.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    const trigger = await view.findByRole('combobox', { name: TASK_COPY.agentLabel });
+    await waitFor(() =>
+      expect(trigger.querySelector('.cinder-select__value')?.textContent?.trim()).toBe(
+        filterLabelOf(LONG),
+      ),
     );
-    expect(chips).toHaveLength(1);
-    expect(chips[0]).toContain(`${TASK_COPY.agentLabel}: ${filterLabelOf(LONG)}`);
-    // The label is not said twice, and the name is not whole on the chip.
-    expect(chips[0]?.split(TASK_COPY.agentLabel)).toHaveLength(2);
-    expect(chips[0]).not.toContain(LONG);
+    // The label is said once, as the select's prefix, and the name is not whole on the control.
+    expect(trigger.textContent).not.toContain(LONG);
     expect(router.search.get('agent')).toBe(LONG);
   });
 
-  test('lists the name in the select cut to the limit, with the whole name as its value', async () => {
+  test('lists the name in the select cut to the limit', async () => {
     const view = open(`/runs?agent=${LONG}`);
-    const select = await view.findByLabelText(TASK_COPY.agentLabel);
-    await waitFor(() =>
-      expect([...select.querySelectorAll('option')].some((option) => option.value === LONG)).toBe(
-        true,
-      ),
-    );
-    const option = [...select.querySelectorAll('option')].find((entry) => entry.value === LONG);
-    expect(option?.textContent).toBe(filterLabelOf(LONG));
-    expect(Array.from(option?.textContent ?? '')).toHaveLength(FILTER_LABEL_LIMIT);
+    const trigger = await view.findByRole('combobox', { name: TASK_COPY.agentLabel });
+    await fireEvent.click(trigger);
+    const options = await view.findAllByRole('option');
+    const option = options.find((entry) => entry.textContent?.trim() === filterLabelOf(LONG));
+    expect(option).toBeDefined();
+    expect(Array.from(option?.textContent?.trim() ?? '')).toHaveLength(FILTER_LABEL_LIMIT);
   });
 });
 
@@ -294,9 +284,10 @@ describe('Started by', () => {
 
   test('offers every kind in the filter, and each narrows the list to the runs it started', async () => {
     const view = open('/runs', ORIGIN_TASKS);
-    const select = await view.findByLabelText(TASK_COPY.startedByLabel);
-    const values = [...select.querySelectorAll('option')].map((option) => option.value);
-    expect(values).toEqual(expect.arrayContaining(Object.keys(STARTED_BY_LABELS)));
+    await fireEvent.click(await view.findByRole('combobox', { name: TASK_COPY.startedByLabel }));
+    const options = await view.findAllByRole('option');
+    const labels = options.map((option) => option.textContent?.trim());
+    expect(labels).toEqual(expect.arrayContaining(Object.values(STARTED_BY_LABELS)));
     cleanup();
     stub?.restore();
 

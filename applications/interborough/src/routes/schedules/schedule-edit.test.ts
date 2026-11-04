@@ -208,7 +208,7 @@ describe('ScheduleEdit', () => {
     let closed = false;
     let queryClient: QueryClient | undefined;
     try {
-      const { container, getByRole } = render(ScheduleEditHarness, {
+      const { getByLabelText, getByRole } = render(ScheduleEditHarness, {
         props: {
           client,
           scheduleId: 'cadence-edit',
@@ -219,11 +219,11 @@ describe('ScheduleEdit', () => {
 
       // Edit ONLY the cadence: `0 2 * * *` opens as Every day, and At moves from 2:00 to 5:00.
       const at = await waitFor(() => {
-        const field = container.querySelector('input[type="time"]');
+        const field = getByLabelText('At');
         if (!(field instanceof HTMLInputElement)) throw new Error('At field not rendered');
         return field;
       });
-      await fireEvent.change(at, { target: { value: '05:00' } });
+      await fireEvent.change(at, { target: { value: '5:00 AM' } });
 
       // The schedule is run: `updatedAt` moves while the revision, which only a change to the
       // schedule moves, stays what the draft was built from.
@@ -483,17 +483,20 @@ describe('ScheduleEdit', () => {
 
     let closed = false;
     try {
-      const { container, getByRole, getByTestId, queryByTestId } = render(ScheduleEditHarness, {
-        props: { client, scheduleId: 'skip-then-move', onClose: () => (closed = true) },
-      });
+      const { getByLabelText, getByRole, getByTestId, queryByTestId } = render(
+        ScheduleEditHarness,
+        {
+          props: { client, scheduleId: 'skip-then-move', onClose: () => (closed = true) },
+        },
+      );
 
       const at = await waitFor(() => {
-        const field = container.querySelector('input[type="time"]');
+        const field = getByLabelText('At');
         if (!(field instanceof HTMLInputElement)) throw new Error('At field not rendered');
         return field;
       });
       expect(queryByTestId('schedule-edit-skip-pending')).toBeNull();
-      await fireEvent.change(at, { target: { value: '05:00' } });
+      await fireEvent.change(at, { target: { value: '5:00 AM' } });
       await waitFor(() =>
         expect(getByTestId('schedule-edit-skip-pending').textContent).toContain(
           SCHEDULE_COPY.edit.skipPending,

@@ -133,7 +133,23 @@ Pass `storageKey` and the divider width is remembered under that key in `localSt
 
 ## Narrow layout
 
-When the component is narrower than `pushBelow` (900 pixels by default), it shows one pane at a time: the list, then the detail with a Back button. The width is the component's own, not the viewport's, so a ListDetail in a narrow column stacks inside a wide window. Back clears the selection and returns focus to the row that was open. A width that has not been measured yet counts as wide.
+When the component is narrower than `pushBelow` (600 pixels by default, so a tablet shows both panes and a phone shows one), it shows one pane at a time: the list, then the detail with a Back button. The pane then follows the page instead of scrolling inside a box of its own. The width is the component's own, not the viewport's, so a ListDetail in a narrow column stacks inside a wide window. Back clears the selection and returns focus to the row that was open. A width that has not been measured yet counts as wide.
+
+## Grouped lists
+
+Pass `groupBy` to put consecutive rows under a header band, such as a source or a day. Each group is a nested list named by its header, and the filter and its count stay in the `header` above, so the list scrolls in its own column under them.
+
+## A table in the list slot
+
+Pass `listBody` instead of `list` when the list is a table. It receives the items, the open key and an `open` function, and replaces the rows; `groupBy` and `listEmpty` are then yours to draw. A `DataTable` fits it directly: give it `getRowId` equal to the list's `key`, `openRowId={body.selectedKey}` and `onRowOpen` calling `body.open`, and the open row stays highlighted beside the detail while the table scrolls. Rows carry `data-cinder-row-id`, so `J`, `K` and `Enter` work on them as they do on list rows.
+
+## Loading
+
+Set `loading` while the records load. Nothing shows for the first 300 milliseconds, so a fast load never flickers; after that the list pane shows five placeholder rows, the detail pane shows a placeholder block, and `loadingLabel` ("Loading memories") is announced politely. The header stays live. After ten seconds the placeholder adds its own "still loading" line.
+
+## The detail pane
+
+The detail pane has its own inset (`--cinder-space-4`). A detail view that bleeds to the edge sets `--cinder-list-detail-detail-padding: 0` on the root or an ancestor. The divider between the panes is a quiet 1px rule that shows its grip only on hover or focus.
 
 ## Row actions
 
@@ -147,21 +163,26 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | --- | --- | --- | --- | --- |
 | `backLabel` | `string` | no | `"Back"` | Label of the Back button shown above the detail below `pushBelow`. |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-list-detail` root element. |
-| `defaultListWidth` | `number` | no | `320` | Width in pixels of the list pane before the divider is moved. |
+| `defaultListWidth` | `number` | no | `280` | Width in pixels of the list pane before the divider is moved. |
 | `detailLabel` | `string` | no | `"Details"` | Accessible name of the detail region. |
 | `emptyDescription` | `string` | no | `"Choose an item from the list to see it here."` | Description of the default empty detail, used when `empty` is omitted. |
 | `emptyTitle` | `string` | no | `"Nothing selected"` | Title of the default empty detail, used when `empty` is omitted. |
+| `flushDetail` | `boolean` | no | `false` | Removes the detail pane's inner padding, for a detail view that lays out its own header, body and footer edge to edge (an open chat, a table, a code frame). |
 | `label` | `string` | yes | — | Accessible name of the list region, for example "Chats". |
-| `pushBelow` | `number` | no | `900` | Width in pixels of the component below which it shows one pane at a time: the list, then the detail with a Back button. It is measured on the component, not the viewport. |
+| `loading` | `boolean` | no | `false` | Shows a placeholder in place of the rows and the open item while the records load: five list rows in the list pane and a block in the detail pane. Nothing shows for the first 300 milliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after ten seconds. |
+| `loadingLabel` | `string` | no | `"Loading"` | What the loading region announces, politely, once the placeholder appears: "Loading memories". |
+| `pushBelow` | `number` | no | `600` | Width in pixels of the component below which it shows one pane at a time: the list, then the detail with a Back button. It is measured on the component, not the viewport. |
 | `selectedKey` | `string` \| `null` | no | `null` | Key of the open item, or `null` when none is open. Bindable. When it is `null` on mount, the item named by the URL's search parameter opens. |
 | `selectionParameter` | `string` \| `null` | no | `"selected"` | Name of the search parameter that holds the open item's key. Pass `null` to keep the selection out of the URL. |
 | `storageKey` | `string` | no | — | Storage key under which the divider width is remembered. Omit to not remember it. The key is the caller's, so two ListDetails on one page do not share a width. |
 | `detail` | `(opaque)` | yes | — | Detail renderer for the open item. Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | Rendered in the detail pane while no item is open. A default message is shown when omitted. Not expressible in JSON Schema; see the component types for the signature. |
+| `groupBy` | `(opaque)` | no | — | Groups consecutive items under a header band, such as a source or a day. Passed to the list's `DataList`, so a group is a nested list named by its header. Not expressible in JSON Schema; see the component types for the signature. |
 | `header` | `(opaque)` | no | — | List header, above the rows: the title, the count, the create action, the search and the filter. Put the title and the create action on their own row and the filter below at full width, so the action never reads as the filter's submit button. Not expressible in JSON Schema; see the component types for the signature. |
 | `items` | `(opaque)` | yes | — | The records to list. Each is passed to `list` and, when selected, to `detail`. Not expressible in JSON Schema; see the component types for the signature. |
 | `key` | `(opaque)` | yes | — | Key extractor. The key identifies an item in the keyboard cursor, the selection, and the URL. Not expressible in JSON Schema; see the component types for the signature. |
-| `list` | `(opaque)` | yes | — | Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a `SelectableRow` with `selected={row.selected}` and `selectedState="current"`; activating its primary action opens the item. Not expressible in JSON Schema; see the component types for the signature. |
+| `list` | `(opaque)` | no | — | Row renderer, called once per item inside an `<li>` that ListDetail provides. Render a `SelectableRow` with `selected={row.selected}` and `selectedState="current"`; activating its primary action opens the item. Omit it when `listBody` draws the rows. Not expressible in JSON Schema; see the component types for the signature. |
+| `listBody` | `(opaque)` | no | — | Draws the whole list pane body itself, in place of the `<li>` rows, for a list that is a table. Give each row a `data-cinder-row-id` equal to its `key` (a `DataTable` does) so the J and K cursor finds it, and call `open` when a row is chosen. `list`, `groupBy` and `listEmpty` are ignored while it is set. Not expressible in JSON Schema; see the component types for the signature. |
 | `listEmpty` | `(opaque)` | no | — | Rendered in the list when `items` is empty. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSelectedKeyChange` | `(opaque)` | no | — | Called with the new key when an item opens, and with `null` when the selection is cleared. Not expressible in JSON Schema; see the component types for the signature. |
 | `selectionLocation` | `(opaque)` | no | — | Where the selection is read and written. Defaults to the address bar. Not expressible in JSON Schema; see the component types for the signature. |

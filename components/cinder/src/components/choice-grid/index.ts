@@ -19,5 +19,6 @@ export type {
   ChoiceGridItemState,
   ChoiceGridProps,
   ChoiceGridSize,
+  ChoiceGridVariant,
 } from './choice-grid.types.ts';
 export { ChoiceGrid };

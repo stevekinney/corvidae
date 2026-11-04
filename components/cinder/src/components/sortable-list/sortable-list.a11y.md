@@ -15,6 +15,10 @@
 
 Only the drag handle button is in the tab sequence. Row `<li>` elements have no `tabindex`.
 
+## Move buttons
+
+With `reorderMode="buttons"` or `"both"` each row can render Move up and Move down buttons (`context.moveButtons`), the single-pointer alternative to dragging (WCAG 2.5.7). They are ordinary buttons in the tab sequence, named `Move {itemLabel} up` and `Move {itemLabel} down`, and a move is announced in the live region as "moved to position {n} of {total}". The first row omits Move up, the last omits Move down, and a lone row has neither. After a move, focus stays on the pressed button, or on the row's remaining button when the pressed one no longer exists in the row's new place. `buttons` mode draws no drag handle.
+
 ## ARIA Model
 
 - **List root**: `<ul role="list" aria-label={label}>`. Explicit `role="list"` because `list-style: none` can strip implicit semantics in some browser+AT combinations.

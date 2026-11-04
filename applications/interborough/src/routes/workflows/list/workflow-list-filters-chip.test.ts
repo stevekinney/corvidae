@@ -25,7 +25,7 @@ function mountWith(filter: WorkflowListQuery) {
 }
 
 describe('the workflow list filters, with an updated window', () => {
-  test('name the window in a chip, and drop it with Clear all', async () => {
+  test('name the window in a chip, and drop it with the chip’s Remove', async () => {
     const { container, getByRole, changes } = mountWith({
       status: 'failed',
       updatedAt: { gte: Date.now() - DAY_MS },
@@ -35,8 +35,8 @@ describe('the workflow list filters, with an updated window', () => {
     expect(container.textContent).toContain('Updated');
     expect(container.textContent).toContain('Last 24 hours');
 
-    await fireEvent.click(getByRole('button', { name: /clear all/i }));
-    expect(changes).toEqual([{ limit: 25 }]);
+    await fireEvent.click(getByRole('button', { name: /remove filter: updated/i }));
+    expect(changes).toEqual([{ status: 'failed', limit: 25 }]);
   });
 
   test('show no chip when there is no window, and call an unmatched window a custom range', () => {

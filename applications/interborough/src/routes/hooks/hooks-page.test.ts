@@ -10,6 +10,7 @@ import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   installBureauStub,
@@ -20,6 +21,7 @@ import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { AGENT, landAt } from '../chat/pages.test-support.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
+import { eventWords } from './hook-presentation.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -366,7 +368,7 @@ describe('the hooks list', () => {
     );
 
     await waitFor(() => expect(rowIds(view.container)).toEqual(['mine']));
-    await fireEvent.click(view.getByRole('button', { name: /Agent: researcher/ }));
+    await chooseFilterOption(view, HOOKS_COPY.agentFilter, HOOKS_COPY.anyAgent);
     await waitFor(() => expect(rowIds(view.container)).toEqual(['mine', 'other', 'everyone']));
   });
 
@@ -389,9 +391,7 @@ describe('the hooks list', () => {
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.clearAction }));
     await waitFor(() => expect(rowIds(view.container)).toEqual(['alpha', 'beta']));
 
-    await fireEvent.change(view.getByLabelText(HOOKS_COPY.eventFilter), {
-      target: { value: 'review.requested' },
-    });
+    await chooseFilterOption(view, HOOKS_COPY.eventFilter, eventWords('review.requested'));
     await waitFor(() => expect(rowIds(view.container)).toEqual(['alpha']));
   });
 

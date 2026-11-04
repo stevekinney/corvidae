@@ -1,5 +1,12 @@
 /// <reference lib="dom" />
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+/**
+ * COR-2012 (B04, rows 04l 10e 10f 10g 45u 52l 52m 53i 53j 60c 60o 60x 70c 70d): the filter bar is
+ * one row that never wraps. Wide it draws status segments, facet chips and a search field; medium
+ * folds the segments into a "Status: All 19" select and the search into an icon button; narrow
+ * keeps the select and a Filter menu.
+ */
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -10,590 +17,1028 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
+const { flushSync } = await import('svelte');
 const { default: FilterBar } = await import('./filter-bar.svelte');
 
-/**
- * Slice one rule body out of a stylesheet, failing loudly when the selector is gone.
- *
- * Nested `indexOf` calls without this guard silently produce `-1` boundaries when a
- * selector is renamed, so the slice comes back as garbage and the assertion fails with
- * an unrelated-looking message instead of "that selector no longer exists".
- */
-function ruleBody(css: string, selector: string): string {
-  const opening = `${selector} {`;
-  const start = css.indexOf(opening);
-  if (start === -1) {
-    throw new Error(`Expected filter-bar.css to contain a rule for \`${selector}\``);
-  }
-  const end = css.indexOf('}', start);
-  if (end === -1) {
-    throw new Error(`Unterminated rule for \`${selector}\` in filter-bar.css`);
-  }
-  return css.slice(start, end);
-}
-
-/**
- * Slice a whole `@container` block out of a stylesheet by matching braces.
- *
- * `css.slice(css.indexOf(header))` has two failure modes this avoids: a renamed header
- * yields `indexOf === -1`, so the slice silently becomes the file's last character; and
- * even on a hit it runs to end-of-file, so an assertion can be satisfied by a rule in
- * some entirely different block further down.
- */
-function containerBlock(css: string, header: string): string {
-  const start = css.indexOf(header);
-  if (start === -1) {
-    throw new Error(`Expected filter-bar.css to contain \`${header}\``);
-  }
-  const open = css.indexOf('{', start + header.length - 1);
-  if (open === -1) {
-    throw new Error(`Unterminated block for \`${header}\` in filter-bar.css`);
-  }
-  let depth = 0;
-  for (let index = open; index < css.length; index += 1) {
-    if (css[index] === '{') depth += 1;
-    else if (css[index] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(start, index + 1);
-    }
-  }
-  throw new Error(`Unterminated block for \`${header}\` in filter-bar.css`);
-}
+const filterBarCss = readFileSync(new URL('./filter-bar.css', import.meta.url), 'utf8');
 
 beforeEach(() => document.body.replaceChildren());
 afterEach(() => cleanup());
 
-const STATUS_FACET = {
-  type: 'select' as const,
-  key: 'status',
-  label: 'Status',
-  placeholder: 'All statuses',
+// The Runs list from PageRuns: six status segments that add up to All 19.
+const RUN_SEGMENTS = [
+  { value: 'all', label: 'All', count: 19 },
+  { value: 'waiting', label: 'Waiting on you', count: 2 },
+  { value: 'running', label: 'Running', count: 0 },
+  { value: 'done', label: 'Done', count: 15 },
+  { value: 'failed', label: 'Failed', count: 1 },
+  { value: 'canceled', label: 'Canceled', count: 1 },
+];
+
+const STARTED_BY = {
+  type: 'choice' as const,
+  key: 'startedBy',
+  label: 'Started by',
   options: [
-    { value: 'running', label: 'Running' },
-    { value: 'failed', label: 'Failed' },
-    { value: 'paused', label: 'Paused' },
+    { value: 'you', label: 'You', count: 0 },
+    { value: 'chats', label: 'Chats', count: 5 },
+    { value: 'schedules', label: 'Schedules', count: 4 },
+    { value: 'goals', label: 'Goals', count: 8 },
+    { value: 'interborough', label: 'Interborough', count: 2 },
+    { value: 'workflows', label: 'Workflows', count: 0 },
+    { value: 'agents', label: 'Agents', count: 0 },
   ],
 };
 
-const QUEUE_FACET = {
-  type: 'select' as const,
-  key: 'queue',
-  label: 'Queue',
-  placeholder: 'All queues',
+const AGENT = {
+  type: 'choice' as const,
+  key: 'agent',
+  label: 'Agent',
+  multiple: false,
   options: [
-    { value: 'default', label: 'Default' },
-    { value: 'priority', label: 'Priority' },
+    { value: 'assistant', label: 'Assistant' },
+    { value: 'tool-runner', label: 'Tool runner' },
   ],
 };
+
+const WORKFLOW = {
+  type: 'choice' as const,
+  key: 'workflow',
+  label: 'Workflow',
+  options: [
+    { value: 'release-notes', label: 'Release notes', count: 1 },
+    { value: 'triage-inbox', label: 'Triage inbox', count: 2 },
+    { value: 'order-refund', label: 'Order refund', count: 0 },
+    { value: 'chat', label: 'Chat with an agent · internal', count: 6 },
+    { value: 'goal', label: 'Goal attempts · internal', count: 8 },
+    { value: 'tick', label: 'Schedule tick · internal', count: 2 },
+  ],
+};
+
+const MISSED = {
+  type: 'toggle' as const,
+  key: 'missed',
+  label: 'Missed runs',
+  count: 1,
+};
+
+const KIND = {
+  type: 'select' as const,
+  key: 'kind',
+  label: 'Kind',
+  options: [
+    { value: 'fact', label: 'Fact' },
+    { value: 'how-to', label: 'How-to' },
+  ],
+};
+
+const WRITER = {
+  type: 'select' as const,
+  key: 'writer',
+  label: 'Written by',
+  placeholder: 'Anyone',
+  options: [
+    { value: 'you', label: 'You' },
+    { value: 'tool-runner', label: 'Tool runner' },
+  ],
+};
+
+function textOf(element: Element | null | undefined): string {
+  return (element?.textContent ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function optionTexts(): string[] {
+  return [...document.querySelectorAll('[role="option"]')].map((option) => textOf(option));
+}
+
+function chipTrigger(container: HTMLElement, label: string): HTMLButtonElement {
+  const button = [
+    ...container.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__chip-trigger'),
+  ].find((candidate) => textOf(candidate).startsWith(label));
+  if (!button) throw new Error(`no chip for ${label}`);
+  return button;
+}
 
 describe('FilterBar structure', () => {
-  test('renders root element with cinder-filter-bar class', () => {
-    const { container } = render(FilterBar, {});
-    const root = container.querySelector('.cinder-filter-bar');
-    expect(root).not.toBeNull();
-  });
-
-  test('applies role="search" for accessible landmark', () => {
-    const { container } = render(FilterBar, {});
-    const root = container.querySelector('.cinder-filter-bar');
-    expect(root?.getAttribute('role')).toBe('search');
-  });
-
-  test('applies aria-label from prop', () => {
-    const { container } = render(FilterBar, { 'aria-label': 'Workflow filters' } as any);
-    const root = container.querySelector('.cinder-filter-bar');
-    expect(root?.getAttribute('aria-label')).toBe('Workflow filters');
-  });
-
-  test('root landmark role cannot be overridden by rest attributes', () => {
+  test('is a labelled search landmark that rest attributes cannot override', () => {
     const { container } = render(FilterBar, {
       role: 'presentation',
-      'aria-label': 'Workflow filters',
+      'aria-label': 'Run filters',
     } as never);
     const root = container.querySelector('.cinder-filter-bar');
     expect(root?.getAttribute('role')).toBe('search');
-    expect(root?.getAttribute('aria-label')).toBe('Workflow filters');
+    expect(root?.getAttribute('aria-label')).toBe('Run filters');
   });
 
-  test('merges a custom class alongside cinder-filter-bar', () => {
+  test('merges a custom class', () => {
     const { container } = render(FilterBar, { class: 'custom-class' });
     const root = container.querySelector('.cinder-filter-bar');
-    expect(root?.classList.contains('cinder-filter-bar')).toBe(true);
     expect(root?.classList.contains('custom-class')).toBe(true);
   });
 
-  test('renders the search field', () => {
-    const { container } = render(FilterBar, {});
-    const searchField = container.querySelector('.cinder-search-field');
-    expect(searchField).not.toBeNull();
-  });
-
-  test('searchVisible=false omits the search field while preserving facet controls', () => {
+  test('draws one row and no second row of chips or a Clear all button', () => {
     const { container } = render(FilterBar, {
-      searchVisible: false,
-      searchQuery: 'hidden query',
-      facets: [STATUS_FACET],
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, AGENT],
+      appliedFilters: [{ key: 'agent', value: 'tool-runner', label: 'Agent' }],
     });
-    expect(container.querySelector('.cinder-search-field')).toBeNull();
-    expect(container.querySelector('[aria-label="Status"]')).not.toBeNull();
+    expect(container.querySelectorAll('.cinder-filter-bar__row')).toHaveLength(1);
     expect(container.querySelector('.cinder-filter-bar__chips')).toBeNull();
+    expect(textOf(container)).not.toContain('Clear all');
+    const rule = filterBarCss.match(/\.cinder-filter-bar__row \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('flex-wrap: nowrap');
   });
 
-  test('renders select facets from facets prop', () => {
+  test('omits the search field when searchVisible is false', () => {
+    const { container } = render(FilterBar, { searchVisible: false, facets: [KIND] });
+    expect(container.querySelector('.cinder-search-field')).toBeNull();
+    expect(container.querySelector('.cinder-select')).not.toBeNull();
+  });
+
+  test('disables every control', () => {
     const { container } = render(FilterBar, {
-      facets: [STATUS_FACET, QUEUE_FACET],
+      layout: 'wide',
+      disabled: true,
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, MISSED, KIND],
     });
-    const selects = container.querySelectorAll('.cinder-filter-bar__select');
-    expect(selects).toHaveLength(2);
-  });
-
-  test('renders facet options including placeholder', () => {
-    const { container } = render(FilterBar, { facets: [STATUS_FACET] });
-    const options = container.querySelectorAll('.cinder-filter-bar__select option');
-    // placeholder + 3 options
-    expect(options).toHaveLength(4);
-    expect(options[0]?.textContent).toBe('All statuses');
-  });
-
-  test('renders applied-filter chips when appliedFilters is provided', () => {
-    const { container } = render(FilterBar, {
-      appliedFilters: [
-        { key: 'status', value: 'failed', label: 'Status' },
-        { key: 'queue', value: 'default', label: 'Queue' },
-      ],
-    });
-    const chips = container.querySelectorAll('.cinder-chip');
-    expect(chips).toHaveLength(2);
-  });
-
-  test('select facet reflects the value from appliedFilters (controlled sync)', () => {
-    // Regression: the select used to read only internal state, so a chip from
-    // appliedFilters would show while the matching select stayed on the
-    // placeholder. The select must mirror the controlled applied value.
-    const { container } = render(FilterBar, {
-      facets: [STATUS_FACET, QUEUE_FACET],
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
-    });
-    const statusSelect = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Status"].cinder-filter-bar__select',
+    expect(
+      container.querySelector<HTMLButtonElement>('.cinder-filter-bar__chip-trigger')?.disabled,
+    ).toBe(true);
+    expect(container.querySelector('.cinder-filter-bar__toggle')?.hasAttribute('disabled')).toBe(
+      true,
     );
-    const queueSelect = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Queue"].cinder-filter-bar__select',
+    expect(container.querySelector('.cinder-search-field input')?.hasAttribute('disabled')).toBe(
+      true,
     );
-    expect(statusSelect?.value).toBe('failed');
-    // A facet with no applied filter falls back to the empty placeholder.
-    expect(queueSelect?.value).toBe('');
+    expect(container.querySelector('.cinder-filter-bar')?.hasAttribute('data-disabled')).toBe(true);
+  });
+});
+
+describe('FilterBar wide layout (rows 10e 60c 70c)', () => {
+  test('draws the segments with their counts in their accessible names, then the chips, then search', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, AGENT],
+      searchPlaceholder: 'Search runs',
+    });
+
+    const group = container.querySelector('[role="radiogroup"]');
+    expect(group?.getAttribute('aria-labelledby')).toBeTruthy();
+    const segments = [...container.querySelectorAll('[role="radio"]')].map((segment) =>
+      textOf(segment),
+    );
+    expect(segments.map((text) => text.replace(/,\s*/, ', '))).toEqual([
+      'All, 19',
+      'Waiting on you, 2',
+      'Running, 0',
+      'Done, 15',
+      'Failed, 1',
+      'Canceled, 1',
+    ]);
+    expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain(
+      'All',
+    );
+
+    const order = [...container.querySelector('.cinder-filter-bar__row')!.children].map((child) =>
+      child.classList.contains('cinder-filter-bar__chip')
+        ? 'chip'
+        : child.classList.contains('cinder-segmented-control-container')
+          ? 'segments'
+          : child.classList.contains('cinder-search-field')
+            ? 'search'
+            : 'other',
+    );
+    expect(order.filter((kind) => kind !== 'other')).toEqual([
+      'segments',
+      'chip',
+      'chip',
+      'search',
+    ]);
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')?.placeholder).toBe(
+      'Search runs',
+    );
+    expect(
+      container.querySelector('.cinder-filter-bar')?.getAttribute('data-cinder-search-position'),
+    ).toBe('end');
   });
 
-  test('a user-changed select resets when the parent clears appliedFilters', async () => {
-    // Regression for the stale-local-state path: the user changes the select
-    // (which used to write an internal map), then the parent clears
-    // appliedFilters externally. The select must follow the controlled state
-    // back to the placeholder, not keep showing the value it last held locally.
+  test('choosing a segment reports its value and keeps it chosen when uncontrolled', async () => {
+    const changes: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      onSegmentChange: (value: string) => changes.push(value),
+    });
+    await fireEvent.click(container.querySelector('[data-cinder-segment-value="failed"]')!);
+    flushSync();
+    expect(changes).toEqual(['failed']);
+    expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain(
+      'Failed',
+    );
+  });
+
+  test('a controlled segmentValue wins over a click until the consumer changes it', async () => {
     const { container, rerender } = render(FilterBar, {
-      facets: [STATUS_FACET],
-      appliedFilters: [],
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      segmentValue: 'failed',
     });
-    let statusSelect = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Status"].cinder-filter-bar__select',
-    )!;
-    // User picks a value — in a real app this commits to appliedFilters via the
-    // onFacetChange callback; here we drive both the local change and the
-    // resulting controlled prop to model that round-trip.
-    statusSelect.value = 'failed';
-    await fireEvent.change(statusSelect);
-    await rerender({
-      facets: [STATUS_FACET],
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
-    });
-    statusSelect = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Status"].cinder-filter-bar__select',
-    )!;
-    expect(statusSelect.value).toBe('failed');
-    // Parent clears all filters. The select must reset even though it was the
-    // control the user last interacted with.
-    await rerender({ facets: [STATUS_FACET], appliedFilters: [] });
-    statusSelect = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Status"].cinder-filter-bar__select',
-    )!;
-    expect(statusSelect.value).toBe('');
+    expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain(
+      'Failed',
+    );
+    await rerender({ segmentValue: 'done' } as never);
+    flushSync();
+    expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain(
+      'Done',
+    );
   });
 
-  test('hides chips row when no applied filters', () => {
-    const { container } = render(FilterBar, { appliedFilters: [] });
-    const chipsRow = container.querySelector('.cinder-filter-bar__chips');
-    expect(chipsRow).toBeNull();
-  });
-
-  test('renders clear-all button when there are applied filters', () => {
+  test('a toggle chip sits beside the segments with a dot and a count, and is not a segment (rows 70c 70d)', async () => {
+    const changes: [string, string][] = [];
     const { container } = render(FilterBar, {
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
+      layout: 'wide',
+      searchVisible: false,
+      segments: [
+        { value: 'all', label: 'All', count: 4 },
+        { value: 'active', label: 'Active', count: 3 },
+        { value: 'paused', label: 'Paused', count: 1 },
+      ],
+      facets: [
+        MISSED,
+        { type: 'choice', key: 'agent', label: 'Agent', options: [{ value: 'a', label: 'A' }] },
+        {
+          type: 'choice',
+          key: 'workflow',
+          label: 'Workflow',
+          options: [{ value: 'w', label: 'W' }],
+        },
+      ],
+      onFacetChange: (key: string, value: string) => changes.push([key, value]),
     });
-    const clearAll = container.querySelector('.cinder-filter-bar__clear-all');
-    expect(clearAll).not.toBeNull();
-    expect(clearAll?.textContent?.trim()).toBe('Clear all');
+
+    expect(container.querySelectorAll('[role="radio"]')).toHaveLength(3);
+    expect(container.querySelector('.cinder-search-field')).toBeNull();
+    const toggle = container.querySelector<HTMLButtonElement>('.cinder-filter-bar__toggle')!;
+    expect(textOf(toggle)).toBe('Missed runs 1');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle.querySelector('.cinder-filter-bar__dot')?.getAttribute('data-cinder-tone')).toBe(
+      'warning',
+    );
+
+    const row = [...container.querySelector('.cinder-filter-bar__row')!.children];
+    const labels = row.map((child) => textOf(child));
+    expect(labels.findIndex((text) => text.startsWith('Missed runs'))).toBeLessThan(
+      labels.findIndex((text) => text === 'Agent'),
+    );
+    expect(labels.findIndex((text) => text === 'Agent')).toBeLessThan(
+      labels.findIndex((text) => text === 'Workflow'),
+    );
+
+    await fireEvent.click(toggle);
+    expect(changes).toEqual([['missed', 'true']]);
   });
 
-  test('renders clear-all button when only searchQuery is non-empty (no chips)', () => {
+  test('an applied toggle is pressed and clicking it reports an empty value', async () => {
+    const changes: [string, string][] = [];
     const { container } = render(FilterBar, {
-      searchQuery: 'my workflow',
-      appliedFilters: [],
+      layout: 'wide',
+      searchVisible: false,
+      facets: [MISSED],
+      appliedFilters: [{ key: 'missed', value: 'true', label: 'Missed runs' }],
+      onFacetChange: (key: string, value: string) => changes.push([key, value]),
     });
-    const clearAll = container.querySelector('.cinder-filter-bar__clear-all');
-    expect(clearAll).not.toBeNull();
+    const toggle = container.querySelector<HTMLButtonElement>('.cinder-filter-bar__toggle')!;
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    await fireEvent.click(toggle);
+    expect(changes).toEqual([['missed', '']]);
+  });
+
+  test('a toggle at zero still shows its count', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      facets: [{ ...MISSED, count: 0 }],
+    });
+    expect(textOf(container.querySelector('.cinder-filter-bar__toggle'))).toBe('Missed runs 0');
   });
 });
 
-describe('FilterBar behavior', () => {
-  test('calls onSearchChange when search input changes', async () => {
-    const onSearchChange = mock((_query: string) => {});
-    const { container } = render(FilterBar, { onSearchChange });
-    const input = container.querySelector<HTMLInputElement>('.cinder-search-field__input');
-    expect(input).not.toBeNull();
-    await fireEvent.input(input!, { target: { value: 'my workflow' } });
-    expect(onSearchChange).toHaveBeenCalledWith('my workflow');
+describe('FilterBar choice chips (rows 10e 52l 52m 53i 53j)', () => {
+  test('an unapplied facet is a "+ Started by" add chip that opens a titled checkbox list with counts', async () => {
+    const { container } = render(FilterBar, { layout: 'wide', facets: [STARTED_BY] });
+    const trigger = chipTrigger(container, 'Started by');
+    expect(trigger.closest('.cinder-filter-bar__chip')?.hasAttribute('data-cinder-applied')).toBe(
+      false,
+    );
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    await fireEvent.click(trigger);
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-filter-bar__options')).not.toBeNull(),
+    );
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(textOf(document.querySelector('.cinder-filter-bar__options-title'))).toBe('Started by');
+    const rows = [...document.querySelectorAll('.cinder-filter-bar__option')].map((row) =>
+      textOf(row),
+    );
+    expect(rows).toEqual([
+      'You 0',
+      'Chats 5',
+      'Schedules 4',
+      'Goals 8',
+      'Interborough 2',
+      'Workflows 0',
+      'Agents 0',
+    ]);
+    // The first five add up to All 19, and every row's count describes its checkbox.
+    const counts = [...document.querySelectorAll('.cinder-filter-bar__option-count')].map((count) =>
+      Number(count.textContent),
+    );
+    expect(counts.slice(0, 5).reduce((sum, count) => sum + count, 0)).toBe(19);
+    const checkbox = document.querySelector<HTMLInputElement>('.cinder-filter-bar__option input')!;
+    expect(textOf(document.getElementById(checkbox.getAttribute('aria-describedby') ?? ''))).toBe(
+      '0',
+    );
+    expect(textOf(document.querySelector('.cinder-filter-bar__options-footer'))).toContain(
+      'Matches any selected',
+    );
+    expect(textOf(document.querySelector('.cinder-filter-bar__options-footer'))).toContain('Clear');
   });
 
-  test('calls onFacetChange when a select facet changes', async () => {
-    const onFacetChange = mock((_key: string, _value: string) => {});
+  test("ticking boxes reports every chosen value in the facet's own order", async () => {
+    const changes: [string, readonly string[]][] = [];
     const { container } = render(FilterBar, {
-      facets: [STATUS_FACET],
-      onFacetChange,
-    });
-    const select = container.querySelector<HTMLSelectElement>('.cinder-filter-bar__select');
-    expect(select).not.toBeNull();
-    await fireEvent.change(select!, { target: { value: 'failed' } });
-    expect(onFacetChange).toHaveBeenCalledWith('status', 'failed');
-  });
-
-  test('calls onFilterRemove with the chip key when a chip remove button is clicked', async () => {
-    const onFilterRemove = mock((_key: string) => {});
-    const { container } = render(FilterBar, {
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
-      onFilterRemove,
-    });
-    const removeButton = container.querySelector<HTMLButtonElement>('.cinder-chip__remove');
-    expect(removeButton).not.toBeNull();
-    await fireEvent.click(removeButton!);
-    expect(onFilterRemove).toHaveBeenCalledWith('status');
-  });
-
-  test('calls onClearAll when clear-all button is clicked', async () => {
-    const onClearAll = mock(() => {});
-    const { container } = render(FilterBar, {
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
-      onClearAll,
-    });
-    const clearAll = container.querySelector<HTMLButtonElement>('.cinder-filter-bar__clear-all');
-    expect(clearAll).not.toBeNull();
-    await fireEvent.click(clearAll!);
-    expect(onClearAll).toHaveBeenCalled();
-  });
-
-  test('disabled prop disables all select facets', () => {
-    const { container } = render(FilterBar, {
-      facets: [STATUS_FACET, QUEUE_FACET],
-      disabled: true,
-    });
-    const selects = container.querySelectorAll<HTMLSelectElement>('.cinder-filter-bar__select');
-    expect(selects).toHaveLength(2);
-    for (const select of selects) {
-      expect(select.disabled).toBe(true);
-    }
-  });
-
-  test('disabled prop disables the clear-all button', () => {
-    const { container } = render(FilterBar, {
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
-      disabled: true,
-    });
-    const clearAll = container.querySelector<HTMLButtonElement>('.cinder-filter-bar__clear-all');
-    expect(clearAll?.disabled).toBe(true);
-  });
-
-  test('sets data-disabled on root when disabled', () => {
-    const { container } = render(FilterBar, { disabled: true });
-    const root = container.querySelector('.cinder-filter-bar');
-    expect(root?.hasAttribute('data-disabled')).toBe(true);
-  });
-
-  test('searchPlaceholder prop is forwarded to the search input', () => {
-    const { container } = render(FilterBar, { searchPlaceholder: 'Filter workflows…' });
-    const input = container.querySelector<HTMLInputElement>('.cinder-search-field__input');
-    expect(input?.getAttribute('placeholder')).toBe('Filter workflows…');
-  });
-});
-
-describe('FilterBar accessibility', () => {
-  test('applied-filter chip has an accessible remove label including filter key and value', () => {
-    const { container } = render(FilterBar, {
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
-    });
-    const removeButton = container.querySelector<HTMLButtonElement>('.cinder-chip__remove');
-    const ariaLabel = removeButton?.getAttribute('aria-label') ?? '';
-    expect(ariaLabel).toContain('Status');
-    expect(ariaLabel).toContain('failed');
-  });
-
-  test('each select facet has an associated label (visually hidden or aria-label)', () => {
-    const { container } = render(FilterBar, { facets: [STATUS_FACET] });
-    const select = container.querySelector<HTMLSelectElement>('.cinder-filter-bar__select');
-    // Either aria-label or a for/id pair must exist
-    const hasAriaLabel = select?.hasAttribute('aria-label');
-    const hasId = select?.hasAttribute('id');
-    const labelFor = hasId ? container.querySelector(`label[for="${select!.id}"]`) : null;
-    expect(hasAriaLabel || labelFor !== null).toBe(true);
-  });
-
-  test('always renders a live region for filter-count announcements', () => {
-    const { container } = render(FilterBar, {});
-    // The visually-hidden live region is always in the DOM. Scoped to
-    // `[role="status"]` (not the broader `[aria-live]`) because the embedded
-    // SearchField's Input also carries `aria-live="polite"` on its
-    // always-mounted error node (CIN-315) and would otherwise collide.
-    const liveRegion = container.querySelector('[role="status"]');
-    expect(liveRegion).not.toBeNull();
-  });
-
-  test('live region summarizes applied filters', async () => {
-    const { container } = render(FilterBar, {
+      layout: 'wide',
+      facets: [STARTED_BY],
       appliedFilters: [
-        { key: 'status', value: 'failed', label: 'Status' },
-        { key: 'queue', value: 'default', label: 'Queue' },
+        { key: 'startedBy', value: 'goals', label: 'Started by', values: ['goals'] },
+      ],
+      onFacetValuesChange: (key: string, values: readonly string[]) => changes.push([key, values]),
+    });
+    await fireEvent.click(chipTrigger(container, 'Started by'));
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-filter-bar__options')).not.toBeNull(),
+    );
+
+    const chats = [
+      ...document.querySelectorAll<HTMLInputElement>('.cinder-filter-bar__option input'),
+    ].find((input) => textOf(input.closest('.cinder-filter-bar__option')).startsWith('Chats'))!;
+    await fireEvent.click(chats);
+    expect(changes).toEqual([['startedBy', ['chats', 'goals']]]);
+  });
+
+  test('Clear empties a multiple choice facet and is off while nothing is chosen', async () => {
+    const changes: [string, readonly string[]][] = [];
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      facets: [STARTED_BY],
+      appliedFilters: [
+        { key: 'startedBy', value: 'chats,goals', label: 'Started by', values: ['chats', 'goals'] },
+      ],
+      onFacetValuesChange: (key: string, values: readonly string[]) => changes.push([key, values]),
+    });
+    await fireEvent.click(chipTrigger(container, 'Started by'));
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-filter-bar__options')).not.toBeNull(),
+    );
+    const clear = document.querySelector<HTMLButtonElement>('.cinder-filter-bar__options-clear')!;
+    expect(clear.disabled).toBe(false);
+    await fireEvent.click(clear);
+    expect(changes).toEqual([['startedBy', []]]);
+  });
+
+  test('an applied facet is a tinted chip reading "Started by: Chats, Goals" with an x', async () => {
+    const removed: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      facets: [STARTED_BY],
+      appliedFilters: [
+        { key: 'startedBy', value: 'goals,chats', label: 'Started by', values: ['goals', 'chats'] },
+      ],
+      onFilterRemove: (key: string) => removed.push(key),
+    });
+    const chip = container.querySelector('.cinder-filter-bar__chip')!;
+    expect(chip.hasAttribute('data-cinder-applied')).toBe(true);
+    // Read in the facet's own order, whatever order the consumer stored.
+    expect(textOf(chip.querySelector('.cinder-filter-bar__chip-trigger'))).toBe(
+      'Started by: Chats, Goals',
+    );
+    const remove = chip.querySelector<HTMLButtonElement>('.cinder-filter-bar__chip-remove')!;
+    expect(remove.getAttribute('aria-label')).toBe('Remove filter: Started by: Chats, Goals');
+    await fireEvent.click(remove);
+    expect(removed).toEqual(['startedBy']);
+  });
+
+  test('applied chips are tinted with the accent and drawn after the add chips, in the DOM too', () => {
+    const chip =
+      filterBarCss.match(/\.cinder-filter-bar__chip\[data-cinder-applied\] \{[^}]*\}/)?.[0] ?? '';
+    expect(chip).toContain('var(--cinder-accent-background)');
+    expect(chip).not.toContain('order:');
+    const base = filterBarCss.match(/\.cinder-filter-bar__chip \{[^}]*\}/)?.[0] ?? '';
+    expect(base).toContain('1px dashed');
+  });
+
+  test('an applied chip follows the add chips whatever order the facets are listed in (row 53i)', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, WORKFLOW, AGENT],
+      appliedFilters: [
+        { key: 'workflow', value: 'release-notes', label: 'Workflow', values: ['release-notes'] },
       ],
     });
-    // `_VisuallyHiddenLiveRegion`'s $effect runs on the next `tick()`, and defers the actual
-    // text-set to the next task via `setTimeout(0)` (see its own doc comment for why: a same-task
-    // blank+set can be seen by some ATs as a single no-op). `waitFor` waits for that text with the
-    // shared hang-guard deadline, so no fixed delay decides the outcome.
-    // Scoped to `[role="status"]` (not the broader `[aria-live]`) because
-    // the embedded SearchField's Input also carries `aria-live="polite"` on
-    // its always-mounted error node (CIN-315) and would otherwise collide —
-    // `[aria-live]` matched Input's empty error node first in DOM order.
-    await waitFor(() => {
-      const liveRegion = container.querySelector('[role="status"]');
-      expect(liveRegion?.textContent).toContain('2 active filters');
-    });
+    const chips = [...container.querySelectorAll('.cinder-filter-bar__chip-trigger')].map(
+      (trigger) => textOf(trigger),
+    );
+    expect(chips).toEqual(['Started by', 'Agent', 'Workflow: Release notes']);
   });
 
-  test('active controls row has accessible label for screen readers', () => {
+  test('an applied filter no facet draws still gets a chip that removes it', async () => {
+    const removed: string[] = [];
     const { container } = render(FilterBar, {
-      appliedFilters: [{ key: 'status', value: 'running', label: 'Status' }],
+      layout: 'wide',
+      facets: [AGENT],
+      appliedFilters: [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }],
+      onFilterRemove: (key: string) => removed.push(key),
     });
-    const chipsRow = container.querySelector('.cinder-filter-bar__chips');
-    expect(chipsRow?.getAttribute('aria-label')).toBe('Active filter controls');
+    const chip = container.querySelector('.cinder-filter-bar__chip[data-cinder-static]')!;
+    expect(textOf(chip)).toBe('Updated: Last 24 hours');
+    await fireEvent.click(chip.querySelector('.cinder-filter-bar__chip-remove')!);
+    expect(removed).toEqual(['updated']);
+    await waitFor(() =>
+      expect(textOf(container.querySelector('[role="status"]'))).toBe(
+        '1 active filter: Updated: Last 24 hours',
+      ),
+    );
   });
 
-  test('search field renders with type="search" for semantic meaning', () => {
-    const { container } = render(FilterBar, {});
-    const input = container.querySelector('input[type="search"]');
-    expect(input).not.toBeNull();
+  test('removing that filter keeps keyboard focus inside the bar (the Agent chip, then the root)', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      facets: [AGENT],
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(container.querySelectorAll('.cinder-filter-bar__chip-remove').length).toBe(0),
+    );
+    await waitFor(() => expect(document.activeElement?.id).toContain('facet-agent'));
+    expect(document.activeElement).not.toBe(document.body);
   });
-});
 
-// Chip's root template branches on `mode` ({#if mode === 'toggle'} ... {:else if
-// mode === 'removable'} ... {:else} ...), and a keyed `{#each}` of that component
-// does not reliably reflect array-shrink removals under happy-dom (the same class
-// of pre-existing keyed-each/happy-dom limitation already documented elsewhere in
-// this repo for list length changes — see chat's keyed-each length-growth notes).
-// `handleFilterRemove` queries the *live* DOM directly, so these tests reproduce
-// what a real re-render would leave behind by removing the chip node directly,
-// rather than relying on the broken reactive teardown.
-describe('FilterBar chip-remove focus management', () => {
-  test('removing an applied chip (not the last one) focuses the next remove button at the same index', async () => {
-    let removedButton: HTMLButtonElement | null = null;
+  test('removing it from a bar of only a search field focuses the search field', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(
+        document.activeElement === container.querySelector('.cinder-search-field__input'),
+      ).toBe(true),
+    );
+  });
+
+  test('removing the last control of all focuses the bar itself rather than the page', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      searchVisible: false,
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(container.querySelectorAll('.cinder-filter-bar__chip-remove').length).toBe(0),
+    );
+    await waitFor(() =>
+      expect(document.activeElement === container.querySelector('[role="search"]')).toBe(true),
+    );
+  });
+
+  test("removing one of two unlisted filters focuses the other filter's Remove", async () => {
+    let applied = [
+      { key: 'updated', value: 'Last 24 hours', label: 'Updated' },
+      { key: 'owner', value: 'Mina', label: 'Owner' },
+    ];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      appliedFilters: applied,
+      onFilterRemove: (key: string) => {
+        applied = applied.filter((filter) => filter.key !== key);
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Remove filter: Owner: Mina'),
+    );
+  });
+
+  test('in the narrow form that filter is a row in the Filter menu with its own Remove', async () => {
+    const removed: string[] = [];
     const { container } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      appliedFilters: [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }],
+      onFilterRemove: (key: string) => removed.push(key),
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__menu-button')!);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    const remove = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Remove filter: Updated: Last 24 hours"]',
+    )!;
+    await fireEvent.click(remove);
+    expect(removed).toEqual(['updated']);
+  });
+
+  test('removing that row in the Filter menu keeps focus inside the bar', async () => {
+    let applied = [{ key: 'updated', value: 'Last 24 hours', label: 'Updated' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__menu-button')!);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    await fireEvent.click(
+      document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Remove filter: Updated: Last 24 hours"]',
+      )!,
+    );
+    await waitFor(() => expect(document.activeElement === document.body).toBe(false));
+    expect(
+      container.contains(document.activeElement) ||
+        document.querySelector('.cinder-filter-bar__menu')?.contains(document.activeElement),
+    ).toBe(true);
+  });
+
+  test('focus lands on the add chip after the consumer clears the filter on remove', async () => {
+    let applied = [{ key: 'agent', value: 'tool-runner', label: 'Agent' }];
+    const { container, rerender } = render(FilterBar, {
+      layout: 'wide',
+      facets: [AGENT],
+      appliedFilters: applied,
+      onFilterRemove: () => {
+        applied = [];
+        void rerender({ appliedFilters: applied } as never);
+      },
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__chip-remove')!);
+    await waitFor(() => expect(document.activeElement?.id).toContain('facet-agent'));
+    expect(textOf(document.activeElement)).toBe('Agent');
+  });
+
+  test('a single choice facet lists radio rows and reports the picked value', async () => {
+    const changes: [string, string][] = [];
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      facets: [AGENT],
+      onFacetChange: (key: string, value: string) => changes.push([key, value]),
+    });
+    await fireEvent.click(chipTrigger(container, 'Agent'));
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-filter-bar__options')).not.toBeNull(),
+    );
+    expect(document.querySelector('.cinder-filter-bar__options-footer')).toBeNull();
+    const radios = [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '.cinder-filter-bar__options input[type="radio"]',
+      ),
+    ];
+    expect(radios).toHaveLength(2);
+    await fireEvent.click(radios[1]!);
+    expect(changes).toEqual([['agent', 'tool-runner']]);
+  });
+
+  test('the Workflow popover lists its rows in order with counts that add up to All 19 (row 53j)', async () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, AGENT, WORKFLOW],
       appliedFilters: [
-        { key: 'status', value: 'failed', label: 'Status' },
-        { key: 'queue', value: 'default', label: 'Queue' },
-        { key: 'priority', value: 'high', label: 'Priority' },
+        { key: 'workflow', value: 'release-notes', label: 'Workflow', values: ['release-notes'] },
       ],
-      onFilterRemove: () => {
-        removedButton?.closest('.cinder-chip')?.remove();
-      },
     });
-
-    const removeButtons = container.querySelectorAll<HTMLButtonElement>('.cinder-chip__remove');
-    expect(removeButtons).toHaveLength(3);
-    removedButton = removeButtons[1]!; // 'queue', not the last chip
-
-    await fireEvent.click(removedButton);
-
-    const remainingButtons = container.querySelectorAll<HTMLButtonElement>('.cinder-chip__remove');
-    expect(remainingButtons).toHaveLength(2);
-    // 'priority' shifts from index 2 to index 1 — focus lands on the button
-    // now occupying the removed chip's index.
-    expect(document.activeElement).toBe(remainingButtons[1]!);
-  });
-
-  test('removing the last remaining chip falls back to the matching facet select', async () => {
-    let removedButton: HTMLButtonElement | null = null;
-    const { container } = render(FilterBar, {
-      facets: [STATUS_FACET],
-      appliedFilters: [{ key: 'status', value: 'failed', label: 'Status' }],
-      onFilterRemove: () => {
-        removedButton?.closest('.cinder-chip')?.remove();
-      },
-    });
-
-    removedButton = container.querySelector<HTMLButtonElement>('.cinder-chip__remove')!;
-    await fireEvent.click(removedButton);
-
-    expect(container.querySelector('.cinder-chip__remove')).toBeNull();
-    const statusSelect = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Status"].cinder-filter-bar__select',
+    // The applied chip reads "Workflow: Release notes", and the add chips are still there.
+    expect(textOf(container.querySelector('.cinder-filter-bar__chip[data-cinder-applied]'))).toBe(
+      'Workflow: Release notes',
     );
-    expect(document.activeElement).toBe(statusSelect);
-  });
-
-  test('removing the last remaining chip falls back to the search input when no facet select matches', async () => {
-    let removedButton: HTMLButtonElement | null = null;
-    const { container } = render(FilterBar, {
-      facets: [STATUS_FACET], // no facet with key "owner"
-      appliedFilters: [{ key: 'owner', value: 'me', label: 'Owner' }],
-      onFilterRemove: () => {
-        removedButton?.closest('.cinder-chip')?.remove();
-      },
-    });
-
-    removedButton = container.querySelector<HTMLButtonElement>('.cinder-chip__remove')!;
-    await fireEvent.click(removedButton);
-
-    expect(container.querySelector('.cinder-chip__remove')).toBeNull();
-    const searchInput = container.querySelector<HTMLInputElement>('.cinder-search-field__input');
-    expect(document.activeElement).toBe(searchInput);
+    await fireEvent.click(chipTrigger(container, 'Workflow'));
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-filter-bar__options')).not.toBeNull(),
+    );
+    expect(textOf(document.querySelector('.cinder-filter-bar__options-title'))).toBe('Workflow');
+    const rows = [...document.querySelectorAll('.cinder-filter-bar__option')];
+    expect(rows.map((row) => textOf(row))).toEqual([
+      'Release notes 1',
+      'Triage inbox 2',
+      'Order refund 0',
+      'Chat with an agent · internal 6',
+      'Goal attempts · internal 8',
+      'Schedule tick · internal 2',
+    ]);
+    expect(rows[0]!.querySelector<HTMLInputElement>('input')?.checked).toBe(true);
+    const total = rows.reduce(
+      (sum, row) =>
+        sum + Number(row.querySelector('.cinder-filter-bar__option-count')?.textContent),
+      0,
+    );
+    expect(total).toBe(19);
   });
 });
 
-describe('FilterBar custom facets', () => {
-  test('renders a custom facet via its control snippet and forwards onValueChange to onFacetChange', async () => {
-    const onFacetChange = mock((_key: string, _value: string) => {});
-    const controlSnippet = createRawSnippet<
-      [{ value: string; onValueChange: (value: string) => void }]
-    >((getProps) => ({
-      render: () => `<button type="button" class="filter-bar-test-custom-control">Pick</button>`,
-      setup(element: Element) {
-        const handleClick = () => getProps().onValueChange('me');
-        element.addEventListener('click', handleClick);
-        return () => element.removeEventListener('click', handleClick);
-      },
-    }));
-
+describe('FilterBar select facets (row 45u)', () => {
+  test('Kind and Written by are two separate selects that read "Kind: All" and "Written by: Anyone"', async () => {
     const { container } = render(FilterBar, {
-      facets: [{ type: 'custom', key: 'owner', label: 'Owner', control: controlSnippet }],
-      onFacetChange,
+      facets: [KIND, WRITER],
+      searchPlaceholder: 'Search memories',
     });
-
-    const customControl = container.querySelector<HTMLButtonElement>(
-      '.filter-bar-test-custom-control',
+    const prefixes = [...container.querySelectorAll('.cinder-select__prefix')].map((prefix) =>
+      textOf(prefix),
     );
-    expect(customControl?.textContent).toBe('Pick');
-
-    await fireEvent.click(customControl!);
-
-    expect(onFacetChange).toHaveBeenCalledWith('owner', 'me');
+    expect(prefixes).toEqual(['Kind:', 'Written by:']);
+    const values = [...container.querySelectorAll('.cinder-select__value')].map((value) =>
+      textOf(value),
+    );
+    expect(values).toEqual(['All', 'Anyone']);
+    expect(container.querySelectorAll('.cinder-select[role="combobox"]')).toHaveLength(2);
+    // A bar of selects and a search field starts with the search and stacks in a narrow pane.
+    expect(
+      container.querySelector('.cinder-filter-bar')?.getAttribute('data-cinder-search-position'),
+    ).toBe('start');
+    expect(
+      container.querySelector('.cinder-filter-bar')?.hasAttribute('data-cinder-collapsible'),
+    ).toBe(false);
+    const first = container.querySelector('.cinder-filter-bar__row')!.firstElementChild!;
+    expect(first.classList.contains('cinder-search-field')).toBe(true);
   });
 
-  test('passes the bar-level disabled state to the custom-facet snippet', () => {
-    const controlSnippet = createRawSnippet<
-      [{ value: string; onValueChange: (value: string) => void; disabled: boolean }]
-    >((getProps) => ({
-      render: () => `<button type="button" class="filter-bar-test-custom-control">Pick</button>`,
-      setup(element: Element) {
-        if (getProps().disabled) {
-          element.setAttribute('disabled', '');
-        }
-      },
-    }));
-
+  test('opening Kind lists All, Fact and How-to with All current, and a pick reports the value', async () => {
+    const changes: [string, string][] = [];
     const { container } = render(FilterBar, {
-      facets: [{ type: 'custom', key: 'owner', label: 'Owner', control: controlSnippet }],
+      facets: [KIND, WRITER],
+      onFacetChange: (key: string, value: string) => changes.push([key, value]),
+    });
+    await fireEvent.click(container.querySelectorAll('.cinder-select[role="combobox"]')[0]!);
+    flushSync();
+    expect(optionTexts()).toEqual(['All', 'Fact', 'How-to']);
+    expect(document.querySelector('[role="option"][aria-selected="true"]')?.textContent).toContain(
+      'All',
+    );
+
+    await fireEvent.click([...document.querySelectorAll('[role="option"]')][2]!);
+    flushSync();
+    expect(changes).toEqual([['kind', 'how-to']]);
+  });
+
+  test('the Written by list offers Anyone, You and Tool runner', async () => {
+    const { container } = render(FilterBar, { facets: [KIND, WRITER] });
+    await fireEvent.click(container.querySelectorAll('.cinder-select[role="combobox"]')[1]!);
+    flushSync();
+    expect(optionTexts()).toEqual(['Anyone', 'You', 'Tool runner']);
+  });
+
+  test('picking the clearing row reports an empty value and a select never becomes a chip', async () => {
+    const changes: [string, string][] = [];
+    const { container } = render(FilterBar, {
+      facets: [KIND],
+      appliedFilters: [{ key: 'kind', value: 'fact', label: 'Kind' }],
+      onFacetChange: (key: string, value: string) => changes.push([key, value]),
+    });
+    expect(textOf(container.querySelector('.cinder-select__value'))).toBe('Fact');
+    expect(container.querySelector('.cinder-filter-bar__chip')).toBeNull();
+    await fireEvent.click(container.querySelector('.cinder-select[role="combobox"]')!);
+    flushSync();
+    await fireEvent.click([...document.querySelectorAll('[role="option"]')][0]!);
+    flushSync();
+    expect(changes).toEqual([['kind', '']]);
+  });
+
+  test('a custom facet renders its snippet with the value and the bar-level disabled state', () => {
+    const received: unknown[] = [];
+    const control = createRawSnippet((arguments_: () => { value: string; disabled: boolean }) => {
+      received.push(arguments_());
+      return { render: () => '<span data-testid="custom">custom</span>', setup: () => {} };
+    });
+    const { container } = render(FilterBar, {
+      facets: [{ type: 'custom', key: 'range', label: 'Range', control }],
+      appliedFilters: [{ key: 'range', value: 'week', label: 'Range' }],
       disabled: true,
     });
-
-    const customControl = container.querySelector<HTMLButtonElement>(
-      '.filter-bar-test-custom-control',
-    );
-    expect(customControl?.hasAttribute('disabled')).toBe(true);
+    expect(container.querySelector('[data-testid="custom"]')).not.toBeNull();
+    expect(received[0]).toMatchObject({ value: 'week', disabled: true });
   });
 });
 
-describe('FilterBar CSS snapshot', () => {
-  test('CSS file exists and contains required layer and selectors', async () => {
-    const css = await Bun.file(new URL('./filter-bar.css', import.meta.url)).text();
+describe('FilterBar medium layout (row 10f)', () => {
+  test('folds the segments into a "Status: All 19" select, keeps the chips and turns search into an icon button', async () => {
+    const changes: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'medium',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, AGENT],
+      onSegmentChange: (value: string) => changes.push(value),
+    });
+    expect(container.querySelector('[role="radiogroup"]')).toBeNull();
+    expect(textOf(container.querySelector('.cinder-select__prefix'))).toBe('Status:');
+    expect(textOf(container.querySelector('.cinder-select__value'))).toBe('All 19');
+    expect(
+      [...container.querySelectorAll('.cinder-filter-bar__chip-trigger')].map((trigger) =>
+        textOf(trigger),
+      ),
+    ).toEqual(['Started by', 'Agent']);
+    expect(container.querySelector('.cinder-search-field')).toBeNull();
+    expect(container.querySelector('button[aria-label="Search"]')).not.toBeNull();
 
-    expect(css).toContain('@layer cinder.components');
-    expect(css).toContain('.cinder-filter-bar');
-    expect(css).toContain('.cinder-filter-bar__select:focus-visible');
-    expect(css).toContain('min-block-size: var(--cinder-control-height-sm, 1.75rem);');
-    expect(css).not.toMatch(/^\s*block-size: var\(--cinder-control-height-sm, 1.75rem\);/m);
-    expect(css).toContain('outline: var(--cinder-ring-width) solid transparent');
-    expect(css).toContain('@media (forced-colors: active)');
-    expect(css).toContain('outline: var(--cinder-ring-width) solid ButtonText');
-    expect(css).toContain('.cinder-filter-bar__select:focus-visible');
+    await fireEvent.click(container.querySelector('.cinder-select[role="combobox"]')!);
+    flushSync();
+    expect(optionTexts()).toEqual([
+      'All 19',
+      'Waiting on you 2',
+      'Running 0',
+      'Done 15',
+      'Failed 1',
+      'Canceled 1',
+    ]);
+    await fireEvent.click([...document.querySelectorAll('[role="option"]')][4]!);
+    flushSync();
+    expect(changes).toEqual(['failed']);
   });
 
-  // CIN-335: the controls row used raw `flex-wrap: wrap`, so facets on a
-  // wrapped row packed to their own content width instead of lining up
-  // under the facets above them, and `.cinder-filter-bar__search`'s
-  // `flex: 1 1 14rem` let flex-grow absorb every pixel of leftover row
-  // space. happy-dom does not model `@container` at all (see grid.css's
-  // own doc comment on this), so — like grid.test.ts's container-query
-  // tests — these assert on the raw CSS source rather than computed
-  // layout.
-  test('controls row is driven by a container query, not raw flex-wrap', async () => {
-    const css = await Bun.file(new URL('./filter-bar.css', import.meta.url)).text();
-
-    expect(css).toContain('container-type: inline-size;');
-    expect(css).toContain('container-name: cinder-filter-bar;');
-    expect(css).toContain('@container cinder-filter-bar (min-width: 40rem)');
-
-    const controlsRule = ruleBody(css, '.cinder-filter-bar__controls');
-    expect(controlsRule).toContain('display: grid;');
-    expect(controlsRule).not.toContain('flex-wrap');
-
-    const containerRule = containerBlock(css, '@container cinder-filter-bar (min-width: 40rem)');
-    expect(containerRule).toContain('grid-template-columns:');
-    expect(containerRule).toContain('repeat(auto-fit, minmax(9rem, max-content))');
+  test('the select reads the chosen segment, such as "Status: Problems 1"', () => {
+    const { container } = render(FilterBar, {
+      layout: 'medium',
+      segments: [
+        { value: 'all', label: 'All', count: 3 },
+        { value: 'problems', label: 'Problems', count: 1 },
+      ],
+      segmentValue: 'problems',
+      facets: [
+        {
+          type: 'choice',
+          key: 'starts',
+          label: 'Starts',
+          options: [{ value: 'a', label: 'On a schedule' }],
+        },
+      ],
+    });
+    expect(textOf(container.querySelector('.cinder-select__value'))).toBe('Problems 1');
   });
 
-  test('search field track has a bounded max width instead of flex-grow', async () => {
-    const css = await Bun.file(new URL('./filter-bar.css', import.meta.url)).text();
-
-    // The search field's own rule no longer declares a growing `flex`
-    // shorthand — its width now comes from the grid track.
-    const searchRule = ruleBody(css, '.cinder-filter-bar__search');
-    expect(searchRule).not.toContain('flex:');
-    expect(searchRule).not.toContain('flex-grow');
-
-    // The search spans the row rather than occupying a track of its own, and is
-    // capped rather than handed an unbounded `1fr`.
-    expect(css).toContain('grid-column: 1 / -1;');
-    expect(css).toContain('max-inline-size: 20rem;');
-    expect(css).not.toMatch(/grid-template-columns:\s*minmax\([^)]*,\s*1fr\)/);
-  });
-
-  test('every facet sits in an identically sized track, including after a wrap', async () => {
-    const css = await Bun.file(new URL('./filter-bar.css', import.meta.url)).text();
-
-    // The search must NOT be a grid track. When it was, auto-placement wrapped the
-    // next overflowing facet into column 1 — the wide search track — rendering that
-    // one facet far wider than its siblings and reintroducing the ragged alignment
-    // this issue removes, just at the wrap boundary instead of within a row.
-    const containerRule = containerBlock(css, '@container cinder-filter-bar (min-width: 40rem)');
-    expect(containerRule).toMatch(
-      /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(9rem,\s*max-content\)\);/,
+  test('the search icon opens a popover holding the search field', async () => {
+    const queries: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'medium',
+      segments: RUN_SEGMENTS,
+      onSearchChange: (query: string) => queries.push(query),
+    });
+    const button = container.querySelector<HTMLButtonElement>('button[aria-label="Search"]')!;
+    await fireEvent.click(button);
+    flushSync();
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-search-field input')).not.toBeNull(),
     );
-    expect(containerRule).not.toContain('minmax(14rem, 20rem) repeat(');
+    const input = document.querySelector<HTMLInputElement>('.cinder-search-field input')!;
+    await fireEvent.input(input, { target: { value: 'refund' } });
+    expect(queries).toEqual(['refund']);
   });
 
-  test('the facet select fills its wrapper so the chevron stays attached', async () => {
-    const css = await Bun.file(new URL('./filter-bar.css', import.meta.url)).text();
+  test('a filtered-to-nothing bar keeps the "Status: All 0" select and its applied chip (row 60x)', () => {
+    const { container } = render(FilterBar, {
+      layout: 'medium',
+      segments: [
+        { value: 'all', label: 'All', count: 0 },
+        { value: 'paused', label: 'Paused', count: 0 },
+      ],
+      facets: [
+        {
+          type: 'choice',
+          key: 'starts',
+          label: 'Starts',
+          multiple: false,
+          options: [{ value: 'schedule', label: 'On a schedule' }],
+        },
+      ],
+      appliedFilters: [{ key: 'starts', value: 'schedule', label: 'Starts' }],
+    });
+    expect(textOf(container.querySelector('.cinder-select__value'))).toBe('All 0');
+    const chip = container.querySelector('.cinder-filter-bar__chip[data-cinder-applied]');
+    expect(textOf(chip)).toBe('Starts: On a schedule');
+    expect(chip?.querySelector('.cinder-filter-bar__chip-remove')).not.toBeNull();
+  });
+});
 
-    // The chevron is absolutely positioned against `.cinder-filter-bar__facet`. In the
-    // stacked single-column layout the wrapper stretches to the full row while a native
-    // select stays content-sized, leaving the chevron floating in the gap beside it.
-    const selectInFacetRule = ruleBody(css, '.cinder-filter-bar__facet .cinder-filter-bar__select');
-    expect(selectInFacetRule).toContain('flex: 1 1 auto;');
+describe('FilterBar narrow layout (rows 04l 10g)', () => {
+  test('shows only the Status select and a Filter button', () => {
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, AGENT],
+    });
+    expect(textOf(container.querySelector('.cinder-select__prefix'))).toBe('Status:');
+    expect(textOf(container.querySelector('.cinder-select__value'))).toBe('All 19');
+    expect(container.querySelector('.cinder-filter-bar__chip')).toBeNull();
+    expect(container.querySelector('.cinder-search-field')).toBeNull();
+    const button = container.querySelector<HTMLButtonElement>('.cinder-filter-bar__menu-button')!;
+    expect(textOf(button)).toBe('Filter');
+    expect(button.getAttribute('aria-label')).toBe('Filter');
+    const controls = [...container.querySelector('.cinder-filter-bar__row')!.children].filter(
+      (child) => textOf(child) !== '',
+    );
+    expect(controls).toHaveLength(2);
+  });
+
+  test('the Filter menu holds every chip and Search, and a row opens its options in place', async () => {
+    const changes: [string, readonly string[]][] = [];
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, AGENT],
+      onFacetValuesChange: (key: string, values: readonly string[]) => changes.push([key, values]),
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__menu-button')!);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    const rows = [...document.querySelectorAll('.cinder-filter-bar__menu-row')].map((row) =>
+      textOf(row),
+    );
+    expect(rows).toEqual(['Started by', 'Agent', 'Search']);
+
+    await fireEvent.click(
+      document.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__menu-row')[0]!,
+    );
+    flushSync();
+    expect(document.querySelectorAll('.cinder-filter-bar__option')).toHaveLength(7);
+    // The row's own words are the title, so the section draws none of its own.
+    expect(document.querySelector('.cinder-filter-bar__options-title')).toBeNull();
+    const chats = [
+      ...document.querySelectorAll<HTMLInputElement>('.cinder-filter-bar__option input'),
+    ][1]!;
+    await fireEvent.click(chats);
+    expect(changes).toEqual([['startedBy', ['chats']]]);
+  });
+
+  test('the Search row opens the search field', async () => {
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      facets: [AGENT],
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__menu-button')!);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    const search = [
+      ...document.querySelectorAll<HTMLButtonElement>('.cinder-filter-bar__menu-row'),
+    ].find((row) => textOf(row) === 'Search')!;
+    expect(search.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(search);
+    flushSync();
+    expect(search.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      document.querySelector('.cinder-filter-bar__menu .cinder-search-field input'),
+    ).not.toBeNull();
+  });
+
+  test('the Filter button counts the applied filters and the menu rows say what they hold', async () => {
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      facets: [STARTED_BY, AGENT],
+      appliedFilters: [
+        { key: 'startedBy', value: 'chats,goals', label: 'Started by', values: ['chats', 'goals'] },
+        { key: 'agent', value: 'tool-runner', label: 'Agent' },
+      ],
+    });
+    const button = container.querySelector<HTMLButtonElement>('.cinder-filter-bar__menu-button')!;
+    expect(button.getAttribute('aria-label')).toBe('Filter, 2 applied');
+    await fireEvent.click(button);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    const rows = [...document.querySelectorAll('.cinder-filter-bar__menu-row')].map((row) =>
+      textOf(row),
+    );
+    expect(rows).toEqual(['Started by Chats, Goals', 'Agent Tool runner', 'Search']);
+  });
+
+  test('a select facet in the menu reports the empty value when its clearing row is chosen', async () => {
+    const changes: [string, string][] = [];
+    const { container } = render(FilterBar, {
+      layout: 'narrow',
+      segments: RUN_SEGMENTS,
+      facets: [KIND],
+      appliedFilters: [{ key: 'kind', value: 'fact', label: 'Kind' }],
+      onFacetChange: (key: string, value: string) => changes.push([key, value]),
+    });
+    await fireEvent.click(container.querySelector('.cinder-filter-bar__menu-button')!);
+    flushSync();
+    await waitFor(() => expect(document.querySelector('.cinder-filter-bar__menu')).not.toBeNull());
+    await fireEvent.click(
+      document.querySelector<HTMLButtonElement>('.cinder-filter-bar__menu-row')!,
+    );
+    flushSync();
+    const radios = [
+      ...document.querySelectorAll<HTMLInputElement>(
+        '.cinder-filter-bar__menu input[type="radio"]',
+      ),
+    ];
+    expect(radios).toHaveLength(3);
+    expect(radios[1]!.checked).toBe(true);
+    await fireEvent.click(radios[0]!);
+    expect(changes).toEqual([['kind', '']]);
+  });
+});
+
+describe('FilterBar live region', () => {
+  test('stays in the DOM, empty, while nothing is applied', () => {
+    const { container } = render(FilterBar, { layout: 'wide', facets: [STARTED_BY, AGENT] });
+    const region = container.querySelector('[role="status"]');
+    expect(region).not.toBeNull();
+    expect(textOf(region)).toBe('');
+  });
+
+  test('announces the count and the values once filters are applied', async () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      facets: [STARTED_BY, AGENT],
+      appliedFilters: [
+        { key: 'startedBy', value: 'chats,goals', label: 'Started by', values: ['chats', 'goals'] },
+        { key: 'agent', value: 'tool-runner', label: 'Agent' },
+      ],
+    });
+    await waitFor(() =>
+      expect(textOf(container.querySelector('[role="status"]'))).toBe(
+        '2 active filters: Started by: Chats, Goals, Agent: Tool runner',
+      ),
+    );
+  });
+});
+
+describe('FilterBar search', () => {
+  test('is uncontrolled until a searchQuery is passed and reports each edit', async () => {
+    const queries: string[] = [];
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      searchPlaceholder: 'Search workflows',
+      onSearchChange: (query: string) => queries.push(query),
+    });
+    const input = container.querySelector<HTMLInputElement>('input[type="search"]')!;
+    expect(input.getAttribute('aria-label')).toBe('Search');
+    await fireEvent.input(input, { target: { value: 'order' } });
+    expect(queries).toEqual(['order']);
+    expect(input.value).toBe('order');
+  });
+
+  test('a controlled searchQuery wins', () => {
+    const { container } = render(FilterBar, { layout: 'wide', searchQuery: 'refund' });
+    expect(container.querySelector<HTMLInputElement>('input[type="search"]')?.value).toBe('refund');
+  });
+
+  test('searchPosition moves the field to the start of a bar with segments', () => {
+    const { container } = render(FilterBar, {
+      layout: 'wide',
+      segments: RUN_SEGMENTS,
+      searchPosition: 'start',
+    });
+    expect(
+      container
+        .querySelector('.cinder-filter-bar__row')!
+        .firstElementChild!.classList.contains('cinder-search-field'),
+    ).toBe(true);
+  });
+});
+
+describe('FilterBar styles', () => {
+  test('the row never wraps and the search is the one control that gives way', () => {
+    expect(filterBarCss).not.toContain('flex-wrap: wrap');
+    expect(filterBarCss).toContain('.cinder-filter-bar__row > .cinder-filter-bar__search');
   });
 });

@@ -28,6 +28,36 @@ See the [editor/Cinder surface boundary](https://github.com/stevekinney/cinder/b
 
 Use SourceDiffViewer for source-code patches, agent workspace patches, Git output, and other operational unified diffs. Use `DiffViewer` from `@lostgradient/editor` for Markdown document review, front-matter handling, Markdown normalization, and prose-oriented word-level changes.
 
+## Show all
+
+A patch longer than `maxLines` renders its first rows and ends in a footer: a muted "Showing 6 of 64 changed lines" beside a _Show all_ action that renders every row in place. `expanded` is bindable, so a host can open or close the diff from outside, and `showAllLabel` renames the action. The footer replaces the notice that used to sit above the rows.
+
+```svelte
+<script lang="ts">
+  import { SourceDiffViewer } from '@lostgradient/cinder';
+
+  let { patch }: { patch: string } = $props();
+</script>
+
+<SourceDiffViewer {patch} maxLines={6} lineNumbers={false} ariaLabel="What changed" />
+```
+
+### Inline variant
+
+`variant="inline"` is for a diff that is one value among others, such as a `patch` in a payload. It has no frame, headers or gutter: it shows the first `maxLines` _changed_ lines as bare added and removed rows, with a chevron link under them, "Show all 9 lines" (the number of lines in the patch), that renders the whole patch. `countPatchChanges(patch)` returns `{ added, removed }` for a "+3 −1" summary beside a label. `PayloadInspector` uses this variant for a string value that is a unified patch.
+
+```svelte
+<script lang="ts">
+  import { SourceDiffViewer, countPatchChanges } from '@lostgradient/cinder';
+
+  let { patch }: { patch: string } = $props();
+  const changes = $derived(countPatchChanges(patch));
+</script>
+
+<span>Patch +{changes.added} −{changes.removed}</span>
+<SourceDiffViewer {patch} variant="inline" maxLines={2} ariaLabel="Patch" />
+```
+
 ## Annotation hooks
 
 SourceDiffViewer exposes optional, dependency-light selection and file hooks so a caller can build comment/annotation UI without SourceDiffViewer ever importing `@lostgradient/editor` or Markdown/Milkdown/ProseMirror. These hooks are the Cinder half of the [diff-review contract](../../../../editor/documentation/diff-review-contract.md); the Editor package's `DiffReview`/`DiffReviewComments` consume them, but this component itself has no idea either exists.
@@ -86,9 +116,12 @@ Contract note: this repository's `check-prop-conventions` gate bans a non-native
 | `activeFileOccurrence` | `number` \| `null` | no | — | Controlled zero-based file occurrence to render exclusively. Absent (the default) renders every file, matching prior behavior. |
 | `ariaLabel` | `string` | no | — | Accessible label for the diff region. |
 | `class` | `string` | no | — | Additional CSS classes merged with `.cinder-source-diff-viewer`. |
+| `expanded` | `boolean` | no | `false` | Whether every row renders, past `maxLines`. Bindable: Show all sets it, and a host can set it to open or close the diff from outside. |
 | `lineNumbers` | `boolean` | no | `true` | Whether old and new line-number gutters are rendered. |
-| `maxLines` | `integer` | no | `1000` | Maximum number of diff rows to render before truncating. |
+| `maxLines` | `integer` | no | `1000` | Maximum number of diff rows to render before truncating. When the patch is longer, a Show all action under the rows renders the rest in place. In the `inline` variant the limit counts changed lines only, and the first ones are all that shows until Show all. |
 | `patch` | `string` | yes | — | Unified patch text to parse and render. |
+| `showAllLabel` | `string` | no | — | Label of the action that renders the rest of a truncated patch. It reads "Show all" in the `default` variant and "Show all 9 lines" (the number of lines in the patch) in `inline`. |
+| `variant` | `"default"` \| `"inline"` | no | `"default"` | How the diff is framed: `default` or `inline`. |
 | `annotationSelection` | `(opaque)` | no | — | Controlled current annotation selection. Distinct from ordinary diff navigation: setting or clearing it never affects which rows are shown. Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | Rendered when the patch is empty or contains no displayable diff rows. Falls back to a default "No patch lines to display." message — matching the `empty` snippet the chart/command families expose. Not expressible in JSON Schema; see the component types for the signature. |
 | `fileAnnotation` | `(opaque)` | no | — | Rendered next to each file's header, alongside its file-level annotation controls. Not expressible in JSON Schema; see the component types for the signature. |

@@ -1,4 +1,4 @@
-import { requireElement } from '../../../tests/dom.test-support.ts';
+import { chooseFilterOption, requireElement } from '../../../tests/dom.test-support.ts';
 
 /**
  * Component tests for `<ScheduleList>` against a REAL in-process weft server
@@ -15,6 +15,7 @@ import { flushSync } from 'svelte';
 import { HttpClient } from '@lostgradient/weft';
 
 import { awakeTurns } from '@lostgradient/testing/wait-until';
+import { SCHEDULE_COPY } from '../../app/copy.ts';
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ScheduleListHarness from './schedule-list-test-harness.test-harness.svelte';
@@ -616,25 +617,28 @@ describe('ScheduleList', () => {
 
       await waitFor(() => expect(getByText('Weekly digest')).not.toBeNull());
       expect(queryByText('Nightly rollup')).toBeNull();
-      expect(getByRole('button', { name: /^.*Status: Paused(?!: Paused)/ })).not.toBeNull();
+      expect(
+        getByRole('combobox', { name: 'Status' }).querySelector('.cinder-select__value')
+          ?.textContent,
+      ).toBe('Paused');
     } finally {
       await server.stop();
     }
   });
 
-  test('choosing a status updates the address, replacing history, and removing the chip takes it out', async () => {
+  test('choosing a status updates the address, replacing history, and choosing Any takes it out', async () => {
     resetLocation('/schedules');
     const server = await startLiveSourceTestServer();
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByRole } = render(ScheduleListHarness, { props: { client } });
-      const status = await waitFor(() => getByRole('combobox', { name: 'Status' }));
+      const view = render(ScheduleListHarness, { props: { client } });
+      await waitFor(() => view.getByRole('combobox', { name: 'Status' }));
 
-      await fireEvent.change(status, { target: { value: 'paused' } });
+      await chooseFilterOption(view, 'Status', 'Paused');
       await waitFor(() => expect(window.location.search).toBe('?status=paused'));
 
-      await fireEvent.click(getByRole('button', { name: /Status: Paused(?!: Paused)/ }));
+      await chooseFilterOption(view, 'Status', SCHEDULE_COPY.anyStatus);
       await waitFor(() => expect(window.location.search).toBe(''));
     } finally {
       await server.stop();

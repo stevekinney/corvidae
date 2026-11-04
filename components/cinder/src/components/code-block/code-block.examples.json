@@ -20,6 +20,12 @@
       "title": "With language label and copy",
       "description": "Header shows the language and a copy-to-clipboard button. The block highlights with the highlighter an ancestor publishes through setCodeHighlighterContext — here, the playground publishes one — and renders plain code when none is published.",
       "code": "<script lang=\"ts\">\n  import { CodeBlock } from '@lostgradient/cinder';\n\n  const code = `SELECT id, name, created_at\nFROM users\nWHERE active = true\nORDER BY created_at DESC\nLIMIT 10;`;\n</script>\n\n<CodeBlock {code} language=\"sql\" copyable />\n"
+    },
+    {
+      "id": "json-payload",
+      "title": "JSON payload",
+      "description": "A highlighted JSON payload draws keys in the accent blue, strings in green and numbers in amber, so a value reads as its own class of token.",
+      "code": "<script lang=\"ts\">\n  import { CodeBlock } from '@lostgradient/cinder';\n\n  const code = `{\n  \"orderId\": \"4471\",\n  \"total\": 42.0,\n  \"refunded\": false\n}`;\n</script>\n\n<CodeBlock {code} language=\"json\" copyable />\n"
     }
   ]
 }

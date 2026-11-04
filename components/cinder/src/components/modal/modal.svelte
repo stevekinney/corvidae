@@ -66,6 +66,7 @@
     class: className,
     children,
     footer,
+    headerTrailing,
     triggerRef = null,
     describedById,
     onDismiss,
@@ -331,8 +332,15 @@
             aria-hidden="true"
           ></div>{/if}
         {#if !isChromeless}
-          <div class="cinder-modal__header">
+          <div
+            class="cinder-modal__header"
+            data-cinder-closable={closeButtonVisible ? '' : undefined}
+            data-cinder-trailing={headerTrailing ? '' : undefined}
+          >
             <h2 id={titleId} class="cinder-modal__title">{title}</h2>
+            {#if headerTrailing}
+              <div class="cinder-modal__header-trailing">{@render headerTrailing()}</div>
+            {/if}
           </div>
         {/if}
 

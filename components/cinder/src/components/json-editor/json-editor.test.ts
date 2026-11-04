@@ -62,6 +62,22 @@ describe('JsonEditor', () => {
     expect(container.querySelector('.cinder-form-field__error')).not.toBeNull();
   });
 
+  test('the quiet focus ring wraps the whole frame, not the Format button (row 29t)', async () => {
+    const css = await Bun.file(new URL('./json-editor.css', import.meta.url)).text();
+
+    // The frame takes the ring while the editor (or the textarea standing in for it) has focus,
+    // and swaps its border for the ring rather than stacking the two.
+    expect(css).toMatch(
+      /\.cinder-json-editor__input:has\(\.cm-focused\),\s*\.cinder-json-editor__input:has\(\.cinder-json-editor__textarea:focus-visible\)\s*\{[^}]*border-color:\s*transparent;[^}]*box-shadow:\s*var\(--_cinder-focus-ring-shadow\)/s,
+    );
+    // `:focus-within` would light the frame for the Format button too, which draws its own ring.
+    expect(css).not.toContain('.cinder-json-editor__input:focus-within');
+    // The frame clips its children, so the gutter takes its radius, and the editor draws no ring.
+    expect(css).toMatch(/\.cinder-json-editor__input\s*\{[^}]*overflow:\s*hidden/s);
+    const theme = await Bun.file(new URL('./json-editor-enhancement.ts', import.meta.url)).text();
+    expect(theme).toContain("'&.cm-focused': { outline: 'none' }");
+  });
+
   test('the errorless live region has no layout footprint (shared _form-field-error.css, CIN-315 follow-up)', async () => {
     const jsonEditorCss = await Bun.file(new URL('./json-editor.css', import.meta.url)).text();
     const sharedErrorCss = await Bun.file(
@@ -145,7 +161,7 @@ describe('JsonEditor', () => {
     await waitFor(() => {
       expect(editor.value).toBe('{}');
       expect(editor.hasAttribute('aria-invalid')).toBe(false);
-      expect(view.getByRole('status').textContent).toBe('Valid JSON.');
+      expect(view.getByRole('status').textContent?.trim()).toBe('Valid JSON');
     });
   });
 
@@ -161,7 +177,7 @@ describe('JsonEditor', () => {
     const description = view.getByText('Enter the request body.');
     const status = view.getByRole('status');
 
-    expect(status.textContent).toBe('Valid JSON.');
+    expect(status.textContent?.trim()).toBe('Valid JSON');
     expect(editor.getAttribute('aria-invalid')).toBeNull();
     expect(editor.getAttribute('aria-describedby')?.split(' ')).toEqual([
       description.id,
@@ -178,7 +194,7 @@ describe('JsonEditor', () => {
 
     const editor = textareaOf(view);
     expect(editor.getAttribute('aria-invalid')).toBe('true');
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Line 1: unexpected end of the JSON');
 
     await view.rerender({
       id: 'payload',
@@ -188,7 +204,7 @@ describe('JsonEditor', () => {
     });
 
     expect(editor.getAttribute('aria-invalid')).toBe('true');
-    expect(view.getByRole('alert').textContent).toBe('Payloads are unavailable.');
+    expect(view.getByRole('alert').textContent?.trim()).toBe('Payloads are unavailable.');
   });
 
   test('skips parsing while an external error owns feedback and resumes when it clears', async () => {
@@ -221,7 +237,7 @@ describe('JsonEditor', () => {
       error: '',
     });
 
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Line 1: unexpected end of the JSON');
 
     await view.rerender({
       id: 'payload',
@@ -230,7 +246,7 @@ describe('JsonEditor', () => {
       error: '',
     });
 
-    expect(view.getByRole('status').textContent).toBe('Valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Valid JSON');
   });
 
   test('updates parse feedback immediately from typed text before controlled state responds', async () => {
@@ -245,7 +261,7 @@ describe('JsonEditor', () => {
 
     expect(requiredInstance(editor, HTMLTextAreaElement).value).toBe('{');
     expect(editor.getAttribute('aria-invalid')).toBe('true');
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Line 1: unexpected end of the JSON');
   });
 
   test('preserves proposed parse feedback across unrelated parent rerenders', async () => {
@@ -266,7 +282,7 @@ describe('JsonEditor', () => {
 
     expect(requiredInstance(editor, HTMLTextAreaElement).value).toBe('{');
     expect(editor.getAttribute('aria-invalid')).toBe('true');
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Line 1: unexpected end of the JSON');
   });
 
   test('suppresses valid feedback when consumer validation marks the editor invalid', () => {
@@ -281,7 +297,7 @@ describe('JsonEditor', () => {
 
     expect(editor.getAttribute('aria-invalid')).toBe('true');
     expect(editor.getAttribute('aria-describedby')).toBe('payload-domain-error');
-    expect(view.queryByRole('status')).toBeNull();
+    expect(view.getByRole('status').textContent?.trim()).toBe('');
   });
 
   test('restores valid feedback when consumer validation is cleared with null', async () => {
@@ -300,7 +316,7 @@ describe('JsonEditor', () => {
     });
 
     expect(textareaOf(view).getAttribute('aria-invalid')).toBeNull();
-    expect(view.getByRole('status').textContent).toBe('Valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Valid JSON');
   });
 
   test('keeps native multiline keyboard input and does not trap Tab', async () => {
@@ -329,7 +345,7 @@ describe('JsonEditor', () => {
       validFeedbackVisible: false,
     });
 
-    expect(view.queryByRole('status')).toBeNull();
+    expect(view.getByRole('status').textContent?.trim()).toBe('');
 
     await view.rerender({
       id: 'payload',
@@ -338,10 +354,10 @@ describe('JsonEditor', () => {
       validFeedbackVisible: false,
     });
 
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe('Line 1: unexpected end of the JSON');
   });
 
-  test('typing valid JSON clears the alert when validFeedbackVisible is false', async () => {
+  test('typing valid JSON clears the problem when validFeedbackVisible is false', async () => {
     const view = render(JsonEditor, {
       id: 'payload',
       label: 'Payload',
@@ -349,11 +365,13 @@ describe('JsonEditor', () => {
       validFeedbackVisible: false,
     });
     const editor = textareaOf(view);
-    expect(view.getByRole('alert').textContent).toBe('Enter valid JSON.');
+    expect(view.getByRole('status').textContent?.trim()).toBe(
+      'Line 1: expected a property name in double quotes',
+    );
 
     await fireEvent.input(editor, { target: { value: '{ "force": true }' } });
 
     expect(view.queryByRole('alert')).toBeNull();
-    expect(view.queryByRole('status')).toBeNull();
+    expect(view.getByRole('status').textContent?.trim()).toBe('');
   });
 });

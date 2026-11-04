@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
 import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
 import { STUB_REMOTE_WORKFLOW_DIRECTORY } from '../../lib/bureau-stub.test-support.ts';
 import { queryKeys } from '../../lib/query.ts';
@@ -219,15 +220,14 @@ describe('the list of workflows', () => {
   });
 
   test('narrows the rows by a search and by a status word, and says so when none match', async () => {
-    const { container, findByRole, findByLabelText } = open();
+    const view = open();
+    const { container, findByRole, findByLabelText } = view;
     await waitFor(() => expect(rowCount(container)).toBe(4));
     expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe(
       WORKFLOW_COPY.list.count(4),
     );
 
-    await fireEvent.change(await findByLabelText(WORKFLOW_COPY.list.statusLabel), {
-      target: { value: 'Failed' },
-    });
+    await chooseFilterOption(view, WORKFLOW_COPY.list.statusLabel, 'Failed');
     await waitFor(() => expect(rowCount(container)).toBe(2));
     expect(
       [...container.querySelectorAll('[data-workflow]')].map((node) =>

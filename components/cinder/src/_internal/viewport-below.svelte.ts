@@ -2,9 +2,10 @@ import { MediaQuery } from 'svelte/reactivity';
 
 /**
  * Viewport width below which a responsive building block takes its phone form:
- * Table stacks its rows, and Popover, Dropdown, Combobox and MultiSelect open
- * as bottom sheets. Phones are narrower than 640px, tablets run from 640px to
- * 1023px, and desktops start at 1024px.
+ * Popover, Dropdown, Combobox and MultiSelect open as bottom sheets. Phones are
+ * narrower than 640px, tablets run from 640px to 1023px, and desktops start at
+ * 1024px. Table's default `stackBelow` is the same length, but it is compared with
+ * the table's own container, not the viewport.
  */
 export const PHONE_VIEWPORT_BREAKPOINT = '640px';
 

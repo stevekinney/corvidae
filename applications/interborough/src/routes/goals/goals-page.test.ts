@@ -12,6 +12,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
 import {
   AGENT_EDITOR_COPY,
   GOALS_COPY,
@@ -264,9 +265,7 @@ describe('the goals', () => {
       { pageSize: 2 },
     );
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    await fireEvent.change(await view.findByLabelText(GOALS_COPY.statusColumn), {
-      target: { value: 'Failed' },
-    });
+    await chooseFilterOption(view, GOALS_COPY.statusColumn, 'Failed');
     // Nothing on the first page matches, yet the match is on the second.
     await view.findByRole('heading', { level: 2, name: GOALS_COPY.noMatch.title });
 
@@ -702,17 +701,13 @@ describe('the records page', () => {
     expect(words).toEqual(['Running', 'Done', 'Failed']);
     for (const word of words) expect(STATUS_WORDS as readonly (string | null)[]).toContain(word);
 
-    await fireEvent.change(await view.findByLabelText(GOALS_COPY.statusColumn), {
-      target: { value: 'Failed' },
-    });
+    await chooseFilterOption(view, GOALS_COPY.statusColumn, 'Failed');
     await waitFor(() => expect(router.search.get('status')).toBe('Failed'));
     await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(true));
     expect(row(view.container, 'goal-3')).not.toBeNull();
     expect(view.getByTestId('records-count').textContent).toBe(GOALS_COPY.count(1));
 
-    await fireEvent.change(await view.findByLabelText(GOALS_COPY.agentColumn), {
-      target: { value: 'tool-runner' },
-    });
+    await chooseFilterOption(view, GOALS_COPY.agentColumn, 'tool-runner');
     await view.findByRole('heading', { level: 2, name: GOALS_COPY.noMatch.title });
     expect(view.container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
 

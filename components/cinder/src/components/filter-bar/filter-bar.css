@@ -2,164 +2,417 @@
 
 @layer cinder.components {
   /* ========================================
-   * FACETED FILTER BAR
+   * FILTER BAR
    * ======================================== */
 
+  /* One row that never wraps. Width is handled by the layout, not by flowing: `wide` draws the
+   * segments, the facet chips and the search field; `medium` folds the segments into a select and
+   * the search field into an icon button; `narrow` keeps the select and a Filter menu. The layout
+   * is chosen in script (data-cinder-layout), because the controls that disappear move into a
+   * menu, which CSS alone cannot do. */
   .cinder-filter-bar {
     container-type: inline-size;
     container-name: cinder-filter-bar;
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    min-inline-size: 0;
   }
 
-  /* Controls row: search + facet selects.
-   * Below the container-query breakpoint, controls stack in a single
-   * column. At or above it, controls lay out on a shared grid so facets
-   * on a wrapped row line up under the facets above them instead of each
-   * packing to its own content width the way `flex-wrap` does. The search
-   * track is capped at `20rem` instead of using `1fr` so it no longer
-   * absorbs all remaining row space. */
-  .cinder-filter-bar__controls {
-    display: grid;
-    grid-template-columns: 1fr;
+  /* The root is the last place focus can land when the control that held it was removed. */
+  .cinder-filter-bar:focus {
+    outline: none;
+  }
+
+  .cinder-filter-bar__row {
+    display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: var(--cinder-space-2);
+    min-inline-size: 0;
   }
 
-  @container cinder-filter-bar (min-width: 40rem) {
-    .cinder-filter-bar__controls {
-      /* Uniform facet tracks only. The search does NOT get a track of its own:
-         when it did, grid auto-placement wrapped the next overflowing facet into
-         column 1 — the wide 14-20rem search track — so that one facet rendered far
-         wider than its siblings. That is the ragged alignment this issue exists to
-         remove, just relocated to the wrap boundary. */
-      grid-template-columns: repeat(auto-fit, minmax(9rem, max-content));
-    }
-
-    /* The search spans the full row above the facets, so every facet sits in an
-       identically sized track no matter how the rows wrap. It still does not absorb
-       the row: max-inline-size caps it well short of the full span. */
-    .cinder-filter-bar__search {
-      grid-column: 1 / -1;
-      max-inline-size: 20rem;
-    }
+  /* Every control in the row shares one height, so segments, selects, chips and the search field
+   * line up. */
+  .cinder-filter-bar__row > * {
+    flex: 0 0 auto;
   }
 
-  .cinder-filter-bar__search {
-    min-inline-size: min(14rem, 100%);
+  /* The search field is the one control that gives way: it takes what is left of the row and
+   * stops growing at 20rem. At the end of the row it is pushed to the inline end. */
+  .cinder-filter-bar__row > .cinder-filter-bar__search {
+    flex: 1 1 11rem;
+    min-inline-size: 0;
+    max-inline-size: 20rem;
   }
 
-  /* Facet wrapper: positions the select + chevron overlay */
-  .cinder-filter-bar__facet {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
+  /* The icon button sits inside the popover's display-contents wrapper, so it is reached by
+   * descent rather than as a direct child. */
+  .cinder-filter-bar[data-cinder-search-position='end']
+    .cinder-filter-bar__row
+    > .cinder-filter-bar__search,
+  .cinder-filter-bar[data-cinder-search-position='end'] .cinder-filter-bar__search-button {
+    margin-inline-start: auto;
   }
 
-  /* The chevron is absolutely positioned against this wrapper, so the wrapper and the
-     select have to end at the same edge. In the stacked single-column layout the grid
-     item stretches to the full row while a native select stays content-sized, which
-     left the chevron floating in the gap to the select's right. Stretching the select
-     to fill its wrapper keeps the two edges together at every width. */
-  .cinder-filter-bar__facet .cinder-filter-bar__select {
+  /* A Select is a form field, which fills its container. In the row each one takes the width of its
+   * value, so the selects sit beside the chips instead of pushing them out of the bar. */
+  .cinder-filter-bar__row > .cinder-form-field.cinder-filter-bar__segments-select,
+  .cinder-filter-bar__facet > .cinder-form-field.cinder-filter-bar__select {
+    inline-size: auto;
+  }
+
+  .cinder-filter-bar__segments-select {
+    min-inline-size: 11rem;
+  }
+
+  /* In the narrow form the select shares the row with the Filter button and takes the rest. */
+  .cinder-filter-bar[data-cinder-layout='narrow']
+    .cinder-filter-bar__row
+    > .cinder-form-field.cinder-filter-bar__segments-select {
     flex: 1 1 auto;
     min-inline-size: 0;
   }
 
-  .cinder-filter-bar__facet-label {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    font-weight: var(--cinder-font-medium);
-    line-height: var(--cinder-leading-tight);
-    white-space: nowrap;
+  .cinder-filter-bar__facet {
+    display: inline-flex;
+    align-items: center;
+    min-inline-size: 0;
   }
 
-  /* Native select styled to match cinder input frame */
   .cinder-filter-bar__select {
-    appearance: none;
-    padding-block: var(--cinder-space-2);
-    padding-inline-start: var(--cinder-space-3);
-    padding-inline-end: var(--cinder-space-8);
-    background: var(--cinder-control-background);
-    border: 1px solid var(--cinder-control-border);
-    border-radius: var(--cinder-control-radius);
-    color: var(--cinder-text-default);
-    font: inherit;
-    font-size: var(--cinder-text-sm);
-    line-height: var(--cinder-leading-normal);
-    min-block-size: var(--cinder-control-height-sm, 1.75rem);
-    cursor: pointer;
-    transition:
-      border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
-      box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+    min-inline-size: 8rem;
   }
 
-  @media (hover: hover) {
-    .cinder-filter-bar__select:hover:not(:disabled) {
-      border-color: var(--cinder-control-border-hover);
+  /* A bar of selects and a search field alone has nothing to collapse. In a narrow container, such
+   * as a list pane's filters, the controls stack in one column at the pane's width. */
+  @container cinder-filter-bar (max-inline-size: 40rem) {
+    .cinder-filter-bar:not([data-cinder-collapsible]) .cinder-filter-bar__row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .cinder-filter-bar:not([data-cinder-collapsible]) .cinder-filter-bar__row > * {
+      flex: 0 0 auto;
+      max-inline-size: none;
+      margin-inline-start: 0;
+    }
+
+    .cinder-filter-bar:not([data-cinder-collapsible]) .cinder-filter-bar__facet,
+    .cinder-filter-bar:not([data-cinder-collapsible]) .cinder-filter-bar__select {
+      display: flex;
+      inline-size: 100%;
     }
   }
 
-  .cinder-filter-bar__select:focus-visible {
+  /* ----------------------------------------
+   * Facet chips: "+ Started by", "Started by: Chats, Goals"
+   * ---------------------------------------- */
+
+  .cinder-filter-bar__chip {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-block-size: var(--cinder-control-height-md);
+    border: 1px dashed var(--cinder-border-control);
+    border-radius: var(--cinder-radius-full);
+    background: transparent;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-tight);
+    white-space: nowrap;
+    transition:
+      background-color var(--cinder-duration-fast) var(--cinder-ease-standard),
+      border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* An applied facet is a tinted chip with a solid edge: the accent fill says it filters now. It
+   * is drawn after the chips still waiting for a value (the bar orders them). */
+  .cinder-filter-bar__chip[data-cinder-applied] {
+    border-style: solid;
+    border-color: var(--cinder-accent-border);
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-filter-bar__chip-trigger,
+  .cinder-filter-bar__chip-remove {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .cinder-filter-bar__chip-trigger {
+    align-self: stretch;
+    padding-inline: var(--cinder-space-3);
+    border-start-start-radius: var(--cinder-radius-full);
+    border-end-start-radius: var(--cinder-radius-full);
+    border-start-end-radius: var(--cinder-radius-full);
+    border-end-end-radius: var(--cinder-radius-full);
+  }
+
+  .cinder-filter-bar__chip[data-cinder-applied] .cinder-filter-bar__chip-trigger {
+    padding-inline-end: var(--cinder-space-1);
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  /* An applied filter with no facet has a label that is not a button. */
+  .cinder-filter-bar__chip[data-cinder-static] .cinder-filter-bar__chip-trigger {
+    cursor: default;
+  }
+
+  .cinder-filter-bar__chip-value {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-filter-bar__chip-remove {
+    align-self: stretch;
+    justify-content: center;
+    padding-inline: var(--cinder-space-2);
+    border-start-end-radius: var(--cinder-radius-full);
+    border-end-end-radius: var(--cinder-radius-full);
+  }
+
+  @media (hover: hover) {
+    .cinder-filter-bar__chip:not([data-cinder-disabled], [data-cinder-applied]):hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-filter-bar__chip[data-cinder-open] {
+    border-color: var(--cinder-accent-border);
+  }
+
+  .cinder-filter-bar__chip-trigger:focus-visible,
+  .cinder-filter-bar__chip-remove:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow:
-      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   @media (forced-colors: active) {
-    .cinder-filter-bar__select:focus-visible {
+    .cinder-filter-bar__chip-trigger:focus-visible,
+    .cinder-filter-bar__chip-remove:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;
     }
   }
 
-  .cinder-filter-bar__select:disabled {
-    background: var(--cinder-control-background-disabled);
+  .cinder-filter-bar__chip[data-cinder-disabled] {
     border-color: var(--cinder-control-border-disabled);
     color: var(--cinder-text-disabled);
+  }
+
+  .cinder-filter-bar__chip[data-cinder-disabled] button {
     cursor: not-allowed;
   }
 
-  /* Decorative chevron overlaid on the select */
-  .cinder-filter-bar__select-chevron {
-    pointer-events: none;
-    position: absolute;
-    inset-inline-end: var(--cinder-space-3);
-    inset-block-start: 50%;
-    transform: translateY(-50%);
-    inline-size: 0.75rem;
-    block-size: 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--cinder-text-muted);
+  /* ----------------------------------------
+   * Toggle facet: "Missed runs 1" with a dot
+   * ---------------------------------------- */
+
+  /* The chip's own toolbar density is 28px; the bar's controls are one height, so the toggle is
+   * lifted to it. The extra classes outrank the chip's density rule. */
+  .cinder-filter-bar .cinder-chip.cinder-filter-bar__toggle {
+    min-block-size: var(--cinder-control-height-md);
+    padding-inline: var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
   }
 
-  .cinder-filter-bar__select-chevron::after {
-    content: '';
+  .cinder-filter-bar__dot {
     display: block;
     inline-size: 0.5rem;
     block-size: 0.5rem;
-    border-inline-end: 1.5px solid currentcolor;
-    border-block-end: 1.5px solid currentcolor;
-    transform: rotate(45deg) translateY(-25%);
+    border-radius: 50%;
+    background: var(--cinder-status-warning-solid);
   }
 
-  /* Applied-filters chip row */
-  .cinder-filter-bar__chips {
+  .cinder-filter-bar__dot[data-cinder-tone='danger'] {
+    background: var(--cinder-status-danger-solid);
+  }
+
+  .cinder-filter-bar__dot[data-cinder-tone='info'] {
+    background: var(--cinder-status-info-solid);
+  }
+
+  .cinder-filter-bar__dot[data-cinder-tone='success'] {
+    background: var(--cinder-status-success-solid);
+  }
+
+  .cinder-filter-bar__dot[data-cinder-tone='neutral'] {
+    background: var(--cinder-text-muted);
+  }
+
+  /* A pressed toggle is a solid fill, so its dot takes the fill's own text colour to stay visible. */
+  .cinder-filter-bar__toggle[aria-pressed='true'] .cinder-filter-bar__dot {
+    background: currentcolor;
+  }
+
+  /* ----------------------------------------
+   * Choice popover: a titled list of rows with counts
+   * ---------------------------------------- */
+
+  .cinder-filter-bar__options {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 14rem;
+  }
+
+  .cinder-filter-bar__options-title {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+    color: var(--cinder-text-default);
+  }
+
+  /* A single choice list is a radio group, so its legend is the popover's title. */
+  .cinder-filter-bar__options .cinder-radio-group__legend {
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+  }
+
+  /* The Filter menu names the section with its own row, so the legend is only for assistive technology. */
+  .cinder-filter-bar__options[data-cinder-title-hidden] .cinder-radio-group__legend {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .cinder-filter-bar__option-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+
+  .cinder-filter-bar__option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-4);
+    min-block-size: var(--cinder-control-height-md);
+  }
+
+  .cinder-filter-bar__option > :first-child {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-filter-bar__option-count {
+    flex: none;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-filter-bar__options-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-4);
+    padding-block-start: var(--cinder-space-2);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-filter-bar__options-clear {
+    color: var(--cinder-accent-text);
+  }
+
+  /* ----------------------------------------
+   * Narrow form: the Filter button and its menu
+   * ---------------------------------------- */
+
+  .cinder-filter-bar__menu-count {
+    min-inline-size: 1.125rem;
+    padding-inline: var(--cinder-space-1);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+    font-size: var(--cinder-text-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  .cinder-filter-bar__menu {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: min(16rem, 100%);
+  }
+
+  .cinder-filter-bar__menu-section + .cinder-filter-bar__menu-section {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-filter-bar__menu-row {
+    appearance: none;
+    display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-block-size: var(--cinder-control-height-md);
+    padding-inline: var(--cinder-space-2);
+    border: none;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    text-align: start;
+    cursor: pointer;
   }
 
-  /* Disabled state on the root affects the controls row visually */
-  .cinder-filter-bar[data-disabled] .cinder-filter-bar__select {
-    background: var(--cinder-control-background-disabled);
-    border-color: var(--cinder-control-border-disabled);
-    color: var(--cinder-text-disabled);
-    cursor: not-allowed;
+  @media (hover: hover) {
+    .cinder-filter-bar__menu-row:hover:not(:disabled) {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-filter-bar__menu-row:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .cinder-filter-bar__menu-label {
+    flex: 1 1 auto;
+  }
+
+  .cinder-filter-bar__menu-value {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--cinder-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-filter-bar__menu-body {
+    padding: var(--cinder-space-2);
+  }
+
+  .cinder-filter-bar__search-popover {
+    min-inline-size: min(16rem, 100%);
+  }
+
+  /* A medium bar whose search icon has a query shows it is filtering. */
+  .cinder-filter-bar__search-button[data-cinder-active] {
+    border-color: var(--cinder-accent-border);
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
   }
 }

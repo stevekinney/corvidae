@@ -67,7 +67,7 @@ describe('Table semantics', () => {
   });
 
   test('scrollable=false renders the table without a scroll wrapper', () => {
-    const { container } = render(Wrapper, { columns, rows });
+    const { container } = render(Wrapper, { columns, rows, scrollable: false });
     expect(container.querySelector('.cinder-table-scroll')).toBeNull();
   });
 
@@ -251,6 +251,7 @@ describe('Table semantics', () => {
     const { container } = render(Wrapper, {
       columns,
       rows,
+      scrollable: false,
       scrollContainerProps: {
         'aria-label': 'Unused scroll wrapper',
       },
@@ -503,8 +504,10 @@ describe('Table sticky-header caption measurement', () => {
     await withResizeObserver(async () => {
       render(Wrapper, { columns, rows, stickyHeader: false, caption: 'Plain caption' });
       await tick();
-      // The `enabled: () => stickyHeader` gate skips observation entirely.
-      expect(CapturingResizeObserver.lastObserver?.observed ?? []).toHaveLength(0);
+      // The `enabled: () => stickyHeader` gate skips the caption. The scroll box watches itself for
+      // the fade, but nothing watches the caption.
+      const observed = Array.from(CapturingResizeObserver.lastObserver?.observed ?? []);
+      expect(observed.some((element) => element.tagName === 'CAPTION')).toBe(false);
     });
   });
 });
@@ -962,10 +965,11 @@ describe('CSS rule assertions — sort indicator and focus ring', () => {
 
   test('scroll wrapper owns horizontal overflow without changing table semantics', () => {
     const wrapperRule = injectTableCssAndFind('.cinder-table-scroll');
-    // The scroll wrapper owns horizontal overflow; the table inside it grows to
-    // its intrinsic width via a descendant combinator on `.cinder-table-scroll`.
-    const tableRule = injectTableCssAndFind('.cinder-table-scroll .cinder-table');
+    // The scroll wrapper owns horizontal overflow and the frame; the table inside it grows to
+    // its intrinsic width and draws no border of its own.
+    const tableRule = injectTableCssAndFind('.cinder-table-scroll > .cinder-table');
     expect(wrapperRule?.style.overflowX).toBe('auto');
+    expect(wrapperRule?.style.borderRadius).toBe('var(--cinder-radius-lg)');
     expect(tableRule?.style.minInlineSize).toBe('max-content');
   });
 
@@ -1103,6 +1107,13 @@ describe('Table data display', () => {
     expect(fill).toMatch(/max-inline-size:\s*100%/);
     expect(ruleBody('.cinder-table__cell[data-cinder-controls]')).toMatch(
       /min-inline-size:\s*var\(--_cinder-table-controls-size\)/,
+    );
+  });
+
+  test('a stacked card sets its controls to 44px so a select is as tall as its row (row 40a)', () => {
+    const stacked = tableCss.slice(tableCss.indexOf('[data-cinder-stacked]'));
+    expect(stacked).toMatch(
+      /:is\(\.cinder-select, \.cinder-input, \.cinder-button\) \{\s*min-block-size: 2\.75rem;/,
     );
   });
 

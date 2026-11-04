@@ -237,3 +237,38 @@ describe('FormSection dev warnings', () => {
     }
   });
 });
+
+describe('FormSection meta (rows 43b, 43c)', () => {
+  test('a section heading carries its note on the same row, outside the heading', () => {
+    const { container } = render(FormSection, {
+      props: {
+        heading: 'Reference documents',
+        meta: 'Read with every chat',
+        children: emptySnippet,
+      },
+    });
+    const heading = container.querySelector('h2');
+    const meta = container.querySelector('.cinder-form-section__meta');
+    expect(heading?.textContent?.trim()).toBe('Reference documents');
+    expect(meta?.textContent).toBe('Read with every chat');
+    expect(heading?.parentElement).toBe(meta?.parentElement);
+    expect(heading?.parentElement?.className).toBe('cinder-form-section__title');
+  });
+
+  test('a fieldset puts the note inside its legend after the heading text', () => {
+    const { container } = render(FormSection, {
+      props: { as: 'fieldset', heading: 'Documents', meta: '3 of 9', children: emptySnippet },
+    });
+    const legend = container.querySelector('legend');
+    expect(legend?.querySelector('.cinder-form-section__meta')?.textContent).toBe('3 of 9');
+    expect(legend?.textContent).toBe('Documents3 of 9');
+  });
+
+  test('without meta the markup is unchanged', () => {
+    const { container } = render(FormSection, {
+      props: { heading: 'Account', children: emptySnippet },
+    });
+    expect(container.querySelector('.cinder-form-section__title')).toBeNull();
+    expect(container.querySelector('.cinder-form-section__meta')).toBeNull();
+  });
+});

@@ -426,3 +426,42 @@ describe('schema-form validation', () => {
     }
   });
 });
+
+describe('schema-form validation of durations (sweep W68)', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      timeoutMs: { type: 'integer', minimum: 1000, maximum: 3_600_000 },
+      pollInterval: { type: 'integer', unit: 'milliseconds', minimum: 90_000 },
+      retries: { type: 'integer', minimum: 1 },
+      inner: {
+        type: 'object',
+        properties: { delayMs: { type: 'integer', minimum: 1000 } },
+      },
+    },
+  };
+
+  test('a duration bound reads as a length of time, not as raw milliseconds', async () => {
+    const result = await validateSchemaValue(schema, { timeoutMs: 500, pollInterval: 1000 });
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      'Timeout must be at least 1 second.',
+      'Poll Interval must be at least 1 minute 30 seconds.',
+    ]);
+  });
+
+  test('an upper bound reads as a length of time too', async () => {
+    const result = await validateSchemaValue(schema, { timeoutMs: 7_200_000 });
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      'Timeout must be at most 1 hour.',
+    ]);
+  });
+
+  test('a plain number keeps its bound, and so does a nested key', async () => {
+    const result = await validateSchemaValue(schema, { retries: 0, inner: { delayMs: 5 } });
+    expect(result.issues.map((issue) => issue.message)).toEqual([
+      'Retries must be at least 1.',
+      'Delay Ms must be at least 1000.',
+    ]);
+  });
+});

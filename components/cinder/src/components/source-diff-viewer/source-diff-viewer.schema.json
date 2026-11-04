@@ -12,9 +12,23 @@
     },
     "maxLines": {
       "type": "integer",
-      "description": "Maximum number of diff rows to render before truncating.",
+      "description": "Maximum number of diff rows to render before truncating. When the patch is longer, a Show all\naction under the rows renders the rest in place. In the `inline` variant the limit counts\nchanged lines only, and the first ones are all that shows until Show all.",
       "minimum": 0,
       "default": 1000
+    },
+    "variant": {
+      "enum": ["default", "inline"],
+      "description": "How the diff is framed: `default` or `inline`.",
+      "default": "default"
+    },
+    "expanded": {
+      "type": "boolean",
+      "description": "Whether every row renders, past `maxLines`. Bindable: Show all sets it, and a host can set it\nto open or close the diff from outside.",
+      "default": false
+    },
+    "showAllLabel": {
+      "type": "string",
+      "description": "Label of the action that renders the rest of a truncated patch. It reads \"Show all\" in the\n`default` variant and \"Show all 9 lines\" (the number of lines in the patch) in `inline`."
     },
     "lineNumbers": {
       "type": "boolean",

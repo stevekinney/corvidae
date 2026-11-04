@@ -3,9 +3,9 @@ import type { HTMLAttributes } from 'svelte/elements';
 /**
  * Props for SchemaView.
  *
- * SchemaView is read-only: it shows what a JSON Schema describes, one line per
- * field, and offers the raw document behind a disclosure. To edit a schema, use
- * `JsonSchemaEditor`.
+ * SchemaView is read-only: it shows what a JSON Schema describes as one aligned
+ * grid of Field, Type and Description, one row per field, and offers the raw
+ * document behind a disclosure. To edit a schema, use `JsonSchemaEditor`.
  */
 export type SchemaViewProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'children'> & {
   /**
@@ -28,14 +28,20 @@ export type SchemaViewProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'child
   maxDepth?: number;
   /**
    * Label of the disclosure that reveals the raw schema document.
-   * @default "View JSON Schema"
+   * @default "JSON schema"
    */
   rawLabel?: string;
   /**
-   * Text shown when the schema declares no fields.
-   * @default "This schema declares no fields."
+   * Text shown, in a bordered box instead of an empty grid, when the schema
+   * declares no fields.
+   * @default "This schema takes no fields, so there is nothing to fill in."
    */
   emptyLabel?: string;
+  /**
+   * A note shown as the last line of the frame, below the rows. Use it to say
+   * how to read the grid, for example how a choice's branches are labelled.
+   */
+  caption?: string;
   /** Additional class merged onto the `.cinder-schema-view` root element. */
   class?: string;
 };

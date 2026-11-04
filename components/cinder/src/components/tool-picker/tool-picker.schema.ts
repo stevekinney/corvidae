@@ -1,0 +1,146 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    open: {
+      type: 'boolean',
+      description:
+        'Whether the picker is open. Bindable. It closes itself on Done and Cancel, on Escape and on a\nclick outside, and opens with the chosen items as `selected` says.',
+    },
+    selected: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description:
+        'The values of the chosen items. Bindable. The picker works on a copy while it is open: Done\nwrites it back (in the order of `items`, keeping any value no item names), and Cancel and\ndismissing leave it alone.',
+    },
+    query: {
+      type: 'string',
+      description:
+        'The text in the search field. Bindable. It is cleared when the picker closes, so it opens empty\nunless the page sets it before opening, such as to open on a search that matches nothing.',
+      default: '',
+    },
+    title: {
+      type: 'string',
+      description: 'Heading of the dialog.',
+      default: 'Add tools and skills',
+    },
+    itemNoun: {
+      type: 'string',
+      description:
+        'What the items are called, plural, in the counter, the group counts and the empty state\n("tools"). The counter reads "3 of 9 tools chosen".',
+      default: 'tools',
+    },
+    searchLabel: {
+      type: 'string',
+      description: 'Accessible name and placeholder of the search field.',
+      default: 'Search tools and skills',
+    },
+    collapseFrom: {
+      type: 'number',
+      description:
+        'How many selectable items it takes to switch to the long-list layout: the counter reads the\ntotal ("42 tools"), and every group but the first starts collapsed under its sticky header.',
+      default: 40,
+    },
+    loading: {
+      type: 'boolean',
+      description:
+        'Draw the loading state: three skeleton rows, after 300 ms, under the title and a live search\nfield. Nothing can be chosen until it is false.',
+      default: false,
+    },
+    loadingLabel: {
+      type: 'string',
+      description: 'Announced politely when the loading placeholder appears.',
+      default: 'Loading tools and skills',
+    },
+    noneChosenLabel: {
+      type: 'string',
+      description:
+        "Words on a group's header, after its count, when none of its items is chosen and something else\nis. Skills and other groups that cannot be chosen from show their `note` instead.",
+      default: 'none chosen',
+    },
+    emptyMetaLabel: {
+      type: 'string',
+      description: 'Names the trailing column of an item with no `meta`, which draws an em dash.',
+      default: 'No risk word',
+    },
+    emptyLabel: {
+      type: 'string',
+      description:
+        'The line shown when there is nothing at all to choose from (no search involved).',
+      default: 'No tools to choose from.',
+    },
+    noMatchHint: {
+      type: 'string',
+      description: "The line under the empty state's heading.",
+      default: 'Try a shorter word.',
+    },
+    clearSearchLabel: {
+      type: 'string',
+      description: 'Label of the button in the empty state that clears the search.',
+      default: 'Clear search',
+    },
+    doneLabel: {
+      type: 'string',
+      description: 'Label of the button that closes the picker and keeps the choices.',
+      default: 'Done',
+    },
+    cancelLabel: {
+      type: 'string',
+      description: 'Label of the button that closes the picker and drops the choices made in it.',
+      default: 'Cancel',
+    },
+    class: {
+      type: 'string',
+      description: 'Additional CSS classes applied to the dialog.',
+    },
+  },
+  additionalProperties: false,
+  required: ['open'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'groups',
+        reason: 'unknown-shape',
+        description:
+          'The groups, in the order they should appear, with a note for a group that cannot be chosen from.',
+      },
+      {
+        name: 'items',
+        reason: 'unknown-shape',
+        required: true,
+        description:
+          'Everything that can be listed, in the order it should read within each group.',
+      },
+      {
+        name: 'noMatchTitle',
+        reason: 'function-or-snippet',
+        description: 'The heading of the empty state, given what was typed.',
+      },
+      {
+        name: 'onCancel',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the picker is closed without keeping its choices: Cancel, Escape or a click outside.',
+      },
+      {
+        name: 'onDone',
+        reason: 'function-or-snippet',
+        description:
+          'Called with the chosen values when Done is pressed, after `selected` is updated.',
+      },
+      {
+        name: 'triggerRef',
+        reason: 'unknown-shape',
+        description:
+          'The element focus returns to when the picker closes, usually the button that opened it.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

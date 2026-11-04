@@ -3,6 +3,7 @@
 @import '../copy-button/copy-button.css';
 @import '../json-viewer/json-viewer.css';
 @import '../segmented-control/segmented-control.css';
+@import '../source-diff-viewer/source-diff-viewer.css';
 
 @layer cinder.components {
   /* Flat: the inspector draws no frame of its own. The heading row sits on the
@@ -85,6 +86,18 @@
     grid-template-columns: minmax(min(8rem, 40%), 1fr) minmax(0, 3fr);
     align-items: baseline;
     gap: var(--cinder-space-3);
+  }
+
+  /* A patch is not squeezed into the value column: its label and change count sit on one line
+   * and the diff takes the whole width under them. */
+  .cinder-payload-inspector__field[data-cinder-patch] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-payload-inspector__patch-count {
+    margin-inline-start: var(--cinder-space-2);
+    font-variant-numeric: tabular-nums;
   }
 
   .cinder-payload-inspector__field-label {

@@ -32,6 +32,8 @@
     onValueChange,
     label,
     disabled,
+    readonly = false,
+    description,
     mutating = false,
     labelVisible = true,
     name,
@@ -51,6 +53,7 @@
 
   const ownLabelId = $derived(label ? `${id ?? generatedId}-label` : undefined);
   const labelId = $derived(context?.labelId ?? ownLabelId);
+  const descriptionId = $derived(description ? `${id ?? generatedId}-description` : undefined);
   const resolvedId = $derived(context?.controlId ?? id);
 
   // A switch that changes something (`mutating`) under a stale `<StaleRegion>` is inert but still
@@ -59,11 +62,16 @@
   const staleRegion = getStaleRegionContext();
   const staleInert = $derived(isStaleInert(staleRegion, mutating));
   const describedBy = $derived(
-    mergeDescribedBy(context?.describedBy, staleInert ? staleRegion?.reasonId : undefined),
+    mergeDescribedBy(
+      mergeDescribedBy(context?.describedBy, descriptionId),
+      staleInert ? staleRegion?.reasonId : undefined,
+    ),
   );
 
+  // A read-only switch keeps its place in the tab order and its value in the form, but a press
+  // changes nothing: it shows a setting that something else owns.
   function toggle(): void {
-    if (!resolvedDisabled && !staleInert) {
+    if (!resolvedDisabled && !staleInert && !readonly) {
       commitValue(
         !checked,
         onValueChangeRequest,
@@ -84,11 +92,13 @@
     aria-checked={checked}
     aria-labelledby={labelId}
     aria-describedby={describedBy}
+    aria-readonly={readonly ? 'true' : undefined}
     disabled={resolvedDisabled}
     aria-disabled={staleInert ? 'true' : undefined}
     onclick={toggle}
     class={classNames('cinder-toggle', customClassName)}
     data-cinder-checked={checked ? '' : undefined}
+    data-cinder-readonly={readonly ? '' : undefined}
   >
     <span aria-hidden="true" class="cinder-toggle__thumb"></span>
   </button>
@@ -108,6 +118,12 @@
   {/if}
 {/snippet}
 
+{#snippet descriptionText()}
+  {#if description}
+    <span id={descriptionId} class="cinder-toggle-field__description">{description}</span>
+  {/if}
+{/snippet}
+
 {#if context}
   {#if label && !context.labelId}
     <span class="cinder-toggle-field">
@@ -120,9 +136,11 @@
         data-disabled={resolvedDisabled || staleInert || undefined}
         onclick={toggle}>{label}</span
       >
+      {@render descriptionText()}
     </span>
   {:else}
     {@render control()}
+    {@render descriptionText()}
   {/if}
 {:else}
   <span class="cinder-toggle-field">
@@ -137,5 +155,6 @@
     >
       {label}
     </span>
+    {@render descriptionText()}
   </span>
 {/if}

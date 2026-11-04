@@ -485,3 +485,52 @@ describe('PayloadInspector fields and JSON views', () => {
     }
   });
 });
+
+describe('PayloadInspector: a patch value', () => {
+  const patch = [
+    '--- a/release-notes.md',
+    '+++ b/release-notes.md',
+    '@@ -12,3 +12,5 @@',
+    ' # Release notes',
+    '-Refunds are sent at once.',
+    '+Refunds now ask for approval before money moves.',
+    '+Large refunds go to a person.',
+    '+Nothing is sent without a note.',
+    ' Thanks for reading.',
+    '',
+  ].join('\n');
+
+  test('goes through the diff viewer with its count beside the label and a Show all link', () => {
+    const { container, getByRole } = render(PayloadInspector, {
+      value: { path: 'release-notes.md', patch },
+      label: 'Input',
+    });
+    const field = requiredInstance(container.querySelector('[data-cinder-patch]'), HTMLElement);
+    const label = requiredInstance(field.querySelector('dt'), HTMLElement);
+    expect(label.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Patch +3 −1');
+    expect(label.querySelector('[aria-label="3 added, 1 removed"]')).not.toBeNull();
+    const lines = Array.from(field.querySelectorAll('.cinder-source-diff-viewer__line-code')).map(
+      (code) => code.textContent?.trim(),
+    );
+    expect(lines).toEqual([
+      '- Refunds are sent at once.',
+      '+ Refunds now ask for approval before money moves.',
+    ]);
+    expect(getByRole('button', { name: 'Show all 9 lines' })).not.toBeNull();
+    // The path beside it is a single value in monospace, not a second diff (row 27h).
+    expect(container.querySelectorAll('[data-cinder-patch]')).toHaveLength(1);
+    const path = requiredInstance(
+      container.querySelector('.cinder-payload-inspector__identifier'),
+      HTMLElement,
+    );
+    expect(path.textContent).toBe('release-notes.md');
+  });
+
+  test('text that only looks like a diff stays plain text', () => {
+    const { container } = render(PayloadInspector, {
+      value: { note: '- first thing\n- second thing\n+ a plus sign' },
+    });
+    expect(container.querySelector('[data-cinder-patch]')).toBeNull();
+    expect(container.querySelector('.cinder-source-diff-viewer')).toBeNull();
+  });
+});

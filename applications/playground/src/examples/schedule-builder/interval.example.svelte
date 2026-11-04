@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Every few minutes or hours';
   export const description =
-    'An interval counts from the start of the schedule, so an uneven one such as every 7 hours is exact. It emits an every value rather than a cron, and At is hidden.';
+    'An interval counts from the start of the schedule, so an uneven one such as every 7 hours is exact. It emits an every value rather than a cron, and At and Time zone are hidden because no zone applies.';
 </script>
 
 <script lang="ts">

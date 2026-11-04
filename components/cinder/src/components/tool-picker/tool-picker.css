@@ -1,0 +1,256 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@import '../button/button.css';
+@import '../checkbox/checkbox.css';
+@import '../input/input.css';
+@import '../modal/modal.css';
+@import '../skeleton/skeleton.css';
+
+@layer cinder.components {
+  /* ========================================
+   * TOOL PICKER
+   * A dialog with a counter on the title's line, a search field, and a list grouped by source that
+   * scrolls inside the dialog under sticky group headers.
+   * ======================================== */
+
+  .cinder-modal.cinder-tool-picker {
+    max-width: min(90vw, 39.25rem);
+  }
+
+  /* The list runs to the dialog's edges, so the body carries no padding of its own: the search
+     field and the empty state bring theirs. The header drops its rule, since the search field
+     follows it directly. */
+  .cinder-tool-picker .cinder-modal__body {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .cinder-tool-picker .cinder-modal__header {
+    padding-inline: var(--cinder-space-4);
+    padding-block-end: var(--cinder-space-2);
+    border-block-end: 0;
+  }
+
+  .cinder-tool-picker__counter {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-tool-picker__search {
+    flex: none;
+    /* A little room above, so the field's focus ring is not clipped by the body. */
+    padding: var(--cinder-space-1) var(--cinder-space-4) var(--cinder-space-3);
+  }
+
+  /* ----------------------------------------
+   * The scrolling list
+   * ---------------------------------------- */
+
+  .cinder-tool-picker__list {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    max-block-size: min(40rem, calc(100dvh - 14rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    container-type: inline-size;
+  }
+
+  .cinder-tool-picker__loading,
+  .cinder-tool-picker__none {
+    padding: var(--cinder-space-2) var(--cinder-space-4) var(--cinder-space-4);
+  }
+
+  .cinder-tool-picker__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    padding: var(--cinder-space-6) var(--cinder-space-4);
+    text-align: center;
+  }
+
+  .cinder-tool-picker__empty-title,
+  .cinder-tool-picker__empty-hint {
+    margin: 0;
+  }
+
+  .cinder-tool-picker__empty-title {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-tool-picker__empty-hint {
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-tool-picker__empty .cinder-button {
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  /* ----------------------------------------
+   * Groups and their sticky headers
+   * ---------------------------------------- */
+
+  .cinder-tool-picker__group-heading {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    display: flex;
+    align-items: baseline;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    padding: var(--cinder-space-1-5) var(--cinder-space-4);
+    border-block: 1px solid var(--cinder-border-muted);
+    background: var(--cinder-surface-inset);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-tool-picker__group-name {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-tool-picker__group-count {
+    font-weight: var(--cinder-font-normal);
+  }
+
+  /* In the plain layout the count reads as part of the name: "Built in · 6". */
+  .cinder-tool-picker__list:not([data-cinder-long]) .cinder-tool-picker__group-heading {
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-tool-picker__list:not([data-cinder-long]) .cinder-tool-picker__group-name {
+    color: inherit;
+  }
+
+  .cinder-tool-picker__list:not([data-cinder-long]) .cinder-tool-picker__group-count {
+    font-weight: inherit;
+  }
+
+  /* The long-list header is a button across the whole strip. */
+  .cinder-tool-picker__group-heading:has(> .cinder-tool-picker__group-toggle) {
+    padding: 0;
+  }
+
+  .cinder-tool-picker__group-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    padding: var(--cinder-space-2) var(--cinder-space-4);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-tool-picker__group-toggle > svg {
+    flex: none;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .cinder-tool-picker__group-toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  /* ----------------------------------------
+   * Rows
+   * ---------------------------------------- */
+
+  .cinder-tool-picker__rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-tool-picker__row {
+    display: grid;
+    grid-template-columns: 1rem minmax(0, 1fr) auto auto;
+    align-items: center;
+    column-gap: var(--cinder-space-3);
+    padding: var(--cinder-space-2) var(--cinder-space-4);
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-tool-picker__control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1rem;
+  }
+
+  .cinder-tool-picker__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
+  label.cinder-tool-picker__text {
+    cursor: pointer;
+  }
+
+  .cinder-tool-picker__heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--cinder-space-2);
+  }
+
+  .cinder-tool-picker__name {
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-tool-picker__code {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-tool-picker__suffix,
+  .cinder-tool-picker__description,
+  .cinder-tool-picker__meta,
+  .cinder-tool-picker__detail {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-tool-picker__meta {
+    inline-size: 5.5rem;
+  }
+
+  .cinder-tool-picker__detail {
+    inline-size: 8rem;
+    text-align: end;
+  }
+
+  /* On a narrow dialog the two trailing facts share a line under the name. */
+  @container (max-width: 30rem) {
+    .cinder-tool-picker__row {
+      grid-template-columns: 1rem minmax(0, 1fr) auto;
+      row-gap: var(--cinder-space-1);
+    }
+
+    .cinder-tool-picker__text {
+      grid-column: 2 / -1;
+    }
+
+    .cinder-tool-picker__meta {
+      grid-column: 2;
+      inline-size: auto;
+    }
+
+    .cinder-tool-picker__detail {
+      grid-column: 3;
+      inline-size: auto;
+    }
+  }
+}

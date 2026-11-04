@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, jest, mock, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -52,8 +52,10 @@ afterAll(() => {
 });
 
 const { cleanup, fireEvent, render } = await import('@testing-library/svelte/pure');
-const { tick } = await import('svelte');
+const { flushSync, tick } = await import('svelte');
 const { default: ListDetailFixture } = await import('./list-detail.fixture.svelte');
+const { default: ListDetailTableFixture } = await import('./list-detail-table.fixture.svelte');
+const { stripCinderComponentsLayer } = await import('../../test/css.ts');
 const { LIST_DETAIL_SHORTCUTS } = await import('./list-detail.constants.ts');
 
 afterEach(() => {
@@ -127,6 +129,25 @@ describe('ListDetail', () => {
     expect(container.querySelectorAll('li[data-cinder-list-detail-key]')).toHaveLength(3);
     expect(getByText('Nothing selected')).toBeTruthy();
     expect(getByRole('heading', { name: 'Chats' })).toBeTruthy();
+  });
+
+  test('flushDetail marks the root so the detail pane drops its inner padding', () => {
+    const flush = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation(), flushDetail: true },
+    });
+    expect(
+      flush.container
+        .querySelector('.cinder-list-detail')
+        ?.hasAttribute('data-cinder-flush-detail'),
+    ).toBe(true);
+    flush.unmount();
+
+    const padded = render(ListDetailFixture, { props: { selectionLocation: memoryLocation() } });
+    expect(
+      padded.container
+        .querySelector('.cinder-list-detail')
+        ?.hasAttribute('data-cinder-flush-detail'),
+    ).toBe(false);
   });
 
   test('renders the list empty state and a custom empty detail title', () => {
@@ -348,7 +369,7 @@ describe('ListDetail', () => {
     const { container, getByRole, queryByRole } = render(ListDetailFixture, {
       props: { selectionLocation: location },
     });
-    await measure(container, 899);
+    await measure(container, 599);
 
     const root = container.querySelector('.cinder-list-detail')!;
     expect(root.getAttribute('data-cinder-layout')).toBe('stacked');
@@ -380,7 +401,7 @@ describe('ListDetail', () => {
     const { container, getByRole } = render(ListDetailFixture, {
       props: { selectionLocation: memoryLocation('alpha') },
     });
-    await measure(container, 600);
+    await measure(container, 400);
 
     expect(detailText(container)).toBe('Alpha chat detail');
     expect(getByRole('button', { name: 'Back' })).toBeTruthy();
@@ -443,7 +464,7 @@ describe('ListDetail', () => {
 
     expect(storage.setItem.mock.calls.length).toBeGreaterThan(writesBeforeDrag);
     const remembered = Number(storage.values.get('chats'));
-    expect(remembered).toBeGreaterThan(320);
+    expect(remembered).toBeGreaterThan(280);
     cleanup();
     ResizeObserverStub.instances = [];
 
@@ -478,9 +499,9 @@ describe('ListDetail', () => {
     await fireEvent.keyDown(handle, { key: 'ArrowRight' });
     await tick();
     const remembered = Number(storage.values.get('chats'));
-    expect(remembered).toBeGreaterThan(320);
+    expect(remembered).toBeGreaterThan(280);
 
-    await measure(container, 800);
+    await measure(container, 500);
     expect(container.querySelector('.cinder-list-detail')!.getAttribute('data-cinder-layout')).toBe(
       'stacked',
     );
@@ -523,5 +544,186 @@ describe('ListDetail', () => {
 
     expect(root.classList.contains('custom')).toBe(true);
     expect(root.getAttribute('data-testid')).toBe('chats');
+  });
+
+  test('shows both panes at tablet width and one pane at phone width', async () => {
+    const tablet = render(ListDetailFixture, { props: { selectionLocation: memoryLocation() } });
+    await measure(tablet.container, 768);
+    expect(
+      tablet.container.querySelector('.cinder-list-detail')?.getAttribute('data-cinder-layout'),
+    ).toBe('split');
+    cleanup();
+    ResizeObserverStub.instances = [];
+
+    const phone = render(ListDetailFixture, { props: { selectionLocation: memoryLocation() } });
+    await measure(phone.container, 375);
+    expect(
+      phone.container.querySelector('.cinder-list-detail')?.getAttribute('data-cinder-layout'),
+    ).toBe('stacked');
+  });
+
+  test('starts the list pane at 280 pixels', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: { selectionLocation: memoryLocation() },
+    });
+    await measure(container, 1000);
+    const listPane = container.querySelector<HTMLElement>('.cinder-resizable-panels__pane')!;
+    expect(listPane.getAttribute('style')).toContain('--_cinder-resizable-panel-size: 280px');
+  });
+
+  test('the detail pane keeps its own padding, which a variable can remove', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-list-detail__detail-body \{[^}]*padding: var\(--cinder-list-detail-detail-padding, var\(--cinder-space-4\)\);/,
+    );
+  });
+
+  test('draws a full-height 1px rule between the panes and shows the grip on hover or focus', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-resizable-panels__handle::before \{[^}]*inset-block: 0;[^}]*inline-size: 0;[^}]*border-inline-start: 1px solid var\(--cinder-border-muted\);/,
+    );
+    expect(css).toMatch(
+      /\.cinder-resizable-panels__handle\s+\.cinder-resizable-panels__handle-line \{\s*opacity: 0;/,
+    );
+    expect(css).toMatch(
+      /:is\(:hover, :focus-visible\)\s+\.cinder-resizable-panels__handle-line \{\s*opacity: 1;/,
+    );
+  });
+
+  test('a stacked layout flows with the page instead of scrolling inside itself', async () => {
+    const css = stripCinderComponentsLayer(
+      await Bun.file(new URL('./list-detail.css', import.meta.url)).text(),
+    );
+    expect(css).toMatch(
+      /\.cinder-list-detail\[data-cinder-layout='stacked'\] \{\s*block-size: auto;/,
+    );
+  });
+
+  test('groups the rows under header bands', async () => {
+    const { container } = render(ListDetailFixture, {
+      props: {
+        selectionLocation: memoryLocation(),
+        groupBy: (chat: { id: string }) =>
+          chat.id === 'gamma'
+            ? { key: 'later', label: 'Later' }
+            : { key: 'first', label: 'First', detail: 'two chats' },
+      },
+    });
+    await measure(container, 1000);
+
+    const labels = Array.from(container.querySelectorAll('.cinder-data-list-group__label')).map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(['First', 'Later']);
+    expect(container.querySelectorAll('li[data-cinder-list-detail-key]')).toHaveLength(3);
+  });
+
+  describe('loading', () => {
+    test('shows nothing for 300 ms, then five placeholder rows and a detail block, announced', () => {
+      jest.useFakeTimers();
+      try {
+        const { container } = render(ListDetailFixture, {
+          props: {
+            selectionLocation: memoryLocation(),
+            loading: true,
+            loadingLabel: 'Loading memories',
+          },
+        });
+        expect(container.querySelector('.cinder-skeleton-row')).toBeNull();
+        expect(container.querySelector('li[data-cinder-list-detail-key]')).toBeNull();
+
+        jest.advanceTimersByTime(300);
+        flushSync();
+
+        expect(
+          container.querySelectorAll('.cinder-list-detail__list .cinder-skeleton-row'),
+        ).toHaveLength(5);
+        expect(
+          container.querySelector(
+            '.cinder-list-detail__loading-detail .cinder-skeleton-card, .cinder-list-detail__loading-detail .cinder-skeleton-group',
+          ),
+        ).not.toBeNull();
+        expect(container.querySelector('[role="status"]')?.textContent).toBe('Loading memories');
+        expect(
+          container.querySelector('.cinder-list-detail__rows')?.getAttribute('aria-busy'),
+        ).toBe('true');
+        // The header stays live while the rows load.
+        expect(container.querySelector('input[aria-label="Search chats"]')).not.toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    test('shows the rows again when loading ends', async () => {
+      const { container, rerender } = render(ListDetailFixture, {
+        props: { selectionLocation: memoryLocation(), loading: true },
+      });
+      await rerender({ selectionLocation: memoryLocation(), loading: false });
+      await tick();
+      expect(container.querySelectorAll('li[data-cinder-list-detail-key]')).toHaveLength(3);
+    });
+  });
+
+  describe('a table in the list slot', () => {
+    function rowOf(container: HTMLElement, id: string): HTMLElement {
+      return container.querySelector<HTMLElement>(`tr[data-cinder-row-id="${id}"]`)!;
+    }
+
+    test('opens a row on click and shows its detail, with the row marked open', async () => {
+      const { container } = render(ListDetailTableFixture, {
+        props: { selectionLocation: memoryLocation() },
+      });
+      await measure(container, 1000);
+      expect(container.querySelector('.cinder-list-detail__rows table')).not.toBeNull();
+
+      await fireEvent.click(rowOf(container, 'beta').querySelector('td')!);
+      await tick();
+
+      expect(detailText(container)).toBe('app:beta value');
+      expect(rowOf(container, 'beta').getAttribute('aria-current')).toBe('true');
+      expect(rowOf(container, 'alpha').hasAttribute('aria-current')).toBe(false);
+    });
+
+    test('J and K move the cursor between table rows, and Enter opens the row', async () => {
+      const { container } = render(ListDetailTableFixture, {
+        props: { selectionLocation: memoryLocation() },
+      });
+      await measure(container, 1000);
+
+      rowOf(container, 'alpha').focus();
+      // With no cursor yet, the first press lands on the first row.
+      await fireEvent.keyDown(rowOf(container, 'alpha'), { key: 'j' });
+      await tick();
+      await tick();
+      expect(document.activeElement).toBe(rowOf(container, 'alpha'));
+      await fireEvent.keyDown(rowOf(container, 'alpha'), { key: 'j' });
+      await tick();
+      await tick();
+      expect(document.activeElement).toBe(rowOf(container, 'beta'));
+
+      await fireEvent.keyDown(rowOf(container, 'beta'), { key: 'Enter' });
+      await tick();
+      expect(detailText(container)).toBe('app:beta value');
+    });
+
+    test('below pushBelow the table is the one pane, and a row pushes the detail with Back', async () => {
+      const { container, getByRole } = render(ListDetailTableFixture, {
+        props: { selectionLocation: memoryLocation() },
+      });
+      await measure(container, 400);
+      expect(container.querySelector('.cinder-list-detail__rows table')).not.toBeNull();
+
+      await fireEvent.click(rowOf(container, 'gamma').querySelector('td')!);
+      await tick();
+      await tick();
+
+      expect(detailText(container)).toBe('chat:gamma value');
+      expect(getByRole('button', { name: 'Back' })).toBeTruthy();
+    });
   });
 });

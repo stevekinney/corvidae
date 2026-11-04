@@ -1,8 +1,11 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
+import { readFileSync } from 'node:fs';
+
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import type { ScheduleFire, ScheduleValue } from './schedule-builder.types.ts';
+import { availableTimeZones } from './schedule-builder.utilities.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import. testing-library
 // reads `globalThis.document` / `window` at module-init (top-level, not inside test bodies),
@@ -91,9 +94,9 @@ describe('ScheduleBuilder', () => {
       const { container, getByLabelText } = render(ScheduleBuilder, {});
 
       expect(requiredInstance(getByLabelText('Repeats'), HTMLSelectElement).value).toBe('daily');
-      expect(requiredInstance(getByLabelText('At'), HTMLInputElement).value).toBe('09:00');
+      expect(requiredInstance(getByLabelText('At'), HTMLInputElement).value).toBe('9:00 AM');
       // The package's test script runs under TZ=UTC.
-      expect(readBack(container)).toBe('Every day at 9:00 AM UTC');
+      expect(readBack(container)).toBe('Every day at 9:00 AM UTC.');
     });
 
     test('Repeats offers the settled choices in order', () => {
@@ -115,19 +118,19 @@ describe('ScheduleBuilder', () => {
   describe('repeats', () => {
     test('each choice emits its cron and reads back as a sentence', async () => {
       const cases: { repeats: string; cron: string; readBack: string }[] = [
-        { repeats: 'weekdays', cron: '0 9 * * 1-5', readBack: 'Weekdays at 9:00 AM Pacific Time' },
-        { repeats: 'weekends', cron: '0 9 * * 0,6', readBack: 'Weekends at 9:00 AM Pacific Time' },
+        { repeats: 'weekdays', cron: '0 9 * * 1-5', readBack: 'Weekdays at 9:00 AM Pacific time.' },
+        { repeats: 'weekends', cron: '0 9 * * 0,6', readBack: 'Weekends at 9:00 AM Pacific time.' },
         {
           repeats: 'custom-days',
           cron: '0 9 * * 0,1,2,3,4,5,6',
-          readBack: 'Every day at 9:00 AM Pacific Time',
+          readBack: 'Every day at 9:00 AM Pacific time.',
         },
         {
           repeats: 'monthly',
           cron: '0 9 1 * *',
-          readBack: 'Monthly on the 1st at 9:00 AM Pacific Time',
+          readBack: 'Monthly on the 1st at 9:00 AM Pacific time.',
         },
-        { repeats: 'cron', cron: '0 9 * * *', readBack: 'Every day at 9:00 AM Pacific Time' },
+        { repeats: 'cron', cron: '0 9 * * *', readBack: 'Every day at 9:00 AM Pacific time.' },
       ];
       for (const expected of cases) {
         const onValueChange = mock();
@@ -162,7 +165,7 @@ describe('ScheduleBuilder', () => {
         every: { unit: 'hours', count: 7 },
         timeZone: 'UTC',
       });
-      expect(readBack(container)).toBe('Every 7 hours');
+      expect(readBack(container)).toBe('Every 7 hours.');
     });
 
     test('the interval unit switches between minutes and hours only', async () => {
@@ -188,14 +191,14 @@ describe('ScheduleBuilder', () => {
 
       await chooseRepeats(getByLabelText, 'weekdays');
       await fireEvent.change(requiredInstance(getByLabelText('At'), HTMLInputElement), {
-        target: { value: '14:30' },
+        target: { value: '2:30 pm' },
       });
 
       expect(onValueChange.mock.calls.at(-1)?.[0]).toEqual({
         cron: '30 14 * * 1-5',
         timeZone: 'UTC',
       });
-      expect(readBack(container)).toBe('Weekdays at 2:30 PM UTC');
+      expect(readBack(container)).toBe('Weekdays at 2:30 PM UTC.');
     });
 
     test('clearing At keeps the prior time instead of silently becoming midnight', async () => {
@@ -203,15 +206,33 @@ describe('ScheduleBuilder', () => {
       const { container, getByLabelText } = render(ScheduleBuilder, { onValueChange });
       const timeInput = requiredInstance(getByLabelText('At'), HTMLInputElement);
 
-      await fireEvent.change(timeInput, { target: { value: '09:15' } });
+      await fireEvent.change(timeInput, { target: { value: '9:15 AM' } });
       onValueChange.mockClear();
       // A real clear fires `input` before `change`.
       await fireEvent.input(timeInput, { target: { value: '' } });
       await fireEvent.change(timeInput, { target: { value: '' } });
 
       expect(onValueChange).not.toHaveBeenCalled();
-      expect(readBack(container)).toBe('Every day at 9:15 AM UTC');
-      expect(timeInput.value).toBe('09:15');
+      expect(readBack(container)).toBe('Every day at 9:15 AM UTC.');
+      expect(timeInput.value).toBe('9:15 AM');
+    });
+
+    test('At is a text field that reads 9:00 AM, with no browser time control or clock glyph (rows 74d 74s)', () => {
+      const { getByLabelText } = render(ScheduleBuilder, {});
+      const at = requiredInstance(getByLabelText('At'), HTMLInputElement);
+      expect(at.type).toBe('text');
+      expect(at.value).toBe('9:00 AM');
+    });
+
+    test('At leaves a time it cannot read as it was, and says nothing was changed', async () => {
+      const onValueChange = mock();
+      const { container, getByLabelText } = render(ScheduleBuilder, { onValueChange });
+      const at = requiredInstance(getByLabelText('At'), HTMLInputElement);
+      await fireEvent.input(at, { target: { value: 'noonish' } });
+      await fireEvent.change(at, { target: { value: 'noonish' } });
+      expect(onValueChange).not.toHaveBeenCalled();
+      expect(at.value).toBe('9:00 AM');
+      expect(readBack(container)).toBe('Every day at 9:00 AM UTC.');
     });
 
     test('Custom days starts from the previous days and toggles one segmented day group', async () => {
@@ -234,7 +255,7 @@ describe('ScheduleBuilder', () => {
         cron: '0 9 * * 1,3,5',
         timeZone: 'UTC',
       });
-      expect(readBack(container)).toBe('Mondays, Wednesdays and Fridays at 9:00 AM UTC');
+      expect(readBack(container)).toBe('Monday, Wednesday and Friday at 9:00 AM UTC.');
     });
 
     test('Custom days cannot clear its last day', async () => {
@@ -263,7 +284,7 @@ describe('ScheduleBuilder', () => {
         cron: '0 9 22 * *',
         timeZone: 'UTC',
       });
-      expect(readBack(container)).toBe('Monthly on the 22nd at 9:00 AM UTC');
+      expect(readBack(container)).toBe('Monthly on the 22nd at 9:00 AM UTC.');
     });
 
     test('a custom cron that matches a choice reopens as that choice', () => {
@@ -310,21 +331,92 @@ describe('ScheduleBuilder', () => {
   });
 
   describe('time zone', () => {
+    function trigger(container: Element): HTMLButtonElement {
+      return requiredInstance(
+        container.querySelector('button[role="combobox"]'),
+        HTMLButtonElement,
+      );
+    }
+
+    async function openZones(container: Element): Promise<HTMLInputElement> {
+      await fireEvent.click(trigger(container));
+      let search: HTMLInputElement | null = null;
+      await waitFor(() => {
+        search = document.body.querySelector<HTMLInputElement>('.cinder-combobox__search input');
+        if (!search) throw new Error('search field has not mounted');
+      });
+      return search!;
+    }
+
+    function rows(): string[] {
+      return Array.from(document.body.querySelectorAll('[role="option"]')).map(
+        (option) => option.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      );
+    }
+
+    test('the closed field reads the zone as its name and city', () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
+      });
+      expect(trigger(container).textContent?.trim()).toBe('Central time · Chicago');
+    });
+
+    test("the open list is a searchable picker with each row's offset at its edge", async () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
+      });
+      const search = await openZones(container);
+
+      expect(search.getAttribute('placeholder')).toBe('Search time zones');
+      expect(rows()).toHaveLength(5);
+      expect(rows()[0]).toContain('Central time · Chicago');
+      expect(rows()[1]).toContain('Central time · Mexico City');
+      expect(rows()[2]).toContain('Pacific time · Los Angeles');
+      expect(rows()[3]).toContain('Mountain time · Denver');
+      expect(rows()[4]).toContain('UTC');
+      expect(
+        Array.from(document.body.querySelectorAll('.cinder-schedule-builder__offset')).map(
+          (element) => element.textContent,
+        ),
+      ).toEqual(expect.arrayContaining(['UTC\u22126', 'UTC\u22128', 'UTC\u22127', 'UTC±0']));
+    });
+
+    test('the footer counts every zone and tells the person to type', async () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
+      });
+      await openZones(container);
+      const total = availableTimeZones().length;
+      expect(
+        document.body.querySelector('.cinder-schedule-builder__time-zone-footer')?.textContent,
+      ).toBe(`Showing 5 of ${total} zones. Type to narrow.`);
+    });
+
+    test('the footer drops its advice once every match is listed', async () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'UTC' },
+        timeZones: ['UTC', 'America/Los_Angeles', 'Europe/London'],
+      });
+      await openZones(container);
+      expect(
+        document.body.querySelector('.cinder-schedule-builder__time-zone-footer')?.textContent,
+      ).toBe('Showing 3 of 3 zones.');
+    });
+
     test('choosing a zone sets timeZone and the read-back names it', async () => {
       const onValueChange = mock();
-      const { container, getByLabelText } = render(ScheduleBuilder, {
+      const { container } = render(ScheduleBuilder, {
         value: { cron: '0 9 * * 1-5', timeZone: 'UTC' },
         timeZones: ['UTC', 'America/Los_Angeles', 'Europe/London'],
         onValueChange,
       });
-      const input = requiredInstance(getByLabelText('Time zone'), HTMLInputElement);
+      const search = await openZones(container);
 
-      input.focus();
-      await fireEvent.input(input, { target: { value: 'los_angeles' } });
+      await fireEvent.input(search, { target: { value: 'los_angeles' } });
       let option: Element | undefined;
       await waitFor(() => {
         option = Array.from(document.body.querySelectorAll('[role="option"]')).find((element) =>
-          element.textContent?.includes('America/Los Angeles'),
+          element.textContent?.includes('Los Angeles'),
         );
         expect(option).toBeDefined();
       });
@@ -334,18 +426,333 @@ describe('ScheduleBuilder', () => {
         cron: '0 9 * * 1-5',
         timeZone: 'America/Los_Angeles',
       });
-      expect(readBack(container)).toBe('Weekdays at 9:00 AM Pacific Time');
+      expect(readBack(container)).toBe('Weekdays at 9:00 AM Pacific time.');
+    });
+
+    test('a name finds every zone that carries it', async () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
+      });
+      const search = await openZones(container);
+      await fireEvent.input(search, { target: { value: 'mexico' } });
+      await waitFor(() => expect(rows()[0]).toContain('Mexico City'));
     });
 
     test('a value zone outside the offered list is still offered', () => {
-      const { getByLabelText } = render(ScheduleBuilder, {
+      const { container } = render(ScheduleBuilder, {
         value: { cron: '0 9 * * *', timeZone: 'Asia/Tokyo' },
         timeZones: ['UTC'],
       });
 
-      expect(requiredInstance(getByLabelText('Time zone'), HTMLInputElement).value).toBe(
-        'Asia/Tokyo',
+      expect(trigger(container).textContent).toContain('Tokyo');
+    });
+
+    test('an interval has no time zone to choose', async () => {
+      const { container, getByLabelText, queryByText } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
+      });
+      await chooseRepeats(getByLabelText, 'interval');
+
+      expect(container.querySelector('button[role="combobox"]')).toBeNull();
+      expect(queryByText('Time zone')).toBeNull();
+    });
+  });
+
+  describe('interval', () => {
+    const interval: ScheduleValue = {
+      every: { unit: 'hours', count: 2 },
+      timeZone: 'America/Chicago',
+    };
+
+    test('shows Every and Unit with the line that says no zone applies, and hides At and Time zone', () => {
+      const { container, getByLabelText, queryByLabelText, getByText } = render(ScheduleBuilder, {
+        value: interval,
+      });
+
+      expect(requiredInstance(getByLabelText('Every'), HTMLInputElement).value).toBe('2');
+      expect(requiredInstance(getByLabelText('Unit'), HTMLSelectElement).value).toBe('hours');
+      expect(
+        getByText('An interval counts from when you create it, so no time zone applies.'),
+      ).not.toBeNull();
+      expect(queryByLabelText('At')).toBeNull();
+      expect(container.querySelector('button[role="combobox"]')).toBeNull();
+    });
+
+    test('reads back without a zone and counts the next runs from creation', () => {
+      const { container, getByText } = render(ScheduleBuilder, {
+        value: interval,
+        computeNextFires: stubComputeNextFires([
+          { id: 'a', label: '2 hours after you create it' },
+          { id: 'b', label: '4 hours after' },
+        ]),
+      });
+
+      expect(readBack(container)).toBe('Every 2 hours.');
+      expect(getByText('Next runs · counting from when you create it')).not.toBeNull();
+      expect(
+        Array.from(container.querySelectorAll('.cinder-schedule-builder__preview-item')).map(
+          (item) => item.textContent,
+        ),
+      ).toEqual(['2 hours after you create it', '4 hours after']);
+    });
+
+    test('a time of day keeps the plain Next runs heading', () => {
+      const { getByText, queryByText } = render(ScheduleBuilder, {
+        computeNextFires: stubComputeNextFires(),
+      });
+      expect(getByText('Next runs')).not.toBeNull();
+      expect(queryByText(/counting from/)).toBeNull();
+    });
+  });
+
+  describe('runs panel', () => {
+    test('one inset panel holds the sentence and the next runs', () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
+        computeNextFires: stubComputeNextFires(),
+      });
+      const panel = requiredInstance(
+        container.querySelector('.cinder-schedule-builder__panel'),
+        HTMLElement,
       );
+
+      expect(
+        panel.querySelector('.cinder-schedule-builder__summary-text')?.textContent?.trim(),
+      ).toBe('Every day at 9:00 AM Central time.');
+      expect(panel.querySelector('.cinder-schedule-builder__preview-list')).not.toBeNull();
+      expect(panel.textContent).toContain('Runs');
+      expect(panel.textContent).toContain('Next runs');
+      expect(container.querySelectorAll('.cinder-schedule-builder__panel')).toHaveLength(1);
+    });
+
+    test('Custom days names its days in full, Monday first', async () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * 5,1,3', timeZone: 'America/Chicago' },
+      });
+      expect(readBack(container)).toBe('Monday, Wednesday and Friday at 9:00 AM Central time.');
+    });
+
+    test('Monthly names the day and the zone', () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 1 * *', timeZone: 'America/Los_Angeles' },
+      });
+      expect(readBack(container)).toBe('Monthly on the 1st at 9:00 AM Pacific time.');
+    });
+
+    test('Custom days sits in one joined group beside At', async () => {
+      const { container, getByRole } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * 1,3,5', timeZone: 'America/Chicago' },
+      });
+      const row = requiredInstance(
+        container.querySelector('[data-cinder-fields="primary"]'),
+        HTMLElement,
+      );
+      const group = getByRole('group', { name: 'Days of week' });
+
+      expect(row.contains(group)).toBe(true);
+      expect(
+        Array.from(group.querySelectorAll('button'), (button) => button.textContent?.trim()),
+      ).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+      expect(
+        Array.from(group.querySelectorAll('button')).map((button) =>
+          button.getAttribute('aria-pressed'),
+        ),
+      ).toEqual(['true', 'false', 'true', 'false', 'true', 'false', 'false']);
+    });
+  });
+
+  describe('policies', () => {
+    test('draws no policy select unless one is given', () => {
+      const { container } = render(ScheduleBuilder, {});
+      expect(container.querySelector('.cinder-schedule-builder__policies')).toBeNull();
+    });
+
+    test('draws the overlap and catch-up selects side by side after the Runs panel', () => {
+      const { container, getByLabelText } = render(ScheduleBuilder, {
+        overlap: 'skip',
+        catchUp: false,
+        overlapLabel: 'If a run is still going',
+        catchUpLabel: 'If Interborough was off',
+      });
+      const policies = requiredInstance(
+        container.querySelector('.cinder-schedule-builder__policies'),
+        HTMLElement,
+      );
+      const panel = requiredInstance(
+        container.querySelector('.cinder-schedule-builder__panel'),
+        HTMLElement,
+      );
+
+      expect(
+        panel.compareDocumentPosition(policies) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      const overlap = requiredInstance(
+        getByLabelText('If a run is still going'),
+        HTMLSelectElement,
+      );
+      const catchUp = requiredInstance(
+        getByLabelText('If Interborough was off'),
+        HTMLSelectElement,
+      );
+      expect(overlap.selectedOptions[0]?.textContent?.trim()).toBe('Skip this one');
+      expect(catchUp.selectedOptions[0]?.textContent?.trim()).toBe('Don’t catch up on missed runs');
+      // Plain bordered selects, not the ghost variant.
+      expect(overlap.getAttribute('data-cinder-variant')).not.toBe('ghost');
+      expect(policies.contains(overlap) && policies.contains(catchUp)).toBe(true);
+    });
+
+    test('either select can stand alone', () => {
+      const overlapOnly = render(ScheduleBuilder, { overlap: 'allow' });
+      expect(overlapOnly.queryByLabelText('If the app was off')).toBeNull();
+      expect(
+        requiredInstance(overlapOnly.getByLabelText('If a run is still going'), HTMLSelectElement)
+          .value,
+      ).toBe('allow');
+      cleanup();
+      const catchUpOnly = render(ScheduleBuilder, { catchUp: true });
+      expect(catchUpOnly.queryByLabelText('If a run is still going')).toBeNull();
+      expect(
+        requiredInstance(
+          catchUpOnly.getByLabelText('If the app was off'),
+          HTMLSelectElement,
+        ).selectedOptions[0]?.textContent?.trim(),
+      ).toBe('Catch up on missed runs');
+    });
+
+    test('reports a changed overlap and catch-up, and leaves the schedule value alone', async () => {
+      const onOverlapChange = mock();
+      const onCatchUpChange = mock();
+      const onValueChange = mock();
+      const { getByLabelText } = render(ScheduleBuilder, {
+        overlap: 'skip',
+        catchUp: false,
+        onOverlapChange,
+        onCatchUpChange,
+        onValueChange,
+      });
+
+      await fireEvent.change(getByLabelText('If a run is still going'), {
+        target: { value: 'allow' },
+      });
+      await fireEvent.change(getByLabelText('If the app was off'), { target: { value: 'on' } });
+
+      expect(onOverlapChange).toHaveBeenCalledWith('allow');
+      expect(onCatchUpChange).toHaveBeenCalledWith(true);
+      expect(onValueChange).not.toHaveBeenCalled();
+    });
+
+    test('takes its own choices and words', () => {
+      const { getByLabelText } = render(ScheduleBuilder, {
+        overlap: 'queue',
+        overlapOptions: [
+          { value: 'skip', label: 'Skip it' },
+          { value: 'queue', label: 'Wait for it' },
+        ],
+        catchUp: true,
+        catchUpOptionLabels: { on: 'Run what was missed', off: 'Forget what was missed' },
+      });
+      expect(
+        Array.from(
+          requiredInstance(getByLabelText('If a run is still going'), HTMLSelectElement).options,
+          (option) => option.textContent?.trim(),
+        ),
+      ).toEqual(['Skip it', 'Wait for it']);
+      expect(
+        requiredInstance(
+          getByLabelText('If the app was off'),
+          HTMLSelectElement,
+        ).selectedOptions[0]?.textContent?.trim(),
+      ).toBe('Run what was missed');
+    });
+  });
+
+  describe('compact variant', () => {
+    const fires = [
+      { id: 'a', label: 'Tue Nov 3, 9:00 AM CST' },
+      { id: 'b', label: 'Wed Nov 4, 9:00 AM CST' },
+    ];
+
+    test('puts Repeats, At and Time zone in one row, with the zone named alone', () => {
+      const { container, getByLabelText } = render(ScheduleBuilder, {
+        variant: 'compact',
+        value: { cron: '0 9 * * 1-5', timeZone: 'America/Chicago' },
+      });
+      const row = requiredInstance(
+        container.querySelector('[data-cinder-fields="primary"]'),
+        HTMLElement,
+      );
+
+      expect(row.contains(getByLabelText('Repeats'))).toBe(true);
+      expect(row.contains(getByLabelText('At'))).toBe(true);
+      expect(row.querySelector('button[role="combobox"]')?.textContent?.trim()).toBe(
+        'Central time',
+      );
+    });
+
+    test('draws no Runs sentence and no inset panel, and lists Next runs after the policy selects', () => {
+      const { container } = render(ScheduleBuilder, {
+        variant: 'compact',
+        value: { cron: '0 9 * * 1-5', timeZone: 'America/Chicago' },
+        overlap: 'skip',
+        catchUp: false,
+        computeNextFires: stubComputeNextFires(fires),
+      });
+      const policies = requiredInstance(
+        container.querySelector('.cinder-schedule-builder__policies'),
+        HTMLElement,
+      );
+      const preview = requiredInstance(
+        container.querySelector('.cinder-schedule-builder__preview'),
+        HTMLElement,
+      );
+
+      expect(container.querySelector('.cinder-schedule-builder__panel')).toBeNull();
+      expect(container.querySelector('.cinder-schedule-builder__summary-text')).toBeNull();
+      expect(preview.textContent).toContain('Next runs');
+      expect(
+        policies.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        Array.from(container.querySelectorAll('.cinder-schedule-builder__preview-item')).map(
+          (item) => item.textContent,
+        ),
+      ).toEqual(['Tue Nov 3, 9:00 AM CST', 'Wed Nov 4, 9:00 AM CST']);
+    });
+
+    test('the open list still names the city', async () => {
+      const { container } = render(ScheduleBuilder, {
+        variant: 'compact',
+        value: { cron: '0 9 * * 1-5', timeZone: 'America/Chicago' },
+      });
+      await fireEvent.click(
+        requiredInstance(container.querySelector('button[role="combobox"]'), HTMLButtonElement),
+      );
+      await waitFor(() =>
+        expect(document.body.querySelector('[role="option"]')?.textContent).toContain(
+          'Central time · Chicago',
+        ),
+      );
+    });
+
+    test('an interval keeps its help line and shows no zone', () => {
+      const { container, getByText } = render(ScheduleBuilder, {
+        variant: 'compact',
+        value: { every: { unit: 'hours', count: 2 }, timeZone: 'America/Chicago' },
+      });
+      expect(container.querySelector('button[role="combobox"]')).toBeNull();
+      expect(
+        getByText('An interval counts from when you create it, so no time zone applies.'),
+      ).not.toBeNull();
+    });
+
+    test('an invalid cron says there is no preview, plainly', async () => {
+      const { container } = render(ScheduleBuilder, {
+        variant: 'compact',
+        value: { cron: '0 9 * * 8', timeZone: 'UTC' },
+        computeNextFires: stubComputeNextFires(fires),
+      });
+      expect(container.textContent).toContain('No preview until the cron expression is valid.');
+      expect(container.querySelector('.cinder-schedule-builder__preview-list')).toBeNull();
     });
   });
 
@@ -354,14 +761,14 @@ describe('ScheduleBuilder', () => {
       const { container, getByLabelText, rerender } = render(ScheduleBuilder, {
         value: { every: { unit: 'minutes', count: 15 }, timeZone: 'UTC' },
       });
-      expect(readBack(container)).toBe('Every 15 minutes');
+      expect(readBack(container)).toBe('Every 15 minutes.');
 
       await rerender({ value: { cron: '0 9 * * 1', timeZone: 'UTC' } });
 
       expect(requiredInstance(getByLabelText('Repeats'), HTMLSelectElement).value).toBe(
         'custom-days',
       );
-      expect(readBack(container)).toBe('Mondays at 9:00 AM UTC');
+      expect(readBack(container)).toBe('Mondays at 9:00 AM UTC.');
     });
 
     test('re-passing the emitted value (a controlled echo) does not reset a mid-edit cron field', async () => {
@@ -416,7 +823,7 @@ describe('ScheduleBuilder', () => {
       await rerender({ value: undefined });
 
       expect(requiredInstance(getByLabelText('Repeats'), HTMLSelectElement).value).toBe('daily');
-      expect(readBack(container)).toBe('Every day at 9:00 AM UTC');
+      expect(readBack(container)).toBe('Every day at 9:00 AM UTC.');
     });
   });
 
@@ -431,6 +838,13 @@ describe('ScheduleBuilder', () => {
     test('the time zone is a combobox', () => {
       const { getByRole } = render(ScheduleBuilder, { timeZones: ['UTC'] });
       expect(getByRole('combobox', { name: 'Time zone' })).not.toBeNull();
+    });
+
+    test('the Runs sentence is named by its Runs label', () => {
+      const { container } = render(ScheduleBuilder, {});
+      expect(container.querySelector('.cinder-schedule-builder__panel')?.textContent).toContain(
+        'Runs',
+      );
     });
 
     test('the read-back announces changes politely', () => {
@@ -452,113 +866,113 @@ describe('ScheduleBuilder', () => {
   });
 
   describe('custom cron', () => {
-    test('composes Grid through its public component entry', async () => {
-      const source = await Bun.file(
-        new URL('./schedule-builder-cron-editor.svelte', import.meta.url),
-      ).text();
+    const tail = 'Cron uses minute, hour, day of month, month and day of week.';
 
-      expect(source).toContain("import { default as Grid } from '../grid/index.ts'");
-      expect(source).not.toContain("from '../grid/grid.svelte'");
-    });
+    test('shows five labelled fields in one row, each with its range beneath', () => {
+      const { container, getByLabelText } = render(ScheduleBuilder, { value: CUSTOM_CRON });
+      const names = ['Minute', 'Hour', 'Day of month', 'Month', 'Day of week'];
+      const hints = ['0–59', '0–23', '1–31', '1–12', '0–6 (Sun–Sat)'];
 
-    test('offers structured every, specific, range, and step controls with raw cron as an escape hatch', async () => {
-      const onValueChange = mock();
-      const { getByLabelText, getAllByRole } = render(ScheduleBuilder, {
-        value: CUSTOM_CRON,
-        onValueChange,
-      });
-
-      expect(getByLabelText('Minute pattern')).not.toBeNull();
-      expect(getAllByRole('option', { name: 'Every value (*)' })).not.toHaveLength(0);
-      expect(getAllByRole('option', { name: 'Specific value' })).not.toHaveLength(0);
-      expect(getAllByRole('option', { name: 'Range' })).not.toHaveLength(0);
-      expect(getAllByRole('option', { name: 'Step (every N)' })).not.toHaveLength(0);
-      expect(getAllByRole('option', { name: 'Advanced raw expression' })).not.toHaveLength(0);
-
-      const minuteRawExpression = requiredInstance(getByLabelText('Minute'), HTMLInputElement);
-      expect(
-        requiredInstance(minuteRawExpression.closest('details'), HTMLDetailsElement).open,
-      ).toBe(false);
-      expect(minuteRawExpression.getAttribute('data-cinder-variant')).toBe('code');
-
-      await fireEvent.change(getByLabelText('Minute pattern'), {
-        target: { value: 'advanced' },
+      names.forEach((name, index) => {
+        const field = requiredInstance(getByLabelText(name), HTMLInputElement);
+        expect(field.getAttribute('data-cinder-variant')).toBe('code');
+        const describedBy = field.getAttribute('aria-describedby') ?? '';
+        expect(document.getElementById(describedBy.split(' ')[0] ?? '')?.textContent).toBe(
+          hints[index],
+        );
       });
       expect(
-        requiredInstance(minuteRawExpression.closest('details'), HTMLDetailsElement).open,
-      ).toBe(true);
-
-      await fireEvent.change(getByLabelText('Minute pattern'), { target: { value: 'step' } });
-      await fireEvent.input(getByLabelText('Minute step'), { target: { value: '15' } });
-      await fireEvent.blur(getByLabelText('Minute step'));
-      expect(onValueChange.mock.calls.at(-1)?.[0]).toEqual({
-        cron: '*/15 9 1-7 * *',
-        timeZone: 'UTC',
-      });
+        container.querySelectorAll('.cinder-schedule-builder__cron-fields input'),
+      ).toHaveLength(5);
+      expect(requiredInstance(getByLabelText('Day of month'), HTMLInputElement).value).toBe('1-7');
+      // No pattern selects and no disclosures: the fields are the expression.
+      expect(container.querySelector('details')).toBeNull();
+      expect(container.querySelector('[id$="-mode"]')).toBeNull();
     });
 
-    test('switches the field to advanced mode when the raw expression is edited', async () => {
-      const onValueChange = mock();
-      const { getByLabelText, queryByLabelText } = render(ScheduleBuilder, {
-        value: CUSTOM_CRON,
-        onValueChange,
-      });
-
-      await fireEvent.change(getByLabelText('Minute pattern'), {
-        target: { value: 'specific' },
-      });
-      await fireEvent.input(getByLabelText('Minute'), { target: { value: '*/10' } });
-
-      expect(requiredInstance(getByLabelText('Minute pattern'), HTMLSelectElement).value).toBe(
-        'advanced',
-      );
-      expect(queryByLabelText('Minute value', { exact: true })).toBeNull();
-      expect(onValueChange.mock.calls.at(-1)?.[0]).toEqual({
-        cron: '*/10 9 1-7 * *',
-        timeZone: 'UTC',
-      });
-    });
-
-    test('shows range validation on the visible structured controls without a duplicate alert', () => {
-      const { getAllByText, queryByRole } = render(ScheduleBuilder, {
-        value: { cron: '40-10 * * * *', timeZone: 'UTC' },
-      });
-      expect(getAllByText('Range start is after its end.').length).toBeGreaterThan(0);
-      expect(queryByRole('alert')).toBeNull();
-    });
-
-    test('a valid cron field edit commits a joined cron expression via onValueChange', async () => {
+    test('a valid edit commits a joined expression', async () => {
       const onValueChange = mock();
       const { getByLabelText } = render(ScheduleBuilder, { onValueChange });
 
       await chooseRepeats(getByLabelText, 'cron');
-      const minuteField = requiredInstance(getByLabelText('Minute'), HTMLInputElement);
-      await fireEvent.input(minuteField, { target: { value: '30' } });
+      await fireEvent.input(getByLabelText('Minute'), { target: { value: '30' } });
 
       expect(onValueChange.mock.calls.at(-1)![0]).toEqual({ cron: '30 9 * * *', timeZone: 'UTC' });
     });
 
-    test('an out-of-range cron field surfaces an inline error and does not call onValueChange', async () => {
+    test('an invalid field turns red and one message names it, with the glyph', async () => {
       const onValueChange = mock();
-      const { getByLabelText } = render(ScheduleBuilder, { onValueChange });
+      const { container, getByLabelText } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'UTC' },
+        onValueChange,
+      });
 
       await chooseRepeats(getByLabelText, 'cron');
-      const hourField = requiredInstance(getByLabelText('Hour'), HTMLInputElement);
-      await fireEvent.input(hourField, { target: { value: '99' } });
+      onValueChange.mockClear();
+      const dayOfWeek = requiredInstance(getByLabelText('Day of week'), HTMLInputElement);
+      await fireEvent.input(dayOfWeek, { target: { value: '8' } });
 
-      expect(hourField.getAttribute('aria-invalid')).toBe('true');
-      const describedBy = hourField.getAttribute('aria-describedby');
-      expect(describedBy).toBeTruthy();
-      const errorNode = document.getElementById(
-        describedBy!.split(' ').find((id) => id.includes('error')) ?? '',
+      expect(dayOfWeek.getAttribute('aria-invalid')).toBe('true');
+      expect(getByLabelText('Minute').getAttribute('aria-invalid')).toBeNull();
+      const error = requiredInstance(
+        container.querySelector('.cinder-schedule-builder__cron-error'),
+        HTMLElement,
       );
-      expect(errorNode?.textContent).toBe('Out of range (0–23).');
-      expect(onValueChange).toHaveBeenCalledTimes(1);
+      expect(error.textContent?.trim()).toBe(`Day of week must be 0 to 6 (0 is Sunday). ${tail}`);
+      expect(error.querySelector('svg')).not.toBeNull();
+      expect(dayOfWeek.getAttribute('aria-describedby')).toContain(error.id);
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+      expect(onValueChange).not.toHaveBeenCalled();
     });
 
-    test('correcting an invalid cron field back to valid resumes emitting onValueChange', async () => {
+    test('every field that needs fixing is marked and the first one is named', async () => {
+      const { container, getByLabelText } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'UTC' },
+      });
+      await chooseRepeats(getByLabelText, 'cron');
+      await fireEvent.input(getByLabelText('Hour'), { target: { value: '99' } });
+      await fireEvent.input(getByLabelText('Month'), { target: { value: '13' } });
+
+      expect(getByLabelText('Hour').getAttribute('aria-invalid')).toBe('true');
+      expect(getByLabelText('Month').getAttribute('aria-invalid')).toBe('true');
+      expect(
+        container.querySelector('.cinder-schedule-builder__cron-error')?.textContent?.trim(),
+      ).toBe(`Hour must be 0 to 23. ${tail}`);
+    });
+
+    test('the Runs panel then reads one muted line and lists no next runs', async () => {
+      const computeNextFires = stubComputeNextFires();
+      const { container, getByLabelText } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * *', timeZone: 'UTC' },
+        computeNextFires,
+      });
+      await chooseRepeats(getByLabelText, 'cron');
+      computeNextFires.mockClear();
+      await fireEvent.input(getByLabelText('Day of week'), { target: { value: '8' } });
+
+      const panel = requiredInstance(
+        container.querySelector('.cinder-schedule-builder__panel'),
+        HTMLElement,
+      );
+      expect(panel.textContent).toContain('No preview until the cron expression is valid.');
+      expect(panel.textContent).not.toContain('Next runs');
+      expect(panel.querySelector('.cinder-schedule-builder__summary-text')).toBeNull();
+      expect(container.querySelector('.cinder-schedule-builder__preview-list')).toBeNull();
+      expect(computeNextFires).not.toHaveBeenCalled();
+      // The error sits at its field; there is no banner.
+      expect(container.querySelector('.cinder-banner, [role="alert"]')).toBeNull();
+    });
+
+    test('says there is no preview even when no preview is supplied', () => {
+      const { container } = render(ScheduleBuilder, {
+        value: { cron: '0 9 * * 8', timeZone: 'UTC' },
+      });
+      expect(container.textContent).toContain('No preview until the cron expression is valid.');
+    });
+
+    test('correcting a field clears the error and resumes emitting', async () => {
       const onValueChange = mock();
-      const { getByLabelText } = render(ScheduleBuilder, { onValueChange });
+      const { container, getByLabelText } = render(ScheduleBuilder, { onValueChange });
 
       await chooseRepeats(getByLabelText, 'cron');
       const hourField = requiredInstance(getByLabelText('Hour'), HTMLInputElement);
@@ -566,19 +980,18 @@ describe('ScheduleBuilder', () => {
       expect(onValueChange).toHaveBeenCalledTimes(1);
 
       await fireEvent.input(hourField, { target: { value: '10' } });
+
       expect(onValueChange).toHaveBeenCalledTimes(2);
       expect(onValueChange.mock.calls[1]![0]).toEqual({ cron: '0 10 * * *', timeZone: 'UTC' });
+      expect(hourField.getAttribute('aria-invalid')).toBeNull();
+      expect(
+        container.querySelector('.cinder-schedule-builder__cron-error')?.textContent?.trim(),
+      ).toBe('');
     });
 
-    test('cron field description carries its numeric hint', async () => {
-      const { getByLabelText } = render(ScheduleBuilder, {});
-
-      await chooseRepeats(getByLabelText, 'cron');
-
-      const minuteField = requiredInstance(getByLabelText('Minute'), HTMLInputElement);
-      const describedBy = minuteField.getAttribute('aria-describedby') ?? '';
-      const hintId = describedBy.split(' ')[0] ?? '';
-      expect(document.getElementById(hintId)?.textContent).toBe('0–59');
+    test('uses the form field error style instead of a style of its own', () => {
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      expect(css).toContain("@import '../form-field/form-field.css'");
     });
   });
 
@@ -645,7 +1058,7 @@ describe('ScheduleBuilder', () => {
       expect(computeNextFires.mock.calls.at(-1)![1]).toBe(7);
     });
 
-    test('does not call computeNextFires while a cron field is invalid, and shows an unavailable message', async () => {
+    test('does not call computeNextFires while a cron field is invalid', async () => {
       const computeNextFires = stubComputeNextFires();
       const { container, getByLabelText } = render(ScheduleBuilder, {
         computeNextFires,
@@ -658,9 +1071,7 @@ describe('ScheduleBuilder', () => {
       await fireEvent.input(hourField, { target: { value: '99' } });
 
       expect(computeNextFires).not.toHaveBeenCalled();
-      expect(container.textContent).toContain(
-        'Preview unavailable — fix the cron expression above.',
-      );
+      expect(container.textContent).toContain('No preview until the cron expression is valid.');
       expect(container.querySelector('.cinder-schedule-builder__preview-list')).toBeNull();
     });
 
@@ -699,28 +1110,46 @@ describe('ScheduleBuilder', () => {
       expect(css).toContain('@layer cinder.components');
     });
 
-    test('aggregates Grid styles before the component layer', async () => {
+    test('the seven day toggles shrink to the width they have, so none runs off a narrow screen', async () => {
       const { readFileSync } = await import('node:fs');
       const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
-      expect(css.indexOf('@layer cinder.tokens')).toBeLessThan(
-        css.indexOf("@import '../grid/grid.css'"),
+      expect(css).toMatch(
+        /\.cinder-schedule-builder__weekday-group \{[^}]*flex-wrap: nowrap;[^}]*max-inline-size: 100%;/,
       );
-      expect(css.indexOf("@import '../grid/grid.css'")).toBeLessThan(
-        css.indexOf('@layer cinder.components'),
+      expect(css).toMatch(
+        /\.cinder-schedule-builder__weekday-group > \.cinder-chip \{[^}]*inline-size: 3rem;[^}]*flex: 0 1 auto;[^}]*min-inline-size: 0;/,
       );
     });
 
-    test('uses the standard rotating chevron for raw cron disclosures', async () => {
-      const [componentSource, cssSource] = await Promise.all([
-        Bun.file(new URL('./schedule-builder-cron-editor.svelte', import.meta.url)).text(),
-        Bun.file(new URL('./schedule-builder.css', import.meta.url)).text(),
-      ]);
-
-      expect(componentSource).toContain('ChevronDown');
-      expect(componentSource).toContain('cinder-schedule-builder__cron-advanced-chevron');
-      expect(cssSource).toMatch(
-        /\.cinder-schedule-builder__cron-advanced\[open\][\s\S]*?transform:\s*rotate\(180deg\)/,
+    test('an unchosen day sits on the field surface with the field edge, a chosen one is semibold', async () => {
+      const { readFileSync } = await import('node:fs');
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      expect(css).toMatch(
+        /\.cinder-chip\[aria-pressed='false'\]\[data-cinder-variant\]:not\(:disabled\) \{[^}]*background-color: var\(--cinder-control-background\);[^}]*border-color: var\(--cinder-control-border\);[^}]*font-weight: var\(--cinder-font-medium\);/,
       );
+      expect(css).toMatch(
+        /\.cinder-chip\[aria-pressed='true'\]\[data-cinder-variant\] \{[^}]*font-weight: var\(--cinder-font-semibold\);/,
+      );
+    });
+
+    test('a day is the height of the At field beside the group, not the chip toolbar step', async () => {
+      const { readFileSync } = await import('node:fs');
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      expect(css).toMatch(
+        /__weekday-group > \.cinder-chip \{[^}]*box-sizing: border-box;[^}]*min-block-size: var\(--cinder-control-height-md\);/,
+      );
+      const input = readFileSync(new URL('../input/input.css', import.meta.url), 'utf8');
+      expect(input).toContain('--_cinder-input-height: var(--cinder-control-height-md);');
+    });
+
+    test('aggregates the styles of the fields it composes before the component layer', async () => {
+      const { readFileSync } = await import('node:fs');
+      const css = readFileSync(new URL('./schedule-builder.css', import.meta.url), 'utf8');
+      for (const imported of ['chip', 'combobox', 'form-field', 'input', 'select']) {
+        const at = css.indexOf(`@import '../${imported}/${imported}.css'`);
+        expect(at).toBeGreaterThan(css.indexOf('@layer cinder.tokens'));
+        expect(at).toBeLessThan(css.indexOf('@layer cinder.components'));
+      }
     });
   });
 });

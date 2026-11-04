@@ -26,6 +26,12 @@
       "title": "Workflow input",
       "description": "Inspecting a workflow launch payload with signal input, retry policy, and schedule metadata.",
       "code": "<script lang=\"ts\">\n  import { PayloadInspector } from '@lostgradient/cinder';\n\n  const workflowInput = {\n    workflowType: 'OrderFulfillment',\n    input: {\n      orderId: 'ord_9c4e1f',\n      customerId: 'cust_221a',\n      priority: 'express',\n      items: ['sku-100', 'sku-201', 'sku-303'],\n      shipTo: {\n        name: 'Alex Rivera',\n        address: '42 Elm St',\n        city: 'Springfield',\n        zip: '12345',\n      },\n    },\n    retryPolicy: {\n      maximumAttempts: 3,\n      initialInterval: '1s',\n      maximumInterval: '30s',\n      backoffCoefficient: 2,\n    },\n    searchAttributes: {\n      OrderStatus: 'pending',\n      CustomerId: 'cust_221a',\n    },\n  };\n</script>\n\n<PayloadInspector value={workflowInput} label=\"Workflow input\" />\n"
+    },
+    {
+      "id": "patch",
+      "title": "A patch in the payload",
+      "description": "A unified patch goes through the diff viewer: line breaks stay, the first two changed lines show, the count sits beside the label and Show all opens the rest. A file path is set in monospace.",
+      "code": "<script lang=\"ts\">\n  import { PayloadInspector } from '@lostgradient/cinder';\n\n  const patch = [\n    '--- a/release-notes.md',\n    '+++ b/release-notes.md',\n    '@@ -12,3 +12,5 @@',\n    ' # Release notes',\n    '-Refunds are sent at once.',\n    '+Refunds now ask for approval before money moves.',\n    '+Large refunds go to a person.',\n    '+Nothing is sent without a note.',\n    ' Thanks for reading.',\n    '',\n  ].join('\\n');\n</script>\n\n<PayloadInspector value={{ path: 'release-notes.md', patch }} label=\"Input\" />\n"
     }
   ]
 }

@@ -16,6 +16,7 @@
   export type {
     SourceDiffAnnotationSelection,
     SourceDiffAnnotationSide,
+    SourceDiffChangeCounts,
     SourceDiffFile,
     SourceDiffFileAnnotationContext,
     SourceDiffFileDescriptor,
@@ -27,13 +28,15 @@
     SourceDiffViewerFocusResult,
     SourceDiffViewerProps,
     SourceDiffViewerRef,
+    SourceDiffViewerVariant,
   } from './source-diff-viewer.types.ts';
   export { getSourceDiffFileLabel, getSourceDiffLineLabel } from './source-diff-viewer.labels.ts';
-  export { parseUnifiedPatch } from './source-diff-viewer.utilities.ts';
+  export { countPatchChanges, parseUnifiedPatch } from './source-diff-viewer.utilities.ts';
 </script>
 
 <script lang="ts">
-  import { flushSync, untrack } from 'svelte';
+  import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import { flushSync, tick, untrack } from 'svelte';
 
   import { classNames } from '../../utilities/class-names.ts';
   import {
@@ -61,6 +64,9 @@
     'aria-label': nativeAriaLabel,
     'aria-labelledby': nativeAriaLabelledBy,
     maxLines = 1000,
+    variant = 'default',
+    expanded = $bindable(false),
+    showAllLabel,
     lineNumbers = true,
     empty,
     class: className,
@@ -94,7 +100,44 @@
   // passed to `onAnnotationSelectionChange`.
   let lastEmittedSelection: SourceDiffAnnotationSelection | null = null;
 
-  const parsedPatch = $derived(parseUnifiedPatch(patch, { maxLines }));
+  // The inline variant previews the first changed lines only, so it reads the whole patch and
+  // picks those lines itself; every other form lets the parser stop at `maxLines`.
+  const preview = $derived(variant === 'inline' && !expanded);
+  const parsedPatch = $derived(
+    parseUnifiedPatch(patch, {
+      maxLines: expanded || preview ? Number.MAX_SAFE_INTEGER : maxLines,
+    }),
+  );
+  const previewLines = $derived(
+    preview
+      ? parsedPatch.files
+          .flatMap((file) => file.hunks.flatMap((hunk) => hunk.lines))
+          .filter((line) => line.kind === 'addition' || line.kind === 'removal')
+          .slice(0, Math.max(0, maxLines))
+      : [],
+  );
+  // True once Show all has run, so the footer can say so and take the focus the button had.
+  let revealed = $state(false);
+  let revealedElement: HTMLElement | undefined = $state();
+
+  $effect(() => {
+    if (!expanded) revealed = false;
+  });
+
+  async function showAll(): Promise<void> {
+    expanded = true;
+    revealed = true;
+    await tick();
+    revealedElement?.focus();
+  }
+
+  const patchLineCount = $derived(patch.replace(/\n$/, '').split('\n').length);
+  const hasMoreToShow = $derived(
+    preview ? parsedPatch.totalLineCount > previewLines.length : parsedPatch.truncated,
+  );
+  const showAllText = $derived(
+    showAllLabel ?? (variant === 'inline' ? `Show all ${patchLineCount} lines` : 'Show all'),
+  );
   const hasPatchContent = $derived(parsedPatch.files.length > 0 || parsedPatch.totalLineCount > 0);
   const normalizedAriaLabelledBy = $derived(normalizeAriaLabel(nativeAriaLabelledBy));
   const normalizedAriaLabel = $derived(
@@ -360,6 +403,7 @@
   bind:this={rootElement}
   {...rest}
   class={classNames('cinder-source-diff-viewer', className)}
+  data-cinder-variant={variant === 'inline' ? 'inline' : undefined}
   role="region"
   aria-label={normalizedAriaLabel}
   aria-labelledby={normalizedAriaLabelledBy}
@@ -371,19 +415,24 @@
       <p class="cinder-source-diff-viewer__empty">No patch lines to display.</p>
     {/if}
   {:else}
-    {#if parsedPatch.truncated}
-      <div class="cinder-source-diff-viewer__notice" role="status">
-        Showing first {parsedPatch.renderedLineCount} of {parsedPatch.totalLineCount} diff lines.
-      </div>
-    {/if}
-
     {#if annotationEnabled}
       <div class="cinder-source-diff-viewer__annotation-status" role="status">
         {annotationRejectionMessage ?? ''}
       </div>
     {/if}
 
-    {#if showTruncatedActiveFile && activeDescriptor}
+    {#if preview}
+      <div class="cinder-source-diff-viewer__lines cinder-source-diff-viewer__lines--preview">
+        {#each previewLines as line, lineIndex (`${lineIndex}:${line.kind}:${line.oldLineNumber ?? ''}:${line.newLineNumber ?? ''}`)}
+          <div class="cinder-source-diff-viewer__line" data-cinder-line-kind={line.kind}>
+            <span class="cinder-sr-only">{getSourceDiffLineLabel(line)}</span>
+            <code class="cinder-source-diff-viewer__line-code" aria-hidden="true">
+              {`${line.kind === 'addition' ? '+' : '-'} ${line.content}`}
+            </code>
+          </div>
+        {/each}
+      </div>
+    {:else if showTruncatedActiveFile && activeDescriptor}
       <section class="cinder-source-diff-viewer__file" aria-label={activeDescriptor.label}>
         <header
           class="cinder-source-diff-viewer__file-header"
@@ -499,6 +548,35 @@
           {/each}
         </section>
       {/each}
+    {/if}
+
+    {#if hasMoreToShow}
+      <div class="cinder-source-diff-viewer__footer">
+        {#if variant === 'default'}
+          <span class="cinder-source-diff-viewer__footer-status" role="status">
+            Showing {parsedPatch.renderedLineCount} of {parsedPatch.totalLineCount} changed lines
+          </span>
+        {/if}
+        <button type="button" class="cinder-source-diff-viewer__show-all" onclick={() => showAll()}>
+          {#if variant === 'inline'}
+            <ChevronDown size={12} strokeWidth={2} aria-hidden="true" />
+          {/if}
+          {showAllText}
+        </button>
+      </div>
+    {:else if revealed}
+      <!-- The button is gone once everything shows, so focus lands here, and the live region says
+           what happened. -->
+      <div class="cinder-source-diff-viewer__footer">
+        <span
+          bind:this={revealedElement}
+          class="cinder-source-diff-viewer__footer-status"
+          role="status"
+          tabindex="-1"
+        >
+          Showing all {parsedPatch.totalLineCount} lines
+        </span>
+      </div>
     {/if}
   {/if}
 </div>

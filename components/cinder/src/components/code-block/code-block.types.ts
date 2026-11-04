@@ -1,5 +1,24 @@
 import type { Highlighter } from '../../utilities/highlighter.ts';
 
+/** How loud a note on a line is. A note on a line that is wrong is `danger`; the default. */
+export type CodeBlockAnnotationTone = 'danger' | 'warning' | 'info';
+
+/**
+ * A note that belongs to one line of the code, drawn under it.
+ *
+ * The line's row takes the tone's tint, and the message sits directly beneath with a glyph, so a
+ * file problem is read at the line it names. It is presentation only: the copied text is the
+ * code, without line numbers or notes.
+ */
+export interface CodeBlockAnnotation {
+  /** The one-based line the note belongs to. A line past the end of the code is ignored. */
+  line: number;
+  /** The note shown under the line. */
+  message: string;
+  /** The tone of the tint and the glyph. Defaults to `'danger'`. @default 'danger' */
+  tone?: CodeBlockAnnotationTone;
+}
+
 /**
  * Props for the CodeBlock component.
  *
@@ -65,6 +84,23 @@ export type CodeBlockProps = {
    * still reads as a glyph, not as a hard cutoff. Defaults to `false`.
    */
   scrollFadeVisible?: boolean;
+  /**
+   * Number each line of the code. The numbers are drawn in the left gutter, kept out of the copied
+   * text and out of the accessibility tree, and a wrapped line is numbered once. Defaults to
+   * `false`. @default false
+   */
+  lineNumbers?: boolean;
+  /**
+   * Notes drawn under specific lines, such as the line a file problem points at. Works with
+   * highlighted and plain code alike. Pass a new array to change them.
+   */
+  annotations?: readonly CodeBlockAnnotation[];
+  /**
+   * Wrap a line longer than the block instead of scrolling it sideways. Defaults to `false`, which
+   * keeps the block a fixed-width box that scrolls inside itself with a visible scrollbar.
+   * @default false
+   */
+  wrap?: boolean;
   /** Additional class names merged with `.cinder-code-block`. */
   class?: string;
 };

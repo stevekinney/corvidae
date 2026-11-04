@@ -932,7 +932,9 @@
           <span class="cinder-combobox__trigger-value" data-cinder-placeholder>{loadingLabel}</span>
         {:else if selectedOption}
           <span class="cinder-combobox__trigger-heading">
-            <span class="cinder-combobox__trigger-value">{selectedOption.label}</span>
+            <span class="cinder-combobox__trigger-value"
+              >{selectedOption.triggerLabel ?? selectedOption.label}</span
+            >
             {#if selectedOption.code}
               <code class="cinder-combobox__option-code">{selectedOption.code}</code>
             {/if}

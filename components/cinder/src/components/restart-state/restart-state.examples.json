@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "restart-state",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "phases",
+      "title": "Restarting, reconnecting and failed",
+      "description": "The state takes over the page and cannot be dismissed (here Restarting closes itself after three seconds, as the page would when the host answers): the host is not answering, so the page behind it would show nothing true. restarting lists the steps, reconnecting counts the attempts (backing off 1, 2, 4, 8 s) with Retry now, and failed says what to check, how to start the host again with a Copy button, and offers Keep waiting. There is no restart-again action, because the route that restarts lives on the host that is not answering.",
+      "code": "<script lang=\"ts\">\n  import { Button, RestartState, restartRetryDelaySeconds } from '@lostgradient/cinder';\n  import type { RestartStatePhase } from '@lostgradient/cinder';\n\n  let phase = $state<RestartStatePhase | undefined>(undefined);\n  let attempt = $state(3);\n\n  // The page closes the state when the host answers. Here that is three seconds after it opens.\n  $effect(() => {\n    if (phase !== 'restarting') return;\n    const timer = setTimeout(() => (phase = undefined), 3000);\n    return () => clearTimeout(timer);\n  });\n</script>\n\n<div style=\"display: flex; gap: 0.5rem; flex-wrap: wrap;\">\n  <Button label=\"Restarting\" variant=\"secondary\" onclick={() => (phase = 'restarting')} />\n  <Button label=\"Reconnecting\" variant=\"secondary\" onclick={() => (phase = 'reconnecting')} />\n  <Button label=\"Failed\" variant=\"secondary\" onclick={() => (phase = 'failed')} />\n</div>\n\n<RestartState\n  open={phase !== undefined}\n  phase={phase ?? 'restarting'}\n  description={phase === 'restarting'\n    ? 'Unloading Web search. Running work picks up where it stopped; reviews stay waiting.'\n    : phase === 'failed'\n      ? 'It didn’t answer after 8 tries. Your choice to disable Web search was saved before it stopped, so it applies once Interborough starts.'\n      : undefined}\n  currentStep={2}\n  {attempt}\n  retryInSeconds={restartRetryDelaySeconds(attempt)}\n  onRetry={() => (phase = undefined)}\n  check=\"That Interborough is still running on this machine, and that its address is reachable from this browser.\"\n  command=\"bun run start\"\n  onKeepWaiting={() => {\n    phase = 'reconnecting';\n    attempt = 1;\n  }}\n>\n  {#snippet details()}\n    <code>fetch failed: connect ECONNREFUSED 127.0.0.1:3000</code>\n  {/snippet}\n</RestartState>\n"
+    }
+  ]
+}

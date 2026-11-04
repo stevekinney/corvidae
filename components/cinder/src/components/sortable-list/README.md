@@ -41,6 +41,45 @@ Drag-and-drop reorderable list that emits the new order on each change.
 </SortableList>
 ```
 
+## Move buttons
+
+Dragging needs a pointer that can hold and move, so a list that people reorder should offer a single-pointer alternative (WCAG 2.5.7). Set `reorderMode="buttons"` to give each row Move up and Move down buttons in place of the drag handle, or `reorderMode="both"` to keep the handle and add them. The row's context then carries a `moveButtons` snippet; render it where the buttons belong, beside the row's own controls. The first row has no Move up, the last no Move down, and a lone row has neither. Pressing a button reorders through `onReorder` with the same change descriptor a drop gives, announces the move, and keeps focus on the pressed button, or on the row's other button when the pressed one no longer applies. `formatMoveUpLabel` and `formatMoveDownLabel` rename the buttons ("Move Ask an agent up").
+
+```svelte
+<script lang="ts">
+  import { Button, SortableList } from '@lostgradient/cinder';
+
+  let steps = $state([
+    { id: 'ask', title: 'Ask an agent' },
+    { id: 'wait', title: 'Wait for a person' },
+  ]);
+</script>
+
+<SortableList
+  items={steps}
+  getKey={(step) => step.id}
+  getItemLabel={(step) => step.title}
+  onReorder={(next) => (steps = next)}
+  reorderMode="buttons"
+  label="Steps"
+>
+  {#snippet children(step, context)}
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+      <span style="flex: 1;">{step.title}</span>
+      {@render context.moveButtons?.()}
+      <Button
+        size="sm"
+        variant="secondary"
+        aria-label={`Delete ${step.title}`}
+        onclick={() => (steps = steps.filter((existing) => existing.id !== step.id))}
+      >
+        Delete
+      </Button>
+    </div>
+  {/snippet}
+</SortableList>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -49,9 +88,12 @@ Drag-and-drop reorderable list that emits the new order on each change.
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class merged onto the `.cinder-sortable-list` root element. |
 | `label` | `string` | no | — | Accessible name for the list (applied as aria-label on the list root). |
+| `reorderMode` | `"handle"` \| `"buttons"` \| `"both"` | no | `"handle"` | How a row is reordered; see `SortableReorderMode`. With `buttons` or `both` the row's context carries a `moveButtons` snippet, which the row content renders where the buttons belong. |
 | `announcements` | `(opaque)` | no | — | Optional overrides for announcement strings. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | yes | — | Row content snippet. Receives the item and a per-row context. Not expressible in JSON Schema; see the component types for the signature. |
 | `formatHandleLabel` | `(opaque)` | no | — | Optional formatter for the drag handle's accessible name. Default: "Reorder {itemLabel}". Not expressible in JSON Schema; see the component types for the signature. |
+| `formatMoveDownLabel` | `(opaque)` | no | — | Optional formatter for the Move down button's accessible name. Default: "Move {itemLabel} down". Not expressible in JSON Schema; see the component types for the signature. |
+| `formatMoveUpLabel` | `(opaque)` | no | — | Optional formatter for the Move up button's accessible name. Default: "Move {itemLabel} up". Not expressible in JSON Schema; see the component types for the signature. |
 | `getItemLabel` | `(opaque)` | yes | — | Returns an accessible label for each item (e.g., "Buy milk"). The second argument is the item's original index in the `items` array (not its current visual position during a drag). Used in handle aria-label and announcements. Not expressible in JSON Schema; see the component types for the signature. |
 | `getKey` | `(opaque)` | yes | — | Returns a stable key for each item. Must not change across reorders. Not expressible in JSON Schema; see the component types for the signature. |
 | `handle` | `(opaque)` | no | — | Optional snippet rendered inside the drag-handle button. Receives { pressed, label }. Not expressible in JSON Schema; see the component types for the signature. |

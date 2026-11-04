@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'A nested schema';
   export const description =
-    'One line per field with a red dot on the required ones, nested objects indented, and the raw document behind View JSON Schema.';
+    'Required fields first with a red dot, nested objects indented, and the raw document behind the JSON schema disclosure.';
 </script>
 
 <script lang="ts">

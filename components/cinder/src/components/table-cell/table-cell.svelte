@@ -17,6 +17,7 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import { tryGetTableContext } from '../table/table.context.ts';
   import type { TableCellProps } from './table-cell.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
@@ -25,11 +26,19 @@
     as = 'td',
     truncate = false,
     controls = false,
+    detail,
     title,
     class: className,
     children,
     ...rest
   }: TableCellProps = $props();
+
+  // A cell with a control tells its table, which stacks its rows only while one is mounted.
+  const tableContext = tryGetTableContext();
+  $effect(() => {
+    if (!controls) return;
+    return tableContext?.registerControls?.();
+  });
 
   // A truncating cell shows the full text on hover. Unless the caller supplied
   // a `title`, read it from the rendered text so a snippet child needs no
@@ -49,6 +58,7 @@
   };
 </script>
 
+<!-- The detail follows the content with no whitespace between them, so the cell's text has no stray space. -->
 <svelte:element
   this={as}
   {...rest}
@@ -57,7 +67,7 @@
   class={classNames('cinder-table__cell', className)}
   data-cinder-align={align}
   data-cinder-truncate={truncate || undefined}
-  data-cinder-controls={controls || undefined}
+  data-cinder-controls={controls === 'fit' ? 'fit' : controls ? '' : undefined}
 >
   {#if truncate}
     <span class="cinder-table__cell-text" title={title ?? renderedText} {@attach readRenderedText}>
@@ -65,5 +75,5 @@
     </span>
   {:else}
     {@render children?.()}
-  {/if}
+  {/if}{#if detail}<span class="cinder-table__cell-detail">{@render detail()}</span>{/if}
 </svelte:element>

@@ -13,6 +13,7 @@ setupHappyDom();
 const { cleanup, render, fireEvent, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
 const { default: DataTable } = await import('./data-table.svelte');
+const { default: SnippetsFixture } = await import('./data-table-snippets.fixture.svelte');
 
 afterEach(() => cleanup());
 
@@ -767,8 +768,15 @@ describe('DataTable — row selection', () => {
 });
 
 describe('DataTable — scrollable', () => {
-  test('scrollable=false does not add cinder-table-scroll class', () => {
+  test('scrolls by default, in a box that fades at the inline end', () => {
     const { container } = render(DataTable, { columns, rows });
+    const box = container.querySelector('.cinder-table-scroll');
+    expect(box?.querySelector(':scope > table')).not.toBeNull();
+    expect(box?.classList.contains('cinder-_scroll-fade-inline-end')).toBe(true);
+  });
+
+  test('scrollable=false does not add cinder-table-scroll class', () => {
+    const { container } = render(DataTable, { columns, rows, scrollable: false });
     expect(container.querySelector('.cinder-table-scroll')).toBeNull();
   });
 
@@ -1192,5 +1200,262 @@ describe('DataTable — truncating columns', () => {
     );
     expect(owner?.hasAttribute('data-cinder-truncate')).toBe(false);
     expect(owner?.querySelector('.cinder-table__cell-text')).toBeNull();
+  });
+});
+
+describe('DataTable — cells, row messages, groups and footer', () => {
+  const toolColumns = [
+    { key: 'on', label: 'On', controls: 'fit' as const },
+    { key: 'name', label: 'Tool', monospace: true },
+    { key: 'risk', label: 'Risk' },
+  ];
+  const toolRows = [
+    { id: 'lookup', on: true, name: 'Lookup order', risk: 'Reads', failed: false },
+    { id: 'refund', on: true, name: 'Issue refund', risk: 'Dangerous', failed: true },
+  ];
+
+  test('the cell snippet draws the content of every cell and controls mark their columns', () => {
+    const { container } = render(SnippetsFixture, {
+      columns: toolColumns,
+      rows: toolRows,
+      withCell: true,
+    });
+    expect(container.querySelectorAll('tbody input[type="checkbox"]')).toHaveLength(2);
+    expect(container.querySelector('tbody [data-cinder-controls="fit"]')).not.toBeNull();
+    expect(container.querySelector('tbody [data-cinder-monospace]')?.textContent).toContain(
+      'Lookup order',
+    );
+  });
+
+  test('a row message is its own full-width row under the row it belongs to', () => {
+    const { container } = render(SnippetsFixture, {
+      columns: toolColumns,
+      rows: toolRows,
+      withMessage: true,
+    });
+    const messages = container.querySelectorAll('tr.cinder-data-table__row-message');
+    expect(messages).toHaveLength(1);
+    const cell = messages[0]?.querySelector('td');
+    expect(cell?.getAttribute('colspan')).toBe('3');
+    expect(cell?.textContent).toContain('Couldn’t save Issue refund.');
+    expect(cell?.querySelector('[role="alert"]')).not.toBeNull();
+    // It follows the row it reports on, and that row is marked.
+    expect(messages[0]?.previousElementSibling?.textContent).toContain('Issue refund');
+    expect(messages[0]?.previousElementSibling?.hasAttribute('data-cinder-message')).toBe(true);
+    expect(container.querySelectorAll('tbody tr[data-cinder-message]')).toHaveLength(1);
+  });
+
+  test('every row has a message when no predicate narrows them', () => {
+    const { container } = render(SnippetsFixture, {
+      columns: toolColumns,
+      rows: toolRows.map((row) => ({ ...row, failed: true })),
+      withMessage: true,
+    });
+    expect(container.querySelectorAll('tr.cinder-data-table__row-message')).toHaveLength(2);
+  });
+
+  test('groupBy opens each run of rows with a header row that names the zone', () => {
+    const { container } = render(DataTable, {
+      columns: [
+        { key: 'when', label: 'When' },
+        { key: 'what', label: 'What' },
+      ],
+      rows: [
+        { id: '1', day: 'today', when: '10:45 AM', what: 'Removed the key' },
+        { id: '2', day: 'today', when: '9:00 AM', what: 'Server started' },
+        { id: '3', day: 'yesterday', when: '4:12 PM', what: 'Deleted a chat' },
+      ],
+      groupBy: (row: DataTableRow) =>
+        row['day'] === 'today'
+          ? { key: 'today', label: 'Today, Nov 2', detail: 'Central time' }
+          : { key: 'yesterday', label: 'Yesterday, Sun Nov 1', detail: 'Central time' },
+    });
+    const groups = Array.from(container.querySelectorAll('tr.cinder-data-table__group-row'));
+    expect(groups.map((group) => group.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+      'Today, Nov 2 · Central time',
+      'Yesterday, Sun Nov 1 · Central time',
+    ]);
+    expect(groups[0]?.querySelector('th')?.getAttribute('scope')).toBe('colgroup');
+    expect(groups[0]?.querySelector('th')?.getAttribute('colspan')).toBe('2');
+    // The header sits before its first row, and the second run follows the first.
+    expect(groups[0]?.nextElementSibling?.textContent).toContain('Removed the key');
+    expect(groups[1]?.previousElementSibling?.textContent).toContain('Server started');
+  });
+
+  test('a group key that comes back after another group opens a new header', () => {
+    const { container } = render(DataTable, {
+      columns: [{ key: 'what', label: 'What' }],
+      rows: [
+        { id: '1', g: 'a', what: 'one' },
+        { id: '2', g: 'b', what: 'two' },
+        { id: '3', g: 'a', what: 'three' },
+      ],
+      groupBy: (row: DataTableRow) => ({ key: String(row['g']), label: String(row['g']) }),
+    });
+    expect(container.querySelectorAll('tr.cinder-data-table__group-row')).toHaveLength(3);
+  });
+
+  test('the footer spans the table below the last row', () => {
+    const { container } = render(SnippetsFixture, {
+      columns: toolColumns,
+      rows: toolRows,
+      withFooter: true,
+    });
+    const cell = container.querySelector('tfoot .cinder-data-table__footer-cell');
+    expect(cell?.getAttribute('colspan')).toBe('3');
+    expect(cell?.textContent?.trim()).toBe('Showing 2 events.');
+  });
+
+  test('rows carry their id so a list-and-detail pane can find them', () => {
+    const { container } = render(DataTable, { columns, rows: rowsWithIds });
+    expect(
+      Array.from(container.querySelectorAll('tbody tr')).map((row) =>
+        row.getAttribute('data-cinder-row-id'),
+      ),
+    ).toEqual(['ada', 'grace', 'alan']);
+  });
+});
+
+describe('DataTable — rows that open', () => {
+  test('a click opens the row, and a click on a control in the row does not', async () => {
+    const opened: string[] = [];
+    const { container } = render(SnippetsFixture, {
+      columns: [
+        { key: 'on', label: 'On', controls: 'fit' as const },
+        { key: 'name', label: 'Tool' },
+      ],
+      rows: [{ id: 'lookup', on: true, name: 'Lookup order' }],
+      withCell: true,
+      onRowOpen: (row: DataTableRow) => opened.push(String(row['id'])),
+    });
+    await fireEvent.click(container.querySelector('tbody td:last-child')!);
+    expect(opened).toEqual(['lookup']);
+    await fireEvent.click(container.querySelector('tbody input[type="checkbox"]')!);
+    expect(opened).toEqual(['lookup']);
+  });
+
+  test('rows are one tab stop, Enter and Space open, the arrows move, and the open row is current', async () => {
+    const opened: string[] = [];
+    const { container } = render(DataTable, {
+      columns,
+      rows: rowsWithIds,
+      openRowId: 'grace',
+      onRowOpen: (row: DataTableRow) => opened.push(String(row['id'])),
+    });
+    const bodyRows = bodyDataRows(container);
+    expect(bodyRows.map((row) => row.getAttribute('tabindex'))).toEqual(['0', '-1', '-1']);
+    expect(bodyRows.map((row) => row.getAttribute('aria-current'))).toEqual([null, 'true', null]);
+    expect(bodyRows[1]?.hasAttribute('data-cinder-open')).toBe(true);
+
+    bodyRows[0]!.focus();
+    await fireEvent.keyDown(bodyRows[0]!, { key: 'Enter' });
+    await fireEvent.keyDown(bodyRows[0]!, { key: ' ' });
+    expect(opened).toEqual(['ada', 'ada']);
+
+    await fireEvent.keyDown(bodyRows[0]!, { key: 'ArrowDown' });
+    await tick();
+    expect(document.activeElement).toBe(bodyRows[1]!);
+    await fireEvent.keyDown(bodyRows[1]!, { key: 'End' });
+    await tick();
+    expect(document.activeElement).toBe(bodyRows[2]!);
+  });
+
+  test('a table without onRowOpen has no tab stops on its rows', () => {
+    const { container } = render(DataTable, { columns, rows: rowsWithIds });
+    expect(bodyDataRows(container).every((row) => !row.hasAttribute('tabindex'))).toBe(true);
+  });
+});
+
+describe('DataTable — loading more by scrolling', () => {
+  type ObserverRecord = {
+    callback: IntersectionObserverCallback;
+    target: Element | null;
+    disconnected: boolean;
+  };
+  const records: ObserverRecord[] = [];
+  const original = globalThis.IntersectionObserver;
+
+  class StubIntersectionObserver {
+    record: ObserverRecord;
+    constructor(callback: IntersectionObserverCallback) {
+      this.record = { callback, target: null, disconnected: false };
+      records.push(this.record);
+    }
+    observe(target: Element): void {
+      this.record.target = target;
+    }
+    unobserve(): void {}
+    disconnect(): void {
+      this.record.disconnected = true;
+    }
+    takeRecords(): IntersectionObserverEntry[] {
+      return [];
+    }
+  }
+
+  afterEach(() => {
+    records.length = 0;
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      value: original,
+    });
+  });
+
+  function install(): void {
+    Object.defineProperty(globalThis, 'IntersectionObserver', {
+      configurable: true,
+      value: StubIntersectionObserver,
+    });
+  }
+
+  function reach(record: ObserverRecord): void {
+    record.callback(
+      [{ isIntersecting: true, target: record.target! } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+  }
+
+  test('asks for more when the end of the table scrolls into view, without a button', () => {
+    install();
+    let requests = 0;
+    const { container } = render(DataTable, {
+      columns,
+      rows: rowsWithIds,
+      onReachEnd: () => (requests += 1),
+    });
+    expect(container.querySelector('tfoot .cinder-data-table__end')).not.toBeNull();
+    expect(container.querySelector('tfoot button')).toBeNull();
+    const live = records.filter((record) => !record.disconnected);
+    expect(live).toHaveLength(1);
+    expect(live[0]?.target?.classList.contains('cinder-data-table__end')).toBe(true);
+
+    reach(live[0]!);
+    expect(requests).toBe(1);
+  });
+
+  test('watches again after the rows grow, so an end still in view asks again', async () => {
+    install();
+    let requests = 0;
+    const { rerender } = render(DataTable, {
+      columns,
+      rows: rowsWithIds,
+      onReachEnd: () => (requests += 1),
+    });
+    await rerender({
+      columns,
+      rows: [...rowsWithIds, { id: 'x', name: 'X', role: 'r', commits: 1 }],
+      onReachEnd: () => (requests += 1),
+    });
+    await tick();
+    const live = records.filter((record) => !record.disconnected);
+    expect(live).toHaveLength(1);
+    expect(records.length).toBeGreaterThan(1);
+    reach(live[0]!);
+    expect(requests).toBe(1);
+  });
+
+  test('draws no end marker without onReachEnd or a footer', () => {
+    const { container } = render(DataTable, { columns, rows: rowsWithIds });
+    expect(container.querySelector('tfoot')).toBeNull();
   });
 });

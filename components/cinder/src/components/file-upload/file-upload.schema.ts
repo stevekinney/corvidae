@@ -37,6 +37,23 @@ const schema = {
       type: 'number',
       description: 'Maximum number of files allowed. Files beyond this limit are rejected.',
     },
+    variant: {
+      enum: ['dropzone', 'compact', 'button'],
+      description:
+        "How the surface is drawn.\n- `'dropzone'` is the large dashed area with a title, a description and a Browse button, the\n  file rows below it.\n- `'compact'` is a one-line dashed zone (a secondary button and one line of text) that sits\n  under the file rows, for a short list on a form. The rows are one bordered list (name, size,\n  remove), an uploading file is one line (name, bar, percent, Cancel upload), and a file that\n  fails local validation is a danger alert between the rows and the zone saying nothing was\n  added, not a row. The alert stays until the next file is chosen.\n- `'button'` is just the secondary button and a line of text beside it (`summary`), for one\n  file whose details the page already shows. It draws no rows; read the files through\n  `onFilesChange`. A rejection is still an alert.",
+      default: 'dropzone',
+    },
+    summary: {
+      type: 'string',
+      description:
+        "The line of text beside the button in the `'button'` variant, usually what was uploaded, such\nas the file name and what was read from it. Falls back to `description`.",
+    },
+    cancelLabel: {
+      type: 'string',
+      description:
+        'Visible text of the cancel action on an uploading file. Only drawn when `onFileCancel` is set.',
+      default: 'Cancel upload',
+    },
     class: {
       type: 'string',
       description: 'Additional classes merged with `.cinder-file-upload`.',
@@ -87,6 +104,12 @@ const schema = {
         description: 'Replaces the default resting-state dropzone body.',
       },
       {
+        name: 'onFileCancel',
+        reason: 'function-or-snippet',
+        description:
+          'Called when Cancel upload is activated on an uploading file. The component does not remove the\nrow itself: stop the upload and drop the entry from `files`. Without it an uploading file has\nno cancel action.',
+      },
+      {
         name: 'onFileRetry',
         reason: 'function-or-snippet',
         description: 'Called when the retry button is activated for a failed file.',
@@ -105,6 +128,12 @@ const schema = {
         name: 'onReject',
         reason: 'function-or-snippet',
         description: 'Fires with rejected files and reasons after local validation runs.',
+      },
+      {
+        name: 'rejectionMessage',
+        reason: 'function-or-snippet',
+        description:
+          'Words for a local validation failure. Receives the file, the reason and the limits, and\nreturns the sentence shown for it, so a page can say "documents" instead of "files" and add\nwhat happened to the rest of the batch. Defaults to a generic sentence naming the file and\nthe limit.',
       },
     ],
   },

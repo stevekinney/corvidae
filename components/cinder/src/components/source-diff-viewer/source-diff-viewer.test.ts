@@ -154,14 +154,14 @@ diff --git a/src/two.ts b/src/two.ts
     const { container } = render(SourceDiffViewer, { patch, maxLines: 3 });
     expect(container.querySelectorAll('.cinder-source-diff-viewer__metadata code')).toHaveLength(1);
     expect(container.querySelectorAll('.cinder-source-diff-viewer__line')).toHaveLength(2);
-    expect(container.textContent).toContain('Showing first 3 of 9 diff lines.');
+    expect(container.textContent).toContain('Showing 3 of 9 changed lines');
   });
 
   test('shows truncation rather than the empty state when maxLines is zero', () => {
     const { container } = render(SourceDiffViewer, { patch, maxLines: 0 });
 
     expect(container.querySelector('.cinder-source-diff-viewer__empty')).toBeNull();
-    expect(container.textContent).toContain('Showing first 0 of 9 diff lines.');
+    expect(container.textContent).toContain('Showing 0 of 9 changed lines');
   });
 
   test('shows truncation for standalone recursive entries when maxLines is zero', () => {

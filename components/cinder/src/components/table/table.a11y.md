@@ -53,7 +53,7 @@ Pass a `caption` prop to render a `<caption>` element above the table. This is t
 
 ## Sticky header
 
-Opt-in via `stickyHeader={true}`. When the table also needs an overflow container, pass `scrollable` and configure the generated `.cinder-table-scroll` wrapper through `scrollContainerProps`; the `<thead>` pins to the top of that scrolling container via `position: sticky`.
+Opt-in via `stickyHeader={true}`. When the table also needs an overflow container, configure the generated `.cinder-table-scroll` wrapper through `scrollContainerProps`; the `<thead>` pins to the top of that scrolling container via `position: sticky`.
 
 When `scrollable` and `stickyHeader` are combined, the generated wrapper is the sticky header's scroll container. If vertical scrolling should happen inside the table region, give the wrapper a bounded block size and vertical overflow:
 
@@ -129,19 +129,16 @@ When `Table.selectable` is true, `TableHeader` supports exactly one `<TableRow>`
 
 Tables don't reflow gracefully. Cinder ships two patterns and recommends picking based on column shape.
 
-**Horizontal scroll via `scrollable`.** This is the default Cinder recipe for dense or unknown-width tables. The table stays a table and the generated wrapper owns overflow:
-
-```svelte
-<Table scrollable>...</Table>
-```
+**Horizontal scroll, the default.** A table scrolls inside its own bordered box, with a visible scrollbar and a fade at the inline end; the page never scrolls sideways. The table stays a table and the generated wrapper owns overflow. The wrapper is focusable, and a captioned table makes it a named `region`, so keyboard users can scroll it. Pass `scrollable={false}` only for a table that must lay out as a bare `<table>`.
 
 **Column hiding via container queries.** When the column set is stable and a few columns are nice-to-have rather than essential, hide them with `@container`-driven CSS on the cells. Wrap the table in a container, declare `container-type: inline-size`, then add a class or `data-priority` attribute to each `<th>` / `<td>` and toggle `display: none` below a threshold. The table stays a table; the column count shrinks. This works without JavaScript and keeps the existing `aria-sort`, selection, and density semantics intact.
 
-**Stacked rows below `stackBelow`.** Below the `stackBelow` viewport width (`640px` by default; `false` turns it off) Table stacks itself: every body row becomes a block and every cell shows its column's header text above its value. The markup does not change, so the `<th>` / `<td>` relationship screen readers rely on stays intact:
+**Stacked rows when the cells hold controls.** A table whose cells hold controls (a select, a switch, a button; mark each with `controls`) never scrolls sideways, because a control scrolled out of view is a control a person cannot reach. Below `stackBelow` (`640px` by default; `false` turns it off), measured against the table's own container and not the window, each body row becomes a card: the name and its muted detail on the first line, the controls on a line of their own beneath, each at least 44px tall. A table with no `controls` cell never stacks. The markup does not change, so the `<th>` / `<td>` relationship screen readers rely on stays intact:
 
 - The header row leaves the layout through the visually-hidden technique, not `display: none`, so the column headers, their `aria-sort`, and the select-all checkbox stay in the accessibility tree.
 - `display: block` on table parts makes some engines (Safari among them) drop table semantics, so while stacked Table gives the table, its row groups, rows, and cells their table roles explicitly (`table`, `rowgroup`, `row`, `columnheader` / `rowheader`, `cell`), and removes them when it unstacks. A part that already carries a role keeps it.
-- Each cell's visible label is its column's header text, copied onto the cell as `data-cinder-stack-label` and painted by `::before`. A header cell with no text (the selection column) gives its cells no label. The labels follow rows, headers, and header text as they change.
+- A cell with `controls="fit"` (a checkbox) shows its column's header text beside the control, copied onto the cell as `data-cinder-stack-label` and painted by `::before`. A header cell with no text (the selection column) gives its cells no label. The labels follow rows, headers, and header text as they change. Every control keeps its own accessible name, so the visible text is a convenience, not the name.
+- Until the container has a measurable width (the server, the first paint), the viewport stands in for it.
 
 Sorting stays on the (visually hidden) header buttons, so a stacked table offers no visible sort control. A page that needs sorting on a phone should offer it beside the table, the way the redesign's filter chips do.
 

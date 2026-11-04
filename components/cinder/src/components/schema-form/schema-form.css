@@ -1,6 +1,7 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @import '../input/input.css';
 @import '../textarea/textarea.css';
+@import '../duration-field/duration-field.css';
 
 @layer cinder.components {
   .cinder-schema-form {
@@ -52,13 +53,6 @@
   .cinder-schema-form__chips {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--cinder-space-2);
-  }
-
-  .cinder-schema-form__duration {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
     gap: var(--cinder-space-2);
   }
 

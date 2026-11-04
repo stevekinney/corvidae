@@ -22,6 +22,14 @@ export type ChoiceGridColumns = 'responsive' | 1 | 2 | 3 | 4;
 export type ChoiceGridSize = 'sm';
 
 /**
+ * How each item is drawn. `tile` is the centered quiz-style answer tile (the default). `card` is
+ * a left-aligned selectable card with a radio or checkbox indicator, an optional icon beside the
+ * title, and an optional description under it, for choosing between a few options that each need
+ * a sentence of explanation, such as a source type.
+ */
+export type ChoiceGridVariant = 'tile' | 'card';
+
+/**
  * Shape of the context object provided to ChoiceGridItem children.
  *
  * All members are getter properties on the context object so reads remain
@@ -41,6 +49,9 @@ export type ChoiceGridContext = {
 
   /** True when ALL items are disabled (the grid-level disabled prop). */
   readonly disabled: boolean;
+
+  /** How items are drawn, propagated so each item picks its markup. */
+  readonly variant: ChoiceGridVariant;
 
   /** The grid's compact size variant, propagated so items can size themselves. `undefined` is the default (uncompacted) presentation. */
   readonly size: ChoiceGridSize | undefined;
@@ -121,6 +132,15 @@ export type ChoiceGridProps = Omit<
    * either default.
    */
   minColumnWidth?: string;
+
+  /**
+   * How items are drawn. `'tile'` (the default) keeps the centered quiz tile; `'card'` draws a
+   * left-aligned card with a radio (or checkbox when `multiple`) indicator, so each choice can carry
+   * an icon and a one-sentence description. Selection, roving focus and ARIA roles are identical in
+   * both. `size` applies to tiles only.
+   * @default 'tile'
+   */
+  variant?: ChoiceGridVariant;
 
   /**
    * Compact-only size variant. Omitting it (the default) keeps the current

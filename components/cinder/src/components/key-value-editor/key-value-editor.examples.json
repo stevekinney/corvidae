@@ -8,6 +8,12 @@
       "title": "Basic key-value editor",
       "description": "Edit a small set of environment-style key-value entries.",
       "code": "<script lang=\"ts\">\n  import { KeyValueEditor } from '@lostgradient/cinder';\n  let entries = $state([\n    { id: 'host', key: 'HOST', value: 'localhost' },\n    { id: 'port', key: 'PORT', value: '3000' },\n  ]);\n</script>\n\n<KeyValueEditor bind:entries />\n"
+    },
+    {
+      "id": "environment",
+      "title": "Environment variables",
+      "description": "A labelled list of masked variables: a name field and a masked value field per row with a text Remove button, an \"Add variable\" button, and help under it. Every value is masked, so the help says they are never shown again.",
+      "code": "<script lang=\"ts\">\n  import { KeyValueEditor } from '@lostgradient/cinder';\n\n  let entries = $state([{ id: 'github-token', key: 'GITHUB_TOKEN', value: 'ghp_example_token' }]);\n</script>\n\n<KeyValueEditor\n  bind:entries\n  label=\"Environment\"\n  description=\"Values are masked and stored on this machine like an API key; they are never shown again.\"\n  keyLabel=\"Name\"\n  valueLabel=\"Value\"\n  addLabel=\"Add variable\"\n  removeLabel={(key) => `Remove ${key || 'variable'}`}\n  secret={() => true}\n  monospace\n/>\n"
     }
   ]
 }

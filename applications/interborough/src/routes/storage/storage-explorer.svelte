@@ -203,12 +203,7 @@
         <p class="ib-storage__count" data-testid="storage-count">
           {copy.count(entries.length, listing.hasNextPage)}
         </p>
-        <Table
-          caption={copy.tableLabel}
-          stackBelow={false}
-          density="condensed"
-          class="ib-storage__table"
-        >
+        <Table caption={copy.tableLabel} density="condensed" class="ib-storage__table">
           <Table.Header>
             <Table.Row>
               <Table.HeaderCell>{copy.columns.key}</Table.HeaderCell>

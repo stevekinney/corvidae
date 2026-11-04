@@ -97,6 +97,32 @@ export class SortableController<Item> {
     return { nextItems, change: { itemKey, fromIndex, toIndex } };
   }
 
+  /**
+   * Move one item a single step without lifting it, the single-pointer alternative to dragging.
+   * Announces the move, and returns the reordered items with the change, or null when nothing can
+   * move: a lift is in progress, the key is gone, or the step would leave the list.
+   */
+  step(
+    items: Item[],
+    getKey: (item: Item) => string | number,
+    itemKey: string | number,
+    delta: -1 | 1,
+    itemLabel: string,
+  ): {
+    nextItems: Item[];
+    change: import('./sortable-controller.types.ts').SortableReorderChange;
+  } | null {
+    if (this.phase === 'lifted') return null;
+    const fromIndex = items.findIndex((item) => getKey(item) === itemKey);
+    const toIndex = fromIndex + delta;
+    if (fromIndex < 0 || toIndex < 0 || toIndex >= items.length) return null;
+    this.#announce(this.#announcements.moved(itemLabel, toIndex + 1, items.length));
+    return {
+      nextItems: reorder(items, fromIndex, toIndex),
+      change: { itemKey, fromIndex, toIndex },
+    };
+  }
+
   completeDrop(itemLabel: string, total: number): void {
     if (this.phase !== 'lifted') return;
     const boundedTotal = Math.max(1, total);
