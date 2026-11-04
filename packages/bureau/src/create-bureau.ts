@@ -2964,7 +2964,20 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
-      configureDurableRun: (_runId, services) => {
+      configureDurableRun: (_runId, services, principal) => {
+        services.childWaitPrincipal = principal;
+        services.requestChildWait = (request) => {
+          if (services.childWaitPrincipal !== request.principal)
+            return { parked: false, reason: 'unauthorized' };
+          if (
+            services.pendingChildWait !== undefined ||
+            services.pendingHumanWait !== undefined ||
+            services.pendingWakeup !== undefined
+          )
+            return { parked: false, reason: 'already-parked' };
+          services.pendingChildWait = { schemaVersion: 1, ...request };
+          return { parked: true };
+        };
         services.resolveChildWait = async (request) => {
           const topology = childTopologyForWait;
           if (topology === undefined) return { outcome: 'not-found' };
@@ -9002,6 +9015,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       const durableServicesOnServices = runtime.durable
         ? (services: DurableRunDeps) => {
             servicesRef.current = services;
+            services.childWaitPrincipal = owner;
             services.resolveChildWait = async (childWaitRequest) => {
               const topology = childTopologyForWait;
               if (topology === undefined) return { outcome: 'not-found' };
@@ -21788,7 +21802,20 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (shutdownPromise) return;
         void childTopology.parentCancelled(runId, reason);
       },
-      configureDurableRun: (_runId, services) => {
+      configureDurableRun: (_runId, services, principal) => {
+        services.childWaitPrincipal = principal;
+        services.requestChildWait = (request) => {
+          if (services.childWaitPrincipal !== request.principal)
+            return { parked: false, reason: 'unauthorized' };
+          if (
+            services.pendingChildWait !== undefined ||
+            services.pendingHumanWait !== undefined ||
+            services.pendingWakeup !== undefined
+          )
+            return { parked: false, reason: 'already-parked' };
+          services.pendingChildWait = { schemaVersion: 1, ...request };
+          return { parked: true };
+        };
         services.resolveChildWait = async (request) => {
           const topology = childTopologyForWait;
           if (topology === undefined) return { outcome: 'not-found' };
@@ -22003,12 +22030,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
     // parent this process does not hold has no action log here, and the record is dropped.
-    announce: (announcement) => {
+    announce: async (announcement) => {
       const action = childActionOf(announcement);
       if (action !== undefined) {
         store.recordAction(announcement.record.parentRunId, action.type, action.detail);
       }
       if (announcement.kind === 'settled') {
+        await options.children?.beforeWake?.();
         void runtime.durable?.engine
           .signal(
             announcement.record.parentRunId,

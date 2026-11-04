@@ -211,6 +211,7 @@ export interface PendingChildWait {
   readonly parentRunId: string;
   readonly childRunId: string;
   readonly toolCallId: string;
+  readonly principal: string;
 }
 
 export type DurableChildWaitResolution =
@@ -282,9 +283,19 @@ export interface DurableRunDeps {
    * `requestHumanInput` tool inside `ctx.memo`.
    */
   pendingHumanWait?: PendingHumanWait | undefined;
+  /** Mutable slot for the single child-wait request accepted by this step. */
   pendingChildWait?: PendingChildWait | undefined;
+  /** Registers the first authorized child-wait request for the current step. */
   requestChildWait?:
-    ((request: Omit<PendingChildWait, 'schemaVersion'>) => { parked: true }) | undefined;
+    | ((
+        request: Omit<PendingChildWait, 'schemaVersion'>,
+      ) => { parked: true } | { parked: false; reason: 'already-parked' | 'unauthorized' })
+    | undefined;
+  /** Principal bound to the durable child-wait capability for this run. */
+  childWaitPrincipal?: string | undefined;
+  /** Original tool-call identifiers whose provisional settlement is deferred. */
+  deferredChildCallIds?: Set<string> | undefined;
+  /** Resolves a recovered child-wait request against the host child topology. */
   resolveChildWait?:
     ((request: PendingChildWait) => Promise<DurableChildWaitResolution>) | undefined;
   /**

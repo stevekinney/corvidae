@@ -1557,6 +1557,8 @@ export interface BureauHooksOptions {
 
 /** {@link BureauOptions.children}. */
 export interface BureauChildrenOptions<D extends AgentDefinitions = AgentDefinitions> {
+  /** Test-only host barrier immediately before a child wake is emitted. */
+  readonly beforeWake?: (() => Promise<void>) | undefined;
   /**
    * The COR-814 signal contract each child agent accepts, keyed by agent
    * name. A child whose agent has a contract gets a typed channel on every

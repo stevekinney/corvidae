@@ -208,6 +208,9 @@ export function createHumanWaitContext(
     get pendingWakeup() {
       return servicesRef.current?.pendingWakeup;
     },
+    get pendingChildWait() {
+      return servicesRef.current?.pendingChildWait;
+    },
     runId,
     // Only ever constructed inside the `options.humanInput && runtime.durable`
     // guard below, so this context always backs a real durable run
@@ -241,6 +244,9 @@ export function createWakeupContext(servicesRef: {
     // COR-1578 — read-only: a human-input request already made in this step refuses a wakeup.
     get pendingHumanWait() {
       return servicesRef.current?.pendingHumanWait;
+    },
+    get pendingChildWait() {
+      return servicesRef.current?.pendingChildWait;
     },
     // Only ever constructed inside the `options.wakeup && runtime.durable`
     // guard (below, in `createBureau`'s run composition — same placement as
@@ -1574,7 +1580,8 @@ export type MediaRowHolder = 'session' | 'run';
 
 export type RuntimeCompositionDependencies = {
   /** Configures live and recovered durable catalog-run services. */
-  configureDurableRun?: ((runId: string, services: DurableRunDeps) => void) | undefined;
+  configureDurableRun?:
+    ((runId: string, services: DurableRunDeps, principal: string) => void) | undefined;
   /**
    * Builds the session store this composition uses over its resolved KV
    * view. Defaults to operative's own `createSessionStore` — the real
@@ -4057,6 +4064,13 @@ async function buildRuntimeComposition(
           : {}),
       },
     };
+    if (runId !== undefined) {
+      dependencies.configureDurableRun?.(
+        runId,
+        services,
+        ownerOrLocal(recoveredOwnerOf(session, runId)),
+      );
+    }
     if (wantsHumanInput || wantsWakeup) {
       servicesRef.current = services;
     }
@@ -4656,7 +4670,20 @@ async function buildRuntimeComposition(
       },
       toolbox,
     };
-    dependencies.configureDurableRun?.(runId, services);
+    services.childWaitPrincipal = ownerOrLocal(record.principal);
+    services.requestChildWait = (request) => {
+      if (services.childWaitPrincipal !== request.principal)
+        return { parked: false, reason: 'unauthorized' };
+      if (
+        services.pendingChildWait !== undefined ||
+        services.pendingHumanWait !== undefined ||
+        services.pendingWakeup !== undefined
+      )
+        return { parked: false, reason: 'already-parked' };
+      services.pendingChildWait = { schemaVersion: 1, ...request };
+      return { parked: true };
+    };
+    dependencies.configureDurableRun?.(runId, services, ownerOrLocal(record.principal));
     humanInputServices.current = services;
     return { status: 'available', services };
   }

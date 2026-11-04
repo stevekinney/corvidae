@@ -197,6 +197,7 @@ export function runStepMemo(
       },
       admissionTracker: deps.admissionTracker,
       requestChildWait: deps.requestChildWait,
+      childWaitPrincipal: deps.childWaitPrincipal,
       getPendingChildWait: () => deps.pendingChildWait,
       runId,
       durableOperationKeys: true,

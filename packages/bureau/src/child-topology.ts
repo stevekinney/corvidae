@@ -355,7 +355,7 @@ export interface ChildTopologyDependencies {
    * Told of each child that started and each that settled, after the audit entry is written, so
    * the parent run's stream can show it. A failure is a diagnostic and never changes the child.
    */
-  readonly announce?: ((announcement: ChildAnnouncement) => void) | undefined;
+  readonly announce?: ((announcement: ChildAnnouncement) => void | Promise<void>) | undefined;
   readonly resolveParent: (parentRunId: string) => Promise<ChildTopologyParent | undefined>;
   /**
    * Whether `runId` already names a run or workflow Bureau knows, other than
@@ -690,9 +690,12 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     };
   }
 
-  function announce(kind: ChildAnnouncement['kind'], record: BureauChildRecord): void {
+  async function announce(
+    kind: ChildAnnouncement['kind'],
+    record: BureauChildRecord,
+  ): Promise<void> {
     try {
-      dependencies.announce?.({ kind, record });
+      await dependencies.announce?.({ kind, record });
     } catch (error) {
       diagnose({
         level: 'error',
@@ -1058,7 +1061,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     await audit(`child.${record.status}`, record, {
       dedupeKey: `child.${record.status}:${record.childRunId}`,
     });
-    announce('settled', record);
+    await announce('settled', record);
     try {
       await releaseReservation(record);
     } catch (error) {
@@ -1474,7 +1477,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       dedupeKey: `child.started:${childRunId}`,
       ...(record.principal === undefined ? {} : { principal: record.principal }),
     });
-    announce('started', record);
+    await announce('started', record);
 
     const entry = ensureTracked(childRunId);
     const contract = contractFor(request.agentName);

@@ -99,7 +99,8 @@ export interface SubordinateRun {
 }
 
 export interface CatalogDispatcherDependencies {
-  readonly configureDurableRun?: ((runId: string, services: DurableRunDeps) => void) | undefined;
+  readonly configureDurableRun?:
+    ((runId: string, services: DurableRunDeps, principal: string) => void) | undefined;
   readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'>;
   readonly runtime: RuntimeComposition;
   readonly runtimeServices: RuntimeServices;
@@ -897,7 +898,7 @@ export function createCatalogDispatcher({
                 emitter: humanInputEmitter,
                 onServices: (services: DurableRunDeps) => {
                   if (humanInputEmitter !== undefined) humanInputServices.current = services;
-                  configureDurableRun?.(runId, services);
+                  configureDurableRun?.(runId, services, ownerOrLocal(principal));
                 },
               }),
         },

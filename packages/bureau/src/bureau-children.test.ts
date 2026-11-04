@@ -503,14 +503,13 @@ describe('bureau.children over a durable bureau', () => {
       name: 'wait-for-child',
       description: 'Wait for the named child run to settle.',
       input: z.object({ childRunId: z.string() }),
+      metadata: { durableChildWait: true },
       execute: async ({ childRunId }, context) => {
-        const parentRunId = context.executionContext?.['parentRunId'];
         const durableChildWait = context.executionContext?.['durableChildWait'];
-        if (typeof parentRunId !== 'string' || typeof durableChildWait !== 'function') {
+        if (typeof durableChildWait !== 'function') {
           throw new Error('durable child wait was not injected');
         }
         return durableChildWait({
-          parentRunId,
           childRunId,
           toolCallId: context.meta?.callId ?? context.toolCall.id,
         });

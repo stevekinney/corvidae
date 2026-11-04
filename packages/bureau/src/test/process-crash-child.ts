@@ -507,6 +507,89 @@ async function approveThenCrash(): Promise<void> {
   process.stderr.write('child: the approved tool did not end the process\n');
   process.exit(6);
 }
+
+async function childWaitParked(): Promise<void> {
+  const parentReady = Promise.withResolvers<void>();
+  const allowParent = Promise.withResolvers<void>();
+  const waitForChild = createTool({
+    name: 'wait-for-child',
+    description: 'Wait for the named child.',
+    input: z.object({ childRunId: z.string() }),
+    metadata: { durableChildWait: true },
+    execute: async ({ childRunId }, context) => {
+      const wait = context.executionContext?.['durableChildWait'];
+      if (typeof wait !== 'function') throw new Error('missing durable child wait');
+      return wait({ childRunId, toolCallId: context.meta?.callId ?? context.toolCall.id });
+    },
+  });
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      planner: createAgent({
+        name: 'planner',
+        toolbox: createToolbox([waitForChild]),
+        generate: async ({ step }) => {
+          if (step === 0) {
+            parentReady.resolve();
+            await allowParent.promise;
+            return {
+              content: 'waiting',
+              toolCalls: [{ name: 'wait-for-child', arguments: { childRunId: 'child-1' } }],
+            };
+          }
+          return { content: 'recovered', toolCalls: [] };
+        },
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+      worker: createAgent({
+        name: 'worker',
+        generate: async () => ({ content: 'child done', toolCalls: [] }),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
+    durable: true,
+    durableOwnership: {
+      ownership: 'workflow-lease',
+      workflowClaimTtlMs: CLAIM_TTL_MS,
+      workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
+    },
+    children: {
+      beforeWake: async () => {
+        const directory = dirname(markerPath as string);
+        publishChildFile(join(directory, 'afterChildSettlementBeforeParentWake'), 'pending');
+        killSelf();
+      },
+    },
+  });
+  const parent = await bureau.tasks.start('planner', 'wait for child', { principal: 'alice' });
+  await parentReady.promise;
+  const child = await bureau.children.dispatch({
+    parentRunId: parent.id,
+    childRunId: 'child-1',
+    agentName: 'worker',
+    input: 'work',
+  });
+  if (child.outcome !== 'started') throw new Error(`child did not start: ${child.outcome}`);
+  publishChildFile(
+    markerPath as string,
+    JSON.stringify({ runId: parent.id, childRunId: 'child-1' }),
+  );
+  allowParent.resolve();
+  await pollUntil('parent park', async () => {
+    const workflow = await bureau.tasks.workflow(parent.id);
+    return workflow?.status === 'running';
+  });
+  await pollUntil('child terminal record', async () => {
+    const childRecord = await bureau.children.get({
+      parentRunId: parent.id,
+      childRunId: 'child-1',
+    });
+    return childRecord?.status === 'completed';
+  });
+}
 let reviewId: string | undefined;
 
 const scenarios: Record<string, () => Promise<void>> = {
@@ -517,6 +600,7 @@ const scenarios: Record<string, () => Promise<void>> = {
   'human-wait-parked': () => humanWaitParked(),
   'human-wait-two-calls-parked': () => humanWaitParked(true),
   'approve-then-crash': approveThenCrash,
+  'child-wait-parked': childWaitParked,
   'relaunch-recover': relaunchRecover,
   'race-recover': raceRecover,
   verify,

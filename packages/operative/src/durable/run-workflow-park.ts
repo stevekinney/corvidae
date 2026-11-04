@@ -3,6 +3,7 @@ import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@l
 import type { ToolExecutionResult } from 'armorer';
 import { Conversation, withMessageId } from 'conversationalist';
 
+import { ToolSettledBubbleEvent } from '../events';
 import { isFailureFinishReason } from '../finish-reason';
 import { signalMessageIdentifier } from '../message-identifiers';
 import type { FinishReason } from '../types';
@@ -118,6 +119,19 @@ export function* runWorkflowPark(
         },
       });
     }
+    const deps = runDepsFrom(ctx.services);
+    deps.deferredChildCallIds?.delete(request.toolCallId);
+    deps.emitter?.dispatch(
+      new ToolSettledBubbleEvent(
+        { agentName: deps.options.agentName ?? '', runId: state.runId, step: state.cursor.step },
+        {
+          toolName: tool?.name ?? 'durable-child-wait',
+          toolCallId: request.toolCallId,
+          status: 'success',
+          result: result.result,
+        },
+      ),
+    );
     state.pendingChildWait = undefined;
     state.pendingChildStepRecord = undefined;
     resetTerminalState(state);

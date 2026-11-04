@@ -124,8 +124,12 @@ export interface StepDeps {
    */
   readonly parentSignals: RunOptions['parentSignals'];
   readonly requestChildWait?:
-    ((request: Omit<PendingChildWait, 'schemaVersion'>) => { parked: true }) | undefined;
+    | ((
+        request: Omit<PendingChildWait, 'schemaVersion'>,
+      ) => { parked: true } | { parked: false; reason: 'already-parked' | 'unauthorized' })
+    | undefined;
   readonly getPendingChildWait?: (() => PendingChildWait | undefined) | undefined;
+  readonly childWaitPrincipal?: string | undefined;
   readonly durableOperationKeys: boolean;
   readonly defaultToolChoice: ToolChoice | undefined;
   /**
