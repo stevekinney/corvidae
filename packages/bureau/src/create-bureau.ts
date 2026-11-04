@@ -252,6 +252,7 @@ import {
 } from './bureau-session-persistence';
 import {
   type BureauChildren,
+  type ChildTopology,
   type ChildTopologyParent,
   createChildTopology,
 } from './child-topology';
@@ -2923,6 +2924,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const workflowFileTypes: { current: ((type: string) => boolean) | undefined } = {
     current: undefined,
   };
+  let childTopologyForWait: ChildTopology | undefined;
   const assetServiceHolder: { current: AssetService | undefined } = {
     current: assetServiceInstance,
   };
@@ -2962,6 +2964,22 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      configureDurableRun: (_runId, services) => {
+        services.resolveChildWait = async (request) => {
+          const topology = childTopologyForWait;
+          if (topology === undefined) return { outcome: 'not-found' };
+          const outcome = await topology.children.wait({
+            parentRunId: request.parentRunId,
+            childRunId: request.childRunId,
+          });
+          if (outcome.outcome === 'settled')
+            return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
+          if (outcome.outcome === 'unobservable')
+            return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
+          if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
+          return { outcome: 'not-found' };
+        };
+      },
       // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
       // on every line, so a change to `logs.maximumLinesPerRun` applies to the next one.
       ...(options.logs === undefined
@@ -8981,12 +8999,25 @@ async function constructBureau<const D extends AgentDefinitions>(
         decide: decideWiring,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
       });
-      const durableServicesOnServices =
-        wantsHumanInput || wantsWakeup
-          ? (services: DurableRunDeps) => {
-              servicesRef.current = services;
-            }
-          : undefined;
+      const durableServicesOnServices = runtime.durable
+        ? (services: DurableRunDeps) => {
+            servicesRef.current = services;
+            services.resolveChildWait = async (childWaitRequest) => {
+              const topology = childTopologyForWait;
+              if (topology === undefined) return { outcome: 'not-found' };
+              const outcome = await topology.children.wait({
+                parentRunId: childWaitRequest.parentRunId,
+                childRunId: childWaitRequest.childRunId,
+              });
+              if (outcome.outcome === 'settled')
+                return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
+              if (outcome.outcome === 'unobservable')
+                return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
+              if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
+              return { outcome: 'not-found' };
+            };
+          }
+        : undefined;
 
       // AB-67/AB-199 — steering is scoped to in-memory (process-local)
       // sessions only: a durably-configured bureau's `submitSteeringCommand`
@@ -21757,6 +21788,22 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (shutdownPromise) return;
         void childTopology.parentCancelled(runId, reason);
       },
+      configureDurableRun: (_runId, services) => {
+        services.resolveChildWait = async (request) => {
+          const topology = childTopologyForWait;
+          if (topology === undefined) return { outcome: 'not-found' };
+          const outcome = await topology.children.wait({
+            parentRunId: request.parentRunId,
+            childRunId: request.childRunId,
+          });
+          if (outcome.outcome === 'settled')
+            return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
+          if (outcome.outcome === 'unobservable')
+            return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
+          if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
+          return { outcome: 'not-found' };
+        };
+      },
     });
 
   /**
@@ -21961,6 +22008,15 @@ async function constructBureau<const D extends AgentDefinitions>(
       if (action !== undefined) {
         store.recordAction(announcement.record.parentRunId, action.type, action.detail);
       }
+      if (announcement.kind === 'settled') {
+        void runtime.durable?.engine
+          .signal(
+            announcement.record.parentRunId,
+            `durable-child:${announcement.record.parentRunId}:${announcement.record.childRunId}`,
+            null,
+          )
+          .catch(() => undefined);
+      }
     },
     resolveParent: resolveChildParent,
     isKnownRun,
@@ -21976,6 +22032,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     defaultTimeToLiveMilliseconds: () =>
       currentSettings()['children.delegation.defaultTimeToLiveMilliseconds'],
   });
+  childTopologyForWait = childTopology;
 
   // COR-1670 — the journal behind `createPeerCallTool({ durable })`.
   const peerCalls: PeerCallJournal = {

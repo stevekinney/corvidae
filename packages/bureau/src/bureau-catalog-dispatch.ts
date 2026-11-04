@@ -99,6 +99,7 @@ export interface SubordinateRun {
 }
 
 export interface CatalogDispatcherDependencies {
+  readonly configureDurableRun?: ((runId: string, services: DurableRunDeps) => void) | undefined;
   readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'>;
   readonly runtime: RuntimeComposition;
   readonly runtimeServices: RuntimeServices;
@@ -342,6 +343,7 @@ export function createCatalogDispatcher({
   toolGrant,
   registerCatalogRun,
   onCatalogRunEnded,
+  configureDurableRun,
   trackSubordinateRun,
   fileAgents,
 }: CatalogDispatcherDependencies): {
@@ -889,12 +891,13 @@ export function createCatalogDispatcher({
           ...(storedTaskOrigin !== undefined && isTaskOrigin(storedTaskOrigin)
             ? { tags: subordinateTags(storedTaskOrigin) }
             : {}),
-          ...(humanInputEmitter === undefined
+          ...(humanInputEmitter === undefined && configureDurableRun === undefined
             ? {}
             : {
                 emitter: humanInputEmitter,
                 onServices: (services: DurableRunDeps) => {
-                  humanInputServices.current = services;
+                  if (humanInputEmitter !== undefined) humanInputServices.current = services;
+                  configureDurableRun?.(runId, services);
                 },
               }),
         },

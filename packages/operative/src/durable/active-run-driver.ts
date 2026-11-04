@@ -167,6 +167,11 @@ export async function driveDurableRun(
     emitter,
     onStepToolbox,
     admissionTracker,
+    requestChildWait: (request) => {
+      if (services.pendingChildWait === undefined)
+        services.pendingChildWait = { schemaVersion: 1, ...request };
+      return { parked: true };
+    },
   };
   // COR-297 — Weft's two-phase start. `prepare()` commits the run's durable
   // record (`pending`, not yet executing); that commit is the write

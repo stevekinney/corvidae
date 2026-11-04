@@ -32,7 +32,13 @@ import {
 import { conversationAfterStep, runStepMemo } from './run-workflow-step';
 import { isScheduledAgentRunInput, type ScheduledAgentRunInput } from './schedule-agent';
 import { createStorageActivities } from './storage-activities';
-import type { PendingHumanWait, PendingWakeup, RunCursor } from './types';
+import type {
+  PendingChildWait,
+  PendingHumanWait,
+  PendingWakeup,
+  RunCursor,
+  StepRecord,
+} from './types';
 /**
  * The durable agent-run workflow.
  *
@@ -268,6 +274,8 @@ export function createRunWorkflow(
         // while either slot is already set.
         let pendingWakeup: PendingWakeup | undefined;
         let pendingHumanWait: PendingHumanWait | undefined;
+        let pendingChildWait: PendingChildWait | undefined;
+        let pendingChildStepRecord: StepRecord | null | undefined;
         // AB-44 — F3 signal-payload resume. The signal name a `requestHumanInput`
         // park most recently, successfully waited on and was released for, kept
         // for the FINAL result's `humanWaitSignal` field even after the run
@@ -369,6 +377,10 @@ export function createRunWorkflow(
                 stepResult.record?.results.some(
                   (result) => result.outcome === 'action_required',
                 ) === true;
+            }
+            if (stepResult.pendingChildWait !== undefined) {
+              pendingChildWait = stepResult.pendingChildWait;
+              pendingChildStepRecord = stepResult.record;
             }
 
             // === Durable commits — all plain data. Order: transcript, then the
@@ -483,6 +495,10 @@ export function createRunWorkflow(
               stoppedEarly = true;
               break;
             }
+            if (stepResult.pendingChildWait !== undefined) {
+              stoppedEarly = true;
+              break;
+            }
             // `next` / `continue` — loop to the next step.
           }
 
@@ -571,6 +587,8 @@ export function createRunWorkflow(
             stoppedEarly,
             pendingWakeup,
             pendingHumanWait,
+            pendingChildWait,
+            pendingChildStepRecord,
             lastWakeupNote,
             lastHumanWaitSignal,
             humanWaitParkOrdinal,
@@ -590,6 +608,8 @@ export function createRunWorkflow(
             stoppedEarly,
             pendingWakeup,
             pendingHumanWait,
+            pendingChildWait,
+            pendingChildStepRecord,
             lastWakeupNote,
             lastHumanWaitSignal,
           } = parkState);

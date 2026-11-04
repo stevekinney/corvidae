@@ -206,6 +206,19 @@ export interface PendingHumanWait {
   inputSchema?: HumanInputSchema | undefined;
 }
 
+export interface PendingChildWait {
+  readonly schemaVersion: 1;
+  readonly parentRunId: string;
+  readonly childRunId: string;
+  readonly toolCallId: string;
+}
+
+export type DurableChildWaitResolution =
+  | { readonly outcome: 'pending' }
+  | { readonly outcome: 'settled'; readonly child: JSONValue }
+  | { readonly outcome: 'unobservable'; readonly child: JSONValue }
+  | { readonly outcome: 'not-found' };
+
 /**
  * The non-serializable, per-run behavior a durable workflow needs but cannot
  * checkpoint: the `generate` function, the `toolbox`, the hook registry, the
@@ -269,6 +282,11 @@ export interface DurableRunDeps {
    * `requestHumanInput` tool inside `ctx.memo`.
    */
   pendingHumanWait?: PendingHumanWait | undefined;
+  pendingChildWait?: PendingChildWait | undefined;
+  requestChildWait?:
+    ((request: Omit<PendingChildWait, 'schemaVersion'>) => { parked: true }) | undefined;
+  resolveChildWait?:
+    ((request: PendingChildWait) => Promise<DurableChildWaitResolution>) | undefined;
   /**
    * Optional plain metadata to persist with the committed step record after
    * `runStep` finishes. This runs immediately before `recordStep`, so the

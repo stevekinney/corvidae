@@ -258,6 +258,9 @@ export async function executeTools(
                   ...(deps.parentSignals !== undefined
                     ? { parentSignals: deps.parentSignals }
                     : {}),
+                  ...(deps.requestChildWait !== undefined
+                    ? { durableChildWait: deps.requestChildWait }
+                    : {}),
                 },
               }
             : {}),
@@ -300,9 +303,12 @@ export async function executeTools(
           eventTarget?.removeEventListener(ToolSettledBubbleEvent.type, onForwardedSettled);
         }
 
+        const pendingChildCallId = deps.getPendingChildWait?.()?.toolCallId;
         executedResults = await admitToolResultMedia(
           admitter,
-          Array.isArray(executeResult) ? executeResult : [executeResult],
+          (Array.isArray(executeResult) ? executeResult : [executeResult]).filter(
+            (result) => result.toolCallId !== pendingChildCallId,
+          ),
           mediaContext,
         );
         // COR-1628 — a call the toolbox answers without executing it (a refusal by the active

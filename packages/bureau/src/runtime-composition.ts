@@ -1573,6 +1573,8 @@ export function applyCache(
 export type MediaRowHolder = 'session' | 'run';
 
 export type RuntimeCompositionDependencies = {
+  /** Configures live and recovered durable catalog-run services. */
+  configureDurableRun?: ((runId: string, services: DurableRunDeps) => void) | undefined;
   /**
    * Builds the session store this composition uses over its resolved KV
    * view. Defaults to operative's own `createSessionStore` — the real
@@ -4654,6 +4656,7 @@ async function buildRuntimeComposition(
       },
       toolbox,
     };
+    dependencies.configureDurableRun?.(runId, services);
     humanInputServices.current = services;
     return { status: 'available', services };
   }

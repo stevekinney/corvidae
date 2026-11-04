@@ -1,5 +1,6 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
+import type { ToolExecutionResult } from 'armorer';
 import { Conversation, withMessageId } from 'conversationalist';
 
 import { isFailureFinishReason } from '../finish-reason';
@@ -14,7 +15,13 @@ import {
 import { HUMAN_WAIT_PARKED_LOG_MARKER } from './human-wait-park-marker';
 import { runDepsFrom } from './run-workflow-input';
 import type { createStorageActivities } from './storage-activities';
-import type { PendingHumanWait, PendingWakeup, RunCursor } from './types';
+import type {
+  PendingChildWait,
+  PendingHumanWait,
+  PendingWakeup,
+  RunCursor,
+  StepRecord,
+} from './types';
 
 export type WorkflowParkContext = Pick<
   WorkflowContext<NormalizeActivities<ReturnType<typeof createStorageActivities>>>,
@@ -42,6 +49,8 @@ export interface WorkflowParkState {
   stoppedEarly: boolean;
   pendingWakeup?: PendingWakeup | undefined;
   pendingHumanWait?: PendingHumanWait | undefined;
+  pendingChildWait?: PendingChildWait | undefined;
+  pendingChildStepRecord?: StepRecord | null | undefined;
   lastWakeupNote?: string | undefined;
   lastHumanWaitSignal?: string | undefined;
   /** The run's ordinal of the pending human-wait park (see `human-wait-parks.ts`). */
@@ -67,6 +76,53 @@ export function* runWorkflowPark(
   const isFailureOutcome =
     state.finishReason !== undefined &&
     (isFailureFinishReason(state.finishReason) || state.finishReason === 'aborted');
+
+  if (!isFailureOutcome && state.pendingChildWait !== undefined) {
+    const request = state.pendingChildWait;
+    const resolve = runDepsFrom(ctx.services).resolveChildWait;
+    if (resolve === undefined) throw new Error('Durable child wait resolver unavailable.');
+    let wake = 0;
+    let resolution = yield* ctx.memo(`child-wait-${state.cursor.step}-${wake}`, () =>
+      resolve(request),
+    );
+    while (resolution.outcome === 'pending') {
+      yield* ctx.waitForSignal(`durable-child:${request.parentRunId}:${request.childRunId}`);
+      wake += 1;
+      resolution = yield* ctx.memo(`child-wait-${state.cursor.step}-${wake}`, () =>
+        resolve(request),
+      );
+    }
+    const tool = state.pendingChildStepRecord?.toolCalls.find(
+      (call) => call.id === request.toolCallId,
+    );
+    const result = {
+      callId: request.toolCallId,
+      toolCallId: request.toolCallId,
+      toolName: tool?.name ?? 'durable-child-wait',
+      outcome: 'success' as const,
+      content: resolution,
+      result: resolution,
+    } satisfies ToolExecutionResult;
+    const conversation = Conversation.from(state.snapshot, {
+      runtime: runDepsFrom(ctx.services).options.runtime ?? createDefaultRuntimeServices(),
+    });
+    conversation.appendToolResults([result]);
+    state.snapshot = conversation.snapshot();
+    yield* ctx.run('saveConversation', { runId: state.runId, snapshot: state.snapshot });
+    if (state.pendingChildStepRecord !== undefined && state.pendingChildStepRecord !== null) {
+      yield* ctx.run('recordStep', {
+        runId: state.runId,
+        record: {
+          ...state.pendingChildStepRecord,
+          results: [...state.pendingChildStepRecord.results, result],
+        },
+      });
+    }
+    state.pendingChildWait = undefined;
+    state.pendingChildStepRecord = undefined;
+    resetTerminalState(state);
+    return true;
+  }
 
   if (!isFailureOutcome && state.pendingWakeup !== undefined) {
     const requestedDuration = state.pendingWakeup.duration;

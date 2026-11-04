@@ -495,6 +495,91 @@ describe('bureau.children over a durable bureau', () => {
     };
   }
 
+  it('durably parks the original child-wait call and settles it after the child commits', async () => {
+    const childRelease = Promise.withResolvers<void>();
+    const parentReady = Promise.withResolvers<void>();
+    const allowParentTool = Promise.withResolvers<void>();
+    const waitForChild = createTool({
+      name: 'wait-for-child',
+      description: 'Wait for the named child run to settle.',
+      input: z.object({ childRunId: z.string() }),
+      execute: async ({ childRunId }, context) => {
+        const parentRunId = context.executionContext?.['parentRunId'];
+        const durableChildWait = context.executionContext?.['durableChildWait'];
+        if (typeof parentRunId !== 'string' || typeof durableChildWait !== 'function') {
+          throw new Error('durable child wait was not injected');
+        }
+        return durableChildWait({
+          parentRunId,
+          childRunId,
+          toolCallId: context.meta?.callId ?? context.toolCall.id,
+        });
+      },
+    });
+    const bureau = await createBureau({
+      agents: {
+        planner: createAgent({
+          name: 'planner',
+          toolbox: createToolbox([waitForChild]),
+          generate: async ({ step }) => {
+            if (step === 0) {
+              parentReady.resolve();
+              await allowParentTool.promise;
+              return {
+                content: 'waiting',
+                toolCalls: [{ name: 'wait-for-child', arguments: { childRunId: 'child-1' } }],
+              };
+            }
+            return { content: 'child settled', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+        worker: createAgent({
+          name: 'worker',
+          generate: async () => {
+            await childRelease.promise;
+            return { content: 'done', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+      durableOwnership: { ownership: 'workflow-lease' },
+      onDiagnostic,
+    });
+
+    try {
+      const parent = await bureau.tasks.start('planner', 'wait for work');
+      await parentReady.promise;
+      expect(
+        await bureau.children.dispatch({
+          parentRunId: parent.id,
+          childRunId: 'child-1',
+          agentName: 'worker',
+          input: 'work',
+        }),
+      ).toMatchObject({ outcome: 'started' });
+      allowParentTool.resolve();
+      await pollUntil(async () => {
+        const workflow = await bureau.tasks.workflow(parent.id);
+        return workflow?.status === 'running';
+      });
+      expect(await bureau.tasks.workflow(parent.id)).toMatchObject({ status: 'running' });
+
+      childRelease.resolve();
+      expect(await parent.result()).toMatchObject({ finishReason: 'stop-condition' });
+      expect(
+        await bureau.children.wait({ parentRunId: parent.id, childRunId: 'child-1' }),
+      ).toMatchObject({
+        outcome: 'settled',
+        child: { status: 'completed' },
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('refuses a child identifier that names another principal’s run, and leaves that run as it was', async () => {
     await using pathFixture = createSqliteStorageFixture();
     const bureau = await createBureau({
