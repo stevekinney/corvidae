@@ -11,7 +11,10 @@
 <ApprovalCard
   layout="detail"
   question="Refund order 4398 for $27.25?"
-  source="Tool runner in Please refund order 4398, it arrived damaged."
+  source="Tool runner"
+  sourceHref="#tool-runner"
+  sourceIn="Please refund order 4398, it arrived damaged."
+  sourceInHref="#chat"
   tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}
   operation={{
     kind: 'other',

@@ -11,7 +11,8 @@
 <ApprovalCard
   layout="detail"
   question="Triage refund request for order 4398?"
-  source="Tool runner in a chat"
+  source="Tool runner"
+  sourceIn="a chat"
   requestedAt="2026-11-02T10:40:00.000Z"
   now={new Date('2026-11-02T10:42:00.000Z')}
   rememberScope="the rest of this chat"

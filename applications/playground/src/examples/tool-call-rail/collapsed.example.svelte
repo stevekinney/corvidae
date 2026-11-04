@@ -58,7 +58,7 @@
   {#snippet children()}
     <ApprovalCard
       layout="row"
-      tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}
+      tool={{ name: 'issue-refund', risk: 'high', irreversible: true }}
       question="Refund order 4480 for $27.25?"
       source="the agent"
       requestedAt={new Date(Date.now() - 2 * 60_000).toISOString()}

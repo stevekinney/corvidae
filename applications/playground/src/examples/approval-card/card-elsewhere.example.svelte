@@ -22,5 +22,5 @@
   decidedBy="you"
   decidedIn="Reviews"
   decidedAt="2026-11-02T10:44:00.000Z"
-  notice="Refund order 4471 for $42.00 · Issue refund. The run is continuing, so this page changed. You don't need to do anything here."
+  notice="The run is continuing, so this page changed. You don't need to do anything here."
 />

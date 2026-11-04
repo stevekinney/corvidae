@@ -1,4 +1,8 @@
-import { formatTimeOfDay, formatTimeZoneLabel } from '../../utilities/format-date.ts';
+import {
+  formatDateTime,
+  formatTimeOfDay,
+  formatTimeZoneLabel,
+} from '../../utilities/format-date.ts';
 import { humanizeIdentifier } from '../../utilities/humanize-identifier.ts';
 import { readPayloadEntries } from '../payload-inspector/payload-inspector-fields.ts';
 import { describeContents, describeScalar } from '../payload-inspector/payload-inspector-model.ts';
@@ -237,4 +241,22 @@ export function summarizeInput(value: unknown): InputSummaryPair[] {
     else pairs.push({ key: entry.key, label, text: display.text, muted: false });
   }
   return pairs;
+}
+
+/**
+ * When an approval was decided, as the Done detail writes it: the time of day, then the day. "10:33 AM today"
+ * within the viewer's day, "4:12 PM yesterday" the day before, and "4:12 PM on Sun Nov 1" any other.
+ *
+ * @param decided The moment it was decided.
+ * @param now The reference time; defaults to now.
+ */
+export function describeDecisionTime(decided: Date, now?: Date | number): string {
+  // The day label comes from the shared date formatter, so a day the viewer calls "today" reads the same here.
+  const label = formatDateTime(decided, { now });
+  const separator = label.lastIndexOf(', ');
+  const day = label.slice(0, separator);
+  const time = label.slice(separator + 2);
+  if (day === 'Today') return `${time} today`;
+  if (day === 'Yesterday') return `${time} yesterday`;
+  return `${time} on ${day}`;
 }

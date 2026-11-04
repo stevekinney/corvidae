@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Approve in flight';
   export const description =
-    'Approve reads "Approving\u2026" with a spinner and both buttons turn off; the approval stays pending until the answer lands.';
+    'Approve reads "Approving…" with a spinner and both buttons turn off; the approval stays pending until the answer lands.';
 </script>
 
 <script lang="ts">

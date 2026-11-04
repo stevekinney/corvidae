@@ -35,6 +35,8 @@
 </script>
 
 <script lang="ts">
+  import Check from '@lucide/svelte/icons/check';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 
   import { classNames } from '../../utilities/class-names.ts';
@@ -44,6 +46,7 @@
   import CodeBlock from '../code-block/code-block.svelte';
   import Collapsible from '../collapsible/collapsible.svelte';
   import CopyButton from '../copy-button/copy-button.svelte';
+  import Link from '../link/link.svelte';
   import PayloadInspector from '../payload-inspector/payload-inspector.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
@@ -57,6 +60,7 @@
     STATE_DOT_STATUS,
     STATE_LABELS,
     dedupeFilePaths,
+    describeDecisionTime,
     describeExpiry,
     formatRemainingTime,
     isApprovalActionable,
@@ -91,6 +95,10 @@
     question,
     source,
     sourcePrefix,
+    sourceHref,
+    sourceIn,
+    sourceInHref,
+    said,
     eyebrow,
     toolPrefix,
     requestedAt,
@@ -120,6 +128,8 @@
   const rootId = $derived(id ?? generatedId);
   const rowQuestion = $derived(question ?? `Run ${tool.name}?`);
   const titleId = $derived(`${rootId}-title`);
+  const saidId = $derived(`${rootId}-said`);
+  let saidOpen = $state(false);
 
   // Coerce + clamp like Card: schema-driven callers can pass out-of-range or
   // non-numeric levels, and `h${level}` must never emit invalid markup.
@@ -154,6 +164,7 @@
       ? undefined
       : `${sourcePrefix ?? (isDetail ? 'Asked by' : 'Approval from')} ${source}`,
   );
+  const hasSourcePlace = $derived(source !== undefined && sourceIn !== undefined);
   // How long ago the request was made only matters while someone can still answer it.
   const requestedDate = $derived(requestedAt === undefined ? undefined : new Date(requestedAt));
   const requestedValid = $derived(
@@ -194,7 +205,14 @@
       ? `${outcomeBase} at ${outcomeTime}`
       : outcomeBase,
   );
-  const outcomeClock = $derived(decidedIn === undefined ? outcomeTime : undefined);
+  // The Done detail writes the day after the time ("10:33 AM today"); the other layouts keep the clock alone.
+  const outcomeClock = $derived(
+    decidedIn !== undefined
+      ? undefined
+      : isDetail && decidedDate !== undefined && outcomeTime !== undefined
+        ? describeDecisionTime(decidedDate, now)
+        : outcomeTime,
+  );
   // An approval is green, and every other decision is neutral text: a denial is not an error.
   const outcomeTone = $derived<'success' | 'neutral'>(
     effectiveState === 'approved' || effectiveState === 'approved_with_edits'
@@ -214,6 +232,16 @@
       effectiveState === 'denied',
   );
   const stateText = $derived(STATE_LABELS[effectiveState]);
+  // An approval answered somewhere else replaces the card with what happened and who did it, so
+  // nobody answers twice: "Approved by you in Reviews at 10:44 AM", then one sentence about it.
+  const answeredElsewhere = $derived(
+    layout === 'card' && decidedIn !== undefined && isDecidedState && outcomeText !== undefined,
+  );
+  const elsewhereSentence = $derived(
+    [`${rowQuestion.replace(/\?$/, '')} · ${tool.label ?? tool.name}.`, notice]
+      .filter((part) => part !== undefined && part !== '')
+      .join(' '),
+  );
   // An approval that passed the time its request set says when, unless the host wrote its own.
   const resolvedNotice = $derived(
     notice ??
@@ -264,6 +292,10 @@
   );
   const environmentNames = $derived(sanitizeEnvironmentNames(env));
   // The row's Input discloses only what the operation carries.
+  // Details holds what the host adds about where the request runs. Without any of it there is nothing to disclose.
+  const hasDetails = $derived(
+    sandbox !== undefined || environmentNames.length > 0 || snapshotId !== undefined,
+  );
   const hasRowInput = $derived(
     (operation.kind === 'command' && Boolean(operation.command)) ||
       (operation.kind === 'patch' && Boolean(operation.diff)) ||
@@ -315,6 +347,19 @@
     if (typeof onResolve === 'function') onResolve(resolution);
   }
 </script>
+
+{#snippet sourceName()}
+  {#if sourceHref !== undefined}<Link href={sourceHref}>{source}</Link>{:else}{source}{/if}
+{/snippet}
+
+{#snippet sourcePlace()}
+  {#if sourceInHref !== undefined}<Link href={sourceInHref}>{sourceIn}</Link>{:else}{sourceIn}{/if}
+{/snippet}
+
+<!-- "Tool runner in Please refund order 4471", the name and the place each a link when it has one. -->
+{#snippet askedFrom()}
+  {@render sourceName()}{#if hasSourcePlace}{' in '}{@render sourcePlace()}{/if}
+{/snippet}
 
 {#snippet operationPreview()}
   {#if operation.kind === 'command' && operation.command}
@@ -383,7 +428,30 @@
   {/if}
 {/snippet}
 
-{#if layout === 'row'}
+{#if answeredElsewhere}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--elsewhere', customClassName)}
+    aria-labelledby={titleId}
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="card"
+  >
+    <Check
+      class="cinder-approval-card__elsewhere-glyph"
+      size={16}
+      strokeWidth={2}
+      aria-hidden="true"
+    />
+    <div class="cinder-approval-card__elsewhere-text">
+      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__elsewhere-title">
+        {outcomeText}
+      </svelte:element>
+      <p class="cinder-approval-card__elsewhere-body">{elsewhereSentence}</p>
+    </div>
+  </article>
+{:else if layout === 'row'}
   <article
     {...rest}
     id={rootId}
@@ -400,7 +468,7 @@
       {tool}
       approvalState={effectiveState}
       question={rowQuestion}
-      {source}
+      {sourceText}
       {requestedText}
       {requestedIso}
       {consequence}
@@ -455,24 +523,52 @@
           {outcomeText}
           outcomeTime={outcomeClock}
           tone={outcomeTone}
-          trailing={source}
+          inlineTime
+          trailing={source === undefined ? undefined : askedFrom}
           {decisionNote}
           {decisionNoteCaption}
         />
-      {:else if sourceText !== undefined || requestedText !== undefined || !isActionable || !hasResolutionCallback}
+      {:else if source !== undefined || requestedText !== undefined || !isActionable || !hasResolutionCallback}
         <p class="cinder-approval-card__detail-ask">
-          {#if sourceText !== undefined}<span>{sourceText}</span>{/if}
-          {#if sourceText !== undefined && requestedText !== undefined}
-            <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-          {/if}
+          {#if source !== undefined}<span
+              >{sourcePrefix ?? 'Asked by'}{' '}{@render askedFrom()}</span
+            >{#if requestedText !== undefined}{'\u00a0'}<span
+                class="cinder-approval-card__separator cinder-approval-card__time-separator"
+                aria-hidden="true">·</span
+              >{/if}{/if}
           {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time>{/if}
           {#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
-            {#if sourceText !== undefined || requestedText !== undefined}
+            {#if source !== undefined || requestedText !== undefined}
               <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
             {/if}
             <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
           {/if}
         </p>
+      {/if}
+      {#if said !== undefined && said !== ''}
+        <div class="cinder-approval-card__said">
+          <button
+            type="button"
+            class="cinder-approval-card__said-toggle"
+            aria-expanded={saidOpen}
+            aria-controls={saidId}
+            onclick={() => (saidOpen = !saidOpen)}
+          >
+            <ChevronRight
+              class="cinder-approval-card__said-chevron"
+              size={12}
+              strokeWidth={2}
+              aria-hidden="true"
+              data-cinder-open={saidOpen || undefined}
+            />
+            <span class="cinder-approval-card__said-label">{source ?? 'It'} said</span>
+            <span
+              id={saidId}
+              class="cinder-approval-card__said-text"
+              data-cinder-open={saidOpen || undefined}>{said}</span
+            >
+          </button>
+        </div>
       {/if}
       {#if context !== undefined}
         <div class="cinder-approval-card__context">{@render context()}</div>
@@ -480,8 +576,8 @@
       <p class="cinder-approval-card__detail-tool">
         {toolPrefix ?? 'It wants to run'}{' '}{#if tool.label !== undefined}<span
             class="cinder-approval-card__tool-label">{tool.label}</span
-          >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code>
-        <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+          >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
+        >{'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>
         <span class="cinder-approval-card__risk-word">{riskWord}</span>
       </p>
     </header>
@@ -566,10 +662,11 @@
             {/if}
             {#if sourceText !== undefined || requestedText !== undefined}
               <p class="cinder-approval-card__eyebrow">
-                {#if sourceText !== undefined}<span>{sourceText}</span>{/if}
-                {#if sourceText !== undefined && requestedText !== undefined}
-                  <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-                {/if}
+                {#if sourceText !== undefined}<span>{sourceText}</span
+                  >{#if requestedText !== undefined}{'\u00a0'}<span
+                      class="cinder-approval-card__separator cinder-approval-card__time-separator"
+                      aria-hidden="true">·</span
+                    >{/if}{/if}
                 {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time
                   >{/if}
               </p>
@@ -620,77 +717,81 @@
 
         {@render argumentsPreviewSection()}
 
-        <Collapsible trigger="Details" class="cinder-approval-card__details">
-          <div class="cinder-approval-card__details-content">
-            {#if sandbox}
-              <div class="cinder-approval-card__details-group">
-                <p class="cinder-approval-card__details-label">Sandbox</p>
-                <dl class="cinder-approval-card__metadata cinder-approval-card__metadata--compact">
-                  <div class="cinder-approval-card__metadata-item">
-                    <dt>Provider</dt>
-                    <dd>{sandbox.provider}</dd>
-                  </div>
-                  <div class="cinder-approval-card__metadata-item">
-                    <dt>Profile</dt>
-                    <dd>{sandbox.name}</dd>
-                  </div>
-                  <div class="cinder-approval-card__metadata-item">
-                    <dt>Working directory</dt>
-                    <dd>{sandbox.workingDir}</dd>
-                  </div>
-                </dl>
-              </div>
-            {/if}
+        {#if hasDetails}
+          <Collapsible trigger="Details" class="cinder-approval-card__details">
+            <div class="cinder-approval-card__details-content">
+              {#if sandbox}
+                <div class="cinder-approval-card__details-group">
+                  <p class="cinder-approval-card__details-label">Sandbox</p>
+                  <dl
+                    class="cinder-approval-card__metadata cinder-approval-card__metadata--compact"
+                  >
+                    <div class="cinder-approval-card__metadata-item">
+                      <dt>Provider</dt>
+                      <dd>{sandbox.provider}</dd>
+                    </div>
+                    <div class="cinder-approval-card__metadata-item">
+                      <dt>Profile</dt>
+                      <dd>{sandbox.name}</dd>
+                    </div>
+                    <div class="cinder-approval-card__metadata-item">
+                      <dt>Working directory</dt>
+                      <dd>{sandbox.workingDir}</dd>
+                    </div>
+                  </dl>
+                </div>
+              {/if}
 
-            {#if environmentNames.length > 0}
-              <div class="cinder-approval-card__details-group">
-                <p class="cinder-approval-card__details-label">Environment</p>
-                <ul
-                  class="cinder-approval-card__environment-list"
-                  aria-label="Environment variable names only; values are never shown"
-                >
-                  {#each environmentNames as environmentName (environmentName)}
-                    <li>
-                      <Badge size="sm" monospace>{environmentName}</Badge>
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/if}
+              {#if environmentNames.length > 0}
+                <div class="cinder-approval-card__details-group">
+                  <p class="cinder-approval-card__details-label">Environment</p>
+                  <ul
+                    class="cinder-approval-card__environment-list"
+                    aria-label="Environment variable names only; values are never shown"
+                  >
+                    {#each environmentNames as environmentName (environmentName)}
+                      <li>
+                        <Badge size="sm" monospace>{environmentName}</Badge>
+                      </li>
+                    {/each}
+                  </ul>
+                </div>
+              {/if}
 
-            <dl class="cinder-approval-card__metadata">
-              <div class="cinder-approval-card__metadata-item">
-                <dt>Policy version</dt>
-                <dd>
-                  {policyVersion}
-                  <span class="cinder-approval-card__metadata-help">
-                    Approval policy that produced this request.
-                  </span>
-                </dd>
-              </div>
-              <div class="cinder-approval-card__metadata-item">
-                <dt>Idempotency key</dt>
-                <dd>
-                  {idempotencyKey}
-                  <span class="cinder-approval-card__metadata-help">
-                    Keeps this decision durable if it is submitted more than once.
-                  </span>
-                </dd>
-              </div>
-              {#if snapshotId}
+              <dl class="cinder-approval-card__metadata">
                 <div class="cinder-approval-card__metadata-item">
-                  <dt>Snapshot</dt>
+                  <dt>Policy version</dt>
                   <dd>
-                    {snapshotId}
+                    {policyVersion}
                     <span class="cinder-approval-card__metadata-help">
-                      Workspace snapshot this request was captured against.
+                      Approval policy that produced this request.
                     </span>
                   </dd>
                 </div>
-              {/if}
-            </dl>
-          </div>
-        </Collapsible>
+                <div class="cinder-approval-card__metadata-item">
+                  <dt>Idempotency key</dt>
+                  <dd>
+                    {idempotencyKey}
+                    <span class="cinder-approval-card__metadata-help">
+                      Keeps this decision durable if it is submitted more than once.
+                    </span>
+                  </dd>
+                </div>
+                {#if snapshotId}
+                  <div class="cinder-approval-card__metadata-item">
+                    <dt>Snapshot</dt>
+                    <dd>
+                      {snapshotId}
+                      <span class="cinder-approval-card__metadata-help">
+                        Workspace snapshot this request was captured against.
+                      </span>
+                    </dd>
+                  </div>
+                {/if}
+              </dl>
+            </div>
+          </Collapsible>
+        {/if}
 
         {#if isActionable && hasResolutionCallback}
           {#if failure !== undefined}

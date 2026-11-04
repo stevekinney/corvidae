@@ -206,6 +206,22 @@
       "type": "string",
       "description": "The words before `source`. Default `Approval from`, or `Asked by` in the `detail` layout."
     },
+    "sourceHref": {
+      "type": "string",
+      "description": "Where the source's name leads, in the `detail` layout: the name is written as a link (\"Asked by Tool runner in a chat\")."
+    },
+    "sourceIn": {
+      "type": "string",
+      "description": "Where it was asked, written after \"in\" in the `detail` layout, such as the chat's title: \"Asked by Tool runner in Please refund order 4471\"."
+    },
+    "sourceInHref": {
+      "type": "string",
+      "description": "Where `sourceIn` leads, written as a link in the `detail` layout."
+    },
+    "said": {
+      "type": "string",
+      "description": "What the source said when it asked, in the `detail` layout: a collapsed line under who asked, \"Tool runner said Order 4471 is $42.00…\", that opens in place to the whole text."
+    },
     "eyebrow": {
       "type": "string",
       "description": "The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`."

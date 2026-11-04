@@ -197,6 +197,14 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     source?: string;
     /** The words before `source`. Default `Approval from`, or `Asked by` in the `detail` layout. */
     sourcePrefix?: string;
+    /** Where the source's name leads, in the `detail` layout: the name is written as a link ("Asked by Tool runner in a chat"). */
+    sourceHref?: string;
+    /** Where it was asked, written after "in" in the `detail` layout, such as the chat's title: "Asked by Tool runner in Please refund order 4471". */
+    sourceIn?: string;
+    /** Where `sourceIn` leads, written as a link in the `detail` layout. */
+    sourceInHref?: string;
+    /** What the source said when it asked, in the `detail` layout: a collapsed line under who asked, "Tool runner said Order 4471 is $42.00…", that opens in place to the whole text. */
+    said?: string;
     /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
     eyebrow?: string;
     /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`. */
@@ -298,6 +306,14 @@ export type ApprovalCardSchemaProps = {
   source?: string;
   /** The words before `source`. Default `Approval from`, or `Asked by` in the `detail` layout. */
   sourcePrefix?: string;
+  /** Where the source's name leads, in the `detail` layout: the name is written as a link ("Asked by Tool runner in a chat"). */
+  sourceHref?: string;
+  /** Where it was asked, written after "in" in the `detail` layout, such as the chat's title: "Asked by Tool runner in Please refund order 4471". */
+  sourceIn?: string;
+  /** Where `sourceIn` leads, written as a link in the `detail` layout. */
+  sourceInHref?: string;
+  /** What the source said when it asked, in the `detail` layout: a collapsed line under who asked, "Tool runner said Order 4471 is $42.00…", that opens in place to the whole text. */
+  said?: string;
   /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
   eyebrow?: string;
   /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`. */

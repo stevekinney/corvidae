@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
+
   /** Props of the internal outcome line. Not part of the public API. */
   type ApprovalCardOutcomeProps = {
     /** What was decided and by whom, such as "Denied by you". */
@@ -7,8 +9,10 @@
     outcomeTime: string | undefined;
     /** Green for an approval, neutral for everything else: a denial is a decision, not an error. */
     tone: 'success' | 'neutral';
-    /** Text after the outcome, such as where the question was asked ("Tool runner in a chat"). */
-    trailing?: string | undefined;
+    /** Whether the time follows the word without a middot, as the Done detail writes it: "Approved by you 10:33 AM today". */
+    inlineTime?: boolean | undefined;
+    /** Content after the outcome and its time, such as where the question was asked ("Tool runner in a chat"). */
+    trailing?: Snippet | undefined;
     /** The note the approver left with the decision. */
     decisionNote?: string | undefined;
     /** Where the note went, such as "Sent to the agent as the reason.". */
@@ -19,6 +23,7 @@
     outcomeText,
     outcomeTime,
     tone,
+    inlineTime = false,
     trailing,
     decisionNote,
     decisionNoteCaption,
@@ -31,12 +36,16 @@
     {outcomeText}
   </span>
   {#if outcomeTime !== undefined}
-    <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+    {#if inlineTime}
+      {' '}
+    {:else}
+      {'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>{' '}
+    {/if}
     <span class="cinder-approval-card__outcome-time">{outcomeTime}</span>
   {/if}
   {#if trailing !== undefined}
-    <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-    <span class="cinder-approval-card__outcome-trailing">{trailing}</span>
+    {'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>{' '}
+    <span class="cinder-approval-card__outcome-trailing">{@render trailing()}</span>
   {/if}
 </p>
 {#if decisionNote !== undefined && decisionNote !== ''}

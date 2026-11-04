@@ -1754,7 +1754,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
 
         expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
           layout === 'detail'
-            ? 'Approved by you · 10:33 AM · Tool runner'
+            ? 'Approved by you 10:33 AM today · Tool runner'
             : 'Approved by you · 10:33 AM',
         );
         expect(squash(container.querySelector('.cinder-approval-card__result')?.textContent)).toBe(
@@ -1776,7 +1776,12 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
           }),
         });
 
-        expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
+        expect(
+          squash(
+            container.querySelector('.cinder-approval-card__outcome, [class*="elsewhere-title"]')
+              ?.textContent,
+          ),
+        ).toBe(
           layout === 'detail'
             ? 'Approved by you in Reviews at 10:44 AM · Tool runner'
             : 'Approved by you in Reviews at 10:44 AM',
@@ -1854,7 +1859,8 @@ describe('ApprovalCard detail layout', () => {
   const detailProps = (overrides: RowOverrides = {}): ApprovalCardProps =>
     refundRow({
       layout: 'detail',
-      source: 'Tool runner in Please refund order 4471, it arrived damaged.',
+      source: 'Tool runner',
+      sourceIn: 'Please refund order 4471, it arrived damaged.',
       rememberScope: undefined,
       ...overrides,
     });
@@ -1949,7 +1955,7 @@ describe('ApprovalCard detail layout', () => {
     const outcome = container.querySelector('.cinder-approval-card__outcome');
     expect(outcome?.getAttribute('data-cinder-tone')).toBe('success');
     expect(squash(outcome?.textContent)).toBe(
-      'Approved by you · 10:33 AM · Tool runner in Please refund order 4471, it arrived damaged.',
+      'Approved by you 10:33 AM today · Tool runner in Please refund order 4471, it arrived damaged.',
     );
     expect(container.querySelector('.cinder-approval-card__readonly-summary')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__detail-ask')).toBeNull();
@@ -2050,15 +2056,38 @@ describe('ApprovalCard line wrapping', () => {
   test('keeps the time and the tool facts from breaking in the stylesheet', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
-    expect(css).toMatch(/\.cinder-approval-card__line-facts \{\s*white-space: nowrap;/);
+    // The facts line may wrap between its pieces, so a phone never clips "Can't be undone" at the
+    // card's edge; each piece stays whole and keeps the middot that follows it.
+    expect(css).not.toMatch(/\.cinder-approval-card__line-facts \{[^}]*white-space: nowrap/);
+    expect(css).toMatch(/\.cinder-approval-card__keep \{\s*white-space: nowrap;/);
+    expect(css).toMatch(/\.cinder-approval-card__undone \{\s*white-space: nowrap;/);
     expect(css).toMatch(/\.cinder-approval-card__line time[^{]*\{\s*white-space: nowrap;/);
   });
 
-  test('wraps the identifier, the risk word and the irreversible note as one unit', () => {
+  test('puts the time on a line of its own, without the middot, where who asked and when cannot share one', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /@container \(inline-size < 17rem\) \{[^@]*__line \.cinder-approval-card__time-separator \{\s*display: none;[^@]*__line time \{\s*display: block;/,
+    );
+    expect(css).toMatch(
+      /@container \(inline-size < 19rem\) \{[^@]*__eyebrow \.cinder-approval-card__time-separator,[^@]*__detail-ask \.cinder-approval-card__time-separator \{\s*display: none;/,
+    );
+  });
+
+  test('keeps each piece of the facts line whole with the middot that follows it', () => {
     const { container } = render(ApprovalCard, { props: refundRow() });
 
     expect(squash(container.querySelector('.cinder-approval-card__line-facts')?.textContent)).toBe(
       "issue-refund · Dangerous · Can't be undone",
+    );
+    expect(
+      [
+        ...container.querySelectorAll('.cinder-approval-card__line .cinder-approval-card__keep'),
+      ].map((piece) => squash(piece.textContent)),
+    ).toEqual(['issue-refund ·', 'Dangerous ·']);
+    expect(container.querySelector('.cinder-approval-card__line time')?.textContent).toBe(
+      '4 min ago',
     );
   });
 });
@@ -2070,5 +2099,255 @@ describe('ApprovalCard view', () => {
     await fireEvent.click(getByRole('button', { name: /^Input/ }));
 
     expect(container.querySelector('.cinder-payload-inspector')?.textContent).toContain('orderId');
+  });
+});
+
+describe('ApprovalCard source line', () => {
+  for (const layout of ['row', 'card', 'detail'] as const) {
+    test(`${layout}: sourcePrefix replaces the words before the source`, () => {
+      const { container } = render(ApprovalCard, {
+        props: refundRow({ layout, sourcePrefix: 'Asked by' }),
+      });
+
+      expect(container.textContent).toContain('Asked by Tool runner');
+      expect(container.textContent).not.toContain('Approval from Tool runner');
+    });
+  }
+
+  test('row: the default prefix is Approval from, and the source stays on its own line with its time', () => {
+    const { container } = render(ApprovalCard, { props: refundRow() });
+
+    expect(squash(container.querySelector('.cinder-approval-card__line-source')?.textContent)).toBe(
+      '· Approval from Tool runner · 4 min ago',
+    );
+  });
+
+  test('the card keeps the middot with the source, so the time is never stranded behind it', () => {
+    const { container } = render(ApprovalCard, { props: refundRow({ layout: 'card' }) });
+
+    expect(squash(container.querySelector('.cinder-approval-card__eyebrow')?.textContent)).toBe(
+      'Approval from Tool runner · 4 min ago',
+    );
+    // The middot is tied to the source by a no-break space, so it never starts a line or stands alone.
+    expect(container.querySelector('.cinder-approval-card__eyebrow')?.textContent).toContain(
+      'Approval from Tool runner\u00a0·',
+    );
+  });
+});
+
+describe('ApprovalCard detail links and what the source said', () => {
+  const detail = (overrides: RowOverrides = {}): ApprovalCardProps =>
+    refundRow({
+      layout: 'detail',
+      sourceIn: 'Please refund order 4471, it arrived damaged.',
+      rememberScope: undefined,
+      ...overrides,
+    });
+
+  test('writes the source and the chat as links when they have a place to lead', () => {
+    const { container } = render(ApprovalCard, {
+      props: detail({ sourceHref: '/agents/tool-runner', sourceInHref: '/chat/415b1fd8' }),
+    });
+
+    const links = [...container.querySelectorAll('.cinder-approval-card__detail-ask a')];
+    expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+      ['Tool runner', '/agents/tool-runner'],
+      ['Please refund order 4471, it arrived damaged.', '/chat/415b1fd8'],
+    ]);
+    expect(squash(container.querySelector('.cinder-approval-card__detail-ask')?.textContent)).toBe(
+      'Asked by Tool runner in Please refund order 4471, it arrived damaged. · waiting 4 min',
+    );
+  });
+
+  test('a decided approval writes the chat as a link after the outcome', () => {
+    const { container } = render(ApprovalCard, {
+      props: detail({
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:33:00.000Z',
+        sourceInHref: '/chat/415b1fd8',
+        onResolve: undefined,
+      }),
+    });
+
+    const outcome = container.querySelector('.cinder-approval-card__outcome');
+    expect(squash(outcome?.textContent)).toBe(
+      'Approved by you 10:33 AM today · Tool runner in Please refund order 4471, it arrived damaged.',
+    );
+    const link = outcome?.querySelector('a');
+    expect(link?.textContent).toBe('Please refund order 4471, it arrived damaged.');
+    expect(link?.getAttribute('href')).toBe('/chat/415b1fd8');
+    // The source's name is plain text until the page gives it a place to lead.
+    expect(outcome?.querySelectorAll('a')).toHaveLength(1);
+  });
+
+  test('names the day when the decision was not made today', () => {
+    const { container } = render(ApprovalCard, {
+      props: detail({
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-01T16:12:00.000Z',
+        onResolve: undefined,
+      }),
+    });
+
+    expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toMatch(
+      /^Approved by you 4:12 PM yesterday · /,
+    );
+  });
+
+  test('the other layouts keep the clock alone after a middot', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        layout: 'row',
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:33:00.000Z',
+        onResolve: undefined,
+      }),
+    });
+
+    expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
+      'Approved by you · 10:33 AM',
+    );
+  });
+
+  test('what the source said is a collapsed line that opens in place to the whole text', async () => {
+    const said = 'Order 4471 is $42.00, delivered Monday, and the carrier flagged it as damaged.';
+    const { container, getByRole } = render(ApprovalCard, { props: detail({ said }) });
+
+    const toggle = getByRole('button', { name: /^Tool runner said/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    const text = container.querySelector('.cinder-approval-card__said-text') as HTMLElement;
+    expect(text.textContent).toBe(said);
+    expect(text.hasAttribute('data-cinder-open')).toBe(false);
+
+    await fireEvent.click(toggle);
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(text.hasAttribute('data-cinder-open')).toBe(true);
+    expect(toggle.getAttribute('aria-controls')).toBe(text.id);
+    const ask = container.querySelector('.cinder-approval-card__detail-ask') as HTMLElement;
+    const tool = container.querySelector('.cinder-approval-card__detail-tool') as HTMLElement;
+    const line = container.querySelector('.cinder-approval-card__said') as HTMLElement;
+    expect(ask.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('says nothing about what was said when the source said nothing', () => {
+    const { container } = render(ApprovalCard, { props: detail() });
+
+    expect(container.querySelector('.cinder-approval-card__said')).toBeNull();
+  });
+});
+
+describe('ApprovalCard failure message', () => {
+  for (const layout of ['row', 'card', 'detail'] as const) {
+    test(`${layout}: is a tinted, bordered danger Alert with the summary in bold`, () => {
+      const { getByRole } = render(ApprovalCard, {
+        props: refundRow({
+          layout,
+          failure: { summary: "Couldn't deny.", detail: "Interborough couldn't reach the agent." },
+        }),
+      });
+
+      const alert = getByRole('alert');
+      expect(alert.classList.contains('cinder-alert')).toBe(true);
+      expect(alert.classList.contains('cinder-approval-card__failure')).toBe(true);
+      expect(alert.getAttribute('data-cinder-variant')).toBe('danger');
+      expect(alert.querySelector('strong')?.textContent).toBe("Couldn't deny.");
+      expect(squash(alert.textContent)).toBe(
+        "Couldn't deny. Interborough couldn't reach the agent.",
+      );
+    });
+  }
+});
+
+describe('ApprovalCard Details disclosure', () => {
+  test('appears only when there is a sandbox, environment names or a snapshot to disclose', () => {
+    const bare = render(ApprovalCard, {
+      props: refundRow({ layout: 'card', sandbox: undefined, env: [], snapshotId: undefined }),
+    });
+    expect(bare.queryByRole('button', { name: 'Details' })).toBeNull();
+    cleanup();
+
+    const withSnapshot = render(ApprovalCard, {
+      props: refundRow({ layout: 'card', sandbox: undefined, env: [], snapshotId: 'snapshot-1' }),
+    });
+    expect(withSnapshot.getByRole('button', { name: 'Details' })).toBeTruthy();
+  });
+});
+
+describe('ApprovalCard answered elsewhere', () => {
+  test('replaces the card with a glyph, who decided where and when, and one sentence', () => {
+    const { container, queryByRole, getByRole } = render(ApprovalCard, {
+      props: refundRow({
+        layout: 'card',
+        state: 'approved',
+        decidedBy: 'you',
+        decidedIn: 'Reviews',
+        decidedAt: '2026-11-02T10:44:00.000Z',
+        notice: "The run is continuing, so this page changed. You don't need to do anything here.",
+      }),
+    });
+
+    const article = getByRole('article', { name: 'Approved by you in Reviews at 10:44 AM' });
+    expect(article.classList.contains('cinder-approval-card--elsewhere')).toBe(true);
+    expect(article.querySelector('svg')).not.toBeNull();
+    expect(
+      squash(container.querySelector('.cinder-approval-card__elsewhere-body')?.textContent),
+    ).toBe(
+      "Refund order 4471 for $42.00 · Issue refund. The run is continuing, so this page changed. You don't need to do anything here.",
+    );
+    // Nothing of the card is left to answer or read: no input, no details, no buttons.
+    expect(container.querySelector('.cinder-payload-inspector')).toBeNull();
+    expect(queryByRole('button')).toBeNull();
+    expect(container.querySelector('.cinder-approval-card__readonly-summary')).toBeNull();
+  });
+
+  test('a decision made here still draws the whole card', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        layout: 'card',
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:44:00.000Z',
+      }),
+    });
+
+    expect(container.querySelector('.cinder-approval-card--elsewhere')).toBeNull();
+    expect(container.querySelector('.cinder-payload-inspector')).not.toBeNull();
+  });
+});
+
+describe('ApprovalCard decided row order', () => {
+  test('reads the question, the tool line, the input and then the decision', () => {
+    const { container } = render(ApprovalCard, {
+      props: refundRow({
+        layout: 'row',
+        tool: { name: 'create-workflow', risk: 'medium' },
+        state: 'approved',
+        decidedBy: 'you',
+        decidedAt: '2026-11-02T10:42:00.000Z',
+        onResolve: undefined,
+      }),
+    });
+
+    const order = [
+      '.cinder-approval-card__row-question',
+      '.cinder-approval-card__line',
+      '.cinder-approval-card__decided-input',
+      '.cinder-approval-card__outcome',
+    ].map((selector) => container.querySelector(selector));
+    for (const [index, element] of order.entries()) {
+      expect(element, `missing ${index}`).not.toBeNull();
+      const next = order[index + 1];
+      if (element !== null && next !== undefined && next !== null) {
+        expect(
+          element.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
+    }
+    expect(container.querySelector('.cinder-approval-card__tool-label')).toBeNull();
   });
 });

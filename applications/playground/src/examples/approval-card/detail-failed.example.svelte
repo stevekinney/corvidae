@@ -11,7 +11,10 @@
 <ApprovalCard
   layout="detail"
   question="Refund order 4471 for $42.00?"
-  source="Tool runner in Please refund order 4471, it arrived damaged."
+  source="Tool runner"
+  sourceHref="#tool-runner"
+  sourceIn="Please refund order 4471, it arrived damaged."
+  sourceInHref="#chat"
   requestedAt="2026-11-02T10:38:00.000Z"
   now={new Date('2026-11-02T10:42:00.000Z')}
   inputLabel="Input"

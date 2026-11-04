@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Refund approval card';
   export const description =
-    'The card follows the approval-row rules on a neutral raised surface: who asked and when, the wrapping question, the tool with its identifier small and monospaced, muted "Dangerous \u00b7 Can\'t be undone", then the effect line. The arguments sit under "Runs with", a note field is sent with both Approve and Deny, and a footnote says what happens once you decide.';
+    'The card follows the approval-row rules on a neutral raised surface: who asked and when, the wrapping question, the tool with its identifier small and monospaced, muted "Dangerous · Can\'t be undone", then the effect line. The arguments sit under "Runs with" and a note field is sent with both Approve and Deny.';
 </script>
 
 <script lang="ts">
@@ -15,7 +15,6 @@
   now={new Date('2026-11-02T10:42:00.000Z')}
   consequence="Refunds $42.00 to the original payment method for order 4471, which arrived damaged."
   inputLabel="Runs with"
-  footnote="Once you decide, Tool runner continues when a provider is connected."
   tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}
   operation={{
     kind: 'other',

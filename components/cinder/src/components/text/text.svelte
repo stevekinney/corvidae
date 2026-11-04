@@ -96,8 +96,8 @@
       probe.style.cssText =
         'position:absolute;visibility:hidden;white-space:pre;pointer-events:none';
       node.append(probe);
-      const width = fitMiddleHead(characters, available, (text) => {
-        probe.textContent = text;
+      const width = fitMiddleHead(characters, available, (candidate) => {
+        probe.textContent = candidate;
         return probe.getBoundingClientRect().width;
       });
       probe.remove();

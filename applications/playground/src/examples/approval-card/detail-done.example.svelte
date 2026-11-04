@@ -11,7 +11,9 @@
 <ApprovalCard
   layout="detail"
   question="Refund order 4472 for $18.50?"
-  source="Tool runner in Please refund order 4471, it arrived damaged."
+  source="Tool runner"
+  sourceIn="Please refund order 4471, it arrived damaged."
+  sourceInHref="#chat"
   tool={{ name: 'issue-refund', label: 'Issue refund', risk: 'high', irreversible: true }}
   operation={{
     kind: 'other',
@@ -22,5 +24,6 @@
   state="approved"
   decidedBy="you"
   decidedAt="2026-11-02T10:33:00.000Z"
+  now={new Date('2026-11-02T12:00:00.000Z')}
   result="Refunded $18.50 to the original card."
 />

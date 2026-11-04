@@ -25,7 +25,7 @@
   {#snippet children()}
     <ApprovalCard
       layout="row"
-      tool={{ name: 'create-workflow', label: 'Create workflow', risk: 'medium' }}
+      tool={{ name: 'create-workflow', risk: 'medium' }}
       question={'Create workflow "Morning briefing"?'}
       operation={{
         kind: 'other',

@@ -22,8 +22,8 @@
     approvalState: ApprovalState;
     /** The question the approval asks. */
     question: string;
-    /** Who asked. */
-    source: string | undefined;
+    /** Who asked, already written with its prefix: "Approval from Tool runner". */
+    sourceText: string | undefined;
     /** When it was asked, already written as relative time. */
     requestedText: string | undefined;
     /** The ISO form of the time it was asked, for the `datetime` attribute. */
@@ -91,7 +91,7 @@
     tool,
     approvalState,
     question,
-    source,
+    sourceText,
     requestedText,
     requestedIso,
     consequence,
@@ -147,7 +147,6 @@
   const actionsOff = $derived(disabledReason !== undefined || isBusy);
   const riskLabel = $derived(RISK_LABELS[tool.risk]);
   const riskWord = $derived(RISK_WORDS[tool.risk]);
-  const sourceText = $derived(source === undefined ? undefined : `Approval from ${source}`);
   const hasSourceLine = $derived(sourceText !== undefined || requestedText !== undefined);
   const hasInput = $derived(inputBody !== undefined);
   const rememberLabel = $derived(
@@ -185,22 +184,30 @@
         {#if tool.label !== undefined}<span class="cinder-approval-card__tool-label"
             >{tool.label}</span
           >{' '}{/if}<span class="cinder-approval-card__line-facts"
-          ><code class="cinder-approval-card__tool-identifier">{tool.name}</code>
-          <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-          <span class="cinder-approval-card__risk-word">{riskWord}</span>
-          {#if tool.irreversible}
-            <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-            <span class="cinder-approval-card__undone">Can't be undone</span>
-          {/if}</span
+          ><span class="cinder-approval-card__keep"
+            ><code class="cinder-approval-card__tool-identifier">{tool.name}</code>{' '}<span
+              class="cinder-approval-card__separator"
+              aria-hidden="true">·</span
+            ></span
+          >{' '}<span class="cinder-approval-card__keep"
+            ><span class="cinder-approval-card__risk-word">{riskWord}</span
+            >{#if tool.irreversible}{' '}<span
+                class="cinder-approval-card__separator"
+                aria-hidden="true">·</span
+              >{/if}</span
+          >{#if tool.irreversible}{' '}<span class="cinder-approval-card__undone"
+              >Can't be undone</span
+            >{/if}</span
         >
       </span>
       {#if hasSourceLine}
         <span class="cinder-approval-card__line-source">
           <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-          {#if sourceText !== undefined}<span>{sourceText}</span>{/if}
-          {#if sourceText !== undefined && requestedText !== undefined}
-            <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
-          {/if}
+          {#if sourceText !== undefined}<span>{sourceText}</span
+            >{#if requestedText !== undefined}{'\u00a0'}<span
+                class="cinder-approval-card__separator cinder-approval-card__time-separator"
+                aria-hidden="true">·</span
+              >{/if}{/if}
           {#if requestedText !== undefined}
             <time datetime={requestedIso}>{requestedText}</time>
           {/if}
@@ -219,15 +226,6 @@
 </div>
 
 {#if isDecided}
-  {#if outcomeText !== undefined}
-    <ApprovalCardOutcome
-      {outcomeText}
-      {outcomeTime}
-      tone={outcomeTone}
-      {decisionNote}
-      {decisionNoteCaption}
-    />
-  {/if}
   {#if inputPairs.length > 0}
     <p class="cinder-approval-card__input-summary cinder-approval-card__decided-input">
       <span class="cinder-approval-card__input-word">{inputLabel}</span>
@@ -239,6 +237,15 @@
         >{' '}
       {/each}
     </p>
+  {/if}
+  {#if outcomeText !== undefined}
+    <ApprovalCardOutcome
+      {outcomeText}
+      {outcomeTime}
+      tone={outcomeTone}
+      {decisionNote}
+      {decisionNoteCaption}
+    />
   {/if}
   {#if result !== undefined}
     <p class="cinder-approval-card__result">

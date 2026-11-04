@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  describeDecisionTime,
   describeExpiry,
   RISK_WORDS,
   STATE_DOT_STATUS,
@@ -74,6 +75,26 @@ describe('describeExpiry', () => {
   test('says when the approval expired, with the time zone, in one sentence', () => {
     expect(describeExpiry(Date.parse('2026-11-02T10:15:00.000Z'))).toMatch(
       /^This approval expired at 10:15 AM \w+, the time its request set\.$/,
+    );
+  });
+});
+
+describe('describeDecisionTime', () => {
+  const now = new Date('2026-11-02T12:00:00.000Z');
+
+  test('says today for a decision made on the same day', () => {
+    expect(describeDecisionTime(new Date('2026-11-02T10:33:00.000Z'), now)).toBe('10:33 AM today');
+  });
+
+  test('says yesterday for the day before', () => {
+    expect(describeDecisionTime(new Date('2026-11-01T16:12:00.000Z'), now)).toBe(
+      '4:12 PM yesterday',
+    );
+  });
+
+  test('names the day for anything older', () => {
+    expect(describeDecisionTime(new Date('2026-10-28T09:05:00.000Z'), now)).toBe(
+      '9:05 AM on Wed Oct 28',
     );
   });
 });
