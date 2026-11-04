@@ -149,7 +149,9 @@ describe('run-step-timeline generated schema', () => {
       .flatMap((match) => [...(match[1] ?? '').matchAll(/^ {2}(\w+)\??:/gm)])
       .map((match) => match[1]);
     const stepSchema = (
-      schema as { properties: { steps: { items: { anyOf: { properties: object }[] } } } }
+      schema as unknown as {
+        properties: { steps: { items: { anyOf: { properties: object }[] } } };
+      }
     ).properties.steps.items.anyOf[0];
     const properties = Object.keys(stepSchema?.properties ?? {});
 
