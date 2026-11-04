@@ -43,10 +43,12 @@
     workflowViewInstance,
   } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
-  import { anyScopeReason, getPrincipalStore } from '../lib/scopes.svelte.ts';
+  import { getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
   import { CHAT_COPY, CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
   import FirstRunChecklist from './first-run-checklist.svelte';
+  import ForbiddenState from './forbidden-state.svelte';
+  import NotFoundState from './not-found-state.svelte';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
   import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
@@ -212,14 +214,15 @@
     wasCreating = now;
   });
 
-  const forbiddenDescription = $derived(
-    forbiddenCopy !== undefined
-      ? forbiddenCopy.description
-      : definition.scopes.length > 0
-        ? anyScopeReason(...definition.scopes)
-        : 'This view is not available to the current principal.',
-  );
+  // The title says which view is locked. The scope that would open it is named small beneath: the
+  // engine scopes the view is gated on (any one opens it), else the scope the Bureau needs for the
+  // view's data, else nothing, because a refusal that names no scope is not guessed at.
   const forbiddenTitle = $derived(forbiddenCopy?.title ?? copy.forbidden.title);
+  const forbiddenRequirement = $derived(
+    definition.scopes.length > 0
+      ? definition.scopes.join(' or ')
+      : (forbiddenCopy?.requirement ?? copy.forbidden.requirement),
+  );
 
   function navigateTo(event: MouseEvent, href: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
@@ -307,11 +310,10 @@
       {/snippet}
     </EmptyState>
   {:else if state === 'not-found' && notFoundCopy}
-    <ErrorState
-      variant="flat"
+    <NotFoundState
       title={notFoundCopy.title}
       description={notFoundCopy.description}
-      headingLevel={1}
+      view={initial.view}
     />
   {:else if state === 'error'}
     <ErrorState
@@ -332,11 +334,6 @@
       onRetry={() => void probeQuery.refetch()}
     />
   {:else}
-    <ErrorState
-      variant="flat"
-      title={forbiddenTitle}
-      description={forbiddenDescription}
-      headingLevel={1}
-    />
+    <ForbiddenState title={forbiddenTitle} requirement={forbiddenRequirement} />
   {/if}
 </div>

@@ -25,7 +25,7 @@ import {
   type WorkflowStub,
   type World,
 } from '../lib/workflow-world.test-support.ts';
-import { FIRST_RUN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { FIRST_RUN_COPY, FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
@@ -303,7 +303,7 @@ describe('every view, in every state', () => {
       const { requests } = stub(view, 'content');
       const { container, unmount } = mount(view, { scopes: [] });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain(`Requires ${VIEWS[view].scopes.join(' or ')}`);
+      expect(container.textContent).toContain(`requires ${VIEWS[view].scopes.join(' or ')}`);
       expect(requests).toEqual([]);
       unmount();
       restore?.();
@@ -341,7 +341,7 @@ describe('the Health view', () => {
     const { requests } = stub('health', 'content');
     const { container } = mount('health', { scopes: ['schedules:read'] });
     expect(frame(container).dataset['state']).toBe('forbidden');
-    expect(container.textContent).toContain('Requires system:read or workflows:read');
+    expect(container.textContent).toContain('requires system:read or workflows:read');
     expect(requests).toEqual([]);
   });
 });
@@ -767,7 +767,7 @@ describe('an agent’s memory page, under the Agents view', () => {
 
     expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
     expect(container.textContent).toContain('bureau.memory:read');
-    expect(container.textContent).toContain(words?.description ?? '');
+    expect(container.textContent).toContain(FORBIDDEN_COPY.description);
     expect(frame(container).dataset['state']).toBe('forbidden');
     expect(words?.title).not.toBe(copy.forbidden.title);
   });
@@ -844,7 +844,7 @@ describe('the Workflows area', () => {
       const stub = world();
       const { container } = mount('workflows', { scopes: [], parameters, pattern });
       expect(frame(container).dataset['state']).toBe('forbidden');
-      expect(container.textContent).toContain('Requires workflows:read');
+      expect(container.textContent).toContain('requires workflows:read');
       expect(stub.calls).toEqual([]);
     });
 

@@ -341,7 +341,7 @@ test('a view the principal lacks the scopes for is forbidden without a probe req
   await page.goto('/health/storage');
   const frame = page.locator('[data-view="storage"]');
   await expect(frame).toHaveAttribute('data-state', 'forbidden');
-  await expect(frame).toContainText('Requires storage:admin');
+  await expect(frame).toContainText('requires storage:admin');
 });
 
 /** The engine reads behind Health's two engine counts and its health line, which the faulted case refuses. */
@@ -465,7 +465,10 @@ for (const width of WIDTHS) {
     await expect(frame).toHaveAttribute('data-state', 'not-found');
     await expect(frame.getByRole('heading', { level: 1 })).toHaveText(NOT_FOUND_ROUTE_COPY.title);
     await expect(frame).toContainText(NOT_FOUND_ROUTE_COPY.description);
-    await expect(frame.locator('code')).toHaveText('/nonsense/route');
+    await expect(frame.locator('.cinder-empty-state-action > *')).toHaveText([
+      'Back to Home',
+      'Search everything',
+    ]);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
@@ -476,8 +479,36 @@ for (const width of WIDTHS) {
     });
     await checkA11y(`not-found route at ${width}px`);
 
-    await frame.getByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label }).click();
-    await expect(page).toHaveURL(/\/chats$/);
+    await frame.getByRole('link', { name: 'Back to Home' }).click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test(`a run that does not exist is the not-found page, with Runs › Not found for a breadcrumb, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // The run page asks the workflow engine for a run the Bureau does not know, and it says no.
+    pageErrors.expectEvery({
+      pattern: loggedFailedResponse(404, /\/v1\/workflows\/no-such-run/),
+      reason: 'the engine has no run called no-such-run',
+    });
+    await page.goto('/runs/no-such-run');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('This run doesn’t exist');
+    await expect(page.getByText(NOT_FOUND_ROUTE_COPY.description)).toBeVisible();
+    await expect(page.locator('main').getByRole('link', { name: 'Back to Runs' })).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('button', { name: 'Search everything' }),
+    ).toBeVisible();
+    // The breadcrumb names the missing run in words: Runs › Not found.
+    await expect(page.locator('header.weft-shell-topbar')).toContainText('Not found');
+    await captureForDesignReview(page, {
+      route: '/runs/no-such-run',
+      state: 'not-found',
+      source: '15-view-states.spec.ts',
+    });
+    await checkA11y(`a run that does not exist at ${width}px`);
   });
 
   test(`the not-found page keeps the sidebar at ${width} pixels`, async ({ page }) => {

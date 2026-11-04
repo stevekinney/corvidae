@@ -31,6 +31,7 @@
 
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import NotFoundState from '../../app/not-found-state.svelte';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
@@ -168,16 +169,11 @@
       onRetry={() => void detailQuery.refetch()}
     />
   {:else if detailQuery.data === null}
-    <EmptyState
-      kind="first-use"
+    <NotFoundState
       title={copy.notFound.title}
       description={copy.notFound.description}
-      headingLevel={1}
-    >
-      {#snippet action()}
-        <Button variant="secondary" onclick={backToList}>{SCHEDULE_COPY.backToList}</Button>
-      {/snippet}
-    </EmptyState>
+      view="schedules"
+    />
   {:else}
     {@const schedule = detailQuery.data}
     {@const target = { schedule, kind: kindOf(schedule, overlay.data) } satisfies Target}

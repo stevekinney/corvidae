@@ -803,22 +803,6 @@ body:has(.weft-shell[data-connection='unreachable'])
   margin-inline-end: var(--cinder-space-2);
 }
 
-/* The address that matched nothing, above the way back. It wraps so a long one never scrolls. */
-.weft-not-found__action {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-3, 0.75rem);
-  align-items: flex-start;
-  max-width: 100%;
-  margin-block-start: var(--cinder-space-3, 0.75rem);
-}
-
-.weft-not-found__path {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  color: var(--cinder-text-muted);
-}
-
 /* The quick settings popover (design row 02y): a title, then one row for each preference with its
  * name before its control, then the link to every setting under a rule. Cinder's popover pads its
  * panel, so the panel carries no padding and the rows run to the rule's edge. */

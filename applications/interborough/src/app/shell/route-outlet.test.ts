@@ -92,18 +92,23 @@ describe('the route outlet', () => {
     const frame = container.querySelector('.weft-view');
     expect(frame?.getAttribute('data-view')).toBe('not-found');
     expect(frame?.getAttribute('data-state')).toBe('not-found');
-    expect(container.textContent).toContain('/nowhere');
     expect(container.textContent).toContain(NOT_FOUND_ROUTE_COPY.description);
   });
 
-  test('offers a way back to the chat list from an address no route owns', async () => {
+  test('offers two secondary buttons, a way back to Home and search, and no primary one', async () => {
     restore = installFetchImplementation(async () => Response.json({}));
     landAt('/nowhere');
-    const { findByRole } = mount();
-    const link = await findByRole('link', { name: NOT_FOUND_ROUTE_COPY.action.label });
-    expect(link.getAttribute('href')).toBe('/chats');
+    const { container, findByRole } = mount();
+    const link = await findByRole('link', { name: 'Back to Home' });
+    expect(link.getAttribute('href')).toBe('/');
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Back to Home',
+      'Search everything',
+    ]);
+    expect(container.querySelector('[data-cinder-variant="primary"]')).toBeNull();
     link.click();
-    await waitFor(() => expect(router.pathname).toBe('/chats'));
+    await waitFor(() => expect(router.pathname).toBe('/'));
   });
 
   test('is the page’s one main landmark, whatever the route renders', async () => {

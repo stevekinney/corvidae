@@ -57,6 +57,7 @@
   import PluginProblemsBanner from './plugin-problems-banner.svelte';
   import RouteOutlet from './route-outlet.svelte';
   import ShortcutMap from './shortcut-map.svelte';
+  import { provideSearchOpener } from './search-opener.ts';
   import { provideShellNavigation, ShellNavigation } from './shell-navigation.svelte.ts';
   import Sidebar from './sidebar.svelte';
   import Topbar from './topbar.svelte';
@@ -179,6 +180,8 @@
 
   let shortcutMapOpen = $state(false);
   let paletteOpen = $state(false);
+  // A page under the shell, such as the not-found page, can offer to search (`./search-opener.ts`).
+  provideSearchOpener(() => (paletteOpen = true));
 
   $effect(() =>
     registerShellShortcuts(shortcuts, {

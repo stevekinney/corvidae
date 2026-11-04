@@ -9,12 +9,13 @@
    */
   import type { Component } from 'svelte';
 
-  import { Button, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { ErrorState, Skeleton } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
   import { clearChunkReloadGuard, reloadOnceForMissingChunk } from './chunk-reload.ts';
   import FaultBoundary from '../fault-boundary.svelte';
+  import NotFoundState from '../not-found-state.svelte';
   import ViewFrame from '../view-frame.svelte';
   import { pageWidth } from '../views.ts';
 
@@ -28,14 +29,6 @@
   // to the query string, or a page that asked to be kept, `router.navigate`'s `keep`) is not a
   // new page: it must not unmount what is on screen.
   let loadedKey: string | undefined;
-
-  function goToChats(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(NOT_FOUND_ROUTE_COPY.action.href);
-  }
 
   $effect(() => {
     const match = router.current;
@@ -112,22 +105,7 @@
   <FaultBoundary>
     {#if notFound}
       <div class="weft-view" data-view="not-found" data-state="not-found">
-        <ErrorState
-          variant="flat"
-          title={NOT_FOUND_ROUTE_COPY.title}
-          description={NOT_FOUND_ROUTE_COPY.description}
-          headingLevel={1}
-        />
-        <div class="weft-not-found__action">
-          <code class="ib-identifier weft-not-found__path">{router.pathname}</code>
-          <Button
-            variant="primary"
-            href={router.href(NOT_FOUND_ROUTE_COPY.action.href)}
-            onclick={goToChats}
-          >
-            {NOT_FOUND_ROUTE_COPY.action.label}
-          </Button>
-        </div>
+        <NotFoundState title={NOT_FOUND_ROUTE_COPY.title} />
       </div>
     {:else if loadFailed}
       <div class="weft-view" data-state="error" data-view="route">

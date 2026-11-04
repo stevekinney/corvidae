@@ -16,7 +16,7 @@
 
   import { router } from '../../lib/router.svelte.ts';
   import { breadcrumbTrail } from '../breadcrumbs.svelte.ts';
-  import { NAVIGATION_COPY, PALETTE_COPY, VIEW_COPY } from '../copy.ts';
+  import { NAVIGATION_COPY, NOT_FOUND_COPY, PALETTE_COPY, VIEW_COPY } from '../copy.ts';
   import type { LayoutPreferences } from '../layout-preferences.svelte.ts';
   import type { NotificationStore } from '../notifications.svelte.ts';
   import type { ThemeStore } from '../theme.svelte.ts';
@@ -35,15 +35,17 @@
 
   const shell = getShellNavigation();
 
-  // The trail for the page on screen. An address no route names, such as the not-found page,
-  // falls back to the view's name, and to the product's name when there is no view either.
+  // The trail for the page on screen. An address no route owns reads in words, as the leading
+  // pages it does match and then "Not found" (Runs › Not found); one that matches none is only
+  // "Not found".
   const trail = $derived.by(() => {
-    const items = breadcrumbTrail(router.pathname);
-    if (items.length > 0) {
-      return items.map((item) =>
-        item.href === undefined ? item : { ...item, href: router.href(item.href) },
-      );
-    }
+    const unmatched = router.current.route === null;
+    const items = breadcrumbTrail(router.pathname, undefined, undefined, !unmatched);
+    const linked = items.map((item) =>
+      item.href === undefined ? item : { ...item, href: router.href(item.href) },
+    );
+    if (unmatched) return [...linked, { label: NOT_FOUND_COPY.breadcrumb }];
+    if (linked.length > 0) return linked;
     const view = router.current.route?.view;
     return [{ label: view === undefined ? 'Interborough' : VIEW_COPY[view].label }];
   });

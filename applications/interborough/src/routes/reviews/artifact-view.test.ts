@@ -24,6 +24,16 @@ describe('ArtifactView', () => {
     expect(container.querySelector('strong')?.textContent).toBe('bold');
   });
 
+  test('gives rendered Markdown Cinder’s paragraph rhythm, so paragraphs do not run together', () => {
+    const { container } = render(ArtifactView, {
+      props: { value: { markdown: 'First paragraph.\n\nSecond paragraph.' } },
+    });
+    expect(container.querySelector('.weft-artifact-markdown')?.classList).toContain(
+      'cinder-markdown-content',
+    );
+    expect(container.querySelectorAll('p')).toHaveLength(2);
+  });
+
   test('sanitizes a script tag out of markdown content', async () => {
     const { container } = render(ArtifactView, {
       props: { value: { markdown: 'Hello <script>window.__pwned = true</script>' } },

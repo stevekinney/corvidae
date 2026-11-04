@@ -12,6 +12,12 @@ export type ViewEmptyCopy = ViewStateCopy & {
   readonly action?: { readonly label: string; readonly href: string };
 };
 
+/** The words for a view's forbidden page: its title, and the scope that opens it when it is known. */
+export type ViewForbiddenCopy = {
+  readonly title: string;
+  readonly requirement?: string;
+};
+
 export type ViewCopy = {
   /** The name of the view in navigation and headings. */
   readonly label: string;
@@ -19,7 +25,12 @@ export type ViewCopy = {
   /** Absent for a view that is never empty (`views.ts`, `canBeEmpty`). */
   readonly empty?: ViewEmptyCopy;
   readonly error: ViewStateCopy;
-  readonly forbidden: Pick<ViewStateCopy, 'title'>;
+  /**
+   * The words for a locked view: the title ("Your sign-in can’t open Hooks") and, when the missing
+   * scope is known, the scope that opens it, which the page shows small and monospaced as
+   * "requires bureau.hooks:read".
+   */
+  readonly forbidden: ViewForbiddenCopy;
   /** Present only for a view that opens one item by its address. */
   readonly notFound?: ViewStateCopy;
   /** The words for a route of the view whose missing thing is not the one `notFound` names. */
@@ -34,7 +45,7 @@ export type ViewCopy = {
    * The words for a route of the view whose lock is not a scope the principal lacks: the server
    * said no, and says in these words why.
    */
-  readonly forbiddenByPattern?: Readonly<Record<string, ViewStateCopy>>;
+  readonly forbiddenByPattern?: Readonly<Record<string, ViewForbiddenCopy>>;
 };
 
 /** The words the run detail page (`/runs/:run`) uses for its attributes, streams and updates. */
@@ -304,13 +315,40 @@ export const ROUTE_LOAD_FAILURE_COPY = {
 } as const;
 
 /**
+ * The words every not-found page shares (design rows 12x and 12y): the sentence under the title,
+ * the breadcrumb that replaces the missing thing's name, and the two secondary buttons. The title
+ * names the thing ("This run doesn’t exist") and is each view's own.
+ */
+export const NOT_FOUND_COPY = {
+  description: 'It may have been deleted. The address might also be mistyped.',
+  /** The last part of the breadcrumb, in words: Runs › Not found. */
+  breadcrumb: 'Not found',
+  /** The name of the button that returns to the list the missing thing belonged to. */
+  back: (label: string): string => `Back to ${label}`,
+  search: 'Search everything',
+} as const;
+
+/**
  * The words for an address no route matches. It is not one of a view's states: no view owns the
- * address, so the outlet shows this in its own frame (`data-view="not-found"`).
+ * address, so the outlet shows this in its own frame (`data-view="not-found"`), and it leads back
+ * to Home.
  */
 export const NOT_FOUND_ROUTE_COPY = {
-  title: 'This page does not exist',
-  description: 'That address is not a page in Interborough.',
-  action: { label: 'Go to chats', href: '/chats' },
+  title: 'This page doesn’t exist',
+  description: NOT_FOUND_COPY.description,
+} as const;
+
+/**
+ * The words every forbidden page shares (design rows 12z and 13a): the sentence under the title,
+ * which points at the page that shows what the session may do, and the two secondary buttons.
+ * There is no request-access button, because single-user v1 has no such flow.
+ */
+export const FORBIDDEN_COPY = {
+  /** The title of a view that is locked: "Your sign-in can’t open Hooks". */
+  title: (label: string): string => `Your sign-in can’t open ${label}`,
+  description: 'Settings › API reference › Your scopes shows what it can do.',
+  scopes: { label: 'See your scopes', href: '/settings/api-reference?group=scopes' },
+  home: 'Back to Home',
 } as const;
 
 /** The words for a reasoning effort, from least to most: the agent editor, the agent page and Model policy say them alike. */
@@ -1136,8 +1174,8 @@ export const SCHEDULE_COPY = {
     loadFailed: 'The schedule could not be loaded',
     locked: { title: 'Schedule is locked' },
     notFound: {
-      title: 'Schedule not found',
-      description: 'No schedule with this address exists. It may have been cancelled and purged.',
+      title: 'This schedule doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     onSwitch: 'On',
     onSwitchLabel: 'Schedule on',
@@ -3514,9 +3552,8 @@ export const TASK_COPY = {
   goalAttemptNoteBureauOnly: 'A goal made this run, so there is no task for it.',
   /** A run the Bureau does not know, to a caller who may not read the engine either. */
   notFound: {
-    title: 'This run was not found',
-    description:
-      'It may have been removed, or it may belong to someone else. Open a run from the list.',
+    title: 'This run doesn’t exist',
+    description: NOT_FOUND_COPY.description,
   },
   engineOnlyNote:
     'There is no task for this run. The sections below show what the workflow recorded.',
@@ -4265,7 +4302,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Home is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Home is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Home') },
   },
   chat: {
     label: 'Chat',
@@ -4283,17 +4320,16 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Chat is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Chat is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Chat'), requirement: 'bureau.contexts:read' },
     notFound: {
-      title: 'This conversation was not found',
-      description:
-        'It may have been deleted, or it may belong to someone else. Open a conversation from the list.',
+      title: 'This conversation doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     // A new chat is for an agent, and it is the agent that is missing.
     notFoundByPattern: {
       '/chats/new': {
-        title: 'This agent was not found',
-        description: 'It may have been deleted. Choose an agent from the list to start a chat.',
+        title: 'This agent doesn’t exist',
+        description: NOT_FOUND_COPY.description,
       },
     },
     // A new chat with no `?agent=` starts with the first agent that can run; with none, there is
@@ -4321,10 +4357,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Agents are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Agents are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Agents'), requirement: 'bureau.agents:read' },
     notFound: {
-      title: 'This agent was not found',
-      description: 'It may have been deleted. Open one from the list.',
+      title: 'This agent doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     // An agent's memory page (`/agents/:agent/memories`) asks the Bureau for what the agent remembers.
     loadingByPattern: {
@@ -4342,9 +4378,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     forbiddenByPattern: {
       '/agents/:agent/memories': {
-        title: 'Memory is locked',
-        description:
-          'Reading what an agent remembers needs the bureau.memory:read scope, even for your own chats. Ask whoever runs this installation to grant it.',
+        title: FORBIDDEN_COPY.title('this agent’s memory'),
+        // Memory is the one kind a credential does not reach by owning it, even for your own chats.
+        requirement: 'bureau.memory:read',
       },
     },
   },
@@ -4358,9 +4394,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The agent editor is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The agent editor is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('the agent editor') },
     notFound: {
-      title: 'This agent was not found',
+      title: 'This agent doesn’t exist',
       description:
         'There is no agent with this identifier that you can edit. It may have been deleted, or it may be defined in code, which cannot be edited here.',
     },
@@ -4381,15 +4417,14 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Workflows are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Workflows are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Workflows') },
     notFound: {
-      title: 'This workflow was not found',
-      description:
-        'It may have been deleted, or its file may be gone. Open a workflow from the list.',
+      title: 'This workflow doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
     notFoundByPattern: {
       '/workflows/:workflow/edit': {
-        title: 'This workflow was not found',
+        title: 'This workflow doesn’t exist',
         description:
           'There is no workflow file with this name that you can edit. It may have been deleted, or it may be defined in code, which cannot be edited here.',
       },
@@ -4413,7 +4448,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Runs are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Runs are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Runs'), requirement: 'bureau.tasks:read' },
   },
   schedules: {
     label: 'Schedules',
@@ -4427,7 +4462,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Schedules are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Schedules are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Schedules') },
   },
   reviews: {
     label: 'Reviews',
@@ -4439,7 +4474,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Reviews are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Reviews are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Reviews'), requirement: 'bureau.reviews:read' },
   },
   workers: {
     label: 'Workers',
@@ -4451,7 +4486,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Workers are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Workers are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Workers') },
   },
   storage: {
     label: 'Storage',
@@ -4463,7 +4498,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Storage is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Storage is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Storage') },
   },
   audit: {
     label: 'Audit log',
@@ -4479,7 +4514,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The audit trail is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The audit trail is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('the audit log'), requirement: 'bureau.audit:read' },
   },
   settings: {
     label: 'Settings',
@@ -4491,7 +4526,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Settings are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Settings are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Settings'), requirement: 'bureau.settings:read' },
   },
   capabilities: {
     label: 'Capabilities',
@@ -4503,7 +4538,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Capabilities are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Capabilities are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Capabilities') },
   },
   goals: {
     label: 'Goals',
@@ -4518,10 +4553,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Goals are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Goals are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Goals'), requirement: 'bureau.goals:read' },
     notFound: {
-      title: 'This goal was not found',
-      description: 'It may belong to someone else. Open a goal from the list.',
+      title: 'This goal doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
   },
   hooks: {
@@ -4537,10 +4572,10 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'Hooks are unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'Hooks are locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'bureau.hooks:read' },
     notFound: {
-      title: 'This hook was not found',
-      description: 'It may belong to someone else, or it was deleted. Open a hook from the list.',
+      title: 'This hook doesn’t exist',
+      description: NOT_FOUND_COPY.description,
     },
   },
   health: {
@@ -4550,7 +4585,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'The server is unavailable',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The health overview is locked' },
+    forbidden: { title: FORBIDDEN_COPY.title('Health') },
   },
 };
 

@@ -69,7 +69,7 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'does-not-exist' },
       });
 
-      await waitFor(() => expect(getByText('Schedule not found')).not.toBeNull());
+      await waitFor(() => expect(getByText('This schedule doesn’t exist')).not.toBeNull());
     } finally {
       await server.stop();
     }

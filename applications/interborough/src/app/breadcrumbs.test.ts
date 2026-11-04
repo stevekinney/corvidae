@@ -15,6 +15,21 @@ import { routes } from './routes.ts';
 const NONE = new Map<string, string>();
 
 describe('the breadcrumb trail', () => {
+  test('an address no route owns links every part it does match, so “Not found” can follow', () => {
+    expect(breadcrumbTrail('/runs', NONE, routes, false)).toEqual([
+      { label: 'Runs', href: '/runs' },
+    ]);
+    expect(breadcrumbTrail('/nowhere', NONE, routes, false)).toEqual([]);
+  });
+
+  test('a page the missing thing belonged to reads Runs › Not found once the page says so', () => {
+    const labels = new Map([['/runs/missing-run', 'Not found']]);
+    expect(breadcrumbTrail('/runs/missing-run', labels)).toEqual([
+      { label: 'Runs', href: '/runs' },
+      { label: 'Not found' },
+    ]);
+  });
+
   test('a top-level page is its view’s name alone', () => {
     expect(breadcrumbTrail('/agents', NONE)).toEqual([{ label: VIEW_COPY.agents.label }]);
     expect(breadcrumbTrail('/health', NONE)).toEqual([{ label: 'Health' }]);
