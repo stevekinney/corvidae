@@ -238,15 +238,14 @@ describe('scroll anchor', () => {
     const scrollYDescriptor = Object.getOwnPropertyDescriptor(window, 'scrollY');
     const scrollByDescriptor = Object.getOwnPropertyDescriptor(window, 'scrollBy');
     let scrolledBy = 0;
-    Object.defineProperty(window, 'scrollY', { configurable: true, value: 200 });
-    Object.defineProperty(window, 'scrollBy', {
-      configurable: true,
-      value: (_x: number, y: number) => {
-        scrolledBy += y;
-      },
-    });
-
     try {
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: 200 });
+      Object.defineProperty(window, 'scrollBy', {
+        configurable: true,
+        value: (_x: number, y: number) => {
+          scrolledBy += y;
+        },
+      });
       const restore = captureScrollAnchor(list);
       expect(restore).toBeDefined();
       top += 40;

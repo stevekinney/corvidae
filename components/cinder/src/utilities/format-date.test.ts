@@ -140,8 +140,9 @@ describe('formatRelativeTime', () => {
   });
 
   test('uses localized relative output for moments under a minute', () => {
-    expect(formatRelativeTime(NOW - 30_000, { ...central, locale: 'de' })).toBe('jetzt');
-    expect(formatRelativeTime(NOW, { ...central, locale: 'de' })).toBe('jetzt');
+    const expected = new Intl.RelativeTimeFormat('de', { numeric: 'auto' }).format(0, 'second');
+    expect(formatRelativeTime(NOW - 30_000, { ...central, locale: 'de' })).toBe(expected);
+    expect(formatRelativeTime(NOW, { ...central, locale: 'de' })).toBe(expected);
   });
 
   test('returns "Invalid date" for an unparseable input', () => {

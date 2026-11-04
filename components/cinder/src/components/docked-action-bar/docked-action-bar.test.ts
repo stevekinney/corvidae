@@ -9,7 +9,8 @@ setupHappyDom();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: DockedActionBar } = await import('./docked-action-bar.svelte');
 const { default: Harness } = await import('./docked-action-bar-harness.test.svelte');
-const { DOCKED_BAR_HEIGHT_PROPERTY } = await import('../../_internal/docked-bar-height.ts');
+const { DOCKED_BAR_HEIGHT_PROPERTY, trackDockedBarHeight } =
+  await import('../../_internal/docked-bar-height.ts');
 const { KEYBOARD_INSET_PROPERTY } = await import('../../_internal/keyboard-inset.ts');
 const { createRawSnippet, flushSync } = await import('svelte');
 
@@ -21,6 +22,29 @@ function textSnippet(text: string) {
 
 function rootProperty(name: string): string {
   return document.documentElement.style.getPropertyValue(name);
+}
+
+class TestResizeObserver {
+  static instances: TestResizeObserver[] = [];
+  private readonly callback: ResizeObserverCallback;
+  private readonly observed = new Set<Element>();
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    TestResizeObserver.instances.push(this);
+  }
+
+  observe(element: Element): void {
+    this.observed.add(element);
+  }
+
+  disconnect(): void {
+    this.observed.clear();
+  }
+
+  trigger(): void {
+    this.callback([], this as unknown as ResizeObserver);
+  }
 }
 
 afterEach(() => {
@@ -142,6 +166,52 @@ describe('DockedActionBar off state (row 56e)', () => {
 });
 
 describe('DockedActionBar and the page (rows 04u, 04w)', () => {
+  test('updates its published height when ResizeObserver reports a changed bar', () => {
+    const originalResizeObserver = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    let height = 71.2;
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      value: TestResizeObserver,
+    });
+    HTMLElement.prototype.getBoundingClientRect = () => ({ height }) as DOMRect;
+
+    try {
+      const bar = document.createElement('div');
+      const stop = trackDockedBarHeight(bar);
+      const observer = TestResizeObserver.instances.at(-1);
+      expect(observer).toBeDefined();
+      expect(rootProperty(DOCKED_BAR_HEIGHT_PROPERTY)).toBe('72px');
+      height = 84.1;
+      observer?.trigger();
+      expect(rootProperty(DOCKED_BAR_HEIGHT_PROPERTY)).toBe('85px');
+      stop();
+      expect(rootProperty(DOCKED_BAR_HEIGHT_PROPERTY)).toBe('');
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      if (originalResizeObserver) {
+        Object.defineProperty(globalThis, 'ResizeObserver', originalResizeObserver);
+      } else {
+        Reflect.deleteProperty(globalThis, 'ResizeObserver');
+      }
+      TestResizeObserver.instances = [];
+    }
+  });
+
+  test('returns a harmless cleanup when document is unavailable', () => {
+    const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    const bar = document.createElement('div');
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: undefined });
+
+    try {
+      const stop = trackDockedBarHeight(bar);
+      expect(() => stop()).not.toThrow();
+    } finally {
+      if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument);
+      else Reflect.deleteProperty(globalThis, 'document');
+    }
+  });
+
   test('publishes its height while mounted and removes it on unmount', async () => {
     const original = HTMLElement.prototype.getBoundingClientRect;
     HTMLElement.prototype.getBoundingClientRect = () => ({ height: 71.2 }) as DOMRect;
