@@ -261,11 +261,11 @@ describe('CodeBlock — numeric tokens (row 07s)', () => {
     expect(container.querySelector('.cinder-code-block__number')?.textContent).toBe('7');
   });
 
-  test('the stylesheet lifts a marked number from the key blue to the warning text role in dark', async () => {
+  test('the stylesheet lifts a marked number from the key blue to the warning fill in dark', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
 
     expect(css).toMatch(
-      /span\.cinder-code-block__number\[style\*='--shiki-dark:#79b8ff' i\]\s*\{\s*--shiki-dark:\s*var\(--cinder-status-warning-text\)\s*!important;/,
+      /span\.cinder-code-block__number\[style\*='--shiki-dark:#79b8ff' i\]\s*\{\s*--shiki-dark:\s*var\(--cinder-status-warning-solid\)\s*!important;/,
     );
   });
 });

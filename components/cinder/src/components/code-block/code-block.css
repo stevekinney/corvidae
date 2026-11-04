@@ -245,14 +245,16 @@
   }
 
   /* The same theme paints a number in the key blue (#79b8ff), so `{ "total": 42.0 }` reads as one
-   * hue. The design draws a number in amber, as json-highlight does (`--cinder-status-warning-text`,
-   * which clears AA on the inset). The stylesheet cannot read a token's text, so `code-block-lines.ts`
-   * marks the tokens that are numeric literals, and only a marked token painted in that blue is
-   * lifted: a number a theme paints another color is left to the theme. */
+   * hue. The design draws a number in amber, oklch(82% 0.14 75), which is the dark warning fill
+   * (`--cinder-status-warning-solid`, oklch(82% 0.156 75)); the warning text role is a pale 90%
+   * step that reads almost as the plain text beside it. The fill clears AA on the inset by a wide
+   * margin. The stylesheet cannot read a token's text, so `code-block-lines.ts` marks the tokens
+   * that are numeric literals, and only a marked token painted in that blue is lifted: a number a
+   * theme paints another color is left to the theme. */
   .cinder-code-block
     :where(pre.shiki)
     span.cinder-code-block__number[style*='--shiki-dark:#79b8ff' i] {
-    --shiki-dark: var(--cinder-status-warning-text) !important;
+    --shiki-dark: var(--cinder-status-warning-solid) !important;
   }
 
   /* Quiet icon-only copy button inside the meta row: no chip, no border, just

@@ -102,6 +102,16 @@ describe('dark code-block contrast (COR-2010 inset at 18%)', () => {
     expect(liftedDarkColors().get('#9ecbff')).toBe('--cinder-status-success-text');
   });
 
+  it('the amber a numeric literal is lifted to clears AA text on the dark inset', () => {
+    // code-block.css lifts a marked number from the key blue to this fill (row 07s).
+    expect(
+      contrastRatio(
+        wcagLuminance(readOklchToken('--cinder-status-warning-solid').dark),
+        insetLuminance,
+      ),
+    ).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
   it('Cinder text tokens clear AA text on the dark inset', () => {
     for (const token of [
       '--cinder-text-default',
