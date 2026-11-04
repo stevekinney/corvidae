@@ -11,7 +11,9 @@
  * It also owns how a managed asset crosses the boundary (COR-1547), because Conversationalist
  * names no Bureau provider. A user part that names an asset arrives as a `file` source from the
  * provider `bureau` whose `value` is the asset's id, and becomes a `managed-asset` source; a
- * stored user part leaves as the same `file` source. An assistant message holds text only in
+ * stored user part leaves as the same `file` source. The stored part carries the asset's detected
+ * media type ({@link withDetectedMediaTypes}), so the part a snapshot replays says what the file is
+ * whether or not the client said so. An assistant message holds text only in
  * AG-UI, so its assets leave in the row's `metadata`, listed under `bureau:assetParts`.
  *
  * @module ag-ui-messages
@@ -185,8 +187,8 @@ export function snapshotMessagesWithAnswers(
 
 /**
  * The row with each `file` source from the provider `bureau` turned into the `managed-asset`
- * source it names. The part keeps its `mimeType` when it carried one; the asset's own detected
- * media type is the one a model is given.
+ * source it names. The part keeps the `mimeType` it carried until the door stamps the asset's
+ * detected one ({@link withDetectedMediaTypes}); the detected one is also the one a model is given.
  */
 function withManagedAssetSources(row: Message): Message {
   if (typeof row.content === 'string') return row;
@@ -209,14 +211,22 @@ function withManagedAssetSources(row: Message): Message {
  * The rows `messages` adds to `history`: every message whose id `history` lacks.
  * A client sends its whole thread with each start, so the rows it already holds
  * are skipped, not refused. A part that names a managed asset arrives as one
- * (`managed-asset` source), so the run resolves it as the thread's owner.
+ * (`managed-asset` source), so the run resolves it as the thread's owner. Each row is stamped
+ * `createdAt` with `nowISO` when it is given (the Bureau's clock, COR-2009), so a message a person
+ * sent reads the same clock as the run that answers it.
  */
-export function rowsAddedBy(history: ConversationHistory, messages: ReadonlyArray<AgUiMessage>) {
+export function rowsAddedBy(
+  history: ConversationHistory,
+  messages: ReadonlyArray<AgUiMessage>,
+  nowISO?: () => string,
+) {
   const merged = mergeAGUIMessages(history, messages);
   const known = new Set(history.ids);
+  const createdAt = nowISO?.();
   return merged.ids
     .filter((id) => !known.has(id))
-    .map((id) => withoutReservedMetadata(withManagedAssetSources(getOwn(merged.messages, id)!)));
+    .map((id) => withoutReservedMetadata(withManagedAssetSources(getOwn(merged.messages, id)!)))
+    .map((row) => (createdAt === undefined ? row : { ...row, createdAt }));
 }
 
 /**
@@ -229,6 +239,33 @@ function withoutReservedMetadata(row: Message): Message {
   if (row.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] === undefined) return row;
   const { [MEMORY_EVIDENCE_METADATA_KEY]: _reserved, ...metadata } = row.metadata;
   return { ...row, metadata };
+}
+
+/**
+ * `rows` with every part that names a managed asset carrying that asset's detected media type as
+ * its `mimeType`, from `mediaTypes` (asset id to media type). The stored row is what a snapshot
+ * replays, and a client reads a part's `mimeType` to decide how to show it, so a part stored
+ * without one replays as a file of unknown type. The detected type wins over the one a client
+ * claimed, because it is the one a model is given and the one the asset is served as. A part
+ * whose asset `mediaTypes` does not name keeps what it carried, and a row with no such part is
+ * the very row it was.
+ */
+export function withDetectedMediaTypes(
+  rows: ReadonlyArray<Message>,
+  mediaTypes: ReadonlyMap<string, string>,
+): Message[] {
+  return rows.map((row) => {
+    if (typeof row.content === 'string' || mediaTypes.size === 0) return row;
+    let changed = false;
+    const content = row.content.map((part): MultiModalContent => {
+      if (!('source' in part) || part.source.kind !== 'managed-asset') return part;
+      const mediaType = mediaTypes.get(part.source.assetId);
+      if (mediaType === undefined || mediaType === part.mimeType) return part;
+      changed = true;
+      return { ...part, mimeType: mediaType };
+    });
+    return changed ? { ...row, content } : row;
+  });
 }
 
 /** The ids of the managed assets `rows` name, in order, each once. */

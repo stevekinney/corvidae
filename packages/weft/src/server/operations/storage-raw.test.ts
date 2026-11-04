@@ -21,6 +21,7 @@ describe('storage REST raw operations', () => {
     const registry = createLiveOperationRegistry();
     const storageOperationNames = [
       'weft.storage.get',
+      'weft.storage.preview',
       'weft.storage.put',
       'weft.storage.delete',
       'weft.storage.scan',
@@ -63,6 +64,7 @@ describe('storage REST raw operations', () => {
     const registry = createLiveOperationRegistry();
     const storageOperationNames = [
       'weft.storage.get',
+      'weft.storage.preview',
       'weft.storage.put',
       'weft.storage.delete',
       'weft.storage.scan',
@@ -168,9 +170,10 @@ describe('storage REST raw operations', () => {
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line));
+    // MemoryStorage records no write times, so every entry says so.
     expect(lines).toEqual([
-      { key: 'wf:a', value: btoa('a') },
-      { key: 'wf:b', value: btoa('b') },
+      { key: 'wf:a', value: btoa('a'), updatedAt: null },
+      { key: 'wf:b', value: btoa('b'), updatedAt: null },
     ]);
   });
 
@@ -188,7 +191,7 @@ describe('storage REST raw operations', () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(
-      `${JSON.stringify({ key: 'wf:a', value: btoa('a') })}\n${JSON.stringify({ key: 'wf:b', value: btoa('b') })}\n`,
+      `${JSON.stringify({ key: 'wf:a', value: btoa('a'), updatedAt: null })}\n${JSON.stringify({ key: 'wf:b', value: btoa('b'), updatedAt: null })}\n`,
     );
   });
 
@@ -277,7 +280,7 @@ describe('storage REST raw operations', () => {
     expect(first.done).toBe(false);
     expect(rawStorage.entriesPulled).toBe(1);
     expect(new TextDecoder().decode(first.value)).toBe(
-      `${JSON.stringify({ key: 'wf:a', value: btoa('a') })}\n`,
+      `${JSON.stringify({ key: 'wf:a', value: btoa('a'), updatedAt: null })}\n`,
     );
 
     const second = await reader.read();

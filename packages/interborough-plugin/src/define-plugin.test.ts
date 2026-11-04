@@ -78,6 +78,11 @@ describe('definePlugin', () => {
     expect(definePlugin({ ...valid, name }).name).toBe(name);
   });
 
+  test('accepts a title, and refuses an empty one', () => {
+    expect(definePlugin({ ...valid, title: 'Web search' }).title).toBe('Web search');
+    expect(() => definePlugin({ ...valid, title: ' ' })).toThrow(/title/);
+  });
+
   test('refuses an empty version or description', () => {
     expect(() => definePlugin({ ...valid, version: ' ' })).toThrow(/version/);
     expect(() => definePlugin({ ...valid, description: '' })).toThrow(/description/);

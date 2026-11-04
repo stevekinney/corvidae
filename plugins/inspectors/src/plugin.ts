@@ -42,8 +42,9 @@ export const pendingReview: PluginMcpApp = {
  */
 export default definePlugin({
   name: 'inspectors',
+  title: 'Inspectors',
   version: '1.0.0',
   description:
-    'Adds the run inspector and the pending-review list as interface panels over the Bureau task and review tools.',
+    'Adds the run inspector and the pending-review list as interface panels over the run and review tools.',
   setup: () => ({ mcpApps: [runInspector, pendingReview] }),
 });

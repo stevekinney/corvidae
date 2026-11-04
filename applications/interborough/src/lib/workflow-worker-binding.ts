@@ -179,7 +179,7 @@ export function explainWorkerBinding(reading: Extract<WorkerBindingReading, { ki
   const current = record.current;
   const where = `build ${current.buildId} of deployment ${current.deploymentName}`;
   if (policy.mode !== 'auto-upgrade') {
-    return `Pinned: this run is bound to ${where}. Weft never moves a pinned run to another build while it runs, and the binding history is kept for the record.`;
+    return `Pinned: this run is bound to ${where}. Interborough never moves a pinned run to another build while it runs, and the binding history is kept for the record.`;
   }
   const target = policy.compatibility;
   const earlier = record.history.length;
@@ -189,7 +189,7 @@ export function explainWorkerBinding(reading: Extract<WorkerBindingReading, { ki
       : `It has moved before: the history holds ${plural(earlier, 'earlier binding')}.`;
   return (
     `Auto-upgrade: this run is bound to ${where}. After a durably committed checkpoint, and before the run acquires its realm, ` +
-    `Weft may move it to a routed build that exactly matches the policy's compatibility requirement ` +
+    `Interborough may move it to a routed build that exactly matches the policy's compatibility requirement ` +
     `(build ${target.buildId} of deployment ${target.deploymentName}, workflow revision ${target.workflowRevision}). ` +
     movement
   );

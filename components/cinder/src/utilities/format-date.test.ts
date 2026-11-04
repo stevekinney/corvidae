@@ -139,12 +139,32 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(NOW - 4 * 60_000, { ...central, locale: 'de' })).not.toContain('ago');
   });
 
+  test('uses localized relative output for moments under a minute', () => {
+    const expected = new Intl.RelativeTimeFormat('de', { numeric: 'auto' }).format(0, 'second');
+    expect(formatRelativeTime(NOW - 30_000, { ...central, locale: 'de' })).toBe(expected);
+    expect(formatRelativeTime(NOW, { ...central, locale: 'de' })).toBe(expected);
+  });
+
   test('returns "Invalid date" for an unparseable input', () => {
     expect(formatRelativeTime('not-a-date', central)).toBe('Invalid date');
   });
 
   test('defaults to the viewer zone and the current time', () => {
     expect(formatRelativeTime(Date.now() - 5 * 60_000)).toBe('5 min ago');
+  });
+});
+
+describe('localized calendar labels', () => {
+  test('uses localized relative day words and absolute day labels', () => {
+    expect(formatDateTime(Date.UTC(2026, 10, 2, 16, 44), { ...central, locale: 'de' })).toMatch(
+      /^Heute, /,
+    );
+    expect(formatDateTime(Date.UTC(2026, 10, 1, 22, 12), { ...central, locale: 'de' })).toMatch(
+      /^Gestern, /,
+    );
+    expect(formatDateTime(Date.UTC(2026, 9, 29, 9, 0), { ...central, locale: 'de' })).toMatch(
+      /^Do\. 29\. Okt\., /,
+    );
   });
 });
 

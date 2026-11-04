@@ -37,7 +37,7 @@ export async function getEvents(
   workflowId: string,
 ): Promise<WorkflowEvent[]> {
   const events: WorkflowEvent[] = [];
-  const eventLog = new EventLog(internals.storage, workflowId);
+  const eventLog = new EventLog(internals.storage, workflowId, internals.options.getNow);
 
   // Use EventLog.scan() instead of scanning the raw prefix so that the head
   // record (ev:{workflowId}:head) is filtered out by the isWorkflowLogEntry
@@ -177,7 +177,7 @@ export async function replayTo(
   // detected and closed.
   const state = await loadWorkflowState(internals, workflowId);
 
-  const eventLog = new EventLog(internals.storage, workflowId);
+  const eventLog = new EventLog(internals.storage, workflowId, internals.options.getNow);
   const entries = await eventLog.replay(Math.max(step - 1, -1));
   const checkpoint = await hydrateCheckpointReplayState(
     internals.storage,

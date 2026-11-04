@@ -78,6 +78,7 @@ export function pluginListingOf(
   return {
     descriptor: {
       name: descriptor.name,
+      title: descriptor.title ?? descriptor.name,
       version: descriptor.version,
       description: descriptor.description,
       required: descriptor.required === true,

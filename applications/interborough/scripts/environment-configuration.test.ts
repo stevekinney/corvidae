@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { endToEndPort, isContinuousIntegration } from './environment-configuration.ts';
+import {
+  designReviewCaptureDirectory,
+  designReviewColorScheme,
+  endToEndPort,
+  isContinuousIntegration,
+} from './environment-configuration.ts';
 
 describe('the end-to-end port', () => {
   let saved: string | undefined;
@@ -55,5 +60,45 @@ describe('the continuous-integration flag', () => {
       if (saved === undefined) delete process.env['CI'];
       else process.env['CI'] = saved;
     }
+  });
+});
+
+describe('the design-review capture settings', () => {
+  let savedCapture: string | undefined;
+  let savedColorScheme: string | undefined;
+
+  beforeEach(() => {
+    savedCapture = process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+    savedColorScheme = process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+  });
+
+  afterEach(() => {
+    if (savedCapture === undefined) delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+    else process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = savedCapture;
+    if (savedColorScheme === undefined)
+      delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+    else process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = savedColorScheme;
+  });
+
+  test('capture directory is the one the environment names, and absent for an ordinary run', () => {
+    delete process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'];
+    expect(designReviewCaptureDirectory()).toBeUndefined();
+    process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = '';
+    expect(designReviewCaptureDirectory()).toBeUndefined();
+    process.env['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] = '/tmp/design-review/now';
+    expect(designReviewCaptureDirectory()).toBe('/tmp/design-review/now');
+  });
+
+  test('color scheme is light or dark, absent when unset, and refused otherwise', () => {
+    delete process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'];
+    expect(designReviewColorScheme()).toBeUndefined();
+    process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = '';
+    expect(designReviewColorScheme()).toBeUndefined();
+    process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'light';
+    expect(designReviewColorScheme()).toBe('light');
+    process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'dark';
+    expect(designReviewColorScheme()).toBe('dark');
+    process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'sepia';
+    expect(() => designReviewColorScheme()).toThrow('must be light or dark, not "sepia"');
   });
 });

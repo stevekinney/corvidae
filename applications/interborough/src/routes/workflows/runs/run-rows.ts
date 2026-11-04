@@ -66,6 +66,8 @@ export type RunOrigin =
     }
   /** A step of a workflow instance. */
   | { readonly kind: 'parent'; readonly parentRunId: string; readonly href: string }
+  /** Interborough started it for its own bookkeeping, such as the schedule tick (COR-2009). */
+  | { readonly kind: 'system' }
   /** A task recorded before origins were kept, which nothing else names. */
   | { readonly kind: 'none' };
 
@@ -176,6 +178,8 @@ function recordedOrigin(
       if (parentRunId === undefined) return undefined;
       return { kind: 'parent', parentRunId, href: workflowDetailPath(parentRunId) };
     }
+    case 'system':
+      return { kind: 'system' };
     default:
       return undefined;
   }

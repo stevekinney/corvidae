@@ -81,6 +81,28 @@ describe('createToolboxFromOpenAPI', () => {
     expect(resolveCapabilityTier(tool?.metadata, tool?.tags)).toBe(tier);
   });
 
+  it('names an operation for a person with its summary, and leaves the title out without one (COR-2009)', () => {
+    const tools = createToolboxFromOpenAPI({
+      servers: [{ url: 'https://api.example.test' }],
+      paths: {
+        '/refunds': { get: { operationId: 'listRefunds', summary: ' List refunds ' } },
+        '/payments': { get: { operationId: 'listPayments', summary: '  ' } },
+      },
+    });
+
+    expect(tools.find((tool) => tool.name === 'list-refunds')?.metadata).toEqual({
+      readOnly: true,
+      mutates: false,
+      dangerous: false,
+      title: 'List refunds',
+    });
+    expect(tools.find((tool) => tool.name === 'list-payments')?.metadata).toEqual({
+      readOnly: true,
+      mutates: false,
+      dangerous: false,
+    });
+  });
+
   it('kebab-cases an operationId containing spaces', () => {
     const tools = createToolboxFromOpenAPI(spec);
 

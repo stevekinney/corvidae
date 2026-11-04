@@ -7,8 +7,9 @@
    * (`key-listing.ts`).
    *
    * A key under a prefix the application manages carries a lock, and its pane offers no Edit or
-   * Delete (`key-detail.svelte`). Storage keeps no time a key was written, so the table has no
-   * Updated column, and it keeps no count per group, so the select lists the groups without one.
+   * Delete (`key-detail.svelte`). The scan carries each key's write time (`updatedAt`, null for a
+   * backend that records none), which `storage-client.ts` does not read, so the table has no Updated
+   * column. Storage keeps no count per group, so the select lists the groups without one.
    */
   import {
     Alert,

@@ -9,6 +9,7 @@ export * from './byte-encoding.ts';
 export * from './capabilities.ts';
 export * from './delete-range.ts';
 export * from './derived-operations.ts';
+export * from './entry-metadata.ts';
 export * from './interface.ts';
 export * from './key-encoding.ts';
 export * from './memory.ts';

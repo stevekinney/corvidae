@@ -41,7 +41,7 @@ const SCHEDULE_ID = 'bureau-workflow-schedule:digest:1';
 /** The ways a file can carry a key this host does not know. */
 const UNRECOGNIZED: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['a top-level key', { ...HOURLY, futureOption: { anything: true } }],
-  ['a key on the schedule trigger', { trigger: { kind: 'schedule', spec: '1h', timezone: 'UTC' } }],
+  ['a key on the schedule trigger', { trigger: { kind: 'schedule', spec: '1h', jitter: '5m' } }],
   [
     'a key on a step',
     {
@@ -135,13 +135,14 @@ describe('a file with an unrecognized key and a schedule', () => {
     ['is not JSON', '{'],
     ['has a bad agent', workflowFileText('digest', { ...HOURLY, agent: 7 })],
   ] as const) {
-    it(`still cancels the schedule of a file that ${label}`, async () => {
+    it(`still holds the schedule of a file that ${label}, which it can judge (COR-2009)`, async () => {
       const harness = await startWorkflowBureau();
       cleanups.push(() => harness.dispose());
       await harness.putWorkflow('digest', HOURLY);
       await harness.put('digest.json', broken);
       await harness.bureau.workflows?.refresh();
-      expect(await schedulesOf(harness.bureau)).toEqual([{ id: SCHEDULE_ID, status: 'cancelled' }]);
+      // Kept from the last good version and paused, so it starts nothing until the file parses.
+      expect(await schedulesOf(harness.bureau)).toEqual([{ id: SCHEDULE_ID, status: 'paused' }]);
     });
   }
 
@@ -251,7 +252,7 @@ describe('an instance in flight on a revision with an unrecognized key', () => {
   }
 
   for (const [label, trigger] of [
-    ['a key on a schedule trigger', { kind: 'schedule', spec: '1h', timezone: 'UTC' }],
+    ['a key on a schedule trigger', { kind: 'schedule', spec: '1h', jitter: '5m' }],
     ['a key on a signal trigger', { kind: 'signal', name: 'go', replay: true }],
   ] as const) {
     it(`is left as it is at startup when its revision has ${label}`, async () => {
@@ -346,7 +347,7 @@ describe('what marks a file as unrecognized', () => {
 
   it('includes a key on a schedule or signal trigger, which Weft’s schema leaves open', () => {
     for (const trigger of [
-      { kind: 'schedule', spec: '1h', timezone: 'UTC' },
+      { kind: 'schedule', spec: '1h', jitter: '5m' },
       { kind: 'signal', name: 'go', replay: true },
     ]) {
       const parsed = parse(trigger);

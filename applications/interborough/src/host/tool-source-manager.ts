@@ -3,11 +3,16 @@
  * `toolSources` in `configuration.json` names (`tool-sources-configuration.ts`), whose tools an
  * agent file may list by name, and the ways a person changes them.
  *
- * - **Loaded at boot, listed after a restart.** {@link ToolSourceManager.start} loads every
+ * - **Loaded at boot; an added source at once.** {@link ToolSourceManager.start} loads every
  *   configured source through Armorer's loader (`armorer/tool-sources`) before the Bureau is
- *   built, and {@link ToolSourceManager.tools} is the catalog the Bureau is built with. A source
- *   that is added, changed or removed afterwards shows in {@link ToolSourceManager.snapshot} as
- *   `pending-restart` until the host starts again.
+ *   built, and {@link ToolSourceManager.tools} is the catalog the Bureau is built with. Once the
+ *   host is live ({@link ToolSourceManager.goLive}), a source {@link ToolSourceManager.connect}
+ *   adds is loaded at once and its tools join the Bureau's catalog with no restart (COR-2009), as
+ *   does an OAuth source when its first sign-in completes. A source that is changed or removed
+ *   afterwards shows in {@link ToolSourceManager.snapshot} as `pending-restart` until the host
+ *   starts again.
+ * - **A tool can be off (COR-2009).** A tool whose settings say `enabled: false` is listed on its
+ *   source and offered to no agent, so a source can be connected with a dangerous tool left off.
  * - **One source never blocks another, or the host.** A source that fails to connect, names a
  *   credential nobody stored, has credentials that cannot be read, or does not answer within
  *   {@link ToolSourceManagerOptions.loadTimeoutMilliseconds} is reported on its own entry and the
@@ -84,7 +89,12 @@ import {
   type AnswerEncryptionKeys,
   type SettingLockReason,
 } from '@lostgradient/bureau';
-import { resolveCapabilityTier, type McpOAuthTokenStorage, type Tool } from 'armorer';
+import {
+  readToolTitle,
+  resolveCapabilityTier,
+  type McpOAuthTokenStorage,
+  type Tool,
+} from 'armorer';
 import {
   completeToolSourceAuthorization,
   loadToolSource,
@@ -294,6 +304,13 @@ export type ToolSourceToolStanding = {
    * loaded (`settingsPending`), so a page reads back what it saved and not only what runs.
    */
   readonly savedAcceptsSecrets: boolean;
+  /**
+   * Whether the running host offers the tool (COR-2009): `false` for a tool the owner turned off,
+   * which no agent can be given.
+   */
+  readonly enabled: boolean;
+  /** Whether the saved settings turn the tool on: what `enabled` becomes at the next start. */
+  readonly savedEnabled: boolean;
   /** Its capability tier (`read-only`, `mutating`, `dangerous`), or `null` when it has none. */
   readonly tier: string | null;
 };
@@ -360,6 +377,26 @@ export type ToolSourceProbeTool = {
   readonly tool: string;
   /** Its capability tier (`read-only`, `mutating`, `dangerous`), or `null` when it has none. */
   readonly tier: string | null;
+  /** Its name for a person ("List issues"), or `null` when the source gives none (COR-2009). */
+  readonly title: string | null;
+  /** What it does, as the source describes it. */
+  readonly description: string;
+};
+
+/**
+ * The call a probe of an OpenAPI source makes to show that its key works (COR-2009): the first tool
+ * that reads (`GET`) and needs no input, the same operation `inspectOpenApiSpec` names as
+ * `testOperation`. `passed` is false, with the reason, when the service answered an error.
+ */
+export type ToolSourceProbeTest = {
+  /** The tool's own name at the source. */
+  readonly tool: string;
+  /** Its name for a person ("List refunds"), or `null`. */
+  readonly title: string | null;
+  /** Whether the service answered the call without an error. */
+  readonly passed: boolean;
+  /** Why the call failed, in words that hold no address or value; absent when it passed. */
+  readonly message?: string;
 };
 
 /**
@@ -372,6 +409,8 @@ export type ToolSourceProbe =
       readonly outcome: 'listed';
       readonly tools: readonly ToolSourceProbeTool[];
       readonly skipped: readonly { readonly tool: string; readonly reason: string }[];
+      /** For an OpenAPI source with a tool that reads and needs no input: the call made with the key. */
+      readonly test?: ToolSourceProbeTest;
     }
   /** The server is there and asks for a sign-in, which can only happen once the source is saved. */
   | { readonly outcome: 'needs-authorization' }
@@ -394,6 +433,12 @@ export type ToolSourceConnection = {
    * requests for one new name cannot both succeed.
    */
   readonly createOnly?: boolean;
+  /**
+   * The host's settings per tool for a source this request adds (COR-2009), as
+   * {@link ToolSourceToolSettingsChange.tools} takes them: `{ "delete_branch": { "enabled": false } }`
+   * leaves a tool off. Omitted, a new source's tools are all on, and a changed source keeps its own.
+   */
+  readonly tools?: unknown;
 };
 
 /** What a change to the per-tool settings of a source asks for. Every field is `unknown` because it arrives from a request. */
@@ -414,8 +459,17 @@ export type ToolSourceChange = {
   readonly id: string;
   /** Whether the stored configuration changed. */
   readonly changed: boolean;
-  /** True: the host lists the source's tools when it starts again. */
-  readonly restartRequired: true;
+  /**
+   * True when the host lists the change at its next start. A source a connection adds is loaded at
+   * once instead, when the host is live ({@link ToolSourceManager.goLive}): then this is `false`
+   * and {@link ToolSourceChange.available} names its tools (COR-2009).
+   */
+  readonly restartRequired: boolean;
+  /**
+   * The names an agent file uses for the tools the added source made available now, each one that
+   * is on; absent when nothing was loaded at once.
+   */
+  readonly available?: readonly string[];
 };
 
 /** What a removal reports: the change, and the agent files it leaves invalid at the next start. */
@@ -453,9 +507,19 @@ export type ToolSourceManager = {
    * tools it lists. Writes, stores and records nothing, and holds no connection afterwards.
    */
   probe(request: ToolSourceProbeRequest): Promise<ToolSourceProbe>;
-  /** Store a source's credentials and list the source in the configuration. */
+  /**
+   * Store a source's credentials and list the source in the configuration. A source this adds is
+   * loaded at once when the host is live, and its tools are available without a restart.
+   */
   connect(request: ToolSourceConnection): Promise<ToolSourceChange>;
-  /** Set the per-tool settings (`acceptsSecrets`) of a configured source. Loaded at the next start. */
+  /**
+   * From now on, load each source {@link connect} adds at once (and an OAuth source once its first
+   * sign-in completes) and hand the tools it offers, the ones that are on, to `add`, by the name an
+   * agent file uses: the host passes the Bureau's `agents.addTools` once the Bureau is built
+   * (COR-2009). A source that was removed since the host started is left for the next start.
+   */
+  goLive(add: (tools: Readonly<Record<string, Tool>>) => Promise<void>): void;
+  /** Set the per-tool settings (`acceptsSecrets`, `enabled`) of a configured source. Loaded at the next start. */
   configureTools(request: ToolSourceToolSettingsChange): Promise<ToolSourceChange>;
   /** Remove a source from the configuration and clear its credentials. No agent file is changed. */
   remove(request: { readonly id: unknown; readonly principal: string }): Promise<ToolSourceRemoval>;
@@ -678,7 +742,28 @@ function revisionOf(source: ToolSourceDescription): string {
  * same default.
  */
 function settingsRevision(entry: ConfiguredToolSource): string {
-  return JSON.stringify(acceptingTools(entry.tools));
+  return JSON.stringify([acceptingTools(entry.tools), offTools(entry.tools)]);
+}
+
+/** The names of the tools turned off (`enabled: false`), sorted (COR-2009). */
+function offTools(tools: ReadonlyMap<string, ConfiguredToolSettings>): string[] {
+  return [...tools]
+    .filter(([, settings]) => settings.enabled === false)
+    .map(([name]) => name)
+    .sort();
+}
+
+/**
+ * `settings` with only what differs from the default kept, `acceptsSecrets: true` and
+ * `enabled: false`, or `undefined` when nothing does: the default is no entry at all, so a tool
+ * set back to it leaves nothing behind.
+ */
+function nonDefaultSettings(settings: ConfiguredToolSettings): ConfiguredToolSettings | undefined {
+  const kept: ConfiguredToolSettings = {
+    ...(settings.acceptsSecrets === true ? { acceptsSecrets: true } : {}),
+    ...(settings.enabled === false ? { enabled: false } : {}),
+  };
+  return Object.keys(kept).length === 0 ? undefined : kept;
 }
 
 /** The names of the tools flagged `acceptsSecrets`, sorted. */
@@ -703,7 +788,7 @@ function checkedToolSettings(value: unknown): Map<string, ConfiguredToolSettings
       throw new ToolSourceInputError(`tools.${name}`, 'expected an object.');
     }
     for (const key of Object.keys(entry)) {
-      if (key !== 'acceptsSecrets') {
+      if (key !== 'acceptsSecrets' && key !== 'enabled') {
         throw new ToolSourceInputError(`tools.${name}.${key}`, 'not a known field.');
       }
     }
@@ -711,7 +796,14 @@ function checkedToolSettings(value: unknown): Map<string, ConfiguredToolSettings
     if (accepts !== undefined && typeof accepts !== 'boolean') {
       throw new ToolSourceInputError(`tools.${name}.acceptsSecrets`, 'expected true or false.');
     }
-    settings.set(name, accepts === undefined ? {} : { acceptsSecrets: accepts });
+    const enabled = entry['enabled'];
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      throw new ToolSourceInputError(`tools.${name}.enabled`, 'expected true or false.');
+    }
+    settings.set(name, {
+      ...(accepts === undefined ? {} : { acceptsSecrets: accepts }),
+      ...(enabled === undefined ? {} : { enabled }),
+    });
   }
   return settings;
 }
@@ -802,6 +894,50 @@ function probeTokenStorage(): McpOAuthTokenStorage {
       state = next;
     },
   };
+}
+
+/**
+ * The tool an OpenAPI probe calls (COR-2009): the first, in the order the spec lists them, that
+ * reads (`GET`) and needs no input, as `inspectOpenApiSpec` picks its `testOperation`.
+ */
+function testToolOf(tools: readonly Tool[]): Tool | undefined {
+  return tools.find((tool) => {
+    if (!(tool.tags ?? []).includes('get')) return false;
+    try {
+      const required: unknown = tool.toJSON().input['required'];
+      return !Array.isArray(required) || required.length === 0;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Call the OpenAPI tool {@link testToolOf} picks with no input, so a wrong key shows before the
+ * source is saved. The answer names no address or value: an error answer is reported by its status.
+ */
+async function testCall(tools: readonly Tool[]): Promise<ToolSourceProbeTest | undefined> {
+  const tool = testToolOf(tools);
+  if (tool === undefined) return undefined;
+  const title = readToolTitle(tool.metadata) ?? null;
+  const named = title ?? tool.name;
+  try {
+    const run = await tool.configuration.execute;
+    await run({});
+    return { tool: tool.name, title, passed: true };
+  } catch (error) {
+    const status =
+      error instanceof Error ? /failed with status (\d{3})/.exec(error.message)?.[1] : undefined;
+    return {
+      tool: tool.name,
+      title,
+      passed: false,
+      message:
+        status === undefined
+          ? `${named} got no answer from the service.`
+          : `${named} answered ${status}, so the key or the address may be wrong.`,
+    };
+  }
 }
 
 /** Create the manager. It loads nothing until {@link ToolSourceManager.start}. */
@@ -1041,19 +1177,25 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         if (name === undefined) continue;
         // Only a tool the owner flagged gets `acceptsSecrets`; every other keeps the metadata the loader gave it.
         const acceptsSecrets = entry.tools.get(tool.name)?.acceptsSecrets === true;
-        // Every saved source's tool is rebuilt behind this gate, so a retired source's tool cannot
-        // run. The rebuild copies the configuration whole, so the loader's version survives it.
-        const offered = acceptsSecrets ? withAcceptsSecrets(tool) : tool;
-        catalog[name] = refusingWhen(offered, () =>
-          retired.has(source.id)
-            ? `Tool source "${source.id}" was removed or changed, so this tool no longer runs. Start the host again: a changed source then loads as it now stands, and a removed one is gone.`
-            : undefined,
-        );
+        // A tool the owner turned off (COR-2009) is listed on its source and offered to no agent.
+        const enabled = entry.tools.get(tool.name)?.enabled !== false;
+        if (enabled) {
+          // Every saved source's tool is rebuilt behind this gate, so a retired source's tool cannot
+          // run. The rebuild copies the configuration whole, so the loader's version survives it.
+          const offered = acceptsSecrets ? withAcceptsSecrets(tool) : tool;
+          catalog[name] = refusingWhen(offered, () =>
+            retired.has(source.id)
+              ? `Tool source "${source.id}" was removed or changed, so this tool no longer runs. Start the host again: a changed source then loads as it now stands, and a removed one is gone.`
+              : undefined,
+          );
+        }
         tools.push({
           name,
           tool: tool.name,
           acceptsSecrets,
           savedAcceptsSecrets: acceptsSecrets,
+          enabled,
+          savedEnabled: enabled,
           tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
         });
       }
@@ -1209,6 +1351,48 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     }
   }
 
+  /** Where a source added while the host runs hands its tools: the Bureau's catalog, once it is built. */
+  let live: ((tools: Readonly<Record<string, Tool>>) => Promise<void>) | undefined;
+
+  /**
+   * Load the configured source `id` now and hand its tools that are on to {@link live} (COR-2009),
+   * so they are available without a restart. Answers the change to report, or `undefined` when the
+   * host is not live, the source was removed since the host started (its old tools still answer to
+   * its names until then), or it is no longer configured: the next start loads it. A source that
+   * does not load, or waits for a sign-in, is reported on its own standing and needs no restart.
+   */
+  async function loadLive(id: string): Promise<ToolSourceChange | undefined> {
+    const add = live;
+    if (add === undefined || closed || retired.has(id)) return undefined;
+    const { sources } = await readDocument();
+    const entry = sources.find((candidate) => candidate.source.id === id);
+    if (entry === undefined) return undefined;
+    await loadOne(entry);
+    const standing = booted.get(id)?.standing;
+    if (standing === undefined) return undefined;
+    if (standing.state !== 'loaded') return { id, changed: true, restartRequired: false };
+    const offered = standing.tools.filter((tool) => tool.enabled);
+    const tools: Record<string, Tool> = {};
+    for (const { name } of offered) {
+      const tool = Object.hasOwn(catalog, name) ? catalog[name] : undefined;
+      if (tool !== undefined) tools[name] = tool;
+    }
+    try {
+      await add(tools);
+    } catch {
+      warn(
+        `Tool source "${id}" loaded, but its tools could not be offered until the host starts again.`,
+      );
+      return { id, changed: true, restartRequired: true };
+    }
+    return {
+      id,
+      changed: true,
+      restartRequired: false,
+      available: offered.map(({ name }) => name),
+    };
+  }
+
   const startedSources = (): readonly LoadedToolSource[] => loadedSources;
 
   return {
@@ -1245,6 +1429,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             tools: standing.tools.map((tool) => ({
               ...tool,
               savedAcceptsSecrets: entry.tools.get(tool.tool)?.acceptsSecrets === true,
+              savedEnabled: entry.tools.get(tool.tool)?.enabled !== false,
             })),
             unmatchedSettings,
             ...(previous.settings === settingsRevision(entry)
@@ -1308,9 +1493,17 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             name,
             tool: tool.name,
             tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
+            title: readToolTitle(tool.metadata) ?? null,
+            description: tool.description,
           });
         }
-        return { outcome: 'listed' as const, tools, skipped: names.skipped };
+        const test = source.kind === 'openapi' ? await testCall(loaded.tools) : undefined;
+        return {
+          outcome: 'listed' as const,
+          tools,
+          skipped: names.skipped,
+          ...(test === undefined ? {} : { test }),
+        };
       } finally {
         await loaded.close().catch(() => undefined);
       }
@@ -1323,7 +1516,11 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const referenced = referencedCredentials(source);
       const supplied = checkedCredentials(request.credentials, referenced);
       const createOnly = request.createOnly === true;
-      return serialized(() =>
+      const incomingTools =
+        request.tools === undefined ? undefined : checkedToolSettings(request.tools);
+      // Set inside the source's turn: whether this connection added the source, which is loaded at once.
+      let added = false;
+      const change = await serialized(() =>
         vault.exclusive(id, async () => {
           const { text: currentText, document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
@@ -1367,7 +1564,18 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             JSON.stringify(existing.source) === JSON.stringify(source);
           // Per-tool settings, `acceptsSecrets` among them, were granted for the server the source
           // went to: they are kept only while it still goes to the same place, like credentials.
-          const tools = sameRecipient && existing !== undefined ? existing.tools : new Map();
+          // Settings the request names replace them (COR-2009: a tool left off when it is added).
+          const tools =
+            incomingTools !== undefined
+              ? new Map(
+                  [...incomingTools].flatMap(([name, settings]) => {
+                    const kept = nonDefaultSettings(settings);
+                    return kept === undefined ? [] : [[name, kept] as const];
+                  }),
+                )
+              : sameRecipient && existing !== undefined
+                ? existing.tools
+                : new Map<string, ConfiguredToolSettings>();
           const next: ConfiguredToolSource = { source, tools };
           const revoked =
             existing === undefined || sameRecipient ? [] : acceptingTools(existing.tools);
@@ -1383,10 +1591,11 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           const unchanged =
             existing !== undefined &&
             JSON.stringify(existing.source) === JSON.stringify(source) &&
+            settingsRevision(existing) === settingsRevision(next) &&
             supplied.size === 0 &&
             // A secret that cannot be read is replaced by this request, even one that names no credential.
             !unreadable;
-          if (unchanged) return { id, changed: false, restartRequired: true as const };
+          if (unchanged) return { id, changed: false, restartRequired: true };
 
           // A new source has no previous text to put back: writing it replaces any orphan, and a
           // failed change leaves the orphan cleared rather than restored.
@@ -1423,9 +1632,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             throw new Error('The tool-source configuration could not be written.');
           }
           await record('tool.source.connected', source, { revoked });
-          return { id, changed: true, restartRequired: true as const };
+          added = existing === undefined;
+          return { id, changed: true, restartRequired: true };
         }),
       );
+      // Loaded after the source's turn is over, because loading reads its credentials in a turn of its own.
+      return added ? ((await loadLive(id)) ?? change) : change;
+    },
+    goLive(add) {
+      live = add;
     },
     async configureTools(request) {
       assertWritable();
@@ -1439,9 +1654,10 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         }
         const tools = new Map(existing.tools);
         for (const [name, settings] of incoming) {
-          // The default is no entry at all, so a tool turned back off leaves nothing behind.
-          if (settings.acceptsSecrets === true) tools.set(name, settings);
-          else tools.delete(name);
+          // The default is no entry at all, so a tool set back to it leaves nothing behind.
+          const kept = nonDefaultSettings(settings);
+          if (kept === undefined) tools.delete(name);
+          else tools.set(name, kept);
         }
         const next: ConfiguredToolSource = { source: existing.source, tools };
         const nextSources = sources.map((entry) => (entry === existing ? next : entry));
@@ -1450,7 +1666,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         // The same checks the next start applies, before a byte is written.
         parseProviderConfiguration(text, location);
         parseToolSourcesConfiguration(nextDocument.toolSources, location);
-        if (text === currentText) return { id, changed: false, restartRequired: true as const };
+        if (text === currentText) return { id, changed: false, restartRequired: true };
         if (!(await writeConfiguration(text))) {
           throw new Error('The tool-source configuration could not be written.');
         }
@@ -1460,7 +1676,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           granted: [...after].filter((name) => !before.has(name)).sort(),
           revoked: [...before].filter((name) => !after.has(name)).sort(),
         });
-        return { id, changed: true, restartRequired: true as const };
+        return { id, changed: true, restartRequired: true };
       });
     },
     async remove(request) {
@@ -1502,7 +1718,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             throw new ToolSourcePartialChangeError(id, 'credentials-not-cleared');
           }
           await record('tool.source.removed', existing.source, {}, affected);
-          return { id, changed: true, restartRequired: true as const, affectedAgents: affected };
+          return { id, changed: true, restartRequired: true, affectedAgents: affected };
         }),
       );
     },
@@ -1564,7 +1780,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     async completeAuthorization(rawId, callbackUrl) {
       assertWritable();
       const id = checkedIdentifier(rawId, 'source');
-      return serialized(() =>
+      const change = await serialized(() =>
         vault.exclusive(id, async () => {
           const entry = await configured(id);
           if (!isOAuth(entry.source)) {
@@ -1632,9 +1848,14 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             booted.set(id, { ...previous, standing });
           }
           await record('tool.source.authorized', entry.source);
-          return { id, changed: true, restartRequired: true as const };
+          return { id, changed: true, restartRequired: true };
         }),
       );
+      // A source that waited for its first sign-in has loaded nothing yet: it loads now (COR-2009).
+      const standing = booted.get(id)?.standing.state;
+      return standing === undefined || standing === 'needs-authorization'
+        ? ((await loadLive(id)) ?? change)
+        : change;
     },
     async close() {
       closed = true;

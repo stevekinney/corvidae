@@ -33,7 +33,7 @@ export interface DemoPluginOptions {
 }
 
 /**
- * The demo plugin: six scripted agents, two tools, two validators, a goal and a schedule, all of
+ * The demo plugin: eight scripted agents, two tools, two validators, a goal and a schedule, all of
  * which answer without a model. It is off by default and the owner turns it on in Settings. The
  * host creates `demo-approval-secret` on first enable in local mode; a remote host cannot, so the
  * plugin stays `needs-setup` until the deployment sets the variable.
@@ -42,6 +42,7 @@ export function createDemoPlugin(options: DemoPluginOptions = {}): PluginDescrip
   const seedOnStart = options.seedOnStart ?? true;
   return definePlugin({
     name: 'demo',
+    title: 'Demo',
     version: '1.0.0',
     description:
       'Scripted agents, tools, validators, a goal, and a schedule that run without a model provider, for trying Interborough out.',

@@ -20,6 +20,7 @@ function isRegularExpression(source: string): boolean {
  */
 export default definePlugin({
   name: 'guardrails',
+  title: 'Guardrails',
   version: '1.0.0',
   description:
     'Adds two output guardrails an agent can list: code-safety flags dangerous code, and grounding flags claims the conversation does not support.',

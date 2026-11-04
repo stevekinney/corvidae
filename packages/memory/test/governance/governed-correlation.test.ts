@@ -80,5 +80,34 @@ for (const backend of ['in-memory', 'weft'] as const) {
       );
       expect(withdrawn?.correlation).toEqual({ runId: lost === 0 ? 'run-1' : 'run-2' });
     });
+
+    it('says on a correction which run corrected whose memory, and as what source (COR-2009)', async () => {
+      const fixture = await createGovernedFixture(backend);
+      const original = await fixture.memory.write(principalA, 'Refund updates go by phone.', {
+        collection: 'tool-runner',
+        source: 'conversation',
+      });
+      const corrected = await fixture.memory.forget(principalA, {
+        mode: 'supersession',
+        locator: { id: original.recordId!, collection: 'tool-runner' },
+        successor: {
+          content: 'Refund updates go by email, not by phone.',
+          collection: 'tool-runner',
+          source: 'model-tool',
+          correlation: { runId: 'run-4472', sessionId: 'refund-chat' },
+        },
+      });
+      expect(corrected.status).toBe('applied');
+      const forgotten = fixture.notifications.find((item) => item.type === 'memory.forgotten');
+      expect(forgotten).toMatchObject({
+        recordIds: [original.recordId, corrected.write?.recordId],
+        correlation: { runId: 'run-4472', sessionId: 'refund-chat' },
+        supersession: { collection: 'tool-runner', source: 'model-tool' },
+      });
+
+      // Only the correction's own event carries the notice.
+      const others = fixture.notifications.filter((item) => item !== forgotten);
+      expect(others.some((item) => item.supersession !== undefined)).toBe(false);
+    });
   });
 }

@@ -28,6 +28,7 @@ import {
   principalFromJwtClaims,
 } from '@lostgradient/weft';
 import { MemoryStorage } from '@lostgradient/storage';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';
@@ -37,6 +38,7 @@ import { waitForTaskState } from '../../test';
 import type { Bureau } from '../../types.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { createBureauHandler, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { memoryExportFileName } from './memory-history.ts';
 import { memoryRememberOperation } from './memory-operations.ts';
 
 const BUREAU_ID = 'memory-operations-bureau';
@@ -1208,10 +1210,17 @@ describe('bureau.memory.export (COR-1809)', () => {
     const afterCorrection = resultOf(
       await rpc(handler, 'bureau.memory.export', { agentId: 'assistant' }, 'alice-key'),
     );
+    // The corrected version is in its correction's history, not a memory of its own, so the export
+    // holds what the list shows.
     expect((afterCorrection['memories'] as Row[]).map((row) => row.content).toSorted()).toEqual([
       'Alice likes tea.',
-      'Alice prefers aisle seats.',
       'Alice prefers window seats.',
+    ]);
+    const window = (afterCorrection['memories'] as Array<Record<string, any>>).find(
+      (row) => row['content'] === 'Alice prefers window seats.',
+    );
+    expect(window?.['history']).toEqual([
+      expect.objectContaining({ id: aisle.id, content: 'Alice prefers aisle seats.' }),
     ]);
 
     // Bob exports his own and none of Alice's.
@@ -1221,5 +1230,299 @@ describe('bureau.memory.export (COR-1809)', () => {
     expect((bobs['memories'] as Row[]).map((row) => row.content)).toEqual([
       'Bob prefers window seats.',
     ]);
+  });
+});
+
+/**
+ * The data the Memory tab is drawn from (COR-2009, PageMemory): who wrote each memory, its kind,
+ * the trust that follows from the writer, the history a correction keeps, and the one JSON file an
+ * export saves.
+ */
+describe('the Memory tab’s contract (COR-2009)', () => {
+  /** A run authority in `ownerId`'s partition: an agent writing from a chat. */
+  function runOver(ownerId: string): MemoryAuthority {
+    return createMemoryAuthority({
+      principal: { kind: 'run', id: 'run-correcting' },
+      tenantId: BUREAU_ID,
+      ownerId,
+      purpose: 'conversation-memory',
+      capabilities: ['memory:write', 'memory:get'],
+      policyRevision: 'bureau:test',
+      projection: 'bureau',
+    });
+  }
+
+  const read = async (handler: Handler, id: string) =>
+    resultOf(await rpc(handler, 'bureau.memory.get', { agentId: 'assistant', id }, 'alice-key'));
+
+  /** A Bureau whose memory clock moves only when `later` is awaited, so each write is newer than the last. */
+  async function openTimed() {
+    const runtime = createManualRuntimeServices({ identifierSeed: 'memory-contract' });
+    const opened = await open({ memory: governedMemory(runtime) });
+    return { ...opened, later: () => runtime.advance(60_000) };
+  }
+
+  it('carries the writer beside the trust that follows from it: an agent’s memory is untrusted, a person’s verified', async () => {
+    const { bureau, handler, later } = await openTimed();
+    await chat(bureau, ALICE, 'Order 4471 arrived with a cracked mug.', 'order-chat');
+    await later();
+    const added = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.remember',
+        {
+          agentId: 'assistant',
+          content: 'Never share customer emails in replies.',
+          kind: 'how-to',
+        },
+        'operator-key',
+      ),
+    )['memory'];
+
+    const listed = memoriesOf(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+
+    expect(listed).toEqual([
+      expect.objectContaining({
+        id: added.id,
+        kind: 'how-to',
+        memoryClass: 'procedural',
+        writer: 'person',
+        trust: 'verified',
+      }),
+      expect.objectContaining({
+        content: 'Order 4471 arrived with a cracked mug.',
+        kind: 'fact',
+        writer: 'agent',
+        trust: 'untrusted',
+        sessionId: 'order-chat',
+      }),
+    ]);
+    // Neither was corrected, so neither has history.
+    const detail = await read(handler, added.id);
+    expect(detail['history']).toEqual([]);
+  });
+
+  it('defaults a person’s memory to a fact', async () => {
+    const { handler } = await open();
+    const added = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.remember',
+        {
+          agentId: 'assistant',
+          content: 'Order numbers that start with 44 come from the web shop.',
+        },
+        'operator-key',
+      ),
+    )['memory'];
+    expect(added).toMatchObject({ kind: 'fact', memoryClass: 'semantic', writer: 'person' });
+  });
+
+  it('keeps the original in history when a person corrects an agent’s memory, which then reads written by the person', async () => {
+    const { bureau, handler } = await open();
+    await chat(bureau, ALICE, 'Customers prefer refund updates by phone.', 'refund-chat');
+    const original = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+
+    const corrected = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.correct',
+        {
+          agentId: 'assistant',
+          id: original,
+          content: 'Customers prefer refund updates by email, not by phone.',
+        },
+        'alice-key',
+      ),
+    )['memory'];
+
+    expect(corrected).toMatchObject({ writer: 'person', trust: 'verified', kind: 'fact' });
+    const detail = await read(handler, corrected.id);
+    expect(detail['history']).toEqual([
+      {
+        id: original,
+        content: 'Customers prefer refund updates by phone.',
+        kind: 'fact',
+        writer: 'agent',
+        trust: 'untrusted',
+        writtenAt: expect.any(String),
+        correctedAt: expect.any(String),
+      },
+    ]);
+    // The original stays readable by its identifier, which is how "View the original" opens it.
+    const originalDetail = await read(handler, original);
+    expect(originalDetail['memory']).toMatchObject({
+      content: 'Customers prefer refund updates by phone.',
+      writer: 'agent',
+    });
+  });
+
+  it('lets trust differ across a history once an agent corrects what a person wrote', async () => {
+    const { handler, memory } = await open();
+    const written = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.remember',
+        { agentId: 'assistant', content: 'Refunds over $25 need a person to approve them.' },
+        'operator-key',
+      ),
+    )['memory'];
+
+    const superseded = await memory!.forget(runOver(ALICE), {
+      mode: 'supersession',
+      locator: { id: written.id, collection: 'assistant' },
+      successor: {
+        content: 'Refunds over $50 need a person to approve them.',
+        collection: 'assistant',
+        source: 'model-tool',
+        memoryClass: 'semantic',
+      },
+    });
+    expect(superseded.status).toBe('applied');
+    const successorId = superseded.write?.recordId;
+    if (successorId === undefined) throw new Error('The supersession wrote no successor.');
+
+    const detail = await read(handler, successorId);
+    // The agent's correction does not inherit the person's verified trust.
+    expect(detail['memory']).toMatchObject({ writer: 'agent', trust: 'untrusted' });
+    expect(detail['history']).toEqual([
+      expect.objectContaining({ id: written.id, writer: 'person', trust: 'verified' }),
+    ]);
+  });
+
+  it('records every correction in the audit log, a person’s and an agent’s, with no memory text (COR-2009)', async () => {
+    const { bureau, handler, memory } = await open();
+    const written = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.remember',
+        { agentId: 'assistant', content: 'Refund updates go by phone.' },
+        'operator-key',
+      ),
+    )['memory'];
+    const byPerson = resultOf(
+      await rpc(
+        handler,
+        'bureau.memory.correct',
+        { agentId: 'assistant', id: written.id, content: 'Refund updates go by post.' },
+        'alice-key',
+      ),
+    )['memory'];
+    const byAgent = await memory!.forget(runOver(ALICE), {
+      mode: 'supersession',
+      locator: { id: byPerson.id, collection: 'assistant' },
+      successor: {
+        content: 'Refund updates go by email, not by phone.',
+        collection: 'assistant',
+        source: 'model-tool',
+        memoryClass: 'semantic',
+        correlation: { runId: 'run-correcting', sessionId: 'refund-chat' },
+      },
+    });
+    const agentCorrectionId = byAgent.write?.recordId;
+
+    await waitUntil(
+      async () => {
+        const page = await bureau.audit.query({ type: 'memory.corrected' });
+        return page.records.length === 2;
+      },
+      { message: 'both corrections to be audited' },
+    );
+    const { records } = await bureau.audit.query({ type: 'memory.corrected' });
+    const details = records.map((record) => record.detail);
+    const byWriter = details.toSorted((left, right) =>
+      String(right?.['writer']).localeCompare(String(left?.['writer'])),
+    );
+    expect(byWriter).toEqual([
+      { agentName: 'assistant', memoryId: byPerson.id, correctsId: written.id, writer: 'person' },
+      {
+        agentName: 'assistant',
+        memoryId: agentCorrectionId ?? '',
+        correctsId: byPerson.id,
+        writer: 'agent',
+        sessionId: 'refund-chat',
+      },
+    ]);
+    // The agent's correction is filed under the run that made it.
+    const underRun = await bureau.audit.query({ runId: 'run-correcting' });
+    expect(underRun.records.map((record) => record.type)).toEqual(['memory.corrected']);
+    expect(JSON.stringify(records)).not.toContain('Refund updates');
+  });
+
+  it('exports one JSON file named for the agent, each memory with its text, kind, writer, trust and history', async () => {
+    const { bureau, handler, later } = await openTimed();
+    await chat(bureau, ALICE, 'Customers prefer refund updates by phone.', 'refund-chat');
+    const original = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    await later();
+    await rpc(
+      handler,
+      'bureau.memory.correct',
+      {
+        agentId: 'assistant',
+        id: original,
+        content: 'Customers prefer refund updates by email, not by phone.',
+      },
+      'alice-key',
+    );
+    await later();
+    await rpc(
+      handler,
+      'bureau.memory.remember',
+      {
+        agentId: 'assistant',
+        content: 'To check an order, call lookup-order before answering.',
+        kind: 'how-to',
+      },
+      'operator-key',
+    );
+
+    const exported = resultOf(
+      await rpc(handler, 'bureau.memory.export', { agentId: 'assistant' }, 'alice-key'),
+    );
+
+    expect(exported['fileName']).toBe('assistant-memories.json');
+    const listed = memoriesOf(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    // As many memories as the list shows, newest first.
+    expect((exported['memories'] as Row[]).map((row) => row.id)).toEqual(
+      listed.map((row) => row.id),
+    );
+    expect(exported['memories']).toEqual([
+      expect.objectContaining({
+        content: 'To check an order, call lookup-order before answering.',
+        kind: 'how-to',
+        writer: 'person',
+        trust: 'verified',
+        history: [],
+      }),
+      expect.objectContaining({
+        content: 'Customers prefer refund updates by email, not by phone.',
+        kind: 'fact',
+        writer: 'person',
+        trust: 'verified',
+        history: [
+          expect.objectContaining({
+            id: original,
+            content: 'Customers prefer refund updates by phone.',
+            writer: 'agent',
+            trust: 'untrusted',
+          }),
+        ],
+      }),
+    ]);
+  });
+});
+
+describe('memoryExportFileName', () => {
+  it('names the file for the agent, and makes a namespaced identifier a file name', () => {
+    expect(memoryExportFileName('tool-runner')).toBe('tool-runner-memories.json');
+    expect(memoryExportFileName('demo:release-helper')).toBe('demo-release-helper-memories.json');
   });
 });

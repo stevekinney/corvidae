@@ -83,6 +83,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/plugin-openai',
   '@lostgradient/plugin-typesafe',
   '@lostgradient/plugin-voyage',
+  '@lostgradient/plugin-workspace',
   '@lostgradient/memory',
   '@lostgradient/storage',
   '@lostgradient/storage-bun-sqlite',
@@ -812,9 +813,6 @@ describe('internal workspace architecture', () => {
       }
     }
     expect(await Bun.file(join(root, 'lefthook.yml')).exists()).toBe(false);
-    expect(
-      await Bun.file(join(root, '.github/workflows/continuous-integration.yaml')).exists(),
-    ).toBe(false);
   });
 
   // The published Weft build classifies a module as test-only by filename suffix

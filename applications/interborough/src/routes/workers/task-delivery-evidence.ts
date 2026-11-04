@@ -25,7 +25,7 @@ export type DeadLetterPayload = DeadLetterOutput['payload'];
 /** A `weft.tasks.deliveries` response the dashboard refuses to render. */
 export class MalformedTaskDeliveriesError extends Error {
   constructor() {
-    super('Weft returned a malformed task delivery history.');
+    super('The server returned a malformed task delivery history.');
     this.name = 'MalformedTaskDeliveriesError';
   }
 }
@@ -33,7 +33,7 @@ export class MalformedTaskDeliveriesError extends Error {
 /** A `weft.tasks.deadletters.get` response the dashboard refuses to render. */
 export class MalformedDeadLetterError extends Error {
   constructor() {
-    super('Weft returned a malformed dead-letter record.');
+    super('The server returned a malformed dead-letter record.');
     this.name = 'MalformedDeadLetterError';
   }
 }

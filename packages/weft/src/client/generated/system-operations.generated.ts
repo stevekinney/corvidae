@@ -200,6 +200,8 @@ export type SystemOperationTypes = {
         readonly concurrency: number;
         readonly connectedAt: number;
         readonly deploymentName?: string;
+        readonly drainFinishedTasks?: number;
+        readonly drainedAt?: number;
         readonly health: 'active' | 'draining' | 'drained';
         readonly heartbeatAgeMs: number;
         readonly id: string;

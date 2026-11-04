@@ -51,7 +51,7 @@ test('a pinned run shows its binding and says why it cannot be overridden', asyn
   await expect(figure(page, 'Build')).toHaveText(E2E_VERSIONED_FIRST_BUILD_ID);
   await expect(figure(page, 'Routing generation')).toHaveText('1');
   await expect(panel(page).getByTestId('worker-binding-why')).toContainText(
-    'Weft never moves a pinned run',
+    'Interborough never moves a pinned run',
   );
   await expect(panel(page).getByText(/No earlier versions/)).toBeVisible();
   await expect(panel(page).getByText('Workflow-bound and standalone activities')).toBeVisible();
@@ -80,7 +80,7 @@ test('an auto-upgrade run shows the compatibility it requires and why it may mov
     `sha256:${E2E_VERSIONED_FIRST_BUILD_ID}`,
   );
   await expect(panel(page).getByTestId('worker-binding-why')).toContainText(
-    'Weft may move it to a routed build',
+    'Interborough may move it to a routed build',
   );
   await expect(panel(page).getByTestId('worker-binding-override-note')).toContainText(
     'system:admin',

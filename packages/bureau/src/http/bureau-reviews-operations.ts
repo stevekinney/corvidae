@@ -64,6 +64,7 @@ import type {
   ResolvedReview,
   ReviewResolutionFields,
   BureauReviews,
+  WorkflowReviewOrigin,
 } from '../types.ts';
 import type { BureauScope } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts';
@@ -230,6 +231,24 @@ const humanWaitReviewSchema = z.object({
    * answer is taken. `bureau.reviews.resolve` checks an `answer` against it.
    */
   inputSchema: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * COR-2009 — the workflow step that asks, for the review of a workflow file's `await-signal`
+   * step written with `"review": true` (the builder's "Wait for a person"); absent for an agent's
+   * question. `runId` is then the workflow's instance, and the decision is delivered on
+   * `signalName`.
+   */
+  workflow: z
+    .object({
+      /** The workflow's identifier. */
+      id: z.string(),
+      /** The workflow's title, when its file gives one. */
+      title: z.string().optional(),
+      /** The step's position in the file, counted from 1. */
+      step: z.number().int().min(1),
+      /** The step's title, when it has one. */
+      stepTitle: z.string().optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -391,6 +410,22 @@ export function projectReview(
     signalName: review.signalName,
     ...(review.prompt === undefined ? {} : { prompt: review.prompt }),
     ...(review.inputSchema === undefined ? {} : { inputSchema: review.inputSchema }),
+    ...(review.workflow === undefined ? {} : { workflow: projectWorkflowOrigin(review.workflow) }),
+  };
+}
+
+/** The workflow step a workflow review was asked by, as the wire carries it. */
+function projectWorkflowOrigin(origin: WorkflowReviewOrigin): {
+  id: string;
+  title?: string;
+  step: number;
+  stepTitle?: string;
+} {
+  return {
+    id: origin.id,
+    ...(origin.title === undefined ? {} : { title: origin.title }),
+    step: origin.step,
+    ...(origin.stepTitle === undefined ? {} : { stepTitle: origin.stepTitle }),
   };
 }
 

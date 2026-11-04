@@ -837,21 +837,49 @@ describe('the audit trail', () => {
 
     const entries = await served.bureau.internals.auditTrail?.query({ runId: 'agent:researcher' });
     expect(entries?.map((entry) => [entry.type, entry.principal, entry.detail])).toEqual([
-      ['agent.created', 'anonymous:local', { id: 'researcher', hash: createdHash }],
+      [
+        'agent.created',
+        'anonymous:local',
+        {
+          id: 'researcher',
+          hash: createdHash,
+          // COR-2009: the saved version each write made, what changed, and the tools it added.
+          agentName: 'researcher',
+          revision: 1,
+          changedKeys: 'name,description,model,tools,skillDescriptors,a2a,instructions',
+          toolsAdded: 'lookup-order',
+        },
+      ],
       [
         'agent.updated',
         'api-key:operator',
-        { id: 'researcher', hash: updatedHash, previousHash: createdHash },
+        {
+          id: 'researcher',
+          hash: updatedHash,
+          previousHash: createdHash,
+          agentName: 'researcher',
+          revision: 2,
+          previousRevision: 1,
+          changedKeys: 'instructions',
+        },
       ],
       [
         'agent.updated',
         'anonymous:local',
-        { id: 'researcher', hash: optedInHash, previousHash: updatedHash },
+        {
+          id: 'researcher',
+          hash: optedInHash,
+          previousHash: updatedHash,
+          agentName: 'researcher',
+          revision: 3,
+          previousRevision: 2,
+          changedKeys: 'a2a',
+        },
       ],
       [
         'agent.deleted',
         'anonymous:local',
-        { id: 'researcher', hash: optedInHash, previousHash: optedInHash },
+        { id: 'researcher', hash: optedInHash, previousHash: optedInHash, agentName: 'researcher' },
       ],
     ]);
   });

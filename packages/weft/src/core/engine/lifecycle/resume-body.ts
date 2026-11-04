@@ -445,7 +445,7 @@ export async function performResumeAfterClaimAcquired(
   // Restore the event log head from storage so that the next appendToBatch()
   // call uses the correct sequence number and prevHash rather than falling
   // back to EMPTY_EVENT_HEAD (sequence -1) and overwriting existing entries.
-  const eventLog = new EventLog(internals.storage, workflowId);
+  const eventLog = new EventLog(internals.storage, workflowId, internals.options.getNow);
   const restoredHead = await eventLog.loadHead();
 
   // History circuit breaker, pre-replay site: if the persisted history already

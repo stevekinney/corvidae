@@ -136,10 +136,21 @@ const problemSchema = z.object({
  */
 export type AgentProblem = z.infer<typeof problemSchema>;
 
+/**
+ * Why an `unavailable` agent cannot run (COR-2009): its plugin is disabled, as in `Plugin Demo is
+ * disabled`. A stub that predates the key reads as available.
+ */
+const unavailableSchema = z
+  .object({ code: z.literal('plugin-disabled'), message: z.string() })
+  .nullable()
+  .default(null);
+
 const detailSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  state: z.enum(['ready', 'invalid']),
+  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
+  state: z.enum(['ready', 'invalid', 'unavailable']),
+  unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
   a2a: z.boolean(),
@@ -182,7 +193,8 @@ const versionsSchema = z.object({
       hash: z.string(),
       savedAt: z.string(),
       savedBy: z.string().nullable(),
-      definition: definitionSchema,
+      /** The definition a file agent's version holds; `null` for a built-in agent's, which holds overrides (COR-2009). */
+      definition: definitionSchema.nullable(),
       changedKeys: z.array(z.string()),
     }),
   ),
@@ -242,16 +254,20 @@ const catalogSchema = z.object({
       description: z.string(),
       /** The one line a person is shown for the tool, or `null` when the tool declares none. */
       shortDescription: z.string().nullable(),
+      /** The tool's name for a person ("Issue refund"), or `null` when it has none or the Bureau sends none. */
+      title: z.string().nullable().default(null),
       /** What the tool takes, as a JSON Schema, or `null` when it cannot be written as one. */
       inputSchema: z.record(z.string(), z.unknown()).nullable(),
       /** What the tool may technically do, or `null` when it declares none. */
       tier: z.enum(['read-only', 'mutating', 'dangerous']).nullable(),
       /** What happens by default when an agent calls the tool (Armorer's tier rule). */
       defaultApproval: z.enum(['allow', 'ask']),
-      /** `bureau` for a tool Bureau adds, `plugin` for one a plugin contributes, `host` for one the host provides (an MCP server's). */
-      source: z.enum(['host', 'bureau', 'plugin']),
-      /** The plugin that contributes the tool when `source` is `plugin`, else `null`. */
+      /** `skill` for a tool a skill brings, else `bureau` for a tool Bureau adds, `plugin` for one a plugin contributes, `host` for one the host provides (an MCP server's). */
+      source: z.enum(['host', 'bureau', 'plugin', 'skill']),
+      /** The plugin that contributes the tool (`source` is `plugin`, or `skill` for a plugin's skill), else `null`. */
       plugin: z.string().nullable(),
+      /** The skill that brings the tool when `source` is `skill`, else `null` (also when the Bureau sends none). */
+      skill: z.string().nullable().default(null),
       /** The agents that use the tool now. */
       users: z.array(z.string()),
     }),
@@ -353,7 +369,9 @@ export async function listAgentRevisions(
 const listingSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
-  state: z.enum(['ready', 'invalid']),
+  /** `unavailable` is a code agent of a disabled plugin: it can be read and duplicated, never run. */
+  state: z.enum(['ready', 'invalid', 'unavailable']),
+  unavailable: unavailableSchema,
   name: z.string(),
   description: z.string().nullable(),
   a2a: z.boolean(),

@@ -24,6 +24,7 @@ export const TASK_ORIGIN_KINDS = [
   'agent',
   'goal',
   'parent',
+  'system',
 ] as const;
 
 /** The kind of a {@link TaskOrigin}: what `bureau.tasks.list` filters by. */
@@ -113,6 +114,16 @@ export interface ParentTaskOrigin {
   readonly parentRunId: string;
 }
 
+/**
+ * The Bureau itself started the run, for its own bookkeeping (COR-2009): the schedule tick that
+ * records what the scheduler did. No person, chat, schedule or goal asked for it. The Bureau's own
+ * runs carry it as their Weft tag `origin:system`; no task is recorded with it.
+ */
+export interface SystemTaskOrigin {
+  /** Discriminant. */
+  readonly kind: 'system';
+}
+
 /** Where a task came from. */
 export type TaskOrigin =
   | ChatTaskOrigin
@@ -121,7 +132,8 @@ export type TaskOrigin =
   | ApiTaskOrigin
   | AgentTaskOrigin
   | GoalTaskOrigin
-  | ParentTaskOrigin;
+  | ParentTaskOrigin
+  | SystemTaskOrigin;
 
 /**
  * What a caller of `bureau.tasks.start` may declare about where a task came from. Only the kind
@@ -182,6 +194,7 @@ const ORIGIN_CHECKS: Readonly<
     (value['toolCallId'] === undefined || isNonEmptyString(value['toolCallId'])),
   goal: (value) => isNonEmptyString(value['goalRunId']) && isNonEmptyString(value['attemptId']),
   parent: (value) => isNonEmptyString(value['parentRunId']),
+  system: () => true,
 };
 
 /** Whether a stored value is a task origin of a kind this version knows, in every field. */

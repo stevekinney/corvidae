@@ -73,7 +73,7 @@
     <Textarea
       id="revision-install-manifest"
       label="Revision manifest (JSON)"
-      description="A workflow revision manifest. Weft validates it and installs it durably; installing does not activate it."
+      description="A workflow revision manifest. Interborough validates it and installs it durably; installing does not activate it."
       bind:value={manifestText}
       rows={8}
     />
@@ -99,7 +99,7 @@
       <div class="weft-revision-install__outcome" role="status">
         <Badge variant="success">Installed</Badge>
         {#if installed === undefined}
-          <p>Weft installed the revision.</p>
+          <p>Interborough installed the revision.</p>
         {:else}
           <p>
             Installed revision "{installed.revision}" of {installed.name}.

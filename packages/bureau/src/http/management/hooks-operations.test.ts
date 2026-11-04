@@ -72,10 +72,11 @@ async function createAs(opened: OpenedBureau, key: string, params: object = {}) 
 }
 
 describe('bureau.hooks.*', () => {
-  it('serves the seven operations, each described, with only delete destructive', () => {
+  it('serves the eight operations, each described, with only delete destructive', () => {
     expect(bureauHooksOperations.map((operation) => operation.name)).toEqual([
       'bureau.hooks.create',
       'bureau.hooks.update',
+      'bureau.hooks.secret.replace',
       'bureau.hooks.delete',
       'bureau.hooks.get',
       'bureau.hooks.list',
@@ -114,6 +115,64 @@ describe('bureau.hooks.*', () => {
         JSON.stringify(await call(opened, method, params, 'alice-observer-key')),
       ).not.toContain(SIGNING_SECRET);
     }
+  });
+
+  it('generates a webhook’s signing secret when none is given, shows it once, and replaces it on request (COR-2009)', async () => {
+    const { opened } = await open();
+    const { signingSecret: _chosen, ...withoutSecret } = NEW_HOOK;
+    const created = await call(opened, 'bureau.hooks.create', withoutSecret, 'alice-observer-key');
+    expect(created.error).toBeUndefined();
+    const { id, signingSecret, revision } = created.result as {
+      id: string;
+      signingSecret: string;
+      revision: number;
+    };
+    expect(signingSecret).toMatch(/^whsec_[0-9a-f]{24}$/);
+    for (const [method, params] of [
+      ['bureau.hooks.get', { hookId: id }],
+      ['bureau.hooks.list', {}],
+    ] as const) {
+      const read = JSON.stringify(await call(opened, method, params, 'alice-observer-key'));
+      expect(read).not.toContain(signingSecret);
+      expect(read).not.toContain('signingSecret');
+    }
+
+    // Replacing needs no observe-all scope, as replacing it through `update` never did.
+    const replaced = await call(
+      opened,
+      'bureau.hooks.secret.replace',
+      { hookId: id, expectedRevision: revision },
+      'alice-key',
+    );
+    expect(replaced.error).toBeUndefined();
+    const fresh = (replaced.result as { signingSecret: string; revision: number }).signingSecret;
+    expect(fresh).toMatch(/^whsec_[0-9a-f]{24}$/);
+    expect(fresh).not.toBe(signingSecret);
+    expect((replaced.result as { revision: number }).revision).toBe(revision + 1);
+    expect(
+      JSON.stringify(await call(opened, 'bureau.hooks.get', { hookId: id }, 'alice-observer-key')),
+    ).not.toContain(fresh);
+
+    const stale = await call(
+      opened,
+      'bureau.hooks.secret.replace',
+      { hookId: id, expectedRevision: revision },
+      'alice-key',
+    );
+    expect(stale.error?.data).toMatchObject({ currentRevision: revision + 1 });
+    const missing = await call(
+      opened,
+      'bureau.hooks.secret.replace',
+      { hookId: 'hook-missing' },
+      'alice-key',
+    );
+    expect(missing.error).toBeDefined();
+  });
+
+  it('answers signingSecret null on create when the caller chose the secret', async () => {
+    const { opened } = await open();
+    const created = await call(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+    expect((created.result as { signingSecret: unknown }).signingSecret).toBeNull();
   });
 
   it('requires bureau.events:observe-all to create, and an owner to own', async () => {
@@ -574,8 +633,8 @@ describe('bureau.hooks.*', () => {
 
     const both = await create({ ...NEW_HOOK, action: { type: 'notify' } });
     expect(both.error?.data).toMatchObject({ issues: [{ path: ['action'] }] });
-    const noSecret = await create({ url: NEW_HOOK.url });
-    expect(noSecret.error?.data).toMatchObject({ issues: [{ path: ['signingSecret'] }] });
+    const shortSecret = await create({ url: NEW_HOOK.url, signingSecret: 'too-short' });
+    expect(shortSecret.error?.data).toMatchObject({ issues: [{ path: ['signingSecret'] }] });
     const looping = await create({
       events: ['notification.created'],
       action: { type: 'notify' },

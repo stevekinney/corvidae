@@ -33,7 +33,10 @@ export const BUREAU_PLUGIN_VERSION = '1.0.0';
 export const BUREAU_PLUGIN_LOCATION = '@lostgradient/bureau';
 
 const BUREAU_PLUGIN_DESCRIPTION =
-  'The tools Bureau gives agents itself: finding other agents and managing workflows.';
+  'The tools every agent can have without a plugin: finding other agents and managing workflows.';
+
+/** The built-in plugin's name as a person reads it. */
+const BUREAU_PLUGIN_TITLE = 'Built-in tools';
 
 /**
  * The built-in plugin as a host lists it: its descriptor with no `setup`, because the tools are
@@ -44,6 +47,7 @@ const BUREAU_PLUGIN_DESCRIPTION =
 export const BUREAU_PLUGIN_ENTRY: BureauPluginEntry = {
   descriptor: definePlugin({
     name: BUREAU_PLUGIN_NAME,
+    title: BUREAU_PLUGIN_TITLE,
     version: BUREAU_PLUGIN_VERSION,
     description: BUREAU_PLUGIN_DESCRIPTION,
     required: true,
@@ -58,6 +62,7 @@ function createBureauPluginEntry(tools: readonly AnyTool[]): BureauPluginEntry {
     ...BUREAU_PLUGIN_ENTRY,
     descriptor: definePlugin({
       name: BUREAU_PLUGIN_NAME,
+      title: BUREAU_PLUGIN_TITLE,
       version: BUREAU_PLUGIN_VERSION,
       description: BUREAU_PLUGIN_DESCRIPTION,
       required: true,

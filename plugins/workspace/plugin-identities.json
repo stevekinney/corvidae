@@ -1,0 +1,12 @@
+{
+  "plugin": "workspace",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "kind": "configuration",
+      "id": "workspace",
+      "version": "1.0.0",
+      "schema": "sha256:341d921800908ecbf3421028f9d5dfbe21839ecd7d0c145babb27033727ca65f"
+    }
+  ]
+}

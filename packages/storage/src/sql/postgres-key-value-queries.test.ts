@@ -57,12 +57,28 @@ describe('postgres key-value query constants (default unqualified table)', () =>
 
   it('upserts via ON CONFLICT (key) DO UPDATE with EXCLUDED', () => {
     expect(defaultQueries.upsertValueByKey).toBe(
-      'INSERT INTO kv (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+      'INSERT INTO kv (key, value, updated_at) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at',
     );
   });
 
   it('scopes the collation introspection to the configured table via to_regclass($1)', () => {
     expect(defaultQueries.selectKeyCollation).toContain('to_regclass($1)');
+  });
+
+  it('adds, reads and scans the write-time column on the configured table', () => {
+    const queries = buildPostgresKeyValueQueries('"weft"."state"');
+    expect(queries.selectWriteTimeColumn).toContain('to_regclass($1)');
+    expect(queries.selectWriteTimeColumn).toContain("attname = 'updated_at'");
+    expect(queries.addWriteTimeColumn).toBe(
+      'ALTER TABLE "weft"."state" ADD COLUMN IF NOT EXISTS updated_at BIGINT',
+    );
+    expect(queries.selectWriteTimeByKey).toBe(
+      'SELECT updated_at FROM "weft"."state" WHERE key = $1',
+    );
+    expect(queries.keyValueMetadataRangeSelect('wf:', { limit: 5 })).toEqual({
+      parameters: ['wf:', 'wf;', 5],
+      sql: 'SELECT key, value, updated_at FROM "weft"."state" WHERE key >= $1 AND key < $2 ORDER BY key ASC LIMIT $3',
+    });
   });
 });
 
@@ -73,7 +89,7 @@ describe('batch-collapse queries (#469)', () => {
 
   it('upserts puts with one unnest-driven multi-row INSERT', () => {
     expect(defaultQueries.upsertValuesByKeys).toBe(
-      'INSERT INTO kv (key, value) SELECT * FROM unnest($1::text[], $2::bytea[]) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+      'INSERT INTO kv (key, value, updated_at) SELECT entry.key, entry.value, $3::bigint FROM unnest($1::text[], $2::bytea[]) AS entry(key, value) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at',
     );
   });
 

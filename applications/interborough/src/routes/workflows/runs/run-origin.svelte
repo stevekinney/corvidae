@@ -74,6 +74,8 @@
       >{/if}
   {:else if origin.kind === 'parent'}
     {@render link(origin.href)} ({TASK_COPY.workflow})
+  {:else if origin.kind === 'system'}
+    {STARTED_BY_LABELS.system}
   {:else}
     {TASK_COPY.originUnrecorded}
   {/if}

@@ -1,6 +1,8 @@
 # Project guidance
 
-This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are private source packages; applications own their executable toolchains. Do not add publishing, CI/CD, deployment infrastructure, or Git-hook installation. A Claude Code hook in the checked-in `.claude/settings.json` is not a Git hook: it runs inside the agent's session, installs nothing into `.git`, and the Git-hook ban does not apply to it. The tooling that transforms this workspace's source into the public mirror repositories used to be the one exception. It now lives in the separate private repository `stevekinney/corvidae-mirror`, which reads a corvidae checkout and writes nothing here, so no path in this workspace is exempt: publishing, CI/CD, deployment infrastructure, and Git-hook installation are prohibited everywhere in it, workflow files included. One application-owned hosting file is not infrastructure in this sense: `applications/playground/vercel.json` gives the existing Vercel project that serves cinder.website its install and build commands, response headers, and redirects, which project settings cannot express. Its `ignoreCommand` is covered the same way: `applications/playground/scripts/ignore-build.sh`, with the `ignore-build.ts` and `environment-configuration.ts` beside it, decides only whether that project builds a given commit, so that the hour-long export runs only when the deployed site could change. None of it adds a workflow, and the Vercel project's Git integration builds it.
+Corvidae is a public, pre-release Bun and Turborepo workspace. Libraries are private workspace source packages. Applications own their executable toolchains. Corvidae can own GitHub Actions workflows for application releases and publish verified application artifacts from its own GitHub Releases. Keep Git-hook installation out of the workspace. The checked-in Claude Code hooks run inside agent sessions.
+
+The private `stevekinney/corvidae-mirror` repository owns the existing tooling that transforms Corvidae source for the public package mirrors. The playground's Vercel settings live in `applications/playground/vercel.json`, and its ignore command builds only when a change can affect the deployed site.
 
 ## Workflow
 
@@ -50,7 +52,7 @@ Their tuning history (an audit of 518 bot review threads) is in `documentation/r
 
 - Per-change publishing is paused, and this workspace carries no `.changeset/` directory. Release intent for a batch backport is written in `stevekinney/corvidae-mirror`, next to the tooling that carries it to the mirrors, when the backport is made.
 - The published versions the playground displays live in `applications/playground/published-versions.json`, and `scripts/published-exports.json` is the snapshot of each public package's `exports` map that Weft's documentation check and Markdown's import-graph test resolve against. The tooling that used to record both no longer writes here, so update them by hand after a backport, along with `applications/playground/src/cinder-published-bases.json` when Cinder's version changes.
-- Corvidae never publishes.
+- Interborough release automation belongs in Corvidae. Build from a pinned source revision and verify the installed artifact on each supported target before publishing it. Corvidae GitHub Releases can host the compiled archives and checksums for direct downloads and downstream installers.
 
 ## Turborepo
 

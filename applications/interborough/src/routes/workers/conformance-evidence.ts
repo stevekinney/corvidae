@@ -21,7 +21,7 @@ export type ConformanceCheck = ConformanceReport['checks'][number];
 
 export class MalformedConformanceError extends Error {
   constructor(what: 'targets' | 'report') {
-    super(`Weft returned a malformed conformance ${what} response.`);
+    super(`The server returned a malformed conformance ${what} response.`);
     this.name = 'MalformedConformanceError';
   }
 }

@@ -9,6 +9,7 @@ import { z } from 'zod';
  */
 export default definePlugin({
   name: 'ollama',
+  title: 'Ollama',
   version: '1.0.0',
   description: 'Embeds memory with an Ollama server, by default one on this machine.',
   configuration: z.object({

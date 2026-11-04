@@ -26,10 +26,11 @@
  */
 
 import type { Bungalow } from '@lostgradient/bungalow';
-import type {
-  ProviderChecker,
-  resolveProviderGenerate,
-  SettingLockReason,
+import {
+  ANONYMOUS_LOCAL_OWNER,
+  type ProviderChecker,
+  type resolveProviderGenerate,
+  type SettingLockReason,
 } from '@lostgradient/bureau';
 import type { BackendDescriptor, GenerateFunction } from '@lostgradient/operative';
 
@@ -284,6 +285,24 @@ export type ProviderManagerOptions = {
   readonly warn: (message: string) => void;
   /** Bureau's provider resolver, or a stand-in for a test. */
   readonly resolveProviderGenerate: typeof resolveProviderGenerate;
+  /**
+   * Appends an entry to the Bureau's audit trail once a provider's key is removed (COR-2009): the
+   * provider's name and nothing of its key. Optional; best effort, so a failed write never undoes
+   * the removal.
+   */
+  readonly audit?: (entry: ProviderAuditEntry) => Promise<void>;
+};
+
+/** What {@link ProviderManagerOptions.audit} is handed: the audit entry of a removed provider key. */
+export type ProviderAuditEntry = {
+  /** `provider:<name>`, the resource the entry is filed under. */
+  readonly runId: string;
+  /** `provider.disconnected`. */
+  readonly type: 'provider.disconnected';
+  /** The person who removed it, as the host's routes act: `anonymous:local`. */
+  readonly principal: string;
+  /** The provider, by its plugin's name, such as `anthropic`. */
+  readonly detail: { readonly provider: string };
 };
 
 /** The page's view of a catalog row. */
@@ -653,7 +672,17 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         }
         // The plugin manager reports whether the provider's plugin still has its secret.
         await options.afterConfigurationWrite?.().catch(() => undefined);
-        return apply();
+        const change = await apply();
+        // COR-2009 — the audit log's "Removed the Anthropic key": the provider, never the key.
+        await options
+          .audit?.({
+            runId: `provider:${contributed.name}`,
+            type: 'provider.disconnected',
+            principal: ANONYMOUS_LOCAL_OWNER,
+            detail: { provider: contributed.name },
+          })
+          .catch(() => undefined);
+        return change;
       });
     },
     reload: () => serialized(apply),

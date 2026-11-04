@@ -144,7 +144,7 @@ describe('the plaintext scan', () => {
 });
 
 describe('saved tool sources', () => {
-  test('list the tools of an MCP and an OpenAPI source after a restart, with their tiers, and keep no credential in plaintext', async () => {
+  test('list the tools of an MCP and an OpenAPI source at once and after a restart, with their tiers, and keep no credential in plaintext', async () => {
     const path = await home();
     const mcp = await track(startMcpServer(BEARER));
     const first = await startAt(path);
@@ -159,20 +159,24 @@ describe('saved tool sources', () => {
     });
 
     expect(connectedMcp.status).toBe(200);
+    // COR-2009: an added source is loaded at once, so no restart is needed.
     expect(await connectedMcp.json()).toEqual({
       id: 'files',
       changed: true,
-      restartRequired: true,
+      restartRequired: false,
+      available: ['files__lookup', 'files__wipe'],
     });
     expect(connectedPets.status).toBe(200);
-    // Not listed yet: the Bureau was built before the change.
-    expect(first.bureau.agents.tools().map((tool) => tool.name)).not.toContain('files__lookup');
-    const pending: {
+    expect(await connectedPets.json()).toMatchObject({ restartRequired: false });
+    const live = new Map(first.bureau.agents.tools().map((tool) => [tool.name, tool.tier]));
+    expect(live.get('files__lookup')).toBe('read-only');
+    expect(live.get('pets__delete-pet')).toBe('dangerous');
+    const loaded: {
       sources: { id: string; state: string; credentials: string[] }[];
     } = await jsonOf(send(first, 'GET', '/host/tool-sources'));
-    expect(pending.sources.map((source) => [source.id, source.state, source.credentials])).toEqual([
-      ['files', 'pending-restart', ['token']],
-      ['pets', 'pending-restart', ['key']],
+    expect(loaded.sources.map((source) => [source.id, source.state, source.credentials])).toEqual([
+      ['files', 'loaded', ['token']],
+      ['pets', 'loaded', ['key']],
     ]);
 
     const second = await restart(first, path);
@@ -206,6 +210,92 @@ describe('saved tool sources', () => {
     const files = [...present.keys()];
     expect(files.some((file) => file.endsWith(join('secrets', 'tool-source-files')))).toBe(true);
     expect(await readFile(join(path, 'configuration.json'), 'utf8')).toContain('"files"');
+  });
+
+  test('connects a source with one tool off: the others are available now, with no restart, and the one stays off (COR-2009)', async () => {
+    const path = await home();
+    const mcp = await track(startMcpServer(BEARER));
+    const first = await startAt(path);
+
+    const connected = await send(first, 'PUT', '/host/tool-sources/files', {
+      source: mcpSource(`${mcp.origin}/`),
+      credentials: { token: BEARER },
+      create: true,
+      tools: { wipe: { enabled: false } },
+    });
+
+    expect(connected.status).toBe(200);
+    expect(await connected.json()).toEqual({
+      id: 'files',
+      changed: true,
+      restartRequired: false,
+      available: ['files__lookup'],
+    });
+    const names = (host: Host) => host.bureau.agents.tools().map((tool) => tool.name);
+    expect(names(first)).toContain('files__lookup');
+    expect(names(first)).not.toContain('files__wipe');
+    const listed: {
+      sources: {
+        id: string;
+        state: string;
+        tools: { tool: string; enabled: boolean; savedEnabled: boolean }[];
+      }[];
+    } = await jsonOf(send(first, 'GET', '/host/tool-sources'));
+    expect(
+      listed.sources[0]?.tools.map(({ tool, enabled, savedEnabled }) => [
+        tool,
+        enabled,
+        savedEnabled,
+      ]),
+    ).toEqual([
+      ['lookup', true, true],
+      ['wipe', false, false],
+    ]);
+    expect(await readFile(join(path, 'configuration.json'), 'utf8')).toContain('"enabled": false');
+
+    // Turned on again on the tools route, it is offered from the next start.
+    const turnedOn = await send(first, 'PUT', '/host/tool-sources/files/tools', {
+      tools: { wipe: { enabled: true } },
+    });
+    expect(await turnedOn.json()).toEqual({ id: 'files', changed: true, restartRequired: true });
+    const second = await restart(first, path);
+    expect(names(second)).toContain('files__wipe');
+  });
+
+  test('reads an OpenAPI spec before it is connected, and says what is wrong with one that is not (COR-2009)', async () => {
+    const first = await startAt(await home());
+
+    const valid = await jsonOf(
+      send(first, 'POST', '/host/openapi-inspection', {
+        fileName: 'pets.json',
+        text: JSON.stringify(petsDocument),
+      }),
+    );
+    expect(valid).toMatchObject({
+      outcome: 'valid',
+      fileName: 'pets.json',
+      version: '3.0',
+      title: 'Pets',
+      operationCount: 3,
+      testOperation: { operationId: 'listPets', method: 'GET', path: '/pets' },
+    });
+
+    const invalid = await jsonOf(
+      send(first, 'POST', '/host/openapi-inspection', {
+        fileName: 'payments-openapi.yaml',
+        text: 'openapi: 3.1.0\ninfo:\n  title: Payments API\npaths: 4\n',
+      }),
+    );
+    expect(invalid).toEqual({
+      outcome: 'invalid',
+      fileName: 'payments-openapi.yaml',
+      line: 4,
+      problem: '“paths” must be an object.',
+      message: 'This isn’t a valid OpenAPI 3 file. Line 4: “paths” must be an object.',
+    });
+
+    const neither = await send(first, 'POST', '/host/openapi-inspection', {});
+    expect(neither.status).toBe(400);
   });
 
   test('one source that cannot load is its own standing and never stops the host or the other source', async () => {
@@ -324,8 +414,9 @@ describe('saved tool sources', () => {
       kind: 'mcp',
       transport: {
         type: 'stdio',
+        // The owner's addition is loaded at once (COR-2009), so the command must exit quietly.
         command: 'bun',
-        args: ['run', 'server.ts', '--name', 'a b'],
+        args: ['--eval', '0', '--name', 'a b'],
         env: { LEVEL: 'plain-env-value' },
         credentialEnv: { TOKEN: 'tok' },
       },
@@ -346,7 +437,7 @@ describe('saved tool sources', () => {
 
     const added = await host.toolSources.connect({ ...request, principal: ANONYMOUS_LOCAL_OWNER });
 
-    expect(added).toEqual({ id: 'shell', changed: true, restartRequired: true });
+    expect(added).toMatchObject({ id: 'shell', changed: true, restartRequired: false });
     const trail = await host.bureau.audit.query({ runId: auditTrailToolSourceOwnerId('shell') });
     expect(trail.records).toEqual([
       expect.objectContaining({
@@ -356,7 +447,7 @@ describe('saved tool sources', () => {
         detail: {
           sourceId: 'shell',
           kind: 'mcp',
-          commandLine: 'bun run server.ts --name "a b"',
+          commandLine: 'bun --eval 0 --name "a b"',
         },
       }),
     ]);

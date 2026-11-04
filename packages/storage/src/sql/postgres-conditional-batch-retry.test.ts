@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 
-import { PostgresKeyValueStorage, type PostgresPool } from './postgres-key-value-storage.ts';
+import { PostgresKeyValueStorage } from './postgres-key-value-storage.ts';
+import type { PostgresPool } from './postgres-pool.ts';
 
 /** What one `conditionalBatch` transaction attempt does when it starts. */
 type AttemptOutcome = 'conflict' | 'deadlock' | 'fatal' | 'proceed';

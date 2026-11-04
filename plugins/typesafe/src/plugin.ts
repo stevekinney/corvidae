@@ -38,6 +38,7 @@ function lazyJev(readKey: () => Promise<string | undefined>): DecisionModel {
  */
 export default definePlugin({
   name: 'typesafe',
+  title: 'TypeSafe',
   version: '0.1.0',
   description: 'TypeSafe Jev as a decision model for boolean, choice, and scale questions.',
   secrets: [TYPESAFE_API_KEY_SECRET],
