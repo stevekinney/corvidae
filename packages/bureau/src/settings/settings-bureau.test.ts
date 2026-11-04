@@ -10,6 +10,7 @@ import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
+import { createSettingsTools } from './settings-tools';
 import { startWorkflowToolsBureau } from '../testing/workflow-tools-bureau.test-support';
 import type { Bureau, BureauOptions } from '../types';
 
@@ -187,7 +188,7 @@ describe('bureau.settings on a Bureau', () => {
           patch: { 'decisions.fallbackModel': 'anthropic/VALUE-SENTINEL-4e2' },
           expectedRevision: 0,
         },
-        { agent: 'tuner', principal: 'user:tuner' },
+        { agent: 'tuner', principal: 'anonymous:local' },
       );
       expect(called.outcome).toBe('success');
       expect(called.result).toMatchObject({ outcome: 'applied', revision: 1 });
@@ -199,7 +200,7 @@ describe('bureau.settings on a Bureau', () => {
         (await harness.bureau.internals.auditTrail?.query({ type: 'settings.changed' })) ?? [];
       expect(records).toHaveLength(1);
       expect(records[0]).toMatchObject({
-        principal: 'user:tuner',
+        principal: 'anonymous:local',
         detail: { keys: 'decisions.fallbackModel', revision: 1 },
       });
       expect(JSON.stringify(records)).not.toContain('VALUE-SENTINEL');
@@ -247,6 +248,44 @@ describe('bureau.settings on a Bureau', () => {
       await harness.dispose();
     }
   });
+
+  it.each([
+    ['missing owner', undefined],
+    ['API-key owner', 'api-key:alice'],
+    ['custom owner', 'library:custom'],
+    ['user owner', 'user:tuner'],
+  ] as const)(
+    'denies %s for both settings tools under scope-only authorization',
+    async (_label, owner) => {
+      let settingsRead = 0;
+      let settingsWrite = 0;
+      const tools = createSettingsTools({
+        settings: () =>
+          ({
+            get: () => {
+              settingsRead += 1;
+              return {};
+            },
+            update: () => {
+              settingsWrite += 1;
+              return {};
+            },
+          }) as never,
+        authorityForRun: async () => owner,
+      });
+      const context = owner === undefined ? undefined : ({ runId: 'run-1' } as never);
+      const read = await tools['settings-get']!.execute({}, context);
+      const write = await tools['settings-update']!.execute(
+        { patch: {}, expectedRevision: 0 },
+        context,
+      );
+
+      expect(read).toMatchObject({ outcome: 'rejected', reason: 'forbidden' });
+      expect(write).toMatchObject({ outcome: 'rejected', reason: 'forbidden' });
+      expect(settingsRead).toBe(0);
+      expect(settingsWrite).toBe(0);
+    },
+  );
 });
 
 describe('a stored value the engine refuses', () => {
