@@ -172,6 +172,20 @@ describe('an invalid file', () => {
     expect(reads).toEqual([]);
   });
 
+  it('readSnapshot omits the unavailable hash and text for an oversized file', async () => {
+    const fixture = await start();
+    await fixture.put('huge.json', 'x'.repeat(WORKFLOW_FILE_SIZE_LIMIT + 1));
+    const snapshot = await fixture.catalog.readSnapshot('huge');
+    expect(snapshot).toMatchObject({
+      listing: {
+        state: 'invalid',
+        problem: { code: 'file-too-large' },
+      },
+    });
+    expect(snapshot?.listing.hash).toBeUndefined();
+    expect(snapshot?.text).toBeUndefined();
+  });
+
   it('not-utf8: the bytes are not valid UTF-8', async () => {
     const fixture = await start();
     await fixture.put('bytes.json', new Uint8Array([0x7b, 0xff, 0xfe, 0x7d]));
@@ -196,6 +210,28 @@ describe('an invalid file', () => {
     expect(listing(fixture, 'locked')?.problem?.code).toBe('unreadable');
     expect(listing(fixture, 'locked')?.problem?.message).toContain('EACCES');
     expect(listing(fixture, 'fine')?.state).toBe('ready');
+  });
+
+  it('readSnapshot keeps the unreadable diagnostic without an unavailable hash or text', async () => {
+    const fixture = await start({
+      operations: {
+        ...nodeAgentFileOperations,
+        read: async (path) => {
+          if (path.endsWith('locked.json')) throw new Error('EACCES: permission denied');
+          return nodeAgentFileOperations.read(path);
+        },
+      },
+    });
+    await fixture.put('locked.json', workflowFileText('locked'));
+    const snapshot = await fixture.catalog.readSnapshot('locked');
+    expect(snapshot).toMatchObject({
+      listing: {
+        state: 'invalid',
+        problem: { code: 'unreadable', message: expect.stringContaining('EACCES') },
+      },
+    });
+    expect(snapshot?.listing.hash).toBeUndefined();
+    expect(snapshot?.text).toBeUndefined();
   });
 
   it('never affects another workflow', async () => {

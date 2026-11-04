@@ -175,6 +175,22 @@ interface WorkflowEntry {
   readonly problem?: WorkflowFileProblem;
 }
 
+function sourceProblem(problem: {
+  readonly code: 'file-too-large' | 'unreadable';
+  readonly message: string;
+  readonly size?: number;
+}): WorkflowFileProblem {
+  return problem.code === 'file-too-large'
+    ? {
+        code: 'file-too-large',
+        message: `The file is ${problem.size ?? 0} bytes; a workflow file may be at most ${WORKFLOW_FILE_SIZE_LIMIT}.`,
+      }
+    : {
+        code: 'unreadable',
+        message: `The file could not be read: ${problem.message}`,
+      };
+}
+
 function refuse(problem: WorkflowFileProblem): never {
   throw new WorkflowFileError(problem.code, problem.message, problem);
 }
@@ -230,19 +246,16 @@ export function createWorkflowFileCatalog(
       id,
       hash: undefined,
       revision,
-      problem: {
-        code: 'file-too-large',
-        message: `The file is ${size} bytes; a workflow file may be at most ${WORKFLOW_FILE_SIZE_LIMIT}.`,
-      },
+      problem: sourceProblem({ code: 'file-too-large', message: '', size }),
     }),
     unreadable: (id, error, revision) => ({
       id,
       hash: undefined,
       revision,
-      problem: {
+      problem: sourceProblem({
         code: 'unreadable',
-        message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
-      },
+        message: error instanceof Error ? error.message : String(error),
+      }),
     }),
     sameSignature: (before, after) =>
       before.hash === after.hash && before.problem?.code === after.problem?.code,
@@ -428,12 +441,9 @@ export function createWorkflowFileCatalog(
           ? evaluate(id, entry.bytes, entry.hash, 0, entry.plugin)
           : {
               id,
-              hash: entry.hash,
+              hash: undefined,
               revision: 0,
-              problem: {
-                code: entry.problem.code,
-                message: entry.problem.message,
-              },
+              problem: sourceProblem(entry.problem),
             };
       const text = entry.problem === undefined ? decodeWorkflowFile(entry.bytes) : undefined;
       const listing = listingOf(evaluated);
