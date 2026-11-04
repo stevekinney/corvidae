@@ -26,6 +26,10 @@ import { mayRunAccess } from './run-authority';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';
+import {
+  contributionCatalog,
+  createTickerController,
+} from './testing/workflow-contributions.test-support';
 
 const harnesses: WorkflowToolsHarness[] = [];
 afterEach(async () => {
@@ -389,7 +393,56 @@ describe('workflows-get and workflow revisions', () => {
     expect(read.result).toMatchObject({ status: 'invalid', id: 'digest', code: 'not-utf8' });
     expect(read.result).toHaveProperty('hash');
     expect(read.result).toMatchObject({
-      issues: [{ path: '$', message: 'The file for "digest" is not valid UTF-8.' }],
+      issues: [{ path: '$', message: 'The file is not valid UTF-8.' }],
+    });
+  });
+
+  it('returns invalid details for an externally written identifier that cannot be loaded', async () => {
+    const harness = await start();
+    await Bun.write(join(harness.workflowsPath, 'Bad_Name.json'), workflowFileText('Bad_Name'));
+
+    const read = await harness.callTool('bureau__workflows-get', { id: 'Bad_Name' });
+    expect(read.result).toMatchObject({
+      status: 'invalid',
+      id: 'Bad_Name',
+      code: 'invalid-identifier',
+    });
+  });
+
+  it('preserves activity-version pins in workflow and revision documents', async () => {
+    const ticker = createTickerController();
+    const harness = await start({
+      overrides: { contributionCatalog: contributionCatalog({ activityVersion: '1', ticker }) },
+    });
+    await Bun.write(
+      join(harness.workflowsPath, 'pipeline.json'),
+      workflowFileText('pipeline', {
+        trigger: { kind: 'x:ticker', channel: 'alerts' },
+        steps: [{ kind: 'activity', handler: 'x:y', input: 'hello' }],
+      }),
+    );
+    await harness.bureau.workflows!.refresh();
+    const detail = await harness.callTool('bureau__workflows-get', { id: 'pipeline' });
+    expect(detail.result).toMatchObject({
+      status: 'ok',
+      document: { activityVersions: { 'x:y': '1' } },
+    });
+
+    const run = await harness.bureau
+      .durableEngine()!
+      .start('pipeline', null, { id: 'pipeline-run' });
+    await ticker.fire(null);
+    await run.result();
+    const listed = await harness.callTool('bureau__workflows-revisions-list', { id: 'pipeline' });
+    const revision = (listed.result as { revisions: Array<{ workflowVersion: string }> })
+      .revisions[0];
+    const revisionDetail = await harness.callTool('bureau__workflows-revisions-get', {
+      id: 'pipeline',
+      workflowVersion: revision!.workflowVersion,
+    });
+    expect(revisionDetail.result).toMatchObject({
+      status: 'ok',
+      document: { activityVersions: { 'x:y': '1' } },
     });
   });
 

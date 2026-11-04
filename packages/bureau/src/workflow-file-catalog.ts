@@ -361,30 +361,32 @@ export function createWorkflowFileCatalog(
     return { id, hash: written.hash };
   }
 
+  function listingOf(entry: WorkflowEntry): WorkflowListing {
+    const ready = entry.file !== undefined;
+    return {
+      id: entry.id,
+      state: ready ? 'ready' : 'invalid',
+      owner,
+      title: entry.file?.title ?? null,
+      description: entry.file?.description ?? null,
+      agent: entry.file?.agent ?? null,
+      paused: entry.file?.paused ?? false,
+      inputSchema: entry.file?.inputSchema ?? null,
+      outputSchema: entry.file?.outputSchema ?? null,
+      triggerKind: entry.file?.document.trigger.kind ?? null,
+      trigger: entry.file?.trigger ?? null,
+      steps: entry.file?.steps ?? null,
+      ...(entry.hash === undefined ? {} : { hash: entry.hash }),
+      ...(entry.file === undefined ? {} : { version: entry.file.version }),
+      ...(entry.problem === undefined ? {} : { problem: entry.problem }),
+    };
+  }
+
   return {
     list() {
       return [...watched.entries().values()]
         .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
-        .map((entry): WorkflowListing => {
-          const ready = entry.file !== undefined;
-          return {
-            id: entry.id,
-            state: ready ? 'ready' : 'invalid',
-            owner,
-            title: entry.file?.title ?? null,
-            description: entry.file?.description ?? null,
-            agent: entry.file?.agent ?? null,
-            paused: entry.file?.paused ?? false,
-            inputSchema: entry.file?.inputSchema ?? null,
-            outputSchema: entry.file?.outputSchema ?? null,
-            triggerKind: entry.file?.document.trigger.kind ?? null,
-            trigger: entry.file?.trigger ?? null,
-            steps: entry.file?.steps ?? null,
-            ...(entry.hash === undefined ? {} : { hash: entry.hash }),
-            ...(entry.file === undefined ? {} : { version: entry.file.version }),
-            ...(entry.problem === undefined ? {} : { problem: entry.problem }),
-          };
-        });
+        .map(listingOf);
     },
 
     find: (id) => watched.entries().get(id)?.file,
@@ -419,50 +421,26 @@ export function createWorkflowFileCatalog(
     },
 
     async readSnapshot(id) {
-      if (!isNamespacedIdentifier(id)) checkIdentifier(id);
       const entry = await readFresh(id);
       if (entry === undefined) return undefined;
-      const text = decodeWorkflowFile(entry.bytes);
-      const parsed =
-        text === undefined ? undefined : parseWorkflowFile(id, text, host, entry.plugin);
-      const file =
-        entry.problem === undefined && parsed?.ok === true
-          ? {
-              ...parsed.file,
+      const evaluated: WorkflowEntry =
+        entry.problem === undefined
+          ? evaluate(id, entry.bytes, entry.hash, 0, entry.plugin)
+          : {
               id,
               hash: entry.hash,
-              version: workflowVersionOf(parsed.file.document),
-            }
-          : undefined;
-      const problem: WorkflowFileProblem | undefined =
-        entry.problem === undefined
-          ? parsed?.ok === false
-            ? parsed.problem
-            : text === undefined
-              ? { code: 'not-utf8', message: `The file for "${id}" is not valid UTF-8.` }
-              : undefined
-          : { code: entry.problem.code, message: entry.problem.message };
-      const listing: WorkflowListing = {
-        id,
-        state: file === undefined ? 'invalid' : 'ready',
-        owner,
-        title: file?.title ?? null,
-        description: file?.description ?? null,
-        agent: file?.agent ?? null,
-        paused: file?.paused ?? false,
-        inputSchema: file?.inputSchema ?? null,
-        outputSchema: file?.outputSchema ?? null,
-        triggerKind: file?.document.trigger.kind ?? null,
-        trigger: file?.trigger ?? null,
-        steps: file?.steps ?? null,
-        ...(entry.hash === '' ? {} : { hash: entry.hash }),
-        ...(file === undefined ? {} : { version: file.version }),
-        ...(problem === undefined ? {} : { problem }),
-      };
+              revision: 0,
+              problem: {
+                code: entry.problem.code,
+                message: entry.problem.message,
+              },
+            };
+      const text = entry.problem === undefined ? decodeWorkflowFile(entry.bytes) : undefined;
+      const listing = listingOf(evaluated);
       return {
         listing,
         ...(text === undefined ? {} : { text }),
-        ...(file === undefined ? {} : { file }),
+        ...(evaluated.file === undefined ? {} : { file: evaluated.file }),
       };
     },
 

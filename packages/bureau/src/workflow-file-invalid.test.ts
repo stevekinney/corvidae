@@ -101,6 +101,19 @@ describe('an invalid file', () => {
     expect(listing(fixture, 'array')?.problem?.code).toBe('invalid-json');
   });
 
+  it('readSnapshot uses the same invalid-identifier evaluation as the scanned listing', async () => {
+    const fixture = await start();
+    await fixture.put('Bad_Name.json', workflowFileText('Bad_Name'));
+    await fixture.catalog.refresh();
+
+    const snapshot = await fixture.catalog.readSnapshot('Bad_Name');
+    expect(snapshot?.listing).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'invalid-identifier' },
+    });
+    expect(snapshot?.file).toBeUndefined();
+  });
+
   it('invalid-document: a name that is not the identifier, an unknown key, bad agent or paused, another trigger kind', async () => {
     const fixture = await start();
     await fixture.put('renamed.json', workflowFileText('other'));
@@ -127,6 +140,18 @@ describe('an invalid file', () => {
     await fixture.catalog.refresh();
     expect(listing(fixture, 'code-workflow')?.problem?.code).toBe('shadows-code-workflow');
     expect(fixture.catalog.find('code-workflow')).toBeUndefined();
+  });
+
+  it('readSnapshot applies the code-workflow collision policy', async () => {
+    const fixture = await start({ codeWorkflows: ['code-workflow'] });
+    await fixture.put('code-workflow.json', workflowFileText('code-workflow'));
+    const snapshot = await fixture.catalog.readSnapshot('code-workflow');
+
+    expect(snapshot?.listing).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'shadows-code-workflow' },
+    });
+    expect(snapshot?.file).toBeUndefined();
   });
 
   it('file-too-large: the file is over the limit and is not read', async () => {
