@@ -7,8 +7,24 @@ import { unexpectedChildStderr } from './child-stderr';
 
 const holdLine = (runId: string) =>
   `[bureau] Run "${runId}" reached recovery before the bureau finished composing; holding it until composition completes.\n`;
+const catalogHoldLine = (runId: string) =>
+  `[bureau] Run "${runId}" needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog.\n`;
 
 describe('unexpectedChildStderr', () => {
+  it('recognizes the required catalog-construction wait without hiding other output', () => {
+    expect(unexpectedChildStderr(catalogHoldLine('run-1') + catalogHoldLine('run-2'))).toBe('');
+    expect(unexpectedChildStderr(holdLine('run-1') + catalogHoldLine('run-2') + 'boom\n')).toBe(
+      'boom\n',
+    );
+    for (const unexpected of [
+      catalogHoldLine('run-1').trimEnd(),
+      `prefix ${catalogHoldLine('run-1')}`,
+      catalogHoldLine('run-1').replace('holding it', 'failing it'),
+      catalogHoldLine('run-1').replace('agent catalog.', 'agent catalog. extra'),
+    ]) {
+      expect(unexpectedChildStderr(unexpected)).toBe(unexpected);
+    }
+  });
   it('drops every composition-hold line and nothing else', () => {
     expect(unexpectedChildStderr(holdLine('run-1') + holdLine('run-2'))).toBe('');
     expect(unexpectedChildStderr(`${holdLine('run-1')}boom\n`)).toBe('boom\n');
