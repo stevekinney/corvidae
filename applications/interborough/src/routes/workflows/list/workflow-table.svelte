@@ -68,7 +68,7 @@
     revisionComparison?: (type: string, revision: string | undefined) => RevisionActiveComparison;
     workflowOrigins?: ReadonlyMap<
       string,
-      Extract<WorkflowFileRun['origin'], { kind: 'agent-run' }>
+      Extract<NonNullable<WorkflowFileRun['origin']>, { kind: 'agent-run' }>
     >;
   }
 
@@ -165,18 +165,29 @@
         </Table.Cell>
         <Table.Cell as="th">
           <span class="weft-workflows-table__id-cell">
-            <Tooltip text={row.id} placement="top">
-              <a
-                class="weft-workflows-table__id-link"
-                href={router.href(workflowRunPath(row.type, row.id))}
-                onclick={(event) => onIdLinkClick(event, row.type, row.id)}
-              >
-                <code>{truncateId(row.id)}</code>
-              </a>
-            </Tooltip>
-            <CopyButton value={row.id} iconOnly label={`Copy workflow ID ${truncateId(row.id)}`}>
-              <Copy aria-hidden="true" size={13} />
-            </CopyButton>
+            <span class="weft-workflows-table__id-line">
+              <Tooltip text={row.id} placement="top">
+                <a
+                  class="weft-workflows-table__id-link"
+                  href={router.href(workflowRunPath(row.type, row.id))}
+                  onclick={(event) => onIdLinkClick(event, row.type, row.id)}
+                >
+                  <code>{truncateId(row.id)}</code>
+                </a>
+              </Tooltip>
+              <CopyButton value={row.id} iconOnly label={`Copy workflow ID ${truncateId(row.id)}`}>
+                <Copy aria-hidden="true" size={13} />
+              </CopyButton>
+            </span>
+            {#if workflowOrigin !== undefined}
+              <span class="weft-workflows-table__origin">
+                <span>
+                  <span class="weft-workflows-table__origin-label">Started by</span>
+                  {workflowOrigin.agentId}
+                </span>
+                <a href={router.href(`/runs/${workflowOrigin.runId}`)}>Calling run</a>
+              </span>
+            {/if}
           </span>
         </Table.Cell>
         <Table.Cell>{row.type}</Table.Cell>
@@ -195,10 +206,6 @@
           {/if}
         </Table.Cell>
         <Table.Cell>
-          {#if workflowOrigin !== undefined}
-            An agent's tool call · {workflowOrigin.agentId} ·
-            <a href={router.href(`/runs/${workflowOrigin.runId}`)}>Calling run</a>
-          {/if}
           {#if row.tags && row.tags.filter((tag) => tag !== 'origin:agent-run').length > 0}
             <span class="weft-workflows-table__tags">
               {#each row.tags.filter((tag) => tag !== 'origin:agent-run') as tag (tag)}

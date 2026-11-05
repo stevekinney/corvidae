@@ -31,7 +31,7 @@
   } from '../../../lib/live-source/cache-integration.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
-  import { listWorkflowFileRuns, type WorkflowFileRun } from '../../../lib/workflow-files.ts';
+  import { getWorkflowFileRun, type WorkflowFileRunDetail } from '../../../lib/workflow-files.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import {
     ENGINE_RUNS_PATH,
@@ -106,14 +106,28 @@
   const rows = $derived(listQuery.data?.items ?? []);
   const total = $derived(listQuery.data?.total ?? 0);
 
-  // A scoped file-workflow list has the engine's run summaries for status/revision and the
-  // Bureau's durable record for human provenance. Code workflows have no file records; their
-  // lookup simply remains empty.
+  // The engine list is paginated and may be filtered, so correlate Bureau provenance only for the
+  // visible rows that carry its agent-run marker. This keeps the lookup bounded to the page and
+  // avoids pairing rows with an independently ordered "newest runs" list.
+  const agentRunIds = $derived(
+    rows.filter((row) => row.tags?.includes('origin:agent-run')).map((row) => row.id),
+  );
   const fileRuns = createQuery(
     () => ({
-      queryKey: queryKeys.workflowCatalog.recentRuns('agent-authored', scopedType ?? ''),
-      queryFn: ({ signal }) => listWorkflowFileRuns(scopedType ?? '', 100, { signal }),
-      enabled: scopedType !== undefined,
+      queryKey: ['workflows', 'visible-file-origins', agentRunIds],
+      queryFn: async ({ signal }) => {
+        const results = await Promise.all(
+          agentRunIds.map(async (id) => {
+            try {
+              return await getWorkflowFileRun(id, { signal });
+            } catch {
+              return undefined;
+            }
+          }),
+        );
+        return results.filter((run): run is WorkflowFileRunDetail => run !== undefined);
+      },
+      enabled: agentRunIds.length > 0,
       retry: false,
     }),
     undefined,
@@ -124,7 +138,7 @@
         .filter(
           (
             run,
-          ): run is WorkflowFileRun & {
+          ): run is WorkflowFileRunDetail & {
             origin: { kind: 'agent-run'; runId: string; agentId: string };
           } => run.origin?.kind === 'agent-run',
         )

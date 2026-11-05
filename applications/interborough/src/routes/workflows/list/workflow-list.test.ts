@@ -102,6 +102,49 @@ describe('WorkflowList', () => {
     expect(await findByText('order-processing')).not.toBeNull();
   });
 
+  test('correlates provenance by the visible filtered-page id, not a newest-runs page', async () => {
+    resetLocation('/health/runs?offset=50');
+    const visibleId = 'wf_older_agent_run';
+    fetchScript.routeUrl('/workflows', {
+      items: [
+        summary({
+          id: visibleId,
+          status: 'running',
+          tags: ['origin:agent-run'],
+        }),
+      ],
+      total: 51,
+      offset: 50,
+      limit: 50,
+    });
+    fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
+      id: visibleId,
+      workflow: 'order-processing',
+      workflowVersion: 'sha256:older',
+      status: 'running',
+      createdAt: '2026-10-31T11:26:19.437Z',
+      updatedAt: '2026-10-31T11:26:20.437Z',
+      trigger: { kind: 'signal', name: 'e2e-begin' },
+      origin: { kind: 'agent-run', runId: 'calling-run-older', agentId: 'assistant' },
+    });
+
+    const { getByRole, container } = render(WorkflowListHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+
+    await waitFor(() => expect(container.textContent).toContain('order-processing'));
+    await waitFor(() => expect(container.textContent).toContain('Started by assistant'));
+    expect(fetchScript.calls.some((call) => call.init?.body?.toString().includes('runs.get'))).toBe(
+      true,
+    );
+    expect(getByRole('link', { name: 'Calling run' }).getAttribute('href')).toBe(
+      '/runs/calling-run-older',
+    );
+    expect(
+      fetchScript.calls.filter((call) => call.init?.body?.toString().includes('runs.list')),
+    ).toHaveLength(0);
+  });
+
   test('rows across several types issue one active-pointer fetch per distinct type and render the comparison badges (COR-15)', async () => {
     fetchScript.routeUrl('/workflows', {
       items: [
