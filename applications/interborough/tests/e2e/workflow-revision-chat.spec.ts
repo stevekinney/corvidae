@@ -36,6 +36,29 @@ test.describe('workflow revision review in Chat', () => {
         '.revision-row[data-state="changed"], .revision-row[data-state="added"], .revision-row[data-state="removed"]',
       ),
     ).toHaveCount(4);
+    const hostText = await page
+      .locator('html')
+      .evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--cinder-text-default').trim(),
+      );
+    const hostMuted = await page
+      .locator('html')
+      .evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--cinder-text-muted').trim(),
+      );
+    const framePrimary = await frame
+      .locator('.revision-comparison')
+      .evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--color-text-primary').trim(),
+      );
+    const frameText = await frame
+      .locator('.revision-status')
+      .evaluate((element) =>
+        getComputedStyle(element).getPropertyValue('--color-text-tertiary').trim(),
+      );
+    expect(hostText).not.toBe('');
+    expect(framePrimary).toBe(hostText);
+    expect(frameText).toBe(hostMuted);
     await captureForDesignReview(page, {
       route: `/chats/${thread}`,
       state: 'workflow revision proposal',

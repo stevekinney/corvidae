@@ -55,6 +55,7 @@ import {
   E2E_SHOWCASE_PORT,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
+
 import { createEchoAgents } from './echo-agent.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
@@ -65,6 +66,10 @@ import { seedSkills } from './skills-seed.ts';
 import { createTextEchoAgents } from './text-echo-agent.ts';
 import { seedToolSources, startToolSourceServers } from './tool-sources-seed.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
 const buildDirectory = join(scratch, 'build');
@@ -207,15 +212,23 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
           return { content: 'The workflow could not be read.', toolCalls: [] };
         const stale = /stale:([^\s]+)/.exec(content)?.[1] ?? currentHash;
         const invalid = content.includes('invalid');
-        return {
-          content: '',
-          toolCalls: [
-            {
-              id: 'cor-2034-workflow-proposal',
-              name: 'bureau__workflows-propose-update',
-              arguments: {
-                id,
-                expectedHash: stale,
+        const noChange = content.includes('no-change');
+        const currentDefinition = (() => {
+          try {
+            const parsed = JSON.parse(
+              typeof readContent === 'string' ? readContent : JSON.stringify(readContent),
+            ) as unknown;
+            const text =
+              isRecord(parsed) && typeof parsed['text'] === 'string' ? parsed['text'] : undefined;
+            return text === undefined ? undefined : (JSON.parse(text) as Record<string, unknown>);
+          } catch {
+            return undefined;
+          }
+        })();
+        const definition =
+          noChange && currentDefinition !== undefined
+            ? currentDefinition
+            : {
                 description: 'Updated in Chat.',
                 trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
                 steps: [
@@ -226,6 +239,17 @@ const workflowRevisionAgent = (tools: BureauOwnTools) =>
                     input: { agent: 'demo:assistant', message: 'Write the revised digest.' },
                   },
                 ],
+              };
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'cor-2034-workflow-proposal',
+              name: 'bureau__workflows-propose-update',
+              arguments: {
+                id,
+                expectedHash: stale,
+                ...definition,
               },
             },
           ],

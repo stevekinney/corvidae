@@ -1,4 +1,9 @@
-import { App } from '@modelcontextprotocol/ext-apps';
+import {
+  App,
+  applyDocumentTheme,
+  applyHostStyleVariables,
+  type McpUiHostContext,
+} from '@modelcontextprotocol/ext-apps';
 
 type Definition = {
   readonly title?: string;
@@ -118,7 +123,19 @@ function changedRows(current: Definition, proposed: Definition): HTMLElement[] {
     currentValue.textContent = text(oldValue);
     const proposedValue = document.createElement('pre');
     proposedValue.textContent = text(newValue);
-    row.append(name, marker, currentValue, proposedValue);
+    const currentBlock = document.createElement('div');
+    currentBlock.className = 'revision-value revision-value--current';
+    const currentLabel = document.createElement('span');
+    currentLabel.className = 'revision-value__label';
+    currentLabel.textContent = 'Current definition';
+    currentBlock.append(currentLabel, currentValue);
+    const proposedBlock = document.createElement('div');
+    proposedBlock.className = 'revision-value revision-value--proposed';
+    const proposedLabel = document.createElement('span');
+    proposedLabel.className = 'revision-value__label';
+    proposedLabel.textContent = 'Proposed definition';
+    proposedBlock.append(proposedLabel, proposedValue);
+    row.append(name, marker, currentBlock, proposedBlock);
     rows.push(row);
   };
   for (const key of [
@@ -209,6 +226,11 @@ async function start(): Promise<void> {
   const root = document.getElementById('root');
   if (root === null) return;
   const app = new App({ name: 'bureau-workflow-revision-review', version: '1.0.0' });
+  const applyHostContext = (context: McpUiHostContext | undefined): void => {
+    if (context?.theme !== undefined) applyDocumentTheme(context.theme);
+    if (context?.styles?.variables !== undefined) applyHostStyleVariables(context.styles.variables);
+  };
+  app.onhostcontextchanged = (context) => applyHostContext(context);
   let argumentsOfCall: Record<string, unknown> = {};
   let baseHash = '';
   let current: Workflow | undefined;
@@ -292,6 +314,7 @@ async function start(): Promise<void> {
     return {};
   };
   await app.connect();
+  applyHostContext(app.getHostContext());
 }
 
 void start();

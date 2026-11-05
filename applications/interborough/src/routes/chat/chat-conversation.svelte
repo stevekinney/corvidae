@@ -40,6 +40,7 @@
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
   import { onMount, tick, untrack } from 'svelte';
+  import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
   import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
   import { Chat, ChatNote, ChatQuestion, McpApp, resolveMessageNotes } from '@lostgradient/chat';
@@ -73,6 +74,7 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
   import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
   import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
   import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
@@ -517,6 +519,20 @@
     }),
     undefined,
   );
+  // Host context is sent through postMessage; keep it raw so the bridge receives a structured-
+  // cloneable object rather than a deeply proxied Svelte state value.
+  let mcpHostContext = $state.raw<McpUiHostContext>({ theme: 'light' });
+
+  onMount(() => {
+    const root = document.documentElement;
+    const update = (): void => {
+      mcpHostContext = readMcpHostContext(root);
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  });
   const workflowRevisionPanels = $derived(
     (mcpApps.data ?? []).filter(
       (panel) => panel.opensFromAgentTool === 'bureau:workflows-propose-update',
@@ -1026,6 +1042,7 @@
                   title={panel.title}
                   {loadResource}
                   {onToolCall}
+                  hostContext={mcpHostContext}
                   maxHeight={560}
                   toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
                 />
