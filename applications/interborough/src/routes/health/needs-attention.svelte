@@ -22,6 +22,7 @@
     Check,
     Database,
     Plug,
+    Server,
     Sparkles,
     TriangleAlert,
     Webhook,
@@ -50,6 +51,7 @@
     schedule: CalendarClock,
     hook: Webhook,
     plugin: Plug,
+    worker: Server,
     alert: TriangleAlert,
   };
 
@@ -88,23 +90,14 @@
   {/snippet}
 
   {#if rows === undefined && !failed && !forbidden}
-    <div
-      class="ib-needs-attention__skeleton"
-      role="status"
-      aria-busy="true"
-      aria-label={`Loading ${copy.title.toLowerCase()}`}
-    >
-      {#each [0, 1, 2] as placeholder (placeholder)}
-        <div class="ib-needs-attention__skeleton-row">
-          <Skeleton height="2rem" width="2rem" />
-          <div class="ib-needs-attention__skeleton-lines">
-            <Skeleton height="0.9rem" width="55%" />
-            <Skeleton height="0.75rem" width="85%" />
-          </div>
-          <Skeleton height="2rem" width="6rem" />
-        </div>
-      {/each}
-    </div>
+    <Skeleton
+      variant="list"
+      rows={3}
+      statusMarker="dot"
+      statusColumn={false}
+      framed={false}
+      label={`Loading ${copy.title.toLowerCase()}`}
+    />
   {:else if forbidden}
     <p class="ib-needs-attention__note">{copy.lockedTitle}</p>
   {:else if failed}
@@ -178,24 +171,5 @@
 
   .ib-needs-attention__note-line {
     margin: 0;
-  }
-
-  .ib-needs-attention__skeleton {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-4);
-  }
-
-  .ib-needs-attention__skeleton-row {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-3);
-  }
-
-  .ib-needs-attention__skeleton-lines {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--cinder-space-2);
   }
 </style>

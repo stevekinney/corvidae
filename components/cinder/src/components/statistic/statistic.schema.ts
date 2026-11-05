@@ -19,6 +19,11 @@ const schema = {
       ],
       description: 'The statistic. Strings rendered verbatim; numbers formatted via formatNumber.',
     },
+    loading: {
+      type: 'boolean',
+      description:
+        'Whether the figure is still being read. The label stays real text, a placeholder block stands\nwhere the value will be and the caption is left out, so a count never reads as zero while it\nwaits for its data. The group is marked busy and says nothing of a value.',
+    },
     attention: {
       type: 'boolean',
       description:

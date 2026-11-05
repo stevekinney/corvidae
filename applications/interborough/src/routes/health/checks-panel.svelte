@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
    * The Checks panel under Advanced: the areas the Bureau checks (storage, schedules, providers,
-   * hooks, plugins and runs), each with how many problems it found and what they are. It reads the
+   * hooks, plugins, workers and runs), each with how many problems it found and what they are. It reads the
    * same list as Needs attention, so the two cannot disagree. Below it, lease and recovery, which
    * is what the engine reports about its own health.
    */
   import { Badge } from '@lostgradient/cinder';
 
-  import { type Attention } from '../../lib/bureau-attention.ts';
+  import { ATTENTION_AREAS, type Attention } from '../../lib/bureau-attention.ts';
   import HealthTab from '../system/health-tab.svelte';
   import { attentionRow } from './attention-rows.ts';
   import { HEALTH_ADVANCED_COPY as copy } from './health-copy.ts';
@@ -18,10 +18,8 @@
 
   let { attention }: Props = $props();
 
-  const AREAS = ['storage', 'schedules', 'providers', 'hooks', 'plugins', 'runs'] as const;
-
   const items = $derived(
-    AREAS.map((area) => {
+    ATTENTION_AREAS.map((area) => {
       const problems = (attention?.items ?? []).filter((item) => item.area === area);
       return {
         term: copy.areas[area],

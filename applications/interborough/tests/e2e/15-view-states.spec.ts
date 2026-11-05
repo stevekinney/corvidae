@@ -441,9 +441,11 @@ for (const width of WIDTHS) {
     const frame = page.locator('[data-view="health"]');
     await expect(frame).toHaveAttribute('data-state', 'ready');
     await expect(frame.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
-    await expect(
-      frame.getByRole('status', { name: `Loading ${HEALTH_ATTENTION_COPY.title.toLowerCase()}` }),
-    ).toBeVisible();
+    // The skeleton rows show once the first 300 ms have gone, under the card's own heading.
+    await expect(frame.getByTestId('needs-attention')).toContainText(HEALTH_ATTENTION_COPY.title);
+    await expect(frame.getByTestId('needs-attention').locator('.cinder-skeleton-row')).toHaveCount(
+      3,
+    );
     await captureForDesignReview(page, {
       route: '/health',
       state: 'waiting-on-attention',

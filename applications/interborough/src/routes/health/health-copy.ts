@@ -143,6 +143,14 @@ export const HEALTH_ATTENTION_COPY = {
         : `Its tools aren’t available to agents until it loads. Interborough couldn’t start it at ${at}.`,
     action: 'Open Plugins',
   },
+  worker: {
+    title: (name: string): string => `${name} is disconnected`,
+    /** A worker that has no name of its own is called by what it serves. */
+    unnamed: (queue: string): string => `The ${queue} worker`,
+    line: (waiting: number, failedForGood: number, queue: string, at: string): string =>
+      `${waiting === 1 ? '1 task is' : `${waiting} tasks are`} waiting for the ${queue} queue and ${failedForGood} failed for good. It was last heard from at ${at} and reconnects by itself when its process starts again.`,
+    action: 'View worker',
+  },
 } as const;
 
 /** The words of the Recent activity section. */
@@ -205,6 +213,13 @@ export const HEALTH_METRICS_COPY = {
     ];
     return parts.length === 0 ? 'No runs started' : parts.join(' · ');
   },
+  /** The Runs started caption when every run finished: how the day compares with the one before. */
+  comparedWithDayBefore: (difference: number): string =>
+    difference === 0
+      ? 'The same as the day before'
+      : difference > 0
+        ? `${difference} more than the day before`
+        : `${-difference} fewer than the day before`,
   medianCaption: (count: number): string =>
     `Median across ${count} finished ${count === 1 ? 'run' : 'runs'}`,
   noFinished: 'No run has finished',
@@ -254,6 +269,7 @@ export const HEALTH_ADVANCED_COPY = {
     providers: 'Providers',
     hooks: 'Hooks',
     plugins: 'Plugins',
+    workers: 'Workers',
     runs: 'Runs',
   },
   /** The accessible name of an opened section. */

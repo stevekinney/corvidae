@@ -4,13 +4,18 @@
    * finish, each for the last 24 hours (row 76n). Storage use shows the latest reported size and,
    * once two sizes have been reported, a thin trend line with the window named at each end; until
    * then it says "Charts fill in as Interborough runs." and draws none (sweep S76). A figure that
-   * could not be read shows a dash and says so, and never zero.
+   * could not be read shows a dash and says so, and never zero. While the page loads each card keeps
+   * its heading and shows bars where its figure will be (row 76x).
    */
   import { Card, Skeleton, Sparkbar } from '@lostgradient/cinder';
 
-  import { formatBytes } from '../../lib/format/index.ts';
   import { HEALTH_METRICS_COPY as copy } from './health-copy.ts';
-  import { finishTime, startedCaption, type StartedSummary } from './health-overview-data.ts';
+  import {
+    finishTime,
+    startedCaption,
+    storageUseSize,
+    type StartedSummary,
+  } from './health-overview-data.ts';
   import type { StorageSample } from './storage-sizes.svelte.ts';
 
   interface Props {
@@ -22,7 +27,7 @@
     started: StartedSummary | undefined | null;
     /** The median finish time: `undefined` while loading, `null` when unreadable, `'none'` when no run finished. */
     finish: { milliseconds: number; count: number } | undefined | null | 'none';
-    /** Whether the page is still waiting on the figures that come from the engine. */
+    /** Whether the page is still loading: every card then shows placeholders, never a figure or a dash. */
     loading?: boolean;
   }
 
@@ -31,6 +36,14 @@
   const hasChart = $derived(samples.length >= 2);
   const first = $derived(samples[0]);
 </script>
+
+<!-- The same two bars in every card while the page loads: the figure, then what draws under it. -->
+{#snippet placeholder()}
+  <div class="ib-metric-card__placeholder">
+    <Skeleton height="1.5rem" width="40%" />
+    <Skeleton height="2.25rem" />
+  </div>
+{/snippet}
 
 <div class="ib-metric-cards" data-testid="metric-cards">
   <Card class="ib-metric-card" data-metric="storage">
@@ -41,19 +54,18 @@
       </div>
     {/snippet}
     {#if loading}
-      <Skeleton height="2rem" width="40%" />
-      <Skeleton height="4rem" />
+      {@render placeholder()}
     {:else if storageBytes === undefined}
       <p class="ib-metric-card__value">{copy.unavailable}</p>
       <p class="ib-metric-card__caption">{copy.noSizeCaption}</p>
     {:else}
-      <p class="ib-metric-card__value">{formatBytes(storageBytes)}</p>
+      <p class="ib-metric-card__value">{storageUseSize(storageBytes)}</p>
       {#if hasChart && first !== undefined}
         <Sparkbar
           size="md"
           points={samples.map((sample) => sample.bytes)}
-          label={copy.storageSeries(formatBytes(storageBytes))}
-          startLabel={copy.axisStart(formatBytes(first.bytes))}
+          label={copy.storageSeries(storageUseSize(storageBytes))}
+          startLabel={copy.axisStart(storageUseSize(first.bytes))}
           endLabel={copy.axisEnd}
         />
       {:else}
@@ -69,9 +81,8 @@
         <span class="ib-metric-card__window">{copy.window}</span>
       </div>
     {/snippet}
-    {#if started === undefined}
-      <Skeleton height="2rem" width="30%" />
-      <Skeleton height="1rem" width="60%" />
+    {#if loading || started === undefined}
+      {@render placeholder()}
     {:else if started === null}
       <p class="ib-metric-card__value">{copy.unavailable}</p>
       <p class="ib-metric-card__caption">{copy.unavailableCaption}</p>
@@ -88,9 +99,8 @@
         <span class="ib-metric-card__window">{copy.window}</span>
       </div>
     {/snippet}
-    {#if finish === undefined}
-      <Skeleton height="2rem" width="30%" />
-      <Skeleton height="1rem" width="60%" />
+    {#if loading || finish === undefined}
+      {@render placeholder()}
     {:else if finish === null}
       <p class="ib-metric-card__value">{copy.unavailable}</p>
       <p class="ib-metric-card__caption">{copy.unavailableCaption}</p>
@@ -136,6 +146,12 @@
   .ib-metric-card__window {
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
+  }
+
+  .ib-metric-card__placeholder {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
   }
 
   .ib-metric-card__value {

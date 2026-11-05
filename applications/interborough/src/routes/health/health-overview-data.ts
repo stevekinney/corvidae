@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 
+import { formatBytes } from '../../lib/format/index.ts';
 import { HEALTH_COUNTS_COPY, HEALTH_METRICS_COPY } from './health-copy.ts';
 import { joinWords } from './health-times.ts';
 
@@ -83,12 +84,15 @@ export interface StartedSummary {
   readonly waiting: number;
   /** The runs that failed, are still running, or were canceled, as the words the caption adds. */
   readonly other: readonly string[];
+  /** How many runs started in the 24 hours before the window, once that is known. */
+  readonly before?: number;
 }
 
 /** How the runs started in a window stand now. */
 export function startedSummary(
   runs: readonly RunSummary[],
   waiting: ReadonlyMap<string, WaitKind>,
+  before?: number,
 ): StartedSummary {
   let done = 0;
   let waitingCount = 0;
@@ -111,6 +115,7 @@ export function startedSummary(
       ...(running > 0 ? [`${running} running`] : []),
       ...(canceled > 0 ? [`${canceled} canceled`] : []),
     ],
+    ...(before === undefined ? {} : { before }),
   };
 }
 
@@ -167,7 +172,28 @@ export function waitingCaption(reviews: readonly { readonly kind: string }[]): s
   return joinWords([first ?? '', ...lowered]);
 }
 
-/** The caption of the Runs started card. */
+/**
+ * The caption of the Runs started card. It says how the runs stand while any is waiting, failed,
+ * running or canceled; when every run simply finished, "14 done" adds nothing to "14", so it says
+ * how the day compares with the one before (row 76v) when that is known.
+ */
 export function startedCaption(summary: StartedSummary): string {
+  const untroubled = summary.total > 0 && summary.waiting === 0 && summary.other.length === 0;
+  if (untroubled && summary.before !== undefined) {
+    return HEALTH_METRICS_COPY.comparedWithDayBefore(summary.total - summary.before);
+  }
   return HEALTH_METRICS_COPY.runsCaption(summary.done, summary.waiting, summary.other);
+}
+
+const GIBIBYTE = 1024 ** 3;
+
+/**
+ * A storage size as the Storage use card and its chart say it: in gigabytes from about 50 MB up
+ * ("0.4 GB", which the card keeps in the same unit as the "1.6 GB" the warning names), and in the
+ * usual unit below that, where a gigabyte would read "0.0 GB".
+ */
+export function storageUseSize(bytes: number): string {
+  return bytes >= GIBIBYTE / 20 && bytes < GIBIBYTE
+    ? `${(bytes / GIBIBYTE).toFixed(1)} GB`
+    : formatBytes(bytes);
 }

@@ -12,7 +12,8 @@ import { HEALTH_ATTENTION_COPY as copy } from './health-copy.ts';
 import { clockTime, dayLabel, joinWords } from './health-times.ts';
 
 /** The glyph a row draws in its tile. */
-export type AttentionGlyph = 'provider' | 'storage' | 'schedule' | 'hook' | 'plugin' | 'alert';
+export type AttentionGlyph =
+  'provider' | 'storage' | 'schedule' | 'hook' | 'plugin' | 'worker' | 'alert';
 
 /** A button at the end of a row. */
 export interface AttentionAction {
@@ -34,6 +35,11 @@ export interface AttentionRow {
 /** Where Advanced opens for a section, or for none. */
 export function diagnosticsPath(section?: 'metrics' | 'alerts' | 'checks' | 'realms'): string {
   return section === undefined ? '/health?advanced=open' : `/health?advanced=${section}`;
+}
+
+/** Where a worker opens: the Workers tab with it selected, which the tab reads from `worker`. */
+function workerPath(workerId: string): string {
+  return `/health/workers?worker=${encodeURIComponent(workerId)}`;
 }
 
 const STATUS_WORDS: Readonly<Record<number, string>> = {
@@ -133,6 +139,19 @@ export function attentionRow(item: AttentionItem): AttentionRow {
         actions: [{ label: copy.hook.action, href: hookPath(item.hookId) }],
       };
     }
+    case 'worker-disconnected':
+      return {
+        id: `worker-disconnected:${item.workerId}`,
+        glyph: 'worker',
+        title: copy.worker.title(item.workerName ?? copy.worker.unnamed(item.queue)),
+        description: copy.worker.line(
+          item.waiting,
+          item.failedForGood,
+          item.queue,
+          clockTime(item.at),
+        ),
+        actions: [{ label: copy.worker.action, href: workerPath(item.workerId) }],
+      };
     case 'plugin-not-loaded':
       return {
         id: `plugin-not-loaded:${item.plugin}`,

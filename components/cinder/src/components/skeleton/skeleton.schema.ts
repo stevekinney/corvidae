@@ -48,6 +48,18 @@ const schema = {
         "What fills the status column of each row when `variant` is `'list'`. `'bar'` is a short bar\nwhere the status word reads; `'dot'` is a small circle where the status dot sits. The column\nkeeps its width either way, so nothing shifts when data arrives. Ignored by other variants.",
       default: 'bar',
     },
+    statusColumn: {
+      type: 'boolean',
+      description:
+        "Keep the 8rem status column that every status-first list shares when `variant` is `'list'`.\nTurn it off for a list whose rows do not lead with a status word, such as a card of problems\nwith a glyph and an action: the marker then sits right before the text, so the placeholder\nmatches the row it stands for. Ignored by other variants.",
+      default: true,
+    },
+    framed: {
+      type: 'boolean',
+      description:
+        "Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside\na card that already frames its rows, so the placeholder does not draw a box within the box.\nIgnored by other variants.",
+      default: true,
+    },
     dayBand: {
       type: 'boolean',
       description:

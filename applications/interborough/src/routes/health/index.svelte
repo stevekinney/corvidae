@@ -37,6 +37,9 @@
   import { loadRecentActivity } from './recent-activity-data.ts';
   import { useStorageSizes } from './storage-sizes.svelte.ts';
 
+  /** How long a first read is let to finish before anything is drawn for it (the loading rule). */
+  const LOADING_DELAY_MILLISECONDS = 300;
+
   const client = getClient();
   const principalStore = getPrincipalStore();
   const canReadRuns = $derived(principalStore.hasScope('workflows:read'));
@@ -83,9 +86,26 @@
           limit: 200,
         }),
       ),
+    // The window moves a minute at a time and so does the key; the figures stay until the next ones arrive.
+    placeholderData: (previous) => previous,
     enabled: canReadRuns,
     // poll-reason: timer
     refetchInterval: 15_000,
+    retry: false,
+  }));
+  const previousRuns = createQuery(() => ({
+    queryKey: ['health', 'runs', 'previous', now],
+    queryFn: async () =>
+      parseRunPage(
+        await client.operations['weft.workflows.list']({
+          createdAt: { gte: now - 2 * OVERVIEW_WINDOW_MS, lt: now - OVERVIEW_WINDOW_MS },
+          limit: 200,
+        }),
+      ),
+    placeholderData: (previous) => previous,
+    enabled: canReadRuns,
+    // poll-reason: timer
+    refetchInterval: 60_000,
     retry: false,
   }));
   const failedFilter = $derived(failedRecentlyFilter(now));
@@ -138,7 +158,7 @@
   const started = $derived.by(() => {
     if (!canReadRuns || startedRuns.isError) return null;
     if (startedRuns.data === undefined) return undefined;
-    return startedSummary(startedRuns.data, waitingByRun);
+    return startedSummary(startedRuns.data, waitingByRun, previousRuns.data?.length);
   });
   const finish = $derived.by(() => {
     if (!canReadRuns || startedRuns.isError) return null;
@@ -189,41 +209,76 @@
         : missedItems.map((item) => item.scheduleName ?? 'A schedule').join(', '),
     bad: true,
   });
+
+  /**
+   * Whether the page is still waiting for its first answers (rows 76w and 76x): the list of what
+   * needs attention, or any of the four counts. Nothing but the frame is drawn for the first
+   * 300 ms, so a read that is quick never flashes a placeholder; after that the page keeps its
+   * layout and shows placeholders where figures and rows will be. It is a first-load state only:
+   * once everything has answered, a later read never brings the placeholders back.
+   */
+  const firstReadPending = $derived(
+    (attention.data === undefined && !attention.isError) ||
+      [runningCount, needsYouCount, failedCount, missedCount].some(
+        (count) => count.value === undefined,
+      ),
+  );
+  let settled = $state(false);
+  $effect(() => {
+    if (!firstReadPending) settled = true;
+  });
+  const loading = $derived(firstReadPending && !settled);
+
+  let revealed = $state(false);
+  $effect(() => {
+    // poll-reason: timer
+    const timer = setTimeout(() => {
+      revealed = true;
+    }, LOADING_DELAY_MILLISECONDS);
+    return () => clearTimeout(timer);
+  });
 </script>
 
-<HealthFrame active="overview">
-  <div class="ib-health-overview">
-    <HealthCountsRow
-      running={runningCount}
-      needsYou={needsYouCount}
-      failed={failedCount}
-      missed={missedCount}
-    />
+<HealthFrame active="overview" live={!loading}>
+  {#if !loading || revealed}
+    <div class="ib-health-overview">
+      <HealthCountsRow
+        running={runningCount}
+        needsYou={needsYouCount}
+        failed={failedCount}
+        missed={missedCount}
+        {loading}
+      />
 
-    <div class="ib-health-overview__grid">
-      <div class="ib-health-overview__attention">
-        <NeedsAttention
-          {rows}
-          failed={attention.isError && !attentionForbidden}
-          forbidden={attentionForbidden}
-          onRetry={() => void attention.refetch()}
-        />
+      <div class="ib-health-overview__grid">
+        <div class="ib-health-overview__attention">
+          <NeedsAttention
+            {rows}
+            failed={attention.isError && !attentionForbidden}
+            forbidden={attentionForbidden}
+            onRetry={() => void attention.refetch()}
+          />
+        </div>
+        <div class="ib-health-overview__metrics">
+          <MetricCards {storageBytes} samples={sizes.samples()} {started} {finish} {loading} />
+        </div>
+        {#if !loading}
+          <div class="ib-health-overview__activity">
+            <RecentActivity
+              lines={activity.data?.lines}
+              total={activity.data?.total}
+              failed={activity.isError}
+              onRetry={() => void activity.refetch()}
+            />
+          </div>
+        {/if}
       </div>
-      <div class="ib-health-overview__metrics">
-        <MetricCards {storageBytes} samples={sizes.samples()} {started} {finish} />
-      </div>
-      <div class="ib-health-overview__activity">
-        <RecentActivity
-          lines={activity.data?.lines}
-          total={activity.data?.total}
-          failed={activity.isError}
-          onRetry={() => void activity.refetch()}
-        />
-      </div>
+
+      {#if !loading}
+        <AdvancedDiagnostics attention={attention.data} />
+      {/if}
     </div>
-
-    <AdvancedDiagnostics attention={attention.data} />
-  </div>
+  {/if}
 </HealthFrame>
 
 <style>

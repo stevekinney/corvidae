@@ -51,6 +51,21 @@ export type SkeletonProps = {
    */
   statusMarker?: SkeletonStatusMarker;
   /**
+   * Keep the 8rem status column that every status-first list shares when `variant` is `'list'`.
+   * Turn it off for a list whose rows do not lead with a status word, such as a card of problems
+   * with a glyph and an action: the marker then sits right before the text, so the placeholder
+   * matches the row it stands for. Ignored by other variants.
+   * @default true
+   */
+  statusColumn?: boolean;
+  /**
+   * Draw the list's own border and rounded corners when `variant` is `'list'`. Turn it off inside
+   * a card that already frames its rows, so the placeholder does not draw a box within the box.
+   * Ignored by other variants.
+   * @default true
+   */
+  framed?: boolean;
+  /**
    * Draw a day band (a tinted header with one bar) above the rows when `variant` is `'list'`,
    * the placeholder for a list that groups its rows by day. Ignored by other variants.
    * @default false

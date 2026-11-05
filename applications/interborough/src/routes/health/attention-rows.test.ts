@@ -150,6 +150,43 @@ describe('the rows', () => {
     expect(row.actions).toEqual([{ label: 'Open Plugins', href: '/settings/plugins' }]);
   });
 
+  test('a disconnected worker says what waits on its queue, when it was last heard from, and opens the worker', () => {
+    const row = attentionRow({
+      kind: 'worker-disconnected',
+      area: 'workers',
+      at: Date.UTC(2026, 10, 2, 15, 41),
+      workerId: 'reports-worker',
+      workerName: 'Reports worker',
+      queue: 'reports',
+      waiting: 12,
+      failedForGood: 2,
+    });
+    expect(row.glyph).toBe('worker');
+    expect(row.title).toBe('Reports worker is disconnected');
+    expect(row.description).toMatch(
+      /^12 tasks are waiting for the reports queue and 2 failed for good\. It was last heard from at \d{1,2}:\d{2} (AM|PM) and reconnects by itself when its process starts again\.$/,
+    );
+    expect(row.actions).toEqual([
+      { label: 'View worker', href: '/health/workers?worker=reports-worker' },
+    ]);
+  });
+
+  test('a worker with no name is called by the queue it serves, and one waiting task is singular', () => {
+    const row = attentionRow({
+      kind: 'worker-disconnected',
+      area: 'workers',
+      at: AT,
+      workerId: 'w/1',
+      workerName: null,
+      queue: 'billing',
+      waiting: 1,
+      failedForGood: 0,
+    });
+    expect(row.title).toBe('The billing worker is disconnected');
+    expect(row.description).toContain('1 task is waiting for the billing queue and 0 failed');
+    expect(row.actions[0]?.href).toBe('/health/workers?worker=w%2F1');
+  });
+
   test('another alert rule opens Alerts, and a rule this build has no sentence for says its metric', () => {
     const failing = attentionRow({
       kind: 'alert',

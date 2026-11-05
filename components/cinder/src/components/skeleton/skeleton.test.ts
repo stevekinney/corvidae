@@ -332,6 +332,30 @@ describe('Skeleton list variant', () => {
     expect(band?.nextElementSibling?.classList.contains('cinder-skeleton-row')).toBe(true);
   });
 
+  test('statusColumn keeps the shared status column by default, and drops it for rows with no status', () => {
+    const kept = render(Skeleton, { props: { variant: 'list', rows: 2 } });
+    expect(
+      kept.container.querySelector('.cinder-skeleton-row[data-cinder-status-column]'),
+    ).toBeNull();
+    cleanup();
+    const dropped = render(Skeleton, {
+      props: { variant: 'list', rows: 2, statusMarker: 'dot', statusColumn: false },
+    });
+    const rows = dropped.container.querySelectorAll('.cinder-skeleton-row');
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.getAttribute('data-cinder-status-column')).toBe('none');
+  });
+
+  test('framed keeps the list border by default, and drops it inside a card that frames its rows', () => {
+    const framed = render(Skeleton, { props: { variant: 'list', rows: 1 } });
+    expect(framed.container.querySelector('.cinder-skeleton-list[data-cinder-framed]')).toBeNull();
+    cleanup();
+    const bare = render(Skeleton, { props: { variant: 'list', rows: 1, framed: false } });
+    expect(
+      bare.container.querySelector('.cinder-skeleton-list')?.getAttribute('data-cinder-framed'),
+    ).toBe('false');
+  });
+
   test('statusMarker is a bar by default, and a dot in the same column when asked', () => {
     const plain = render(Skeleton, { props: { variant: 'list', rows: 2 } });
     for (const bar of plain.container.querySelectorAll('.cinder-skeleton-status-bar')) {

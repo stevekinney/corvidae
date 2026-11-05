@@ -11,6 +11,7 @@ import {
   runningNow,
   startedCaption,
   startedSummary,
+  storageUseSize,
   waitingCaption,
   waitingRuns,
   type RunSummary,
@@ -72,6 +73,18 @@ describe('Runs started', () => {
     expect(startedCaption(summary)).toBe('1 done · 1 failed · 1 running · 1 canceled');
   });
 
+  test('when every run finished it says how the day compares with the one before', () => {
+    const done = Array.from({ length: 14 }, (_, index) => run(`done-${index}`, 'completed'));
+    expect(startedCaption(startedSummary(done, new Map(), 11))).toBe('3 more than the day before');
+    expect(startedCaption(startedSummary(done, new Map(), 20))).toBe('6 fewer than the day before');
+    expect(startedCaption(startedSummary(done, new Map(), 14))).toBe('The same as the day before');
+    // Until the day before is known, or while anything else happened, it says how the runs stand.
+    expect(startedCaption(startedSummary(done, new Map()))).toBe('14 done');
+    expect(startedCaption(startedSummary([...done, run('late', 'failed')], new Map(), 11))).toBe(
+      '14 done · 1 failed',
+    );
+  });
+
   test('says no run started when none did', () => {
     expect(startedCaption(startedSummary([], new Map()))).toBe('No runs started');
   });
@@ -122,5 +135,15 @@ describe('the run page', () => {
         total: 1,
       }),
     ).toEqual([{ id: 'a', status: 'running', createdAt: 1, updatedAt: 2 }]);
+  });
+});
+
+describe('the storage size', () => {
+  test('is in gigabytes from about 50 MB up, so a quiet 0.4 GB and the warning’s 1.6 GB read alike', () => {
+    expect(storageUseSize(0.4 * 1024 ** 3)).toBe('0.4 GB');
+    expect(storageUseSize(1_717_986_918)).toBe('1.6 GB');
+    expect(storageUseSize(12 * 1024 ** 3)).toBe('12 GB');
+    expect(storageUseSize(30 * 1024 ** 2)).toBe('30 MB');
+    expect(storageUseSize(900)).toBe('900 B');
   });
 });

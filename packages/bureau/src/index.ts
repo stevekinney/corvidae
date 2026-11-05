@@ -229,6 +229,7 @@ export type {
   MissedRunsAttentionItem,
   PluginAttentionItem,
   ProviderAttentionItem,
+  WorkerAttentionItem,
 } from './attention-feed';
 export { WorkerDeploymentRolloutError } from './worker-deployments';
 export type {

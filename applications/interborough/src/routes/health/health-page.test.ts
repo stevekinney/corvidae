@@ -8,7 +8,8 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, jest, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
@@ -21,6 +22,7 @@ import { landAt } from '../chat/pages.test-support.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
+  jest.useRealTimers();
   cleanup();
   stub?.restore();
   stub = undefined;
@@ -134,7 +136,9 @@ describe('the frame', () => {
   test('has one Live indicator and no "Updated every" text', async () => {
     const view = open();
     await view.findByRole('heading', { level: 1 });
-    expect(view.getAllByRole('status', { name: /Connection/ })).toHaveLength(1);
+    await waitFor(() =>
+      expect(view.getAllByRole('status', { name: /Connection/ })).toHaveLength(1),
+    );
     expect(view.container.textContent).not.toContain('Updated every');
   });
 
@@ -143,6 +147,77 @@ describe('the frame', () => {
     await view.findByRole('heading', { level: 1 });
     await fireEvent.click(view.getByRole('tab', { name: 'Audit log' }));
     await waitFor(() => expect(window.location.pathname).toBe('/health/audit'));
+  });
+});
+
+describe('loading (rows 76w and 76x)', () => {
+  /** The page with the list of what needs attention that never answers. */
+  async function openHanging() {
+    // The route's page is loaded on demand; load it first so that mounting it needs no real time.
+    await import('./index.svelte');
+    jest.useFakeTimers();
+    const view = open('/health', { 'bureau.health.attention': () => new Promise(() => {}) });
+    // Let the route's lazy import resolve and the page mount, without moving the clock.
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    flushSync();
+    return view;
+  }
+
+  function advance(milliseconds: number): void {
+    jest.advanceTimersByTime(milliseconds);
+    flushSync();
+  }
+
+  test('draws the frame at once and nothing of the body for 300 ms, and no Live indicator', async () => {
+    const view = await openHanging();
+    advance(299);
+    expect(view.getByRole('heading', { level: 1, name: 'Health' })).not.toBeNull();
+    expect(view.getAllByRole('tab')).toHaveLength(4);
+    expect(view.queryByTestId('needs-attention')).toBeNull();
+    expect(view.queryByRole('group', { name: 'Health counts' })).toBeNull();
+    expect(view.container.querySelector('.cinder-skeleton')).toBeNull();
+    expect(view.queryByRole('status', { name: /Connection/ })).toBeNull();
+  });
+
+  test('then keeps the real layout: real labels and headings, placeholders for values, rows and charts', async () => {
+    const view = await openHanging();
+    advance(300);
+    const counts = view.getByRole('group', { name: 'Health counts' });
+    expect(
+      [...counts.querySelectorAll('.cinder-statistic__label')].map((label) =>
+        label.textContent?.trim(),
+      ),
+    ).toEqual(['Running now', 'Needs you', 'Failed in 24 hours', 'Missed schedule runs (7 days)']);
+    // A placeholder block stands where each count will be, never a zero.
+    expect(counts.querySelectorAll('.cinder-skeleton')).toHaveLength(4);
+    expect(counts.textContent).not.toMatch(/\b0\b/);
+
+    const card = view.getByTestId('needs-attention');
+    expect(card.querySelector('h2')?.textContent).toBe('Needs attention');
+    expect(card.querySelector('.cinder-badge')).toBeNull();
+    expect(card.querySelectorAll('.cinder-skeleton-row')).toHaveLength(3);
+
+    const cards = view.getByTestId('metric-cards');
+    expect([...cards.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
+      'Storage use',
+      'Runs started',
+      'Time to finish',
+    ]);
+    expect(cards.querySelectorAll('.cinder-skeleton')).toHaveLength(6);
+    // The rest of the page waits for its data, and the Live indicator is not drawn.
+    expect(view.queryByRole('heading', { level: 2, name: /Recent activity/ })).toBeNull();
+    expect(view.queryByTestId('advanced-diagnostics')).toBeNull();
+    expect(view.queryByRole('status', { name: /Connection/ })).toBeNull();
+  });
+
+  test('a read that is quick never flashes a placeholder', async () => {
+    jest.useFakeTimers();
+    const view = open();
+    // Answered before 300 ms: the first thing drawn is the real list.
+    await waitFor(() =>
+      expect(view.getByTestId('needs-attention').querySelectorAll('li').length).toBe(3),
+    );
+    expect(view.container.querySelector('.cinder-skeleton-row')).toBeNull();
   });
 });
 

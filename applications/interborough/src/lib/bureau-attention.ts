@@ -1,7 +1,7 @@
 /**
  * The browser's view of what needs attention: `bureau.health.attention`, which lists the system
  * problems that need a person now (an alert rule firing, a schedule that missed runs, a hook whose
- * delivery failed, a plugin that did not load, no model provider connected). Reviews waiting on a
+ * delivery failed, a plugin that did not load, a worker that stopped answering, no model provider connected). Reviews waiting on a
  * person are never on it: they are Needs you, which the reviews count reads.
  *
  * The sidebar's Health dot reads only how many there are. The notification bell reads the rules
@@ -122,6 +122,7 @@ export const ATTENTION_AREAS = [
   'providers',
   'hooks',
   'plugins',
+  'workers',
   'runs',
 ] as const;
 
@@ -173,6 +174,16 @@ const attentionItemSchema = z.discriminatedUnion('kind', [
     area,
     at: z.number().nullable(),
     provider: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal('worker-disconnected'),
+    area,
+    at: z.number(),
+    workerId: z.string(),
+    workerName: z.string().nullable(),
+    queue: z.string(),
+    waiting: z.number().int().nonnegative(),
+    failedForGood: z.number().int().nonnegative(),
   }),
 ]);
 

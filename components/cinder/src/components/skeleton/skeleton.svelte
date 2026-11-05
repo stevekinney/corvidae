@@ -30,6 +30,8 @@
     variant = 'row',
     rows = 3,
     statusMarker = 'bar',
+    statusColumn = true,
+    framed = true,
     dayBand = false,
     label,
     delay = 0,
@@ -132,14 +134,21 @@
       <VisuallyHidden role="status">{visible ? label : ''}</VisuallyHidden>
     {/if}
     {#if visible}
-      <div class="cinder-skeleton-list" aria-hidden="true">
+      <div
+        class="cinder-skeleton-list"
+        data-cinder-framed={framed ? undefined : 'false'}
+        aria-hidden="true"
+      >
         {#if dayBand}
           <div class="cinder-skeleton-day-band">
             <div class="cinder-skeleton cinder-skeleton-day-bar"></div>
           </div>
         {/if}
         {#each { length: rowCount } as _, index (index)}
-          <div class="cinder-skeleton-row">
+          <div
+            class="cinder-skeleton-row"
+            data-cinder-status-column={statusColumn ? undefined : 'none'}
+          >
             <div class="cinder-skeleton-row-status">
               <div
                 class="cinder-skeleton cinder-skeleton-status-bar"

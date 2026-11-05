@@ -17,6 +17,10 @@
       ],
       "description": "The statistic. Strings rendered verbatim; numbers formatted via formatNumber."
     },
+    "loading": {
+      "type": "boolean",
+      "description": "Whether the figure is still being read. The label stays real text, a placeholder block stands\nwhere the value will be and the caption is left out, so a count never reads as zero while it\nwaits for its data. The group is marked busy and says nothing of a value."
+    },
     "attention": {
       "type": "boolean",
       "description": "Draws an amber attention dot before the label. Set it only when the value is a non-zero bad count (such as missed runs or items waiting on you), never on a zero or a healthy count. The dot is decorative: the label wording carries the meaning."

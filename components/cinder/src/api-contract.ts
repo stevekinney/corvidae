@@ -551,6 +551,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('row') },
       rows: { optional: true, type_kind: 'TSNumberKeyword', default: L(3) },
       dayBand: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      statusColumn: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      framed: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
       label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       delay: { optional: true, type_kind: 'TSNumberKeyword', default: L(0) },
       stillLoadingAfter: { optional: true, type_kind: 'TSNumberKeyword', default: NO_DEFAULT },
