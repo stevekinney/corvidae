@@ -19,3 +19,13 @@ label{font-weight:600}
 li{white-space:pre-wrap;overflow-wrap:anywhere}
 button+button{margin-left:.5rem}
 `;
+
+export const WORKFLOW_REVISION_STYLES = `${BASE_STYLES}
+.revision-comparison{max-height:420px;overflow:auto;border:1px solid var(--cinder-border-muted);border-radius:6px;padding:var(--cinder-space-3)}
+.revision-row{display:grid;grid-template-columns:minmax(7rem,12rem) minmax(5rem,8rem) minmax(0,1fr) minmax(0,1fr);gap:var(--cinder-space-2);align-items:start;border-top:1px solid var(--cinder-border-muted);padding:var(--cinder-space-2) 0}
+.revision-row:first-of-type{border-top:0}.revision-row[data-state=changed]{background:var(--cinder-surface-raised)}
+pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.4 ui-monospace,monospace}footer{margin-top:var(--cinder-space-3);display:flex;justify-content:flex-end}
+button:focus-visible{outline:2px solid transparent;outline-offset:var(--cinder-ring-offset);box-shadow:0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color)}
+@media (forced-colors:active){button:focus-visible{outline:2px solid ButtonText;box-shadow:none}}
+@media (max-width:600px){.revision-row{grid-template-columns:1fr}.revision-row pre:nth-of-type(2){border-top:1px dashed var(--cinder-border-muted);padding-top:var(--cinder-space-2)}}
+`;

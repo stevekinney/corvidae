@@ -19,6 +19,12 @@
       "id": "inspectors:run-inspector",
       "version": "1.0.0",
       "schema": "sha256:6500e38d4ac04f1632fbced15b6b576dbdeebce9aa05d285eb326e072b5e709b"
+    },
+    {
+      "kind": "mcp-app",
+      "id": "inspectors:workflow-revision-review",
+      "version": "1.0.0",
+      "schema": "sha256:3662e38bcaf9ecf5de88a67031c715d41a108d863453edcb764aba4e9e196bab"
     }
   ]
 }

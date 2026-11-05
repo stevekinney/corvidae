@@ -42,6 +42,7 @@ import type { AgentSource } from '../sources/definition-source';
 import { createAgentContributions } from '../agent-contributions';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../types';
+import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
 import {
   createVersionedCatalog,
   VERSIONED_CATALOG_KINDS,
@@ -228,6 +229,7 @@ function planOf(
   version: string,
   contributions: PluginContributions,
   gate: PluginSecretGate | undefined,
+  agentTools: AgentSource['tools'] | undefined,
 ): PluginContributionPlan {
   const claims: Claim[] = [];
   const listings: PluginContribution[] = [];
@@ -305,6 +307,19 @@ function planOf(
     if (!app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
         `setup returned the MCP app "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
+      );
+    }
+    if (
+      app.opensFromAgentTool !== undefined &&
+      agentTools !== undefined &&
+      !Object.hasOwn(agentTools ?? {}, app.opensFromAgentTool) &&
+      !(
+        app.opensFromAgentTool.startsWith('bureau:') &&
+        WORKFLOW_TOOL_NAMES.some((name) => app.opensFromAgentTool === `bureau:${name}`)
+      )
+    ) {
+      throw new TypeError(
+        `setup returned the MCP app "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
       );
     }
     contribute('mcp-app', app.name);
@@ -688,7 +703,13 @@ async function setUp(
         : gatedContributions(returned, gate, (name) =>
             formatToolId({ namespace: descriptor.name, name }),
           );
-    const plan = planOf(descriptor.name, descriptor.version, result, gate);
+    const plan = planOf(
+      descriptor.name,
+      descriptor.version,
+      result,
+      gate,
+      options.agentSource?.tools,
+    );
     return { status: 'set-up', result, context, plan, redact, gate, bindHost: host.bind };
   } catch (error) {
     return {

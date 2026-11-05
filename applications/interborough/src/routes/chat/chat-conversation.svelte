@@ -42,7 +42,7 @@
   import { onMount, tick, untrack } from 'svelte';
 
   import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
-  import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
+  import { Chat, ChatNote, ChatQuestion, McpApp, resolveMessageNotes } from '@lostgradient/chat';
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -73,6 +73,7 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
   import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
   import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
@@ -106,7 +107,7 @@
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
   import { replyStepOf } from './reply-details.ts';
-  import { toolGroups } from './tool-activity.ts';
+  import { toolGroups, type ToolCallEntry } from './tool-activity.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -508,6 +509,30 @@
     new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
   const activity = $derived(toolGroups(session.conversation));
+  const mcpApps = createQuery(
+    () => ({
+      queryKey: queryKeys.hostMcpApps(),
+      queryFn: ({ signal }) => getMcpApps({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const workflowRevisionPanels = $derived(
+    (mcpApps.data ?? []).filter(
+      (panel) => panel.opensFromAgentTool === 'bureau:workflows-propose-update',
+    ),
+  );
+  const isRevisionProposal = (entry: ToolCallEntry) => {
+    const result = entry.result;
+    return (
+      typeof result === 'object' &&
+      result !== null &&
+      !Array.isArray(result) &&
+      Reflect.get(result, 'status') === 'ok' &&
+      typeof Reflect.get(result, 'baseHash') === 'string' &&
+      typeof Reflect.get(result, 'proposedText') === 'string'
+    );
+  };
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -975,6 +1000,25 @@
                   input={argumentEntries(entry.arguments)}
                   onDecide={(choice) => void decide(entry.callId, choice)}
                   onAllowForChat={() => void allowForChat(entry.callId)}
+                />
+              {/if}
+            {/snippet}
+            {#snippet mcpApp(entry)}
+              {@const panel = workflowRevisionPanels.find(
+                (candidate) =>
+                  candidate.opensFromAgentTool === entry.name ||
+                  candidate.opensFromAgentTool === entry.name.replace('__', ':'),
+              )}
+              {#if panel !== undefined && entry.state === 'done' && isRevisionProposal(entry)}
+                {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
+                {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
+                <McpApp
+                  resourceUri={panel.uri}
+                  title={panel.title}
+                  {loadResource}
+                  {onToolCall}
+                  maxHeight={560}
+                  toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
                 />
               {/if}
             {/snippet}

@@ -143,12 +143,13 @@ export function mcpAppRoutes(
         refuse(request) ??
         Response.json(
           {
-            apps: served.map(({ plugin, name, title, uri, opensFromTool }) => ({
+            apps: served.map(({ plugin, name, title, uri, opensFromTool, opensFromAgentTool }) => ({
               plugin,
               app: name,
               title,
               uri,
               opensFromTool,
+              ...(opensFromAgentTool === undefined ? {} : { opensFromAgentTool }),
             })),
           },
           { headers: JSON_HEADERS },

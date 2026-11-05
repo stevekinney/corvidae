@@ -1,6 +1,6 @@
 import { definePlugin, type PluginMcpApp } from '@lostgradient/interborough-plugin';
 
-import { BASE_STYLES, PENDING_REVIEW_STYLES } from './styles.ts';
+import { BASE_STYLES, PENDING_REVIEW_STYLES, WORKFLOW_REVISION_STYLES } from './styles.ts';
 
 /**
  * The run inspector: one Bureau task's liveness, ownership tree, progress, result, and abort. A
@@ -36,8 +36,21 @@ export const pendingReview: PluginMcpApp = {
   opensFromTool: 'bureau.reviews.list',
 };
 
+/** The workflow revision review panel opened by an agent's proposed update in Chat. */
+export const workflowRevisionReview: PluginMcpApp = {
+  name: 'workflow-revision-review',
+  title: 'Review workflow revision',
+  description: 'Compare and apply a proposed workflow revision.',
+  uri: 'ui://bureau/workflow-revision-review/v1',
+  entry: new URL('./workflow-revision/app.ts', import.meta.url),
+  styles: WORKFLOW_REVISION_STYLES,
+  allowedTools: ['bureau.workflows.get', 'bureau.workflows.update'],
+  opensFromTool: 'bureau.workflows.update',
+  opensFromAgentTool: 'bureau:workflows-propose-update',
+};
+
 /**
- * Two interface panels, the run inspector and the pending-review list. Each is a page the host
+ * Three interface panels, the run inspector, pending-review list, and workflow revision review. Each is a page the host
  * builds from a browser entry at startup and serves as a `ui://` resource.
  */
 export default definePlugin({
@@ -46,5 +59,5 @@ export default definePlugin({
   version: '1.0.0',
   description:
     'Adds the run inspector and the pending-review list as interface panels over the run and review tools.',
-  setup: () => ({ mcpApps: [runInspector, pendingReview] }),
+  setup: () => ({ mcpApps: [runInspector, pendingReview, workflowRevisionReview] }),
 });

@@ -50,6 +50,8 @@ export type ServedMcpApp = {
   readonly uri: string;
   /** The Bureau tool a client runs to open the page. */
   readonly opensFromTool: string;
+  /** The agent tool id that may open this app inline in Chat. */
+  readonly opensFromAgentTool?: string;
   /** The Bureau MCP tool names the panel may call, and no others. */
   readonly allowedTools: readonly string[];
   /** The built, self-contained page. */
@@ -113,6 +115,9 @@ export async function mcpAppMounts(contributed: ContributedMcpApps) {
       title: app.title,
       uri: app.uri,
       opensFromTool: app.opensFromTool,
+      ...(app.opensFromAgentTool === undefined
+        ? {}
+        : { opensFromAgentTool: app.opensFromAgentTool }),
       allowedTools: [...app.allowedTools],
       html: page.html,
     });
