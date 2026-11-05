@@ -13,12 +13,6 @@ export interface ChildRunToolHost {
   readonly children: () => BureauChildren | undefined;
   readonly agentDetail: (id: string) => Promise<AgentFileDetail | undefined>;
   readonly runAgent: (runId: string) => Promise<string | undefined>;
-  readonly requestWait?: (request: {
-    readonly parentRunId: string;
-    readonly childRunId: string;
-    readonly toolCallId: string;
-    readonly principal?: string;
-  }) => { readonly parked: boolean; readonly reason?: string };
 }
 
 function runIdOf(context: ToolContext | undefined): string | undefined {
@@ -138,6 +132,7 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
     description: 'Wait durably for one child run to settle.',
     metadata: {
       readOnly: true,
+      durableChildWait: true,
       title: 'Wait for child run',
       shortDescription: 'Wait for a child to settle.',
     },
@@ -146,26 +141,22 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
       const calling = await caller(host, context);
       if (calling === undefined) return { status: 'not-found' as const };
       const toolCallId = context?.meta?.callId;
-      if (host.requestWait !== undefined && toolCallId !== undefined) {
-        const parked = host.requestWait({
-          parentRunId: calling.parentRunId,
-          childRunId: input.childRunId,
-          toolCallId,
-          ...(calling.principal === undefined ? {} : { principal: calling.principal }),
-        });
-        if (parked.parked) return { status: 'pending' as const };
+      const durableChildWait = context?.executionContext?.['durableChildWait'];
+      if (typeof durableChildWait !== 'function' || toolCallId === undefined) {
+        return {
+          status: 'refused' as const,
+          reason: 'Durable child wait is unavailable for this tool call.',
+        };
       }
-      const outcome = await calling.children.wait(
-        {
-          ...input,
-          parentRunId: calling.parentRunId,
-          ...(calling.principal === undefined ? {} : { principal: calling.principal }),
-        },
-        { signal: context?.signal as never },
-      );
-      return outcome.outcome === 'not-found'
-        ? { status: 'not-found' as const }
-        : { status: outcome.outcome, child: outcome.child };
+      const parked = durableChildWait({
+        childRunId: input.childRunId,
+        toolCallId,
+      });
+      if (parked.parked) return { status: 'pending' as const };
+      return {
+        status: 'refused' as const,
+        reason: parked.reason ?? 'Durable child wait was refused.',
+      };
     },
   });
 

@@ -2753,13 +2753,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       children: () => childTopologyForWait?.children,
       agentDetail: (id) => agentCatalog.detail(id),
       runAgent: async (runId) => runAttribution.get(runId)?.agentName,
-      requestWait: ({ parentRunId, childRunId, toolCallId, principal }) =>
-        childWaitServices.get(parentRunId)?.requestChildWait?.({
-          parentRunId,
-          childRunId,
-          toolCallId,
-          principal: principal ?? ownerOrLocal(runAttribution.get(parentRunId)?.principal),
-        }) ?? { parked: false, reason: 'unavailable' },
     }),
     ...(options.workflowSource === undefined
       ? []
