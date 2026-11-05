@@ -1,6 +1,6 @@
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
-type CliFailure = Error & { status?: number };
+type CliFailure = Error & { status?: number; exitCode?: 7 };
 type Target = { url: string; headers: Record<string, string> };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -33,7 +33,16 @@ export async function request(
       redirect: 'error',
       signal: controller.signal,
     });
-    const body: unknown = await response.json().catch(() => undefined);
+    const text = await response.text();
+    let body: unknown;
+    try {
+      body = text === '' ? undefined : JSON.parse(text);
+    } catch {
+      throw makeCliFailure(
+        'The host returned malformed JSON.',
+        init?.method === 'POST' ? { exitCode: 7 } : {},
+      );
+    }
     if (!response.ok)
       throw makeCliFailure(
         isRecord(body) && typeof body['message'] === 'string'
@@ -45,12 +54,20 @@ export async function request(
       const rpcError = body['error'];
       const code = typeof rpcError['code'] === 'number' ? rpcError['code'] : undefined;
       const message = typeof rpcError['message'] === 'string' ? rpcError['message'] : 'RPC error';
+      const data = isRecord(rpcError['data']) ? rpcError['data'] : undefined;
+      const httpStatus = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : undefined;
       throw makeCliFailure(message, {
-        ...(code === -32601 || code === -32602 ? { status: 400 } : {}),
-        ...(code === -32001 || code === -32003 ? { status: 403 } : {}),
+        ...(httpStatus === undefined ? {} : { status: httpStatus }),
+        ...(httpStatus === undefined && (code === -32601 || code === -32602)
+          ? { status: 400 }
+          : {}),
       });
     }
     return { data: body };
+  } catch (error) {
+    if (init?.method === 'POST' && error instanceof DOMException && error.name === 'AbortError')
+      throw makeCliFailure('The mutation outcome is unknown.', { exitCode: 7 });
+    throw error;
   } finally {
     clearTimeout(timer);
   }

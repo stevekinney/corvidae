@@ -135,7 +135,10 @@ async function run(arguments_: string[]): Promise<number> {
     return 0;
   }
   if (command !== 'start' && command !== '--help' && command !== '--version') {
-    const result = await executeCli(arguments_);
+    const result = await executeCli(arguments_, {
+      environment: processEnvironment(),
+      stdin: () => Bun.stdin.text(),
+    });
     if (result.stdout !== '') process.stdout.write(`${result.stdout}\n`);
     if (result.stderr !== '') console.error(result.stderr);
     return result.exitCode;

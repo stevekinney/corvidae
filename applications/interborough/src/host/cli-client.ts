@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
+import { createCatalogSnapshot } from '@lostgradient/weft';
+
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
 import { request } from './cli-client-transport.ts';
@@ -151,6 +153,9 @@ const helpText: Record<string, string> = {
   restart: 'Usage: interborough restart [options]\n\n  --yes  Confirm the restart request',
   api: 'Usage: interborough api <list|describe|call> [operation] [options]\n\n  --input-file <path>  JSON input, or - for stdin\n  --all  Explicitly request all pages',
 };
+const catalogByName = new Map(
+  createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
+);
 
 function usage(message: string): CliResult {
   return { stdout: '', stderr: message, exitCode: 2 };
@@ -249,6 +254,8 @@ async function resolveTarget(
     parsed.connection === undefined
       ? preferences.connections.find((entry) => entry.name === preferences.activeConnection)
       : preferences.connections.find((entry) => entry.name === parsed.connection);
+  if (parsed.connection !== undefined && connection === undefined)
+    return { stdout: '', stderr: `Unknown connection: ${parsed.connection}.`, exitCode: 1 };
   const raw = parsed.url ?? connection?.url ?? CLI_DEFAULT_URL;
   const credential =
     connection?.credentialReference === undefined
@@ -327,12 +334,46 @@ async function execute(
           : 'restart is destructive; pass --yes to confirm.',
         { exitCode: parsed.noInput ? 5 : 2 },
       );
+    const baseline = await request(resolved, '/host/status', parsed, dependencies);
+    const baselineData = isRecord(baseline.data) ? baseline.data : undefined;
+    const deploymentId = baselineData?.['deploymentId'];
+    const incarnationId = baselineData?.['incarnationId'];
+    if (
+      typeof deploymentId !== 'string' ||
+      typeof incarnationId !== 'string' ||
+      incarnationId === ''
+    )
+      throw makeCliFailure('Host status capability is unavailable or malformed.', { exitCode: 1 });
     const acknowledged = await request(resolved, '/host/restart', parsed, dependencies, {
       method: 'POST',
     });
-    const standing = await request(resolved, '/host/restart', parsed, dependencies);
+    const deadline = Date.now() + parsed.timeout;
+    let observed: CliCommandResult | undefined;
+    while (Date.now() < deadline) {
+      try {
+        const candidate = await request(resolved, '/host/status', parsed, dependencies);
+        const value = isRecord(candidate.data) ? candidate.data : undefined;
+        if (value?.['deploymentId'] !== deploymentId)
+          throw makeCliFailure('The host deployment changed during restart.', { exitCode: 7 });
+        if (typeof value?.['incarnationId'] !== 'string' || value['incarnationId'] === '')
+          throw makeCliFailure('The host status response is malformed during restart.', {
+            exitCode: 7,
+          });
+        if (value['incarnationId'] !== incarnationId) {
+          observed = candidate;
+          break;
+        }
+      } catch (error) {
+        if (isRecord(error) && typeof error['exitCode'] === 'number') throw error;
+        if (isRecord(error) && (error['status'] === 401 || error['status'] === 403))
+          throw makeCliFailure('Restart observation was unauthorized.', { exitCode: 7 });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (observed === undefined)
+      throw makeCliFailure('Restart outcome is unknown.', { exitCode: 7 });
     return {
-      data: { acknowledged: acknowledged.data, observed: standing.data },
+      data: { acknowledged: acknowledged.data, observed: observed.data },
       metadata: { restart: 'observed' },
     };
   }
@@ -341,12 +382,16 @@ async function execute(
       data: { actor: 'anonymous:local', workspace: null, capabilities: ['local-loopback'] },
     };
   if (parsed.command === 'status' || parsed.command === 'doctor') {
-    const paths = await request(resolved, '/host/paths', parsed, dependencies);
-    const restart = await request(resolved, '/host/restart', parsed, dependencies);
+    const status = await request(resolved, '/host/status', parsed, dependencies);
+    const statusData = isRecord(status.data) ? status.data : undefined;
     const data = {
-      deployment: { identity: null, capability: 'unavailable' },
+      deployment: {
+        identity:
+          typeof statusData?.['deploymentId'] === 'string' ? statusData['deploymentId'] : null,
+        capability: statusData === undefined ? 'unavailable' : 'available',
+      },
       reachability: { reachable: true, url: resolved.url },
-      host: { paths: paths.data, restart: restart.data },
+      host: { status: status.data },
     };
     return parsed.command === 'status' ? { data } : { data, metadata: { redacted: true } };
   }
@@ -373,7 +418,21 @@ async function execute(
           ? null
           : String(start + selected.length);
       return {
-        data: selected,
+        data: selected.flatMap((method) => {
+          const name =
+            isRecord(method) && typeof method['name'] === 'string' ? method['name'] : undefined;
+          const operation = name === undefined ? undefined : catalogByName.get(name);
+          return operation === undefined
+            ? []
+            : [
+                {
+                  ...method,
+                  kind: operation.kind,
+                  destructive: operation.destructive,
+                  transports: operation.transports,
+                },
+              ];
+        }),
         metadata: {
           cursor: nextCursor,
           page: {
@@ -413,6 +472,21 @@ async function execute(
         throw Object.assign(
           new Error(`Operation is not externally discoverable: ${parsed.arguments[1]}`),
           { usage: true },
+        );
+      const operation = catalogByName.get(parsed.arguments[1]);
+      if (
+        operation === undefined ||
+        operation.kind !== 'unary' ||
+        !operation.transports.jsonRpcHttp
+      )
+        throw makeCliFailure(
+          `Operation is not a supported unary JSON-RPC operation: ${parsed.arguments[1]}.`,
+          { usage: true },
+        );
+      if (operation.destructive && parsed.options.get('yes') !== true)
+        throw makeCliFailure(
+          `Operation ${parsed.arguments[1]} is destructive; pass --yes to confirm.`,
+          { exitCode: 5 },
         );
       const input = inputFile ?? inputOption;
       const inputText =

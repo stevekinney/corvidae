@@ -90,7 +90,7 @@
  * @module host
  */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
@@ -150,6 +150,7 @@ import {
 import { HOST_DEPENDENCIES, loadFolderPlugins, PLUGIN_FOLDER_NAME } from './folder-plugins.ts';
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
+import { HOST_STATUS_ROUTE, type HostStatus } from './host-status.ts';
 import { hostStorageReport } from './host-storage.ts';
 import {
   bureauUpgradeServer,
@@ -651,6 +652,7 @@ type EngineUpstream = { readonly url: string; readonly key: string };
 
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
+  const incarnationId = randomUUID();
   // The clock the host's own times are read from: its runtime's, so they agree with its Bureau's.
   const clock = options.runtime?.clock ?? { now: () => Date.now() };
   // The demo plugin's agents are named `demo:<name>`, and Bureau skips a plugin whose contribution
@@ -1081,6 +1083,24 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           ...(restart === undefined
             ? {}
             : { POST: (request: Request) => refuse(request) ?? restart() }),
+        },
+        [HOST_STATUS_ROUTE]: {
+          GET: (request: Request) =>
+            refuse(request) ??
+            Response.json({
+              deploymentId: bungalow.deploymentId,
+              incarnationId,
+              diagnostics: {
+                bureau: bureau.internals.diagnostics(),
+                weft: {
+                  lease: engine.getLeaseHealth(),
+                  workers: server.registry.getWorkerSummaries(clock.now()),
+                  connections: server.connections(),
+                },
+                build: buildDiagnostics(buildDirectory),
+                providers: providerDiagnostics(providers.current()),
+              },
+            } satisfies HostStatus),
         },
         // Where a person edits what the host keeps by hand. The pages show an agent's file path and
         // a workflow's.
