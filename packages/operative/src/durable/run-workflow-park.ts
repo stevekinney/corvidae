@@ -86,7 +86,7 @@ export function* runWorkflowPark(
     let resolution = yield* ctx.memo(`child-wait-${state.cursor.step}-${wake}`, () =>
       resolve(request),
     );
-    while (resolution.outcome === 'pending') {
+    while (resolution.status === 'pending') {
       yield* ctx.waitForSignal(`durable-child:${request.parentRunId}:${request.childRunId}`);
       wake += 1;
       resolution = yield* ctx.memo(`child-wait-${state.cursor.step}-${wake}`, () =>

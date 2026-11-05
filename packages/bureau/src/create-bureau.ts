@@ -2975,7 +2975,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     };
     services.resolveChildWait = async (request) => {
       const topology = childTopologyForWait;
-      if (topology === undefined) return { outcome: 'not-found' };
+      if (topology === undefined) return { status: 'not-found' };
       const outcome = await topology.children.wait(
         {
           parentRunId: request.parentRunId,
@@ -2984,11 +2984,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         { signal: AbortSignal.abort() },
       );
       if (outcome.outcome === 'settled')
-        return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
+        return { status: 'settled', child: outcome.child as unknown as JSONValue };
       if (outcome.outcome === 'unobservable')
-        return { outcome: 'unobservable', child: outcome.child as unknown as JSONValue };
-      if (outcome.outcome === 'wait-aborted') return { outcome: 'pending' };
-      return { outcome: 'not-found' };
+        return { status: 'unobservable', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'wait-aborted') return { status: 'pending' };
+      return { status: 'not-found' };
     };
   }
   const assetServiceHolder: { current: AssetService | undefined } = {

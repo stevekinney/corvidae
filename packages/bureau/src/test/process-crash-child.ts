@@ -543,7 +543,7 @@ async function childWaitParked(): Promise<void> {
     description: 'A sibling action that must not replay after the park.',
     input: z.object({}),
     execute: async () => {
-      publishChildFile(join(dirname(markerPath as string), 'siblingAction'), JSON.stringify('ran'));
+      appendFileSync(join(dirname(markerPath as string), 'siblingAction'), '1\n');
       return { action: 'ran-once' };
     },
   });

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createAgent, createCheckpointStore, stopWhen } from '@lostgradient/operative';
@@ -52,7 +52,9 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     }>(join(directory, 'afterChildSettlementBeforeParentWake'));
     expect(barrier.childRecord.status).toBe('completed');
     expect(barrier.parentWaitingForSignals).toEqual([`durable-child:${runId}:${childRunId}`]);
-    expect(readChildJson<string>(join(directory, 'siblingAction'))).toBe('ran');
+    expect(readFileSync(join(directory, 'siblingAction'), 'utf8').trim().split('\n')).toEqual([
+      '1',
+    ]);
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     let generations = 0;
@@ -137,7 +139,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
           callId: CHILD_WAIT_CALL_ID,
           toolCallId: CHILD_WAIT_CALL_ID,
           outcome: 'success',
-          result: { outcome: 'settled', child: currentChildRecord },
+          result: { status: 'settled', child: currentChildRecord },
         });
         expect(step.results.filter((result) => result.callId === SIBLING_CALL_ID)).toHaveLength(1);
         expect(nextGenerationToolResults).toHaveLength(2);
@@ -152,7 +154,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         expect(nextGenerationToolResults).toContainEqual(
           expect.objectContaining({
             callId: CHILD_WAIT_CALL_ID,
-            content: { outcome: 'settled', child: currentChildRecord },
+            content: { status: 'settled', child: currentChildRecord },
           }),
         );
       } finally {

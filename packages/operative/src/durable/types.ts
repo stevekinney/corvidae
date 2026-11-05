@@ -215,10 +215,10 @@ export interface PendingChildWait {
 }
 
 export type DurableChildWaitResolution =
-  | { readonly outcome: 'pending' }
-  | { readonly outcome: 'settled'; readonly child: JSONValue }
-  | { readonly outcome: 'unobservable'; readonly child: JSONValue }
-  | { readonly outcome: 'not-found' };
+  | { readonly status: 'pending' }
+  | { readonly status: 'settled'; readonly child: JSONValue }
+  | { readonly status: 'unobservable'; readonly child: JSONValue }
+  | { readonly status: 'not-found' };
 
 /**
  * The non-serializable, per-run behavior a durable workflow needs but cannot
