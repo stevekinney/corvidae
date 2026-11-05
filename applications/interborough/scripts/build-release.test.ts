@@ -158,8 +158,7 @@ await new Promise(() => {});
       await writeFile(join(outdir, 'index.html'), '<html>fixture</html>');
       return { directory: outdir, files: ['index.html'], metafile: {} } as never;
     },
-    buildMcpAppPage: async () =>
-      ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }) as never,
+    buildMcpAppPage: async () => ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }),
   };
   return { root, operations };
 }
