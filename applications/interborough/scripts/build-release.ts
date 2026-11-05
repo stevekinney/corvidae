@@ -103,11 +103,7 @@ async function stage(
       const parts = relative(source, path).split(sep);
       return (
         !parts.includes('node_modules') &&
-        !parts.some((part) =>
-          new Set(['test', 'tests', '__tests__', 'fixtures', '.turbo', '.types', 'coverage']).has(
-            part,
-          ),
-        ) &&
+        !parts.some((part) => new Set(['.turbo', '.types', 'coverage']).has(part)) &&
         !path.includes('.test.') &&
         !path.includes(`${sep}.types${sep}`)
       );
@@ -346,6 +342,7 @@ async function compile(
       '--compile',
       '--no-compile-autoload-dotenv',
       '--no-compile-autoload-bunfig',
+      '--compile-autoload-package-json',
       '--compile-exec-argv=--no-install',
       '--define',
       `INTERBOROUGH_RELEASE_VERSION=${JSON.stringify(version)}`,

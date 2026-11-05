@@ -18,6 +18,7 @@ async function releaseFixture(
     readonly commandFailure?: boolean;
     readonly recursiveDependency?: boolean;
     readonly missingDependency?: boolean;
+    readonly productionEntryInExcludedDirectory?: boolean;
     readonly invalidExportMap?: boolean;
     readonly runtimeFailure?:
       | 'missing-link'
@@ -60,13 +61,23 @@ async function releaseFixture(
     await mkdir(dependency, { recursive: true });
     await writeFile(
       join(dependency, 'package.json'),
-      JSON.stringify({ name: 'fixture-dependency' }),
+      JSON.stringify({
+        name: 'fixture-dependency',
+        main: options.productionEntryInExcludedDirectory ? './index.ts' : undefined,
+      }),
     );
+    if (options.productionEntryInExcludedDirectory) {
+      await mkdir(join(dependency, 'test'), { recursive: true });
+      await writeFile(join(dependency, 'index.ts'), "export { fixture } from './test/index.ts';\n");
+      await writeFile(join(dependency, 'test', 'index.ts'), 'export const fixture = true;\n');
+    }
   }
   if (options.escapingLink)
     await symlink('/tmp/interborough-release-missing-target', join(sdk, 'escape'));
+  const buildArguments: string[][] = [];
   const command = async (arguments_: string[]): Promise<void> => {
     if (arguments_[1] === 'build') {
+      buildArguments.push(arguments_);
       if (options.commandFailure) throw new Error('fixture command failed');
       const output = arguments_[arguments_.indexOf('--outfile') + 1];
       if (output === undefined) throw new Error('missing bundle output');
@@ -160,7 +171,7 @@ await new Promise(() => {});
     },
     buildMcpAppPage: async () => ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }),
   };
-  return { root, operations };
+  return { root, operations, buildArguments };
 }
 
 async function expectRelocatedFailure(
@@ -402,6 +413,34 @@ describe('release arguments', () => {
           ),
         ).exists(),
       ).toBe(true);
+      const compileArguments = fixture.buildArguments.find((arguments_) =>
+        arguments_.includes('--compile'),
+      );
+      expect(compileArguments).toContain('--compile-autoload-package-json');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the release fixture controls every child process boundary deterministically.
+  test('retains production source under a directory named test', async () => {
+    const fixture = await releaseFixture({
+      recursiveDependency: true,
+      productionEntryInExcludedDirectory: true,
+    });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-production-source-'));
+    try {
+      await buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations);
+      const stagedDependency = join(
+        output,
+        'interborough',
+        'share/interborough/plugin-runtime/node_modules/fixture-dependency',
+      );
+      expect(await Bun.file(join(stagedDependency, 'index.ts')).text()).toContain(
+        "'./test/index.ts'",
+      );
+      expect(await Bun.file(join(stagedDependency, 'test', 'index.ts')).exists()).toBe(true);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
