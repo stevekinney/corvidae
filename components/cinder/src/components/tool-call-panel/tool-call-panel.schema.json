@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "open": {
+      "type": "boolean",
+      "description": "Whether the panel is open.",
+      "default": true
+    },
+    "name": {
+      "type": "string",
+      "description": "The tool's name as a person reads it (\"Send email\"). It names the panel."
+    },
+    "identifier": {
+      "type": "string",
+      "description": "The tool's identifier (\"send-email\"), small and monospaced after the name."
+    },
+    "status": {
+      "enum": ["done", "approved", "running", "waiting", "denied", "failed"],
+      "description": "Where the call stands."
+    },
+    "duration": {
+      "type": "string",
+      "description": "How long the call took, formatted by the caller (\"10.0s\")."
+    },
+    "position": {
+      "type": "string",
+      "description": "Where the call falls in its turn (\"call 28 of 30\")."
+    },
+    "summary": {
+      "type": "string",
+      "description": "The line under the name, replacing the status word, duration and position."
+    },
+    "input": {
+      "description": "What the call was given."
+    },
+    "result": {
+      "description": "What the call returned."
+    },
+    "resultLabel": {
+      "type": "string",
+      "description": "The Result heading.",
+      "default": "Result"
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "What went wrong, in words (\"No reply from mail.example.com after 10s\"). Shown first."
+        },
+        "code": {
+          "type": "string",
+          "description": "The machine code for the failure (\"smtp-timeout\"), in small monospace."
+        },
+        "retryable": {
+          "type": "boolean",
+          "description": "Whether trying the call again can work. Written \"Yes\" or \"No\"."
+        }
+      },
+      "additionalProperties": false,
+      "required": ["message"],
+      "description": "Why a failed call failed."
+    },
+    "view": {
+      "enum": ["fields", "json"],
+      "description": "How Input and Result show.",
+      "default": "fields"
+    },
+    "redact": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Secret paths to hide."
+    },
+    "retryMessage": {
+      "type": "string",
+      "description": "The message the retry button sends as the person's own."
+    },
+    "resolving": {
+      "enum": ["approve", "deny"],
+      "description": "The answer that is on its way for a waiting call."
+    },
+    "placement": {
+      "enum": ["auto", "docked", "overlay", "sheet"],
+      "description": "How the panel sits on the page.",
+      "default": "auto"
+    },
+    "dockedFrom": {
+      "type": "string",
+      "description": "The viewport width the panel docks from.",
+      "default": "1280px"
+    },
+    "class": {
+      "type": "string",
+      "description": "Additional class names merged with `.cinder-tool-call-panel`."
+    }
+  },
+  "additionalProperties": false,
+  "required": ["name", "status"],
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "children",
+        "reason": "function-or-snippet",
+        "description": "Extra sections after the Input and Result, such as a link to the run."
+      },
+      {
+        "name": "onApprove",
+        "reason": "function-or-snippet",
+        "description": "Fired with the note when Approve is pressed on a `waiting` call. The decision bar shows only when this or `onDeny` is set."
+      },
+      {
+        "name": "onClose",
+        "reason": "function-or-snippet",
+        "description": "Fired once each time the panel closes, whether by its X, Close, Esc or the caller setting\n`open` to `false`. A page hands focus back to the call's row here, with `focusCall(id)` on the\nrail."
+      },
+      {
+        "name": "onDeny",
+        "reason": "function-or-snippet",
+        "description": "Fired with the note when Deny is pressed on a `waiting` call. If the person denies, the agent reads the note as the reason."
+      },
+      {
+        "name": "onRetry",
+        "reason": "function-or-snippet",
+        "description": "Fired when the person asks the agent to retry a `failed` call. The button is secondary, full width, and shows only when this is set."
+      }
+    ]
+  }
+}

@@ -704,6 +704,13 @@ function isNoteAnnouncement(announced: Announced): announced is NoteAnnouncement
   return 'kind' in announced;
 }
 
+function isLiveChildAnnouncement(announced: Announced): announced is NoteAnnouncement {
+  return (
+    isNoteAnnouncement(announced) &&
+    (announced.kind === 'child-settled' || announced.note.kind === 'child-run')
+  );
+}
+
 function announcedKey(announced: Announced): string {
   return isNoteAnnouncement(announced)
     ? noteAnnouncementKey(announced)
@@ -1073,6 +1080,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     try {
       for await (const event of events) {
         if (generation !== transportGeneration) return;
+        let liveChildAnnouncement: NoteAnnouncement | undefined;
         gate?.arrived();
         nativeRunId ??= nativeRunIdOf(event);
         // A Stop before this event is acted on here, now that the run it began has a name: the
@@ -1117,6 +1125,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         if (announcement !== undefined) {
           rememberAnnouncement(announced, announcement);
           if (assetRun !== undefined) rememberAnnouncement(assetRun.announcements, announcement);
+          if (isLiveChildAnnouncement(announcement)) liveChildAnnouncement = announcement;
         }
         const ungranted = grantNotLoosenedOf(event);
         if (ungranted !== undefined && !toldGrants.has(ungranted.interruptId)) {
@@ -1129,6 +1138,16 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // did not watch it run. This conversation holds the call, and holds it only once.
         if (isCallEventFor(event, held)) continue;
         yield event;
+        // Apply the live note after the mapped frame for this event has been consumed. Otherwise
+        // ChatSession's controller can immediately write its pre-snapshot conversation back over
+        // the note through its normal frame update path.
+        if (liveChildAnnouncement !== undefined) {
+          const live = placeAnnouncements(options.conversation(), [liveChildAnnouncement], {
+            owns: (id) => !turnStartIds.has(id),
+            anchorAnywhere: true,
+          });
+          options.onSnapshot?.(live.conversation);
+        }
       }
     } finally {
       gate?.dispose();

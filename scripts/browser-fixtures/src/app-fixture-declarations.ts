@@ -62,6 +62,7 @@ export const appFixtureDeclarations = {
   'segmented-control': ['assertion'],
   'schema-form': ['assertion'],
   'side-navigation': ['assertion'],
+  table: ['assertion'],
   'speed-dial': ['assertion'],
   tooltip: ['assertion'],
   'virtual-list': ['assertion'],

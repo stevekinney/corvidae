@@ -115,6 +115,12 @@
     border-inline-start: 1px dashed var(--cinder-border-muted);
   }
 
+  /* The line after a previewed array's items: how many more the stored array holds. */
+  .cinder-json-viewer__omitted {
+    color: var(--cinder-text-muted);
+    font-style: italic;
+  }
+
   .cinder-json-viewer__too-deep {
     color: var(--cinder-text-muted);
   }

@@ -14,6 +14,7 @@ export {
   canonicalWorkflowDocumentJson,
   validateWorkflowDocument,
   workflowDocumentSchema,
+  workflowDocumentStepSchema,
   workflowDocumentVersion,
 } from './document.ts';
 export type {

@@ -20,6 +20,12 @@
       "title": "Segmented thresholds",
       "description": "Render low, optimal, and high regions while preserving meter semantics for assistive technology.",
       "code": "<script lang=\"ts\">\n  import { Meter } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: flex; flex-direction: column; gap: 0.5rem;\">\n  <Meter\n    value={82}\n    low={30}\n    high={70}\n    optimum={50}\n    ariaLabel=\"CPU utilization\"\n    ariaValueText=\"82 percent, above the recommended range\"\n  />\n  <Meter\n    value={48}\n    low={30}\n    high={70}\n    optimum={50}\n    ariaLabel=\"CPU utilization\"\n    ariaValueText=\"48 percent, in the recommended range\"\n  />\n</div>\n"
+    },
+    {
+      "id": "segments",
+      "title": "Stacked shares with a legend",
+      "description": "Break one reading into named shares, such as what fills a context window, with the room that is left.",
+      "code": "<script lang=\"ts\">\n  import { Meter } from '@lostgradient/cinder';\n</script>\n\n<div style=\"max-inline-size: 20rem;\">\n  <Meter\n    max={200_000}\n    segments={[\n      { label: 'Instructions and tools', value: 28_000, valueLabel: '28K' },\n      { label: 'Conversation', value: 33_000, valueLabel: '33K' },\n      { label: 'Tool results', value: 15_000, valueLabel: '15K' },\n    ]}\n    remainder={{ label: 'Free', valueLabel: '124K' }}\n    ariaLabel=\"Context\"\n    ariaValueText=\"76K of 200K tokens\"\n  />\n</div>\n"
     }
   ]
 }

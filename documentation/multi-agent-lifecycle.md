@@ -15,7 +15,7 @@ Operative's child primitives are in-process: they live and die with the parent's
 | List or abort the children a running parent dispatched from its tools | `createChildRunRegistry` with `AgentRun.children()` and `abortChild()` (Operative) | No |
 | Exchange typed messages with a live child | `dispatchChildRun({ signals })` (Operative), or `BureauOptions.children.signals` with `bureau.children.signal` (Bureau) | Bureau reopens the channel; messages are not replayed |
 | Address a child by a stable identifier, and inspect, wait on, signal, or cancel it later | `bureau.children` (Bureau) | Yes, for durable children |
-| Bound how deep and how wide a child's subtree may grow (depth and descendant counts; capabilities and usage ceilings are recorded, not enforced) | `BureauOptions.children.delegation` (Bureau), built on Operative's delegation-grant helpers | Yes |
+| Bound how deep and how wide a child's subtree may grow, and which tool identities it may call | `BureauOptions.children.delegation` (Bureau), built on Operative's delegation-grant helpers | Yes |
 | Branch a conversation at an earlier completed run | `SessionHandle.fork({ throughRun })` (Operative) | The fork is a new persisted session |
 
 The detailed API references are the Operative README's [child dispatch and discovery](../packages/operative/README.md#child-dispatch-and-discovery-ab-50), [delegation grants](../packages/operative/README.md#delegation-grants-cor-336), and [session forking](../packages/operative/README.md#forking-a-session-through-a-completed-run-cor-816) sections, and the Bureau README's [parent-child topology](../packages/bureau/README.md#parent-child-topology-cor-772) section.
@@ -224,9 +224,9 @@ A child dispatched while delegation is configured holds a grant, and the dispatc
 - The child's grant takes the lower of each budget ceiling. Its `expiresAt` is the earlier of the parent's expiry and `now + timeToLiveMilliseconds`, which defaults to one hour. Its `policyVersion` defaults to `'bureau-delegation/1'`.
 - `concurrentChildren` is reserved against the parent's grant, and `totalDescendants` against every ancestor's grant, at dispatch, in a durable reserve/release ledger. `concurrentChildren` is released when the child settles; `totalDescendants` never is. An exhausted ceiling is `budget-exhausted`. A ceiling in a child's grant bounds only the dispatches below that child, never its parent's.
 
-Bureau enforces the grant's signature, revocation, expiry, `depth`, `concurrentChildren`, and `totalDescendants`. It records the other fields but does not enforce them on the running child:
+Bureau enforces the grant's signature, revocation, expiry, `depth`, `concurrentChildren`, `totalDescendants`, and `capabilities.tools` on every child tool call. The tool list is matched by tool identity (`bureau:x`, `plugin:name`, or a host tool name): an absent list is unrestricted, an empty list denies every call, and a refused call is answered before invocation. This enforcement is reachable through Bureau's library API; Interborough does not yet pass `authority.capabilities`.
 
-- `effectiveCapabilities` (tools, path patterns, network, secrets, admin) is signed and attenuated, but it is not applied to the child's tool calls.
+- `effectiveCapabilities.tools` is signed, attenuated, and enforced at call time. The other capability dimensions (path patterns, network, secrets, and admin) remain recorded but unenforced.
 - The grant's `delegatedAuthority` is not passed to the child's model selection.
 - The `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings are carried and attenuated, but nothing counts against them.
 - Expiry and revocation are checked when a descendant is dispatched and during recovery. Neither stops a child that is already running.
@@ -338,7 +338,7 @@ Bureau reports storage, audit, and cascade failures in the topology through `onD
 - **Operative recovery.** Operative's children are not recoverable, and `ChildWorkflowReattachedEvent` and `ChildWorkflowProgressEvent` are never dispatched.
 - **Parents Bureau cannot see.** A run that is not a task (a hand-written agent's own run) cannot own Bureau children.
 - **Authority without delegation.** Without `children.delegation`, a dispatch's `authority` is silently ignored: no grant, no validation, and no bound on depth, fan-out, or capabilities.
-- **Grant enforcement.** Grant capabilities, grant model authority, and the `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings are recorded but not enforced. There is no public grant revocation, no policy-change transition, and no audit record of a dispatch rejected by a grant or budget.
+- **Grant enforcement.** Tool capabilities are enforced at child call time when a grant is present; grant model authority and the `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings are recorded but not enforced. There is no public grant revocation, no policy-change transition, and no audit record of a dispatch rejected by a grant or budget.
 - **Subagents and grants.** `createSubagentTool` has no `signals` option and issues no grants.
 - **Session identity.** `SessionHandle` has no `agent.session()` or `bureau.session()` accessor. Construct one with `createSessionHandle`.
 - **Compatibility.** The packages are pre-release, private workspace sources. `BureauChildRecord.schemaVersion` is `1` and `DELEGATION_GRANT_VERSION` is `1`. A stored record or grant in any other shape is ignored and diagnosed rather than migrated, and there are no compatibility shims.

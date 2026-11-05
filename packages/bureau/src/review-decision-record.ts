@@ -140,8 +140,15 @@ export type ReviewDecisionClaim =
   /** No key-value store: nothing is fenced across processes. */
   | { readonly outcome: 'unfenced' };
 
+/** A read-only view of a previously claimed decision. */
+export type ReviewDecisionInspection =
+  | { readonly outcome: 'matching'; readonly recorded: boolean }
+  | { readonly outcome: 'missing' | 'invalid' | 'mismatch' };
+
 export type ReviewDecisionRecords = {
   claim(request: ReviewDecisionRequest): Promise<ReviewDecisionClaim>;
+  /** Reads the exact decision record without creating or changing it. */
+  inspect(request: ReviewDecisionRequest): Promise<ReviewDecisionInspection>;
   /** Deletes the record this caller claimed, if it is still exactly what the claim wrote. */
   release(request: ReviewDecisionRequest, value: string): Promise<void>;
   /**
@@ -196,12 +203,22 @@ export function createReviewDecisionRecords(
 ): ReviewDecisionRecords {
   if (kv === undefined) {
     return {
+      inspect: () => Promise.resolve({ outcome: 'missing' }),
       claim: () => Promise.resolve({ outcome: 'unfenced' }),
       release: () => Promise.resolve(),
       markRecorded: () => Promise.resolve(true),
     };
   }
   return {
+    async inspect(request) {
+      const raw = await kv.get(reviewDecisionKey(request.reviewId, request.round));
+      if (raw === null) return { outcome: 'missing' };
+      const held = parse(raw);
+      if (held === undefined) return { outcome: 'invalid' };
+      return isSameDecision(held, request)
+        ? { outcome: 'matching', recorded: held.recorded }
+        : { outcome: 'mismatch' };
+    },
     async claim(request) {
       const key = reviewDecisionKey(request.reviewId, request.round);
       for (let attempt = 0; attempt < MAXIMUM_ATTEMPTS; attempt += 1) {

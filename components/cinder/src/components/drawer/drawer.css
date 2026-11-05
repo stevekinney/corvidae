@@ -250,6 +250,17 @@
     }
   }
 
+  /* A close control with words ("Close"), as on the shared sheets: a link-coloured text button
+   that keeps the 44px touch height instead of the square icon button. */
+  .cinder-drawer__close[data-cinder-close-label] {
+    width: auto;
+    padding-inline: var(--cinder-space-2);
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+  }
+
   .cinder-drawer__close-icon {
     width: 1.25rem;
     height: 1.25rem;

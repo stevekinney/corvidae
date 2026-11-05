@@ -31,6 +31,7 @@ import type {
   HumanInputSchema,
   LivenessSnapshot,
   PeerCallJournal,
+  PeerCallJournalEntry,
   PlanReason,
   ProviderConfigurationBase,
   RunEvent,
@@ -76,7 +77,12 @@ import type {
   WorkflowSummary,
   WorkerDeploymentCatalog,
 } from '@lostgradient/weft';
-import type { PendingToolApproval, SignedPendingToolApproval, ToolRequestContext } from 'armorer';
+import type {
+  PendingToolApproval,
+  SignedPendingToolApproval,
+  ToolExecutionResult,
+  ToolRequestContext,
+} from 'armorer';
 import type { ConversationHistory, Message, MultiModalContent } from 'conversationalist';
 
 import type {
@@ -91,6 +97,7 @@ import type { BureauAssetOptions } from './assets/asset-service';
 import type { McpResourceRegistration } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
+import type { ReviewDecisionRequest } from './review-decision-record';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
 import type { RunCreationReceipt, RunCreationReceiptLocation } from './command-ledger';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
@@ -254,6 +261,8 @@ export interface BureauMemoryAuthorityOptions {
    * {@link BureauOptions.memory} unset to attach no memory hooks.
    */
   readonly runCapabilities?: readonly MemoryCapability[];
+  /** The independent ceiling for file-agent memory tools. Defaults to all tool capabilities. */
+  readonly toolCapabilities?: readonly MemoryCapability[];
   /** Recorded on every memory operation. Defaults to `'conversation-memory'`. */
   readonly purpose?: string;
 }
@@ -787,6 +796,8 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
+  /** Trusted, version-pinned adapters used only to attach to journaled peer tasks after a crash. */
+  recoverableStartedApprovals?: ReadonlyMap<string, RecoverableStartedApproval>;
   /**
    * AB-13 — declarative flow control gating run ADMISSION, composed over
    * operative's `createFlowController`: a per-key concurrency cap, a rate
@@ -1302,6 +1313,36 @@ export interface ResolveReviewInput {
    * and on a `deny` or `reject`.
    */
   remember?: boolean;
+}
+
+/** The durable peer-attachment marker carried by an interrupted approval. */
+export interface ApprovalPeerRecovery {
+  readonly version: 1;
+  readonly toolDefinitionRevision: string;
+  readonly durableOperationKey: string;
+  readonly request: ReviewDecisionRequest;
+  readonly arguments: { readonly message: string };
+}
+
+/** The callback input supplied to a trusted host adapter during approval recovery. */
+export interface RecoverableStartedApprovalInput {
+  readonly sessionId: string;
+  readonly runId: string;
+  readonly reviewId: string;
+  readonly callId: string;
+  readonly toolDefinitionRevision: string;
+  readonly durableOperationKey: string;
+  readonly arguments: { readonly message: string };
+  readonly journalEntry: PeerCallJournalEntry;
+  readonly signal: AbortSignal;
+}
+
+/** A version-pinned, attach-only peer recovery adapter. */
+export interface RecoverableStartedApproval {
+  readonly version: 1;
+  readonly attach: (
+    input: RecoverableStartedApprovalInput,
+  ) => Promise<ToolExecutionResult | undefined>;
 }
 
 export interface ResolveReviewResult {
@@ -1835,7 +1876,7 @@ export interface BureauAgents<D extends AgentDefinitions> extends BureauAgentCat
    * catalog entry. The context's origin is `try`: it is left out of `contexts.list` unless that is
    * asked for, and its tasks out of `tasks.list` unless asked for by context or agent. Its runs
    * remember nothing, offer no `scheduleWakeup` or `decide`, start no child, and a definition that
-   * lists a tool that writes memory, schedules, or delegates (`memory_store`, `memory_forget`,
+   * lists a tool that writes memory, schedules, or delegates (`memory_store`, `memory_correct`, `memory_forget`,
    * `scheduleSelf`, `scheduleWakeup`, `workflows-*`, `settings-update`, `transfer_to_*`) is
    * refused. The agent lives in memory, for the context: deleting the context removes it, and a
    * restart ends it, leaving a context that can be read and deleted but not continued.

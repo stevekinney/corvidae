@@ -12,7 +12,8 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  *   hollow `pending` ring.
  *
  * Some words are scoped: "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
- * "Connected", "Draining" and "Disconnected" are workers only. The table gives them a tone; the
+ * "Connected", "Draining" and "Disconnected" are workers only, and "Live" and "Reconnecting…" are
+ * for the line above a streaming run's steps. The table gives them a tone; the
  * page decides where they belong.
  */
 export const statusDotWordTones = {
@@ -48,6 +49,8 @@ export const statusDotWordTones = {
   Connected: 'success',
   Draining: 'neutral',
   Disconnected: 'warning',
+  Live: 'info',
+  'Reconnecting…': 'pending',
 } as const satisfies Record<string, StatusDotStatus>;
 
 /** A status word the word-to-tone table knows, such as `'Waiting on you'` or `'Failed'`. */

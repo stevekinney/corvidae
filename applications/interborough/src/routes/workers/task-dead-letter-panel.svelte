@@ -173,7 +173,7 @@
       <p class="weft-task-deliveries__note">
         Retained value · {formatBytes(payload.serializedBytes)} serialized
       </p>
-      <PayloadInspector value={payload.value} label="Retained result" />
+      <PayloadInspector value={payload.value} label="Retained result" redact={[]} />
     {:else if payload?.kind === 'omitted'}
       <Alert variant="warning"
         >The retained value is {formatBytes(payload.serializedBytes)}, over the {formatBytes(

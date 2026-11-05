@@ -188,7 +188,7 @@
                 <TagInput id={fieldId(name)} value={fieldValue} delimiter="," readonly />
               </FormField>
             {:else if isJsonEditableValue(fieldValue)}
-              <PayloadInspector value={fieldValue} label={name} />
+              <PayloadInspector value={fieldValue} label={name} redact={[]} />
             {:else}
               <div class="review-editor-front-matter__readonly-field">
                 <span class="review-editor-front-matter__readonly-label">{name}</span>

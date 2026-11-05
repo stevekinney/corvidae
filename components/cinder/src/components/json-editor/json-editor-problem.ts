@@ -205,12 +205,8 @@ export function lineOfOffset(source: string, offset: number): number {
 
 /** Whether only whitespace follows `offset` on its own line. */
 function endsItsLine(source: string, offset: number): boolean {
-  for (let index = offset + 1; index < source.length; index += 1) {
-    const character = source.charAt(index);
-    if (character === '\n') return true;
-    if (!whitespace.has(character)) return false;
-  }
-  return true;
+  const next = /[^ \t\r]/.exec(source.slice(offset + 1));
+  return next === null || next[0] === '\n';
 }
 
 function describe(kind: JsonProblemKind, source: string, position: number, parserPosition: number) {

@@ -16,11 +16,16 @@
  * scenario is a named function below; the `scenarios` table is the extension
  * point for further crash scenarios.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { createCheckpointStore, stopWhen, createAgent } from '@lostgradient/operative';
+import {
+  createCheckpointStore,
+  stopWhen,
+  createAgent,
+  createSessionStore,
+} from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -35,6 +40,7 @@ import {
   createHarnessBureau,
   firstUserMessage,
   createInterruptedApprovalToolbox,
+  createPeerApprovalToolbox,
   HUMAN_WAIT_PROMPT,
   HUMAN_WAIT_SIGNAL,
   openGovernedMemory,
@@ -57,6 +63,8 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { LMDBStorage } from '@lostgradient/storage-lmdb';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
+import { textValueStore } from '@lostgradient/storage';
+import { reviewDecisionKey } from '../review-decision-record';
 /** Durable statuses a run never leaves. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
   'completed',
@@ -507,6 +515,173 @@ async function approveThenCrash(): Promise<void> {
   process.stderr.write('child: the approved tool did not end the process\n');
   process.exit(6);
 }
+
+/** COR-2051: journals a peer task, then dies while the approved peer call is in flight. */
+async function peerApprovalThenCrash(): Promise<void> {
+  let bureau: Awaited<ReturnType<typeof createHarnessBureau>> | undefined;
+  const toolbox = createPeerApprovalToolbox(async () => {
+    if (variant === 'invalid-binding' && bureau?.internals.sessionStore !== undefined) {
+      await bureau.internals.sessionStore.update(sessionId, (session) => {
+        if (session === undefined) return undefined;
+        const pending = session.metadata['pendingApprovalOverrides'];
+        if (typeof pending !== 'object' || pending === null || Array.isArray(pending))
+          return session;
+        const pendingRecords = pending as Record<string, unknown>;
+        const approval = pendingRecords[reviewId as string];
+        if (typeof approval !== 'object' || approval === null || Array.isArray(approval))
+          return session;
+        return {
+          ...session,
+          metadata: {
+            ...session.metadata,
+            pendingApprovalOverrides: JSON.parse(
+              JSON.stringify({
+                ...pendingRecords,
+                [reviewId as string]: { ...approval, approvalToken: 'invalid' },
+              }),
+            ),
+          },
+        };
+      });
+    }
+    killSelf();
+  });
+  const tool = toolbox.tools().find((candidate) => candidate.name === 'ask-peer');
+  if (tool === undefined) {
+    process.stderr.write('child: peer tool was not registered\n');
+    process.exit(4);
+  }
+  const revision = tool.id;
+  bureau = await createHarnessBureau({
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
+    generate: async () => ({
+      content: '',
+      toolCalls: [{ id: 'peer-call', name: 'ask-peer', arguments: { message: 'hello peer' } }],
+    }),
+    toolbox,
+    recoverableStartedApprovals: new Map([
+      [revision, { version: 1, attach: async () => undefined }],
+    ]),
+  });
+  const run = await bureau.tasks.start('default', 'crash harness peer approval', {
+    principal: 'alice',
+    requestContext: requestContext(),
+  });
+  await pollUntil('the peer approval review', () =>
+    bureau.reviews.list().some((review) => review.runId === run.id),
+  );
+  const review = bureau.reviews.list().find((candidate) => candidate.runId === run.id);
+  if (review?.kind !== 'tool-approval') {
+    process.stderr.write('child: peer approval review was not found\n');
+    process.exit(4);
+  }
+  const sessionId = run.contextId;
+  reviewId = review.id;
+  const operationKey = `approval-resume:v1:${review.id}`;
+  if (variant !== 'missing-journal') {
+    await bureau.peerCalls.write(
+      { parentRunId: run.id, operationKey },
+      {
+        taskId: 'peer-task-1',
+        contextId: 'peer-context-1',
+        requestDigest: variant === 'invalid-journal' ? 'not-a-digest' : 'a'.repeat(64),
+      },
+    );
+  }
+  if (variant === 'before-marker') killSelf();
+  writeMarker({ runId: run.id, sessionId: run.contextId, reviewId: review.id, revision });
+  await bureau.reviews.resolve({
+    id: review.id,
+    decision: 'approve',
+    principal: 'operator',
+    arguments: { message: 'hello peer' },
+  });
+  process.stderr.write('child: the peer tool did not end the process\n');
+  process.exit(6);
+}
+
+/** COR-2051: a recovery process dies immediately after the trusted peer adapter is entered. */
+async function peerRecoveryAttachThenCrash(): Promise<void> {
+  const marker = JSON.parse(readFileSync(markerPath as string, 'utf8')) as {
+    revision: string;
+  };
+  const toolbox = createPeerApprovalToolbox();
+  const bureau = await createHarnessBureau({
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
+    generate: async () => ({ content: 'recovered', toolCalls: [] }),
+    toolbox,
+    recoverableStartedApprovals: new Map([
+      [marker.revision, { version: 1, attach: async () => killSelf() }],
+    ]),
+  });
+  await bureau.recovery();
+  process.stderr.write('child: peer recovery attach did not end the process\n');
+  process.exit(6);
+}
+
+/** COR-2051: kill after the session commit, before the decision record's recorded=true CAS. */
+async function peerRecoveryPostCommitThenCrash(): Promise<void> {
+  const marker = JSON.parse(readFileSync(markerPath as string, 'utf8')) as {
+    sessionId: string;
+    reviewId: string;
+    revision: string;
+  };
+  const storage =
+    backend === 'lmdb' ? new LMDBStorage(storagePath as string) : new BunSQLiteStorage(storagePath);
+  const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+  const independentSessions = createSessionStore(kv);
+  const decisionKey = reviewDecisionKey(marker.reviewId, 0);
+  const originalConditionalBatch = storage.conditionalBatch?.bind(storage);
+  if (originalConditionalBatch === undefined) process.exit(4);
+  storage.conditionalBatch = async (conditions, operations) => {
+    const decisionWrite = operations.some(
+      (operation) =>
+        operation.type === 'put' &&
+        operation.key === decisionKey &&
+        new TextDecoder().decode(operation.value).includes('"recorded":true'),
+    );
+    if (decisionWrite) {
+      const session = await independentSessions.load(marker.sessionId);
+      const rawDecision = await kv.get(decisionKey);
+      const resolved = session?.metadata['resolvedReviewIds'];
+      if (Array.isArray(resolved) && resolved.includes(marker.reviewId) && rawDecision !== null) {
+        appendFileSync(`${markerPath}.postcommit`, `${rawDecision}\n`, 'utf8');
+        killSelf();
+      }
+    }
+    return originalConditionalBatch(conditions, operations);
+  };
+  const bureau = await createHarnessBureau({
+    storage,
+    generate: async () => ({ content: 'recovered', toolCalls: [] }),
+    toolbox: createPeerApprovalToolbox(),
+    recoverableStartedApprovals: new Map([
+      [
+        marker.revision,
+        {
+          version: 1,
+          attach: async (input) => ({
+            callId: input.callId,
+            toolCallId: input.callId,
+            toolName: 'ask-peer',
+            outcome: 'success' as const,
+            content: 'peer answer',
+            result: 'peer answer',
+          }),
+        },
+      ],
+    ]),
+  });
+  await bureau.recovery();
+  process.exit(6);
+}
+
 let reviewId: string | undefined;
 
 const scenarios: Record<string, () => Promise<void>> = {
@@ -517,6 +692,9 @@ const scenarios: Record<string, () => Promise<void>> = {
   'human-wait-parked': () => humanWaitParked(),
   'human-wait-two-calls-parked': () => humanWaitParked(true),
   'approve-then-crash': approveThenCrash,
+  'peer-approval-then-crash': peerApprovalThenCrash,
+  'peer-recovery-attach-then-crash': peerRecoveryAttachThenCrash,
+  'peer-recovery-post-commit-then-crash': peerRecoveryPostCommitThenCrash,
   'relaunch-recover': relaunchRecover,
   'race-recover': raceRecover,
   verify,

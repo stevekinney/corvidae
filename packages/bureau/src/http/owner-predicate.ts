@@ -56,6 +56,9 @@ export const mayAccessOwnedResource: OwnerAccessPredicate = ({
 }) => {
   if (principal.method === 'unauthenticated') return false;
   if (principal.hasScope(operatorScope)) return true;
+  const recordedOwner = (principal as Principal & { readonly owner?: string }).owner;
+  if (recordedOwner !== undefined)
+    return resourceOwner !== undefined && recordedOwner === resourceOwner;
   const caller = ownerOfPrincipal(principal);
   return caller !== undefined && resourceOwner !== undefined && caller === resourceOwner;
 };

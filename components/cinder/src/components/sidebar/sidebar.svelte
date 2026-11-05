@@ -163,7 +163,7 @@
     }
     placement="left"
     size="xs"
-    {closeLabel}
+    closeIconLabel={closeLabel}
     title={drawerTitle}
     id={sidebarId}
   >

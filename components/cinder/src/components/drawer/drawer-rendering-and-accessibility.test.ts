@@ -126,13 +126,13 @@ describe('Drawer', () => {
     expect(closeButton?.getAttribute('aria-label')).toBe('Close drawer');
   });
 
-  test('closeLabel names the close button, and the xs panel is 280px', () => {
+  test('closeIconLabel names the icon close button, and the xs panel is 280px', () => {
     const { container } = render(Drawer, {
       props: {
         open: true,
         title: 'Test',
         size: 'xs',
-        closeLabel: 'Close navigation',
+        closeIconLabel: 'Close navigation',
         children: emptySnippet,
       },
     });

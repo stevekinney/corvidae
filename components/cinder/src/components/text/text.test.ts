@@ -5,7 +5,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
-const { render, cleanup } = await import('@testing-library/svelte');
+const { render, cleanup, fireEvent, waitFor } = await import('@testing-library/svelte');
 
 afterEach(() => {
   cleanup();
@@ -92,5 +92,242 @@ describe('Text', () => {
       expect(rule).toContain('letter-spacing: var(--cinder-tracking-tight);');
       expect(rule).toContain('text-wrap: balance;');
     }
+  });
+});
+
+describe('Text clamp', () => {
+  const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+  const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+
+  // happy-dom has no layout, so a test says how tall the run is and how tall its box is.
+  function measure(heights: { scroll: number; client: number }) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => heights.scroll,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => heights.client,
+    });
+  }
+
+  afterEach(() => {
+    if (scrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', scrollHeight);
+    if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight);
+  });
+
+  test('holds the run to its lines through a custom property the stylesheet clamps with', () => {
+    measure({ scroll: 100, client: 100 });
+    const { container } = render(Text, { clamp: 5, children: textSnippet('long reply') });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+
+    expect(root.hasAttribute('data-cinder-clamp')).toBe(true);
+    expect(root.style.getPropertyValue('--_cinder-text-lines')).toBe('5');
+    expect(textCss).toMatch(
+      /\[data-cinder-clamp\][^}]*-webkit-line-clamp: var\(--_cinder-text-lines\)/,
+    );
+  });
+
+  test('offers Show all only while the run is cut off', () => {
+    measure({ scroll: 100, client: 100 });
+    const { container } = render(Text, { clamp: 5, children: textSnippet('short reply') });
+
+    expect(container.querySelector('.cinder-text__toggle')).toBeNull();
+  });
+
+  test('opens the run in place and offers Show less', async () => {
+    measure({ scroll: 140, client: 100 });
+    const { container } = render(Text, { clamp: 5, children: textSnippet('long reply') });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+    const toggle = container.querySelector('.cinder-text__toggle') as HTMLButtonElement;
+
+    expect(toggle.textContent?.trim()).toBe('Show all');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-controls')).toBe(root.id);
+
+    toggle.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(root.hasAttribute('data-cinder-clamp')).toBe(false);
+    expect(toggle.textContent?.trim()).toBe('Show less');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  test('keeps the toggle in the root element it controls, never inside the clamped run', () => {
+    measure({ scroll: 140, client: 100 });
+    const { container } = render(Text, { clamp: 2, children: textSnippet('long reply') });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+
+    expect(root.querySelector('button')).toBeNull();
+  });
+
+  test("puts the page's own action beside Show all, after a middle dot in the stylesheet", () => {
+    measure({ scroll: 140, client: 100 });
+    const { container } = render(Text, {
+      clamp: 5,
+      children: textSnippet('long reply'),
+      actions: textSnippet('Show raw payloads'),
+    });
+    const footer = container.querySelector('.cinder-text__footer');
+
+    expect(footer?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Show all Show raw payloads');
+    expect(footer?.querySelector('.cinder-text__toggle + .cinder-text__actions')).not.toBeNull();
+    expect(textCss).toContain('.cinder-text__toggle + .cinder-text__actions::before');
+  });
+
+  test('shows the action alone when the run fits', () => {
+    measure({ scroll: 100, client: 100 });
+    const { container } = render(Text, {
+      clamp: 5,
+      children: textSnippet('short reply'),
+      actions: textSnippet('Show raw payloads'),
+    });
+
+    expect(container.querySelector('.cinder-text__toggle')).toBeNull();
+    expect(container.querySelector('.cinder-text__actions')?.textContent).toBe('Show raw payloads');
+  });
+
+  test('starts open when expanded is set', () => {
+    measure({ scroll: 140, client: 140 });
+    const { container } = render(Text, {
+      clamp: 5,
+      expanded: true,
+      children: textSnippet('long reply'),
+    });
+
+    expect(container.querySelector('.cinder-text')?.hasAttribute('data-cinder-clamp')).toBe(false);
+    expect(container.querySelector('.cinder-text__toggle')?.textContent?.trim()).toBe('Show less');
+  });
+
+  test.each([0, -2, Number.NaN])('treats clamp %p as no clamp', (clamp) => {
+    const { container } = render(Text, { clamp, children: textSnippet('plain') });
+
+    expect(container.querySelector('[data-cinder-clamp]')).toBeNull();
+    expect(container.querySelector('.cinder-text__footer')).toBeNull();
+  });
+});
+
+describe('Text middle truncation', () => {
+  const identifier = 'payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68';
+
+  test('splits the text so the last four characters always show', () => {
+    const { container } = render(Text, { truncate: 'middle', text: identifier });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+
+    expect(root.querySelector('.cinder-text__tail')?.textContent).toBe('3a68');
+    expect(root.querySelector('.cinder-text__head')?.textContent).toBe(identifier.slice(0, -4));
+    expect(root.textContent).toBe(identifier);
+    expect(root.getAttribute('data-cinder-truncate')).toBe('middle');
+  });
+
+  test('carries the full text as a Cinder tooltip unless the page sets one', async () => {
+    const { container } = render(Text, { truncate: 'middle', text: identifier });
+    const root = container.querySelector('.cinder-text') as HTMLElement;
+
+    // Not a native `title`: that is unreachable by keyboard and touch.
+    expect(root.hasAttribute('title')).toBe(false);
+    expect(root.getAttribute('tabindex')).toBe('0');
+    await fireEvent.focus(root);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(identifier),
+    );
+
+    cleanup();
+    const custom = render(Text, { truncate: 'middle', text: identifier, title: 'Worker id' });
+    const customRoot = custom.container.querySelector('.cinder-text') as HTMLElement;
+    expect(customRoot.hasAttribute('title')).toBe(false);
+    await fireEvent.focus(customRoot);
+    await waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Worker id'),
+    );
+  });
+
+  test('keeps a longer tail when asked and never splits a surrogate pair', () => {
+    const { container } = render(Text, {
+      truncate: 'middle',
+      text: 'run-\u{1F600}\u{1F600}-end',
+      tailLength: 5,
+    });
+
+    expect(container.querySelector('.cinder-text__tail')?.textContent).toBe('\u{1F600}-end');
+  });
+
+  test('a tail longer than the text leaves nothing to cut', () => {
+    const { container } = render(Text, { truncate: 'middle', text: 'abc', tailLength: 10 });
+
+    expect(container.querySelector('.cinder-text__head')?.textContent).toBe('');
+    expect(container.querySelector('.cinder-text__tail')?.textContent).toBe('abc');
+  });
+
+  test('the head gives way with an ellipsis while the tail never shrinks', () => {
+    expect(textCss).toMatch(/\.cinder-text__head \{[^}]*text-overflow: ellipsis;/);
+    expect(textCss).toMatch(/\.cinder-text__tail \{[^}]*flex: none;/);
+  });
+});
+
+describe('Text middle truncation fit', () => {
+  const identifier = 'payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68';
+  const prototype = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const names = ['clientWidth', 'scrollWidth', 'getBoundingClientRect'] as const;
+  const originals = new Map<string, PropertyDescriptor | undefined>();
+
+  beforeEach(() => {
+    for (const name of names) {
+      originals.set(name, Object.getOwnPropertyDescriptor(prototype, name));
+    }
+  });
+
+  afterEach(() => {
+    for (const name of names) {
+      const original = originals.get(name);
+      if (original === undefined) delete prototype[name];
+      else Object.defineProperty(prototype, name, original);
+    }
+  });
+
+  /** A layout where the head's box is `box` pixels wide, its text is wider, and a character is 10px. */
+  function stubLayout(box: number): void {
+    const isHead = (element: HTMLElement): boolean =>
+      element.classList.contains('cinder-text__head');
+    Object.defineProperty(prototype, 'clientWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return isHead(this) ? box : 0;
+      },
+    });
+    Object.defineProperty(prototype, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return isHead(this) ? 600 : 0;
+      },
+    });
+    Object.defineProperty(prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value(this: HTMLElement) {
+        return { width: Array.from(this.textContent ?? '').length * 10 };
+      },
+    });
+  }
+
+  test('sizes the head to the longest cut that fits, so the ellipsis sits against the tail', () => {
+    stubLayout(155);
+    const { container } = render(Text, { truncate: 'middle', text: identifier });
+    const head = container.querySelector('.cinder-text__head') as HTMLElement;
+
+    // 155px holds fifteen characters: fourteen of the head and the ellipsis, plus a pixel of room.
+    expect(head.style.inlineSize).toBe('151px');
+    expect(head.textContent).toBe(identifier.slice(0, -4));
+    expect(container.querySelector('.cinder-text')?.querySelector('span[aria-hidden]')).toBeNull();
+  });
+
+  test('leaves the head alone when it fits whole', () => {
+    stubLayout(155);
+    Object.defineProperty(prototype, 'scrollWidth', { configurable: true, value: 100 });
+    const { container } = render(Text, { truncate: 'middle', text: identifier });
+
+    expect((container.querySelector('.cinder-text__head') as HTMLElement).style.inlineSize).toBe(
+      '',
+    );
   });
 });

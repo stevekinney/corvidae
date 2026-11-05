@@ -50,6 +50,19 @@
     }
   }
 
+  /* A copy with nothing to copy yet, such as a payload still arriving, stays in place and is muted. */
+  .cinder-copy-button:disabled {
+    color: var(--cinder-text-disabled);
+    cursor: not-allowed;
+  }
+
+  @media (hover: hover) {
+    .cinder-copy-button:disabled:hover {
+      color: var(--cinder-text-disabled);
+      background: transparent;
+    }
+  }
+
   .cinder-copy-button[data-cinder-copied] {
     color: var(--cinder-status-success-text);
     border-color: var(--cinder-status-success-border);

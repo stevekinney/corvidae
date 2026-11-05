@@ -9,6 +9,9 @@
     depth: number;
     initialDepth: number;
     maxDepth: number;
+    largeArrayAbove?: number | undefined;
+    maxKeyLength?: number | undefined;
+    maxStringLength?: number | undefined;
     position: number;
     setSize: number;
     root?: boolean;
@@ -19,6 +22,7 @@
   import { untrack } from 'svelte';
   import Self from './_json-viewer-node.svelte';
   import { classNames } from '../../utilities/class-names.ts';
+  import { formatNumber } from '../../utilities/format-number.ts';
 
   let {
     value,
@@ -26,10 +30,20 @@
     depth,
     initialDepth,
     maxDepth,
+    largeArrayAbove,
+    maxKeyLength,
+    maxStringLength,
     position,
     setSize,
     root = false,
   }: JsonViewerNodeProps = $props();
+
+  /** How many items of an array above `largeArrayAbove` stay on screen. */
+  const LARGE_ARRAY_PREVIEW = 2;
+
+  function cut(text: string, limit: number | undefined): string {
+    return limit !== undefined && text.length > limit ? `${text.slice(0, limit)}…` : text;
+  }
 
   const isObject = $derived(value !== null && typeof value === 'object');
   const isArray = $derived(Array.isArray(value));
@@ -38,7 +52,7 @@
   // Seeded once from the initial depth vs. the configured initialDepth.
   let collapsed = $state(untrack(() => depth >= initialDepth));
 
-  const entries = $derived.by(() => {
+  const allEntries = $derived.by(() => {
     if (!isObject || tooDeep) return [];
     if (isArray) {
       return (value as unknown[]).map((item, i) => [i, item] as const);
@@ -46,17 +60,24 @@
     return Object.entries(value as Record<string, unknown>);
   });
 
+  const previewing = $derived(
+    isArray && largeArrayAbove !== undefined && allEntries.length > largeArrayAbove,
+  );
+  const entries = $derived(previewing ? allEntries.slice(0, LARGE_ARRAY_PREVIEW) : allEntries);
+  const omittedCount = $derived(previewing ? allEntries.length - entries.length : 0);
+
   // The key label renders inside the <button> so the focus ring encloses the
   // full row label + caret. The aria-label on the button provides a distinguishing
   // accessible name from the key (when present) and the collection shape so
   // sibling toggles are tellable apart.
-  const itemCount = $derived(entries.length);
+  const itemCount = $derived(allEntries.length);
   const collectionLabel = $derived(
     `${isArray ? 'array' : 'object'}, ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`,
   );
   const toggleLabel = $derived(
     keyName === undefined ? collectionLabel : `${keyName}: ${collectionLabel}`,
   );
+  const keyLabel = $derived(typeof keyName === 'string' ? cut(keyName, maxKeyLength) : keyName);
 
   function valueClass(v: unknown): string {
     if (v === null) return 'null';
@@ -87,7 +108,7 @@
       onclick={() => (collapsed = !collapsed)}
     >
       {#if keyName !== undefined}
-        <span class="cinder-json-viewer__key">{keyName}:</span>
+        <span class="cinder-json-viewer__key">{keyLabel}:</span>
       {/if}
       <svg
         class="cinder-json-viewer__caret"
@@ -109,7 +130,7 @@
       </span>
       {#if collapsed}
         <span class="cinder-json-viewer__summary"
-          >{itemCount} {itemCount === 1 ? 'item' : 'items'}</span
+          >… {itemCount} {itemCount === 1 ? 'item' : 'items'}</span
         >
         <span class="cinder-json-viewer__brace">{isArray ? ']' : '}'}</span>
       {/if}
@@ -131,11 +152,19 @@
               depth={depth + 1}
               {initialDepth}
               {maxDepth}
+              {largeArrayAbove}
+              {maxKeyLength}
+              {maxStringLength}
               position={index + 1}
-              setSize={entries.length}
+              setSize={allEntries.length}
             />
           </li>
         {/each}
+        {#if omittedCount > 0}
+          <li role="none">
+            <span class="cinder-json-viewer__omitted">… {formatNumber(omittedCount)} more</span>
+          </li>
+        {/if}
       </ul>
       <span class="cinder-json-viewer__brace">{isArray ? ']' : '}'}</span>
     {/if}
@@ -151,7 +180,7 @@
     aria-setsize={setSize}
   >
     {#if keyName !== undefined}
-      <span class="cinder-json-viewer__key">{keyName}:</span>
+      <span class="cinder-json-viewer__key">{keyLabel}:</span>
     {/if}
     <span class="cinder-json-viewer__too-deep">…</span>
   </span>
@@ -166,10 +195,12 @@
     aria-setsize={setSize}
   >
     {#if keyName !== undefined}
-      <span class="cinder-json-viewer__key">{keyName}:</span>
+      <span class="cinder-json-viewer__key">{keyLabel}:</span>
     {/if}
     <span class="cinder-json-viewer__value" data-cinder-type={valueClass(value)}>
-      {#if typeof value === 'string'}"{value}"{:else}{String(value)}{/if}
+      {#if typeof value === 'string'}{JSON.stringify(cut(value, maxStringLength))}{:else}{String(
+          value,
+        )}{/if}
     </span>
   </span>
 {/if}

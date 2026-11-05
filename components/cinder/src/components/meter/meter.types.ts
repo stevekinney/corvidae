@@ -10,6 +10,30 @@ export type MeterVerdict = {
 };
 
 /**
+ * One share of a stacked meter, such as "Conversation" in a context breakdown.
+ * @schemaObject
+ */
+export type MeterSegment = {
+  /** Visible name of the share, shown in the legend. */
+  label: string;
+  /** Size of the share, in the same unit as `max`. Negative and non-finite values count as 0. */
+  value: number;
+  /** Text shown beside the label in the legend, such as `28K`. Defaults to the number. */
+  valueLabel?: string;
+};
+
+/**
+ * The unfilled part of a stacked meter, listed last in the legend with the room that is left.
+ * @schemaObject
+ */
+export type MeterRemainder = {
+  /** Visible name of the unfilled part, such as `Free`. */
+  label: string;
+  /** Text shown beside the label in the legend, such as `124K`. Defaults to what is left of `max`. */
+  valueLabel?: string;
+};
+
+/**
  * Props for the Meter component.
  *
  * Meter communicates a bounded measurement (for example battery level,
@@ -26,6 +50,16 @@ export type MeterVerdict = {
 export type MeterProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   /** Semantic label for a measurement; `unknown` represents the non-numeric status case. */
   verdict?: MeterVerdict;
+  /**
+   * Splits the filled part of the track into named shares and lists them in a legend beneath it,
+   * such as the instructions, conversation and tool results that make up a context window. The
+   * shares stack from the start of the track in the order given, each a lighter tone of the accent,
+   * so the legend carries the meaning and colour never has to. The reading is their sum, so
+   * `value` is ignored, and threshold regions are not drawn.
+   */
+  segments?: MeterSegment[];
+  /** With `segments`, adds a last legend line for the unfilled track, such as "Free 124K". */
+  remainder?: MeterRemainder;
   /** Current measurement value. Defaults to 0. */
   value?: number;
   /** Lower bound for the range. Defaults to 0. */

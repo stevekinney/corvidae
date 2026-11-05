@@ -34,10 +34,12 @@ export type {
   ApprovalCardLayout,
   ApprovalCardProps,
   ApprovalCardSchemaProps,
+  ApprovalFailure,
   ApprovalOperation,
   ApprovalOperationKind,
   ApprovalResolution,
   ApprovalResolutionDecision,
+  ApprovalResolving,
   ApprovalSandbox,
   ApprovalState,
   ApprovalTool,
@@ -677,6 +679,8 @@ export type { MessageProps, MessageRole } from './components/message/index.ts';
 export { default as Meter } from './components/meter/index.ts';
 export type {
   MeterProps,
+  MeterRemainder,
+  MeterSegment,
   MeterSize,
   MeterState,
   MeterVerdict,
@@ -734,7 +738,10 @@ export type { PaginationProps } from './components/pagination/index.ts';
 export { default as PageHeader } from './components/page-header/index.ts';
 export type { PageHeaderHeadingLevel, PageHeaderProps } from './components/page-header/index.ts';
 
-export { default as PayloadInspector } from './components/payload-inspector/index.ts';
+export {
+  default as PayloadInspector,
+  readSecretPaths,
+} from './components/payload-inspector/index.ts';
 export type {
   PayloadInspectorField,
   PayloadInspectorProps,
@@ -812,9 +819,12 @@ export type {
   RunStepBranchLaneOutcome,
   RunStepDetail,
   RunStepLink,
+  RunStepNote,
   RunStepStatus,
   RunStepTimelineEntry,
+  RunStepTimelineFold,
   RunStepTimelineProps,
+  RunStepTimelineVariant,
 } from './components/run-step-timeline/index.ts';
 
 export { default as ResizablePanels } from './components/resizable-panels/index.ts';
@@ -1172,6 +1182,25 @@ export type { ThemeSwitchProps, ThemeSwitchValue } from './components/theme-swit
 
 export { default as Toggle } from './components/toggle/index.ts';
 export type { ToggleProps } from './components/toggle/index.ts';
+
+export { default as ToolCallPanel } from './components/tool-call-panel/index.ts';
+export type {
+  ToolCallPanelError,
+  ToolCallPanelLabels,
+  ToolCallPanelPlacement,
+  ToolCallPanelProps,
+  ToolCallPanelResolving,
+  ToolCallPanelStatus,
+  ToolCallPanelView,
+} from './components/tool-call-panel/index.ts';
+
+export { default as ToolCallRail } from './components/tool-call-rail/index.ts';
+export type {
+  ToolCallRailCall,
+  ToolCallRailLabels,
+  ToolCallRailProps,
+  ToolCallRailStatus,
+} from './components/tool-call-rail/index.ts';
 
 export { default as ToolPicker } from './components/tool-picker/index.ts';
 export type {

@@ -3,6 +3,7 @@ export type {
   Bungalow,
   ContentLocation,
   DatabaseLocation,
+  DatabaseWorkspaceClaim,
   OpenBungalowOptions,
   OpenTemporaryBungalowOptions,
 } from './bungalow.ts';

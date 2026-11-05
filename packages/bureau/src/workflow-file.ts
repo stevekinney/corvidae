@@ -630,6 +630,19 @@ export function serializeWorkflowFile(id: string, definition: WorkflowFileDefini
   if (definition.inputSchema !== undefined) body['inputSchema'] = definition.inputSchema;
   if (definition.outputSchema !== undefined) body['outputSchema'] = definition.outputSchema;
   body['steps'] = definition.steps;
+  const knownKeys = new Set([
+    'title',
+    'description',
+    'agent',
+    'paused',
+    'trigger',
+    'inputSchema',
+    'outputSchema',
+    'steps',
+  ]);
+  for (const [key, value] of Object.entries(definition)) {
+    if (!knownKeys.has(key) && value !== undefined) body[key] = value;
+  }
   return `${JSON.stringify(body, null, 2)}\n`;
 }
 

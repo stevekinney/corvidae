@@ -13,7 +13,6 @@
     ". ApprovalResolution",
     ". ApprovalResolutionDecision",
     ". ApprovalSandbox",
-    ". ApprovalState",
     ". ApprovalTool",
     ". ApprovalToolRisk",
     ". AreaChartDataTableVisibility",

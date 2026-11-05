@@ -2,6 +2,7 @@ import './payload-inspector.css';
 import PayloadInspector from './payload-inspector.svelte';
 
 export default PayloadInspector;
+export { readSecretPaths } from './payload-inspector-secrets.ts';
 export type {
   PayloadInspectorField,
   PayloadInspectorProps,

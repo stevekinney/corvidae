@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-2009 (`host:plugin-load-status`): a plugin that did not load needs attention, whoever skipped
  * it. The Bureau reports the plugins it skipped while composing; the host reports the ones it never
@@ -53,6 +54,7 @@ function notLoaded(items: readonly BureauAttentionItem[]) {
 describe('Needs attention for plugins', () => {
   test('lists each plugin that did not load once, at the time the host loaded them, and never one that needs setup', async () => {
     const home = await mkdtemp(join(tmpdir(), 'interborough-plugin-attention-'));
+    await initializeWorkspaceHome(home);
     homes.push(home);
     await writeFolderPlugin(home, 'web-search', "throw new Error('nothing to see');\n");
     const before = Date.now();
