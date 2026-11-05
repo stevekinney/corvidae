@@ -1820,6 +1820,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   }
 
   async function reconcileRecovery(): Promise<void> {
+    const unobservableRecovery = new Set<string>();
     const ordered = [...pendingRecovery.values()].toSorted(
       (left, right) => depthOf(left) - depthOf(right),
     );
@@ -1828,6 +1829,10 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         await reconcileOne(record);
       } catch (error) {
         release(record.childRunId, undefined);
+        const current = await store.get(record.childRunId).catch(() => undefined);
+        if (current?.status === 'running' && current.parentRunId === record.parentRunId) {
+          unobservableRecovery.add(record.childRunId);
+        }
         diagnose({
           level: 'error',
           scope: 'recovery',
@@ -1856,8 +1861,10 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     if (signalMethod === undefined) return;
     const signalChild = signalMethod.bind(engine);
     for (const record of await store.listAll()) {
-      if (record.status === 'running') continue;
-      const parentState = await engine.get(record.parentRunId);
+      if (record.status === 'running' && !unobservableRecovery.has(record.childRunId)) continue;
+      const current = await store.get(record.childRunId);
+      if (current?.parentRunId !== record.parentRunId) continue;
+      const parentState = await engine.get(record.parentRunId).catch(() => undefined);
       const signalName = `durable-child:${record.parentRunId}:${record.childRunId}`;
       if (parentState?.waitingForSignals?.includes(signalName) !== true) continue;
       await signalChild(record.parentRunId, signalName, null).catch(() => undefined);
