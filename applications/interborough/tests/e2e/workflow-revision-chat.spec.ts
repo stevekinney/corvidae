@@ -1,5 +1,6 @@
 import { bureau } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { expect, test } from './fixtures.ts';
 import { createWorkflowFile, readWorkflow, removeWorkflow } from './workflow-support.ts';
 
@@ -26,6 +27,17 @@ test.describe('workflow revision review in Chat', () => {
     const frame = page.frameLocator('iframe[title="Review workflow revision"]');
     await expect(frame.getByRole('heading', { name: 'Review workflow revision' })).toBeVisible();
     await expect(frame.locator('.revision-row[data-state="changed"]')).toHaveCount(4);
+    await captureForDesignReview(page, {
+      route: `/chats/${thread}`,
+      state: 'workflow revision proposal',
+      source: 'workflow-revision-chat.spec.ts',
+    });
+    await page.setViewportSize({ width: 375, height: 720 });
+    await captureForDesignReview(page, {
+      route: `/chats/${thread}`,
+      state: 'workflow revision proposal phone',
+      source: 'workflow-revision-chat.spec.ts',
+    });
     await frame.getByRole('button', { name: 'Apply' }).click();
     await expect(frame.getByRole('status')).toContainText('Applied. New hash:');
 
@@ -70,6 +82,11 @@ test.describe('workflow revision review in Chat', () => {
     const frame = page.frameLocator('iframe[title="Review workflow revision"]');
     await frame.getByRole('button', { name: 'Apply' }).click();
     await expect(frame.getByRole('status')).toContainText('file changed since the proposal');
+    await captureForDesignReview(page, {
+      route: `/chats/${thread}`,
+      state: 'workflow revision conflict',
+      source: 'workflow-revision-chat.spec.ts',
+    });
     const afterConflict = await readWorkflow(request, WORKFLOW_ID);
     expect(afterConflict.text).toContain('other-writer');
     expect(afterConflict.hash).not.toBe(created.hash);
