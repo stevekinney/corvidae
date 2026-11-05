@@ -9,7 +9,10 @@ import type { ScheduleSummary } from '@lostgradient/weft';
 import type { WorkflowFileListing } from '../../lib/workflow-files.ts';
 import {
   isFileDefined,
+  jsonProblemLine,
+  lineOfParseError,
   nextSummary,
+  problemLocation,
   runNowOffReason,
   scheduleInput,
   sentenceCadence,
@@ -159,5 +162,49 @@ describe('a schedule a file defines', () => {
     expect(isFileDefined(file({ kind: 'schedule' }))).toBe(false);
     expect(isFileDefined(file(null))).toBe(false);
     expect(triggerInput(file({ input: ['not', 'an', 'object'] }))).toBeUndefined();
+  });
+});
+
+describe('nextSummary while the page shows old data', () => {
+  test('drops the relative time, which it could not keep, and the rest stays', () => {
+    const parts = nextSummary(schedule(), { status: 'active', blockers: [] }, NOW, true);
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]?.text).toMatch(/^Next [A-Z][a-z]{2} Nov 3, .*[AP]M$/);
+    expect(parts[0]?.text).not.toContain('(in ');
+  });
+
+  test('says a run that is due and will not start without how long until it', () => {
+    const due = schedule({ nextFireAt: Date.parse('2026-11-02T17:00:00.000Z') });
+    const parts = nextSummary(
+      due,
+      { status: 'active', blockers: [{ kind: 'provider' }] },
+      NOW,
+      true,
+    );
+
+    expect(parts.map((part) => part.text)).toEqual([
+      expect.stringMatching(/^Due today, .*[AP]M$/),
+      'won’t start',
+    ]);
+  });
+});
+
+describe('where a workflow file stopped parsing', () => {
+  test('reads the line a parser names, or counts the lines before the position it names', () => {
+    expect(lineOfParseError('Expected ‘,’ in JSON at line 12 column 3', '')).toBe(12);
+    expect(lineOfParseError('Unexpected token in JSON at position 6', 'a\nb\nc\nd')).toBe(4);
+    expect(lineOfParseError("JSON Parse error: Expected '}'", '{}')).toBeUndefined();
+  });
+
+  test('is none for text that parses, and a number or nothing for text that does not', () => {
+    expect(jsonProblemLine('{"a": 1}')).toBeUndefined();
+    const line = jsonProblemLine('{\n  "a": 1\n  "b": 2\n}');
+    expect(line === undefined || line >= 1).toBe(true);
+  });
+
+  test('says the file and the line, or the type alone when no line is known', () => {
+    expect(problemLocation('order-refund', 12)).toBe('order-refund · order-refund.json line 12');
+    expect(problemLocation('order-refund', undefined)).toBe('order-refund');
   });
 });

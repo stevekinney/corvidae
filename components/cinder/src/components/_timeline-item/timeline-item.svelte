@@ -15,6 +15,8 @@
 </script>
 
 <script lang="ts">
+  import { ChevronRight } from '@lucide/svelte';
+
   import { classNames } from '../../utilities/class-names.ts';
   import StackedListItem from '../stacked-list-item/stacked-list-item.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
@@ -29,6 +31,13 @@
     tone = 'info',
     kind = 'event',
     detail,
+    expanded = $bindable(false),
+    onexpandedchange,
+    status,
+    href,
+    duration,
+    struck = false,
+    plain = false,
     bare = false,
     expandLabel = 'Show',
     collapseLabel = 'Hide',
@@ -72,6 +81,17 @@
 {#snippet bandDetails()}
   {#if children}{@render children()}{/if}
 {/snippet}
+{#snippet runStatus()}
+  {#if status}<StatusDot word={status} size="sm" />{/if}
+{/snippet}
+{#snippet runTitle()}
+  <time {datetime}>{timestamp}</time>
+{/snippet}
+{#snippet runDetail()}{detail}{/snippet}
+{#snippet runTrailing()}
+  {#if duration}<span class="cinder-timeline-item__duration">{duration}</span>{/if}
+  {#if href}<ChevronRight size={16} aria-hidden="true" />{/if}
+{/snippet}
 
 <li
   {...rest}
@@ -80,6 +100,7 @@
   data-cinder-kind={kind}
   data-cinder-connector-after={connectorAfter}
   data-cinder-bare={bare ? '' : undefined}
+  data-cinder-plain={plain ? '' : undefined}
 >
   {#if groupHeader}
     <svelte:element this={groupHeaderTag} class="cinder-timeline__group-header">
@@ -101,11 +122,30 @@
         tone={tone === 'warning' ? 'warning' : 'neutral'}
         {expandLabel}
         {collapseLabel}
+        bind:expanded={
+          () => expanded,
+          (open) => {
+            expanded = open;
+            onexpandedchange?.(open);
+          }
+        }
         tooltip={title}
         {...detail === undefined ? {} : { metaTooltip: detail, meta: bandDetail }}
         status={bandStatus}
         title={bandTitle}
         details={bandDetails}
+      />
+    </ul>
+  {:else if kind === 'run'}
+    <!-- A past run: Cinder's status-first row, linked as a whole, with its duration and a chevron. -->
+    <ul class="cinder-timeline-item__run">
+      <StackedListItem
+        {...href === undefined ? {} : { href }}
+        {...detail === undefined ? {} : { metaTooltip: detail, meta: runDetail }}
+        tooltip={timestamp}
+        status={runStatus}
+        title={runTitle}
+        trailing={runTrailing}
       />
     </ul>
   {:else if kind === 'separator'}
@@ -127,7 +167,11 @@
           {#if children}{@render children()}{/if}
         {:else}
           <header class="cinder-timeline-item__header">
-            <time class="cinder-timeline-item__time" {datetime}>{timestamp}</time>
+            <time
+              class="cinder-timeline-item__time"
+              {datetime}
+              data-cinder-struck={struck ? '' : undefined}>{timestamp}</time
+            >
             <span class="cinder-timeline-item__title">{title}</span>
           </header>
           {#if children}

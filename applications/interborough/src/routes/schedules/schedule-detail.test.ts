@@ -128,7 +128,7 @@ describe('ScheduleDetail', () => {
     }
   });
 
-  test('lists the next runs in the schedule’s own zone, with the zone named', async () => {
+  test('lists the next three runs in the viewer’s zone, farthest first, under a note that names the zone', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -145,11 +145,13 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'la-morning' },
       });
 
-      const list = await waitFor(() => getByTestId('schedule-next-fires'));
-      const times = Array.from(list.querySelectorAll('time'));
-      expect(times).toHaveLength(5);
-      // Every run is 09:00 on the Los Angeles clock, whatever zone this machine is in, and says so.
-      for (const time of times) expect(time.textContent).toMatch(/9:00\s?AM P[SD]T/);
+      const list = await waitFor(() => getByTestId('schedule-runs'));
+      const times = Array.from(list.querySelectorAll('li[data-cinder-tone="pending"] time'));
+      expect(times).toHaveLength(3);
+      for (const time of times) expect(time.textContent).toMatch(/\d{1,2}:\d{2}\s?[AP]M/);
+      // Farthest first, so the nearest sits against the Now marker.
+      const stamps = times.map((time) => Date.parse(time.getAttribute('datetime') ?? ''));
+      expect(stamps).toEqual(stamps.toSorted((first, second) => second - first));
       // The note under Runs says which zone the page reads times in, the viewer's.
       expect(getByTestId('schedule-zone').textContent).toContain(
         'Upcoming above, past below · times in',
@@ -234,7 +236,7 @@ describe('ScheduleDetail', () => {
     try {
       // Each mount reads the rows the engine persisted, as a page reload does.
       for (let mount = 0; mount < 2; mount += 1) {
-        const { findAllByTestId, unmount } = render(ScheduleDetailHarness, {
+        const { findAllByText, findByRole, findByText, unmount } = render(ScheduleDetailHarness, {
           props: { client, id: 'missed-probe' },
         });
 
@@ -246,9 +248,12 @@ describe('ScheduleDetail', () => {
               ?.getAttribute('data-status-word'),
           ).toBe('Missed runs · 3'),
         );
-        const rows = await findAllByTestId('schedule-missed-row');
+        // They are one band below Now, and open to each miss.
+        const band = await findByText(/^Missed \d+ times since /);
+        expect(band).not.toBeNull();
+        await fireEvent.click(await findByRole('button', { name: /Show each/ }));
+        const rows = await findAllByText(/^Missed · /);
         expect(rows.length).toBeGreaterThan(0);
-        expect(rows[0]?.textContent).toBe('Missed');
         unmount();
       }
     } finally {
@@ -272,7 +277,7 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'nightly-rollup' },
       });
 
-      await waitFor(() => expect(getByText('No runs yet')).not.toBeNull());
+      await waitFor(() => expect(getByText('No runs yet.')).not.toBeNull());
       // A run that is going is said only while there is one.
       expect(queryByText('Running now')).toBeNull();
     } finally {
@@ -374,15 +379,17 @@ describe('ScheduleDetail', () => {
     }, 'history-probe has a completed run');
 
     try {
-      const { getByRole } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'history-probe' },
       });
 
-      const table = await waitFor(() => getByRole('table', { name: /Runs this schedule started/ }));
-      const done = await waitFor(() => within(table).getAllByText('Done')[0]);
-      const link = done?.closest('tr')?.querySelector('a');
+      const list = await waitFor(() => getByTestId('schedule-runs'));
+      const done = await waitFor(() => within(list).getAllByText('Done')[0]);
+      const link = done?.closest('li[data-cinder-kind="run"]')?.querySelector('a');
       expect(link?.getAttribute('href')).toMatch(/^\/runs\//);
-      const hrefs = Array.from(table.querySelectorAll('tbody a'), (a) => a.getAttribute('href'));
+      const hrefs = Array.from(list.querySelectorAll('li[data-cinder-kind="run"] a'), (a) =>
+        a.getAttribute('href'),
+      );
       expect(new Set(hrefs).size).toBe(hrefs.length);
     } finally {
       await server.stop();
@@ -446,16 +453,16 @@ describe('ScheduleDetail', () => {
     }, 'cancelled-probe has a cancelled run');
 
     try {
-      const { getByRole } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'cancelled-probe' },
       });
 
-      const table = await waitFor(() => getByRole('table', { name: /Runs this schedule started/ }));
+      const list = await waitFor(() => getByTestId('schedule-runs'));
       await waitFor(() =>
         expect(
-          within(table)
+          within(list)
             .getAllByText('Canceled')
-            .some((word) => word.closest('[data-status-word]') !== null),
+            .some((word) => word.closest('li[data-cinder-kind="run"]') !== null),
         ).toBe(true),
       );
     } finally {
@@ -481,14 +488,14 @@ describe('ScheduleDetail', () => {
     }, 'failing-probe has a failed run');
 
     try {
-      const { getByRole } = render(ScheduleDetailHarness, {
+      const { getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'failing-probe' },
       });
 
-      const table = await waitFor(() => getByRole('table', { name: /Runs this schedule started/ }));
-      await waitFor(() => expect(within(table).getAllByText('Failed').length).toBeGreaterThan(0));
-      const link = within(table).getAllByRole('link')[0];
-      if (link === undefined) throw new Error('expected a run link');
+      const list = await waitFor(() => getByTestId('schedule-runs'));
+      await waitFor(() => expect(within(list).getAllByText('Failed').length).toBeGreaterThan(0));
+      const link = list.querySelector<HTMLAnchorElement>('li[data-cinder-kind="run"] a');
+      if (link === null) throw new Error('expected a run link');
       await fireEvent.click(link);
       expect(window.location.pathname).toMatch(/^\/runs\//);
     } finally {
@@ -496,7 +503,7 @@ describe('ScheduleDetail', () => {
     }
   });
 
-  test('a paused schedule has no next runs and says so with a done empty state', async () => {
+  test('a paused schedule has no upcoming runs and says so', async () => {
     const server = await startLiveSourceTestServer();
     const handle = await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -509,19 +516,21 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText, queryByTestId } = render(ScheduleDetailHarness, {
+      const { getByText, queryByText } = render(ScheduleDetailHarness, {
         props: { client, id: 'weekly-digest' },
       });
 
-      await waitFor(() => expect(getByText('Nothing is coming up')).not.toBeNull());
-      expect(queryByTestId('schedule-next-fires')).toBeNull();
-      expect(getByText(/This schedule is Paused/)).not.toBeNull();
+      await waitFor(() =>
+        expect(getByText('No upcoming runs while the schedule is paused.')).not.toBeNull(),
+      );
+      // Nothing is coming, so there is no Now marker to split the upcoming from the past.
+      expect(queryByText('Now')).toBeNull();
     } finally {
       await server.stop();
     }
   });
 
-  test('Skip the next one skips exactly that run, marks it, and takes the button away', async () => {
+  test('Skip skips exactly the next run, crosses its time out, says so, and takes the button away', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -538,28 +547,29 @@ describe('ScheduleDetail', () => {
         props: { client, id: 'skip-probe' },
       });
 
-      await fireEvent.click(
-        await waitFor(() => getByRole('button', { name: 'Skip the next one' })),
-      );
+      // One Skip, on the run the engine would skip: the nearest, which is the last upcoming row.
+      await fireEvent.click(await waitFor(() => getByRole('button', { name: /^Skip / })));
 
       await waitFor(async () => {
         const schedule = await client.getSchedule('skip-probe');
         expect(schedule?.skipUntil).toBeDefined();
       });
-      const list = getByTestId('schedule-next-fires');
+      const list = getByTestId('schedule-runs');
       await waitFor(() =>
         expect(
-          Array.from(list.querySelectorAll('li'), (item) => item.getAttribute('data-skipped')),
-        ).toEqual(['true', 'false', 'false', 'false', 'false']),
+          Array.from(list.querySelectorAll('li[data-cinder-tone="pending"] time'), (time) =>
+            time.hasAttribute('data-cinder-struck'),
+          ),
+        ).toEqual([false, false, true]),
       );
       expect(within(list).getByText('Skipped')).not.toBeNull();
-      expect(queryByRole('button', { name: 'Skip the next one' })).toBeNull();
+      expect(queryByRole('button', { name: /^Skip / })).toBeNull();
     } finally {
       await server.stop();
     }
   });
 
-  test('Skip the next one is refused, and says the schedule changed, when it moved on after the page read it', async () => {
+  test('Skip is refused, and says the schedule changed, when it moved on after the page read it', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -574,7 +584,7 @@ describe('ScheduleDetail', () => {
       const { getByRole, findByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'stale-probe' },
       });
-      const skip = await waitFor(() => getByRole('button', { name: 'Skip the next one' }));
+      const skip = await waitFor(() => getByRole('button', { name: /^Skip / }));
       // Another caller changes the cadence after the page read the schedule.
       await client.updateSchedule('stale-probe', { cron: '0 10 * * *' });
       await fireEvent.click(skip);
@@ -728,7 +738,7 @@ describe('ScheduleDetail', () => {
         ).disabled,
       ).toBe(true);
       // Skipping is a write too, so the button is not offered at all.
-      expect(queryByRole('button', { name: 'Skip the next one' })).toBeNull();
+      expect(queryByRole('button', { name: /^Skip / })).toBeNull();
     } finally {
       await server.stop();
     }

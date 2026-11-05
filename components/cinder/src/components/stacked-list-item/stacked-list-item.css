@@ -442,7 +442,9 @@
   }
 
   /* On a phone the status moves to line two beside the kind and agent: "Waiting on you · Chat". */
-  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading:not(
+      .cinder-stacked-list-item--no-line-two
+    )
     .cinder-stacked-list-item__status::after {
     content: '·' / '';
     margin-inline: var(--cinder-space-1-5);

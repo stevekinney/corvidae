@@ -86,6 +86,13 @@ function wallClockAsUtc(at: number, zone: string): number {
   return Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'));
 }
 
+/** How many minutes the zone's wall clock is ahead of UTC at `at` ( -300 for Chicago in daylight time). */
+export function zoneOffsetMinutes(at: number, zone: string): number {
+  // The wall clock at `at` read as UTC, less `at` itself with its seconds taken off, is the offset.
+  const minute = Math.floor(at / MINUTE_MS) * MINUTE_MS;
+  return Math.round((wallClockAsUtc(minute, zone) - minute) / MINUTE_MS);
+}
+
 /**
  * Whether the expression matches the wall clock the zone shows at `at`. The engine fires an
  * instant only when it does (`ScheduleTick.fires`): the instant a daylight-saving gap ends is a

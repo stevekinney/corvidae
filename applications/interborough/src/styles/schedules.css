@@ -96,27 +96,77 @@
   margin: 0;
 }
 
-.ib-schedule__fires {
+/* The second line of the run that is due and will not start, in the warning tone. */
+.ib-schedule__fire-note {
+  color: var(--cinder-status-warning-text);
+  font-size: var(--cinder-text-sm);
+}
+
+/* A skipped run says so where its Skip button was. */
+.ib-schedule__skipped {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* Each fire the open band lists, under its "Run once now". */
+.ib-schedule__misses {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-1);
+  gap: var(--cinder-space-2);
+  padding-block-start: var(--cinder-space-2);
+}
+
+.ib-schedule__run-once {
+  align-self: flex-start;
+}
+
+/* Why the schedule will not start: a bordered card of reasons, each with the link that fixes it. */
+.ib-schedule__blockers {
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
   list-style: none;
+  border: 1px solid var(--cinder-border);
+  border-radius: var(--cinder-radius-lg);
+  background: var(--cinder-surface);
 }
 
-.ib-schedule__fire {
+.ib-schedule__blocker {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--cinder-space-1) var(--cinder-space-3);
-  min-height: var(--cinder-control-height-sm, 2rem);
+  padding: var(--cinder-space-2) var(--cinder-space-3);
+  font-size: var(--cinder-text-md);
+}
+
+.ib-schedule__blocker + .ib-schedule__blocker {
+  border-block-start: 1px solid var(--cinder-border-faint);
+}
+
+.ib-schedule__blocker-glyph {
+  display: inline-flex;
+  flex: none;
+}
+
+.ib-schedule__blocker-glyph[data-tone='danger'] {
+  color: var(--cinder-status-danger-text);
+}
+
+.ib-schedule__blocker-glyph[data-tone='warning'] {
+  color: var(--cinder-status-warning-text);
+}
+
+.ib-schedule__blocker-text {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
   overflow-wrap: anywhere;
 }
 
-.ib-schedule__fire[data-skipped='true'] time {
-  color: var(--cinder-text-muted);
-  text-decoration: line-through;
+.ib-schedule__blocker-title[data-tone='danger'] {
+  color: var(--cinder-status-danger-text);
+  font-weight: var(--cinder-font-semibold);
 }
 
 /* A kind, an agent or a workflow, and the link to it, wrap instead of widening the page. */

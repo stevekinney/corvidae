@@ -67,13 +67,13 @@ async function changeAndRefetch(refetch: () => Promise<void> | undefined): Promi
   expect(stub?.calls.length ?? 0).toBeGreaterThan(before);
 }
 
-describe('cancelling from one schedule’s page', () => {
-  test('sends the revision the operator asked to cancel, not the newest one, and says it is stale', async () => {
+describe('deleting from one schedule’s page', () => {
+  test('sends the revision the operator asked to delete, not the newest one, and says it is stale', async () => {
     const { view, refetch } = open(`/schedules/${SCHEDULE}`);
     const body = within(view.container.ownerDocument.body);
     await fireEvent.click(await body.findByRole('button', { name: 'More actions' }));
-    await fireEvent.click(await body.findByRole('menuitem', { name: /Cancel/ }));
-    const confirm = await body.findByRole('button', { name: 'Cancel schedule' });
+    await fireEvent.click(await body.findByRole('menuitem', { name: 'Delete schedule' }));
+    const confirm = await body.findByRole('button', { name: 'Delete schedule' });
 
     await changeAndRefetch(refetch);
     await fireEvent.click(confirm);

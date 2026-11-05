@@ -1,4 +1,7 @@
 /**
+ * (The runs timeline of `ScheduleDetail`, rows 72k, 72v, 72w, 72x to 72z, 73a, 73b, 73f, 73g, 73h,
+ * 73k, 73l, 73m and 73p, is asserted at the end of this file.)
+ *
  * One schedule's page on the sample world's four schedules (`fixtures/sample-world-seed.ts`, the
  * showcase host; COR-2018, the heading, its actions and the details card of `ScheduleDetail`, rows
  * 72a to 72g, 72l to 72q, 72s to 72u and 73r to 73t): the Active switch named with its visible label
@@ -311,3 +314,231 @@ test('Run now on Release notes digest says so in a toast that opens the run, and
   await page.getByRole('button', { name: 'Open run' }).click();
   await expect(page).toHaveURL(/\/runs\/run-release-notes-now$/);
 });
+
+/** The Runs list of the page that is open. */
+function runsList(page: Page) {
+  return page.getByTestId('schedule-runs');
+}
+
+for (const width of WIDTHS) {
+  test(`Daily summary's runs: three upcoming above Now, one band of misses, the clock break and the Done run, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await openSchedule(page, 'Daily summary');
+    const list = runsList(page);
+
+    // Upcoming runs are listed farthest first, with how far away each is; Skip is on the next one.
+    const upcoming = list.locator('li[data-cinder-tone="pending"]');
+    await expect(upcoming).toHaveCount(3);
+    await expect(upcoming.nth(0)).toContainText('Thu Nov 5, 3:00 AM');
+    await expect(upcoming.nth(0)).toContainText('in 3 days');
+    await expect(upcoming.nth(1)).toContainText('Wed Nov 4, 3:00 AM');
+    await expect(upcoming.nth(2)).toContainText('Tue Nov 3, 3:00 AM');
+    await expect(upcoming.nth(2)).toContainText('in 16 hours');
+    await expect(list.getByRole('button', { name: /^Skip / })).toHaveCount(1);
+    await expect(upcoming.nth(2).getByRole('button', { name: /^Skip / })).toBeVisible();
+
+    // The Now marker splits upcoming from past, with the time the page reads.
+    const now = list.locator('li[data-cinder-kind="now"]');
+    await expect(now).toContainText('Now');
+    await expect(now).toContainText('Mon Nov 2, 10:46 AM');
+
+    // The four misses are one collapsed amber band, with a break where the clock changed under it.
+    const band = list.locator('li[data-cinder-kind="band"]');
+    await expect(band).toContainText('Missed 4 times since Oct 30');
+    await expect(band).toContainText('Interborough was off');
+    const toggle = band.locator('button[aria-expanded]').first();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(list.locator('> li[data-cinder-kind="separator"]')).toHaveText(
+      'Daylight saving time ended Nov 1',
+    );
+
+    // The one past run is a status-first row that links to the run, with how long it took.
+    const done = list.locator('li[data-cinder-kind="run"]');
+    await expect(done).toHaveCount(1);
+    await expect(done).toContainText('Done');
+    await expect(done).toContainText('Thu Oct 29, 4:00 AM');
+    await expect(done).toContainText('14 s');
+    await expect(done.getByRole('link')).toHaveAttribute('href', /\/runs\/.+/);
+
+    await captureForDesignReview(page, {
+      route: '/schedules/:schedule',
+      state: 'daily summary runs',
+      source: SOURCE,
+    });
+
+    // Open, the band lists each miss in the viewer's zone and offers one run, not four; the break
+    // moves inside it, between the misses either side of the change, and the Done run follows.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(band.getByText('Hide')).toBeVisible();
+    await expect(band.getByRole('button', { name: 'Run once now' })).toBeVisible();
+    const misses = band.locator('li[data-cinder-plain]');
+    await expect(misses).toHaveCount(4);
+    await expect(misses.nth(0)).toContainText('Mon Nov 2, 3:00 AM');
+    await expect(misses.nth(1)).toContainText('Sun Nov 1, 3:00 AM');
+    await expect(misses.nth(2)).toContainText('Sat Oct 31, 4:00 AM');
+    await expect(misses.nth(3)).toContainText('Fri Oct 30, 4:00 AM');
+    for (let index = 0; index < 4; index += 1) {
+      await expect(misses.nth(index)).toContainText('Missed · Interborough was off');
+    }
+    await expect(band.locator('li[data-cinder-kind="separator"]')).toHaveText(
+      'Daylight saving time ended Nov 1',
+    );
+    await expect(list.locator('> li[data-cinder-kind="separator"]')).toHaveCount(0);
+    await expect(done).toContainText('Thu Oct 29, 4:00 AM');
+    await captureForDesignReview(page, {
+      route: '/schedules/:schedule',
+      state: 'daily summary misses expanded',
+      source: SOURCE,
+    });
+    await checkA11y(`schedule detail, runs at ${width}px`);
+
+    // No row makes the page scroll sideways.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+}
+
+test('Run once now starts one run, not one per miss', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  // The Bureau's run now is answered by the specification, so no run is made in the world.
+  const starts: string[] = [];
+  await page.route('**/bureau/jsonrpc', async (route: Route) => {
+    const body = route.request().postDataJSON() as { id?: unknown; method?: string };
+    if (body.method !== 'bureau.schedules.runnow') {
+      await route.fallback();
+      return;
+    }
+    starts.push(body.method);
+    await route.fulfill({
+      json: {
+        jsonrpc: '2.0',
+        id: body.id,
+        result: { outcome: 'started', taskId: 'run-daily-summary-now' },
+      },
+    });
+  });
+  await openSchedule(page, 'Daily summary');
+  await runsList(page)
+    .getByRole('button', { name: /Show each/ })
+    .click();
+  await runsList(page).getByRole('button', { name: 'Run once now' }).click();
+  await expect(page.getByRole('button', { name: 'Open run' })).toBeVisible();
+  expect(starts).toEqual(['bureau.schedules.runnow']);
+});
+
+test('Inbox triage, paused with its workflow, has no upcoming runs and two Done runs', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSchedule(page, 'Inbox triage');
+  const list = runsList(page);
+
+  await expect(page.getByTestId('schedule-no-upcoming')).toHaveText(
+    'No upcoming runs while the schedule is paused.',
+  );
+  await expect(list.locator('li[data-cinder-tone="pending"]')).toHaveCount(0);
+  await expect(list.locator('li[data-cinder-kind="now"]')).toHaveCount(0);
+  const done = list.locator('li[data-cinder-kind="run"]');
+  await expect(done).toHaveCount(2);
+  await expect(done.nth(0)).toContainText('Sat Oct 24, 8:00 AM');
+  await expect(done.nth(0)).toContainText('41 s');
+  await expect(done.nth(1)).toContainText('Fri Oct 23, 8:00 AM');
+  await expect(done.nth(1)).toContainText('38 s');
+  for (const row of await done.all()) {
+    await expect(row).toContainText('Done');
+    await expect(row.getByRole('link')).toHaveAttribute('href', /\/runs\/.+/);
+  }
+  await captureForDesignReview(page, {
+    route: '/schedules/:schedule',
+    state: 'paused runs',
+    source: SOURCE,
+  });
+  await checkA11y('schedule detail, paused runs');
+});
+
+test('Release notes digest: a failed run says where it stopped and why, in one line', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await openSchedule(page, 'Release notes digest');
+  const list = runsList(page);
+
+  const upcoming = list.locator('li[data-cinder-tone="pending"]');
+  await expect(upcoming).toHaveCount(1);
+  await expect(upcoming).toContainText('Fri Nov 6, 11:00 AM');
+  await expect(upcoming).toContainText('in 4 days');
+  await expect(list.locator('li[data-cinder-kind="now"]')).toContainText('Mon Nov 2, 10:46 AM');
+  const failed = list.locator('li[data-cinder-kind="run"]');
+  await expect(failed).toHaveCount(1);
+  await expect(failed).toContainText('Failed');
+  await expect(failed).toContainText('Fri Oct 30, 11:00 AM');
+  await expect(failed).toContainText('Failed at step 2 · GitHub didn’t answer');
+  await expect(failed).toContainText('3 s');
+  // The Release notes cadence follows the viewer's own clock, so nothing marks a change in it.
+  await expect(list.locator('li[data-cinder-kind="separator"]')).toHaveCount(0);
+  await captureForDesignReview(page, {
+    route: '/schedules/:schedule',
+    state: 'file-defined runs',
+    source: SOURCE,
+  });
+  await checkA11y('schedule detail, a failed run');
+});
+
+for (const width of WIDTHS) {
+  test(`Weekly refund audit says why it will not start, and never ran, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await openSchedule(page, 'Weekly refund audit');
+    const main = page.locator('main');
+
+    // The blocker card lists the workflow first, then the provider, each with where to fix it.
+    const card = main.getByTestId('schedule-blockers');
+    const reasons = card.getByRole('listitem');
+    await expect(reasons).toHaveCount(2);
+    await expect(reasons.nth(0)).toContainText('Order refund can’t load');
+    await expect(reasons.nth(0)).toContainText('order-refund · order-refund.json line 12');
+    await expect(reasons.nth(0).getByRole('link', { name: 'Open workflow' })).toBeVisible();
+    await expect(reasons.nth(1)).toContainText('No model provider is connected.');
+    await expect(reasons.nth(1).getByRole('link', { name: 'Connect a provider' })).toHaveAttribute(
+      'href',
+      '/settings/models',
+    );
+    await expect(main.getByTestId('schedule-summary')).toHaveText(
+      'Due today, 11:00 AM (in 14 minutes) · won’t start · Never run',
+    );
+
+    // The run that is due says why it will not start; both runs are listed.
+    const list = runsList(page);
+    const upcoming = list.locator('li[data-cinder-tone="pending"]');
+    await expect(upcoming).toHaveCount(2);
+    await expect(upcoming.nth(0)).toContainText('Mon Nov 9, 11:00 AM');
+    await expect(upcoming.nth(0)).toContainText('in 7 days');
+    await expect(upcoming.nth(1)).toContainText('Mon Nov 2, 11:00 AM');
+    await expect(upcoming.nth(1)).toContainText('in 14 minutes');
+    await expect(upcoming.nth(1).getByTestId('schedule-fire-note')).toHaveText(
+      'won’t start · Order refund can’t load · no provider',
+    );
+    await expect(list.locator('li[data-cinder-kind="now"]')).toContainText('Mon Nov 2, 10:46 AM');
+
+    // Below Now, a compact empty state says why nothing has run.
+    await expect(main.getByRole('group', { name: 'No runs yet.' })).toContainText(
+      'It won’t start until Order refund loads and a provider is connected.',
+    );
+    await captureForDesignReview(page, {
+      route: '/schedules/:schedule',
+      state: 'never run, blocked',
+      source: SOURCE,
+    });
+    await checkA11y(`schedule detail, never run at ${width}px`);
+  });
+}

@@ -38,6 +38,7 @@
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL, SCHEDULE_COPY } from '../../app/copy.ts';
+  import { getConnection } from '../../app/connection.svelte.ts';
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import NotFoundState from '../../app/not-found-state.svelte';
   import { showFault, showToast } from '../../app/toast-host.svelte';
@@ -55,7 +56,7 @@
   } from '../../lib/router.svelte.ts';
   import { AGENT_RUN_TYPE, kindOf } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
-  import { resumeWorkflowFile } from '../../lib/workflow-files.ts';
+  import { getWorkflowFile, resumeWorkflowFile } from '../../lib/workflow-files.ts';
   import {
     internalWorkflowsPath,
     workflowEditPath,
@@ -69,14 +70,16 @@
   import {
     isFileDefined,
     nextSummary,
+    jsonProblemLine,
+    problemLocation,
     runNowOffReason,
     scheduleInput,
     sentenceCadence,
   } from './schedule-detail-model.ts';
+  import ScheduleBlockers from './schedule-blockers.svelte';
   import ScheduleLastFire from './schedule-last-fire.svelte';
-  import ScheduleNextRuns from './schedule-next-runs.svelte';
   import ScheduleNotice from './schedule-notice.svelte';
-  import SchedulePastRuns from './schedule-past-runs.svelte';
+  import ScheduleRuns from './schedule-runs.svelte';
   import { cadenceIdentifiers, scheduleNameIdentifiers } from './schedule-presentation.ts';
   import {
     fetchScheduleDetail,
@@ -85,7 +88,6 @@
     scheduleRunHistoryQueryKey,
   } from './schedule-queries.ts';
   import { createScheduleRowQueries } from './schedule-row-queries.svelte.ts';
-  import { scheduleZone } from './schedule-time.ts';
   import { actionsOf, type ScheduleTarget as Target } from './schedule-writes.ts';
 
   interface Props {
@@ -99,6 +101,7 @@
   const principal = getPrincipalStore();
   const queryClient = useQueryClient();
   const fleetSource = getFleetEventSource();
+  const connection = getConnection();
 
   // `weft.schedules.get` requires `schedules:read`; without it the query never fires.
   const readGate = $derived(scopeGate(principal, ['schedules:read']));
@@ -154,6 +157,21 @@
       : ({ schedule, kind: kindOf(schedule, overlay.data) } satisfies Target),
   );
   const name = $derived(row?.title ?? '');
+
+  // The blocker card says which line of the workflow's file stopped it parsing, so the file's text is
+  // read, only for a schedule whose workflow cannot load.
+  const brokenType = $derived(
+    row?.allBlockers.find((blocker) => blocker.kind === 'cannot-load')?.workflowType,
+  );
+  const brokenFile = createQuery(() => ({
+    queryKey: ['schedules', 'workflow-file-text', brokenType ?? ''],
+    queryFn: () => getWorkflowFile(brokenType ?? ''),
+    enabled: brokenType !== undefined,
+    retry: false,
+  }));
+  const brokenLine = $derived(
+    brokenFile.data?.text == null ? undefined : jsonProblemLine(brokenFile.data.text),
+  );
 
   // The breadcrumb names the schedule while this page is open, not the identifier in the address.
   usePageLabel(() => ({ path: scheduleDetailPath(id), label: row?.title }));
@@ -254,6 +272,13 @@
     {@const workflowPaused = row.status === 'paused' && file?.paused === true}
     {@const writable = !writeGate.disabled && !actions.busy}
     {@const agentNames = fileDefined ? [] : row.agentIds}
+    {@const problems = new Map(
+      row.allBlockers.flatMap((blocker) =>
+        blocker.kind === 'cannot-load'
+          ? [[blocker.workflowType, problemLocation(blocker.workflowType, brokenLine)] as const]
+          : [],
+      ),
+    )}
     {@const workflowPath =
       schedule.workflowType === AGENT_RUN_TYPE
         ? internalWorkflowsPath()
@@ -420,8 +445,11 @@
         {/if}
       </p>
     {/if}
+    {#if row.allBlockers.length > 0}
+      <ScheduleBlockers blockers={row.allBlockers} {problems} id="ib-schedule-blockers" />
+    {/if}
     <p class="ib-schedule__summary" data-testid="schedule-summary">
-      {#each nextSummary(schedule, row, now) as part, index (index)}
+      {#each nextSummary(schedule, row, now, connection.unreachable) as part, index (index)}
         {#if index > 0}{' · '}{/if}
         {#if part.tone !== undefined}<span class="ib-schedule__summary-part" data-tone={part.tone}
             >{part.text}</span
@@ -438,13 +466,21 @@
             {copy.runsNote(formatTimeZoneLabel(now, { style: 'long' }))}
           </p>
         </div>
-        <ScheduleNextRuns
+        <ScheduleRuns
           {schedule}
+          {row}
+          {now}
           canSkip={allowed.skipNext && !writeGate.disabled}
           busy={actions.busy}
           onSkip={(occurrence) => actions.skipNext.mutate({ target, occurrence })}
+          runOnce={allowed.runNow
+            ? {
+                reason: runNowReason,
+                disabled: !writable,
+                onRun: () => actions.runNow.mutate(target),
+              }
+            : null}
         />
-        <SchedulePastRuns {schedule} zone={scheduleZone(schedule)} />
       </section>
       <ScheduleDetailsCard
         {schedule}

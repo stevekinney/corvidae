@@ -50,6 +50,8 @@ export function nextSummary(
   schedule: Pick<ScheduleSummary, 'nextFireAt'>,
   row: Pick<ScheduleRow, 'status' | 'blockers'>,
   now: number,
+  /** The page shows old data while the server cannot answer, so "in 16 hours" would be a claim it cannot keep. */
+  stale = false,
 ): readonly SummaryPart[] {
   if (row.status === 'paused') return [{ text: SCHEDULE_COPY.detail.summary.pausedNext }];
   if (row.status !== 'active' || schedule.nextFireAt === null) {
@@ -59,14 +61,57 @@ export function nextSummary(
   const day = formatDateTime(at, { dayWords: false, now });
   const relative = formatRelativeTime(at, { now, units: 'spelled' });
   if (row.blockers.length === 0) {
-    return [{ text: SCHEDULE_COPY.detail.summary.next(day, relative) }];
+    return [
+      {
+        text: stale
+          ? SCHEDULE_COPY.detail.summary.nextStale(day)
+          : SCHEDULE_COPY.detail.summary.next(day, relative),
+      },
+    ];
   }
   const today = formatDateTime(at, { dayWords: 'today', now }).startsWith('Today, ');
   const due = today ? `today, ${formatTimeOfDay(at)}` : day;
   return [
-    { text: SCHEDULE_COPY.detail.summary.due(due, relative) },
+    {
+      text: stale
+        ? SCHEDULE_COPY.detail.summary.dueStale(due)
+        : SCHEDULE_COPY.detail.summary.due(due, relative),
+    },
     { text: SCHEDULE_COPY.detail.summary.wontStart, tone: 'warning' },
   ];
+}
+
+/**
+ * The line a JSON parser stopped at, from what it said: Chrome and Firefox name it ("line 12
+ * column 3") or the position it stopped at ("at position 289"), which counts the lines before it.
+ * A parser that names neither (Safari's) leaves it unsaid.
+ */
+export function lineOfParseError(message: string, text: string): number | undefined {
+  const named = /\bline (\d+)\b/i.exec(message)?.[1];
+  if (named !== undefined) return Number(named);
+  const position = /\bposition (\d+)\b/i.exec(message)?.[1];
+  if (position === undefined) return undefined;
+  return text.slice(0, Number(position)).split('\n').length;
+}
+
+/** The line a workflow file's text stops parsing at, or `undefined` when it parses or the parser does not say. */
+export function jsonProblemLine(text: string): number | undefined {
+  try {
+    JSON.parse(text);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? lineOfParseError(error.message, text) : undefined;
+  }
+}
+
+/**
+ * Where a workflow's file went wrong, as the blocker card says it: "order-refund ·
+ * order-refund.json line 12", or the type alone when no line is known.
+ */
+export function problemLocation(workflowType: string, line: number | undefined): string {
+  return line === undefined
+    ? workflowType
+    : `${workflowType} · ${workflowType}.json line ${String(line)}`;
 }
 
 /** The reason one blocker gives for Run now being off, in a sentence. */

@@ -443,3 +443,50 @@ describe('EmptyState restyle', () => {
     expect(base.get('min-block-size')).toBe('100%');
   });
 });
+
+describe('EmptyState inline layout (COR-2018, row 73b)', () => {
+  test('is stacked by default and marks the root when inline', () => {
+    const { container } = render(EmptyState, { props: { title: 'Empty' } });
+    expect(rootOf(container)?.hasAttribute('data-cinder-layout')).toBe(false);
+    expect(container.querySelector('.cinder-empty-state-text')).toBeNull();
+    cleanup();
+    const inline = render(EmptyState, {
+      props: { title: 'No runs yet.', description: 'It will start soon.', layout: 'inline' },
+    });
+    expect(rootOf(inline.container)?.getAttribute('data-cinder-layout')).toBe('inline');
+  });
+
+  test('keeps the title and the sentence in one text block that the group is named by', () => {
+    const { container } = render(EmptyState, {
+      props: {
+        title: 'No runs yet.',
+        description: 'It will start soon.',
+        layout: 'inline',
+        size: 'compact',
+        headingLevel: 3,
+      },
+    });
+    const text = container.querySelector('.cinder-empty-state-text');
+    expect(text?.querySelector('h3')?.textContent?.trim()).toBe('No runs yet.');
+    expect(text?.querySelector('p')?.textContent).toBe('It will start soon.');
+    const title = text?.querySelector('h3');
+    expect(rootOf(container)?.getAttribute('aria-labelledby')).toBe(title?.id ?? null);
+  });
+
+  test('draws a 32px disc beside inline text, with no region padding', () => {
+    const disc = declarationsFor(
+      emptyStateCss,
+      ".cinder-empty-state[data-cinder-layout='inline'] .cinder-empty-state-icon",
+    );
+    expect(disc.get('inline-size')).toBe('var(--cinder-space-8)');
+    expect(disc.get('block-size')).toBe('var(--cinder-space-8)');
+    const root = declarationsFor(emptyStateCss, ".cinder-empty-state[data-cinder-layout='inline']");
+    expect(root.get('flex-direction')).toBe('row');
+    expect(root.get('padding-inline')).toBe('0');
+    // It sits among rows, so it never stretches to fill the region around it.
+    expect(root.get('min-block-size')).toBe('0');
+    expect(emptyStateCss).toMatch(
+      /\.cinder-empty-state\[data-cinder-layout='inline'\] \.cinder-empty-state-title,\s*\.cinder-empty-state\[data-cinder-layout='inline'\] \.cinder-empty-state-description\s*\{[^}]*display: inline;/,
+    );
+  });
+});

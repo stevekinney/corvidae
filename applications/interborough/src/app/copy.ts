@@ -1217,6 +1217,9 @@ export const SCHEDULE_COPY = {
     summary: {
       next: (day: string, relative: string): string => `Next ${day} (${relative})`,
       due: (day: string, relative: string): string => `Due ${day} (${relative})`,
+      /** The same lines while the page shows old data: no relative time, which would be a claim it cannot keep. */
+      nextStale: (day: string): string => `Next ${day}`,
+      dueStale: (day: string): string => `Due ${day}`,
       wontStart: 'won’t start',
       pausedNext: 'No next run while paused',
       noNext: 'No next run',
@@ -1224,6 +1227,58 @@ export const SCHEDULE_COPY = {
     },
     runsHeading: 'Runs',
     runsNote: (zone: string): string => `Upcoming above, past below · times in ${zone}`,
+    /** The Runs list: upcoming runs, the Now marker, the missed runs, and what the schedule started. */
+    runs: {
+      label: 'Runs',
+      skip: 'Skip',
+      skipLabel: (when: string): string => `Skip ${when}`,
+      skipped: 'Skipped',
+      now: 'Now',
+      wontStart: 'won’t start',
+      noteCannotLoad: (workflow: string): string => `${workflow} can’t load`,
+      noteDeleted: (workflow: string): string => `${workflow} was deleted`,
+      noteProvider: 'no provider',
+      pausedNote: 'No upcoming runs while the schedule is paused.',
+      soFar: (duration: string): string => `${duration} so far`,
+      missedTitle: (count: number, since: string): string =>
+        count === 1 ? `Missed once on ${since}` : `Missed ${String(count)} times since ${since}`,
+      /** Why a fire was missed, in the short words the band and each row say. */
+      missedReason: {
+        late: 'Interborough was off',
+        'dst-gap': 'The clock skipped this time',
+      },
+      missedRow: (count: number, reason: string): string =>
+        count > 1 ? `Missed ${String(count)} times · ${reason}` : `Missed · ${reason}`,
+      showEach: 'Show each',
+      hide: 'Hide',
+      runOnce: 'Run once now',
+      dstEnded: (day: string): string => `Daylight saving time ended ${day}`,
+      dstStarted: (day: string): string => `Daylight saving time started ${day}`,
+      startedWith: (how: string): string => `Started with ${how}`,
+      failedAtStep: (step: number): string => `Failed at step ${String(step)}`,
+      stepsLabel: (step: number): string => `Step ${String(step)}`,
+      loadFailed: 'The runs could not be loaded',
+      /** The compact empty state below Now when the schedule has not run. */
+      empty: {
+        title: 'No runs yet.',
+        blocked: (reasons: string): string => `It won’t start until ${reasons}.`,
+        loads: (workflow: string): string => `${workflow} loads`,
+        workflowBack: 'its workflow is back',
+        providerConnected: 'a provider is connected',
+        first: (when: string): string => `The first run starts ${when}.`,
+        paused: 'It runs again when the schedule is turned on.',
+      },
+      /** Why the schedule will not start, as the card above the summary line lists it. */
+      blockers: {
+        label: 'Why this schedule will not start',
+        cannotLoad: (workflow: string): string => `${workflow} can’t load`,
+        deleted: (workflow: string): string => `${workflow} was deleted`,
+        openWorkflow: 'Open workflow',
+        provider: 'No model provider is connected.',
+        connectProvider: 'Connect a provider',
+        providersPath: '/settings/models',
+      },
+    },
     /** Why Run now is off, said as the description of the disabled button. */
     runNowOff: {
       cannotLoad: (workflow: string): string => `${workflow} can’t load.`,
@@ -1286,32 +1341,6 @@ export const SCHEDULE_COPY = {
     runNow: 'Run now',
     edit: 'Edit',
     sends: 'Sends',
-    /** The verb and the zone of the sentence under the title. */
-    nextRunsHeading: 'Next runs',
-    nextRunsCaption: (zone: string): string => `Shown in ${zone}`,
-    skipNext: 'Skip the next one',
-    skipped: 'Skipped',
-    skippedNote: 'This run is skipped. The one after it runs as usual.',
-    noNextRuns: {
-      title: 'Nothing is coming up',
-      description: (status: string): string =>
-        `This schedule is ${status}, so it has no next runs. Turn it on to schedule them again.`,
-    },
-    pastRunsHeading: 'Past runs',
-    pastRunsCaption: 'Runs this schedule started, and the fires it missed, newest first',
-    pastColumns: { when: 'When', outcome: 'Outcome', took: 'Took' },
-    noPastRuns: {
-      title: 'No runs yet',
-      description: 'This schedule has not fired. Its runs and any fires it missed are listed here.',
-    },
-    runLink: (when: string): string => `Run ${when}`,
-    manual: 'Run now',
-    missedOutcome: 'Missed',
-    missedReason: {
-      late: 'The host was not running, or was too slow, when it was due.',
-      'dst-gap': 'The clock skipped this time when it moved forward.',
-    },
-    missedCount: (count: number): string => `${String(count)} missed`,
     runsFailed: 'Past runs could not be loaded',
     missedFailed: 'Missed fires could not be loaded',
     runNowOutcome: {

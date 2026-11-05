@@ -78,7 +78,7 @@ describe('Skip the next one, for an agent run', () => {
   test('goes through the Bureau naming the revision and the run the page read, and marks the skipped run', async () => {
     const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
 
-    await fireEvent.click(await findByRole('button', { name: 'Skip the next one' }));
+    await fireEvent.click(await findByRole('button', { name: /^Skip / }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.schedules.skipnext')).toHaveLength(1));
     expect(stub?.callsTo('bureau.schedules.skipnext')[0]?.params).toEqual({
@@ -86,13 +86,13 @@ describe('Skip the next one, for an agent run', () => {
       occurrence: '2030-01-01T09:00:00.000Z',
       expectedRevision: 3,
     });
-    const list = await findByTestId('schedule-next-fires');
-    await waitFor(() => expect(list.querySelector('[data-skipped="true"]')).not.toBeNull());
+    const list = await findByTestId('schedule-runs');
+    await waitFor(() => expect(list.querySelector('time[data-cinder-struck]')).not.toBeNull());
   });
 
   test('is refused as stale when the schedule changed after the page read it, and writes nothing', async () => {
     const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
-    const skip = await findByRole('button', { name: 'Skip the next one' });
+    const skip = await findByRole('button', { name: /^Skip / });
     const schedule = stub?.world.schedules.find((candidate) => candidate.id === AGENT_SCHEDULE);
     if (schedule === undefined) throw new Error('expected the seeded schedule');
     schedule.revision = 4;
@@ -108,7 +108,7 @@ describe('Skip the next one, for an agent run', () => {
     // A fire moves `nextFireAt` and leaves the revision and the status, so only the run the skip
     // names can tell that the run the person chose has gone.
     const { findByRole, findByTestId } = open(`/schedules/${AGENT_SCHEDULE}`);
-    const skip = await findByRole('button', { name: 'Skip the next one' });
+    const skip = await findByRole('button', { name: /^Skip / });
     const schedule = stub?.world.schedules.find((candidate) => candidate.id === AGENT_SCHEDULE);
     if (schedule === undefined) throw new Error('expected the seeded schedule');
     const fired = Date.parse('2030-01-02T09:00:00.000Z');
@@ -119,17 +119,20 @@ describe('Skip the next one, for an agent run', () => {
     const notice = await findByTestId('schedule-notice');
     expect(notice.getAttribute('data-notice')).toBe('stale');
     expect(schedule.skipUntil).toBeUndefined();
-    const list = await findByTestId('schedule-next-fires');
+    const list = await findByTestId('schedule-runs');
+    // The nearest run is the last upcoming row, against the Now marker.
     await waitFor(() =>
-      expect(list.querySelector('li time')?.getAttribute('datetime')).toBe(
-        '2030-01-02T09:00:00.000Z',
-      ),
+      expect(
+        Array.from(list.querySelectorAll('li[data-cinder-tone="pending"] time'))
+          .at(-1)
+          ?.getAttribute('datetime'),
+      ).toBe('2030-01-02T09:00:00.000Z'),
     );
   });
 
   test('says what was not done, and not that the schedule changed, for any other refusal', async () => {
     const { findByRole, findByText } = open(`/schedules/${AGENT_SCHEDULE}`);
-    const skip = await findByRole('button', { name: 'Skip the next one' });
+    const skip = await findByRole('button', { name: /^Skip / });
     stub?.on('bureau.schedules.skipnext', () => {
       throw workflowFaults.unavailable();
     });
@@ -179,8 +182,8 @@ describe('Run now, for an agent run', () => {
 });
 
 describe('a workflow file’s schedule', () => {
-  test('offers no Skip the next one, and Run now starts the file with what its trigger sends', async () => {
-    const { findByRole, findByText, queryByRole } = open(`/schedules/${FILE_SCHEDULE}`, {
+  test('offers Skip on its next run, and Run now starts the file with what its trigger sends', async () => {
+    const { findByRole, findByText } = open(`/schedules/${FILE_SCHEDULE}`, {
       files: [
         readyFile('digest', {
           trigger: { kind: 'schedule', spec: '0 6 * * *', input: { branch: 'main' } },
@@ -189,7 +192,7 @@ describe('a workflow file’s schedule', () => {
     });
 
     await findByRole('switch', { name: 'Active, Workflow digest schedule' });
-    expect(queryByRole('button', { name: 'Skip the next one' })).toBeNull();
+    expect(await findByRole('button', { name: /^Skip / })).not.toBeNull();
 
     await fireEvent.click(await findByRole('button', { name: 'Run now' }));
 
@@ -219,8 +222,8 @@ describe('the details of a schedule', () => {
 });
 
 describe('the past runs of a schedule', () => {
-  test('list the fires an agent run missed, read through the Bureau, with why and how many', async () => {
-    const { findAllByTestId, findByText } = open(`/schedules/${AGENT_SCHEDULE}`, {
+  test('fold the fires an agent run missed into one band below Now, which opens to each with why and how many', async () => {
+    const { findByRole, findByText } = open(`/schedules/${AGENT_SCHEDULE}`, {
       missedFires: {
         [AGENT_SCHEDULE]: [
           { occurrence: Date.parse('2030-01-01T09:00:00.000Z'), reason: 'late', count: 1 },
@@ -229,13 +232,13 @@ describe('the past runs of a schedule', () => {
       },
     });
 
-    const rows = await findAllByTestId('schedule-missed-row');
-    expect(rows).toHaveLength(2);
-    await findByText(new RegExp(SCHEDULE_COPY.detail.missedReason.late));
+    await findByText(/^Missed 3 times since /);
+    await fireEvent.click(await findByRole('button', { name: /Show each/ }));
     await findByText(
-      new RegExp(
-        `${SCHEDULE_COPY.detail.missedCount(2)}\\. ${SCHEDULE_COPY.detail.missedReason['dst-gap']}`,
-      ),
+      SCHEDULE_COPY.detail.runs.missedRow(1, SCHEDULE_COPY.detail.runs.missedReason.late),
+    );
+    await findByText(
+      SCHEDULE_COPY.detail.runs.missedRow(2, SCHEDULE_COPY.detail.runs.missedReason['dst-gap']),
     );
     expect(stub?.callsTo('bureau.schedules.missed')[0]?.params).toEqual({
       scheduleId: AGENT_SCHEDULE,
@@ -244,7 +247,7 @@ describe('the past runs of a schedule', () => {
 
   test('say which list could not be read, and read it again on request', async () => {
     let failing = true;
-    const { findByText, findByRole, findAllByTestId } = open(
+    const { findByText, findByRole } = open(
       `/schedules/${AGENT_SCHEDULE}`,
       { missedFires: { [AGENT_SCHEDULE]: [{ occurrence: NEXT_FIRE, reason: 'late', count: 1 }] } },
       (installed) =>
@@ -271,12 +274,12 @@ describe('the past runs of a schedule', () => {
     failing = false;
     await fireEvent.click(await findByRole('button', { name: 'Retry' }));
 
-    expect(await findAllByTestId('schedule-missed-row')).toHaveLength(1);
+    await findByText(/^Missed once on /);
   });
 
   test('say when a schedule has no past run at all', async () => {
     const { findByText } = open(`/schedules/${AGENT_SCHEDULE}`);
 
-    await findByText(SCHEDULE_COPY.detail.noPastRuns.title);
+    await findByText(SCHEDULE_COPY.detail.runs.empty.title);
   });
 });

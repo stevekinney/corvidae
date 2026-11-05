@@ -29,7 +29,7 @@
             "default": "info"
           },
           "kind": {
-            "enum": ["event", "now", "separator", "band"],
+            "enum": ["event", "now", "separator", "band", "run"],
             "description": "What the entry is. For `now`, `title` is the pill's text (\"Now\") and `timestamp` the time at\nthe right. For `separator`, `title` is the label and `timestamp` and `datetime` say what moment\nit marks. Neither draws a marker, a connector, a body or actions. For `band`, `tone` tints the\nband (`warning` is amber, anything else neutral) and `title` is its bold text.",
             "default": "event"
           },
@@ -50,6 +50,69 @@
             "type": "string",
             "description": "For a `band`: the text of the button that closes it.",
             "default": "Hide"
+          },
+          "expanded": {
+            "type": "boolean",
+            "description": "For a `band`: whether it starts open. The `onexpandedchange` of the timeline hears each change.",
+            "default": false
+          },
+          "status": {
+            "enum": [
+              "Waiting on you",
+              "Running",
+              "Waiting",
+              "Scheduled",
+              "Done",
+              "Done · refund not issued",
+              "Check not met",
+              "Approved",
+              "Denied",
+              "Sent back",
+              "Expired",
+              "Failed",
+              "Gave up",
+              "Can't load",
+              "Can't find workflow",
+              "Not loaded",
+              "Canceled",
+              "Stopped",
+              "Paused",
+              "Off",
+              "Active",
+              "Missed runs",
+              "Available",
+              "Unavailable",
+              "Needs setup",
+              "Needs attention",
+              "Needs sign-in",
+              "Ended",
+              "Delivered",
+              "Retrying",
+              "Connected",
+              "Draining",
+              "Disconnected",
+              "Live",
+              "Reconnecting…"
+            ],
+            "description": "For a `run`: the status word that leads the row (\"Done\", \"Running\", \"Failed\"), which sets its dot and its tone."
+          },
+          "href": {
+            "type": "string",
+            "description": "For a `run`: where the row links to. The whole row is the link."
+          },
+          "duration": {
+            "type": "string",
+            "description": "For a `run`: the text at the right of the row, before its chevron (\"14 s\", \"38 s so far\")."
+          },
+          "struck": {
+            "type": "boolean",
+            "description": "For an `event`: draws the timestamp struck through, for something that will not happen.",
+            "default": false
+          },
+          "plain": {
+            "type": "boolean",
+            "description": "For an `event`: draws no marker, so the row starts at the inline start. In the `list` variant\na `warning` tone colours the title instead of the marker (\"Missed · Interborough was off\").",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -113,6 +176,11 @@
         "name": "marker",
         "reason": "function-or-snippet",
         "description": "Decorative per-entry marker content. Must not contain interactive descendants."
+      },
+      {
+        "name": "onexpandedchange",
+        "reason": "function-or-snippet",
+        "description": "Called when a `band` entry is opened or closed, with the entry and whether it is now open."
       }
     ]
   }

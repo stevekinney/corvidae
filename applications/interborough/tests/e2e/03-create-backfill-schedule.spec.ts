@@ -53,9 +53,11 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
   // The page is named by what it starts, not by the identifier the engine made.
   await expect(page.getByRole('heading', { level: 1, name: 'Order processing' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Next runs' })).toBeVisible();
-  await expect(page.getByText('Nothing is coming up')).toHaveCount(0);
-  await expect(page.getByTestId('schedule-next-fires').locator('li')).toHaveCount(5);
+  await expect(page.getByRole('heading', { level: 2, name: 'Runs' })).toBeVisible();
+  await expect(page.getByText('No upcoming runs while the schedule is paused.')).toHaveCount(0);
+  await expect(
+    page.getByTestId('schedule-runs').locator('li[data-cinder-tone="pending"]'),
+  ).toHaveCount(3);
   // The schedule's own fields are in the details beside the runs, with the cron it was made with.
   const rail = page.getByTestId('schedule-rail');
   await expect(rail.getByText('Workflow version', { exact: true })).toBeVisible();

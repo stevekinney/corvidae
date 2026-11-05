@@ -77,12 +77,16 @@ describe('what a schedule can be asked to do', () => {
       pause: true,
       resume: false,
       cancel: false,
-      skipNext: false,
+      skipNext: true,
       runNow: true,
       edit: false,
       editInWorkflow: true,
     });
-    expect(actionsOf(target(file, 'paused'))).toMatchObject({ pause: false, resume: true });
+    expect(actionsOf(target(file, 'paused'))).toMatchObject({
+      pause: false,
+      resume: true,
+      skipNext: false,
+    });
     for (const unwritable of [
       { ...FILE, state: 'invalid' as const },
       { ...FILE, hash: null },
@@ -134,12 +138,10 @@ describe('a write that no service owns', () => {
 });
 
 describe('the controls that skip and run', () => {
-  test('skipping is refused for a workflow file’s schedule and for one of no known kind', async () => {
-    for (const kind of [{ kind: 'workflow-file', file: FILE }, { kind: 'unknown' }] as const) {
-      expect(await throwingRejectionOf(skipNextTarget(client, target(kind), OCCURRENCE))).toThrow(
-        'cannot be skipped',
-      );
-    }
+  test('skipping is refused for a schedule of no known kind', async () => {
+    expect(
+      await throwingRejectionOf(skipNextTarget(client, target({ kind: 'unknown' }), OCCURRENCE)),
+    ).toThrow('cannot be skipped');
   });
 
   test('run now is refused for a schedule of no known kind, and for a file that cannot load', async () => {
@@ -204,6 +206,25 @@ describe('a write to an engine schedule that moved on after it was read', () => 
     });
     try {
       await skipNextTarget(fired.client, target({ kind: 'code' }), OCCURRENCE);
+    } finally {
+      restore();
+    }
+    expect(seen).toEqual([JSON.stringify({ occurrence: OCCURRENCE })]);
+  });
+
+  test('skips a workflow file’s schedule through the engine, naming the run, as a schedule of code is', async () => {
+    const current = engineAt({ revision: 3, status: 'active' });
+    const seen: unknown[] = [];
+    const restore = installFetchImplementation((_input, init) => {
+      seen.push(init?.body);
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    try {
+      await skipNextTarget(
+        current.client,
+        target({ kind: 'workflow-file', file: FILE }),
+        OCCURRENCE,
+      );
     } finally {
       restore();
     }

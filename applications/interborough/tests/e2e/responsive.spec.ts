@@ -152,8 +152,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules/new': /Pick what runs, then when, then name it/,
   '/schedules/new (chat)': /Pick what runs, then when, then name it/,
   '/schedules/new (workflow)': /Pick what runs, then when, then name it/,
-  // The long-named schedule's page prints its next runs and the zone they are shown in.
-  '/schedules/:schedule': /Next runs/,
+  // The long-named schedule's page prints its runs and the zone they are shown in.
+  '/schedules/:schedule': /Upcoming above, past below/,
   '/schedules/:schedule/edit': /Description/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,

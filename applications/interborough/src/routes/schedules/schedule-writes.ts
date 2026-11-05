@@ -94,7 +94,9 @@ export function actionsOf(target: ScheduleTarget): ScheduleActions {
         pause: writable && status === 'active',
         resume: writable && status === 'paused',
         cancel: false,
-        skipNext: false,
+        // A skip is bookkeeping on the engine's schedule, not a change to the file, so a file's
+        // schedule can have its next run skipped as any other.
+        skipNext: status === 'active',
         runNow: true,
         edit: false,
         editInWorkflow: true,
@@ -220,6 +222,7 @@ export async function skipNextTarget(
       }
       return;
     case 'code':
+    case 'workflow-file':
       await assertUnchanged(client, target);
       try {
         await skipNextSchedule(client, target.schedule.id, occurrence);
@@ -230,7 +233,6 @@ export async function skipNextTarget(
         throw error;
       }
       return;
-    case 'workflow-file':
     case 'unknown':
       return refuse(target, 'skipped');
   }

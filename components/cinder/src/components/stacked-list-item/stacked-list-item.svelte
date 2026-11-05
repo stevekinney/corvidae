@@ -185,6 +185,11 @@
     isLines && 'cinder-stacked-list-item--lines',
     isLines && reservesStatusColumn && 'cinder-stacked-list-item--status-column',
     isLines && status && 'cinder-stacked-list-item--has-status',
+    isLines &&
+      !description &&
+      !meta &&
+      error === undefined &&
+      'cinder-stacked-list-item--no-line-two',
     isBand && 'cinder-stacked-list-item--band',
     error !== undefined && 'cinder-stacked-list-item--failed',
     details !== undefined && 'cinder-stacked-list-item--group',
