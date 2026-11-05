@@ -12,7 +12,7 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildMcpAppPage } from '../src/host/mcp-app-build.ts';
 import { buildApplication } from './build.ts';
@@ -25,6 +25,16 @@ export type ReleaseManifest = {
   readonly version: string;
   readonly sourceSha: string;
   readonly target: 'darwin-arm64';
+};
+type ReleaseCommand = (arguments_: string[], cwd?: string) => Promise<void>;
+export type ReleaseOperations = {
+  readonly runCommand?: ReleaseCommand;
+  readonly buildApplication?: typeof buildApplication;
+  readonly buildMcpAppPage?: typeof buildMcpAppPage;
+  readonly platform?: NodeJS.Platform;
+  readonly architecture?: string;
+  readonly now?: () => number;
+  readonly sleep?: (milliseconds: number) => Promise<void>;
 };
 
 export function parseReleaseArguments(argv: readonly string[]): ReleaseArguments {
@@ -89,18 +99,19 @@ async function stage(
   await mkdir(destination, { recursive: true });
   await cp(source, destination, {
     recursive: true,
-    filter: (path) =>
-      !path.includes(`${sep}node_modules${sep}`) &&
-      !path.endsWith(`${sep}node_modules`) &&
-      !path
-        .split(sep)
-        .some((part) =>
+    filter: (path) => {
+      const parts = relative(source, path).split(sep);
+      return (
+        !parts.includes('node_modules') &&
+        !parts.some((part) =>
           new Set(['test', 'tests', '__tests__', 'fixtures', '.turbo', '.types', 'coverage']).has(
             part,
           ),
         ) &&
-      !path.includes('.test.') &&
-      !path.includes(`${sep}.types${sep}`),
+        !path.includes('.test.') &&
+        !path.includes(`${sep}.types${sep}`)
+      );
+    },
   });
   const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8')) as {
     dependencies?: Record<string, string>;
@@ -111,14 +122,15 @@ async function stage(
 
 async function verifyFrozenInstall(
   sourceSha: string,
+  command: ReleaseCommand = runCommand,
 ): Promise<{ root: string; source: string; dependencies: string }> {
   const root = await mkdtemp(join('/tmp', 'interborough-release-source-'));
   const source = join(root, 'source');
   await mkdir(source, { recursive: true });
   const archive = join(root, 'source.tar');
-  await runCommand(['git', 'archive', sourceSha, '-o', archive]);
-  await runCommand(['tar', '-xf', archive, '-C', source]);
-  await runCommand(
+  await command(['git', 'archive', sourceSha, '-o', archive]);
+  await command(['tar', '-xf', archive, '-C', source]);
+  await command(
     [
       process.execPath,
       'install',
@@ -140,7 +152,11 @@ async function verifyFrozenInstall(
   };
 }
 
-async function bundleSdk(runtime: string, source: string): Promise<void> {
+async function bundleSdk(
+  runtime: string,
+  source: string,
+  command: ReleaseCommand = runCommand,
+): Promise<void> {
   const sdk = join(runtime, SDK);
   const manifest = JSON.parse(await readFile(join(sdk, 'package.json'), 'utf8')) as Record<
     string,
@@ -155,7 +171,7 @@ async function bundleSdk(runtime: string, source: string): Promise<void> {
       throw new Error(`The SDK export ${specifier} is not a runtime TypeScript entry`);
     const output = `./${target.slice('./src/'.length, -'.ts'.length)}.js`;
     await mkdir(join(sdk, output.slice(2, output.lastIndexOf('/')) || '.'), { recursive: true });
-    await runCommand(
+    await command(
       [
         process.execPath,
         'build',
@@ -177,7 +193,11 @@ async function bundleSdk(runtime: string, source: string): Promise<void> {
   );
 }
 
-async function verifyRelocatedHost(root: string): Promise<void> {
+async function verifyRelocatedHost(
+  root: string,
+  now: () => number = Date.now,
+  sleep: (milliseconds: number) => Promise<void> = Bun.sleep,
+): Promise<void> {
   const home = await mkdtemp(join('/tmp', 'interborough-release-home-'));
   await writeFile(join(home, 'deployment-id'), '01ARZ3NDEKTSV4RRFFQ69G5FAV\n');
   const plugin = join(home, 'plugins', 'runtime-proof');
@@ -207,14 +227,14 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
   const stdout = new Response(childProcess.stdout).text();
   const stderr = new Response(childProcess.stderr).text();
   try {
-    const deadline = Date.now() + 20_000;
+    const deadline = now() + 20_000;
     const link = join(home, 'plugins', 'node_modules');
     while (Date.now() < deadline) {
       try {
         await lstat(link);
         break;
       } catch {
-        await Bun.sleep(100);
+        await sleep(100);
       }
     }
     try {
@@ -261,7 +281,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       } catch {
         // The supervisor may not have bound its port yet.
       }
-      await Bun.sleep(100);
+      await sleep(100);
     }
     if (listing === undefined || Reflect.get(listing, 'status') !== 'running')
       throw new Error(`Relocated SDK plugin did not run: ${JSON.stringify(snapshot)}`);
@@ -302,10 +322,12 @@ async function assertContained(root: string): Promise<void> {
   }
 }
 
-async function compile(output: string, version: string): Promise<void> {
-  if (process.platform !== 'darwin' || process.arch !== 'arm64')
-    throw new Error('macOS arm64 is required to build this release');
-  await runCommand(
+async function compile(
+  output: string,
+  version: string,
+  command: ReleaseCommand = runCommand,
+): Promise<void> {
+  await command(
     [
       process.execPath,
       'build',
@@ -321,14 +343,20 @@ async function compile(output: string, version: string): Promise<void> {
     ],
     PACKAGE_DIRECTORY,
   );
-  await runCommand(['codesign', '--force', '--sign', '-', output]);
-  await runCommand(['codesign', '--verify', '--verbose=2', output]);
+  await command(['codesign', '--force', '--sign', '-', output]);
+  await command(['codesign', '--verify', '--verbose=2', output]);
 }
 
 export async function buildRelease(
   argv: readonly string[] = process.argv.slice(2),
+  operations: ReleaseOperations = {},
 ): Promise<string> {
   const options = parseReleaseArguments(argv);
+  if (
+    (operations.platform ?? process.platform) !== 'darwin' ||
+    (operations.architecture ?? process.arch) !== 'arm64'
+  )
+    throw new Error('macOS arm64 is required to build this release');
   const status = await new Response(
     Bun.spawn(['git', 'status', '--porcelain'], { cwd: REPOSITORY_ROOT, stdout: 'pipe' }).stdout,
   ).text();
@@ -339,7 +367,6 @@ export async function buildRelease(
   });
   const revisionText = await new Response(revisionProcess.stdout).text();
   const sourceSha = revisionText.trim();
-  const productionInstall = await verifyFrozenInstall(sourceSha);
   await mkdir(options.outdir, { recursive: true });
   const targetRoot = join(options.outdir, 'interborough');
   const archive = join(options.outdir, `interborough-${options.version}-darwin-arm64.tar.gz`);
@@ -348,17 +375,21 @@ export async function buildRelease(
     (await Bun.file(archive).exists())
   )
     throw new Error(`Release output already exists: ${options.outdir}`);
+  const command = operations.runCommand ?? runCommand;
+  const productionInstall = await verifyFrozenInstall(sourceSha, command);
   const staging = await mkdtemp(join(options.outdir, '.interborough-staging-'));
   const root = join(staging, 'interborough');
   try {
     await mkdir(join(root, 'bin'), { recursive: true });
     await mkdir(join(root, 'share', 'interborough'), { recursive: true });
-    await compile(join(root, 'bin', 'interborough'), options.version);
-    await buildApplication({ outdir: join(root, 'share', 'interborough', 'browser') });
+    await compile(join(root, 'bin', 'interborough'), options.version, command);
+    await (operations.buildApplication ?? buildApplication)({
+      outdir: join(root, 'share', 'interborough', 'browser'),
+    });
     const mcpApps = join(root, 'share', 'interborough', 'mcp-apps');
     await mkdir(mcpApps, { recursive: true });
     for (const app of [runInspector, pendingReview]) {
-      const page = await buildMcpAppPage({
+      const page = await (operations.buildMcpAppPage ?? buildMcpAppPage)({
         entry: app.entry.href,
         title: app.title,
         styles: app.styles ?? '',
@@ -368,16 +399,16 @@ export async function buildRelease(
     const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
     await mkdir(runtime, { recursive: true });
     await stage(SDK, runtime, new Set(), productionInstall.dependencies);
-    await bundleSdk(runtime, productionInstall.source);
+    await bundleSdk(runtime, productionInstall.source, command);
     await assertContained(join(root, 'share', 'interborough', 'plugin-runtime'));
-    await verifyRelocatedHost(root);
+    await verifyRelocatedHost(root, operations.now, operations.sleep);
     const manifest: ReleaseManifest = {
       version: options.version,
       sourceSha,
       target: 'darwin-arm64',
     };
     await writeFile(join(root, 'release.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    await runCommand(['tar', '-czf', archive, '-C', staging, 'interborough']);
+    await command(['tar', '-czf', archive, '-C', staging, 'interborough']);
     await rename(root, targetRoot);
   } finally {
     await rm(staging, { recursive: true, force: true });
@@ -386,10 +417,15 @@ export async function buildRelease(
   return archive;
 }
 
-if (import.meta.main)
-  buildRelease()
-    .then(console.info)
-    .catch((error) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
-    });
+/** The command-line boundary, matching the browser build script's injectable command runner. */
+export async function runReleaseCommand(
+  log: (line: string) => void = console.info,
+  runRelease: typeof buildRelease = buildRelease,
+  argv: readonly string[] = process.argv.slice(2),
+): Promise<string> {
+  const archive = await runRelease(argv);
+  log(archive);
+  return archive;
+}
+
+if (import.meta.main) await runReleaseCommand();
