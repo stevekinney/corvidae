@@ -19,14 +19,16 @@ function fakeBungalow(mode: 'local' | 'remote', secrets = new Map<string, string
   const writes: string[] = [];
   const bungalow = {
     mode,
-    readSecret: (key: string) => secrets.get(key),
-    writeSecret: (key: string, value: string) => {
-      if (mode === 'remote') throw new Error('A remote Bungalow cannot write a secret.');
-      writes.push(key);
-      secrets.set(key, value);
+    deploymentSecrets: {
+      read: async (key: string) => secrets.get(key),
+      write: async (key: string, value: string) => {
+        if (mode === 'remote') throw new Error('A remote Bungalow cannot write a secret.');
+        writes.push(key);
+        secrets.set(key, value);
+      },
+      location: (key: string) =>
+        mode === 'remote' ? `INTERBOROUGH_SECRET_${key.toUpperCase().replaceAll('-', '_')}` : key,
     },
-    secretLocation: (key: string) =>
-      mode === 'remote' ? `INTERBOROUGH_SECRET_${key.toUpperCase().replaceAll('-', '_')}` : key,
   } as unknown as Bungalow;
   return { bungalow, secrets, writes };
 }
@@ -84,4 +86,18 @@ describe('answerEncryptionKeys', () => {
 
     expect(await keys.retired?.(named)).toBeUndefined();
   });
+});
+
+test('a failed deployment-key read never creates a replacement key', async () => {
+  const { bungalow, writes } = fakeBungalow('local');
+  bungalow.deploymentSecrets.read = async () => {
+    throw new Error('deployment input unavailable');
+  };
+  expect(
+    await answerEncryptionKeys(bungalow).then(
+      () => undefined,
+      (error: unknown) => error,
+    ),
+  ).toMatchObject({ message: expect.stringContaining('deployment input unavailable') });
+  expect(writes).toEqual([]);
 });

@@ -51,6 +51,9 @@ describe('the backend report', () => {
     'postgresql://app-user:s3cret-p%40ss@db.example.com:5432/interborough?sslmode=require&password=s3cret-p%40ss';
   const home = {
     mode: 'remote' as const,
+    workspaceId: 'locations-fixture',
+    configurationWriteCapability: 'read-only' as const,
+    secretProvider: { capabilities: { read: true, prepare: false, transitions: false } } as any,
     database: { kind: 'postgres' as const, url: URL_WITH_CREDENTIALS },
     configurationLocation: 's3://state/prod/configuration.json',
     secretLocation: (key: string) =>
@@ -73,7 +76,9 @@ describe('the backend report', () => {
       workflowDirectory: 's3://state/prod/workflows/',
       configurationFile: 's3://state/prod/configuration.json',
       locked: { configuration: 'deployment', providerKeys: 'deployment' },
-      providers: [{ name: 'anthropic', secretFile: 'INTERBOROUGH_SECRET_ANTHROPIC_API_KEY' }],
+      providers: [
+        { name: 'anthropic', secretFile: 'workspace:locations-fixture/anthropic-api-key' },
+      ],
     });
     const text = JSON.stringify(report);
     for (const secret of ['app-user', 's3cret', 'p%40ss', 'sslmode']) {
@@ -87,6 +92,9 @@ describe('the backend report', () => {
         {
           ...home,
           mode: 'local',
+          workspaceId: 'locations-fixture',
+          configurationWriteCapability: 'writable' as const,
+          secretProvider: { capabilities: { read: true, prepare: true, transitions: true } } as any,
           database: { kind: 'sqlite', path: '/home/database.sqlite' },
           configurationLocation: '/home/configuration.json',
         },

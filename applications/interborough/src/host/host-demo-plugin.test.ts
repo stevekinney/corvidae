@@ -393,7 +393,10 @@ describe('the demo schedule and goal', () => {
       environment: { INTERBOROUGH_HOME: home },
     });
     try {
-      bungalow.writeSecret('anthropic-api-key', 'fixture-anthropic-key-duplicate-31cc');
+      await bungalow.deploymentSecrets.write(
+        'anthropic-api-key',
+        'fixture-anthropic-key-duplicate-31cc',
+      );
     } finally {
       bungalow.close();
     }

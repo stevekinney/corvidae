@@ -4,6 +4,7 @@
 import { generateEncryptionKey } from '@lostgradient/cryptography';
 import { describe, expect, test } from 'bun:test';
 
+import { activeFixtureSecret, memoryHome } from './tool-source-memory-home.test-support.ts';
 import {
   createToolSourceVault,
   toolSourceSecretKey,
@@ -12,15 +13,7 @@ import {
 } from './tool-source-vault.ts';
 
 function memory(mode: 'local' | 'remote' = 'local') {
-  const secrets = new Map<string, string>();
-  return {
-    secrets,
-    bungalow: {
-      mode,
-      readSecret: (key: string) => secrets.get(key),
-      writeSecret: (key: string, value: string) => void secrets.set(key, value),
-    },
-  };
+  return memoryHome(mode);
 }
 
 async function vaultOver(home = memory()) {
@@ -46,12 +39,12 @@ describe('the tool-source vault', () => {
       },
     });
 
-    const stored = home.secrets.get(toolSourceSecretKey('files')) ?? '';
+    const stored = activeFixtureSecret(home, toolSourceSecretKey('files')).value;
     for (const plaintext of ['plain-token-value', 'plain-access', 'plain-verifier', 'Bearer']) {
       expect(stored).not.toContain(plaintext);
     }
     // Only the names are in the clear.
-    expect(vault.credentialNames('files')).toEqual(['token']);
+    expect(await vault.credentialNames('files')).toEqual(['token']);
     const read = await vault.read('files');
     expect(read.credentials.get('token')).toBe('plain-token-value');
     expect(read.oauth?.codeVerifier).toBe('plain-verifier');
@@ -60,10 +53,10 @@ describe('the tool-source vault', () => {
   test('refuses a secret copied from another source, and one sealed under a key that is gone', async () => {
     const { home, vault } = await vaultOver();
     await vault.write('files', { credentials: new Map([['token', 'v']]), oauth: undefined });
-    home.secrets.set(
-      toolSourceSecretKey('other'),
-      home.secrets.get(toolSourceSecretKey('files')) ?? '',
-    );
+    await vault.write('other', { credentials: new Map([['token', 'other']]), oauth: undefined });
+    const original = activeFixtureSecret(home, toolSourceSecretKey('files'));
+    const target = activeFixtureSecret(home, toolSourceSecretKey('other'));
+    home.state.versions.set(target.reference.version, original.value);
 
     const copied = await vault.read('other').catch((error: unknown) => error);
     const elsewhere = createToolSourceVault({
@@ -86,11 +79,10 @@ describe('the tool-source vault', () => {
       ]),
       oauth: undefined,
     });
-    const record = JSON.parse(home.secrets.get(toolSourceSecretKey('files')) ?? '{}') as {
-      credentials: Record<string, unknown>;
-    };
+    const active = activeFixtureSecret(home, toolSourceSecretKey('files'));
+    const record = JSON.parse(active.value) as { credentials: Record<string, unknown> };
     record.credentials['second'] = record.credentials['first'];
-    home.secrets.set(toolSourceSecretKey('files'), JSON.stringify(record));
+    home.state.versions.set(active.reference.version, JSON.stringify(record));
 
     const failure = await vault.read('files').catch((error: unknown) => error);
 
@@ -125,7 +117,7 @@ describe('the tool-source vault', () => {
       await vault.beginSignIn('files', { startedAt: 42, revision: 'revision-for-first' }),
     ).toBe(true);
 
-    const stored = home.secrets.get(toolSourceSecretKey('files')) ?? '';
+    const stored = activeFixtureSecret(home, toolSourceSecretKey('files')).value;
     expect(stored).not.toContain('revision-for-first');
     expect(await signInOf(vault)).toEqual({ startedAt: 42, revision: 'revision-for-first' });
     // Saving tokens leaves the sign-in alone; a new state is a different sign-in.
@@ -161,13 +153,15 @@ describe('the tool-source vault', () => {
     const { vault } = await vaultOver();
     const empty = await vault.read('files');
     expect(empty.credentials.size).toBe(0);
-    expect(vault.credentialNames('files')).toEqual([]);
+    expect(await vault.credentialNames('files')).toEqual([]);
 
     await vault.write('files', { credentials: new Map([['token', 'v']]), oauth: undefined });
-    vault.clear('files');
+    await vault.clear('files');
 
-    expect(vault.credentialNames('files')).toEqual([]);
-    expect(vault.stored('files')).toBeUndefined();
+    expect(await vault.credentialNames('files')).toEqual([]);
+    const cleared = await vault.read('files');
+    expect(cleared.credentials.size).toBe(0);
+    expect(cleared.oauth).toBeUndefined();
   });
 
   test('refuses to write in a remote home, where the deployment holds the secrets', async () => {
@@ -178,6 +172,11 @@ describe('the tool-source vault', () => {
       .catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(ToolSourceSecretsLockedError);
-    expect(() => vault.clear('files')).toThrow(ToolSourceSecretsLockedError);
+    expect(
+      await vault.clear('files').then(
+        () => undefined,
+        (error: unknown) => error,
+      ),
+    ).toBeInstanceOf(ToolSourceSecretsLockedError);
   });
 });

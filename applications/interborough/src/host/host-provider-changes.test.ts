@@ -1,4 +1,4 @@
-import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
+import { initializeWorkspaceHome, storedWorkspaceSecret } from './workspace-home.test-support.ts';
 /**
  * COR-1901: a local host writes the provider configuration and a provider's key, and reloads the
  * catalog without a restart. The provider path runs against a fake client, and every key is a
@@ -55,7 +55,7 @@ async function storeKey(directory: string, name: string, key: string): Promise<v
     environment: { INTERBOROUGH_HOME: directory },
   });
   try {
-    bungalow.writeSecret(name, key);
+    await bungalow.deploymentSecrets.write(name, key);
   } finally {
     bungalow.close();
   }
@@ -144,11 +144,12 @@ describe('connecting a provider', () => {
     expect(pairsOf(host)).toEqual(['anthropic/claude-sonnet-5']);
     expect(change.catalogRevision).toBe(before + 1);
     expect(change.providers).toEqual([{ name: 'anthropic', models: ['claude-sonnet-5'] }]);
-    const secret = join(directory, 'secrets', 'anthropic-api-key');
-    expect(statSync(secret).mode & 0o777).toBe(0o600);
-    expect(await readFile(secret, 'utf8')).toBe(KEY_A);
+    const secret = await storedWorkspaceSecret(directory, 'anthropic-api-key');
+    expect(statSync(secret.path).mode & 0o777).toBe(0o600);
+    expect(secret.value).toBe(KEY_A);
     expect(JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'))).toEqual({
       plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
+      secretBindings: { 'anthropic-api-key': expect.any(String) },
     });
     expect(statSync(join(directory, 'configuration.json')).mode & 0o777).toBe(0o600);
     expect(host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toBeFunction();
@@ -177,9 +178,14 @@ describe('connecting a provider', () => {
     expect(written).toEqual({
       note: 'mine',
       plugins: { anthropic: { enabled: true, configuration: { models: ['sonnet'] } } },
+      secretBindings: {
+        'anthropic-api-key': expect.any(String),
+        'openai-api-key': expect.any(String),
+      },
     });
     expect(Object.hasOwn(written, 'providers')).toBe(false);
-    expect(await readFile(join(directory, 'secrets', 'anthropic-api-key'), 'utf8')).toBe(KEY_B);
+    const active = await storedWorkspaceSecret(directory, 'anthropic-api-key');
+    expect(active.value).toBe(KEY_B);
     expect(pairsOf(host)).toContain('anthropic/claude-sonnet-5');
     expect(pairsOf(host).some((pair) => pair.startsWith('openai/'))).toBe(true);
 
@@ -198,6 +204,7 @@ describe('connecting a provider', () => {
 
     expect(JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'))).toEqual({
       plugins: { anthropic: { configuration: { models: ['sonnet'] } } },
+      secretBindings: { 'anthropic-api-key': expect.any(String) },
     });
   });
 
@@ -801,10 +808,15 @@ describe('disconnecting a provider', () => {
     expect(pairsOf(host).some((pair) => pair.startsWith('anthropic/'))).toBe(false);
     expect(pairsOf(host).some((pair) => pair.startsWith('openai/'))).toBe(true);
     expect(() => host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toThrow();
-    expect(await readFile(join(directory, 'secrets', 'anthropic-api-key'), 'utf8')).toBe('');
+    const cleared = await storedWorkspaceSecret(directory, 'anthropic-api-key');
+    expect(cleared.value).toBe('');
     expect(await readFile(join(directory, 'secrets', 'openai-api-key'), 'utf8')).toBe(KEY_B);
     // The allowlist and the catalog edit wait for a later connect.
-    expect(await readFile(join(directory, 'configuration.json'), 'utf8')).toBe(configuration);
+    const after = JSON.parse(await readFile(join(directory, 'configuration.json'), 'utf8'));
+    expect(after).toEqual({
+      ...JSON.parse(configuration),
+      secretBindings: { 'anthropic-api-key': expect.any(String) },
+    });
     const snapshot = await host.providers.snapshot();
     expect(snapshot.providers.find((entry) => entry.name === 'anthropic')).toMatchObject({
       hasKey: false,

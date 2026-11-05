@@ -245,6 +245,7 @@ describe('skills in configuration.json', () => {
     await writeSkill(pluginSkills, 'plugged');
     const bungalow = {
       mode: 'local' as const,
+      configurationWriteCapability: 'writable' as const,
       configurationLocation: join(home, 'configuration.json'),
       readConfiguration: async () => ({
         revision: 'initial',

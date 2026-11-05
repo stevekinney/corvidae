@@ -55,7 +55,8 @@ async function prepareHome(setup: Setup): Promise<string> {
       environment: { INTERBOROUGH_HOME: home },
     });
     try {
-      for (const [key, value] of Object.entries(setup.secrets)) bungalow.writeSecret(key, value);
+      for (const [key, value] of Object.entries(setup.secrets))
+        await bungalow.deploymentSecrets.write(key, value);
     } finally {
       bungalow.close();
     }
