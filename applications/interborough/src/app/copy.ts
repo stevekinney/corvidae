@@ -4725,12 +4725,37 @@ const UNCHECKED_WRITE_NOTE =
 export const STORAGE_COPY = {
   title: 'Storage',
   description: 'The keys this installation stores, and the value of each.',
-  /** The accessible name of the group and search controls. */
+  /** The accessible name of the controls that narrow the table. */
   filtersLabel: 'Find a key',
   groupLabel: 'Group',
   allGroups: 'All groups',
-  searchLabel: 'Search keys',
-  searchPlaceholder: 'Search keys',
+  /** The accessible name of the segmented control that picks how keys are narrowed. */
+  modeLabel: 'Search mode',
+  modeStartsWith: 'Starts with',
+  modeRange: 'Range',
+  searchLabel: 'Keys starting with',
+  searchPlaceholder: 'Keys starting with',
+  /** The accessible name of the two fields of a range, and of each. */
+  range: {
+    label: 'Range',
+    startLabel: 'Range start',
+    endLabel: 'Range end',
+    startPlaceholder: 'First key',
+    endPlaceholder: 'Last key',
+    /** The word between the two fields. */
+    to: 'to',
+    /** What a range whose last key sorts before its first says, under the fields. */
+    reversed: 'The end comes before the start. Swap them, or pick a later end.',
+    /** The note under a reversed range: the table still shows the last range that was a range. */
+    lastResult: (count: number, start: string, end: string): string => {
+      const keys = `${String(count)} ${count === 1 ? 'key' : 'keys'}`;
+      if (start !== '' && end !== '')
+        return `Showing the last result: ${keys} from ${start} to ${end}.`;
+      if (start !== '') return `Showing the last result: ${keys} from ${start}.`;
+      if (end !== '') return `Showing the last result: ${keys} up to ${end}.`;
+      return `Showing the last result: ${keys}.`;
+    },
+  },
   /** The accessible name of the table of keys. */
   tableLabel: 'Keys',
   columns: {
@@ -4744,10 +4769,18 @@ export const STORAGE_COPY = {
   noGroup: 'None',
   /** The Updated column of a key whose backend records no write time. */
   noUpdated: '—',
-  /** How many keys are loaded, as a sentence. */
-  count: (count: number, more: boolean): string =>
-    `${String(count)} ${count === 1 ? 'key' : 'keys'}${more ? ' so far' : ''}`,
-  loadMore: 'Load more',
+  /**
+   * The table's footer: how many keys are loaded, of how many there are when storage can count them
+   * (it cannot for a range), and what loads the rest.
+   */
+  footer: (loaded: number, total: number | undefined, more: boolean): string => {
+    const count = (value: number): string => value.toLocaleString('en-US');
+    const keys =
+      total === undefined
+        ? `Showing ${count(loaded)} ${loaded === 1 ? 'key' : 'keys'}.`
+        : `Showing ${count(loaded)} of ${count(Math.max(total, loaded))} ${total === 1 ? 'key' : 'keys'}.`;
+    return more ? `${keys} Scroll to load more.` : keys;
+  },
   loadingLabel: 'Loading keys',
   empty: {
     title: 'No keys stored yet',
@@ -4755,14 +4788,13 @@ export const STORAGE_COPY = {
   },
   noMatches: {
     title: 'No keys match',
-    description: 'Nothing here contains this text. Choose another group or clear the search.',
+    description: 'No key starts with this text. Choose another group or clear the search.',
     clear: 'Clear filters',
   },
-  /** A search that has read keys and found none yet, with more to read. */
-  keepSearching: {
-    title: 'No match among the keys read so far',
-    description: (scanned: number): string =>
-      `${String(scanned)} ${scanned === 1 ? 'key was' : 'keys were'} read and none contains this text. Load more to keep looking.`,
+  /** A range in which no key falls. */
+  noKeysInRange: {
+    title: 'No keys in this range',
+    description: 'Nothing is stored between these two keys. Change either end.',
   },
   failed: {
     title: 'The keys could not be read',
@@ -4774,9 +4806,11 @@ export const STORAGE_COPY = {
     label: 'Selected key',
     emptyTitle: 'Choose a key',
     emptyDescription: 'Pick a key from the table to see its value.',
-    group: 'Group',
-    size: 'Size',
-    key: 'Key',
+    /** The line over the key: its group, size and when it was written. */
+    summary: (group: string, size: string, updated: string | null): string =>
+      updated === null ? `${group} · ${size}` : `${group} · ${size} · updated ${updated}`,
+    /** How long a very long key is, said after it. */
+    characters: (count: number): string => `(${count.toLocaleString('en-US')} characters)`,
     copyKey: 'Copy key',
     copyValue: 'Copy value',
     edit: 'Edit',
@@ -4786,12 +4820,17 @@ export const STORAGE_COPY = {
     jsonSwitch: 'JSON',
     valueLabel: 'Value',
     editLabel: 'Edit the value',
-    /** Why a key has no Edit or Delete. */
+    /** The lock line of a managed key, around its prefix, which the pane sets in monospace. */
+    locked: {
+      before: 'Locked: Interborough manages keys that start with ',
+      after: ' and needs them to recover runs.',
+    },
+    /** Why a key has no Edit or Delete, in one string: what a refused write says. */
     managedNote: (prefix: string): string =>
-      `The application manages keys that start with ${prefix}, so this one cannot be edited or deleted here.`,
+      `Locked: Interborough manages keys that start with ${prefix} and needs them to recover runs.`,
     /** Why no key has Edit or Delete while the managed prefixes are not known. */
     unknownManaged:
-      'The application could not say which keys it manages, so no key can be edited or deleted here.',
+      'Locked: Interborough could not say which keys it manages, so no key can be edited or deleted here.',
     binaryNote: 'This value is not text, so it cannot be edited here.',
     notJson: 'The value was JSON and this is not, so it cannot be saved.',
     saveFailed: 'The value was not saved.',

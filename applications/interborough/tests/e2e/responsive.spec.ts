@@ -348,20 +348,11 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
       ).toBeVisible();
     }
   },
-  // The table lists keys in order, a page at a time, and a search reads a bounded number of keys
-  // before it offers Load more, so search for the long key's start, load on until it is listed, and
-  // open it: the table cuts it short with an ellipsis, and the pane beside it holds the whole key.
+  // "Starts with" is a prefix read, so the long key is listed as soon as its start is typed. The
+  // table cuts it short with an ellipsis, and the pane beside it holds the whole key.
   '/health/storage': async (page) => {
-    const search = page.getByLabel(STORAGE_COPY.searchLabel);
-    await search.fill('responsive-');
-    await search.press('Enter');
-    const key = page.locator('.ib-storage__key', { hasText: LONG_STORAGE_KEY });
-    const more = page.getByRole('button', { name: STORAGE_COPY.loadMore });
-    for (let pages = 0; pages < 20; pages += 1) {
-      await expect(key.or(more).first()).toBeVisible();
-      if ((await key.count()) > 0) break;
-      await more.click();
-    }
+    await page.getByLabel(STORAGE_COPY.searchLabel).fill('responsive-');
+    const key = page.locator(`tr[data-cinder-row-id="${LONG_STORAGE_KEY}"]`);
     await expect(key).toBeVisible();
     await key.click();
     await expect(page.getByTestId('storage-key-name')).toContainText(LONG_STORAGE_KEY);

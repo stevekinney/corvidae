@@ -35,6 +35,7 @@
   import NeedsAttention from './needs-attention.svelte';
   import RecentActivity from './recent-activity.svelte';
   import { loadRecentActivity } from './recent-activity-data.ts';
+  import { latestStorageBytes } from '../storage/storage-size.ts';
   import { useStorageSizes } from './storage-sizes.svelte.ts';
 
   /** How long a first read is let to finish before anything is drawn for it (the loading rule). */
@@ -151,8 +152,11 @@
     attention.data?.items.find((item) => item.kind === 'alert' && item.metric === 'storage.size'),
   );
   const storageBytes = $derived(
-    sizes.samples().at(-1)?.bytes ??
-      (storageAlert?.kind === 'alert' ? storageAlert.currentValue : undefined),
+    latestStorageBytes({
+      samples: sizes.samples(),
+      alertBytes: storageAlert?.kind === 'alert' ? storageAlert.currentValue : undefined,
+      hostBytes: undefined,
+    }),
   );
 
   const started = $derived.by(() => {

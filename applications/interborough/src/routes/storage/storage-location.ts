@@ -25,3 +25,14 @@ export function runningOnLine(paths: HostPaths | undefined): string {
     ? copy.runningOn(copy.sqlite, abbreviateHome(directoryOf(paths.database.path)))
     : copy.runningOn(copy.postgres, paths.database.location);
 }
+
+/** The backend's name and where it keeps its state, for the facts "Storage details" lists. */
+export function storageFacts(paths: HostPaths | undefined): {
+  readonly backend: string;
+  readonly location: string | undefined;
+} {
+  if (paths === undefined) return { backend: copy.unknownBackend, location: undefined };
+  return paths.database.kind === 'sqlite'
+    ? { backend: copy.sqlite, location: abbreviateHome(directoryOf(paths.database.path)) }
+    : { backend: copy.postgres, location: paths.database.location };
+}

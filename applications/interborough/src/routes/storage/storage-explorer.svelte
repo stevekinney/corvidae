@@ -1,43 +1,58 @@
 <script lang="ts">
   /**
-   * The key explorer: a full-width table of keys (Key, Group, Size) with the selected key beside it.
-   * The Group select narrows the table to one group of keys, with the groups storage holds read by
-   * skipping (`prefix-discovery.ts`), and the search field narrows it to keys that contain the text.
-   * Storage is read in key order and a page at a time, so Load more continues from the last key read
-   * (`key-listing.ts`).
+   * The key explorer: a table of keys (Key, Group, Size, Updated) with the selected key beside it.
+   * One row of controls narrows the table: a Group select (the groups storage holds, named in plain
+   * words, found by skipping through the key order, `prefix-discovery.ts`), a Starts with / Range
+   * switch, and either a field for the text a key starts with or two fields for a first and a last
+   * key. Both narrow by key order, so the server does the work (`key-listing.ts`). A range applies as
+   * it is typed; one whose end sorts before its start says so under the fields and leaves the table
+   * on the last range that was one, with a note saying which.
    *
-   * A key under a prefix the application manages carries a lock, and its pane offers no Edit or
-   * Delete (`key-detail.svelte`). The scan carries each key's write time (`updatedAt`, null for a
-   * backend that records none), which the Updated column words absolutely, in Central time
-   * ("Today, 10:44 AM"). Storage keeps no count per group, so the select lists the groups without
-   * one. The table scrolls sideways inside its own bordered box when its columns do not fit, with a
-   * visible scrollbar and a fade at the end, so the page never scrolls sideways; the key's pane
-   * drops below it where the page is too narrow for both.
+   * Storage is read a page at a time, and the table loads the next page when its end scrolls into
+   * view. Its footer says how many keys are loaded and, where storage can count them, how many there
+   * are (the host counts a prefix, never a range).
+   *
+   * A key under a prefix the application manages is locked, which its pane says and where it offers no
+   * Edit or Delete (`key-detail.svelte`). The scan carries each key's write time (`updatedAt`, null for a backend
+   * that records none), which the Updated column words absolutely, in Central time ("Today, 10:44
+   * AM"). A UUID in a key is cut to its first eight characters in the table; the row's title and the
+   * pane hold the whole key. The table scrolls sideways inside its own bordered box when its columns
+   * do not fit, with a visible scrollbar and a fade at the end, so the page never scrolls sideways;
+   * the key's pane drops below it where the page is too narrow for both.
    */
   import {
     Alert,
     Button,
+    DataTable,
     EmptyState,
     formatDateTime,
     formatTimeZoneLabel,
+    Input,
     SearchField,
+    Segment,
+    SegmentedControl,
     Select,
     Skeleton,
-    Table,
   } from '@lostgradient/cinder';
-  import { Lock } from '@lucide/svelte';
+  import type { DataTableColumn } from '@lostgradient/cinder';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, STORAGE_COPY } from '../../app/copy.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { formatBytes } from '../../lib/format/index.ts';
-  import { getHostStorage } from '../../lib/host-storage.ts';
+  import { getHostStorage, getHostStorageSummary } from '../../lib/host-storage.ts';
   import { queryKeys } from '../../lib/query.ts';
   import KeyDetail from './key-detail.svelte';
-  import { scanKeyPage } from './key-listing.ts';
-  import { discoverPrefixes, keyGroup } from './prefix-discovery.ts';
+  import {
+    countedPrefix,
+    rangeProblem,
+    scanBounds,
+    scanKeyPage,
+    type KeyFilter,
+  } from './key-listing.ts';
+  import { discoverPrefixes } from './prefix-discovery.ts';
   import { storageQueryKeys } from './queries.ts';
-  import { isManagedKey } from './reserved-prefix.ts';
+  import { abbreviateKey, groupName, keyGroupName } from './storage-groups.ts';
   import type { StorageConnection } from './storage-client.ts';
 
   interface Props {
@@ -50,18 +65,56 @@
 
   const copy = STORAGE_COPY;
 
+  /** The widest the Group column grows before it ends a name with an ellipsis. */
+  const GROUP_COLUMN_WIDTH = 168;
+
+  /** The widest the Key column grows before it ends a key with an ellipsis, so Size and Updated stay in view. */
+  const KEY_COLUMN_WIDTH = 232;
+
+  type Mode = 'prefix' | 'range';
+
   let group = $state('');
-  let draft = $state('');
-  let search = $state('');
+  let mode = $state<Mode>('prefix');
+  let text = $state('');
+  let start = $state('');
+  let end = $state('');
   let selectedKey = $state<string | null>(null);
+
+  const filter = $derived<KeyFilter>(
+    mode === 'prefix' ? { mode, group, text } : { mode, group, start, end },
+  );
+  const problem = $derived(mode === 'range' ? rangeProblem(start, end) : undefined);
+
+  // What the table reads: the filter, until it stops being one. A range whose end sorts before its
+  // start is no range, so the table keeps the last filter that was one, and says so.
+  let applied = $state.raw<KeyFilter>({ mode: 'prefix', group: '', text: '' });
+  $effect(() => {
+    if (problem === undefined) applied = filter;
+  });
+
+  const bounds = $derived(scanBounds(applied));
+  const boundsKey = $derived(JSON.stringify(bounds ?? null));
+  const counted = $derived(countedPrefix(applied));
 
   const listing = createInfiniteQuery(
     () => ({
-      queryKey: storageQueryKeys.keys(group, search),
-      queryFn: ({ pageParam, signal }) =>
-        scanKeyPage(client, { prefix: group, search, after: pageParam, signal }),
+      queryKey: storageQueryKeys.keys(boundsKey),
+      queryFn: ({ pageParam, signal }) => scanKeyPage(client, { bounds, after: pageParam, signal }),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (last) => last.nextCursor,
+      retry: false,
+    }),
+    undefined,
+  );
+
+  // How many keys there are under the prefix being read. Only the footer depends on it: a read that
+  // fails leaves the footer saying how many are loaded, and the table is unaffected.
+  const summary = createQuery(
+    () => ({
+      queryKey: queryKeys.hostStorageSummary(counted ?? ''),
+      queryFn: ({ signal }) => getHostStorageSummary(counted ?? '', { signal }),
+      enabled: counted !== undefined,
+      staleTime: 30_000,
       retry: false,
     }),
     undefined,
@@ -99,30 +152,71 @@
       (entry) => entry.key,
     ),
   );
-  const scanned = $derived(pages.reduce((sum, page) => sum + page.scanned, 0));
   const selected = $derived(entries.find((entry) => entry.key === selectedKey));
-  const filtered = $derived(group !== '' || search !== '');
+  const filtered = $derived(group !== '' || text !== '' || start !== '' || end !== '');
   const zoneLabel = formatTimeZoneLabel(Date.now(), { style: 'long' });
 
   const groupOptions = $derived([
     { value: '', label: copy.allGroups },
-    ...(groups.data ?? []).map((prefix) => ({ value: prefix, label: prefix })),
+    ...(groups.data ?? []).map((prefix) => ({ value: prefix, label: groupName(prefix) })),
     // A group chosen before the list moved on stays selectable.
     ...(group !== '' && !(groups.data ?? []).includes(group)
-      ? [{ value: group, label: group }]
+      ? [{ value: group, label: groupName(group) }]
       : []),
+  ]);
+
+  type KeyRow = {
+    id: string;
+    key: string;
+    group: string;
+    size: string;
+    updated: string;
+  };
+
+  const rows = $derived<KeyRow[]>(
+    entries.map((entry) => ({
+      id: entry.key,
+      key: entry.key,
+      group: keyGroupName(entry.key, copy.noGroup),
+      size: formatBytes(entry.value.byteLength),
+      updated:
+        entry.updatedAt === null
+          ? copy.noUpdated
+          : formatDateTime(entry.updatedAt, { dayWords: 'today' }),
+    })),
+  );
+
+  const columns = $derived<DataTableColumn<KeyRow>[]>([
+    {
+      key: 'key',
+      label: copy.columns.key,
+      truncate: true,
+      monospace: true,
+      maxWidth: KEY_COLUMN_WIDTH,
+    },
+    { key: 'group', label: copy.columns.group, truncate: true, maxWidth: GROUP_COLUMN_WIDTH },
+    { key: 'size', label: copy.columns.size, align: 'end' },
+    { key: 'updated', label: copy.columns.updated(zoneLabel) },
   ]);
 
   function clearFilters(): void {
     group = '';
-    draft = '';
-    search = '';
+    text = '';
+    start = '';
+    end = '';
   }
 
-  /** Whether the application manages `key`, which is also what an unknown list of prefixes assumes. */
-  function managed(key: string): boolean {
-    return bureauPrefixes === undefined || isManagedKey(key, bureauPrefixes);
+  function loadMore(): void {
+    if (listing.hasNextPage && !listing.isFetchingNextPage && !listing.isFetchNextPageError) {
+      void listing.fetchNextPage();
+    }
   }
+
+  const lastResult = $derived(
+    problem !== undefined && applied.mode === 'range'
+      ? copy.range.lastResult(entries.length, applied.start, applied.end)
+      : undefined,
+  );
 </script>
 
 <div class="ib-storage" data-page="storage">
@@ -130,10 +224,7 @@
     class="ib-storage__filters"
     role="search"
     aria-label={copy.filtersLabel}
-    onsubmit={(event) => {
-      event.preventDefault();
-      search = draft.trim();
-    }}
+    onsubmit={(event) => event.preventDefault()}
   >
     <Select
       id="ib-storage-group"
@@ -147,17 +238,58 @@
         selectedKey = null;
       }}
     />
-    <SearchField
-      aria-label={copy.searchLabel}
-      placeholder={copy.searchPlaceholder}
-      bind:value={draft}
-      onSearch={(value) => (search = value.trim())}
-      onClear={() => {
-        draft = '';
-        search = '';
+    <SegmentedControl
+      id="ib-storage-mode"
+      label={copy.modeLabel}
+      labelVisible={false}
+      value={mode}
+      onValueChange={(next) => {
+        mode = next === 'range' ? 'range' : 'prefix';
       }}
-    />
+    >
+      <Segment value="prefix">{copy.modeStartsWith}</Segment>
+      <Segment value="range">{copy.modeRange}</Segment>
+    </SegmentedControl>
+    {#if mode === 'prefix'}
+      <SearchField
+        aria-label={copy.searchLabel}
+        placeholder={copy.searchPlaceholder}
+        class="ib-storage__search"
+        bind:value={text}
+        onClear={() => (text = '')}
+      />
+    {:else}
+      <div class="ib-storage__range" role="group" aria-label={copy.range.label}>
+        <div class="ib-storage__range-field">
+          <Input
+            id="ib-storage-range-start"
+            label={copy.range.startLabel}
+            labelVisible={false}
+            variant="code"
+            placeholder={copy.range.startPlaceholder}
+            bind:value={start}
+          />
+        </div>
+        <span class="ib-storage__to">{copy.range.to}</span>
+        <div class="ib-storage__range-field">
+          <Input
+            id="ib-storage-range-end"
+            label={copy.range.endLabel}
+            labelVisible={false}
+            variant="code"
+            placeholder={copy.range.endPlaceholder}
+            aria-invalid={problem === undefined ? undefined : 'true'}
+            aria-describedby={problem === undefined ? undefined : 'ib-storage-range-problem'}
+            bind:value={end}
+          />
+        </div>
+      </div>
+    {/if}
   </form>
+
+  {#if problem !== undefined}
+    <p class="ib-storage__problem" id="ib-storage-range-problem" role="alert">{problem}</p>
+  {/if}
 
   {#if listing.isError}
     <Alert variant="danger">
@@ -171,21 +303,13 @@
       <Skeleton height="12rem" />
     </div>
   {:else if entries.length === 0}
-    {#if listing.hasNextPage}
+    {#if applied.mode === 'range' && (applied.start !== '' || applied.end !== '')}
       <EmptyState
         kind="filtered"
         headingLevel={2}
-        title={copy.keepSearching.title}
-        description={copy.keepSearching.description(scanned)}
-      >
-        {#snippet action()}
-          <Button
-            variant="secondary"
-            loading={listing.isFetchingNextPage}
-            onclick={() => void listing.fetchNextPage()}>{copy.loadMore}</Button
-          >
-        {/snippet}
-      </EmptyState>
+        title={copy.noKeysInRange.title}
+        description={copy.noKeysInRange.description}
+      />
     {:else if filtered}
       <EmptyState
         kind="filtered"
@@ -206,70 +330,37 @@
   {:else}
     <div class="ib-storage__panes">
       <section class="ib-storage__keys" aria-label={copy.tableLabel}>
-        <p class="ib-storage__count" data-testid="storage-count">
-          {copy.count(entries.length, listing.hasNextPage)}
-        </p>
-        <Table caption={copy.tableLabel} density="condensed" class="ib-storage__table">
-          <Table.Header>
-            <Table.Row>
-              <Table.HeaderCell>{copy.columns.key}</Table.HeaderCell>
-              <Table.HeaderCell class="ib-storage__group-column">
-                {copy.columns.group}
-              </Table.HeaderCell>
-              <Table.HeaderCell align="right" class="ib-storage__size-column">
-                {copy.columns.size}
-              </Table.HeaderCell>
-              <Table.HeaderCell class="ib-storage__updated-column">
-                {copy.columns.updated(zoneLabel)}
-              </Table.HeaderCell>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {#each entries as entry (entry.key)}
-              <Table.Row
-                class="ib-storage__row"
-                data-selected={entry.key === selectedKey ? 'true' : undefined}
-                data-key-row
-              >
-                <Table.Cell class="ib-storage__key-cell">
-                  <button
-                    type="button"
-                    class="ib-storage__key"
-                    title={entry.key}
-                    aria-current={entry.key === selectedKey ? 'true' : undefined}
-                    onclick={() => (selectedKey = entry.key)}
-                  >
-                    {#if managed(entry.key)}
-                      <Lock aria-hidden="true" size={12} />
-                      <span class="ib-storage__sr">{copy.managedBadge}</span>
-                    {/if}
-                    <span class="ib-storage__key-text">{entry.key}</span>
-                  </button>
-                </Table.Cell>
-                <Table.Cell class="ib-storage__group-column">
-                  <span class="ib-storage__group">{keyGroup(entry.key) ?? copy.noGroup}</span>
-                </Table.Cell>
-                <Table.Cell align="right" class="ib-storage__size-column">
-                  {formatBytes(entry.value.byteLength)}
-                </Table.Cell>
-                <Table.Cell class="ib-storage__updated-column">
-                  {entry.updatedAt === null
-                    ? copy.noUpdated
-                    : formatDateTime(entry.updatedAt, { dayWords: 'today' })}
-                </Table.Cell>
-              </Table.Row>
-            {/each}
-          </Table.Body>
-        </Table>
-        {#if listing.hasNextPage}
-          <div class="ib-storage__more">
-            <Button
-              variant="secondary"
-              loading={listing.isFetchingNextPage}
-              onclick={() => void listing.fetchNextPage()}>{copy.loadMore}</Button
-            >
-          </div>
+        {#if lastResult !== undefined}
+          <p class="ib-storage__note" data-testid="storage-last-result">{lastResult}</p>
         {/if}
+        <DataTable
+          {columns}
+          {rows}
+          caption={copy.tableLabel}
+          density="condensed"
+          class="ib-storage__table"
+          getRowId={(row) => row.id}
+          openRowId={selectedKey}
+          onRowOpen={(row) => (selectedKey = row.key)}
+          onReachEnd={listing.hasNextPage ? loadMore : undefined}
+        >
+          {#snippet cell({ row, column, value })}
+            {#if column.key === 'key'}
+              {abbreviateKey(row.key)}
+            {:else}
+              {value}
+            {/if}
+          {/snippet}
+          {#snippet footer()}
+            <span class="ib-storage__footer" data-testid="storage-count">
+              {copy.footer(
+                entries.length,
+                counted === undefined ? undefined : summary.data?.keyCount,
+                listing.hasNextPage,
+              )}
+            </span>
+          {/snippet}
+        </DataTable>
       </section>
 
       <aside class="ib-storage__pane" aria-label={copy.detail.label}>
@@ -314,27 +405,54 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--cinder-space-3);
-    align-items: flex-end;
-  }
-
-  .ib-storage__filters > :global(*) {
-    flex: 1 1 14rem;
-    min-width: 0;
+    align-items: center;
   }
 
   .ib-storage__filters > :global(.ib-storage__group-select) {
-    flex: 0 1 16rem;
+    flex: 0 1 14rem;
+    min-width: 0;
   }
 
-  /* On a narrow page the group select takes the whole row, and the search the next. */
+  .ib-storage__filters > :global(.ib-storage__search) {
+    flex: 0 1 18rem;
+    min-width: 0;
+  }
+
+  .ib-storage__range {
+    display: flex;
+    flex: 1 1 20rem;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-width: 0;
+  }
+
+  .ib-storage__range-field {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+
+  .ib-storage__to {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* On a narrow page each control takes its own row. */
   @container (max-width: 39.99rem) {
-    .ib-storage__filters > :global(.ib-storage__group-select) {
+    .ib-storage__filters > :global(.ib-storage__group-select),
+    .ib-storage__filters > :global(.ib-storage__search),
+    .ib-storage__range {
       flex: 1 1 100%;
     }
   }
 
   :global(.ib-storage__group-select select) {
-    font-family: var(--cinder-font-mono);
+    font-family: var(--cinder-font-sans);
+  }
+
+  .ib-storage__problem {
+    margin: 0;
+    color: var(--cinder-danger-text);
+    font-size: var(--cinder-text-sm);
   }
 
   .ib-storage__alert-title {
@@ -358,7 +476,7 @@
 
   @container (min-width: 56rem) {
     .ib-storage__panes {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
     }
   }
 
@@ -369,91 +487,11 @@
     min-width: 0;
   }
 
-  .ib-storage__count {
+  .ib-storage__note,
+  .ib-storage__footer {
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
-  }
-
-  /* A fixed layout, so the key column takes the width the others leave and cuts a long key short
-   * with an ellipsis; the whole key is in the pane. The table is never narrower than its columns
-   * need, so a narrow page scrolls it inside its own box instead of squeezing the key. */
-  :global(.ib-storage__table) {
-    table-layout: fixed;
-    inline-size: 100%;
-    min-inline-size: 38rem;
-  }
-
-  :global(.ib-storage__group-column) {
-    inline-size: 9rem;
-  }
-
-  :global(.ib-storage__size-column) {
-    inline-size: 5.5rem;
-  }
-
-  :global(.ib-storage__updated-column) {
-    inline-size: 11.5rem;
-    white-space: nowrap;
-  }
-
-  :global(.ib-storage__key-cell) {
-    overflow: hidden;
-  }
-
-  :global(.ib-storage__row[data-selected='true']) {
-    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
-  }
-
-  .ib-storage__key {
-    display: flex;
-    align-items: center;
-    gap: var(--cinder-space-1);
-    inline-size: 100%;
-    min-inline-size: 0;
-    padding: 0;
-    color: var(--cinder-accent-text);
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    text-align: start;
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-  }
-
-  /* The lock keeps its size when a long key takes the rest of the row. */
-  .ib-storage__key :global(svg) {
-    flex: none;
-  }
-
-  .ib-storage__key-text {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .ib-storage__group {
-    display: block;
-    overflow: hidden;
-    font-family: var(--cinder-font-mono);
-    font-size: var(--cinder-text-sm);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .ib-storage__sr {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  .ib-storage__more {
-    display: flex;
-    justify-content: center;
   }
 
   .ib-storage__pane {

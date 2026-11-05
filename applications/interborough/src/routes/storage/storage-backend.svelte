@@ -2,39 +2,24 @@
   /**
    * The storage line under Health's heading, the same on every tab: which backend the installation
    * keeps its state in and where ("Running on SQLite in ~/.interborough"), then "Storage details"
-   * as a link-styled button that opens what the storage can do (`capabilities-panel.svelte`). The
-   * backend comes from the host (`/host/paths`); when the host cannot say, the line says only that
-   * this is storage. The line does not count keys: the count is in the popover and the table's
-   * footer. Reading what the storage can do needs `storage:admin`, so without it the line is plain
-   * text.
+   * as a link-styled button that opens the storage's five facts (`storage-details.svelte`), its
+   * chevron turned up while they are open. The backend comes from the host (`/host/paths`); when the
+   * host cannot say, the line says only that this is storage. The line does not count keys: the
+   * count is in the popover and the table's footer.
    */
   import { Button, Popover } from '@lostgradient/cinder';
-  import type { StorageCapabilities } from '@lostgradient/storage';
-  import { ChevronDown } from '@lucide/svelte';
+  import { ChevronDown, ChevronUp } from '@lucide/svelte';
 
   import type { HostPaths } from '../../lib/host-paths.ts';
   import { HEALTH_FRAME_COPY } from '../health/health-copy.ts';
-  import CapabilitiesPanel from './capabilities-panel.svelte';
+  import StorageDetails from './storage-details.svelte';
   import { runningOnLine } from './storage-location.ts';
 
   interface Props {
     paths: HostPaths | undefined;
-    capabilities: StorageCapabilities | undefined;
-    loading: boolean;
-    error: unknown;
-    /** Whether the caller may read what the storage can do; without it there is no popover. */
-    canInspect?: boolean;
-    onRetry?: (() => void) | undefined;
   }
 
-  let {
-    paths,
-    capabilities,
-    loading,
-    error,
-    canInspect = true,
-    onRetry = undefined,
-  }: Props = $props();
+  let { paths }: Props = $props();
 
   let open = $state(false);
   const line = $derived(runningOnLine(paths));
@@ -42,27 +27,28 @@
 
 <span class="ib-storage-backend" data-testid="storage-backend">
   <span class="ib-storage-backend__line">{line}</span>
-  {#if canInspect}
-    <span class="ib-storage-backend__details">
-      <span class="ib-storage-backend__separator" aria-hidden="true">·</span>
-      <Popover bind:open label={HEALTH_FRAME_COPY.popoverLabel} placement="bottom-start">
-        {#snippet trigger()}
-          {#snippet chevron()}<ChevronDown aria-hidden="true" size={12} />{/snippet}
-          <Button
-            variant="link"
-            size="sm"
-            label={HEALTH_FRAME_COPY.storageDetails}
-            trailingIcon={chevron}
-            aria-expanded={open}
-            onclick={() => (open = !open)}
-          />
+  <span class="ib-storage-backend__details">
+    <span class="ib-storage-backend__separator" aria-hidden="true">·</span>
+    <Popover bind:open label={HEALTH_FRAME_COPY.popoverLabel} placement="bottom-start">
+      {#snippet trigger()}
+        {#snippet chevron()}
+          {#if open}<ChevronUp aria-hidden="true" size={12} />{:else}<ChevronDown
+              aria-hidden="true"
+              size={12}
+            />{/if}
         {/snippet}
-        <div class="ib-storage-backend__facts">
-          <CapabilitiesPanel {capabilities} {loading} {error} {onRetry} />
-        </div>
-      </Popover>
-    </span>
-  {/if}
+        <Button
+          variant="link"
+          size="sm"
+          label={HEALTH_FRAME_COPY.storageDetails}
+          trailingIcon={chevron}
+          aria-expanded={open}
+          onclick={() => (open = !open)}
+        />
+      {/snippet}
+      <StorageDetails {paths} />
+    </Popover>
+  </span>
 </span>
 
 <style>
@@ -89,10 +75,5 @@
     align-items: center;
     gap: var(--cinder-space-2);
     white-space: nowrap;
-  }
-
-  .ib-storage-backend__facts {
-    min-inline-size: 16rem;
-    max-inline-size: min(26rem, 80vw);
   }
 </style>

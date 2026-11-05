@@ -273,6 +273,7 @@ export const queryKeys = {
   /** The key prefixes the Bureau writes, which the storage explorer locks (`/host/storage`). */
   hostStorage: () => ['host', 'storage'] as const,
   /** How many keys storage holds under a prefix, and its size (`/host/storage/summary`). */
+  hostStorageSummaries: () => ['host', 'storage', 'summary'] as const,
   hostStorageSummary: (prefix: string) => ['host', 'storage', 'summary', prefix] as const,
   /** The model providers, the models they offer, and the catalog edits (`/host/providers`). */
   hostProviders: () => ['host', 'providers'] as const,

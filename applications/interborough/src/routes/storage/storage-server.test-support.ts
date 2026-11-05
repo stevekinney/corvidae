@@ -15,6 +15,8 @@ export interface StorageServerOptions {
   readonly conditionalBatch?: boolean;
   /** Fails the capabilities call with this status, so the page never learns what the storage can do. */
   readonly capabilitiesStatus?: number;
+  /** The size `/host/storage/summary` reports, or `null` for a backend that cannot say. Absent: 4,096. */
+  readonly sizeBytes?: number | null;
 }
 
 /** The capabilities `weft.storage.capabilities` answers with. */
@@ -59,7 +61,7 @@ function applyConditionalBatch(store: Map<string, Uint8Array>, body: string): Re
 
 /**
  * Installs a `fetch` that answers as the host does: the scan, a key's write and delete, the
- * capabilities call, `/host/storage` and `/host/paths`. A write changes what the next scan returns,
+ * capabilities call, `/host/storage`, `/host/storage/summary` and `/host/paths`. A write changes what the next scan returns,
  * as a real store would.
  */
 export function serveStorage(options: StorageServerOptions): {
@@ -82,6 +84,13 @@ export function serveStorage(options: StorageServerOptions): {
       return options.bureauPrefixes === null
         ? new Response('no', { status: 500 })
         : Response.json({ bureauKeyPrefixes: options.bureauPrefixes ?? [] });
+    }
+    if (url.pathname === '/host/storage/summary') {
+      const prefix = url.searchParams.get('prefix') ?? '';
+      return Response.json({
+        keyCount: [...store.keys()].filter((key) => key.startsWith(prefix)).length,
+        sizeBytes: options.sizeBytes === undefined ? 4096 : options.sizeBytes,
+      });
     }
     if (url.pathname === '/host/paths') {
       return Response.json(
@@ -114,12 +123,18 @@ export function serveStorage(options: StorageServerOptions): {
       const prefix = url.searchParams.get('prefix') ?? '';
       const gt = url.searchParams.get('gt');
       const gte = url.searchParams.get('gte');
+      const lt = url.searchParams.get('lt');
+      const lte = url.searchParams.get('lte');
       const limit = Number(url.searchParams.get('limit') ?? '100');
       const rows = [...store.entries()]
         .toSorted(([first], [second]) => (first < second ? -1 : first > second ? 1 : 0))
         .filter(
           ([key]) =>
-            key.startsWith(prefix) && (gt === null || key > gt) && (gte === null || key >= gte),
+            key.startsWith(prefix) &&
+            (gt === null || key > gt) &&
+            (gte === null || key >= gte) &&
+            (lt === null || key < lt) &&
+            (lte === null || key <= lte),
         )
         .slice(0, limit)
         .map(([key, value]) =>

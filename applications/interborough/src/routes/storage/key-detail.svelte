@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
-   * The selected key: its group, size and name, Copy key and Copy value, and the value, which
-   * `PayloadInspector` shows as fields with a switch to the JSON itself when it is a JSON object, and
-   * as the value alone, quoted in the JSON view, otherwise. A key the
+   * The selected key: one line saying its group, size and when it was written, its name (with how
+   * long it is, when it is very long), Copy key and Copy value, and the value, which
+   * `PayloadInspector` shows without a card, as fields with a switch to the JSON itself when it is a
+   * JSON object, and as the value alone, quoted in the JSON view, otherwise. A key the
    * application manages shows a lock and why, and offers no Edit or Delete. Any other key can be
    * edited, where the value is text, and deleted, each after a confirmation.
    *
@@ -10,15 +11,15 @@
    * change one.
    */
   import { Alert, Button, ConfirmDialog, CopyButton, Textarea } from '@lostgradient/cinder';
-  import { Lock, Pencil, Trash2 } from '@lucide/svelte';
+  import { Copy, Lock, Pencil, Trash2 } from '@lucide/svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
   import { STORAGE_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { faultTreatment } from '../../lib/faults.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { formatBytes } from '../../lib/format/index.ts';
   import { isJson, textOf } from './key-value.ts';
-  import { keyGroup } from './prefix-discovery.ts';
   import { storageQueryKeys } from './queries.ts';
   import {
     assertWritable as assertKeyWritable,
@@ -32,6 +33,12 @@
     type StorageConnection,
     type StorageScanEntry,
   } from './storage-client.ts';
+  import {
+    keyGroupName,
+    LONG_KEY_CHARACTERS,
+    lockedPrefix,
+    updatedPhrase,
+  } from './storage-groups.ts';
   import StorageValueDisplay from './storage-value-display.svelte';
 
   interface Props {
@@ -92,6 +99,8 @@
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: storageQueryKeys.allKeys() }),
       queryClient.invalidateQueries({ queryKey: storageQueryKeys.prefixes() }),
+      // The footer's "of N keys" and the details' key count follow what is stored.
+      queryClient.invalidateQueries({ queryKey: queryKeys.hostStorageSummaries() }),
     ]);
   }
 
@@ -177,25 +186,30 @@
 </script>
 
 <article class="ib-storage-key" data-testid="storage-key" aria-label={copy.label}>
-  <dl class="ib-storage-key__facts">
-    <div>
-      <dt>{copy.group}</dt>
-      <dd>{keyGroup(entry.key) ?? STORAGE_COPY.noGroup}</dd>
-    </div>
-    <div>
-      <dt>{copy.size}</dt>
-      <dd>{formatBytes(entry.value.byteLength)}</dd>
-    </div>
-  </dl>
+  <p class="ib-storage-key__summary" data-testid="storage-key-summary">
+    {copy.summary(
+      keyGroupName(entry.key, STORAGE_COPY.noGroup),
+      formatBytes(entry.value.byteLength),
+      updatedPhrase(entry.updatedAt),
+    )}
+  </p>
 
-  <div class="ib-storage-key__name">
-    <h3 class="ib-storage-key__heading">{copy.key}</h3>
-    <p class="ib-storage-key__key" data-testid="storage-key-name">{entry.key}</p>
-  </div>
+  <p class="ib-storage-key__key">
+    <span data-testid="storage-key-name">{entry.key}</span>
+    {#if entry.key.length > LONG_KEY_CHARACTERS}
+      <span class="ib-storage-key__length">{copy.characters(entry.key.length)}</span>
+    {/if}
+  </p>
 
   <div class="ib-storage-key__actions">
-    <CopyButton value={entry.key} label={copy.copyKey} />
-    <CopyButton value={text ?? ''} label={copy.copyValue} disabled={text === undefined} />
+    <CopyButton value={entry.key} label={copy.copyKey}>
+      <Copy aria-hidden="true" size={14} />
+      {copy.copyKey}
+    </CopyButton>
+    <CopyButton value={text ?? ''} label={copy.copyValue} disabled={text === undefined}>
+      <Copy aria-hidden="true" size={14} />
+      {copy.copyValue}
+    </CopyButton>
     {#if writable && !editing && text !== undefined}
       <Button variant="secondary" onclick={startEditing}>
         {#snippet leadingIcon()}<Pencil aria-hidden="true" size={14} />{/snippet}
@@ -213,7 +227,11 @@
   {#if managed !== undefined}
     <p class="ib-storage-key__lock" data-testid="storage-key-managed">
       <Lock aria-hidden="true" size={14} />
-      <span>{copy.managedNote(managed)}</span>
+      <span
+        >{copy.locked.before}<span class="ib-storage-key__prefix"
+          >{lockedPrefix(entry.key, managed)}</span
+        >{copy.locked.after}</span
+      >
     </p>
   {:else if bureauPrefixes === undefined}
     <p class="ib-storage-key__lock" data-testid="storage-key-managed">
@@ -296,42 +314,27 @@
     min-width: 0;
   }
 
-  .ib-storage-key__facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-5);
-    margin: 0;
-  }
-
-  .ib-storage-key__facts dt,
-  .ib-storage-key__heading {
+  .ib-storage-key__summary {
     margin: 0;
     color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-xs);
-    font-weight: 400;
-  }
-
-  .ib-storage-key__facts dd {
-    margin: 0;
-    font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
-  }
-
-  .ib-storage-key__name {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
-    min-width: 0;
   }
 
   /* A key can be thousands of characters with no break in it: wrap it wherever it is, here, where
    * the whole key is the point, and cut it short only in the table. */
   .ib-storage-key__key {
-    margin: 0;
+    margin: calc(var(--cinder-space-3) * -1) 0 0;
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
+  }
+
+  .ib-storage-key__prefix {
+    font-family: var(--cinder-font-mono);
+  }
+
+  .ib-storage-key__length {
+    color: var(--cinder-text-muted);
   }
 
   .ib-storage-key__actions {
@@ -347,6 +350,12 @@
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
+  }
+
+  /* The lock keeps its size beside a line that wraps, and sits on the first line's middle. */
+  .ib-storage-key__lock > :global(svg) {
+    flex: none;
+    margin-block-start: 0.2em;
   }
 
   .ib-storage-key__alert {

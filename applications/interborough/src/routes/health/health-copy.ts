@@ -30,10 +30,29 @@ export const HEALTH_FRAME_COPY = {
   runningUnknown: 'Running on this storage',
   sqlite: 'SQLite',
   postgres: 'Postgres and S3',
-  /** The link-styled button that opens what the storage can do. */
+  /** The backend's name when the host cannot say. */
+  unknownBackend: 'Storage',
+  /** The link-styled button that opens the storage's facts. */
   storageDetails: 'Storage details',
   /** The popover's accessible name. */
-  popoverLabel: 'What the storage can do',
+  popoverLabel: 'Storage details',
+  /** The popover's list of facts, and where storage is set up. */
+  details: {
+    backend: 'Backend',
+    location: 'Location',
+    size: 'Size',
+    keys: 'Keys',
+    writes: 'Writes',
+    /** How a write works: one key at a time, and the keys the application manages cannot be changed here. */
+    writesPerKey: 'Per key; managed keys are locked',
+    /** A fact the host could not say. */
+    unknown: '—',
+    loading: 'Loading storage details',
+    footerBefore: 'Storage is set up in ',
+    footerLink: 'Settings › Data and retention',
+    footerAfter: '.',
+    settingsPath: '/settings/data-and-retention',
+  },
 } as const;
 
 /** The words of the four counts under the tab bar. */

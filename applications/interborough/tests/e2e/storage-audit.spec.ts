@@ -1,6 +1,6 @@
 /**
  * The storage explorer and the audit log (COR-1851), driven in a browser against the real host:
- * the key table with its group and search controls, a key's pane, Edit and Delete with a
+ * the key table with its group and starts-with controls, a key's pane, Edit and Delete with a
  * confirmation on a key the application does not manage and a lock on one it does, the storage line
  * with the capabilities popover, the audit log's list and detail, Export as JSON Lines, and the two
  * shortcuts G T and G U. Each page is checked with axe at a phone's width and a desktop's.
@@ -27,8 +27,8 @@ async function searchKeys(page: Page, text: string): Promise<void> {
   await search.press('Enter');
 }
 
-const keyButton = (page: Page, key: string) =>
-  page.locator('.ib-storage__key', { hasText: key }).first();
+/** The table row of `key`, which a person clicks to open it. */
+const keyButton = (page: Page, key: string) => page.locator(`tr[data-cinder-row-id="${key}"]`);
 
 test.describe('storage', () => {
   test.beforeEach(async ({ request }) => {
@@ -69,11 +69,12 @@ test.describe('storage', () => {
     const backend = page.getByTestId('storage-backend');
     await expect(backend).toContainText('Running on SQLite in');
     await backend.getByRole('button', { name: 'Storage details' }).click();
-    await expect(page.getByText('Persistence', { exact: true })).toBeVisible();
-    await expect(page.getByText('Conditional batch', { exact: true })).toBeVisible();
+    const details = page.getByTestId('storage-details');
+    await expect(details.getByText('Backend', { exact: true })).toBeVisible();
+    await expect(details.getByText('Keys', { exact: true })).toBeVisible();
   });
 
-  test('narrows the table to one group, and to the keys that contain the search', async ({
+  test('narrows the table to one group, and to the keys that start with the search', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -82,9 +83,9 @@ test.describe('storage', () => {
     await expect(group.locator('option', { hasText: 'e2e-storage:' })).toHaveCount(1);
     await group.selectOption('e2e-storage:');
     await expect(keyButton(page, APP_KEY)).toBeVisible();
-    await expect(page.locator('[data-key-row]')).toHaveCount(1);
+    await expect(page.locator('main tbody tr[data-cinder-row-id]')).toHaveCount(1);
 
-    // Inside a small group the search reads every key, so it can say that none matches.
+    // Inside a small group the prefix read is short, so it can say that none matches.
     await searchKeys(page, 'no-key-has-this-text');
     await expect(page.getByRole('heading', { name: STORAGE_COPY.noMatches.title })).toBeVisible();
     await page.getByRole('button', { name: STORAGE_COPY.noMatches.clear }).click();

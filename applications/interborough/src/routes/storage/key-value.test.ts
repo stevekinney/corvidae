@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { isJson, textOf } from './key-value.ts';
+import { formatStoredField, isJson, textOf } from './key-value.ts';
 
 const bytes = (text: string) => new TextEncoder().encode(text);
 
@@ -17,5 +17,17 @@ describe('isJson', () => {
     expect(isJson('{"a":1}')).toBe(true);
     expect(isJson('3')).toBe(true);
     expect(isJson('{')).toBe(false);
+  });
+});
+
+describe('formatStoredField', () => {
+  test('writes an ISO timestamp as a day and time, and leaves every other value to the inspector', () => {
+    expect(formatStoredField({ value: '2026-11-01T22:12:00Z' })).toMatch(
+      /^(Today|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}), \d{1,2}:\d{2} (AM|PM)$/,
+    );
+    expect(formatStoredField({ value: 'refund order 4471' })).toBeUndefined();
+    expect(formatStoredField({ value: '2026-11-01' })).toBeUndefined();
+    expect(formatStoredField({ value: 14 })).toBeUndefined();
+    expect(formatStoredField({ value: '2026-13-45T99:99:99Z' })).toBeUndefined();
   });
 });

@@ -1,7 +1,7 @@
 /**
- * Component tests for the Storage page: the `storage:admin` gate, the key table with its group and
- * search controls, the selected key's pane, per-key Edit and Delete with a confirmation, the lock on
- * a key the application manages, and the storage line with its capabilities popover.
+ * Component tests for the Storage page: the `storage:admin` gate, the key table with its group,
+ * starts-with and range controls, the selected key's pane, per-key Edit and Delete with a
+ * confirmation, the lock on a key the application manages, and the storage line with its popover.
  */
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
@@ -54,9 +54,10 @@ async function open(
 /** What `open` hands back: the rendered page and its queries. */
 type View = Awaited<ReturnType<typeof open>>;
 
+/** The table row of `key`: a row is named by the whole key, though it may show the key shortened. */
 const rowOf = (view: View, key: string): HTMLElement => {
-  const row = [...view.container.querySelectorAll<HTMLElement>('[data-key-row]')].find(
-    (candidate) => candidate.textContent?.includes(key),
+  const row = [...view.container.querySelectorAll<HTMLElement>('[data-cinder-row-id]')].find(
+    (candidate) => candidate.getAttribute('data-cinder-row-id') === key,
   );
   if (!row) throw new Error(`No row for ${key}`);
   return row;
@@ -64,9 +65,13 @@ const rowOf = (view: View, key: string): HTMLElement => {
 
 async function select(view: View, key: string): Promise<HTMLElement> {
   await waitFor(() => expect(rowOf(view, key)).toBeDefined());
-  await fireEvent.click(within(rowOf(view, key)).getByRole('button'));
+  await fireEvent.click(rowOf(view, key));
   return view.findByTestId('storage-key');
 }
+
+/** The table's footer once it says `text`. */
+const footerSays = (view: View, text: string) =>
+  waitFor(() => expect(view.getByTestId('storage-count').textContent?.trim()).toBe(text));
 
 describe('the gate', () => {
   test('a principal without storage:admin sees a lock state naming the scope, and no table', async () => {
@@ -74,8 +79,9 @@ describe('the gate', () => {
     expect(view.getByText('Storage access requires storage:admin')).not.toBeNull();
     expect(view.getByText('Requires storage:admin')).not.toBeNull();
     expect(view.queryByRole('table')).toBeNull();
-    // The heading's line still says where the installation runs, without what the storage can do.
-    expect(view.queryByRole('button', { name: 'Storage details' })).toBeNull();
+    // The heading's line still says where the installation runs, and the details open: they come
+    // from the host, not from the storage the scope guards.
+    expect(view.getByRole('button', { name: 'Storage details' })).not.toBeNull();
     expect(server?.calls.filter((call) => call.method === 'POST')).toHaveLength(0);
   });
 });
@@ -84,9 +90,9 @@ describe('the key table', () => {
   test('lists every key with its group and size, and says how many it holds', async () => {
     const view = await open();
     await view.findByRole('table');
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toContain('6 keys'));
+    await footerSays(view, 'Showing 6 of 6 keys.');
     const row = rowOf(view, 'app:config');
-    expect(row.textContent).toContain('app:');
+    expect(row.textContent).toContain('App data and memory');
     expect(row.textContent).toContain(`${new TextEncoder().encode(KEYS['app:config']).length} B`);
     expect(rowOf(view, 'settings').textContent).toContain(STORAGE_COPY.noGroup);
     expect(view.getAllByRole('columnheader').map((header) => header.textContent?.trim())).toEqual([
@@ -97,14 +103,14 @@ describe('the key table', () => {
     ]);
   });
 
-  test('offers the groups in storage, and a chosen group reads only its keys', async () => {
+  test('offers the groups in storage in plain words, and a chosen group reads only its keys', async () => {
     const view = await open();
     await view.findByRole('table');
     const groups = (await view.findByLabelText('Group')) as HTMLSelectElement;
     await waitFor(() =>
       expect([...groups.options].map((option) => option.textContent?.trim())).toEqual([
         'All groups',
-        'app:',
+        'App data and memory',
         'cache:',
         'skill:',
         'wf:',
@@ -113,8 +119,8 @@ describe('the key table', () => {
 
     await fireEvent.change(groups, { target: { value: 'app:' } });
 
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toContain('2 keys'));
-    expect(view.queryByText('cache:rates')).toBeNull();
+    await footerSays(view, 'Showing 2 of 2 keys.');
+    expect(view.container.querySelector('[data-cinder-row-id="cache:rates"]')).toBeNull();
     const scans = server?.calls.filter(
       (call) => new URL(call.url, 'http://localhost').pathname === '/v1/storage',
     );
@@ -125,23 +131,43 @@ describe('the key table', () => {
     ).toBe(true);
   });
 
-  test('a search keeps the keys that contain the text, and can be cleared from the empty state', async () => {
+  test('starts with is a prefix read, narrows as it is typed, and can be cleared from the empty state', async () => {
     const view = await open();
     await view.findByRole('table');
     const field = view.getByLabelText(STORAGE_COPY.searchLabel);
 
-    await fireEvent.input(field, { target: { value: 'NOTES' } });
-    // The browser fires `search` when Enter is pressed in a search field.
-    await fireEvent(field, new window.Event('search'));
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toContain('1 key'));
+    await fireEvent.input(field, { target: { value: 'app:n' } });
+    await footerSays(view, 'Showing 1 of 1 key.');
     expect(rowOf(view, 'app:notes')).toBeDefined();
+    // The server does the narrowing: the request carries the typed text as its prefix.
+    const prefixes = server?.calls
+      .filter((call) => new URL(call.url, 'http://localhost').pathname === '/v1/storage')
+      .map((call) => new URL(call.url, 'http://localhost').searchParams.get('prefix'));
+    expect(prefixes).toContain('app:n');
 
-    await fireEvent.input(field, { target: { value: 'nothing-like-this' } });
-    // The browser fires `search` when Enter is pressed in a search field.
-    await fireEvent(field, new window.Event('search'));
+    // Text that is no key's start, and a case that is not ignored: nothing here starts with it.
+    await fireEvent.input(field, { target: { value: 'NOTES' } });
     await view.findByText(STORAGE_COPY.noMatches.title);
     await fireEvent.click(view.getByRole('button', { name: STORAGE_COPY.noMatches.clear }));
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toContain('6 keys'));
+    await footerSays(view, 'Showing 6 of 6 keys.');
+  });
+
+  test('a group and text that part ways match no key, and one that extends the other reads the longer', async () => {
+    const view = await open();
+    await view.findByRole('table');
+    const groups = (await view.findByLabelText('Group')) as HTMLSelectElement;
+    await waitFor(() =>
+      expect([...groups.options].map((option) => option.value)).toContain('app:'),
+    );
+    await fireEvent.change(groups, { target: { value: 'app:' } });
+    const field = view.getByLabelText(STORAGE_COPY.searchLabel);
+
+    await fireEvent.input(field, { target: { value: 'cache:' } });
+    await view.findByText(STORAGE_COPY.noMatches.title);
+
+    await fireEvent.input(field, { target: { value: 'app:c' } });
+    await footerSays(view, 'Showing 1 of 1 key.');
+    expect(rowOf(view, 'app:config')).toBeDefined();
   });
 
   test('an empty store says so, with nothing to clear', async () => {
@@ -157,41 +183,161 @@ describe('the key table', () => {
     expect(view.getByRole('button', { name: 'Try again' })).not.toBeNull();
   });
 
-  test('continues from the last key with Load more', async () => {
-    const many = Object.fromEntries(
-      Array.from({ length: 130 }, (_, index) => [`bulk:${String(index).padStart(4, '0')}`, 'v']),
-    );
-    const view = await open({ keys: many });
+  test('marks no key with a lock in the table, which has no Managed column, and shows no Load more button', async () => {
+    const view = await open();
     await view.findByRole('table');
-    await waitFor(() =>
-      expect(view.getByTestId('storage-count').textContent).toContain('100 keys so far'),
-    );
-
-    await fireEvent.click(view.getByRole('button', { name: STORAGE_COPY.loadMore }));
-
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toBe('130 keys'));
-    expect(view.queryByRole('button', { name: STORAGE_COPY.loadMore })).toBeNull();
+    await footerSays(view, 'Showing 6 of 6 keys.');
+    expect(view.queryByText(STORAGE_COPY.managedBadge)).toBeNull();
+    expect(view.queryByRole('button', { name: 'Load more' })).toBeNull();
   });
 });
 
-describe('a search that reads on', () => {
+describe('scrolling to the end of the table', () => {
   const many = Object.fromEntries(
-    Array.from({ length: 1_300 }, (_, index) => [`bulk:${String(index).padStart(5, '0')}`, 'v']),
+    Array.from({ length: 130 }, (_, index) => [`bulk:${String(index).padStart(4, '0')}`, 'v']),
   );
+  const originalObserver = globalThis.IntersectionObserver;
+  let observers: { callback: IntersectionObserverCallback }[] = [];
 
-  test('says how far it has read, and Load more continues until the keys run out', async () => {
+  beforeEach(() => {
+    observers = [];
+    globalThis.IntersectionObserver = class {
+      readonly callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+        observers.push(this);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    } as unknown as typeof IntersectionObserver;
+  });
+
+  afterEach(() => {
+    globalThis.IntersectionObserver = originalObserver;
+  });
+
+  /** Tells every observer the end of the table is in view. */
+  const reachEnd = () =>
+    observers.forEach((observer) =>
+      observer.callback(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        observer as unknown as IntersectionObserver,
+      ),
+    );
+
+  test('reads on from the last key, and says how many are loaded of how many there are', async () => {
     const view = await open({ keys: many });
     await view.findByRole('table');
-    const field = view.getByLabelText(STORAGE_COPY.searchLabel);
-    await fireEvent.input(field, { target: { value: 'not-in-any-key' } });
-    await fireEvent(field, new window.Event('search'));
+    await footerSays(view, 'Showing 100 of 130 keys. Scroll to load more.');
+    const before = scanCount();
 
-    await view.findByText(STORAGE_COPY.keepSearching.title);
-    expect(view.getByText(STORAGE_COPY.keepSearching.description(1_000))).not.toBeNull();
-    await fireEvent.click(view.getByRole('button', { name: STORAGE_COPY.loadMore }));
+    reachEnd();
 
-    await view.findByText(STORAGE_COPY.noMatches.title);
-    expect(view.queryByText(STORAGE_COPY.keepSearching.title)).toBeNull();
+    await footerSays(view, 'Showing 130 of 130 keys.');
+    expect(scanCount()).toBe(before + 1);
+    const continued = server?.calls
+      .filter((call) => new URL(call.url, 'http://localhost').pathname === '/v1/storage')
+      .map((call) => new URL(call.url, 'http://localhost').searchParams.get('gt'));
+    expect(continued).toContain('bulk:0099');
+  });
+});
+
+describe('Range', () => {
+  const dated = {
+    'audit:2026-10-31T20:00:00Z': 'a',
+    'audit:2026-11-01T22:12:31Z': 'b',
+    'audit:2026-11-02T15:00:02Z': 'c',
+    'audit:2026-11-02T16:33:08Z': 'd',
+    'audit:2026-11-03T09:00:00Z': 'e',
+    'goal:seeded-goal': 'f',
+  };
+
+  /** Switches to Range and returns its two fields. */
+  async function openRange(view: View) {
+    await view.findByRole('table');
+    await fireEvent.click(view.getByRole('radio', { name: STORAGE_COPY.modeRange }));
+    const range = view.getByRole('group', { name: STORAGE_COPY.range.label });
+    return {
+      start: within(range).getByLabelText(STORAGE_COPY.range.startLabel),
+      end: within(range).getByLabelText(STORAGE_COPY.range.endLabel),
+    };
+  }
+
+  test('replaces the search field with two key fields, and lists the keys from one to the other, both ends included', async () => {
+    const view = await open({ keys: dated });
+    const { start, end } = await openRange(view);
+    expect(view.queryByLabelText(STORAGE_COPY.searchLabel)).toBeNull();
+    expect(view.queryByRole('button', { name: 'Apply' })).toBeNull();
+
+    await fireEvent.input(start, { target: { value: 'audit:2026-11-01' } });
+    await fireEvent.input(end, { target: { value: 'audit:2026-11-02' } });
+
+    // Every key that starts with the last one is in the range, so the 16:33 key is.
+    await footerSays(view, 'Showing 3 keys.');
+    expect(
+      [...view.container.querySelectorAll('[data-cinder-row-id]')].map((row) =>
+        row.getAttribute('data-cinder-row-id'),
+      ),
+    ).toEqual([
+      'audit:2026-11-01T22:12:31Z',
+      'audit:2026-11-02T15:00:02Z',
+      'audit:2026-11-02T16:33:08Z',
+    ]);
+  });
+
+  test('a chosen group narrows the range to the group’s keys', async () => {
+    const view = await open({ keys: dated });
+    const groups = (await view.findByLabelText('Group')) as HTMLSelectElement;
+    await waitFor(() =>
+      expect([...groups.options].map((option) => option.value)).toContain('goal:'),
+    );
+    const { start, end } = await openRange(view);
+
+    await fireEvent.change(groups, { target: { value: 'goal:' } });
+    await fireEvent.input(start, { target: { value: 'audit:' } });
+    await fireEvent.input(end, { target: { value: 'zzz' } });
+
+    await footerSays(view, 'Showing 1 key.');
+    expect(rowOf(view, 'goal:seeded-goal')).toBeDefined();
+  });
+
+  test('an end that sorts before the start is marked on the End field, and the table keeps the last good result and says so', async () => {
+    const view = await open({ keys: dated });
+    const { start, end } = await openRange(view);
+    await fireEvent.input(start, { target: { value: 'audit:2026-11-01' } });
+    await fireEvent.input(end, { target: { value: 'audit:2026-11-02' } });
+    await footerSays(view, 'Showing 3 keys.');
+
+    await fireEvent.input(end, { target: { value: 'audit:2026-10-31' } });
+
+    await waitFor(() => expect(end.getAttribute('aria-invalid')).toBe('true'));
+    expect(start.getAttribute('aria-invalid')).toBeNull();
+    const problem = view.getByText(STORAGE_COPY.range.reversed);
+    expect(problem.getAttribute('role')).toBe('alert');
+    expect(end.getAttribute('aria-describedby')).toBe(problem.id);
+    expect(view.getByTestId('storage-last-result').textContent).toBe(
+      'Showing the last result: 3 keys from audit:2026-11-01 to audit:2026-11-02.',
+    );
+    // Nothing was read for the reversed range: the three keys are still the table.
+    expect(view.container.querySelectorAll('[data-cinder-row-id]')).toHaveLength(3);
+
+    await fireEvent.input(end, { target: { value: 'audit:2026-11-03' } });
+    await footerSays(view, 'Showing 4 keys.');
+    expect(view.queryByText(STORAGE_COPY.range.reversed)).toBeNull();
+    expect(end.getAttribute('aria-invalid')).toBeNull();
+    expect(view.queryByTestId('storage-last-result')).toBeNull();
+  });
+
+  test('says when no key falls in the range', async () => {
+    const view = await open({ keys: dated });
+    const { start, end } = await openRange(view);
+    await fireEvent.input(start, { target: { value: 'audit:2027' } });
+    await fireEvent.input(end, { target: { value: 'audit:2028' } });
+    await view.findByText(STORAGE_COPY.noKeysInRange.title);
   });
 });
 
@@ -213,7 +359,10 @@ describe('the selected key', () => {
     const view = await open();
     const pane = within(await select(view, 'app:config'));
     expect(pane.getByTestId('storage-key-name').textContent).toBe('app:config');
-    expect(pane.getByText('app:', { selector: 'dd' })).not.toBeNull();
+    // One line over the key: its group, its size, and when it was written (this stub records none).
+    expect(pane.getByTestId('storage-key-summary').textContent?.trim()).toBe(
+      `App data and memory · ${new TextEncoder().encode(KEYS['app:config']).length} B`,
+    );
     await waitFor(() => expect(pane.getByText('dark')).not.toBeNull());
     expect(pane.getByText('Theme')).not.toBeNull();
 
@@ -261,17 +410,16 @@ describe('a key the application manages', () => {
     });
   }
 
-  test('the table marks a managed key with a lock, and a key of the application with none', async () => {
+  test('the lock line names the group in monospace, in the sentence the design words', async () => {
     const view = await open();
-    await view.findByRole('table');
-    await waitFor(() => expect(rowOf(view, 'app:config')).toBeDefined());
-    // The lock is announced; the host's list arrives after the table, so wait for it.
+    const pane = within(await select(view, 'wf:order-1'));
+    const lock = pane.getByTestId('storage-key-managed');
     await waitFor(() =>
-      expect(
-        within(rowOf(view, 'wf:order-1')).queryByText(STORAGE_COPY.managedBadge),
-      ).not.toBeNull(),
+      expect(lock.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
+        'Locked: Interborough manages keys that start with wf: and needs them to recover runs.',
+      ),
     );
-    expect(within(rowOf(view, 'app:config')).queryByText(STORAGE_COPY.managedBadge)).toBeNull();
+    expect(lock.querySelector('.ib-storage-key__prefix')?.textContent).toBe('wf:');
   });
 
   test('while the host cannot say which keys it manages, no key can be edited or deleted', async () => {
@@ -590,7 +738,7 @@ describe('Delete', () => {
     expect(server?.store.has('cache:rates')).toBe(false);
     expect(await view.findByText(STORAGE_COPY.detail.deleted('cache:rates'))).not.toBeNull();
     await waitFor(() => expect(view.queryByTestId('storage-key')?.outerHTML ?? null).toBeNull());
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toContain('5 keys'));
+    await footerSays(view, 'Showing 5 of 5 keys.');
   });
 
   test('leaves a key that changed after it was opened, and says so', async () => {
@@ -718,7 +866,7 @@ describe('Delete', () => {
     await view.findByText(STORAGE_COPY.noMatches.title);
     expect((view.getByLabelText('Group') as HTMLSelectElement).value).toBe('cache:');
     await fireEvent.click(view.getByRole('button', { name: STORAGE_COPY.noMatches.clear }));
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toContain('5 keys'));
+    await footerSays(view, 'Showing 5 of 5 keys.');
   });
 
   test('closing after a delete leaves open the key the person moved to while it ran', async () => {
@@ -733,30 +881,56 @@ describe('Delete', () => {
       within(dialog).getByRole('button', { name: STORAGE_COPY.confirmDelete.confirm }),
     );
     // The person opens another key at once; the delete finishing must not close that one.
-    await fireEvent.click(within(rowOf(view, 'app:notes')).getByRole('button'));
+    await fireEvent.click(rowOf(view, 'app:notes'));
 
     await waitFor(() => expect(server?.store.has('cache:rates')).toBe(false));
-    await waitFor(() => expect(view.getByTestId('storage-count').textContent).toContain('5 keys'));
+    await footerSays(view, 'Showing 5 of 5 keys.');
     expect(view.getByTestId('storage-key-name').textContent).toBe('app:notes');
   });
 });
 
 describe('the storage line', () => {
-  test('names a local SQLite file, and opens the six facts the storage reports', async () => {
-    const view = await open();
+  test('names a local SQLite file, and opens the five facts, with the chevron turned up', async () => {
+    const view = await open({ sizeBytes: 2_048 });
     expect(await view.findByText('Running on SQLite in ~/.interborough')).not.toBeNull();
-    await fireEvent.click(await view.findByRole('button', { name: 'Storage details' }));
+    const trigger = await view.findByRole('button', { name: 'Storage details' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
-    expect(await view.findByText('Persistence')).not.toBeNull();
-    for (const term of [
-      'Read after write',
-      'Scan consistency',
-      'Atomic batch',
-      'Conditional batch',
-      'Bounded range delete',
-    ]) {
-      expect(view.getByText(term)).not.toBeNull();
-    }
+    const details = within(await view.findByTestId('storage-details'));
+    await waitFor(() =>
+      expect(details.getAllByRole('term').map((term) => term.textContent?.trim())).toEqual([
+        'Backend',
+        'Location',
+        'Size',
+        'Keys',
+        'Writes',
+      ]),
+    );
+    const definitions = details
+      .getAllByRole('definition')
+      .map((value) => value.textContent?.trim());
+    expect(definitions).toEqual([
+      'SQLite',
+      '~/.interborough',
+      '2.0 KB',
+      '6',
+      'Per key; managed keys are locked',
+    ]);
+    expect(details.getByRole('link', { name: 'Settings › Data and retention' })).not.toBeNull();
+    // The capabilities are not drawn: the popover replaces that tab.
+    expect(view.queryByText('Persistence')).toBeNull();
+    expect(view.queryByText('Conditional batch')).toBeNull();
+  });
+
+  test('shows a dash for a size the backend cannot report, never zero', async () => {
+    const view = await open({ sizeBytes: null });
+    await fireEvent.click(await view.findByRole('button', { name: 'Storage details' }));
+    const details = within(await view.findByTestId('storage-details'));
+    await waitFor(() =>
+      expect(details.getAllByRole('definition')[2]?.textContent?.trim()).toBe('—'),
+    );
   });
 
   test('names Postgres and S3 for a remote installation', async () => {

@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { stubHostPaths, stubRemoteHostPaths } from '../../lib/bureau-stub.test-support.ts';
-import { abbreviateHome, runningOnLine } from './storage-location.ts';
+import { abbreviateHome, runningOnLine, storageFacts } from './storage-location.ts';
 
 describe('abbreviateHome', () => {
   test('writes a macOS or Linux home directory as ~', () => {
@@ -33,5 +33,22 @@ describe('runningOnLine', () => {
 
   test('says only that this is the storage when the host cannot say', () => {
     expect(runningOnLine(undefined)).toBe('Running on this storage');
+  });
+});
+
+describe('storageFacts', () => {
+  test('names the backend and where it is, for the facts Storage details lists', () => {
+    expect(storageFacts(stubHostPaths('/a', '/b'))).toEqual({
+      backend: 'SQLite',
+      location: '~/.interborough',
+    });
+    expect(storageFacts(stubRemoteHostPaths())).toEqual({
+      backend: 'Postgres and S3',
+      location: 'db.example.test:5432/interborough',
+    });
+  });
+
+  test('names no location when the host cannot say', () => {
+    expect(storageFacts(undefined)).toEqual({ backend: 'Storage', location: undefined });
   });
 });

@@ -124,22 +124,27 @@ describe('/host/storage', () => {
 });
 
 describe('/host/storage/summary', () => {
+  /** What the host answers for the keys under `prefix`. */
+  async function summaryOf(
+    host: { readonly url: URL },
+    prefix?: string,
+  ): Promise<{ keyCount: number; sizeBytes: number | null }> {
+    const address = prefix === undefined ? '' : `?prefix=${encodeURIComponent(prefix)}`;
+    const response = await fetch(new URL(`/host/storage/summary${address}`, host.url));
+    expect(response.status).toBe(200);
+    return (await response.json()) as { keyCount: number; sizeBytes: number | null };
+  }
+
   test('counts the keys under a prefix and reports the storage size, so the page can say "of N keys"', async () => {
     const host = await start();
-    const everything = (await (
-      await fetch(new URL('/host/storage/summary', host.url))
-    ).json()) as { keyCount: number; sizeBytes: number | null };
+    const everything = await summaryOf(host);
     expect(everything.keyCount).toBeGreaterThan(0);
     // A SQLite file has a size; a backend that cannot say would answer null, never zero.
     expect(everything.sizeBytes).toBeGreaterThan(0);
 
-    const none = (await (
-      await fetch(new URL('/host/storage/summary?prefix=no-such-group%3A', host.url))
-    ).json()) as { keyCount: number };
+    const none = await summaryOf(host, 'no-such-group:');
     expect(none.keyCount).toBe(0);
-    const some = (await (
-      await fetch(new URL('/host/storage/summary?prefix=wf%3A', host.url))
-    ).json()) as { keyCount: number };
+    const some = await summaryOf(host, 'wf:');
     expect(some.keyCount).toBeLessThanOrEqual(everything.keyCount);
   });
 });

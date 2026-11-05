@@ -227,19 +227,25 @@ test.describe('the sample world', () => {
       await expect(main.getByTestId('storage-warning')).toContainText('Change retention');
       await expect(main.getByTestId('storage-warning')).not.toContainText(/capacity|threshold/i);
       // The groups select and the key search are each a 44px control.
-      for (const control of await main.locator('.ib-storage__filters > *').all()) {
+      const controls = await main
+        .getByRole('search', { name: 'Find a key' })
+        .locator(':scope > *')
+        .all();
+      // The groups select, the Starts with / Range switch and the search field.
+      expect(controls).toHaveLength(3);
+      for (const control of controls) {
         const box = await control.boundingBox();
         expect(box?.height).toBeGreaterThanOrEqual(44);
       }
 
       // 06p: the columns, the absolute times, and the table in its own box with no sideways page scroll.
-      await expect(main.locator('.ib-storage__table th')).toHaveText([
+      await expect(main.locator('.cinder-data-table thead th')).toHaveText([
         'Key',
         'Group',
         'Size',
         'Updated (Central time)',
       ]);
-      await expect(main.locator('.ib-storage__updated-column').nth(1)).toHaveText(
+      await expect(main.locator('.cinder-data-table tbody tr td:nth-child(4)').first()).toHaveText(
         /^(Today|Yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}), \d{1,2}:\d{2} (AM|PM)$/,
       );
       const scroller = main.locator('.cinder-table-scroll');
@@ -279,7 +285,7 @@ test.describe('the sample world', () => {
     await expect(main.getByRole('tab', { name: 'Diagnostics' })).toHaveCount(0);
 
     // 06r: a key the application manages offers only Copy key and Copy value.
-    const managed = main.locator('.ib-storage__key', { hasText: 'agent-session:' }).first();
+    const managed = main.locator('tr[data-cinder-row-id="agent-session:summary-index"]');
     await managed.click();
     const pane = main.getByTestId('storage-key');
     await expect(pane.getByRole('button', { name: 'Copy key', exact: true })).toBeVisible();

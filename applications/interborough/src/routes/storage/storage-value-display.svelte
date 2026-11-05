@@ -5,11 +5,12 @@
    * gracefully"). Text values (valid UTF-8) go through `PayloadInspector`,
    * which further tells JSON from plain-string content on its own; anything
    * that fails UTF-8 decoding renders as an explicit binary fallback instead
-   * of garbling through the inspector.
+   * of garbling through the inspector. The inspector is bare: the pane around it is the card.
    */
   import { PayloadInspector } from '@lostgradient/cinder';
 
   import { formatBytes } from '../../lib/format/index.ts';
+  import { formatStoredField } from './key-value.ts';
   import { previewStorageValue } from './value-preview.ts';
 
   interface StorageValueDisplayProps {
@@ -30,5 +31,5 @@
   </p>
 {:else}
   <!-- The stored value is the source: nothing else shows it, so no property is hidden by its name. -->
-  <PayloadInspector value={preview.text} {label} redact={[]} />
+  <PayloadInspector value={preview.text} {label} redact={[]} bare formatValue={formatStoredField} />
 {/if}

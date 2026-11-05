@@ -69,6 +69,7 @@ const SHOWCASE_SPECIFICATIONS = [
   'tests/e2e/health-overview.spec.ts',
   'tests/e2e/health-states.spec.ts',
   'tests/e2e/health-workers-states.spec.ts',
+  'tests/e2e/health-storage.spec.ts',
   'tests/e2e/restart.spec.ts',
   'tests/e2e/first-run.spec.ts',
 ] as const;

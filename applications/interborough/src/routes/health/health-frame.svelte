@@ -10,7 +10,7 @@
    * Diagnostics (metrics, alerts and checks) is not a tab. It sits behind the Advanced disclosure
    * at the foot of Overview (`advanced-diagnostics.svelte`).
    */
-  import { untrack, type Snippet } from 'svelte';
+  import type { Snippet } from 'svelte';
 
   import { ConnectionIndicator, PageHeader, Tabs } from '@lostgradient/cinder';
   import type { ConnectionIndicatorStatus } from '@lostgradient/cinder';
@@ -18,13 +18,10 @@
 
   import { getConnection } from '../../app/connection.svelte.ts';
   import { getFleetEventSource, hasFleetEventSource } from '../../app/engine-status.svelte.ts';
-  import { getClient } from '../../lib/client.ts';
   import { getHostPaths } from '../../lib/host-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import StorageBackend from '../storage/storage-backend.svelte';
-  import { storageQueryKeys } from '../storage/queries.ts';
   import {
     HEALTH_FRAME_COPY,
     HEALTH_PAGE_TABS,
@@ -43,21 +40,6 @@
 
   let { active, live = true, children }: Props = $props();
 
-  const client = getClient();
-  const principalStore = getPrincipalStore();
-  const hasStorageAdmin = $derived(principalStore.hasScope('storage:admin'));
-
-  // `createQuery` reads `enabled` once, so the scope is read untracked, as the Storage page does.
-  const capabilitiesQuery = createQuery(
-    () => ({
-      queryKey: storageQueryKeys.capabilities(),
-      queryFn: () => client.operations['weft.storage.capabilities']({}),
-      enabled: untrack(() => hasStorageAdmin),
-      staleTime: Infinity,
-      retry: false,
-    }),
-    undefined,
-  );
   const pathsQuery = createQuery(
     () => ({
       queryKey: queryKeys.hostPaths(),
@@ -84,14 +66,7 @@
 <div class="ib-health-frame" data-page="health" data-tab={active}>
   <PageHeader title={HEALTH_TITLE} headingLevel={1}>
     {#snippet description()}
-      <StorageBackend
-        paths={pathsQuery.data}
-        capabilities={capabilitiesQuery.data}
-        loading={capabilitiesQuery.isPending}
-        error={capabilitiesQuery.error}
-        canInspect={hasStorageAdmin}
-        onRetry={() => void capabilitiesQuery.refetch()}
-      />
+      <StorageBackend paths={pathsQuery.data} />
     {/snippet}
     {#snippet actions()}
       {#if live}
