@@ -20,6 +20,7 @@
  */
 
 import { createTool, type Tool, type ToolContext } from 'armorer';
+import type { WorkflowStatus } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
@@ -59,6 +60,22 @@ export const WORKFLOW_TOOL_NAMES = [
   'workflows-runs-get',
   'workflows-runs-history',
 ] as const;
+
+const WORKFLOW_RUN_STATUS_INPUTS = [
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+  'canceled',
+  'timed-out',
+  'suspended',
+] as const;
+const workflowRunStatusInput = z.enum(WORKFLOW_RUN_STATUS_INPUTS);
+
+function workflowRunStatus(value: (typeof WORKFLOW_RUN_STATUS_INPUTS)[number]): WorkflowStatus {
+  return value === 'canceled' ? 'cancelled' : value;
+}
 
 /** What the tools read from the Bureau that owns them. */
 export interface WorkflowToolHost {
@@ -882,7 +899,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     description: 'List workflow-file runs owned by the calling run.',
     input: z.object({
       workflow: z.string().optional(),
-      status: z.string().optional(),
+      status: workflowRunStatusInput.optional(),
       limit: z.number().int().min(1).max(100).optional(),
       offset: z.number().int().min(0).optional(),
     }),
@@ -896,7 +913,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       if ('refusal' in calling) return { status: 'ok' as const, runs: [], nextOffset: null };
       const page = await calling.workflows.listRuns({
         workflow: input.workflow,
-        status: input.status as never,
+        status: input.status === undefined ? undefined : workflowRunStatus(input.status),
         limit: input.limit ?? 50,
         offset: input.offset ?? 0,
         mayReadRun: async (runId) => {

@@ -2014,11 +2014,20 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             limit: 100,
             offset,
           });
-          for (const run of page.items) {
-            if (filter.mayReadRun !== undefined && !(await filter.mayReadRun(run.id))) continue;
-            const state = await engine.get(run.id);
-            found.push(summarize({ ...run, input: state?.input }));
+          let readable = page.items;
+          if (filter.mayReadRun !== undefined) {
+            const authorized = await Promise.all(
+              page.items.map(async (run) => ((await filter.mayReadRun!(run.id)) ? run : undefined)),
+            );
+            readable = authorized.filter(
+              (run): run is (typeof page.items)[number] => run !== undefined,
+            );
           }
+          const states = await Promise.all(
+            readable.map(async (run) => ({ run, state: await engine.get(run.id) })),
+          );
+          for (const { run, state } of states)
+            found.push(summarize({ ...run, input: state?.input }));
           offset += page.items.length;
           if (page.items.length === 0 || offset >= page.total) break;
         }

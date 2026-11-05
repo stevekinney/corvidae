@@ -1360,6 +1360,16 @@ describe('agent-owned workflow runs', () => {
     );
     expect(state?.status).toBe('cancelled');
   });
+
+  it('validates run status filters and accepts the canceled spelling', async () => {
+    const harness = await start();
+    const invalid = await harness.callTool('bureau__workflows-runs-list', { status: 'unknown' });
+    expect(invalid.outcome).not.toBe('success');
+    expect(invalid.result).toContain('Invalid option');
+
+    const canceled = await harness.callTool('bureau__workflows-runs-list', { status: 'canceled' });
+    expect(canceled.result).toEqual({ status: 'ok', runs: [], nextOffset: null });
+  });
 });
 
 describe('a calling agent whose identifier is not an agent identifier', () => {
