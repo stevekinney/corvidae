@@ -525,6 +525,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       size: { optional: true, type_kind: 'TSUnionType', default: L('md') },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      tone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       presentation: { optional: true, type_kind: 'TSTypeReference', default: L('native') },
       placeholder: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       valuePrefix: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
