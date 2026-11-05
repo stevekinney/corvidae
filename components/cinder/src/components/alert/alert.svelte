@@ -32,6 +32,7 @@
     class: className,
     children,
     icon,
+    actions,
     ...rest
   }: AlertProps = $props();
 
@@ -133,6 +134,12 @@
     <div class="cinder-alert__content">
       {@render children()}
     </div>
+
+    {#if actions}
+      <div class="cinder-alert__actions">
+        {@render actions()}
+      </div>
+    {/if}
 
     {#if dismissible}
       <button

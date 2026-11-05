@@ -43,7 +43,7 @@ const schema = {
     headers: {
       type: 'boolean',
       description:
-        "Whether each file's header (its path) and each hunk's header (`@@ -1,3 +1,4 @@`) are drawn. Turn\nthem off for a change to one thing that has no file, such as an agent's instructions, where the\nrows alone are the diff.",
+        "Whether each file's header (its path) and each hunk's header (its line ranges) are drawn. Turn\nthem off for a change to one thing that has no file, such as an agent's instructions, where the\nrows alone are the diff.",
       default: true,
     },
     class: {

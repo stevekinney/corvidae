@@ -193,7 +193,7 @@ export type SourceDiffViewerProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'
   /** Whether old and new line-number gutters are rendered. */
   lineNumbers?: boolean;
   /**
-   * Whether each file's header (its path) and each hunk's header (`@@ -1,3 +1,4 @@`) are drawn. Turn
+   * Whether each file's header (its path) and each hunk's header (its line ranges) are drawn. Turn
    * them off for a change to one thing that has no file, such as an agent's instructions, where the
    * rows alone are the diff.
    * @default true

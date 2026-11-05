@@ -137,6 +137,7 @@ Contract note: this repository's `check-prop-conventions` gate bans a non-native
 | `ariaLabel` | `string` | no | — | Accessible label for the diff region. |
 | `class` | `string` | no | — | Additional CSS classes merged with `.cinder-source-diff-viewer`. |
 | `expanded` | `boolean` | no | `false` | Whether every row renders, past `maxLines`. Bindable: Show all sets it, and a host can set it to open or close the diff from outside. |
+| `headers` | `boolean` | no | `true` | Whether each file's header (its path) and each hunk's header (its line ranges) are drawn. Turn them off for a change to one thing that has no file, such as an agent's instructions, where the rows alone are the diff. |
 | `lineNumbers` | `boolean` | no | `true` | Whether old and new line-number gutters are rendered. |
 | `maxLines` | `integer` | no | `1000` | Maximum number of diff rows to render before truncating. When the patch is longer, a Show all action under the rows renders the rest in place. In the `inline` variant the limit counts changed lines only, and the first ones are all that shows until Show all. |
 | `patch` | `string` | yes | — | Unified patch text to parse and render. |

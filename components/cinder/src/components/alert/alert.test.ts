@@ -155,6 +155,27 @@ describe('Alert rendering', () => {
     expect(container.querySelector('.cinder-alert__icon')?.textContent).toContain('icon-content');
   });
 
+  test('actions snippet renders after the message, and is absent when not provided', () => {
+    const { container } = render(Alert, {
+      props: {
+        children: textSnippet('message'),
+        actions: textSnippet('action-content'),
+      },
+    });
+    const actions = container.querySelector('.cinder-alert__actions');
+    expect(actions?.textContent).toContain('action-content');
+    const content = container.querySelector('.cinder-alert__content');
+    expect(
+      content !== null &&
+        actions !== null &&
+        Boolean(content.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+
+    cleanup();
+    const bare = render(Alert, { props: { children: textSnippet('message') } });
+    expect(bare.container.querySelector('.cinder-alert__actions')).toBeNull();
+  });
+
   test('icon slot is absent when icon prop is not provided', () => {
     const { container } = render(Alert, {
       props: { children: emptySnippet },

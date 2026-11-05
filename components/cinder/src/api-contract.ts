@@ -117,6 +117,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     snippets: {
       children: s0(false),
       icon: s0(true),
+      actions: s0(true),
     },
   },
 
