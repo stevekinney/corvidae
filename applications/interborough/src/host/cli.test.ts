@@ -80,7 +80,10 @@ const productionServer = Bun.serve({
         params?: Record<string, unknown>;
       };
       if (typeof body.method === 'string')
-        compiledRunRequests.push({ method: body.method, params: body.params });
+        compiledRunRequests.push({
+          method: body.method,
+          ...(body.params === undefined ? {} : { params: body.params }),
+        });
       if (body.method === 'bureau.tasks.cancel' || body.method === 'weft.workflows.cancel') {
         compiledRunCancelCalls.push(body.method);
         return Response.json({
