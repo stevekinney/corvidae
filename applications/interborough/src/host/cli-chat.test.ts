@@ -86,4 +86,88 @@ describe('CLI chat control', () => {
       params: { contextId: 'thread-1', effort: 'high' },
     });
   });
+
+  // spawn-free: scripted AG-UI frames and prompt seam prove resume without a terminal process.
+  test('prompts and resumes an interrupt only for a TTY', async () => {
+    let starts = 0;
+    const result = await executeCli(['chat', '--agent', 'demo', '--message', 'hello'], {
+      stdinIsTTY: true,
+      prompt: async () => 'answer',
+      fetch: async (_input, init) => {
+        starts += 1;
+        const body = JSON.parse(
+          typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body),
+        ) as { resume?: unknown[] };
+        return body.resume === undefined
+          ? sse(
+              { type: 'RUN_STARTED', threadId: 'thread-1', runId: 'run-1' },
+              { type: 'RUN_FINISHED', outcome: { type: 'interrupt', interrupts: [{ id: 'i-1' }] } },
+            )
+          : sse(
+              { type: 'TEXT_MESSAGE_CONTENT', delta: 'resumed' },
+              { type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } },
+            );
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(starts).toBe(2);
+  });
+
+  // spawn-free: request capture verifies cursor forwarding and replay dedupe without mutation retry.
+  test('forwards durable cursors and emits a repeated event once', async () => {
+    let lastEventId: string | null = null;
+    const repeated = { id: 'cursor-2', type: 'TEXT_MESSAGE_CONTENT', delta: 'once' };
+    const result = await executeCli(
+      ['chat', '--agent', 'demo', '--message', 'hello', '--cursor', 'cursor-1'],
+      {
+        fetch: async (_input, init) => {
+          lastEventId = new Headers(init?.headers).get('Last-Event-ID');
+          return sse(repeated, repeated, {
+            type: 'RUN_FINISHED',
+            outcome: { type: 'success', interrupts: [] },
+          });
+        },
+      },
+    );
+    expect(lastEventId as string | null).toBe('cursor-1');
+    expect(JSON.parse(result.stdout).text).toBe('once');
+  });
+
+  // spawn-free: injected management endpoint verifies raw-byte upload lifecycle and provider part.
+  test('uploads an attachment and sends a Bureau provider file part', async () => {
+    const path = '/tmp/cor2057-attachment.bin';
+    await Bun.write(path, new Uint8Array([0, 255, 1]));
+    const methods: string[] = [];
+    const result = await executeCli(
+      ['chat', '--agent', 'demo', '--message', 'file', '--attachment', path],
+      {
+        fetch: async (_input, init) => {
+          const body = JSON.parse(
+            typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body),
+          ) as {
+            method: string;
+            params: Record<string, unknown>;
+          };
+          methods.push(body.method);
+          if (body.method === 'bureau.assets.uploads.create')
+            return Response.json({ result: { uploadId: 'u-1' } });
+          if (body.method === 'bureau.assets.uploads.complete')
+            return Response.json({ result: { assetId: 'a-1' } });
+          if (body.method === 'bureau.assets.uploads.append') {
+            const chunk = body.params['chunk'];
+            expect(typeof chunk).toBe('string');
+            expect(Buffer.from(String(chunk), 'base64')).toEqual(new Uint8Array([0, 255, 1]));
+            return Response.json({ result: { uploadId: 'u-1' } });
+          }
+          return sse({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
+        },
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(methods).toEqual([
+      'bureau.assets.uploads.create',
+      'bureau.assets.uploads.append',
+      'bureau.assets.uploads.complete',
+    ]);
+  });
 });

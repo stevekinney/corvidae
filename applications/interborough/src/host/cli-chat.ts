@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
+import { uploadAttachment } from './cli-chat-assets.ts';
 import { request, stream, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
@@ -83,48 +84,99 @@ async function runStream(
   path: string,
   body?: RecordValue,
 ): Promise<CliCommandResult> {
-  const response = await stream(target, path, parsed, dependencies, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {
-      accept: 'text/event-stream',
-      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  const streamHeaders: Record<string, string> = { accept: 'text/event-stream' };
+  const requestedCursor = option(parsed, 'cursor');
+  if (requestedCursor !== undefined) streamHeaders['Last-Event-ID'] = requestedCursor;
+  let response: Response;
+  try {
+    response = await stream(target, path, parsed, dependencies, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        ...streamHeaders,
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch (error) {
+    if (dependencies.signal?.aborted) {
+      throw Object.assign(
+        new Error('Chat stream detached; resume with the reported identifiers.'),
+        {
+          exitCode: 130,
+          identifiers: {
+            threadId: body?.['threadId'],
+            runId: body?.['runId'],
+            cursor: requestedCursor,
+          },
+        },
+      );
+    }
+    throw error;
+  }
   const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = '';
   let cursor: string | undefined;
-  let threadId: string | undefined;
-  let runId: string | undefined;
+  let threadId = typeof body?.['threadId'] === 'string' ? body['threadId'] : undefined;
+  let runId = typeof body?.['runId'] === 'string' ? body['runId'] : undefined;
   let text = '';
   let pendingInterrupts: unknown[] | undefined;
+  let resynced = false;
   const events: RecordValue[] = [];
+  const seen = new Set<string>();
   const write = dependencies.writeStdout;
-  for (;;) {
-    const next = await reader.read();
-    if (next.done) break;
-    buffer += next.value;
-    const parsedFrames = parseSse(buffer);
-    buffer = parsedFrames.rest;
-    for (const event of parsedFrames.frames) {
-      events.push({ kind: eventKind(event), event });
-      if (typeof event['threadId'] === 'string') threadId = event['threadId'];
-      if (typeof event['runId'] === 'string') runId = event['runId'];
-      const outcome = record(event['outcome']);
-      if (event['type'] === 'RUN_FINISHED' && Array.isArray(outcome?.['interrupts']))
-        pendingInterrupts = outcome['interrupts'];
-      const metadata = record(event['metadata']);
-      const bureau = record(metadata?.['@lostgradient/bureau']);
-      if (typeof bureau?.['cursor'] === 'string' && bureau['durable'] === true)
-        cursor = bureau['cursor'];
-      const delta = messageFromEvent(event);
-      if (delta !== undefined) {
-        text += delta;
-        write?.(delta);
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      buffer += next.value;
+      const parsedFrames = parseSse(buffer);
+      buffer = parsedFrames.rest;
+      for (const event of parsedFrames.frames) {
+        const key = typeof event['id'] === 'string' ? event['id'] : JSON.stringify(event);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        events.push({ kind: eventKind(event), event });
+        if (typeof event['threadId'] === 'string') threadId = event['threadId'];
+        if (typeof event['runId'] === 'string') runId = event['runId'];
+        const outcome = record(event['outcome']);
+        if (event['type'] === 'RUN_FINISHED' && Array.isArray(outcome?.['interrupts']))
+          pendingInterrupts = outcome['interrupts'];
+        if (requestedCursor !== undefined && event['type'] === 'MESSAGES_SNAPSHOT') resynced = true;
+        const metadata = record(event['metadata']);
+        const bureau = record(metadata?.['@lostgradient/bureau']);
+        if (typeof bureau?.['cursor'] === 'string' && bureau['durable'] === true)
+          cursor = bureau['cursor'];
+        const delta = messageFromEvent(event);
+        if (delta !== undefined) {
+          text += delta;
+          write?.(delta);
+        }
       }
     }
+  } catch (error) {
+    if (dependencies.signal?.aborted) {
+      throw Object.assign(
+        new Error('Chat stream detached; resume with the reported identifiers.'),
+        {
+          exitCode: 130,
+          identifiers: { threadId, runId, cursor },
+        },
+      );
+    }
+    throw error;
   }
   if (pendingInterrupts !== undefined && pendingInterrupts.length > 0) {
+    if (dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
+      const answer = await dependencies.prompt('Input required: ');
+      return runStream(target, parsed, dependencies, path, {
+        ...body,
+        resume: pendingInterrupts.map((interrupt) => ({
+          interruptId: record(interrupt)?.['id'],
+          status: 'resolved',
+          payload: { answer },
+        })),
+      });
+    }
     throw Object.assign(
       new Error(
         `Human input is required (thread ${threadId ?? 'unknown'}, run ${runId ?? 'unknown'}).`,
@@ -133,7 +185,7 @@ async function runStream(
     );
   }
   return {
-    data: { threadId, runId, cursor, text, events },
+    data: { threadId, runId, cursor, text, events, ...(resynced ? { resynced: true } : {}) },
     metadata: { streamed: write !== undefined },
   };
 }
@@ -159,8 +211,28 @@ export async function executeChat(
     if (!message && dependencies.stdin !== undefined) message = await dependencies.stdin();
     if (!message)
       throw Object.assign(new Error('chat requires a message or --message-file.'), { usage: true });
+    let content: string | unknown[] = message;
+    const attachmentPath = option(parsed, 'attachment');
+    if (attachmentPath !== undefined) {
+      const asset = await uploadAttachment(target, parsed, dependencies, attachmentPath);
+      const assetId = asset['assetId'];
+      if (typeof assetId !== 'string')
+        throw new Error('The host returned no completed asset identifier.');
+      content = [
+        { type: 'text', text: message },
+        { type: 'file', provider: 'bureau', value: assetId },
+      ];
+    }
     const threadId = option(parsed, 'thread') ?? id('thread');
     const runId = option(parsed, 'run') ?? id('run');
+    if (option(parsed, 'cursor') !== undefined && option(parsed, 'thread') !== undefined) {
+      return runStream(
+        target,
+        parsed,
+        dependencies,
+        `/ag-ui/threads/${encodeURIComponent(threadId)}/run`,
+      );
+    }
     return runStream(
       target,
       parsed,
@@ -169,7 +241,7 @@ export async function executeChat(
       {
         threadId,
         runId,
-        messages: [{ id: id('message'), role: 'user', content: message }],
+        messages: [{ id: id('message'), role: 'user', content }],
         tools: [],
         context: [],
         state: {},

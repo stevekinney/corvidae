@@ -76,6 +76,10 @@ export type CliClientDependencies = {
   readonly signal?: AbortSignal;
   /** Optional sink used by interactive streams for incremental terminal output. */
   readonly writeStdout?: (chunk: string) => void;
+  /** Optional interactive prompt used only when the input stream is a TTY. */
+  readonly prompt?: (question: string) => Promise<string>;
+  /** Whether interactive prompting is supported by the caller. */
+  readonly stdinIsTTY?: boolean;
 };
 
 /** Unserialized command payload before output formatting. */
@@ -143,6 +147,7 @@ const optionNames = new Set([
   'decision',
   'signal-name',
   'call-id',
+  'attachment',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -189,6 +194,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'message',
     'thread',
     'run',
+    'cursor',
+    'attachment',
   ],
   chats: [
     'help',
@@ -683,7 +690,10 @@ export async function executeCli(
         : {}),
     };
     return {
-      stdout: parsed.output === 'text' && exitCode !== 5 ? '' : JSON.stringify(renderedFailure),
+      stdout:
+        parsed.output === 'text' && exitCode !== 5 && exitCode !== 130
+          ? ''
+          : JSON.stringify(renderedFailure),
       stderr: message,
       exitCode,
     };

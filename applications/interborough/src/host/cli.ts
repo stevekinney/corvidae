@@ -1,5 +1,6 @@
 import { accessSync, constants, existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 
 import type { BungalowEnvironment } from '@lostgradient/bungalow';
@@ -135,11 +136,25 @@ async function run(arguments_: string[]): Promise<number> {
     return 0;
   }
   if (command !== 'start' && command !== '--help' && command !== '--version') {
+    const interrupt = new AbortController();
+    const onInterrupt = () => interrupt.abort();
+    process.once('SIGINT', onInterrupt);
     const result = await executeCli(arguments_, {
       environment: processEnvironment(),
       stdin: () => Bun.stdin.text(),
       writeStdout: (chunk) => process.stdout.write(chunk),
+      stdinIsTTY: process.stdin.isTTY,
+      signal: interrupt.signal,
+      prompt: async (question) => {
+        const readline = createInterface({ input: process.stdin, output: process.stderr });
+        try {
+          return await readline.question(question);
+        } finally {
+          readline.close();
+        }
+      },
     });
+    process.removeListener('SIGINT', onInterrupt);
     if (result.stdout !== '') process.stdout.write(`${result.stdout}\n`);
     if (result.stderr !== '') console.error(result.stderr);
     return result.exitCode;

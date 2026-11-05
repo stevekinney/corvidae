@@ -45,6 +45,25 @@ const productionServer = Bun.serve({
   port: 0,
   async fetch(request) {
     productionRequests.push(request.clone());
+    if (new URL(request.url).pathname.startsWith('/ag-ui/')) {
+      const stream = new TransformStream<Uint8Array, Uint8Array>();
+      const writer = stream.writable.getWriter();
+      const encoder = new TextEncoder();
+      void (async () => {
+        await writer.write(
+          encoder.encode(
+            'data: {"type":"RUN_STARTED","threadId":"thread-sigint","runId":"run-sigint"}\n\n',
+          ),
+        );
+        await Bun.sleep(500);
+        try {
+          await writer.close();
+        } catch {
+          // SIGINT intentionally closes the client side of this fixture stream.
+        }
+      })();
+      return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
+    }
     if (request.headers.get('authorization') !== 'Bearer production-secret')
       return Response.json({ message: 'Forbidden' }, { status: 403 });
     if (new URL(request.url).pathname === '/host/status')
@@ -108,6 +127,34 @@ const [productionCallStdout, productionCallStderr, productionCallExitCode] = awa
   new Response(productionCall.stderr).text(),
   productionCall.exited,
 ]);
+const sigintCall = spawnWithHangGuard(
+  [
+    executable,
+    'chat',
+    '--agent',
+    'demo',
+    '--message',
+    'hello',
+    '--url',
+    `http://127.0.0.1:${productionServer.port}`,
+  ],
+  { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
+);
+await Bun.sleep(50);
+await waitUntil(
+  () => productionRequests.some((request) => new URL(request.url).pathname.startsWith('/ag-ui/')),
+  {
+    message: 'compiled chat to connect to the AG-UI stream',
+    yieldTurn: () => Bun.sleep(10),
+  },
+);
+await Bun.sleep(100);
+sigintCall.kill('SIGINT');
+const [sigintStdout, sigintStderr, sigintExitCode] = await Promise.all([
+  new Response(sigintCall.stdout).text(),
+  new Response(sigintCall.stderr).text(),
+  sigintCall.exited,
+]);
 
 test('compiled help and version write stdout without validating or creating a home', () => {
   for (const result of [help, startHelp]) {
@@ -131,6 +178,12 @@ test('compiled commands use the production environment and preserve piped JSON p
   expect(productionCallStderr).toBe('');
   expect(JSON.parse(productionCallStdout)).toEqual({ revision: 'r1', idempotencyKey: 'i1' });
   expect(productionRequests[0]?.headers.get('authorization')).toBe('Bearer production-secret');
+});
+
+test('compiled chat detaches on SIGINT and reports resumable identifiers', () => {
+  expect(sigintExitCode).toBe(130);
+  expect(`${sigintStdout}${sigintStderr}`).toContain('thread-sigint');
+  expect(`${sigintStdout}${sigintStderr}`).toContain('run-sigint');
 });
 
 const invalidOptions = [
