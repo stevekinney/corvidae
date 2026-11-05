@@ -44,6 +44,12 @@ export type SchemaFormProps = Omit<HTMLFormAttributes, 'class' | 'onsubmit'> & {
   name?: string;
   /** Label for the built-in submit button. Defaults to `Submit`. */
   submitLabel?: string;
+  /**
+   * Whether the form draws its own submit button. Set `false` when the host submits the form from
+   * a button elsewhere on the page, such as a footer, whose `form` attribute names this form's
+   * `id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`.
+   */
+  submitVisible?: boolean;
   /** Custom class merged with `.cinder-schema-form`. */
   class?: string;
   /** Called after validation passes with the schema-conformant output value. */

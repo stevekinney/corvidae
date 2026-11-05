@@ -141,8 +141,12 @@
 .weft-chat-question {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-2);
+  gap: var(--cinder-space-2-5);
   min-inline-size: 0;
+  padding: var(--cinder-space-3) var(--cinder-space-3-5);
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
+  background: var(--cinder-surface-raised);
 }
 
 .weft-chat-question__prompt,
@@ -151,8 +155,21 @@
   overflow-wrap: anywhere;
 }
 
+/* The glyph hangs in the margin of the card, and the answer lines up under the words. */
 .weft-chat-question__prompt {
+  display: flex;
+  gap: var(--cinder-space-2);
   font-weight: 600;
+}
+
+.weft-chat-question__prompt .weft-chat-question__glyph {
+  flex: none;
+  margin-block-start: 0.125rem;
+  color: var(--cinder-text-muted);
+}
+
+.weft-chat-question > :not(.weft-chat-question__prompt) {
+  margin-inline-start: var(--cinder-space-6);
 }
 
 .weft-chat-question__hint {

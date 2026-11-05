@@ -43,7 +43,7 @@
 
   import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
   import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
-  import { GitBranch } from '@lucide/svelte';
+  import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
@@ -69,6 +69,7 @@
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { answerUndoMilliseconds } from '../../lib/answer-undo.ts';
   import { uploadAsset } from '../../lib/bureau-assets.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
@@ -465,6 +466,25 @@
     pickable = choiceButtons(questionElement).length > 0;
   });
 
+  /** Whether an answer is held for its Undo window, which keeps the composer from taking a second. */
+  let answerHeld = $state(false);
+  /** The question whose answer was just sent, kept on show as "You answered" while the run goes on. */
+  let sentRequest = $state.raw<(typeof session.humanRequests)[number] | undefined>();
+  // The run reports a question as it parks, a moment before the turn that carried it is over; a
+  // message sent in between would be a follow-up, so the question waits for the turn's end. Once its
+  // answer is sent the question stays, answered, while the run continues.
+  const shownRequests = $derived.by(() => {
+    if (!session.streaming) return session.humanRequests.slice(0, 1);
+    return sentRequest === undefined ? [] : [sentRequest];
+  });
+  $effect(() => {
+    // A question that is open again, or none at all, is not the one that was sent.
+    if (!session.streaming && sentRequest !== undefined) {
+      const open = session.humanRequests[0];
+      if (open?.interruptId !== sentRequest.interruptId) sentRequest = undefined;
+    }
+  });
+
   async function uploadQuestionFile(file: File, signal: AbortSignal): Promise<string> {
     const asset = await uploadAsset(file, { signal });
     return asset.assetId;
@@ -726,30 +746,6 @@
     <SessionTasks {sessionId} streaming={session.streaming} />
   {/if}
 
-  <!-- The run reports a question as it parks, a moment before the turn that carried it is over; a
-       message sent in between would be a follow-up, so the question waits for the turn's end. -->
-  {#each session.streaming ? [] : session.humanRequests.slice(0, 1) as request (request.interruptId)}
-    <div class="weft-chat-question" data-interrupt={request.interruptId}>
-      <p class="weft-chat-question__prompt">
-        {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
-      </p>
-      <div bind:this={questionElement} data-question-answer-region>
-        <ChatQuestion
-          {...{ 'data-changes': true }}
-          id={`chat-question-${request.interruptId}`}
-          schema={request.schema ?? FREE_TEXT_SCHEMA}
-          answerInComposer
-          busy={session.attaching}
-          uploadFile={uploadQuestionFile}
-          onSubmit={(value) => void session.answerQuestion(request.interruptId, value)}
-        />
-      </div>
-      {#if pickable}
-        <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
-      {/if}
-    </div>
-  {/each}
-
   {#if session.failure !== undefined}
     <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
       <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
@@ -825,7 +821,7 @@
       adapter={session.chatAdapter}
       streaming={session.streaming}
       surfaceMode="transparent"
-      disabled={connection.unreachable || session.disconnected || gone}
+      disabled={connection.unreachable || session.disconnected || gone || answerHeld}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
         attachments: attachable && !gone,
@@ -838,6 +834,38 @@
       maxFileSize={settings?.maxFileSize}
       formatAttachmentError={chatAttachmentErrorMessage}
     >
+      {#snippet trailing()}
+        {#each shownRequests as request (request.interruptId)}
+          <div class="weft-chat-question" data-interrupt={request.interruptId}>
+            <p class="weft-chat-question__prompt">
+              <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
+              {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+            </p>
+            <div bind:this={questionElement} data-question-answer-region>
+              <ChatQuestion
+                {...{ 'data-changes': true }}
+                id={`chat-question-${request.interruptId}`}
+                schema={request.schema ?? FREE_TEXT_SCHEMA}
+                answerInComposer
+                busy={session.attaching}
+                uploadFile={uploadQuestionFile}
+                undoMilliseconds={answerUndoMilliseconds()}
+                onHoldChange={(held) => (answerHeld = held)}
+                onSubmit={async (value) => {
+                  sentRequest = request;
+                  const taken = await session.answerQuestion(request.interruptId, value);
+                  // An answer the session did not take leaves the question open, not "answered".
+                  if (!taken) sentRequest = undefined;
+                  return taken;
+                }}
+              />
+            </div>
+            {#if pickable}
+              <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
+            {/if}
+          </div>
+        {/each}
+      {/snippet}
       {#snippet empty()}
         {#if choosing}
           <NewChatWelcome

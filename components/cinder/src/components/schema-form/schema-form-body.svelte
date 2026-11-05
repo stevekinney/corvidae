@@ -93,6 +93,7 @@
     jsonEditable = true,
     issues: hostIssues,
     submitLabel = 'Submit',
+    submitVisible = true,
     class: customClassName,
     onSubmit,
     onDraftChange,
@@ -754,7 +755,9 @@
     value={formState.serializedValue}
   />
 
-  <button type="submit" class="cinder-schema-form__submit" disabled={submitting}>
-    {submitting ? 'Validating...' : submitLabel}
-  </button>
+  {#if submitVisible}
+    <button type="submit" class="cinder-schema-form__submit" disabled={submitting}>
+      {submitting ? 'Validating...' : submitLabel}
+    </button>
+  {/if}
 </form>

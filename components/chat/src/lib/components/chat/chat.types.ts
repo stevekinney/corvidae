@@ -207,6 +207,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   /** The status line under the composer, such as a reconnect or queued follow-ups the host knows about. When omitted, Chat shows that an approval is waiting while one is pending. */
   composerStatus?: ChatComposerStatus;
   empty?: Snippet;
+  /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
+  trailing?: Snippet;
   /** List of suggested starter prompt strings shown as clickable buttons in the default empty state. Clicking a prompt submits it immediately as a user message. Has no effect when a custom `empty` snippet is provided. */
   emptyPrompts?: string[];
   /** Actions rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageStatus` and `row`, including resolved tool pairs and artifact metadata. */

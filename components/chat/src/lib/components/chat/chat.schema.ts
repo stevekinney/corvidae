@@ -195,6 +195,12 @@ const schema = {
         reason: 'function-or-snippet',
       },
       {
+        name: 'trailing',
+        reason: 'function-or-snippet',
+        description:
+          'Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation.',
+      },
+      {
         name: 'markdownNode',
         reason: 'function-or-snippet',
         description:

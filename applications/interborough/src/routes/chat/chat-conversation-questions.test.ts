@@ -4,18 +4,26 @@
  * question without a schema is answered in the composer.
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, jest, test } from 'bun:test';
 
+import { setAnswerUndoMilliseconds } from '../../lib/answer-undo.ts';
 import { shortcuts } from '../../lib/shortcuts.ts';
 import ChatConversation from './chat-conversation.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
+let restoreWindow: (() => void) | undefined;
 afterEach(() => {
   cleanup();
   restore?.();
   restore = undefined;
+  restoreWindow?.();
+  restoreWindow = undefined;
+  if (jest.isFakeTimers()) {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  }
 });
 
 const sse = (events: readonly unknown[]) =>
@@ -219,5 +227,83 @@ describe('a question with no schema', () => {
 
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]?.resume?.[0]?.payload).toEqual({ decision: 'approve', answer: 'staging' });
+  });
+});
+
+describe('a question in the transcript, answered with an Undo window', () => {
+  const RELEASE_CHOICES = {
+    anyOf: [{ enum: ['staging', 'production'] }, { type: 'string', maxLength: 500 }],
+    'x-allowOther': true,
+    'x-labels': { staging: 'Staging', production: 'Production' },
+    'x-descriptions': {
+      staging: 'Deploys to the staging site',
+      production: 'Deploys to the live site',
+    },
+  };
+
+  /** Moves the fake clock, then lets the promise continuations that follow settle. */
+  async function elapse(milliseconds: number): Promise<void> {
+    jest.advanceTimersByTime(milliseconds);
+    for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+  }
+
+  test('is the last item of the transcript, with the payload’s own descriptions', async () => {
+    serve(ask(RELEASE_CHOICES));
+    const { container, findByText } = await open();
+
+    expect(await findByText('Deploys to the staging site')).not.toBeNull();
+    expect(await findByText('Deploys to the live site')).not.toBeNull();
+    const question = container.querySelector('.weft-chat-question');
+    expect(question?.closest('.chat-timeline')).not.toBeNull();
+    // The card is after the last message, before the transcript's end sentinel.
+    expect(question?.closest('.chat-trailing')?.nextElementSibling?.className).toContain(
+      'chat-bottom-sentinel',
+    );
+    // The composer is where the person types an answer of their own: no field in the question.
+    expect(container.querySelector('.chat-question-own')).toBeNull();
+  });
+
+  test('shows the choice selected with one inline Undo, and keeps the composer from taking a second answer', async () => {
+    restoreWindow = setAnswerUndoMilliseconds(5000);
+    const { bodies } = serve(ask(RELEASE_CHOICES));
+    const { container, findByRole, getAllByRole } = await open();
+    const staging = await findByRole('button', { name: /Staging/ });
+    jest.useFakeTimers();
+
+    await fireEvent.click(staging);
+
+    const line = container.querySelector('.chat-question-status');
+    expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging · Undo (5 s)');
+    expect(staging.getAttribute('aria-pressed')).toBe('true');
+    expect(getAllByRole('button', { name: /Undo/ })).toHaveLength(1);
+    expect(container.querySelector('textarea')?.hasAttribute('readonly')).toBe(true);
+    // Nothing has gone to the run yet, and the number keys pick nothing more.
+    expect(bodies).toHaveLength(1);
+    expect(press('2')).toBe(true);
+    await elapse(0);
+    expect(bodies).toHaveLength(1);
+
+    await fireEvent.click(getAllByRole('button', { name: /Undo/ })[0]!);
+    await elapse(20000);
+    expect(bodies).toHaveLength(1);
+    expect(container.querySelector('.chat-question-status')).toBeNull();
+    expect(container.querySelector('textarea')?.hasAttribute('readonly')).toBe(false);
+  });
+
+  test('sends the answer when the five seconds end', async () => {
+    restoreWindow = setAnswerUndoMilliseconds(5000);
+    const { bodies } = serve(ask(RELEASE_CHOICES));
+    const { findByRole } = await open();
+    const production = await findByRole('button', { name: /Production/ });
+    jest.useFakeTimers();
+
+    await fireEvent.click(production);
+    await elapse(4800);
+    expect(bodies).toHaveLength(1);
+    await elapse(300);
+    jest.useRealTimers();
+
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]?.resume?.[0]?.payload).toEqual({ decision: 'approve', answer: 'production' });
   });
 });

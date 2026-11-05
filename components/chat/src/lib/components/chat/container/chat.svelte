@@ -123,6 +123,7 @@
     composerMarkdownStyling = true,
     composerStatus,
     empty,
+    trailing,
     emptyPrompts,
     messageActions,
     messageStatus,
@@ -1988,6 +1989,12 @@
           participantCount={typingIndicatorState.participantCount}
         />
 
+        {#if trailing}
+          <div class="chat-trailing">
+            {@render trailing()}
+          </div>
+        {/if}
+
         <!-- Bottom sentinel for IntersectionObserver -->
         <div class="chat-bottom-sentinel" aria-hidden="true" {@attach sentinelAttach}></div>
       </div>
@@ -2383,6 +2390,12 @@
     color: var(--cinder-accent-text);
     background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
     border-radius: var(--cinder-radius-full);
+  }
+
+  /* The host's last item of the transcript, held to the same measure as a message. */
+  .chat-trailing {
+    inline-size: min(100%, var(--cinder-chat-message-max-width, 48rem));
+    min-inline-size: 0;
   }
 
   /* Bottom Sentinel (invisible) */

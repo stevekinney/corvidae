@@ -23,7 +23,7 @@ type Schema = Record<string, unknown>;
 async function ask(schema: Schema, props: Record<string, unknown> = {}) {
   const submitted: unknown[] = [];
   const view = render(ChatQuestion, {
-    props: { schema, id: 'q', onSubmit: (value: unknown) => submitted.push(value), ...props },
+    props: { schema, id: 'q', onSubmit: (value: unknown) => void submitted.push(value), ...props },
   });
   await flush();
   return { ...view, submitted };
@@ -78,7 +78,7 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
     expect(container.textContent).toContain('The first one');
   });
 
-  test('pick one or something else: a choice answers, and Something else opens a field', async () => {
+  test('pick one or something else: a choice answers, and the field below takes your own', async () => {
     const schema = {
       anyOf: [{ enum: ['red', 'blue'] }, { type: 'string', maxLength: 40 }],
       'x-allowOther': true,
@@ -89,10 +89,27 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
     cleanup();
 
     const second = await ask(schema);
-    await fireEvent.click(screen.getByRole('button', { name: 'Something else…' }));
-    await fireEvent.input(screen.getByLabelText('Something else'), { target: { value: 'teal' } });
-    await send();
+    const field = screen.getByPlaceholderText('Choose an answer above, or type your own…');
+    expect(screen.getByRole('button', { name: 'Answer' }).hasAttribute('disabled')).toBe(true);
+    await fireEvent.input(field, { target: { value: 'teal' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
+    await flush();
     expect(second.submitted).toEqual(['teal']);
+  });
+
+  test('pick one or something else in a chat with a composer: no field of its own', async () => {
+    await ask(
+      {
+        anyOf: [{ enum: ['red', 'blue'] }, { type: 'string', maxLength: 40 }],
+        'x-allowOther': true,
+      },
+      { answerInComposer: true },
+    );
+    expect(screen.queryByPlaceholderText('Choose an answer above, or type your own…')).toBeNull();
+    expect(screen.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      'red',
+      'blue',
+    ]);
   });
 
   test('pick several: checkboxes, and Send answers with the picked values in a list', async () => {

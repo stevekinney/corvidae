@@ -3439,9 +3439,33 @@ export const TASK_COPY = {
   followUnavailable:
     'This server cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
-  waitsHeading: 'Waiting on you',
+  waitsHeading: 'What you can do',
+  /** The line under the heading while the run waits on questions. */
+  waitsSummary: (questions: number): string =>
+    questions === 1
+      ? 'This run is waiting on one question.'
+      : `This run is waiting on ${String(questions)} questions.`,
   /** The heading once everything the run asked has been answered. */
   waitsAnsweredHeading: 'Answered',
+  /** The small line over a question: who asked and how long ago. */
+  questionFrom: (agent: string, age: string): string => `Question from ${agent} · ${age}`,
+  /** Said under a question: what choosing an answer does, with the Undo window in seconds. */
+  answerSendsNote: (seconds: number): string =>
+    seconds <= 0
+      ? 'Choosing an answer sends it at once.'
+      : `Choosing an answer sends it at once. The run waits ${String(seconds)} seconds before it continues, so you can undo it.`,
+  /** Said under a question, and after an answer, while no model provider is connected. */
+  continuesOnProvider: (agent: string): string =>
+    `${agent} continues once a provider is connected.`,
+  /** The inline line while an answer is held: what was sent and that it can still be undone. */
+  answerSentLine: (label: string, seconds: number): string =>
+    `Answer sent: ${label}. Undo for ${String(seconds)} s.`,
+  /** The Undo action on that line. */
+  answerUndo: 'Undo',
+  /** Said under the choice that was picked, while its answer is held. */
+  answerSelected: 'Selected',
+  /** The run's status line while an answer is held. */
+  answerSentStatus: (seconds: number): string => `answer sent, undo for ${String(seconds)} s`,
   readingWait: 'Reading what the run is waiting on.',
   /** The answer is on its way and the wait has already closed. */
   sendingAnswer: 'Sending your answer.',
@@ -3541,8 +3565,10 @@ export const REVIEWS_COPY = {
   reasonLabel: 'Reason (required to reject)',
   reasonDescription: 'Sent with the decision. A rejection cannot be sent without one.',
   answerLabel: 'Your answer',
-  /** Said once under an answer field: what the agent does with the answer. */
-  answerHint: 'The agent continues with your answer.',
+  /** Said once in the footer of an open question: what the agent does with the answer. */
+  answerHint: 'The agent continues as soon as you answer.',
+  /** The footer button that commits a structured answer (a form), which picking a value does not send. */
+  sendAnswer: 'Send answer',
   /** The optional note saved with any decision; on a denial the agent reads it. */
   noteLabel: 'Note (optional)',
   /** Said under the note field: where the note goes. */

@@ -11,6 +11,11 @@
    * "You answered ...", masked the way the chat masks it (`recordAnswer`, on that same schema, so a
    * secret is never shown), for as long as the page is open: the page that lists the waits keeps the
    * row (`onAnswered`) after the next read of the task no longer lists the wait.
+   *
+   * A question is a card: who asked and how long ago, the question, and the answer in the control
+   * its schema asks for. A choice is sent as it is picked and held for five seconds first, with
+   * Undo in one line on the card (paused while focus or the pointer is on it); the run waits for
+   * that window, and `onAnswerHold` tells the page, whose status line says so too.
    */
   import {
     ChatQuestion,
@@ -21,6 +26,9 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY, TASK_COPY } from '../../../app/copy.ts';
+  import { getAgentCatalog } from '../../../lib/agent-definitions.ts';
+  import { useAgentDisplayName } from '../../../lib/agent-display-name.svelte.ts';
+  import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';
   import { uploadAsset } from '../../../lib/bureau-assets.ts';
   import {
     getBureauReview,
@@ -36,6 +44,7 @@
   import ApprovalDecision from '../../../lib/decision/approval-decision.svelte';
   import { classifyFault, faultTreatment } from '../../../lib/faults.ts';
   import IdentifierText from '../../../lib/identifier-text.svelte';
+  import { formatRelativeTime } from '../../../lib/format/index.ts';
   import { createPendingCommandKey } from '../../../lib/pending-command-key.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { invalidateReviewQueries } from '../../../lib/review-queries.ts';
@@ -52,9 +61,12 @@
     onAnswered?: ((record: QuestionAnswerRecord) => void) | undefined;
     /** Called when the answer was not taken, so the page need not keep a wait that is closed. */
     onFailed?: (() => void) | undefined;
+    /** Called with `true` while a picked answer is in its Undo window and `false` when it is not. */
+    onAnswerHold?: ((held: boolean) => void) | undefined;
   }
 
-  let { taskId, wait, answered, onSending, onAnswered, onFailed }: RunWaitProps = $props();
+  let { taskId, wait, answered, onSending, onAnswered, onFailed, onAnswerHold }: RunWaitProps =
+    $props();
 
   const queryClient = useQueryClient();
 
@@ -72,6 +84,25 @@
     (review.isError && classifyFault(review.error)?.kind === 'not-found') ||
       (review.data !== undefined && review.data.status !== 'pending'),
   );
+
+  const agentName = useAgentDisplayName();
+  // Whether a model provider is connected, which decides if the run can continue at once. Read only
+  // to say so; the card is the same without it.
+  const catalog = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.catalog(),
+      queryFn: ({ signal }) => getAgentCatalog({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const noProvider = $derived(catalog.data !== undefined && catalog.data.models.length === 0);
+  const undoSeconds = $derived(Math.round(answerUndoMilliseconds() / 1000));
+
+  /** "1 h ago" for the card's kicker: the unit is set off from the number, as the page writes times. */
+  function ago(requestedAt: number): string {
+    return formatRelativeTime(requestedAt).replace(/^(\d+)([a-z]+)/, '$1 $2');
+  }
 
   const commandKey = createPendingCommandKey();
   let working = $state(false);
@@ -178,22 +209,43 @@
   {:else if review.isError}
     <p class="ib-run-wait__note">{TASK_COPY.waitLoadFailed}</p>
   {:else if review.data.kind === 'human-wait'}
-    <p class="ib-run-wait__prompt" id={`run-wait-${wait.reviewId}-prompt`}>
-      <IdentifierText text={review.data.prompt ?? TASK_COPY.humanWaitFallback} identifiers={[]} />
-    </p>
-    <ChatQuestion
-      {...{ 'data-changes': true }}
-      id={`run-wait-${wait.reviewId}`}
-      {schema}
-      answerInComposer={false}
-      busy={working}
-      {issues}
-      failed={failure !== undefined}
-      uploadFile={async (file, signal) => (await uploadAsset(file, { signal })).assetId}
-      onSubmit={(value) => void answer(value)}
-    />
-    {#if failure !== undefined}<p class="ib-run-wait__note" role="alert">{failure}</p>{/if}
-    <p class="ib-run-wait__note">{REVIEWS_COPY.answerHint}</p>
+    {@const asked = review.data}
+    {@const who = asked.agentName === undefined ? undefined : agentName(asked.agentName)}
+    <div class="ib-run-wait__card" data-question-card>
+      <p class="ib-run-wait__kicker">
+        {#if who === undefined}{ago(asked.requestedAt)}{:else}{TASK_COPY.questionFrom(
+            who,
+            ago(asked.requestedAt),
+          )}{/if}
+      </p>
+      <p class="ib-run-wait__prompt" id={`run-wait-${wait.reviewId}-prompt`}>
+        <IdentifierText text={asked.prompt ?? TASK_COPY.humanWaitFallback} identifiers={[]} />
+      </p>
+      <ChatQuestion
+        {...{ 'data-changes': true }}
+        id={`run-wait-${wait.reviewId}`}
+        {schema}
+        answerInComposer={false}
+        busy={working}
+        {issues}
+        failed={failure !== undefined}
+        uploadFile={async (file, signal) => (await uploadAsset(file, { signal })).assetId}
+        undoMilliseconds={answerUndoMilliseconds()}
+        holdCopy={{
+          held: (label) => TASK_COPY.answerSentLine(label, undoSeconds),
+          undo: () => TASK_COPY.answerUndo,
+          selected: TASK_COPY.answerSelected,
+          ...(noProvider && who !== undefined ? { note: TASK_COPY.continuesOnProvider(who) } : {}),
+        }}
+        onHoldChange={(held) => onAnswerHold?.(held)}
+        onSubmit={(value) => void answer(value)}
+      />
+      {#if failure !== undefined}<p class="ib-run-wait__note" role="alert">{failure}</p>{/if}
+      <p class="ib-run-wait__note">
+        {TASK_COPY.answerSendsNote(undoSeconds)}
+        {#if noProvider && who !== undefined}{TASK_COPY.continuesOnProvider(who)}{/if}
+      </p>
+    </div>
   {:else}
     {@const approval = review.data.approval}
     <ApprovalDecision

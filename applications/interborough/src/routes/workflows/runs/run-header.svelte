@@ -49,6 +49,8 @@
     tookMilliseconds?: number | undefined;
     /** The Bureau's task, when the run is one: it owns Cancel run. */
     task?: TaskView | undefined;
+    /** A short phrase after the status, such as "answer sent, undo for 5 s" while an answer can be undone. */
+    note?: string | undefined;
     /** Where Open chat goes, and what it says. */
     chat?: { readonly href: string; readonly label: string } | undefined;
     /** The engine's status of the run, when the engine holds it: it sets the actions in More. */
@@ -69,6 +71,7 @@
     startedAt,
     tookMilliseconds,
     task,
+    note,
     chat,
     engineStatus,
     pendingAction = null,
@@ -141,6 +144,9 @@
   {/if}
   {#if tookMilliseconds !== undefined}
     · {formatDuration(tookMilliseconds)}
+  {/if}
+  {#if note !== undefined}
+    · {note}
   {/if}
 {/snippet}
 

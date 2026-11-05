@@ -14,6 +14,10 @@
       "type": "string",
       "description": "Label for the built-in submit button. Defaults to `Submit`."
     },
+    "submitVisible": {
+      "type": "boolean",
+      "description": "Whether the form draws its own submit button. Set `false` when the host submits the form from\na button elsewhere on the page, such as a footer, whose `form` attribute names this form's\n`id`. Without the built-in button a form with several fields does not submit on Enter. Defaults to `true`."
+    },
     "class": {
       "type": "string",
       "description": "Custom class merged with `.cinder-schema-form`."

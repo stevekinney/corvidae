@@ -353,7 +353,7 @@ test.describe('a question a run asks', () => {
     await expect(paneOf(page).getByTestId('review-source')).toContainText(
       'Asked by demo:request-human-input',
     );
-    await expect(paneOf(page)).toContainText('The agent continues with your answer.');
+    await expect(paneOf(page)).toContainText('The agent continues as soon as you answer.');
     await checkA11y('a question in the inbox');
     await paneOf(page).getByLabel('Your answer').fill('staging');
     await paneOf(page).getByRole('button', { name: 'Send', exact: true }).click();
