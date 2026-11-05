@@ -67,7 +67,12 @@ import type {
   WorkflowReviewOrigin,
 } from '../types.ts';
 import type { BureauScope } from './bureau-scopes.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts';
+import {
+  mayUseCrossOwnerScope,
+  type BureauOwnershipHost,
+  ownerOfPrincipal,
+} from './owner-predicate.ts';
+import { authorizeWorkspaceOperation } from './workspace-authorization.ts';
 
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
@@ -537,10 +542,9 @@ async function mayAccessReview(
 ): Promise<boolean> {
   // The operator scope needs no owner lookup, and a lookup that finds nothing
   // (a deleted run) leaves only the scope.
-  const resourceOwner =
-    principal.method !== 'unauthenticated' && principal.hasScope(operatorScope)
-      ? undefined
-      : await host.ownership.runOwner(runId);
+  const resourceOwner = mayUseCrossOwnerScope(principal, operatorScope)
+    ? undefined
+    : await host.ownership.runOwner(runId);
   return host.ownership.mayAccess({ principal, resourceOwner, operatorScope });
 }
 
@@ -702,6 +706,7 @@ export const reviewsListOperation = defineOperation<
   BureauReviewsOperationHost
 >({
   name: 'bureau.reviews.list',
+  authorize: authorizeWorkspaceOperation('bureau.reviews.list'),
   mcpExposable: true,
   summary: 'List the reviews that are waiting for a decision, or that have been decided',
   description:
@@ -771,6 +776,7 @@ export const reviewsListOperation = defineOperation<
       engine !== undefined &&
       typeof engine.listReviews === 'function' &&
       principal.method !== 'unauthenticated' &&
+      principal.workspace === undefined &&
       principal.hasScope('reviews:read')
     ) {
       const now = Date.now();
@@ -815,6 +821,7 @@ export const reviewsGetOperation = defineOperation<
   BureauReviewsOperationHost
 >({
   name: 'bureau.reviews.get',
+  authorize: authorizeWorkspaceOperation('bureau.reviews.get'),
   mcpExposable: true,
   summary: 'Read one review by id',
   description:
@@ -901,6 +908,7 @@ export const reviewsResolveOperation = defineOperation<
   BureauReviewsOperationHost
 >({
   name: 'bureau.reviews.resolve',
+  authorize: authorizeWorkspaceOperation('bureau.reviews.resolve'),
   mcpExposable: true,
   summary: 'Approve, deny, or reject a pending review',
   description:

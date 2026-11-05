@@ -36,6 +36,8 @@ export type AssetLifecycleState =
 /** Who is asking. `privileged` unlocks the privileged projection and administrative holds — never resource authorization. */
 export interface AssetPrincipal {
   readonly id: string;
+  /** Current same-workspace membership for explicit sharing; carried only by trusted hosts. */
+  readonly workspaceAuthority?: ((owner: string) => Promise<boolean>) | undefined;
   readonly privileged?: boolean | undefined;
 }
 

@@ -246,8 +246,9 @@ describe('skills in configuration.json', () => {
     const bungalow = {
       mode: 'local' as const,
       configurationLocation: join(home, 'configuration.json'),
-      readConfiguration: async () =>
-        JSON.stringify({
+      readConfiguration: async () => ({
+        revision: 'initial',
+        text: JSON.stringify({
           skills: {
             sources: [
               { id: 'home', kind: 'user', path: userSkills },
@@ -256,7 +257,8 @@ describe('skills in configuration.json', () => {
             trusted: ['home'],
           },
         }),
-      writeConfiguration: async () => {},
+      }),
+      writeConfiguration: async () => ({ outcome: 'committed' as const }),
     };
     const catalog = await discoverFirstSkills({
       bungalow,

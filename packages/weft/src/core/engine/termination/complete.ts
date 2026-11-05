@@ -13,6 +13,7 @@ import { tagWorkflowEventGeneration } from '../../events/workflow-event-generati
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../../scheduler.ts';
 import { WorkflowTimeoutError } from '../../timeouts.ts';
 import type {
+  CancelWorkflowResult,
   FailureCategory,
   SearchAttributeValue,
   TerminationReason,
@@ -76,6 +77,7 @@ import {
   terminalCommitterStamp,
 } from './completion-operations.ts';
 import {
+  cancellationOutcomeFromRefusal,
   captureTerminatedRun,
   settleTerminatedRunAfterRefusal,
 } from './settle-refused-terminal.ts';
@@ -120,8 +122,8 @@ export async function cancelWorkflow(
   internals: EngineInternals,
   workflowId: string,
   callbacks: TerminationCallbacks,
-): Promise<void> {
-  await terminateWorkflow(internals, workflowId, 'cancelled', callbacks);
+): Promise<CancelWorkflowResult> {
+  return await terminateWorkflow(internals, workflowId, 'cancelled', callbacks);
 }
 
 export async function timeoutWorkflow(
@@ -141,7 +143,7 @@ export async function terminateWorkflow(
   reason?: TerminationReason,
   historyRetry = 0,
   historyRunIdentity?: FileWorkflowRunIdentity,
-): Promise<void> {
+): Promise<CancelWorkflowResult> {
   const terminatedRun = captureTerminatedRun(internals, workflowId);
   const inFlightActivityTurn = captureInFlightActivityTurn(internals, workflowId);
   let pendingSettlement: PendingTerminalSettlement | undefined;
@@ -260,7 +262,14 @@ export async function terminateWorkflow(
     }
     if (!terminationResult) {
       await settleTerminatedRunAfterRefusal(internals, workflowId, callbacks, terminatedRun);
-      return;
+      if (status === 'timed-out') {
+        return { workflowId, status: 'already-terminal', terminalStatus: 'timed-out' };
+      }
+      throw new Error(`Workflow "${workflowId}" was not found.`);
+    }
+    if ('kind' in terminationResult) {
+      await settleTerminatedRunAfterRefusal(internals, workflowId, callbacks, terminatedRun);
+      return cancellationOutcomeFromRefusal(workflowId, terminationResult);
     }
     recordTerminalHistory(internals, workflowId, fileWorkflowHistory);
     const { previousState, updatedAt, fence } = terminationResult;
@@ -300,8 +309,7 @@ export async function terminateWorkflow(
       callbacks.swallowPromiseRejection,
     );
 
-    // Cancel is an external transition: the run it ended is the one it wrote, which may not be the
-    // run this engine holds in memory, so the waiter is matched against the durable run.
+    // Match the waiter against the durable run for this external transition.
     const resolver = isSuperseded()
       ? undefined
       : resultWaiterForRun(internals, workflowId, previousState.workflowExecutionToken);
@@ -332,6 +340,7 @@ export async function terminateWorkflow(
     } finally {
       if (!superseded && !pendingSettlement) internals.resultResolvers.delete(workflowId);
     }
+    return { workflowId, status: 'cancel-requested' };
   } finally {
     internals.terminalizingWorkflows.delete(workflowId);
     // After the terminal event is out, and on every path out, so a held result is always released.
@@ -659,7 +668,7 @@ export async function failWorkflow(
       },
     },
   );
-  if (!failureResult) {
+  if (!failureResult || 'kind' in failureResult) {
     return;
   }
   recordTerminalHistory(internals, workflowId, fileWorkflowHistory);

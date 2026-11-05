@@ -44,14 +44,15 @@ export function createCheckpointPersistenceCallbacks<
     dispatchEvent: (event) => {
       engine.dispatchEvent(event);
     },
-    enforceHistoryCircuitBreaker: (id) =>
-      terminateWorkflow(
+    enforceHistoryCircuitBreaker: async (id) => {
+      await terminateWorkflow(
         getInternals(engine),
         id,
         'timed-out',
         createTerminationCallbacks(engine),
         HISTORY_CIRCUIT_BREAKER_REASON,
-      ),
+      );
+    },
   };
 }
 

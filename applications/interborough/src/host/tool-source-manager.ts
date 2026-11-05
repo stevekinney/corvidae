@@ -993,7 +993,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       return work();
     });
 
-  async function readText(): Promise<string | undefined> {
+  async function readSnapshot() {
     try {
       return await bungalow.readConfiguration();
     } catch {
@@ -1004,15 +1004,16 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
   /** The configuration as an object whose other keys a write keeps, and the sources it lists. */
   async function readDocument(): Promise<{
     text: string | undefined;
+    revision: string | null;
     document: Record<string, unknown>;
     sources: readonly ConfiguredToolSource[];
   }> {
-    const text = await readText();
+    const { text, revision } = await readSnapshot();
     // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
     if (text !== undefined) parseProviderConfiguration(text, location);
     const sources = readToolSourcesConfiguration(text, location);
     const parsed: unknown = text === undefined ? {} : JSON.parse(text);
-    return { text, document: isPlainObject(parsed) ? parsed : {}, sources };
+    return { text, revision, document: isPlainObject(parsed) ? parsed : {}, sources };
   }
 
   const resolveCredential = async ({
@@ -1335,20 +1336,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     }
   }
 
-  /** Write `text` as the configuration, and say whether the file holds it afterwards. */
-  async function writeConfiguration(text: string): Promise<boolean> {
-    try {
-      bungalow.writeConfiguration(text);
-      return true;
-    } catch {
-      // Bungalow renames the file and then syncs the directory, so a throw may follow a write
-      // that took. Read the disk back instead of assuming.
-      try {
-        return (await bungalow.readConfiguration()) === text;
-      } catch {
-        return false;
-      }
+  /** Await a conditional write; uncertainty never takes the credential-rollback path. */
+  async function writeConfiguration(text: string, revision: string | null): Promise<boolean> {
+    const result = await bungalow.writeConfiguration(text, { expectedRevision: revision });
+    if (result.outcome === 'unknown') {
+      // Bungalow already refreshed standing. Keep credentials and any retirement fence intact:
+      // the new configuration may have committed, even if a later writer replaced it.
+      throw new Error('Configuration write outcome is unknown. Reload before retrying.');
     }
+    return result.outcome === 'committed';
   }
 
   /** Where a source added while the host runs hands its tools: the Bureau's catalog, once it is built. */
@@ -1522,7 +1518,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       let added = false;
       const change = await serialized(() =>
         vault.exclusive(id, async () => {
-          const { text: currentText, document, sources } = await readDocument();
+          const { text: currentText, revision, document, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
           if (createOnly && existing !== undefined) {
             throw new ToolSourceExistsError(id);
@@ -1626,7 +1622,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             throw error;
           }
           // A rotation of credentials alone leaves the file as it is: nothing to write or repair.
-          if (text !== currentText && !(await writeConfiguration(text))) {
+          if (text !== currentText && !(await writeConfiguration(text, revision))) {
             // The configuration is not the one meant: the file still describes the previous credentials.
             putPreviousBack();
             throw new Error('The tool-source configuration could not be written.');
@@ -1647,7 +1643,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const id = checkedIdentifier(request.id, 'id');
       const incoming = checkedToolSettings(request.tools);
       return serialized(async () => {
-        const { text: currentText, document, sources } = await readDocument();
+        const { text: currentText, revision, document, sources } = await readDocument();
         const existing = sources.find((entry) => entry.source.id === id);
         if (existing === undefined) {
           throw new ToolSourceInputError('source', 'not a configured source.', 'unknown-source');
@@ -1667,7 +1663,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         parseProviderConfiguration(text, location);
         parseToolSourcesConfiguration(nextDocument.toolSources, location);
         if (text === currentText) return { id, changed: false, restartRequired: true };
-        if (!(await writeConfiguration(text))) {
+        if (!(await writeConfiguration(text, revision))) {
           throw new Error('The tool-source configuration could not be written.');
         }
         const before = new Set(acceptingTools(existing.tools));
@@ -1684,7 +1680,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const id = checkedIdentifier(request.id, 'id');
       return serialized(() =>
         vault.exclusive(id, async () => {
-          const { document, sources } = await readDocument();
+          const { document, revision, sources } = await readDocument();
           const existing = sources.find((entry) => entry.source.id === id);
           if (existing === undefined) {
             throw new ToolSourceInputError('source', 'not a configured source.', 'unknown-source');
@@ -1699,7 +1695,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
               : { ...rest, toolSources: serializeToolSources(remaining) };
           const text = `${JSON.stringify(nextDocument, null, 2)}\n`;
           parseProviderConfiguration(text, location);
-          if (!(await writeConfiguration(text))) {
+          if (!(await writeConfiguration(text, revision))) {
             throw new Error('The tool-source configuration could not be written.');
           }
           retired.add(id);

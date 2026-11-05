@@ -382,6 +382,40 @@ describe('admission API', () => {
 });
 
 describe('admission policy', () => {
+  it('requires a current same-workspace authority for explicit readers', async () => {
+    const fixture = memoryFixture();
+    const opened = await open({ storage: fixture.storage });
+    const sameWorkspace = async (owner: string) => owner === 'alice' || owner === 'bob';
+    const original = await opened.assets.admit(
+      { source: { kind: 'inline', bytes: textBytes('workspace-private') }, readers: ['bob'] },
+      { ...alice, workspaceAuthority: sameWorkspace },
+    );
+    await original.work.result();
+    expect(
+      await opened.assets.inspect(original.assetId, { ...bob, workspaceAuthority: sameWorkspace }),
+    ).toMatchObject({ owner: 'alice' });
+    const resolved = await opened.assets.resolve(original.source, {
+      ...bob,
+      workspaceAuthority: sameWorkspace,
+    });
+    expect(resolved.content.kind).toBe('bytes');
+    if (resolved.content.kind === 'bytes') {
+      expect(new TextDecoder().decode(resolved.content.bytes)).toBe('workspace-private');
+    }
+
+    const denied = async (authority: (owner: string) => Promise<boolean>) =>
+      rejectionOf(
+        opened.assets.inspect(original.assetId, { ...bob, workspaceAuthority: authority }),
+      );
+    expect(await denied(async () => false)).toBeInstanceOf(AssetNotFoundError);
+    expect(await denied(async () => false)).toBeInstanceOf(AssetNotFoundError);
+    expect(
+      await denied(async () => {
+        throw new Error('removed-membership-sentinel');
+      }),
+    ).toBeInstanceOf(AssetNotFoundError);
+  });
+
   it('copies the allowlists it is given, so mutating them later changes nothing', async () => {
     const allowedMediaTypes = ['image/png'];
     const allowedSchemes = ['https:'];

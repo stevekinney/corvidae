@@ -1,3 +1,10 @@
+import { OPERATION_MAP, type WorkspaceOperationClass } from './operation-map.ts';
+import {
+  classifyWorkspaceMount,
+  registerWorkspaceMount,
+  type WorkspaceClassifiedMount,
+} from './workspace-authorization.ts';
+
 /**
  * `createBureauHandler`: a Bureau, served as a fetch handler.
  *
@@ -21,6 +28,11 @@
  */
 
 import {
+  withWorkspaceMembership,
+  workspaceOwnerAuthority,
+  type WorkspaceMembershipOptions,
+} from './workspace-principal.ts';
+import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
@@ -28,8 +40,8 @@ import {
   createOperationHandlerAuthenticator,
   getPrincipalOperation,
   type OperationHandler,
-  type OperationHandlerAuthenticate,
   type OperationHandlerMount,
+  type OperationHandlerAuthenticate,
   type Outbox,
   type AuthenticatedPrincipal,
   type Principal,
@@ -238,6 +250,7 @@ import {
 export type BureauHandlerSource = Pick<
   Bureau,
   | 'id'
+  | 'workspaceBinding'
   | 'runtimeServices'
   | 'durableEngine'
   | 'ownerOf'
@@ -459,13 +472,17 @@ export type BureauHandlerOptions = {
    * construction, and so does a static `apiKeys` list, because every static key
    * authenticates as one shared caller and so would own every resource together.
    * `resolveApiKeyPrincipal` returns the principal a key stands for; its `subject`
-   * is the owner (`api-key:<encodeURIComponent(subject)>`), so keys share an owner
-   * only by returning the same subject. A subject in the reserved `system:` or
+   * names the credential. Without `workspace`, the subject determines the owner
+   * (`api-key:<encodeURIComponent(subject)>`). With `workspace`, the trusted membership
+   * resolver explicitly maps credentials to stable actors and opaque durable owners.
+   * A subject in the reserved `system:` or
    * `anonymous:` namespace is refused with 401. Required unless
    * `unauthenticatedAccess` is `'allow'`; with it, a request that carries a
    * credential is authenticated by it, and A2A requires one (COR-1904).
    */
   readonly authentication?: AuthConfig;
+  /** Server-supplied current membership for this runtime's workspace, resolved after authentication. */
+  readonly workspace?: WorkspaceMembershipOptions;
   /**
    * `'reject'` (the default) requires `authentication` and answers 401 to a
    * request without credentials on every route. `'allow'` serves every request
@@ -485,7 +502,7 @@ export type BureauHandlerOptions = {
    */
   readonly unauthenticatedAccess?: 'reject' | 'allow';
   /** Protocol adapters, each claiming a path prefix ahead of the catalog. */
-  readonly mounts?: readonly OperationHandlerMount[];
+  readonly mounts?: readonly WorkspaceClassifiedMount[];
   /**
    * Mounts the AG-UI adapter (`ag-ui-mount.ts`): four routes under
    * `agUi.pathPrefix` (default `/ag-ui`) that start or resume a run, attach to
@@ -546,6 +563,7 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'signing',
   'pushNotifications',
   'authentication',
+  'workspace',
   'unauthenticatedAccess',
   'mounts',
   'agUi',
@@ -1081,6 +1099,7 @@ function createA2AMount(
     bureau.runtimeServices,
   );
   return createBureauA2AMount({
+    workspaceAuthority: host.workspaceAuthority,
     // The bureau's own clock and timers, so a custom runtime governs command deadlines and the
     // handler's waits as it governs the bureau.
     runtime: bureau.runtimeServices,
@@ -1197,9 +1216,11 @@ export function buildBureauHandlerHost(
   bureau: BureauHandlerSource,
   a2aAgents: readonly string[],
   skills?: BureauHandlerOptions['skills'],
+  workspace?: WorkspaceMembershipOptions,
 ): BureauHandlerHost {
   const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
   return {
+    workspaceAuthority: (principal) => workspaceOwnerAuthority(workspace, principal),
     // A Bureau owns exactly one feed, so the registry answers for its id alone.
     bureauFeeds: {
       get: (bureauId) => (bureauId === bureau.id ? bureau.internals.eventFeed : undefined),
@@ -1325,6 +1346,18 @@ export function buildBureauHandlerHost(
   };
 }
 
+/** One live operation or protocol mount in the composed handler. */
+export interface BureauResourceInventoryEntry {
+  /** Whether this entry is an operation or delegated protocol mount. */
+  readonly kind: 'operation' | 'mount';
+  /** Registered operation name or mount path prefix. */
+  readonly key: string;
+  /** Declared resource policy; absent only on an unclassified standalone mount. */
+  readonly workspaceClass: WorkspaceOperationClass | undefined;
+  /** Enabled wire transports from the registered operation or mount. */
+  readonly transports: readonly string[];
+}
+
 /**
  * Create a fetch handler that serves `bureau`'s native operations: the
  * `bureau.events` and `operative.runs.events` feeds as Server-Sent Events with
@@ -1351,9 +1384,19 @@ export function buildBureauHandlerHost(
 export function createBureauHandler(
   bureau: BureauHandlerSource,
   options: BureauHandlerOptions,
-): OperationHandler {
+): OperationHandler & { readonly resourceInventory: readonly BureauResourceInventoryEntry[] } {
   if (typeof options !== 'object' || options === null) fail('options must be an object');
   assertKnownOptions(options);
+  const binding = bureau.workspaceBinding;
+  const requested = options.workspace;
+  if (
+    (binding === undefined) !== (requested === undefined) ||
+    binding?.workspaceId !== requested?.workspaceId ||
+    binding?.resolveMembership !== requested?.resolveMembership ||
+    binding?.resolveOwnerMembership !== requested?.resolveOwnerMembership
+  ) {
+    fail('workspace must match the Bureau construction binding');
+  }
   const unauthenticatedAccess = resolveUnauthenticatedAccess(options);
   assertAuthentication(options.authentication, unauthenticatedAccess);
   assertA2AAgents(bureau, options.a2aAgents);
@@ -1364,38 +1407,82 @@ export function createBureauHandler(
   assertBureauId(bureau);
   assertPersistence(bureau);
 
-  const host = buildBureauHandlerHost(bureau, options.a2aAgents ?? [], options.skills);
+  const host = buildBureauHandlerHost(
+    bureau,
+    options.a2aAgents ?? [],
+    options.skills,
+    options.workspace,
+  );
+  const authenticate = handlerAuthenticate(options.authentication, unauthenticatedAccess);
 
-  return createOperationHandler({
-    operations: BUREAU_HANDLER_OPERATIONS,
-    host,
-    authenticate: handlerAuthenticate(options.authentication, unauthenticatedAccess),
-    ...(options.maxRequestBodyBytes === undefined
-      ? {}
-      : { maxRequestBodyBytes: options.maxRequestBodyBytes }),
-    mounts: [
-      createAssetsMount(bureau.assets!),
-      ...(options.agUi === undefined
-        ? []
-        : [
+  const mounts: WorkspaceClassifiedMount[] = [
+    classifyWorkspaceMount(createAssetsMount(bureau.assets!, options.workspace), 'explicit-share'),
+    ...(options.agUi === undefined
+      ? []
+      : [
+          classifyWorkspaceMount(
             createAgUiMount(
               bureau,
               {
+                workspaceAuthority: host.workspaceAuthority,
                 mayAccess: host.ownership.mayAccess,
                 ownerOf: (resource) => bureau.ownerOf(resource),
               },
               createStartable(bureau, options.a2aAgents ?? []),
               options.agUi,
             ),
-          ]),
-      ...(options.mcp === undefined
-        ? []
-        : [createBureauMcpMount(options.mcp, options.maxRequestBodyBytes)]),
-      ...(options.publicUrl === undefined ? [] : [createA2AMount(bureau, options, host)]),
-      ...(options.mounts ?? []),
-    ],
+            'private-owned',
+          ),
+        ]),
+    ...(options.mcp === undefined
+      ? []
+      : [
+          classifyWorkspaceMount(
+            createBureauMcpMount(options.mcp, options.maxRequestBodyBytes),
+            'private-owned',
+          ),
+        ]),
+    ...(options.publicUrl === undefined
+      ? []
+      : [classifyWorkspaceMount(createA2AMount(bureau, options, host), 'private-owned')]),
+    ...(options.workspace === undefined
+      ? (options.mounts ?? [])
+      : (options.mounts ?? []).map(registerWorkspaceMount)),
+  ];
+  const handler = createOperationHandler({
+    operations: BUREAU_HANDLER_OPERATIONS,
+    host,
+    authenticate:
+      options.workspace === undefined
+        ? authenticate
+        : withWorkspaceMembership(authenticate, options.workspace),
+    ...(options.maxRequestBodyBytes === undefined
+      ? {}
+      : { maxRequestBodyBytes: options.maxRequestBodyBytes }),
+    mounts,
     // Whether a route authenticates is decided by `authentication` alone, so the
     // health route and the documents are no more public than anything else.
     publicPaths: [],
+  });
+  const resourceInventory: BureauResourceInventoryEntry[] = [
+    ...BUREAU_HANDLER_OPERATIONS.map((operation): BureauResourceInventoryEntry => ({
+      kind: 'operation',
+      key: operation.name,
+      workspaceClass: Object.hasOwn(OPERATION_MAP, operation.name)
+        ? OPERATION_MAP[operation.name as keyof typeof OPERATION_MAP].workspaceClass
+        : undefined,
+      transports: Object.entries(operation.transports)
+        .filter(([, available]) => available)
+        .map(([transport]) => transport),
+    })),
+    ...mounts.map((mount): BureauResourceInventoryEntry => ({
+      kind: 'mount',
+      key: mount.pathPrefix,
+      workspaceClass: mount.workspaceClass,
+      transports: ['http'],
+    })),
+  ];
+  return Object.assign(handler, {
+    resourceInventory: Object.freeze(resourceInventory.map((entry) => Object.freeze(entry))),
   });
 }

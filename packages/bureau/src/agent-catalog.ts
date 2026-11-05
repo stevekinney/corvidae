@@ -237,7 +237,10 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    * The snapshots that have run for `id`, most recently run first. A snapshot is kept while any
    * run that references it is retained (`BureauRetentionOptions.tasks`) and pruned after the last.
    */
-  revisions(id: string): Promise<readonly AgentRevision[]>;
+  revisions(
+    id: string,
+    mayReadRun?: (runId: string) => Promise<boolean>,
+  ): Promise<readonly AgentRevision[]>;
   /**
    * The saved versions of file agents (COR-1815), which are kept apart from the runs that used
    * them: every save, and every edit the directory watcher finds, is one version, whether or not
@@ -618,8 +621,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       if (add === undefined) throw new Error('This catalog has no tool catalog to add tools to.');
       await add(tools);
     },
-    revisions(id) {
-      return snapshots?.revisions(id) ?? Promise.resolve([]);
+    revisions(id, mayReadRun) {
+      return snapshots?.revisions(id, mayReadRun) ?? Promise.resolve([]);
     },
     versions: {
       list: async (id) => files?.versions.list(id) ?? [],

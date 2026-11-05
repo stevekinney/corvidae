@@ -28,6 +28,12 @@ import {
   rpc,
   type RpcBody,
 } from './management-fixtures.test-support.ts';
+import {
+  WORKSPACE_PRIVACY_ACTORS,
+  openWorkspacePrivacyBureau,
+  workspacePrivacyCall,
+  type WorkspacePrivacyActor,
+} from '../workspace-privacy-fixtures.test-support.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -383,4 +389,51 @@ describe('bureau.notifications.markread and dismiss', () => {
     expect(response.result).toBeUndefined();
     expect(response.error).toBeDefined();
   });
+});
+
+describe('workspace privacy for notifications', () => {
+  for (const operation of [
+    'bureau.notifications.list',
+    'bureau.notifications.markread',
+    'bureau.notifications.dismiss',
+  ] as const) {
+    it(`${operation} tests every actor against an unmodified private notification`, async () => {
+      const opened = await openWorkspacePrivacyBureau();
+      cleanups.push(() => opened.dispose());
+      for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+        const created = await opened.bureau.notifications.create({
+          owner: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+          kind: 'workspace.private',
+          title: 'PRIVATE-NOTIFICATION-SENTINEL',
+        });
+        const id = created.notification.id;
+        const result = await workspacePrivacyCall(
+          opened,
+          actor,
+          operation,
+          operation.endsWith('list') ? {} : { ids: [id] },
+        );
+        if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
+        else {
+          expect(result.body?.error).toBeUndefined();
+          if (operation.endsWith('list')) {
+            if (actor === 'owner') expect(result.text).toContain(id);
+            else {
+              expect(result.body?.result?.['notifications']).toEqual([]);
+              expect(result.text).not.toContain('PRIVATE-NOTIFICATION-SENTINEL');
+            }
+          } else expect(result.body?.result?.['updated']).toBe(actor === 'owner' ? 1 : 0);
+        }
+        if (actor !== 'owner') {
+          const retained = await workspacePrivacyCall(
+            opened,
+            'owner',
+            'bureau.notifications.list',
+            {},
+          );
+          expect(retained.text).toContain(id);
+        }
+      }
+    });
+  }
 });

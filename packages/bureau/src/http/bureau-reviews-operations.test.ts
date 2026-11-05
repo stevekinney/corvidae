@@ -4,6 +4,8 @@ import {
   createOperationHandlerAuthenticator,
   principalFromApiKey,
   principalFromJwtClaims,
+  type OperationHandlerAuthenticate,
+  type WorkspaceIdentity,
 } from '@lostgradient/weft';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -29,6 +31,13 @@ import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import type { AgentDefinitions } from '../agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import { withWorkspaceMembership } from './workspace-principal.ts';
+import {
+  WORKSPACE_PRIVACY_ACTORS,
+  openWorkspacePrivacyBureau,
+  workspacePrivacyCall,
+  type WorkspacePrivacyActor,
+} from './workspace-privacy-fixtures.test-support.ts';
 
 const silent = () => undefined;
 const API_KEY = 'reviews-test-key';
@@ -109,7 +118,7 @@ function stubHost(
 
 function serve(
   host: BureauReviewsOperationHost,
-  authenticate = createOperationHandlerAuthenticator(authentication, {
+  authenticate: OperationHandlerAuthenticate = createOperationHandlerAuthenticator(authentication, {
     additionalScopes: BUREAU_SCOPES,
   }),
 ) {
@@ -132,6 +141,59 @@ function runHumanWaitReview(overrides: Partial<PendingReview> = {}): PendingRevi
 }
 
 describe('the parks of runs another process holds (COR-1579)', () => {
+  it('does not expose raw engine reviews to a workspace administrator with legacy scope', async () => {
+    const engine = {
+      listReviews: async () => [
+        {
+          reviewId: 'engine-review-1',
+          workflowId: 'workflow-1',
+          createdAt: 1_000,
+          timestamp: 1_100,
+          status: 'completed' as const,
+          reviewType: 'human',
+          reviewers: ['operator'],
+          allowPartial: false,
+          artifact: null,
+          decision: 'approved' as const,
+          reviewer: 'operator',
+        },
+      ],
+    };
+    const host = {
+      reviews: stubHost({ durableEngine: () => engine as never }).reviews,
+      ownership: { runOwner: async () => 'api-key:tester', mayAccess: mayAccessOwnedResource },
+    };
+    const authenticate = withWorkspaceMembership(
+      createOperationHandlerAuthenticator(
+        {
+          ...authentication,
+          resolveApiKeyPrincipal: async (key: string) =>
+            key === API_KEY
+              ? principalFromApiKey({ subject: 'tester', scopes: ['reviews:read'] })
+              : null,
+        },
+        { additionalScopes: BUREAU_SCOPES },
+      ),
+      {
+        workspaceId: 'workspace-a',
+        resolveMembership: async () =>
+          ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: 'tester',
+            actorKind: 'user',
+            owner: 'api-key:tester',
+            membershipRevision: 'revision-1',
+            capabilities: ['workspace:use', 'workspace:manage'],
+          }) satisfies WorkspaceIdentity,
+      },
+    );
+    const body = await call(serve(host, authenticate), 'bureau.reviews.list', {
+      status: 'resolved',
+    });
+    expect(body.result).toEqual({ reviews: [], nextPageToken: null });
+  });
+
   it('lists every page of running agent runs, by what each page reports, with the local entry winning', async () => {
     const runIds = ['run-1', 'run-2', 'run-3'];
     const offsets: Array<number | undefined> = [];
@@ -681,8 +743,6 @@ describe('projectReview', () => {
 });
 
 describe('the reviews operations against a real Bureau', () => {
-  const emptyToolbox = () => createToolbox([]) as unknown as Toolbox;
-
   async function parkedBureau() {
     let calls = 0;
     const generate: GenerateFunction = async () => {
@@ -707,7 +767,7 @@ describe('the reviews operations against a real Bureau', () => {
       agents: {
         default: createAgent({
           generate,
-          toolbox: emptyToolbox(),
+          toolbox: createToolbox([]) as unknown as Toolbox,
           stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
         }),
       },
@@ -973,6 +1033,78 @@ describe('the reviews operations against a real Bureau', () => {
       expect(body.error?.data?.httpStatus).toBe(404);
     } finally {
       await bureau.dispose();
+    }
+  });
+});
+
+describe('workspace privacy for reviews', () => {
+  it('keeps list, get, and resolve owner-scoped for all six actor outcomes', async () => {
+    const opened = await openWorkspacePrivacyBureau({
+      agents: {
+        parked: createAgent({
+          generate: async () => {
+            return {
+              content: '',
+              toolCalls: [
+                {
+                  id: 'workspace-review-call',
+                  name: 'requestHumanInput',
+                  arguments: { signalName: 'workspace-review', prompt: 'REVIEW-SENTINEL' },
+                },
+              ],
+            };
+          },
+          toolbox: createToolbox([]) as unknown as Toolbox,
+          stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        }),
+      },
+    });
+    const run = await opened.bureau.tasks.start('parked', 'workspace-review', {
+      principal: WORKSPACE_PRIVACY_ACTORS.owner.owner,
+    });
+    await waitForCondition(
+      () => opened.bureau.reviews.list().some((review) => review.runId === run.id),
+      'expected workspace review',
+    );
+    const listed = opened.bureau.reviews.list();
+    const review = listed[0]!;
+    try {
+      for (const actor of [
+        ...(Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]).filter(
+          (value) => value !== 'owner',
+        ),
+        'owner',
+      ] as WorkspacePrivacyActor[]) {
+        const denied = actor === 'foreign' || actor === 'removed';
+        const expectedStatus = denied ? 403 : actor === 'owner' ? 200 : 404;
+        const list = await workspacePrivacyCall(opened, actor, 'bureau.reviews.list', {});
+        expect(list.status, `${actor} list`).toBe(denied ? 403 : 200);
+        const ids = ((list.body?.result?.['reviews'] ?? []) as Array<{ id: string }>).map(
+          (entry) => entry.id,
+        );
+        expect(ids, actor).toEqual(actor === 'owner' ? [review.id] : []);
+        for (const method of ['bureau.reviews.get', 'bureau.reviews.resolve'] as const) {
+          const response = await workspacePrivacyCall(opened, actor, method, {
+            id: review.id,
+            ...(method.endsWith('resolve') ? { decision: 'deny' } : {}),
+          });
+          expect(response.status, `${actor} ${method}`).toBe(denied ? 403 : 200);
+          if (actor === 'owner') expect(response.body?.error).toBeUndefined();
+          if (expectedStatus === 404) {
+            expect(response.body?.error?.data?.httpStatus, `${actor} ${method}`).toBe(404);
+            const unknown = await workspacePrivacyCall(opened, actor, method, {
+              id: 'unknown-review',
+              ...(method.endsWith('resolve') ? { decision: 'deny' } : {}),
+            });
+            expect(JSON.stringify(response.body?.error).replaceAll(review.id, '<id>')).toBe(
+              JSON.stringify(unknown.body?.error).replaceAll('unknown-review', '<id>'),
+            );
+            expect(response.text).not.toContain('REVIEW-SENTINEL');
+          }
+        }
+      }
+    } finally {
+      await opened.dispose();
     }
   });
 });

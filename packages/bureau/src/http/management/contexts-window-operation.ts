@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.contexts.window`: how full a context's window is, through `Bureau.contexts.window`
  * (COR-1937).
@@ -63,6 +65,7 @@ export const contextsWindowOperation = defineOperation<
   BureauContextsWindowOperationHost
 >({
   name: 'bureau.contexts.window',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.window'),
   mcpExposable: false,
   summary: 'Read how full a context’s window is',
   description:

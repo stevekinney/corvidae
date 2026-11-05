@@ -26,6 +26,7 @@ import {
   createOperationHandler,
   principalFromApiKey,
   principalFromJwtClaims,
+  type WorkspaceIdentity,
 } from '@lostgradient/weft';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -40,6 +41,13 @@ import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { createBureauHandler, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import { memoryExportFileName } from './memory-history.ts';
 import { memoryRememberOperation } from './memory-operations.ts';
+import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
+import {
+  WORKSPACE_PRIVACY_ACTORS,
+  openWorkspacePrivacyBureau,
+  workspacePrivacyCall,
+  type WorkspacePrivacyActor,
+} from '../workspace-privacy-fixtures.test-support.ts';
 
 const BUREAU_ID = 'memory-operations-bureau';
 const ALICE = 'api-key:alice';
@@ -138,7 +146,9 @@ afterEach(async () => {
   for (const bureau of opened.splice(0)) await bureau.dispose();
 });
 
-async function open(options: { memory?: GovernedMemory | null } = {}) {
+async function open(
+  options: { memory?: GovernedMemory | null; workspace?: WorkspaceMembershipOptions } = {},
+) {
   const memory = options.memory === null ? undefined : (options.memory ?? governedMemory());
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
@@ -149,10 +159,14 @@ async function open(options: { memory?: GovernedMemory | null } = {}) {
     durable: false,
     // The handler serves the asset operations too, so it needs an asset service.
     assets: { storage: createMemoryAssetStorage() },
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     ...(memory === undefined ? {} : { memory }),
   });
   opened.push(bureau);
-  const handler = createBureauHandler(bureau, { authentication });
+  const handler = createBureauHandler(bureau, {
+    authentication,
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
+  });
   return { bureau, handler, memory };
 }
 
@@ -974,6 +988,90 @@ async function eventsOf(memory: GovernedMemory, ownerId: string, type: string) {
 }
 
 describe('bureau.memory.share and bureau.memory.share.revoke (COR-1809)', () => {
+  it('requires current same-workspace membership for sharing and reading memory', async () => {
+    const { bureau, handler } = await open({
+      workspace: {
+        workspaceId: 'workspace-a',
+        resolveMembership: async ({ subject }) =>
+          ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: subject ?? 'unknown',
+            actorKind: 'user',
+            owner: `api-key:${subject ?? 'unknown'}`,
+            membershipRevision: 'revision-1',
+            capabilities: ['workspace:use', 'workspace:manage'],
+          }) satisfies WorkspaceIdentity,
+        resolveOwnerMembership: async (owner) => {
+          if (owner === ALICE)
+            return {
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: 'alice',
+              actorKind: 'user',
+              owner,
+              membershipRevision: 'revision-1',
+              capabilities: ['workspace:use'],
+            } satisfies WorkspaceIdentity;
+          if (owner === 'api-key:bob')
+            return {
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: 'bob',
+              actorKind: 'user',
+              owner,
+              membershipRevision: 'revision-1',
+              capabilities: ['workspace:use'],
+            } satisfies WorkspaceIdentity;
+          if (owner === 'api-key:foreign')
+            return {
+              version: 1,
+              workspaceId: 'workspace-b',
+              actorId: 'foreign',
+              actorKind: 'user',
+              owner,
+              membershipRevision: 'revision-1',
+              capabilities: ['workspace:use'],
+            } satisfies WorkspaceIdentity;
+          if (owner === 'api-key:error') throw new Error('membership-sentinel');
+          return null;
+        },
+      },
+    });
+    await chat(bureau, ALICE, 'workspace memory sentinel');
+    const id = onlyId(
+      await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+    );
+    const share = { agentId: 'assistant', id, granteeOwnerId: 'api-key:bob' };
+    expect(resultOf(await rpc(handler, 'bureau.memory.share', share, 'alice-key'))).toMatchObject({
+      changed: true,
+    });
+    const shared = await rpc(
+      handler,
+      'bureau.memory.get',
+      { agentId: 'assistant', id, ownerId: ALICE },
+      'bob-key',
+    );
+    expect(resultOf(shared)['memory']).toMatchObject({ content: 'workspace memory sentinel' });
+
+    for (const ownerId of ['api-key:foreign', 'api-key:removed', 'api-key:error', '']) {
+      const refused = await rpc(
+        handler,
+        'bureau.memory.share',
+        { ...share, granteeOwnerId: ownerId || 'api-key:unknown' },
+        'alice-key',
+      );
+      expect(faultOf(refused).status).toBe(404);
+    }
+    const denied = await rpc(
+      handler,
+      'bureau.memory.get',
+      { agentId: 'assistant', id, ownerId: ALICE },
+      'plain-key',
+    );
+    expect(JSON.stringify(denied)).not.toContain('workspace memory sentinel');
+  });
+
   it('lets the grantee read the shared memory, and not after the share is revoked', async () => {
     const { bureau, handler, memory } = await open();
     await chat(bureau, ALICE, 'Alice prefers aisle seats.');
@@ -1517,6 +1615,170 @@ describe('the Memory tab’s contract (COR-2009)', () => {
         ],
       }),
     ]);
+  });
+});
+
+const WORKSPACE_MEMORY_CASES = [
+  ['bureau.memory.list', { agentId: 'assistant' }, 'collection'],
+  [
+    'bureau.memory.search',
+    { agentId: 'assistant', query: 'MEMORY-WORKSPACE-SENTINEL' },
+    'collection',
+  ],
+  ['bureau.memory.get', { agentId: 'assistant' }, 'private-id'],
+  ['bureau.memory.export', { agentId: 'assistant' }, 'collection'],
+  [
+    'bureau.memory.remember',
+    { agentId: 'assistant', content: 'MEMORY-WORKSPACE-SENTINEL' },
+    'create',
+  ],
+  ['bureau.memory.forget', { agentId: 'assistant' }, 'private-id'],
+  [
+    'bureau.memory.correct',
+    { agentId: 'assistant', content: 'MEMORY-WORKSPACE-CORRECTED' },
+    'private-id',
+  ],
+  [
+    'bureau.memory.share',
+    { agentId: 'assistant', granteeOwnerId: 'workspace-a:grantee' },
+    'private-id',
+  ],
+  [
+    'bureau.memory.share.revoke',
+    { agentId: 'assistant', granteeOwnerId: 'workspace-a:grantee' },
+    'private-id',
+  ],
+  ['bureau.memory.quarantine', { agentId: 'assistant', reason: 'workspace-test' }, 'private-id'],
+  ['bureau.memory.hold', { agentId: 'assistant' }, 'private-id'],
+  ['bureau.memory.hold.release', { agentId: 'assistant' }, 'private-id'],
+] as const;
+
+for (const [operation, parameters, kind] of WORKSPACE_MEMORY_CASES) {
+  it(`${operation} exercises every workspace actor with an independently seeded memory`, async () => {
+    const opened = await openWorkspacePrivacyBureau({
+      agents: { assistant: createAgent({ generate: recording() }) },
+      bureauOptions: { memory: governedMemory() },
+    });
+    try {
+      await chat(opened.bureau, WORKSPACE_PRIVACY_ACTORS.owner.owner, 'MEMORY-WORKSPACE-SENTINEL');
+      const listed = await workspacePrivacyCall(opened, 'owner', 'bureau.memory.list', {
+        agentId: 'assistant',
+      });
+      const id = onlyId(listed.body as RpcBody);
+      const input = { ...parameters, ...(kind === 'private-id' ? { id } : {}) };
+      const actors = Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[];
+      for (const actor of [
+        ...actors.filter((value) => value !== 'owner'),
+        'owner',
+      ] as WorkspacePrivacyActor[]) {
+        const response = await workspacePrivacyCall(opened, actor, operation, input);
+        if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
+        else if (actor === 'owner' || kind === 'create' || kind === 'collection') {
+          expect(response.body?.error).toBeUndefined();
+          if (kind === 'collection' && actor !== 'owner')
+            expect(response.text).not.toContain('MEMORY-WORKSPACE-SENTINEL');
+        } else {
+          expect(response.body?.error?.data?.httpStatus).toBe(404);
+          const missing = await workspacePrivacyCall(opened, actor, operation, {
+            ...input,
+            id: 'unknown-memory',
+          });
+          expect(JSON.stringify(response.body?.error).replaceAll(id, '<id>')).toBe(
+            JSON.stringify(missing.body?.error).replaceAll('unknown-memory', '<id>'),
+          );
+          expect(response.text).not.toContain('MEMORY-WORKSPACE-SENTINEL');
+        }
+      }
+    } finally {
+      await opened.dispose();
+    }
+  });
+}
+
+describe('workspace privacy for memory operations', () => {
+  it('checks peer operation denial and explicit grant then revoke behavior', async () => {
+    const opened = await openWorkspacePrivacyBureau({
+      agents: { assistant: createAgent({ generate: recording() }) },
+      bureauOptions: { memory: governedMemory() },
+    });
+    const owner = WORKSPACE_PRIVACY_ACTORS.owner.owner;
+    const grantee = WORKSPACE_PRIVACY_ACTORS.grantee.owner;
+    try {
+      await chat(opened.bureau, owner, 'MEMORY-WORKSPACE-SENTINEL');
+      const ownList = await workspacePrivacyCall(opened, 'owner', 'bureau.memory.list', {
+        agentId: 'assistant',
+      });
+      expect(ownList.status).toBe(200);
+      const id = onlyId(ownList.body as RpcBody);
+
+      const ownerPositive: Array<[string, Record<string, unknown>]> = [
+        ['bureau.memory.list', { agentId: 'assistant' }],
+        ['bureau.memory.search', { agentId: 'assistant', query: 'MEMORY-WORKSPACE-SENTINEL' }],
+        ['bureau.memory.get', { agentId: 'assistant', id }],
+        ['bureau.memory.export', { agentId: 'assistant' }],
+      ];
+      for (const [method, input] of ownerPositive) {
+        const result = await workspacePrivacyCall(opened, 'owner', method, input);
+        expect(result.status, method).toBe(200);
+        expect(result.text, method).toContain('MEMORY-WORKSPACE-SENTINEL');
+      }
+
+      for (const [method, baseInput, kind] of WORKSPACE_MEMORY_CASES) {
+        const input = {
+          ...baseInput,
+          ...(kind === 'private-id' ? { id } : {}),
+        };
+        const peer = await workspacePrivacyCall(opened, 'peer', method, input);
+        expect(peer.status, method).toBe(200);
+        if (kind === 'collection') {
+          expect(peer.body?.error, method).toBeUndefined();
+          expect(peer.text, method).not.toContain('MEMORY-WORKSPACE-SENTINEL');
+        } else if (kind === 'create') {
+          expect(peer.body?.error, method).toBeUndefined();
+        } else {
+          expect(peer.body?.error?.data?.httpStatus, method).toBe(404);
+          expect(peer.text, method).not.toContain('MEMORY-WORKSPACE-SENTINEL');
+        }
+      }
+
+      const shared = await workspacePrivacyCall(opened, 'owner', 'bureau.memory.share', {
+        agentId: 'assistant',
+        id,
+        granteeOwnerId: grantee,
+      });
+      expect(shared.status).toBe(200);
+      expect(shared.body?.result?.['changed']).toBe(true);
+      const granteeRead = await workspacePrivacyCall(opened, 'grantee', 'bureau.memory.get', {
+        agentId: 'assistant',
+        id,
+        ownerId: owner,
+      });
+      expect(granteeRead.status).toBe(200);
+      expect(granteeRead.body?.error).toBeUndefined();
+      expect(granteeRead.body?.result?.['memory']).toMatchObject({ id });
+      const revoked = await workspacePrivacyCall(opened, 'owner', 'bureau.memory.share.revoke', {
+        agentId: 'assistant',
+        id,
+        granteeOwnerId: grantee,
+      });
+      expect(revoked.body?.result?.['changed']).toBe(true);
+      const afterRevoke = await workspacePrivacyCall(opened, 'grantee', 'bureau.memory.get', {
+        agentId: 'assistant',
+        id,
+        ownerId: owner,
+      });
+      expect(afterRevoke.status).toBe(200);
+      expect(afterRevoke.body?.error?.data?.httpStatus).toBe(404);
+
+      for (const actor of ['foreign', 'removed'] as const) {
+        const denied = await workspacePrivacyCall(opened, actor, 'bureau.memory.list', {
+          agentId: 'assistant',
+        });
+        expect(denied.status, actor).toBe(403);
+      }
+    } finally {
+      await opened.dispose();
+    }
   });
 });
 

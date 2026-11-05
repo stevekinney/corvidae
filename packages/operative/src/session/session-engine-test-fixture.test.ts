@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createSessionEngine } from './session-engine-test-fixture';
+import { createSessionEngine, type SessionEngineBehavior } from './session-engine-test-fixture';
 
 describe('session engine test fixture', () => {
+  it('requires cancellation behavior to return the engine cancellation result', () => {
+    const behavior: SessionEngineBehavior = {
+      // @ts-expect-error A void callback cannot model the durable cancellation result.
+      cancel: async () => {},
+    };
+
+    expect(behavior.cancel).toBeDefined();
+  });
+
   it('keeps recovery result callbacks lazy and preserves their returned promise', async () => {
     let resultCalls = 0;
     const result = Promise.resolve('recovered');
