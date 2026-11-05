@@ -28,14 +28,18 @@ import { type TasksRespondInput, tasksRespondInput } from '../../tasks/respond-t
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauTasks, TaskRespondResult } from '../../types.ts';
 import { reviewFault, reviewReceiptSchema } from '../bureau-reviews-operations.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import {
+  type BureauOwnershipHost,
+  mayUseCrossOwnerScope,
+  ownerOfPrincipal,
+} from '../owner-predicate.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
-import { holdsScope, mayAccessTask } from './tasks-operations.ts';
+import { mayAccessTask } from './tasks-operations.ts';
 
 const tasksRespondOutput = z.object({
   taskId: z.string(),
@@ -103,15 +107,13 @@ export async function respondToTask(
   principal: Principal,
   input: TasksRespondInput,
 ): Promise<TaskRespondResult> {
-  // The caller's owner does not itself grant the legacy operator tier. Workspace principals must
-  // pass the same owner predicate before the response is dispatched, even when they hold write.
-  if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
-    throw resourceNotFound('task', input.taskId);
-  }
   const caller = ownerOfPrincipal(principal);
   if (caller === undefined) {
     // No receipt can be this caller's, and nothing could record it as the resolver: a task it may
     // not see is missing, as for anyone, and one it may see is refused for the credential.
+    if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
+      throw resourceNotFound('task', input.taskId);
+    }
     if ((await host.tasks.get(input.taskId)) === undefined) {
       throw resourceNotFound('task', input.taskId);
     }
@@ -125,7 +127,8 @@ export async function respondToTask(
     return await host.respond({
       ...input,
       principal: caller,
-      operator: holdsScope(principal, 'bureau.tasks:write'),
+      // The responder checks caller-owned receipts before task retention, then task ownership.
+      operator: mayUseCrossOwnerScope(principal, 'bureau.tasks:write'),
     });
   } catch (error) {
     throw respondFault(error, input.taskId);
