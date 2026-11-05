@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
 import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
+import { HOOK_SIGNATURE_HEADER, verifyHookSignature } from '../../hooks/hook-signature.ts';
 import { HOOK_DELIVERY_KEY_PREFIX } from '../../hooks/hook-store.ts';
 import type { HookDeliveryRecord, HookSecretStore } from '../../hooks/hook-types.ts';
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
@@ -782,7 +783,7 @@ it('projects hook delivery summaries for their owner and trusted local operator,
           : ['workspace:use', 'workspace:manage'],
     }),
   };
-  const { opened } = await open({ workspace });
+  const { opened, receiver } = await open({ workspace });
   const hook = await wire(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
   await wire(opened, 'bureau.hooks.test', { hookId: hook.id }, 'alice-key');
   const own = await wire(opened, 'bureau.hooks.list', {}, 'alice-key');
@@ -802,4 +803,57 @@ it('projects hook delivery summaries for their owner and trusted local operator,
     kind: 'hook.test',
     status: 'delivered',
   });
+  const administratorCreated = await call(
+    opened,
+    'bureau.hooks.create',
+    {
+      url: NEW_HOOK.url,
+      events: ['definitions.changed'],
+    },
+    'bob-observer-key',
+  );
+  expect(administratorCreated.error).toBeUndefined();
+  expect(administratorCreated.result?.['signingSecret']).toBeNull();
+  const localCall = async (method: string, params: unknown) => {
+    const response = await local(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      }),
+    );
+    return (await response.json()) as { result?: Record<string, unknown>; error?: unknown };
+  };
+  const created = await localCall('bureau.hooks.create', {
+    url: NEW_HOOK.url,
+    events: ['run.settled'],
+  });
+  expect(created.error).toBeUndefined();
+  expect(created.result?.['signingSecret']).toMatch(/^whsec_[0-9a-f]{24}$/);
+  const localHookId = created.result?.['id'];
+  const replacement = 'whsec-local-editor-replacement-1234567890';
+  const updated = await localCall('bureau.hooks.update', {
+    hookId: localHookId,
+    signingSecret: replacement,
+  });
+  expect(updated.error).toBeUndefined();
+  expect(JSON.stringify(updated)).not.toContain(replacement);
+  const delivered = await localCall('bureau.hooks.test', { hookId: localHookId });
+  expect(delivered.error).toBeUndefined();
+  const delivery = receiver.calls.at(-1)!;
+  expect(
+    verifyHookSignature({
+      secret: replacement,
+      header: delivery.headers.get(HOOK_SIGNATURE_HEADER)!,
+      body: delivery.body,
+      now: Date.now(),
+    }),
+  ).toEqual({ ok: true });
+  const foreignUpdate = await call(
+    opened,
+    'bureau.hooks.update',
+    { hookId: localHookId, signingSecret: SIGNING_SECRET },
+    'bob-observer-key',
+  );
+  expect(foreignUpdate.error?.data?.httpStatus).toBe(403);
 });

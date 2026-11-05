@@ -672,10 +672,9 @@ export const hooksCreateOperation = defineOperation<
       });
       return {
         ...hookViewOf(created),
-        signingSecret:
-          principal.method !== 'unauthenticated' && principal.workspace !== undefined
-            ? null
-            : (created.signingSecret ?? null),
+        signingSecret: authorizeWorkspaceClass('deployment-operator', principal).allowed
+          ? (created.signingSecret ?? null)
+          : null,
       };
     } catch (error) {
       return faultOf(error);
@@ -745,7 +744,11 @@ export const hooksUpdateOperation = defineOperation<
     const { hooks, hook } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
     const workspace = principal.method !== 'unauthenticated' && principal.workspace !== undefined;
     const foreign = workspace && ownerFor(principal) !== hook.owner;
-    if (workspace && input.signingSecret !== undefined)
+    if (
+      workspace &&
+      input.signingSecret !== undefined &&
+      !authorizeWorkspaceClass('deployment-operator', principal).allowed
+    )
       throw {
         code: 'Forbidden',
         message: 'Signing secrets require the deployment operation',
