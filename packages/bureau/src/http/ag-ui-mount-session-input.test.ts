@@ -71,6 +71,111 @@ describe('a run that delivered session input', () => {
     );
   });
 
+  it('announces the step that took the input when it starts, before the reply that answers it', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')] },
+      async ({ handler, bureau, generate }) => {
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        await bureau.contexts.input('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+          deliveryMode: 'steer',
+          payload: 'One more thing',
+        });
+        generate.release('hold');
+        await stream.rest();
+
+        const events = stream.received.map((frame) => frame.event);
+        const announced = events.filter(
+          (event) => event.type === EventType.CUSTOM && event.name === 'bureau.inputs-delivered',
+        );
+        expect(announced.map((event) => (event as { value?: unknown }).value)).toEqual([
+          { runId: expect.any(String), inputIds: ['follow-up-1'] },
+        ]);
+        const at = events.indexOf(announced[0]!);
+        expect(events[at - 1]?.type).toBe(EventType.STEP_STARTED);
+        expect(
+          events
+            .slice(at)
+            .some(
+              (event) =>
+                event.type === EventType.TEXT_MESSAGE_CONTENT && event.delta.includes('Answer.'),
+            ),
+        ).toBe(true);
+      },
+    );
+  });
+
+  it('never delivers an input retracted before the run reached it', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')] },
+      async ({ handler, bureau, generate }) => {
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        await bureau.contexts.input('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+          deliveryMode: 'steer',
+          payload: 'One more thing',
+        });
+
+        const retracted = await bureau.contexts.retract('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+        });
+        generate.release('hold');
+        await stream.rest();
+
+        expect(retracted).toMatchObject({ outcome: 'retracted', receipt: { state: 'canceled' } });
+        const events = stream.received.map((frame) => frame.event);
+        expect(
+          events.some(
+            (event) => event.type === EventType.CUSTOM && event.name === 'bureau.inputs-delivered',
+          ),
+        ).toBe(false);
+        expect(typesOf(stream.received)).not.toContain(EventType.MESSAGES_SNAPSHOT);
+        const thread = await bureau.contexts.get('thread-1');
+        expect(thread?.conversationHistory?.ids).not.toContain('follow-up-1');
+      },
+    );
+  });
+
+  it('answers a retract after the run took the input as delivered, and the turn stands', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')] },
+      async ({ handler, bureau, generate }) => {
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        await bureau.contexts.input('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+          deliveryMode: 'steer',
+          payload: 'One more thing',
+        });
+        generate.release('hold');
+        await stream.rest();
+
+        const late = await bureau.contexts.retract('thread-1', {
+          id: 'follow-up-1',
+          principal: 'anonymous:local',
+        });
+        const stranger = await bureau.contexts.retract('thread-1', {
+          id: 'follow-up-1',
+          principal: 'someone-else',
+        });
+
+        expect(late).toMatchObject({ outcome: 'delivered', receipt: { state: 'promoted' } });
+        expect(stranger).toEqual({ outcome: 'not-found' });
+        const thread = await bureau.contexts.get('thread-1');
+        expect(thread?.conversationHistory?.ids).toContain('follow-up-1');
+      },
+    );
+  });
+
   it('is not the case for a run that took none: its stream carries no snapshot', async () => {
     await withHarness({ script: [say('Done.')] }, async ({ handler, bureau }) => {
       const stream = new FrameReader(await handler(startRequest(runAgentInput())));

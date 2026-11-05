@@ -77,6 +77,7 @@ import { getLastRun, getTask, listChildRuns, type TaskView } from '../../lib/bur
 import { readEvents } from './ag-ui-events.ts';
 import {
   FOLLOW_UP_METADATA_KEY,
+  INPUTS_DELIVERED_EVENT_NAME,
   noteAnnouncementKey,
   noteAnnouncementOf,
   placeEventNotes,
@@ -191,6 +192,12 @@ export type ChatRunWiringOptions = {
    */
   readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
   /**
+   * Told when the Bureau announces that the run's step took follow-ups the page sent
+   * (`bureau.inputs-delivered`), with the ids they were sent under: from then on they are sent
+   * messages, and can no longer be removed.
+   */
+  readonly onInputsDelivered?: (inputIds: readonly string[]) => void;
+  /**
    * The Bureau's clock as the page reads it: every event a run's stream carries is shown to it,
    * because the Bureau stamps each with its own time (`bureau-clock.ts`).
    */
@@ -233,6 +240,19 @@ export function grantNotLoosenedOf(event: unknown): GrantNotLoosened | undefined
   if (typeof interruptId !== 'string' || typeof toolName !== 'string') return undefined;
   if (typeof remembered !== 'boolean') return undefined;
   return { interruptId, toolName, remembered };
+}
+
+/**
+ * The ids of the follow-ups a `bureau.inputs-delivered` announcement says the run's step took, or
+ * `undefined` for any other event and for one that names none.
+ */
+export function inputsDeliveredOf(event: unknown): readonly string[] | undefined {
+  if (!isRecord(event) || event['type'] !== 'CUSTOM') return undefined;
+  if (event['name'] !== INPUTS_DELIVERED_EVENT_NAME) return undefined;
+  const value = event['value'];
+  if (!isRecord(value) || !Array.isArray(value['inputIds'])) return undefined;
+  const ids = value['inputIds'].filter((id): id is string => typeof id === 'string' && id !== '');
+  return ids.length === 0 ? undefined : ids;
 }
 
 export type ChatRunWiring = {
@@ -1175,6 +1195,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           if (assetRun !== undefined) rememberAnnouncement(assetRun.announcements, announcement);
           if (isLiveChildAnnouncement(announcement)) liveChildAnnouncement = announcement;
         }
+        const delivered = inputsDeliveredOf(event);
+        if (delivered !== undefined) options.onInputsDelivered?.(delivered);
         const ungranted = grantNotLoosenedOf(event);
         if (ungranted !== undefined && !toldGrants.has(ungranted.interruptId)) {
           toldGrants.add(ungranted.interruptId);

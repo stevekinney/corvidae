@@ -20,6 +20,7 @@
 import {
   appendMessages,
   assertRunInputAccepted,
+  countQueuedFollowUps,
   createChatSessionController,
   createConversationHistory,
   getUnresolvedToolApprovals,
@@ -30,7 +31,12 @@ import {
 } from '@lostgradient/chat';
 
 import { CHAT_COPY } from '../../app/copy.ts';
-import { sendContextInput, wireCodeOf, type Fetcher } from '../../lib/bureau-client.ts';
+import {
+  retractContextInput,
+  sendContextInput,
+  wireCodeOf,
+  type Fetcher,
+} from '../../lib/bureau-client.ts';
 import { BureauClock } from '../../lib/bureau-clock.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { AgUiHttpError } from './ag-ui-events.ts';
@@ -140,10 +146,11 @@ export class ChatSessionState {
    */
   reconnectAttempt = $state(0);
   /**
-   * How many follow-ups the Bureau has accepted that the run has not yet taken: they are delivered
-   * at the run's next step, and none is left once the run ends. The composer says one is queued.
+   * How many follow-ups the run has not taken yet: the transcript's queued rows. The Bureau holds
+   * each until the run's next step takes it, when it becomes a sent message, and Remove takes one
+   * back before then. The composer says one is queued.
    */
-  queuedFollowUps = $state(0);
+  readonly queuedFollowUps = $derived(countQueuedFollowUps(this.conversation));
   /**
    * What each run this page watched end reported it used, by the run's Bureau identifier. A run the
    * page did not watch end has no entry, and its reply details say nothing of usage.
@@ -228,11 +235,12 @@ export class ChatSessionState {
       },
       onTerminal: () => {
         this.#attachedRun = false;
-        this.queuedFollowUps = 0;
       },
       ...(options.onGrantNotLoosened === undefined
         ? {}
         : { onGrantNotLoosened: options.onGrantNotLoosened }),
+      // The run's step took these follow-ups: they read as sent from now on.
+      onInputsDelivered: (inputIds) => this.controller.markFollowUpsDelivered(inputIds),
       onUsage: (runId, usage) => {
         this.usage = new Map(this.usage).set(runId, usage);
       },
@@ -269,10 +277,12 @@ export class ChatSessionState {
           { id: messageId, payload: inputPayload(message) },
           { signal: this.#abort.signal },
         );
-        const accepted = assertRunInputAccepted(result.receipt);
-        this.queuedFollowUps += 1;
-        return accepted;
+        return assertRunInputAccepted(result.receipt);
       },
+      // Remove on a queued follow-up: the Bureau holds it until the run takes it, and takes it back
+      // until then.
+      retractRunInput: async (conversationId, { messageId }) =>
+        retractContextInput(conversationId, messageId, { signal: this.#abort.signal }),
       hooks: {
         resolveToolApproval: (toolCallId, resolution) =>
           this.#wiring.resolveToolApproval(toolCallId, resolution),
@@ -288,7 +298,6 @@ export class ChatSessionState {
           // announced, so they are put on their rows here, as a completed turn's are.
           else {
             this.stopping = false;
-            this.queuedFollowUps = 0;
             this.#stampAnnouncedAssets();
             this.#dropSettledAnswerRows();
             this.#readAgainAfterRefusal();

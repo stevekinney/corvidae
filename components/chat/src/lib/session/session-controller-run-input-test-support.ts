@@ -75,6 +75,8 @@ export type HarnessOptions = {
   conversation?: ConversationHistory;
   /** `null` leaves the hook out. Left alone, every call is acknowledged at once. */
   sendRunInput?: ChatSessionControllerOptions['sendRunInput'] | null;
+  /** The host's retraction of a held follow-up; left out unless given. */
+  retractRunInput?: ChatSessionControllerOptions['retractRunInput'];
   /** The transport's turns in order. The first holds open until `releaseRun`. */
   turns?: Array<TurnScript | undefined>;
   hooks?: ChatSessionHooks;
@@ -130,6 +132,7 @@ export function createHarness(options: HarnessOptions = {}) {
       return eventsOf([{ type: 'text', text: 'reply' }]);
     },
     ...(sendRunInput ? { sendRunInput } : {}),
+    ...(options.retractRunInput === undefined ? {} : { retractRunInput: options.retractRunInput }),
     ...(options.now === undefined ? {} : { now: options.now }),
     hooks: { ...options.hooks, onError: (error) => errors.push(error) },
   });

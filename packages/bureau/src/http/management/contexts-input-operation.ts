@@ -69,7 +69,8 @@ const contextsInputInput = z.object({
     .describe('The input to admit: an `id` of the caller’s choosing and its `payload`.'),
 });
 
-const inputReceiptSchema = z.object({
+/** Where one admitted input stands: the receipt `bureau.contexts.input` and `bureau.contexts.retract` answer with. */
+export const inputReceiptSchema = z.object({
   id: z.string(),
   sessionId: z.string(),
   deliveryMode: z.enum(['steer', 'queue']),

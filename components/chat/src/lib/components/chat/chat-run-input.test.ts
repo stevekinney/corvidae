@@ -409,3 +409,102 @@ describe('Chat follow-ups wired to the session controller', () => {
     await run;
   });
 });
+
+describe('Chat Remove on a queued follow-up (B06, row 18k)', () => {
+  function createHoldingChat(retract: () => Promise<'retracted' | 'delivered'>) {
+    let conversation = createConversationHistory({ id: 'holding' });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const retracted: string[] = [];
+    // eslint-disable-next-line prefer-const -- assigned after the controller captures the closures
+    let rendered: ReturnType<typeof render<typeof Chat>>;
+    const controller = createChatSessionController({
+      executionOwner: 'server',
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+        void rendered.rerender({ conversation: next });
+      },
+      transport: async () =>
+        (async function* (): AsyncGenerator<ChatStreamEvent> {
+          yield { type: 'text', text: 'working' };
+          await held;
+        })(),
+      sendRunInput: async () => undefined,
+      retractRunInput: async (_conversationId, { messageId }) => {
+        retracted.push(messageId);
+        return retract();
+      },
+      hooks: {
+        onStreamingChange: (streaming) => void rendered.rerender({ streaming }),
+      },
+    });
+    rendered = render(Chat, {
+      id: 'chat-holding',
+      conversation,
+      adapter: controller.adapter,
+      variant: 'transcript',
+    });
+    return { controller, rendered, release, retracted, conversation: () => conversation };
+  }
+
+  async function settle(): Promise<void> {
+    // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await tick();
+  }
+
+  function queuedRow(container: HTMLElement): HTMLElement | null {
+    return container.querySelector<HTMLElement>('[data-state="queued"]');
+  }
+
+  function removeButton(container: HTMLElement): HTMLButtonElement | undefined {
+    return [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent?.trim() === 'Remove',
+    );
+  }
+
+  test('keeps an accepted follow-up queued with Remove, and Remove takes it out of the transcript', async () => {
+    const { controller, rendered, release, retracted, conversation } = createHoldingChat(
+      async () => 'retracted',
+    );
+    const run = controller.adapter.sendMessage({ role: 'user', content: 'start' }, []);
+    await settle();
+
+    await submit(rendered.container, 'Then look up order 4476.');
+    await settle();
+
+    expect(queuedRow(rendered.container)?.textContent).toContain(
+      'Queued · sends when the run is ready',
+    );
+    const id = conversation().ids.at(-1)!;
+    await fireEvent.click(removeButton(rendered.container)!);
+    await settle();
+
+    expect(retracted).toEqual([id]);
+    expect(rendered.container.textContent).not.toContain('Then look up order 4476.');
+    release();
+    await run;
+  });
+
+  test('becomes a normal message, with no Remove, once the run takes it', async () => {
+    const { controller, rendered, release, conversation } = createHoldingChat(
+      async () => 'retracted',
+    );
+    const run = controller.adapter.sendMessage({ role: 'user', content: 'start' }, []);
+    await settle();
+    await submit(rendered.container, 'Then look up order 4476.');
+    await settle();
+
+    controller.markFollowUpsDelivered([conversation().ids.at(-1)!]);
+    await settle();
+
+    expect(rendered.container.textContent).toContain('Then look up order 4476.');
+    expect(queuedRow(rendered.container)).toBeNull();
+    expect(removeButton(rendered.container)).toBeUndefined();
+    release();
+    await run;
+  });
+});

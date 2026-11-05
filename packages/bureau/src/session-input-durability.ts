@@ -458,6 +458,10 @@ const MAILBOX_MAXIMUM_COMMAND_TIMEOUT_MS = 31_536_000_000;
  */
 export const SESSION_INPUT_EXPIRED_MESSAGE = 'the input expired before it was delivered';
 
+/** Reason recorded on a command its own caller retracted before any run took it (B06, row 18k). */
+export const SESSION_INPUT_RETRACTED_REASON =
+  'the caller retracted the input before it was delivered';
+
 /** Reason recorded on a command cancelled because its identity was taken over by another session. */
 export const SESSION_INPUT_IDENTITY_TAKEN_REASON =
   'the same input id was admitted to another session while this admission was in flight';

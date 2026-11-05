@@ -76,6 +76,8 @@ import {
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
   type SessionInputAdmissionRequest,
+  type SessionInputRetractionOutcome,
+  type SessionInputRetractionRequest,
   type SessionInputGate,
   type SessionListOptions,
   SessionOutboxAppendedEvent,
@@ -571,6 +573,7 @@ import {
   type PersistedSessionInput,
   readSessionInputReceipt,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
+  SESSION_INPUT_RETRACTED_REASON,
 } from './session-input-durability';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
 import {
@@ -16015,6 +16018,52 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * B06 (row 18k) — takes back one input its own principal admitted and no run has taken yet: a
+   * follow-up the person removes before the run reaches it. The command is cancelled in the
+   * session's mailbox, so no step boundary can claim it, and the answer says whether that landed
+   * in time. A command a run already claimed is the run's: the gate keeps its lease, the step
+   * appends the turn, and the cancellation only closes the command once the turn commits, so that
+   * case is answered `delivered`, as is an input already promoted. Another principal's input, an
+   * unknown id, and an unknown session or incarnation all answer `not-found`.
+   */
+  async function retractSessionInput(
+    sessionId: string,
+    request: SessionInputRetractionRequest,
+  ): Promise<SessionInputRetractionOutcome> {
+    assertSessionInputAdmissionOpen();
+    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
+    if (session === undefined) return { outcome: 'not-found' };
+    if (request.incarnation !== undefined && request.incarnation !== session.incarnation) {
+      return { outcome: 'not-found' };
+    }
+    const sessionMailbox = tryGetSessionInputMailbox(sessionId, session.incarnation);
+    const kv = runtime.kv;
+    if (sessionMailbox === undefined || kv === undefined) {
+      return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+    }
+    const admitted = await sessionMailbox.receiptByIdempotencyKey(request.id);
+    // An id is unique within its session whatever its principal, so another caller's input is
+    // answered as one that is not there.
+    if (admitted === null || admitted.caller !== request.principal) {
+      return { outcome: 'not-found' };
+    }
+    const { commandId } = admitted;
+    const before = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
+    if (before.state === 'promoted') return { outcome: 'delivered', receipt: before };
+    const cancellation = await sessionMailbox.requestCancellation({
+      commandId,
+      reason: SESSION_INPUT_RETRACTED_REASON,
+    });
+    const receipt = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
+    // `requested` is a command a step boundary holds: the turn is being appended, and the
+    // cancellation closes the command after it commits. The run has the input.
+    if (receipt.state === 'promoted' || cancellation.status === 'requested') {
+      return { outcome: 'delivered', receipt };
+    }
+    return { outcome: 'retracted', receipt };
+  }
+
+  /**
    * AB-67/AB-199 — admit a `pause`/`resume` steering command. Pre-admission
    * checks reuse `submitSessionInput`'s fixed order (authorization, then
    * session lifecycle, then capability): an unauthorized caller or unknown
@@ -22196,6 +22245,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     rename: renameSession,
     signal: signalSession,
     input: submitSessionInput,
+    retract: retractSessionInput,
     inputsDeliveredBy: sessionInputsDeliveredBy,
     steer: submitSteeringCommand,
     steering: getSessionSteering,

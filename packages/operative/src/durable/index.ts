@@ -156,6 +156,8 @@ export type {
   SessionInputPromotion,
   SessionInputReceipt,
   SessionInputRecord,
+  SessionInputRetractionOutcome,
+  SessionInputRetractionRequest,
   SessionInputState,
   SteeringCommand,
   SteeringCommandFailure,

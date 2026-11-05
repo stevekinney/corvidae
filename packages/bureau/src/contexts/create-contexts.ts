@@ -23,6 +23,8 @@ export type ContextsDependencies = {
   readonly signal: BureauContexts['signal'];
   /** {@link BureauContexts.input}. */
   readonly input: BureauContexts['input'];
+  /** {@link BureauContexts.retract}. */
+  readonly retract: BureauContexts['retract'];
   /** {@link BureauContexts.inputsDeliveredBy}. */
   readonly inputsDeliveredBy: BureauContexts['inputsDeliveredBy'];
   /** {@link BureauContexts.steer}. */
@@ -53,6 +55,7 @@ export function createContexts(dependencies: ContextsDependencies): BureauContex
     rename: dependencies.rename,
     signal: dependencies.signal,
     input: dependencies.input,
+    retract: dependencies.retract,
     inputsDeliveredBy: dependencies.inputsDeliveredBy,
     steer: dependencies.steer,
     steering: dependencies.steering,

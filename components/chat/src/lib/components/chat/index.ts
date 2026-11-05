@@ -63,6 +63,7 @@ export {
   appendUserMessage,
   buildMessage,
   clearMessageDeliveryStatus,
+  countQueuedFollowUps,
   createConversation,
   createConversationHistory,
   markMessageDeliveryFailed,

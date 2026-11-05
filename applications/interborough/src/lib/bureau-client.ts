@@ -364,6 +364,28 @@ export async function sendContextInput(
 }
 
 /**
+ * Takes back a follow-up the run has not taken yet (`bureau.contexts.retract`), by the id it was
+ * sent under: the Remove on a queued message. `retracted` means it will never be delivered, and
+ * `delivered` that the run already took it, so it stands as a sent message. An input the Bureau no
+ * longer holds (a `NotFound`) will never be delivered either, so it answers `retracted`; any other
+ * failure throws, and the follow-up stays queued.
+ */
+export async function retractContextInput(
+  contextId: string,
+  inputId: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<'retracted' | 'delivered'> {
+  try {
+    return z
+      .object({ outcome: z.enum(['retracted', 'delivered']) })
+      .parse(await callBureau('bureau.contexts.retract', { contextId, inputId }, options)).outcome;
+  } catch (error) {
+    if (wireCodeOf(error) === 'NotFound') return 'retracted';
+    throw error;
+  }
+}
+
+/**
  * Gives a session a title of the caller's choosing (`bureau.contexts.rename`), or takes the one it
  * was given away with `null`, which shows the title derived from its first message again. The
  * Bureau trims the title and refuses a blank one or one over 200 characters as `InvalidParams`.

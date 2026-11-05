@@ -39,6 +39,8 @@ import type {
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
   SessionInputPayload,
+  SessionInputRetractionOutcome,
+  SessionInputRetractionRequest,
   SessionListOptions,
   SessionStore,
   SessionSummary,
@@ -2441,6 +2443,21 @@ export interface BureauContexts {
   ): Promise<SessionInputAdmissionOutcome>;
 
   /**
+   * B06 — take back one input `request.principal` admitted to the context, before any run takes
+   * it: a follow-up the person removes while it is still queued. The input's mailbox command is
+   * cancelled, so it is never delivered, and the outcome is `retracted` with its `canceled`
+   * receipt (or the receipt of an input that had already ended undelivered). An input a run
+   * already took into the conversation, or holds at the step boundary that is appending it, is
+   * `delivered`: the turn stands. An unknown context or incarnation, an unknown id, and another
+   * principal's input are `not-found`, and a Bureau with no session mailbox is
+   * `unsupported-capability`. Throws a `BureauError` `CONFLICT` when Bureau is shutting down.
+   */
+  retract(
+    contextId: string,
+    request: SessionInputRetractionRequest,
+  ): Promise<SessionInputRetractionOutcome>;
+
+  /**
    * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
    * in delivery order, from the durable delivery record (which commits with the transcript the
    * run saved). Empty for a run that delivered none, and for a Bureau with no session mailbox.
@@ -2811,7 +2828,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly schedules: BureauSchedules;
   /**
-   * The contexts (sessions): `list`, `get`, `delete`, `signal`, `input`, `inputsDeliveredBy`,
+   * The contexts (sessions): `list`, `get`, `delete`, `signal`, `input`, `retract`, `inputsDeliveredBy`,
    * `steer`, `steering`, `fork`, and the context's event history (`events`, `subscribeEvents`).
    * See {@link BureauContexts}.
    */

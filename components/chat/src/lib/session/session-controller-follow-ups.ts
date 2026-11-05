@@ -4,6 +4,7 @@ import {
   markMessageDeliveryFailed,
   markMessageDeliveryPending,
   markMessageFollowUp,
+  removeMessage,
 } from '../components/chat/builders.ts';
 import type { ConversationHistory, MessageInput } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
@@ -28,12 +29,25 @@ type FollowUp = {
   sequence: number;
   /**
    * `queued` has not been handed to the hook yet, `handed` is with it,
-   * `acknowledged` was accepted, `delivered` is in its run's terminal history,
-   * `cancelled` was accepted but its run ended without delivering it, and waits
-   * to be sent as an ordinary turn, `failed` was rejected, refused or lost to a
-   * stop, and `promoted` became an ordinary turn.
+   * `acknowledged` was accepted, `delivered` is in its run's terminal history
+   * or the host said its run took it, `cancelled` was accepted but its run
+   * ended without delivering it, and waits to be sent as an ordinary turn,
+   * `failed` was rejected, refused or lost to a stop, `promoted` became an
+   * ordinary turn, and `removed` was taken back by the person.
    */
-  state: 'queued' | 'handed' | 'acknowledged' | 'delivered' | 'cancelled' | 'failed' | 'promoted';
+  state:
+    | 'queued'
+    | 'handed'
+    | 'acknowledged'
+    | 'delivered'
+    | 'cancelled'
+    | 'failed'
+    | 'promoted'
+    | 'removed';
+  /** The host said the run took it while its acknowledgement was still owed. */
+  reportedDelivered?: boolean;
+  /** A removal in flight, so a second Remove waits on the first instead of asking twice. */
+  removing?: Promise<void>;
   /**
    * How the first run that ended after the hand-off ended, and the ids in the
    * terminal history it carried. Together with the acknowledgement it decides
@@ -96,6 +110,36 @@ export function createFollowUpQueue({
     new Error('This follow-up was not delivered: the session was invalidated first');
   const isLive = (record: FollowUp): boolean =>
     record.epoch === epoch && record.conversationId === options.getConversation().id;
+  /**
+   * A host that can take a follow-up back (`retractRunInput`) holds it until the
+   * run takes it, so acceptance is not delivery: the row stays queued until the
+   * host reports the run reached it, or the run's end shows it did.
+   */
+  const holdsUntilDelivered = options.retractRunInput !== undefined;
+  /** The row reads as a sent message from now on. A row already reading so is not written again. */
+  const showSent = (record: FollowUp): void => {
+    if (!rowIsVisible(record)) return;
+    const row = getOwn(options.getConversation().messages, record.id);
+    if (row?.metadata['_deliveryStatus'] === undefined) return;
+    update(clearMessageDeliveryStatus(options.getConversation(), record.id));
+  };
+  /** The run has it: the row reads as sent, and the run's end will not resend it. */
+  const markDelivered = (record: FollowUp): void => {
+    record.state = 'delivered';
+    showSent(record);
+  };
+  /** Takes the row out of the transcript and forgets the follow-up: it will never be sent. */
+  const drop = (record: FollowUp): void => {
+    record.state = 'removed';
+    records.delete(record.id);
+    const queuedAt = order.indexOf(record);
+    if (queuedAt !== -1) order.splice(queuedAt, 1);
+    messageAttachments.delete(record.id);
+    if (rowIsVisible(record)) update(removeMessage(options.getConversation(), record.id));
+    record.settled.resolve();
+  };
+  /** A record's state as it is now, which an `await` may have changed since it was last read. */
+  const stateOf = (record: FollowUp): FollowUp['state'] => record.state;
   const markFailed = (record: FollowUp): void => {
     record.state = 'failed';
     if (rowIsVisible(record))
@@ -114,7 +158,7 @@ export function createFollowUpQueue({
     const { outcome, terminalIds } = record.runEnd;
     // A promoted receipt means the host already committed the turn to the
     // conversation, so it is delivered even when the run sent no history.
-    if (record.receiptPromoted || terminalIds?.has(record.id)) record.state = 'delivered';
+    if (record.receiptPromoted || terminalIds?.has(record.id)) markDelivered(record);
     else if (outcome === 'stopped') markFailed(record);
     else record.state = 'cancelled';
   };
@@ -124,7 +168,10 @@ export function createFollowUpQueue({
     if (lifecycle.disposed || lifecycle.running || hasRunInProgress()) return;
     const first = [...records.values()]
       .filter(
-        (record) => (record.state === 'queued' || record.state === 'cancelled') && isLive(record),
+        (record) =>
+          (record.state === 'queued' || record.state === 'cancelled') &&
+          record.removing === undefined &&
+          isLive(record),
       )
       .sort((a, b) => a.sequence - b.sequence)[0];
     if (!first) return;
@@ -202,8 +249,8 @@ export function createFollowUpQueue({
       return;
     }
     record.state = 'acknowledged';
-    if (rowIsVisible(record))
-      update(clearMessageDeliveryStatus(options.getConversation(), record.id));
+    if (record.reportedDelivered) markDelivered(record);
+    else if (!holdsUntilDelivered || record.receiptPromoted) showSent(record);
     record.settled.resolve();
     // The run may have ended before this acknowledgement arrived. Now both
     // halves are known, so the follow-up's fate is too.
@@ -281,6 +328,65 @@ export function createFollowUpQueue({
       record.conversationId = options.getConversation().id;
       update(markMessageDeliveryPending(options.getConversation(), messageId));
       return submit(record);
+    },
+    /**
+     * The host's word that the run took these follow-ups into its conversation
+     * (`ChatSessionController.markFollowUpsDelivered`). Each reads as a sent
+     * message from now on, can no longer be removed, and is not resent when the
+     * run ends. An id this controller is not holding is ignored.
+     */
+    delivered(messageIds: Iterable<string>): void {
+      for (const id of messageIds) {
+        const record = records.get(id);
+        if (record === undefined || !isLive(record)) continue;
+        if (record.state === 'acknowledged') markDelivered(record);
+        // The acknowledgement is still owed: it lands as delivered.
+        else if (record.state === 'handed') record.reportedDelivered = true;
+      }
+    },
+    /**
+     * Takes back a follow-up the run has not taken. One the host still holds is
+     * retracted through `retractRunInput`; one the host was never handed, or
+     * whose run ended without taking it, is only dropped here. Either way its row
+     * leaves the transcript and it is never sent. When the host answers that the
+     * run already took it, the row reads as sent instead. Rejects for a
+     * follow-up that is already a sent message, and when the host's retraction
+     * fails, leaving the row queued.
+     */
+    remove(messageId: string): Promise<void> {
+      const record = records.get(messageId);
+      if (record === undefined || record.state === 'delivered' || record.state === 'promoted')
+        return Promise.reject(new Error('This follow-up was already sent'));
+      record.removing ??= (async () => {
+        try {
+          // An acknowledgement in flight decides whether the host holds it.
+          if (record.state === 'handed') await record.settled.promise.catch(() => undefined);
+          const settled = stateOf(record);
+          if (settled === 'delivered') return;
+          if (settled !== 'acknowledged') {
+            drop(record);
+            return;
+          }
+          const answer = await options.retractRunInput?.(record.conversationId, {
+            messageId: record.id,
+          });
+          // Read afresh: the run may have ended while the host answered.
+          const now = stateOf(record);
+          if (answer === 'delivered') {
+            if (now === 'acknowledged') markDelivered(record);
+            return;
+          }
+          // Retracted. The run may have ended meanwhile and left it to be sent as
+          // a turn of its own, which waits on this removal: it is dropped all the same.
+          if (now !== 'promoted' && now !== 'removed') drop(record);
+        } finally {
+          delete record.removing;
+          // A retraction that failed leaves a follow-up its run did not take still
+          // owed as a turn of its own.
+          if (stateOf(record) === 'cancelled') void promoteNext();
+        }
+      })();
+      return record.removing;
     },
     /** Forgets a follow-up that became an ordinary turn. */
     forget(messageId: string): void {

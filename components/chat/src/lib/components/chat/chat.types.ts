@@ -167,7 +167,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerCompact?: boolean;
   /** With `variant="transcript"`, the words of the "Not sent" popover on a message that was not delivered, and whether its Retry works now. */
   notSent?: ChatNotSent | undefined;
-  /** With `variant="transcript"`, called when the person removes a queued follow-up. Remove shows only when this is set, because only the host knows whether a message it has sent can still be taken back. */
+  /** With `variant="transcript"`, called when the person removes a queued follow-up, when the adapter has no `removeRunInput` (which Chat calls instead). Remove shows only when one of them is set, because only the host knows whether a message it has sent can still be taken back. */
   onRemoveQueued?: ((messageId: string) => void) | undefined;
   /** With `variant="transcript"`, drawn at the end of a run's note line, such as a Retry beside a failed run's stop note. Receives the note. */
   noteAction?: Snippet<[note: MessageNoteInfo]> | undefined;

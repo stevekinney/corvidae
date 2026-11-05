@@ -180,7 +180,7 @@ describe('a follow-up', () => {
     await turn;
   });
 
-  test('counts as queued once the Bureau has accepted it, until the run ends', async () => {
+  test('stays queued once the Bureau has accepted it, until the run’s step takes it', async () => {
     restore = installFetchImplementation(async () =>
       Response.json({
         jsonrpc: '2.0',
@@ -188,6 +188,63 @@ describe('a follow-up', () => {
         result: { outcome: 'admitted', receipt: { id: 'row', state: 'accepted' } },
       }),
     );
+    let announce: ((inputIds: readonly string[]) => void) | undefined;
+    let finish: (() => void) | undefined;
+    const open$ = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encode = (event: unknown) =>
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+        encode(started);
+        announce = (inputIds) =>
+          encode({
+            type: 'CUSTOM',
+            name: 'bureau.inputs-delivered',
+            value: { runId: 'run-1', inputIds },
+          });
+        finish = () => {
+          encode(finished);
+          controller.close();
+        };
+      },
+    });
+    const session = open(
+      async () => new Response(open$, { headers: { 'content-type': 'text/event-stream' } }),
+    );
+    const turn = session.controller.adapter.sendMessage({ role: 'user', content: 'Start' }, []);
+    await until(() => session.streaming);
+    expect(session.queuedFollowUps).toBe(0);
+
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
+    expect(session.queuedFollowUps).toBe(1);
+    const more = session.conversation.ids.at(-1)!;
+    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'Again' }, []);
+    expect(session.queuedFollowUps).toBe(2);
+
+    announce?.([more]);
+    await until(() => session.queuedFollowUps === 1);
+    expect(session.conversation.messages[more]?.metadata['_deliveryStatus']).toBeUndefined();
+
+    announce?.([session.conversation.ids.at(-1)!]);
+    await until(() => session.queuedFollowUps === 0);
+    finish?.();
+    await turn;
+    expect(session.queuedFollowUps).toBe(0);
+  });
+
+  test('Remove takes a queued follow-up back through the Bureau and out of the transcript', async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    restore = installFetchImplementation(async (_input, init) => {
+      const body = JSON.parse(bodyText(init)) as { method: string; params: unknown };
+      calls.push(body);
+      return Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        result:
+          body.method === 'bureau.contexts.retract'
+            ? { outcome: 'retracted', receipt: { id: 'row', state: 'canceled' } }
+            : { outcome: 'admitted', receipt: { id: 'row', state: 'accepted' } },
+      });
+    });
     let finish: (() => void) | undefined;
     const open$ = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -205,16 +262,23 @@ describe('a follow-up', () => {
     );
     const turn = session.controller.adapter.sendMessage({ role: 'user', content: 'Start' }, []);
     await until(() => session.streaming);
+    await session.controller.adapter.sendRunInput?.(
+      THREAD,
+      { role: 'user', content: 'Then look up order 4476.' },
+      [],
+    );
+    const id = session.conversation.ids.at(-1)!;
+
+    await session.adapter.removeRunInput?.(id);
+
+    expect(calls.at(-1)).toMatchObject({
+      method: 'bureau.contexts.retract',
+      params: { contextId: THREAD, inputId: id },
+    });
+    expect(session.conversation.ids).not.toContain(id);
     expect(session.queuedFollowUps).toBe(0);
-
-    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'More' }, []);
-    expect(session.queuedFollowUps).toBe(1);
-    await session.controller.adapter.sendRunInput?.(THREAD, { role: 'user', content: 'Again' }, []);
-    expect(session.queuedFollowUps).toBe(2);
-
     finish?.();
     await turn;
-    expect(session.queuedFollowUps).toBe(0);
   });
 
   test('sent during a run stays between the replies the Bureau saw it between, after the Bureau’s snapshot', async () => {

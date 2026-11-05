@@ -324,6 +324,14 @@ export function createChatSessionController(
     ...(options.sendRunInput && executionOwner === 'server'
       ? { sendRunInput, ordersRunInput: true }
       : {}),
+    ...(options.sendRunInput && options.retractRunInput && executionOwner === 'server'
+      ? {
+          removeRunInput: async (messageId: string) => {
+            assertNotDisposed();
+            await followUps.remove(messageId);
+          },
+        }
+      : {}),
     retryMessage: async (messageId) => {
       assertNotDisposed();
       if (isFollowUpMessage(getOwn(options.getConversation().messages, messageId))) {
@@ -455,6 +463,9 @@ export function createChatSessionController(
     captureHistoryToken,
     isHistoryTokenCurrent,
     adoptHistory,
+    markFollowUpsDelivered: (messageIds) => {
+      if (!lifecycle.disposed) followUps.delivered(messageIds);
+    },
     invalidate,
     dispose: () => {
       invalidate();

@@ -347,6 +347,7 @@
     getOnAdapterError: () => onAdapterError,
     getOnSubmit: () => onSubmit,
     getOnRetry: () => onRetry,
+    getOnRemoveQueued: () => onRemoveQueued,
     getOnEdit: () => onEdit,
     getOnApprovalResolve: () => onApprovalResolve,
     getOnStop: () => onStopGenerating,
@@ -1815,7 +1816,10 @@
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           presentation={variant === 'transcript' ? 'transcript' : 'default'}
           {notSent}
-          {onRemoveQueued}
+          onRemoveQueued={commandActions.canRemoveQueued &&
+          !commandActions.removingMessageIds.has(message.id)
+            ? commandActions.handleRemoveQueued
+            : undefined}
           {noteAction}
           onEdit={allowEditing && canEdit ? handleEdit : undefined}
           onQuote={allowQuote ? handleQuote : undefined}

@@ -16,6 +16,7 @@ import {
   listAgents,
   listContexts,
   renameContext,
+  retractContextInput,
   sendContextInput,
   steerContext,
   type SteerOutcome,
@@ -185,6 +186,53 @@ describe('the Bureau’s context operations', () => {
       method: 'bureau.contexts.input',
       params: { contextId: 'c1', input: { id: 'row-1', payload: 'More' } },
     });
+  });
+});
+
+describe('retractContextInput', () => {
+  async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
+    const restore = installFetchImplementation(stub);
+    try {
+      return await body();
+    } finally {
+      restore();
+    }
+  }
+
+  test('takes the input back by the id it was sent under, and says what came of it', async () => {
+    const stub = answering(
+      result({ outcome: 'retracted', receipt: { id: 'row-1', state: 'canceled' } }),
+    );
+
+    const answer = await withStub(stub.fetch, () => retractContextInput('c1', 'row-1'));
+
+    expect(answer).toBe('retracted');
+    expect(stub.calls[0]?.body).toEqual({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.retract',
+      method: 'bureau.contexts.retract',
+      params: { contextId: 'c1', inputId: 'row-1' },
+    });
+  });
+
+  test('answers delivered when the run already took it', async () => {
+    const stub = answering(
+      result({ outcome: 'delivered', receipt: { id: 'row-1', state: 'promoted' } }),
+    );
+
+    expect(await withStub(stub.fetch, () => retractContextInput('c1', 'row-1'))).toBe('delivered');
+  });
+
+  test('answers retracted for an input the Bureau no longer holds, and throws for anything else', async () => {
+    const missing = answering(fault(404, 'NotFound', 'No input with id "row-1"'));
+    const down = answering(fault(503, 'Unavailable', 'Shutting down', { reason: 'shutting-down' }));
+
+    expect(await withStub(missing.fetch, () => retractContextInput('c1', 'row-1'))).toBe(
+      'retracted',
+    );
+    expect(
+      await withStub(down.fetch, () => failureOf(retractContextInput('c1', 'row-1'))),
+    ).toBeInstanceOf(Error);
   });
 });
 
