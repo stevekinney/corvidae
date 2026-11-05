@@ -851,8 +851,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.toolSources = toolSources;
     await toolSources.start();
+    const configuration = await bungalow.readConfiguration();
     const configuredPeers = readA2APeersConfiguration(
-      await bungalow.readConfiguration(),
+      configuration.text,
       bungalow.configurationLocation,
     );
     let peerCalls: PeerCallJournal | undefined;
