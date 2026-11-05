@@ -19,6 +19,7 @@ import {
 import { describe, expect, it } from 'bun:test';
 import { createSessionStore } from '@lostgradient/operative';
 import { textValueStore } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 import { KEYS } from './assets/records';
@@ -290,9 +291,10 @@ async function peerApprovalRecoveryScenario(
           owner: ownerId,
           state: 'available',
         });
-        await expect(
-          recoverer.assets?.inspect(assetId!, { id: 'foreign-principal' }),
-        ).rejects.toThrow();
+        const foreign = await rejectionOf(
+          recoverer.assets!.inspect(assetId!, { id: 'foreign-principal' }),
+        );
+        expect(foreign).toBeInstanceOf(Error);
         expect(JSON.stringify(session?.conversationHistory)).not.toContain(
           base64Of(pngBytes(2, 2)),
         );
