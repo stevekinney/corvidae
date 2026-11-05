@@ -58,7 +58,7 @@ const schema = {
           expanded: {
             type: 'boolean',
             description:
-              'For a `band`: whether it starts open. The `onexpandedchange` of the timeline hears each change.',
+              'For a `band`: whether it starts open. The `onExpandedChange` of the timeline hears each change.',
             default: false,
           },
           status: {
@@ -192,7 +192,7 @@ const schema = {
           'Decorative per-entry marker content. Must not contain interactive descendants.',
       },
       {
-        name: 'onexpandedchange',
+        name: 'onExpandedChange',
         reason: 'function-or-snippet',
         description:
           'Called when a `band` entry is opened or closed, with the entry and whether it is now open.',

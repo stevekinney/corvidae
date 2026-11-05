@@ -106,7 +106,7 @@ describe('Timeline struck occurrence (row 73g)', () => {
 describe('Timeline band disclosure (row 73l)', () => {
   test('starts closed and reports each change with whether it is now open', async () => {
     const changes: boolean[] = [];
-    const { container } = render(Fixture, { onexpandedchange: (open) => changes.push(open) });
+    const { container } = render(Fixture, { onExpandedChange: (open) => changes.push(open) });
     const toggle = container.querySelector<HTMLButtonElement>('button[aria-expanded]');
     expect(toggle?.getAttribute('aria-expanded')).toBe('false');
     await fireEvent.click(toggle!);

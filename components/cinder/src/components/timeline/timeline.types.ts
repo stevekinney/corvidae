@@ -59,7 +59,7 @@ export type TimelineEntry = {
   expandLabel?: string | undefined;
   /** For a `band`: the text of the button that closes it. @default "Hide" */
   collapseLabel?: string | undefined;
-  /** For a `band`: whether it starts open. The `onexpandedchange` of the timeline hears each change. @default false */
+  /** For a `band`: whether it starts open. The `onExpandedChange` of the timeline hears each change. @default false */
   expanded?: boolean | undefined;
   /** For a `run`: the status word that leads the row ("Done", "Running", "Failed"), which sets its dot and its tone. */
   status?: StatusDotWord | undefined;
@@ -118,7 +118,7 @@ export type TimelineProps = Omit<
   /** Decorative per-entry marker content. Must not contain interactive descendants. */
   marker?: Snippet<[TimelineEntry]> | undefined;
   /** Called when a `band` entry is opened or closed, with the entry and whether it is now open. */
-  onexpandedchange?: ((entry: TimelineEntry, expanded: boolean) => void) | undefined;
+  onExpandedChange?: ((entry: TimelineEntry, expanded: boolean) => void) | undefined;
 };
 
 /** Schema generator surface for Timeline — excludes snippet props. */

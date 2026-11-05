@@ -1,9 +1,8 @@
 /**
- * When a schedule fires, said in the zone it is read in. A cron schedule is read in its own IANA
- * zone (`UTC` when it was made without one), so "every day at 09:00" in `America/Los_Angeles` fires
- * at 09:00 there, and its next runs are shown in that zone with the zone named. An interval counts
- * elapsed time and has no zone of its own, so its runs are shown in the zone the browser is in,
- * named the same way.
+ * When a schedule fires. A cron schedule is read in its own IANA zone (`UTC` when it was made without
+ * one), so "every day at 09:00" in `America/Los_Angeles` fires at 09:00 there, and its sentence says
+ * so; the Runs list shows each run in the viewer's zone. An interval counts elapsed time and has no
+ * zone of its own, so its runs fall on the browser's clock.
  */
 import { CronExpressionParser } from 'cron-parser';
 
@@ -44,28 +43,6 @@ export function sentenceZone(
   timing: Pick<ScheduleTiming, 'cronExpression' | 'timeZone'>,
 ): string | null {
   return timing.cronExpression !== undefined ? zoneLabel(timing.timeZone ?? 'UTC') : null;
-}
-
-function formatterFor(zone: string): Intl.DateTimeFormat {
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-    timeZone: zone,
-  });
-}
-
-/** A moment in a zone, with the zone's own short name after it: "Mon, Nov 2, 9:00 AM PST". */
-export function formatInZone(at: number, zone: string): string {
-  try {
-    return formatterFor(zone).format(at);
-  } catch {
-    // A zone this browser does not know is shown in UTC rather than not at all.
-    return formatterFor('UTC').format(at);
-  }
 }
 
 const MINUTE_MS = 60_000;

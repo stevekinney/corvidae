@@ -32,7 +32,7 @@
     kind = 'event',
     detail,
     expanded = $bindable(false),
-    onexpandedchange,
+    onExpandedChange,
     status,
     href,
     duration,
@@ -126,7 +126,7 @@
           () => expanded,
           (open) => {
             expanded = open;
-            onexpandedchange?.(open);
+            onExpandedChange?.(open);
           }
         }
         tooltip={title}

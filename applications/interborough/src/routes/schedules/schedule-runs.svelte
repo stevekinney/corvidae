@@ -277,7 +277,7 @@
     variant="list"
     label={copy.label}
     data-testid="schedule-runs"
-    onexpandedchange={(entry, open) => {
+    onExpandedChange={(entry, open) => {
       if (entry.id === 'missed') bandOpen = open;
     }}
   >

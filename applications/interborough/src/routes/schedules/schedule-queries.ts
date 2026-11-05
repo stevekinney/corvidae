@@ -56,8 +56,8 @@ const SCHEDULE_RUN_HISTORY_LIMIT = 10;
  * descending; verified against `weft/src/core/engine/listing.ts`). Added by
  * weft#759 ("Expose schedule run history", weft 0.13+) closing weft#735,
  * which this console filed after finding no way to query which workflow
- * runs a schedule had launched — see `schedule-detail.svelte`'s "Recent
- * runs" panel, the sole consumer.
+ * runs a schedule had launched — see `schedule-runs.svelte` and
+ * `schedule-last-fire.svelte`, which share this one read.
  */
 export function fetchScheduleRunHistory(
   client: Pick<HttpClient, 'list'>,

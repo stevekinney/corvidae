@@ -1,7 +1,7 @@
 <script lang="ts" module>
   /** Test-only fixture: past runs as status-first rows, a skipped occurrence and an open band. */
   export type TimelineRunsFixtureProps = {
-    onexpandedchange?: ((open: boolean) => void) | undefined;
+    onExpandedChange?: ((open: boolean) => void) | undefined;
     expanded?: boolean | undefined;
   };
 </script>
@@ -10,7 +10,7 @@
   import Timeline from '../../components/timeline/timeline.svelte';
   import type { TimelineEntry } from '../../components/timeline/timeline.types.ts';
 
-  let { onexpandedchange, expanded = false }: TimelineRunsFixtureProps = $props();
+  let { onExpandedChange, expanded = false }: TimelineRunsFixtureProps = $props();
 
   const entries: TimelineEntry[] = $derived([
     {
@@ -83,7 +83,7 @@
   {entries}
   variant="list"
   label="Runs"
-  onexpandedchange={(_entry, open) => onexpandedchange?.(open)}
+  onExpandedChange={(_entry, open) => onExpandedChange?.(open)}
 >
   {#snippet children(entry)}
     {#if entry.kind === 'band'}<span data-testid="missed-detail">each miss</span>{/if}

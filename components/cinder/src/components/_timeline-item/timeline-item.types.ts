@@ -62,7 +62,7 @@ export type TimelineItemProps = Omit<HTMLAttributes<HTMLLIElement>, 'class' | 'c
   /** Controls drawn at the inline end of an event's row. Interactive; not drawn for `now` or `separator`. */
   actions?: Snippet | undefined;
   /** Called when a `band` is opened or closed, with whether it is now open. */
-  onexpandedchange?: ((expanded: boolean) => void) | undefined;
+  onExpandedChange?: ((expanded: boolean) => void) | undefined;
 };
 
 /** Schema generator surface for TimelineItem — excludes snippet props. */

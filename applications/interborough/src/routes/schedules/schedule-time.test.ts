@@ -4,13 +4,7 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import {
-  formatInZone,
-  scheduleZone,
-  sentenceZone,
-  upcomingFires,
-  zoneLabel,
-} from './schedule-time.ts';
+import { scheduleZone, sentenceZone, upcomingFires, zoneLabel } from './schedule-time.ts';
 
 /** 2026-11-02 12:00 UTC, a Monday. */
 const NOW = Date.UTC(2026, 10, 2, 12, 0, 0);
@@ -33,19 +27,6 @@ describe('the zone a schedule is shown in', () => {
     );
     expect(sentenceZone({})).toBeNull();
     expect(zoneLabel('Europe/Berlin')).toBe('Europe/Berlin');
-  });
-});
-
-describe('formatting a moment in a zone', () => {
-  test('shows the wall clock of that zone with its short name', () => {
-    // 17:00 UTC is 09:00 in Los Angeles in November.
-    const label = formatInZone(Date.UTC(2026, 10, 2, 17, 0), 'America/Los_Angeles');
-    expect(label).toContain('9:00');
-    expect(label).toMatch(/PST/);
-  });
-
-  test('falls back to UTC for a zone the browser does not know', () => {
-    expect(formatInZone(Date.UTC(2026, 10, 2, 17, 0), 'Not/AZone')).toContain('UTC');
   });
 });
 
