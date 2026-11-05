@@ -180,6 +180,7 @@ export type {
 export {
   applyComposerFormat,
   ChatAttachmentPreview,
+  ChatComposerSettings,
   ChatInput,
   COMPOSER_FOLD_WIDTH,
   composerStatusText,

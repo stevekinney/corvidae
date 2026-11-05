@@ -38,6 +38,7 @@ export {
   RotateCcw,
   Search,
   SendHorizontal,
+  SlidersHorizontal,
   Square,
   Strikethrough,
   Terminal,

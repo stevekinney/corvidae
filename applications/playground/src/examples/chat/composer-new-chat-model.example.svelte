@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Chat, createConversation } from '@lostgradient/chat';
+  import { Chat, ChatComposerSettings, createConversation } from '@lostgradient/chat';
   import { Avatar, Select } from '@lostgradient/cinder';
 
   const AGENTS = [
@@ -68,40 +68,42 @@
         {/snippet}
       </Select>
     {/snippet}
-    {#snippet composerControls()}
-      <Select
-        id="composer-new-chat-model-model"
-        variant="ghost"
-        presentation="listbox"
-        size="sm"
-        label="Model"
-        labelVisible={false}
-        valuePrefix="Model"
-        options={MODELS}
-        bind:value={model}
-      />
-      <Select
-        id="composer-new-chat-model-effort"
-        variant="ghost"
-        presentation="listbox"
-        size="sm"
-        label="Effort"
-        labelVisible={false}
-        valuePrefix="Effort"
-        options={EFFORTS}
-        bind:value={effort}
-      />
-      <Select
-        id="composer-new-chat-model-permissions"
-        variant="ghost"
-        presentation="listbox"
-        size="sm"
-        label="Permissions"
-        labelVisible={false}
-        valuePrefix="Permissions"
-        options={PERMISSIONS}
-        bind:value={permissions}
-      />
+    {#snippet composerControls({ folded })}
+      <ChatComposerSettings {folded}>
+        <Select
+          id="composer-new-chat-model-model"
+          variant="ghost"
+          presentation="listbox"
+          size="sm"
+          label="Model"
+          labelVisible={false}
+          valuePrefix="Model"
+          options={MODELS}
+          bind:value={model}
+        />
+        <Select
+          id="composer-new-chat-model-effort"
+          variant="ghost"
+          presentation="listbox"
+          size="sm"
+          label="Effort"
+          labelVisible={false}
+          valuePrefix="Effort"
+          options={EFFORTS}
+          bind:value={effort}
+        />
+        <Select
+          id="composer-new-chat-model-permissions"
+          variant="ghost"
+          presentation="listbox"
+          size="sm"
+          label="Permissions"
+          labelVisible={false}
+          valuePrefix="Permissions"
+          options={PERMISSIONS}
+          bind:value={permissions}
+        />
+      </ChatComposerSettings>
     {/snippet}
   </Chat>
 </div>

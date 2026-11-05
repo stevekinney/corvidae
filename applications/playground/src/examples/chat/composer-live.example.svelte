@@ -9,6 +9,7 @@
     appendAssistantMessage,
     appendUserMessage,
     Chat,
+    ChatComposerSettings,
     createConversation,
   } from '@lostgradient/chat';
   import { Meter, Select } from '@lostgradient/cinder';
@@ -55,40 +56,42 @@
     surfaceMode="transparent"
     composerPlaceholder="Message Tool runner…"
   >
-    {#snippet composerControls()}
-      <Select
-        id="composer-live-model"
-        variant="ghost"
-        presentation="listbox"
-        size="sm"
-        label="Model"
-        labelVisible={false}
-        valuePrefix="Model"
-        options={MODELS}
-        bind:value={model}
-      />
-      <Select
-        id="composer-live-effort"
-        variant="ghost"
-        presentation="listbox"
-        size="sm"
-        label="Effort"
-        labelVisible={false}
-        valuePrefix="Effort"
-        options={EFFORTS}
-        bind:value={effort}
-      />
-      <Select
-        id="composer-live-permissions"
-        variant="ghost"
-        presentation="listbox"
-        size="sm"
-        label="Permissions"
-        labelVisible={false}
-        valuePrefix="Permissions"
-        options={PERMISSIONS}
-        bind:value={permissions}
-      />
+    {#snippet composerControls({ folded })}
+      <ChatComposerSettings {folded}>
+        <Select
+          id="composer-live-model"
+          variant="ghost"
+          presentation="listbox"
+          size="sm"
+          label="Model"
+          labelVisible={false}
+          valuePrefix="Model"
+          options={MODELS}
+          bind:value={model}
+        />
+        <Select
+          id="composer-live-effort"
+          variant="ghost"
+          presentation="listbox"
+          size="sm"
+          label="Effort"
+          labelVisible={false}
+          valuePrefix="Effort"
+          options={EFFORTS}
+          bind:value={effort}
+        />
+        <Select
+          id="composer-live-permissions"
+          variant="ghost"
+          presentation="listbox"
+          size="sm"
+          label="Permissions"
+          labelVisible={false}
+          valuePrefix="Permissions"
+          options={PERMISSIONS}
+          bind:value={permissions}
+        />
+      </ChatComposerSettings>
     {/snippet}
     {#snippet composerActions()}
       <span class="context-meter" title="76K of 200K tokens">
@@ -109,5 +112,12 @@
 
   .context-meter :global(.cinder-meter) {
     inline-size: 2.25rem;
+  }
+
+  /* A phone-width composer keeps the figure and drops the bar, so the row never overlaps. */
+  @container (max-inline-size: 24rem) {
+    .context-meter :global(.cinder-meter) {
+      display: none;
+    }
   }
 </style>

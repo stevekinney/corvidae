@@ -64,7 +64,7 @@ const catalog = (tier: 'read-only' | 'dangerous') => ({
 
 /** What the stubbed Bureau was asked while a chat was open, and the thread it holds. */
 type Served = {
-  readonly calls: { method: string; params: Record<string, unknown> }[];
+  calls: { method: string; params: Record<string, unknown> }[];
   readonly started: string[];
   thread: { id: string; role: string; content: string; toolCalls?: unknown[] }[];
 };

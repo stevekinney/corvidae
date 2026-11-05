@@ -9,10 +9,10 @@
     appendAssistantMessage,
     appendUserMessage,
     Chat,
+    ChatComposerSettings,
     createConversation,
   } from '@lostgradient/chat';
-  import { Button, Meter, Popover, Select } from '@lostgradient/cinder';
-  import { ChevronDown, SlidersHorizontal } from '@lucide/svelte';
+  import { Meter, Select } from '@lostgradient/cinder';
 
   const MODELS = [
     { value: 'sonnet', label: 'Claude Sonnet 5.5' },
@@ -34,7 +34,6 @@
   let model = $state('sonnet');
   let effort = $state('medium');
   let permissions = $state('on-changes');
-  let open = $state(false);
 
   const conversation = appendAssistantMessage(
     appendUserMessage(createConversation({ id: 'composer-settings-folded' }), 'Which step failed?'),
@@ -86,28 +85,7 @@
     composerPlaceholder="Message the agent…"
   >
     {#snippet composerControls({ folded })}
-      {#if folded}
-        <Popover bind:open placement="top-start" label="Settings: Model, Effort and Permissions">
-          {#snippet trigger()}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label="Settings: Model, Effort and Permissions"
-              aria-haspopup="dialog"
-              aria-expanded={open}
-              onclick={() => (open = !open)}
-            >
-              {#snippet leadingIcon()}<SlidersHorizontal class="cinder-icon-sm" />{/snippet}
-              Settings
-              {#snippet trailingIcon()}<ChevronDown class="cinder-icon-sm" />{/snippet}
-            </Button>
-          {/snippet}
-          <div class="composer-settings">{@render settings()}</div>
-        </Popover>
-      {:else}
-        {@render settings()}
-      {/if}
+      <ChatComposerSettings {folded}>{@render settings()}</ChatComposerSettings>
     {/snippet}
     {#snippet composerActions()}
       <span class="context-meter" title="76K of 200K tokens">
@@ -119,13 +97,6 @@
 </div>
 
 <style>
-  .composer-settings {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-inline-size: 16rem;
-  }
-
   .context-meter {
     display: inline-flex;
     align-items: center;
@@ -135,5 +106,12 @@
 
   .context-meter :global(.cinder-meter) {
     inline-size: 2.25rem;
+  }
+
+  /* A phone-width composer keeps the figure and drops the bar, so the row never overlaps. */
+  @container (max-inline-size: 24rem) {
+    .context-meter :global(.cinder-meter) {
+      display: none;
+    }
   }
 </style>

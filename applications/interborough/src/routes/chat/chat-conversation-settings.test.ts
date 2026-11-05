@@ -51,7 +51,10 @@ const TURNS = [
 type Answers = Record<string, (params: Record<string, unknown>) => unknown>;
 
 /** The stream the page joins: closed at once for an idle chat, held open for a run that is going. */
-function thread(running: boolean): (url: string) => Response | undefined {
+function thread(
+  running: boolean,
+  opened?: (push: (frame: unknown) => void) => void,
+): (url: string) => Response | undefined {
   return (url) => {
     if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: TURNS });
     if (!url.includes('/threads/')) return undefined;
@@ -64,10 +67,11 @@ function thread(running: boolean): (url: string) => Response | undefined {
     return new Response(
       new ReadableStream({
         start(controller) {
-          for (const frame of frames) {
+          const push = (frame: unknown) =>
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`));
-          }
+          for (const frame of frames) push(frame);
           if (!running) controller.close();
+          else opened?.(push);
         },
       }),
       { headers: { 'content-type': 'text/event-stream' } },
@@ -75,7 +79,11 @@ function thread(running: boolean): (url: string) => Response | undefined {
   };
 }
 
-function serve(answers: Answers = {}, running = false) {
+function serve(
+  answers: Answers = {},
+  running = false,
+  opened?: (push: (frame: unknown) => void) => void,
+) {
   const served = bureau(
     {
       'bureau.agents.list': () => ({ agents: [AGENT] }),
@@ -89,7 +97,7 @@ function serve(answers: Answers = {}, running = false) {
       'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
       ...answers,
     },
-    thread(running),
+    thread(running, opened),
   );
   restore = served.restore;
   landAt('/chats/session-1');
@@ -371,6 +379,32 @@ describe('changing a setting from the composer', () => {
 
     await changeEffort(container, 'High');
     await waitFor(() => expect(note(container)).toBe(SETTINGS.applies.step('Effort', 'High')));
+  });
+
+  test('clears the line about a running chat’s next step once that step adds to the transcript', async () => {
+    let push: ((frame: unknown) => void) | undefined;
+    serve(
+      { 'bureau.contexts.steer': () => ({ outcome: 'accepted', command: {} }) },
+      true,
+      (open) => (push = open),
+    );
+    const { container } = mount();
+    await waitFor(() =>
+      expect(container.querySelector('[aria-label="Stop generating"]') === null).toBe(false),
+    );
+    await tick();
+
+    await changeEffort(container, 'High');
+    await waitFor(() => expect(note(container)).toBe(SETTINGS.applies.step('Effort', 'High')));
+    // Rows that were already there do not clear it, and the next step's reply does.
+    expect(note(container)).toBe(SETTINGS.applies.step('Effort', 'High'));
+    push?.({
+      type: 'MESSAGES_SNAPSHOT',
+      messages: [...TURNS, { id: 'a2', role: 'assistant', content: 'Checking the carrier.' }],
+    });
+
+    await waitFor(() => expect(container.textContent).toContain('Checking the carrier.'));
+    await waitFor(() => expect(note(container)).not.toBe(SETTINGS.applies.step('Effort', 'High')));
   });
 
   describe('a run parked on an approval or a question', () => {

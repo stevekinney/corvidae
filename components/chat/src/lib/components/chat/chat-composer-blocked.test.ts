@@ -23,6 +23,24 @@ afterEach(() => {
 const BLOCKED_REASON = 'Connect a model provider to chat';
 
 describe('a blocked composer', () => {
+  test('keeps the glyph with its reason, so only the actions leave for a line of their own on a narrow card', () => {
+    const { container } = render(ChatInput, {
+      id: 'blocked-unit',
+      status: {
+        kind: 'blocked',
+        reason: BLOCKED_REASON,
+        action: { label: 'Connect a provider', onclick: () => undefined },
+      },
+    });
+
+    const message = container.querySelector('.chat-input-blocked-message')!;
+    expect(message.querySelector('svg.lucide-triangle-alert')).not.toBeNull();
+    expect(message.querySelector('.chat-input-blocked-reason')?.textContent).toBe(BLOCKED_REASON);
+    const actions = container.querySelector('.chat-input-blocked-actions')!;
+    expect(actions.parentElement).toBe(message.parentElement);
+    expect(message.contains(actions)).toBe(false);
+  });
+
   test('draws one row with the reason, and no text box, controls or Send', () => {
     const { container } = render(ChatInput, {
       id: 'blocked',

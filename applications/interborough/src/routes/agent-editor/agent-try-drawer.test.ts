@@ -332,7 +332,9 @@ describe('Try it', () => {
     };
     const started = { type: 'RUN_STARTED', threadId: 'ctx-1', runId: 'task-1' };
 
-    function tryWith(agUi: NonNullable<Parameters<typeof installBureauStub>[1]['agUi']>) {
+    function tryWith(
+      agUi: NonNullable<NonNullable<Parameters<typeof installBureauStub>[1]>['agUi']>,
+    ) {
       bureau(
         {
           'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),

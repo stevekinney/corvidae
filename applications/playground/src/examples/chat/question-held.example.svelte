@@ -26,6 +26,11 @@
     const choice = host?.querySelector<HTMLButtonElement>('.chat-question-choices button');
     choice?.click();
     choice?.focus();
+    // A window that does not have focus raises no focus event for `focus()`, so the question is told
+    // the person is in it the way the browser would tell it.
+    host
+      ?.querySelector('.chat-question')
+      ?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
   });
 </script>
 

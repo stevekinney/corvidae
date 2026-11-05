@@ -40,6 +40,7 @@ export { default as RefreshCw } from '@lucide/svelte/icons/refresh-cw';
 export { default as RotateCcw } from '@lucide/svelte/icons/rotate-ccw';
 export { default as Search } from '@lucide/svelte/icons/search';
 export { default as SendHorizontal } from '@lucide/svelte/icons/send-horizontal';
+export { default as SlidersHorizontal } from '@lucide/svelte/icons/sliders-horizontal';
 export { default as Square } from '@lucide/svelte/icons/square';
 export { default as Strikethrough } from '@lucide/svelte/icons/strikethrough';
 export { default as Terminal } from '@lucide/svelte/icons/terminal';
