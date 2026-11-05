@@ -33,5 +33,5 @@ describe('the signed release archive', () => {
     } finally {
       await rm(output, { recursive: true, force: true });
     }
-  }, 30_000);
+  });
 });
