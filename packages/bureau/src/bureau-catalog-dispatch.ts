@@ -1,3 +1,7 @@
+import type { RunWorkspaceAuthority, ToolRequestContext } from 'armorer';
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
+import { bindRunWorkspaceAuthority, guardWorkspaceRunOptions } from './run-authority.ts';
+import { normalizeRunRequestContext } from './session-request-context.ts';
 import {
   CompletableEventTarget,
   mergeHookRegistries,
@@ -99,6 +103,7 @@ export interface SubordinateRun {
 }
 
 export interface CatalogDispatcherDependencies {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   readonly configureDurableRun?:
     ((runId: string, services: DurableRunDeps, principal: string) => void) | undefined;
   readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'>;
@@ -210,6 +215,7 @@ function subordinateTags(origin: TaskOrigin): readonly string[] {
  * deterministic run id, started by Bureau's goal port.
  */
 export interface GoalAttemptStart {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly agentName: string;
   /** The first attempt's prompt, or a later attempt's seed conversation with its turn appended. */
   readonly input: AgentInput;
@@ -261,6 +267,7 @@ function goalAttemptCostEstimation(
  * re-executes finds its own run instead of starting a second.
  */
 export interface WorkflowStepStart {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly agentName: string;
   /** The step's message, with the instance's trigger and previous result appended. */
   readonly input: string;
@@ -329,6 +336,7 @@ export interface GoalAttemptRun {
 }
 
 export function createCatalogDispatcher({
+  workspace,
   agentCatalog,
   runtime,
   runtimeServices,
@@ -462,6 +470,7 @@ export function createCatalogDispatcher({
      * itself is admitted by {@link CatalogDispatcherDependencies.trackSubordinateRun}.
      */
     taskOrigin?: TaskOrigin,
+    inheritedWorkspaceAuthority?: RunWorkspaceAuthority,
   ): AgentRun<unknown, boolean> {
     const durable = runtime.durable;
     if (!durable) {
@@ -631,12 +640,17 @@ export function createCatalogDispatcher({
       runIdOverride === undefined && goalAttempt === undefined && workflowStep === undefined
         ? decideToolFor?.(ownerOrLocal(principal), grant?.decide ?? true)
         : undefined;
+    let workspaceContext: ToolRequestContext;
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
       // COR-1996: the agent's generate is held to the model policy, as every path that starts a
       // catalog agent's run holds it (`holdToModelPolicy`).
       const withRuntime: RunOptions = {
         runtime: runtimeServices,
-        ...runtime.holdToModelPolicy(resolved, readGenerationProfile(agent).mode),
+        ...guardWorkspaceRunOptions(
+          workspace,
+          runtime.holdToModelPolicy(resolved, readGenerationProfile(agent).mode),
+          workspaceContext,
+        ),
       };
       // COR-1947: held as every run's toolbox is. A run that belongs to no chat, as a child and a
       // workflow step do not, has no mode, and is left to its toolbox.
@@ -675,6 +689,23 @@ export function createCatalogDispatcher({
     const resolveDurableAgent = async (): Promise<RunnableAgent<unknown, boolean>> => {
       let resolvedOptions: RunOptions;
       try {
+        const capturedContext = normalizeRunRequestContext(
+          undefined,
+          runId,
+          runOptions?.sessionId ?? runId,
+          name,
+          principal,
+        );
+        workspaceContext = await bindRunWorkspaceAuthority(
+          workspace,
+          inheritedWorkspaceAuthority === undefined
+            ? capturedContext
+            : {
+                ...capturedContext,
+                authority: { ...capturedContext.authority, workspace: inheritedWorkspaceAuthority },
+              },
+          ownerOrLocal(principal),
+        );
         // Invoked through `definitionResolvingAgent`, not as a bare
         // extracted `resolver(...)` call — a resolver implemented as a
         // method reading instance state via `this` (a custom
@@ -702,6 +733,11 @@ export function createCatalogDispatcher({
         // own `run()`, matching what direct registration would have done.
         // Anything else is a genuine resolver failure and must propagate.
         if (error instanceof AgentContractError) {
+          if (workspace !== undefined)
+            throw createBureauError(
+              'Workspace runs require dispatch-time authority support.',
+              'CONFLICT',
+            );
           // COR-851: a goal attempt's run is untracked and its activity retries
           // on failure, so a direct run here would be work no restart can find,
           // launched again by the retry. There is no fallback for an attempt.
@@ -755,6 +791,9 @@ export function createCatalogDispatcher({
       const fileBinding = fileStart?.binding;
       let heldReference = false;
       const recoveryRecord = {
+        ...(workspaceContext.authority.workspace === undefined
+          ? {}
+          : { workspaceAuthority: workspaceContext.authority.workspace }),
         agentName: name,
         // Type-level-only correction (mirrors `agent-catalog.ts`'s own
         // `buildCatalogGenerationProfile` cast): `readGenerationProfile`
@@ -881,6 +920,11 @@ export function createCatalogDispatcher({
           throw error;
         }
       }
+      workspaceContext = await bindRunWorkspaceAuthority(
+        workspace,
+        workspaceContext,
+        ownerOrLocal(principal),
+      );
       const activeRun = createActiveRun(
         resolvedOptions,
         {
@@ -1163,6 +1207,7 @@ export function createCatalogDispatcher({
         undefined,
         undefined,
         start.taskOrigin,
+        start.workspaceAuthority,
       );
     }
     // COR-1302 — the handle takes the id Bureau's topology recorded for this
@@ -1183,6 +1228,7 @@ export function createCatalogDispatcher({
               hasResolver,
               undefined,
               fileReference,
+              start.workspaceAuthority,
             ),
           start.input,
           context,
@@ -1212,6 +1258,12 @@ export function createCatalogDispatcher({
    * an agent that cannot run durably is refused here.
    */
   function startGoalAttemptRun(start: GoalAttemptStart): GoalAttemptRun {
+    if (
+      workspace !== undefined &&
+      start.workspaceAuthority === undefined &&
+      start.principal !== 'anonymous:local'
+    )
+      throw createBureauError('Workspace authority unavailable.', 'CONFLICT');
     if (getShutdownPromise()) {
       throw createBureauError('Cannot start a goal attempt: bureau is disposed', 'CONFLICT');
     }
@@ -1259,6 +1311,7 @@ export function createCatalogDispatcher({
         goalRunId: start.goalRunId,
         attemptId: goalAttemptId(start.goalRunId, start.attemptIndex),
       },
+      start.workspaceAuthority,
     );
     return { run, durablyStarted };
   }
@@ -1302,6 +1355,7 @@ export function createCatalogDispatcher({
       undefined,
       start.workflowStep,
       { kind: 'parent', parentRunId: start.workflowStep.workflowId },
+      start.workspaceAuthority,
     );
   }
 
@@ -1335,6 +1389,7 @@ export function createCatalogDispatcher({
     onActiveRun?: (activeRun: ActiveRun) => void,
     /** COR-1524 — settles once a file agent's snapshot is stored; a failure stops the start. */
     fileReference?: Promise<unknown>,
+    inheritedWorkspaceAuthority?: RunWorkspaceAuthority,
   ): Promise<RunnableAgent<unknown, boolean>> {
     // An agent exposing no `OPERATIVE_RESOLVE_RUN_OPTIONS` builds its
     // `RunOptions` entirely inside `run()`, so there is no bag to merge a tier
@@ -1347,8 +1402,33 @@ export function createCatalogDispatcher({
     // that read count at one for this path ("reads the resolver capability
     // before the direct-dispatch durability branch"), and a lazily-wrapped
     // agent is entitled to treat a read as meaningful.
-    if (!hasResolver) return agent as RunnableAgent<unknown, boolean>;
+    if (!hasResolver) {
+      if (workspace !== undefined)
+        throw createBureauError(
+          'Workspace runs require dispatch-time authority support.',
+          'CONFLICT',
+        );
+      return agent as RunnableAgent<unknown, boolean>;
+    }
 
+    const authorityRunId = context.runId ?? runtimeServices.identifiers.next('run-authority');
+    const directContext = normalizeRunRequestContext(
+      undefined,
+      authorityRunId,
+      authorityRunId,
+      name,
+      principal,
+    );
+    const workspaceContext = await bindRunWorkspaceAuthority(
+      workspace,
+      inheritedWorkspaceAuthority === undefined
+        ? directContext
+        : {
+            ...directContext,
+            authority: { ...directContext.authority, workspace: inheritedWorkspaceAuthority },
+          },
+      ownerOrLocal(principal),
+    );
     let resolvedOptions: RunOptions;
     try {
       // The cast is what the boolean above costs: `hasResolver` carries the
@@ -1366,6 +1446,11 @@ export function createCatalogDispatcher({
       // the agent's own `run()`, which is what direct registration would have
       // done. This is NOT the no-resolver case above; that one never gets here.
       if (error instanceof AgentContractError) {
+        if (workspace !== undefined)
+          throw createBureauError(
+            'Workspace runs require dispatch-time authority support.',
+            'CONFLICT',
+          );
         return agent as RunnableAgent<unknown, boolean>;
       }
       // Any other resolution failure is a genuine one, and it must keep
@@ -1393,7 +1478,11 @@ export function createCatalogDispatcher({
     // COR-1996: and the agent's generate is held to the model policy, as the durable branch holds it.
     resolvedOptions = {
       runtime: runtimeServices,
-      ...runtime.holdToModelPolicy(resolvedOptions, readGenerationProfile(agent).mode),
+      ...guardWorkspaceRunOptions(
+        workspace,
+        runtime.holdToModelPolicy(resolvedOptions, readGenerationProfile(agent).mode),
+        workspaceContext,
+      ),
     };
 
     // COR-1524 — the snapshot is stored before the run starts.

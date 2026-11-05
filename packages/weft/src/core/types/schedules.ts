@@ -127,6 +127,8 @@ export type ScheduleSpec = { cron: string; every?: never } | { every: Duration; 
  * ```
  */
 export interface ScheduleOptions {
+  /** Persist a schedule without arming its timer until an explicit resume. */
+  initialStatus?: 'active' | 'paused';
   id?: string;
   /** Human-readable operator description stored with this schedule. */
   description?: string;

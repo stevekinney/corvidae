@@ -1,3 +1,5 @@
+import { createWorkflowScheduleHolds } from './workflow-schedule-holds.ts';
+import type { WorkspaceMembership } from './http/workspace-principal.ts';
 /**
  * COR-1527 — a workflow file with a `schedule` trigger owns exactly one native schedule, and every
  * reconcile puts it back to match the file. Run against a real engine on memory storage.
@@ -411,4 +413,52 @@ describe('reconciling workflow schedules', () => {
     await reconcileWorkflowSchedules(engine, new Map([['two', hourly]]));
     expect(await liveTypes(engine)).toEqual(['two']);
   });
+});
+
+it('persists revoked and reassigned holds across rescans and input generation replacement', async () => {
+  await using engine = await engineWith('digest');
+  let member: WorkspaceMembership | null = {
+    version: 1,
+    workspaceId: 'workspace-a',
+    actorId: 'local-actor',
+    actorKind: 'local',
+    owner: 'anonymous:local',
+    membershipRevision: 'r1',
+    capabilities: ['workspace:use', 'workspace:manage'],
+  };
+  const files = {
+    broken: new Set<string>(),
+    holds: createWorkflowScheduleHolds({ nowISO: () => new Date(0).toISOString() }),
+    workspace: { workspaceId: 'workspace-a', resolveOwnerMembership: async () => member },
+  };
+  const desired = new Map([['digest', hourly]]);
+  await reconcileWorkflowSchedules(engine, desired, new Set(), files);
+  const first = workflowScheduleId('digest', 1);
+  expect(await statusOf(engine, first)).toBe('active');
+  const original = member;
+  member = null;
+  await reconcileWorkflowSchedules(engine, desired, new Set(), files);
+  expect(await statusOf(engine, first)).toBe('paused');
+  expect(await inputOf(engine, first)).toMatchObject({ authorityHold: 'revoked' });
+  member = original;
+  await reconcileWorkflowSchedules(engine, desired, new Set(), files);
+  expect(await statusOf(engine, first)).toBe('paused');
+  desired.set('digest', { ...hourly, input: 'changed input' });
+  await reconcileWorkflowSchedules(engine, desired, new Set(), files);
+  const replacement = workflowScheduleId('digest', 2);
+  expect(await engine.getSchedule(replacement)).toMatchObject({ status: 'paused', revision: 1 });
+  expect(await inputOf(engine, replacement)).toMatchObject({
+    authorityHold: 'revoked',
+    workspaceAuthority: { actorId: 'local-actor' },
+  });
+  const snapshot = (await engine.getSchedule(replacement))!;
+  const input = (await inputOf(engine, replacement)) as Record<string, unknown>;
+  await engine.replaceScheduleInput(
+    replacement,
+    { ...input, authorityHold: 'reassigned' },
+    { expectedRevision: snapshot.revision },
+  );
+  await reconcileWorkflowSchedules(engine, desired, new Set(), files);
+  expect(await statusOf(engine, replacement)).toBe('paused');
+  expect(await inputOf(engine, replacement)).toMatchObject({ authorityHold: 'reassigned' });
 });

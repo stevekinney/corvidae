@@ -1,3 +1,4 @@
+import { readRunWorkspaceAuthority, type RunWorkspaceAuthority } from 'armorer';
 /**
  * The host COR-1525's interpreter runs a workflow file on (COR-1527): the activities a file's
  * steps may name and the trigger kinds its `trigger` may use. One host is built per engine and
@@ -239,6 +240,7 @@ export interface AgentStepResult {
 
 /** What the `agent` activity hands Bureau to run. */
 export interface AgentStepRequest {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly agent: string;
   /** The message with the instance's trigger and previous result appended. */
   readonly message: string;
@@ -248,6 +250,8 @@ export interface AgentStepRequest {
 }
 
 export interface WorkflowHostDependencies {
+  /** Current authority at each activity callback, including contributed activities. */
+  readonly admitActivity?: ((argument: DocumentActivityArgument) => Promise<void>) | undefined;
   /** Run one agent as the deployment's owner and resolve its result; rejects when the run fails. */
   readonly runAgentStep: (request: AgentStepRequest) => Promise<AgentStepResult>;
   /**
@@ -306,19 +310,40 @@ export function createWorkflowDocumentHost(
   dependencies: WorkflowHostDependencies,
 ): DocumentWorkflowHost {
   const contributions = dependencies.contributions ?? NO_WORKFLOW_CONTRIBUTIONS;
+  const activities: Record<string, DocumentActivity> = {
+    ...contributions.activities,
+    [AGENT_STEP_HANDLER]: async (argument: DocumentActivityArgument) => {
+      const { agent, message } = argument.input as { agent: string; message: string };
+      const trigger = argument.trigger;
+      const workspaceAuthority = readRunWorkspaceAuthority(
+        typeof trigger === 'object' && trigger !== null
+          ? Reflect.get(trigger, 'workspaceAuthority')
+          : undefined,
+      );
+      return dependencies.runAgentStep({
+        agent,
+        message: composeAgentMessage(message, argument.trigger, argument.previous),
+        workflowId: argument.workflowId,
+        step: argument.step,
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
+      });
+    },
+  };
   return Object.freeze({
-    activities: Object.freeze({
-      ...contributions.activities,
-      [AGENT_STEP_HANDLER]: async (argument: DocumentActivityArgument) => {
-        const { agent, message } = argument.input as { agent: string; message: string };
-        return dependencies.runAgentStep({
-          agent,
-          message: composeAgentMessage(message, argument.trigger, argument.previous),
-          workflowId: argument.workflowId,
-          step: argument.step,
-        });
-      },
-    }),
+    activities: Object.freeze(
+      Object.fromEntries(
+        Object.entries(activities).map(([name, activity]) => {
+          if (dependencies.admitActivity === undefined) return [name, activity];
+          const execute: DocumentActivityHandler = async (argument, context) => {
+            await dependencies.admitActivity!(argument);
+            return typeof activity === 'function'
+              ? activity(argument, context)
+              : activity.execute(argument, context);
+          };
+          return [name, typeof activity === 'function' ? execute : { ...activity, execute }];
+        }),
+      ),
+    ),
     triggerKinds: Object.freeze({ ...contributions.triggerValidators, ...WORKFLOW_TRIGGER_KINDS }),
     checkSchema: checkWorkflowSchema,
     activityVersions: contributions.activityVersions,

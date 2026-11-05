@@ -125,6 +125,7 @@ describe('the workflow host', () => {
     };
     const host = createWorkflowDocumentHost({
       runAgentStep: async () => unreachable(),
+      admitActivity: async () => {},
       contributions,
     });
 

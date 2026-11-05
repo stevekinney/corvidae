@@ -1,3 +1,6 @@
+import { captureRunWorkspaceAuthority, validateRunWorkspaceAuthority } from './run-authority.ts';
+import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule.ts';
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 /**
  * What a Bureau does with a directory of workflow files (COR-1527): load them, register them with
  * the engine as workflow types, keep the engine and the schedules matching the files, and answer
@@ -612,6 +615,10 @@ export interface WorkflowRuntime {
 }
 
 export interface WorkflowRuntimeOptions {
+  /** Trusted current membership for every workflow start. */
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
+  /** Resolve a trusted audit actor to its stable directory owner for explicit resume. */
+  readonly resumeAdministrator?: ((actor: string | undefined) => Promise<boolean>) | undefined;
   /** Where the workflow files come from and are written back to. */
   readonly source: WorkflowSource;
   readonly engine: Engine;
@@ -640,7 +647,7 @@ export interface WorkflowRuntimeOptions {
    * revision pins (`plugin:name@version`) is not loaded, so the owning plugin can report it.
    */
   readonly onPinnedUnavailable?: ((activity: string, runId: string) => void) | undefined;
-  readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST') => Error;
+  readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST' | 'CONFLICT') => Error;
   /**
    * The engine's cap on one payload's encoded size, or `null` for none. A signal's payload and the
    * trigger it starts an instance with are checked against it before anything is delivered.
@@ -810,6 +817,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     await reconcileWorkflowSchedules(engine, desiredSchedules(), unreadable, {
       broken: brokenWorkflows(),
       holds: scheduleHolds,
+      workspace: options.workspace,
     });
     await triggers.reconcile(desiredTriggers(), unreadable);
     await forgetVanishedHookOrigins();
@@ -844,6 +852,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    * never a trigger's `start` or `stop`. A failed apply is reported as it is to `start`: the fire
    * rejects with {@link WorkflowApplyError} until an apply succeeds.
    */
+  async function triggerAuthority(authorizingOwner: string | undefined) {
+    if (options.workspace === undefined) return {};
+    const authority = await captureRunWorkspaceAuthority(
+      options.workspace,
+      authorizingOwner ?? 'anonymous:local',
+    );
+    if (authority === undefined)
+      throw options.createError('Workspace authority unavailable.', 'CONFLICT');
+    return { workspaceAuthority: authority };
+  }
+
   async function fireTrigger(id: string, kind: string, payload: unknown): Promise<void> {
     if (closed) return;
     // The caller owns `payload`: snapshot it before the first await. A value that is not JSON is
@@ -862,7 +881,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       }
       const issues = file.inputSchema === null ? [] : inputSchemaIssues(file.inputSchema, input);
       if (issues.length > 0) throw new WorkflowInputInvalidError(id, issues);
-      const trigger = { kind, payload: input };
+      const trigger = { kind, payload: input, ...(await triggerAuthority(undefined)) };
       assertSendable('trigger payload', trigger);
       await engine.start(weftNameOf(id), trigger);
     });
@@ -1728,15 +1747,38 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         undefined,
         id,
       ),
-    resume: (id, guard) =>
-      write(
+    resume: async (id, guard) => {
+      if (options.workspace !== undefined && !(await options.resumeAdministrator?.(guard.actor)))
+        throw options.createError('Workspace administrator required.', 'CONFLICT');
+      const schedule = await liveSchedule(id);
+      const snapshot = schedule == null ? null : await engine.getSchedule(schedule.id);
+      const input = schedule == null ? undefined : await storedScheduleInput(engine, schedule.id);
+      const result = await write(
         'workflow.resumed',
         guard,
         guard.expectedHash,
         (onWritten) => catalog.setPaused(id, false, { ...guard, onWritten }),
         undefined,
         id,
-      ),
+      );
+      if (schedule != null && options.workspace !== undefined) {
+        const binding = workflowScheduleBinding(input);
+        if (
+          (await validateRunWorkspaceAuthority(options.workspace, binding.workspaceAuthority)) ===
+            undefined ||
+          snapshot === null ||
+          typeof input !== 'object' ||
+          input === null
+        )
+          throw options.createError('Workspace authority unavailable.', 'CONFLICT');
+        const { authorityHold: _hold, ...resumed } = input as Record<string, unknown>;
+        await engine.replaceScheduleInput(schedule.id, resumed, {
+          expectedRevision: snapshot.revision,
+          status: 'active',
+        });
+      }
+      return result;
+    },
     delete: (id, guard) =>
       write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard), undefined, id),
 
@@ -1948,7 +1990,17 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       const maySignalRun = signalOptions?.maySignalRun;
       validateSignal(name, payload, signalId);
       const payloadSnapshot: unknown = structuredClone(payload ?? null);
-      const delivered = await deliverSignal(name, payloadSnapshot, signalId, maySignalRun);
+      await triggerAuthority(signalOwner);
+      const delivered = await deliverSignal(name, payloadSnapshot, signalId, async (runId) => {
+        if (maySignalRun !== undefined && !(await maySignalRun(runId))) return false;
+        if (options.workspace === undefined) return true;
+        const run = await engine.get(runId);
+        const binding = workflowScheduleBinding(run?.input);
+        return (
+          (await validateRunWorkspaceAuthority(options.workspace, binding.workspaceAuthority)) !==
+          undefined
+        );
+      });
       if (applyPending) queueApply();
       await settled();
       if (applyFailure !== undefined) {
@@ -1964,6 +2016,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           ? undefined
           : { kind: 'person', principal: signalOwner, surface: 'api' };
       const trigger = {
+        ...(await triggerAuthority(signalOwner)),
         kind: 'signal',
         name,
         payload: payloadSnapshot,
@@ -2023,7 +2076,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         principal: starter,
         surface: surface ?? 'api',
       };
-      const trigger = { kind: 'manual', input, origin };
+      const trigger = { kind: 'manual', input, origin, ...(await triggerAuthority(starter)) };
       assertSendable('input', trigger);
       const handle = await engine.start(weftNameOf(id), trigger, {
         tags: [taskOriginTag(origin), ...extraTags],

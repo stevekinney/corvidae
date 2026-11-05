@@ -1,3 +1,4 @@
+import type { RunWorkspaceAuthority } from 'armorer';
 /**
  * COR-772 — Bureau's durable parent-child topology.
  *
@@ -305,6 +306,7 @@ export interface ChildTopologyEngine {
 
 /** What Bureau knows about a run that wants to own a child. */
 export interface ChildTopologyParent {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly agentName: string;
   readonly principal?: string | undefined;
   readonly live: boolean;
@@ -318,6 +320,7 @@ export interface ChildTopologyParent {
 }
 
 export interface ChildTopologyStart {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly agentName: string;
   readonly input: AgentInput;
   readonly childRunId: string;
@@ -1456,6 +1459,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       parentCancellation: request.parentCancellation ?? 'cascade',
       // The child's owner is its parent's; a parent with none is owned by anonymous:local.
       principal: ownerOrLocal(parent.principal),
+      workspaceAuthority: parent.workspaceAuthority,
       grantId: grant?.id,
       parentGrantId,
       // COR-1955: a child of a child keeps its root's chat, so a mode is read from the chat and not
@@ -1493,6 +1497,9 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
         input: request.input,
         childRunId,
         ...(record.principal === undefined ? {} : { principal: record.principal }),
+        ...(record.workspaceAuthority === undefined
+          ? {}
+          : { workspaceAuthority: record.workspaceAuthority }),
         context: {
           childCorrelation: correlationOf(record),
           ...(entry.channel === undefined ? {} : { parentSignals: entry.channel.child }),

@@ -1,3 +1,4 @@
+import { readRunWorkspaceAuthority, type RunWorkspaceAuthority } from 'armorer';
 /**
  * COR-851 — the durable record of one Bureau goal run.
  *
@@ -253,6 +254,8 @@ export interface GoalCancellationMarker {
 }
 
 export interface GoalState {
+  /** Stable actor authority inherited by every attempt, distinct from historical ownership. */
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly schemaVersion: typeof GOAL_STATE_SCHEMA_VERSION;
   readonly goalRunId: string;
   readonly workflowId: string;
@@ -914,6 +917,7 @@ function isConversationPolicy(value: unknown, instructions: string | undefined):
 }
 
 const TOP_LEVEL_KEYS = [
+  'workspaceAuthority',
   'schemaVersion',
   'goalRunId',
   'workflowId',
@@ -1384,6 +1388,8 @@ function isConsistent(value: PlainRecord): boolean {
 
 function isShape(value: PlainRecord): boolean {
   return (
+    (value['workspaceAuthority'] === undefined ||
+      readRunWorkspaceAuthority(value['workspaceAuthority']) !== undefined) &&
     value['schemaVersion'] === GOAL_STATE_SCHEMA_VERSION &&
     isNonEmptyString(value['goalRunId']) &&
     value['goalRunId'].isWellFormed() &&
@@ -1449,6 +1455,7 @@ export function decodeGoalState(text: string): GoalState | undefined {
 // ---------------------------------------------------------------------------
 
 export interface CreateGoalStateInput {
+  readonly workspaceAuthority?: RunWorkspaceAuthority | undefined;
   readonly goalRunId: string;
   readonly identity: GoalIdentity;
   readonly objective: GoalObjective;
@@ -1623,6 +1630,9 @@ export function createGoalState(input: CreateGoalStateInput): GoalState {
       retryPolicy: input.retryPolicy,
       bounds: input.bounds,
       principal: input.principal,
+      ...(input.workspaceAuthority === undefined
+        ? {}
+        : { workspaceAuthority: input.workspaceAuthority }),
       ...(input.source === undefined ? {} : { source: input.source }),
       status: 'pending',
       currentTransition: {

@@ -9,6 +9,7 @@ import type {
   ScheduleSummary,
 } from '@lostgradient/weft';
 import { canonicalTimeZone, decode, KEYS, parseDuration, ScheduleHandle } from '@lostgradient/weft';
+import { readRunWorkspaceAuthority, type RunWorkspaceAuthority } from 'armorer';
 
 import { snapshotPayload } from '../agent-input';
 import type { ClosedFunction } from '../closed-acknowledgement';
@@ -78,6 +79,10 @@ export interface ScheduledAgentRunInput {
    * which the Bureau reads as its local anonymous owner.
    */
   principal?: string | undefined;
+  /** Stable authorizing actor for future fires, independent of historic schedule ownership. */
+  workspaceAuthority?: RunWorkspaceAuthority | undefined;
+  /** A revocation or reassignment requires explicit resume. */
+  authorityHold?: 'revoked' | 'reassigned';
 }
 
 /**
@@ -98,8 +103,15 @@ export function isScheduledAgentRunInput(value: unknown): value is ScheduledAgen
   if (sessionId !== undefined && typeof sessionId !== 'string') return false;
   const scheduleId = candidate['scheduleId'];
   if (scheduleId !== undefined && typeof scheduleId !== 'string') return false;
+  const hold = candidate['authorityHold'];
+  if (hold !== undefined && hold !== 'revoked' && hold !== 'reassigned') return false;
   const principal = candidate['principal'];
   if (principal !== undefined && typeof principal !== 'string') return false;
+  if (
+    candidate['workspaceAuthority'] !== undefined &&
+    readRunWorkspaceAuthority(candidate['workspaceAuthority']) === undefined
+  )
+    return false;
   return true;
 }
 
@@ -167,6 +179,9 @@ export interface CreateAgentScheduleOptions {
    * Written into the scheduled input only when given.
    */
   principal?: string | undefined;
+  /** Stable authorizing actor for future fires, independent of historic schedule ownership. */
+  workspaceAuthority?: RunWorkspaceAuthority | undefined;
+
   /**
    * Optional stable id for this schedule (used by `getSchedule`/`pauseSchedule`
    * etc.). Defaults to an id minted through `options.runtime` (AB-92/AB-253).
@@ -330,6 +345,9 @@ export interface AgentScheduleOptions {
   timeZone?: string | undefined;
   /** The schedule's owner of record; see {@link CreateAgentScheduleOptions.principal}. */
   principal?: string | undefined;
+  /** Stable authorizing actor for future fires, independent of historic schedule ownership. */
+  workspaceAuthority?: RunWorkspaceAuthority | undefined;
+
   /** Optional stable schedule id (defaults to Weft-assigned uuid). */
   id?: string | undefined;
   /**
@@ -557,6 +575,7 @@ export async function createAgentSchedule(
     idempotent,
     emitter,
     principal,
+    workspaceAuthority,
   } = options;
   const workflowType = options.workflowType ?? 'agentRun';
   const runtime = options.runtime ?? createDefaultRuntimeServices();
@@ -594,6 +613,11 @@ export async function createAgentSchedule(
   }
   // The owner is persisted in the scheduled input, and every fire rejects an input
   // whose principal is not text, so a bad one is refused before it registers.
+  if (
+    workspaceAuthority !== undefined &&
+    readRunWorkspaceAuthority(workspaceAuthority) === undefined
+  )
+    throw new InvalidScheduleError('Invalid workspace authority');
   if (principal !== undefined && typeof principal !== 'string') {
     throw new InvalidScheduleError('schedule principal must be a string');
   }
@@ -607,6 +631,7 @@ export async function createAgentSchedule(
     input,
     scheduleId,
     ...(principal !== undefined ? { principal } : {}),
+    ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
     ...(session !== undefined ? { sessionId: session.trim() } : {}),
   };
 

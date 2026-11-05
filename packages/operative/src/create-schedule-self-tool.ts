@@ -1,4 +1,5 @@
 import type { ScheduleSpec } from '@lostgradient/weft';
+import type { RunWorkspaceAuthority, ToolRequestContext } from 'armorer';
 import { z } from 'zod';
 
 import type { AgentScheduleHandle, AgentScheduleOverlapPolicy } from './durable/schedule-agent';
@@ -71,11 +72,14 @@ export type ScheduleSelfFn = (
     overlap?: AgentScheduleOverlapPolicy | undefined;
     id?: string | undefined;
     idempotent?: boolean | undefined;
+    principal?: string | undefined;
+    workspaceAuthority?: RunWorkspaceAuthority | undefined;
   },
 ) => Promise<AgentScheduleHandle>;
 
 export interface ScheduleSelfExecutionContext {
   durableOperationKey?: string | undefined;
+  requestContext?: ToolRequestContext | undefined;
 }
 
 /**
@@ -220,7 +224,12 @@ export function createScheduleSelfTool(options: CreateScheduleSelfToolOptions) {
           ? `schedule-self:${context.durableOperationKey}`
           : undefined);
 
+      const authority = context?.requestContext?.authority;
       const handle = await schedule(agentName, {
+        ...(authority === undefined
+          ? {}
+          : { principal: authority.workspace?.authorizingOwner ?? authority.ownerId }),
+        ...(authority?.workspace === undefined ? {} : { workspaceAuthority: authority.workspace }),
         spec: input.spec,
         input: input.input,
         ...(input.session !== undefined ? { session: input.session } : {}),
