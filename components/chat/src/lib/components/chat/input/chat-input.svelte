@@ -1907,6 +1907,10 @@
   }
 
   @media (any-pointer: coarse) {
+    .chat-input-footer :global(.cinder-button) {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+
     /* Send and Stop sit side by side once a follow-up is typed, so their hit areas must not touch. */
     .chat-input-footer-right {
       gap: var(--cinder-space-3);
