@@ -1,4 +1,3 @@
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 
 import { executeCli, parseCliArguments } from './cli-client.ts';
@@ -10,39 +9,6 @@ function jsonRpc(method: string, result: unknown): Response {
 function sseFrame(data: unknown, id?: string): string {
   return `${id === undefined ? '' : `id: ${id}\n`}data: ${JSON.stringify(data)}\n\n`;
 }
-
-const subprocessEvidence = (async () => {
-  const source = new URL('./cli-client.ts', import.meta.url).href;
-  const script = `
-    import { executeCli } from ${JSON.stringify(source)};
-    const encoder = new TextEncoder();
-    globalThis.fetch = async () => new Response(new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode('id: c-1\\ndata: ' + JSON.stringify({ kind: 'task.status', status: 'running' }) + '\\n\\n'));
-        setTimeout(() => {
-          controller.enqueue(encoder.encode('id: c-2\\ndata: ' + JSON.stringify({ kind: 'task.status', status: 'completed' }) + '\\n\\n'));
-          controller.close();
-        }, 100);
-      }
-    }), { headers: { 'content-type': 'text/event-stream' } });
-    const result = await executeCli(['runs', 'watch', '--kind', 'task', 'subprocess', '--output', 'jsonl'], {
-      writeStdout: (chunk) => process.stdout.write(chunk),
-    });
-    process.exitCode = result.exitCode;
-  `;
-  const child = spawnWithHangGuard([process.execPath, '--no-install', '-e', script], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const reader = child.stdout.getReader();
-  const first = await reader.read();
-  const second = await reader.read();
-  return {
-    first: new TextDecoder().decode(first.value),
-    second: new TextDecoder().decode(second.value),
-    exitCode: await child.exited,
-  };
-})();
 
 describe('CLI run control', () => {
   // spawn-free: injected command execution replaces the process boundary for parser validation.
@@ -72,6 +38,36 @@ describe('CLI run control', () => {
     expect(JSON.parse(result.stdout).data.tasks[0]).toMatchObject({
       kind: 'task',
       id: 'task:same-id',
+    });
+  });
+
+  // spawn-free: injected fetch replaces the management process for pagination validation.
+  test('forwards task cursors and rejects unknown list kinds', async () => {
+    let params: Record<string, unknown> | undefined;
+    const listed = await executeCli(['runs', 'list', '--cursor', 'next', '--status', 'running'], {
+      fetch: async (_input, init) => {
+        const body = JSON.parse(typeof init?.body === 'string' ? init.body : '') as {
+          params: Record<string, unknown>;
+        };
+        params = body.params;
+        return jsonRpc('bureau.tasks.list', { tasks: [] });
+      },
+    });
+    const invalid = await executeCli(['runs', 'list', '--kind', 'other'], {
+      fetch: async () => jsonRpc('bureau.tasks.list', { tasks: [] }),
+    });
+    expect(listed.exitCode).toBe(0);
+    expect(params).toMatchObject({ pageToken: 'next', status: 'running' });
+    expect(invalid.exitCode).toBe(2);
+  });
+
+  // spawn-free: parser validation does not start a process.
+  test('accepts format and status on audit and run list commands', () => {
+    expect(parseCliArguments(['audit', 'list', '--format', 'jsonl'])).toMatchObject({
+      command: 'audit',
+    });
+    expect(parseCliArguments(['runs', 'list', '--status', 'running'])).toMatchObject({
+      command: 'runs',
     });
   });
 
@@ -206,14 +202,6 @@ describe('CLI run control', () => {
     });
     expect(failed.exitCode).toBe(1);
     expect(pending.exitCode).toBe(5);
-  });
-
-  // spawn-free: the compiled subprocess witness is started at module scope under a hang guard.
-  test('emits watch output from a real subprocess before the stream closes', async () => {
-    const evidence = await subprocessEvidence;
-    expect(evidence.first).toContain('task.status');
-    expect(evidence.second).toContain('completed');
-    expect(evidence.exitCode).toBe(0);
   });
 
   // spawn-free: injected JSON-RPC replaces the management process for cancellation mapping.

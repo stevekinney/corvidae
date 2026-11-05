@@ -150,6 +150,8 @@ const optionNames = new Set([
   'call-id',
   'attachment',
   'provider',
+  'format',
+  'status',
   'kind',
   'agent-name',
   'origin',
@@ -269,6 +271,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'cursor',
     'wait',
     'step',
+    'status',
   ],
   events: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'kind', 'cursor'],
   audit: [

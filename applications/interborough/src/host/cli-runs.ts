@@ -112,7 +112,7 @@ function parseSse(buffer: string): {
 function taskPath(taskId: string, cursor: string | undefined): string {
   const query = new URLSearchParams({ taskId });
   if (cursor !== undefined) query.set('fromCursor', cursor);
-  return `/v1/subscriptions/bureau.tasks.events?${query}`;
+  return `/bureau/v1/subscriptions/bureau.tasks.events?${query}`;
 }
 
 function workflowPath(workflowId: string, cursor: string | undefined): string {
@@ -230,19 +230,22 @@ async function watch(
       identifiers: { kind, id: qualified(kind, rawId), cursor: cursor ?? null },
     });
   if (pendingInput)
-    throw Object.assign(new Error('Run is waiting for input.'), {
+    throw Object.assign(new Error(`Run ${qualified(kind, rawId)} is waiting for input.`), {
       exitCode: 5,
       identifiers: { kind, id: qualified(kind, rawId), cursor: cursor ?? null },
     });
   if (failed)
-    throw Object.assign(new Error('Run failed.'), {
+    throw Object.assign(new Error(`Run ${qualified(kind, rawId)} failed.`), {
       exitCode: 1,
       identifiers: { kind, id: qualified(kind, rawId), cursor: cursor ?? null },
     });
-  if (!terminalSeen && parsed.output !== 'text')
-    throw Object.assign(new Error('Run event stream ended before a terminal event.'), {
-      identifiers: { kind, id: qualified(kind, rawId), cursor: cursor ?? null },
-    });
+  if (!terminalSeen)
+    throw Object.assign(
+      new Error(
+        `Run event stream ended before a terminal event (resume ${qualified(kind, rawId)} from ${cursor ?? 'beginning'}).`,
+      ),
+      { identifiers: { kind, id: qualified(kind, rawId), cursor: cursor ?? null } },
+    );
   return {
     data: { kind, id: qualified(kind, rawId), cursor: cursor ?? null, events },
     metadata: { streamed: write !== undefined },
@@ -251,6 +254,12 @@ async function watch(
 
 function listParams(parsed: Parsed, kind: RunKind): RecordValue {
   if (kind === 'workflow') {
+    const cursor = option(parsed, 'cursor') ?? option(parsed, 'page-token');
+    const cursorOffset = cursor === undefined ? undefined : Number(cursor);
+    if (cursorOffset !== undefined && (!Number.isInteger(cursorOffset) || cursorOffset < 0))
+      throw Object.assign(new Error('Workflow pagination cursor must be a nonnegative integer.'), {
+        usage: true,
+      });
     return {
       ...(option(parsed, 'workflow') === undefined ? {} : { workflow: option(parsed, 'workflow') }),
       ...(option(parsed, 'status') === undefined ? {} : { status: option(parsed, 'status') }),
@@ -260,6 +269,7 @@ function listParams(parsed: Parsed, kind: RunKind): RecordValue {
       ...(numberOption(parsed, 'offset') === undefined
         ? {}
         : { offset: numberOption(parsed, 'offset') }),
+      ...(cursorOffset === undefined ? {} : { offset: cursorOffset }),
     };
   }
   return {
@@ -272,9 +282,11 @@ function listParams(parsed: Parsed, kind: RunKind): RecordValue {
     ...(numberOption(parsed, 'limit') === undefined
       ? {}
       : { limit: numberOption(parsed, 'limit') }),
-    ...(option(parsed, 'page-token') === undefined
-      ? {}
-      : { pageToken: option(parsed, 'page-token') }),
+    ...(option(parsed, 'cursor') === undefined
+      ? option(parsed, 'page-token') === undefined
+        ? {}
+        : { pageToken: option(parsed, 'page-token') }
+      : { pageToken: option(parsed, 'cursor') }),
   };
 }
 
@@ -283,7 +295,10 @@ async function list(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
-  const kind = option(parsed, 'kind') === 'workflow' ? 'workflow' : 'task';
+  const requestedKind = option(parsed, 'kind');
+  if (requestedKind !== undefined && requestedKind !== 'task' && requestedKind !== 'workflow')
+    throw Object.assign(new Error('Option --kind must be task or workflow.'), { usage: true });
+  const kind: RunKind = requestedKind === 'workflow' ? 'workflow' : 'task';
   const method = kind === 'workflow' ? 'bureau.workflows.runs.list' : 'bureau.tasks.list';
   const response = await rpc(target, parsed, dependencies, method, listParams(parsed, kind));
   const body = record(response.data);
@@ -364,7 +379,7 @@ export async function executeRuns(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
-  const action = parsed.arguments[0] ?? 'list';
+  const action = parsed.arguments[0] ?? (parsed.command === 'events' ? 'watch' : 'list');
   if (action === 'list') return list(target, parsed, dependencies);
   if (action === 'get') return getOrInspect(target, parsed, dependencies, false);
   if (action === 'inspect') return getOrInspect(target, parsed, dependencies, true);

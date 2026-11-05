@@ -135,11 +135,16 @@ export async function stream(
     const source = response.body.getReader();
     const body = new ReadableStream<Uint8Array>({
       async pull(streamController) {
-        const next = await source.read();
-        if (next.done) {
+        try {
+          const next = await source.read();
+          if (next.done) {
+            clearTimeout(timer);
+            streamController.close();
+          } else streamController.enqueue(next.value);
+        } catch (error) {
           clearTimeout(timer);
-          streamController.close();
-        } else streamController.enqueue(next.value);
+          streamController.error(error);
+        }
       },
       async cancel(reason) {
         clearTimeout(timer);
