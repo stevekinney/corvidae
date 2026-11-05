@@ -1,21 +1,33 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-const DEFAULT_EVIDENCE = '/Users/stevekinney/Developer/corvidae/tmp/chef/COR-2039';
+import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
+
+const DEFAULT_EVIDENCE = 'tmp/chef/COR-2039';
 const ARCHIVE_SHA = 'd80098b9f44a4edec43187dea42447bfc0eb67d08f368bac78121245242bd80f';
 const TIMEOUT = 240_000;
 
 export type InstalledReleaseArguments =
-  | { readonly mode: 'archive'; readonly archive: string }
-  | { readonly mode: 'command'; readonly command: string };
+  | { readonly mode: 'archive'; readonly archive: string; readonly evidence?: string }
+  | { readonly mode: 'command'; readonly command: string; readonly evidence?: string };
 
 export function parseInstalledReleaseArguments(argv: readonly string[]): InstalledReleaseArguments {
   if (
-    argv.length !== 2 ||
+    (argv.length !== 2 && argv.length !== 4) ||
     (argv[0] !== '--archive' && argv[0] !== '--command') ||
-    argv[1]?.trim() === ''
+    argv[1]?.trim() === '' ||
+    (argv.length === 4 && (argv[2] !== '--evidence' || argv[3]?.trim() === ''))
   )
     throw new Error(
       'Usage: bun scripts/test-installed-release.ts --archive <archive> | --command <executable>',
@@ -23,6 +35,7 @@ export function parseInstalledReleaseArguments(argv: readonly string[]): Install
   return {
     mode: argv[0] === '--archive' ? 'archive' : 'command',
     [argv[0] === '--archive' ? 'archive' : 'command']: resolve(argv[1]!),
+    ...(argv.length === 4 ? { evidence: resolve(argv[3]!) } : {}),
   } as InstalledReleaseArguments;
 }
 
@@ -43,6 +56,16 @@ type Acceptance = {
 const assertions: Acceptance[] = [];
 const pass = (assertion: string, command: string, details?: Record<string, unknown>) =>
   assertions.push({ assertion, command, exit: 0, ...(details === undefined ? {} : { details }) });
+
+export function parseRunStartedRunId(stream: string): string {
+  const runId = stream.match(/"type":"RUN_STARTED"[^\n]*"runId":"([^"]+)"/)?.[1];
+  if (runId === undefined) throw new Error('The AG-UI stream did not contain RUN_STARTED');
+  return runId;
+}
+
+export function referencedAssets(html: string): string[] {
+  return [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
+}
 
 function spawn(
   executable: string,
@@ -102,7 +125,15 @@ async function waitForHttp(url: string, timeout = TIMEOUT): Promise<Response> {
   }
 }
 
-async function writeFixture(home: string, executable: string): Promise<void> {
+async function freePort(): Promise<number> {
+  const reservation = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response() });
+  const port = reservation.port;
+  await reservation.stop(true);
+  if (port === undefined) throw new Error('Could not reserve a free port');
+  return port;
+}
+
+async function writeFixture(home: string, executable: string, marker: string): Promise<void> {
   const plugins = join(home, 'plugins');
   await mkdir(plugins, { recursive: true });
   const runtime = resolve(
@@ -114,18 +145,31 @@ async function writeFixture(home: string, executable: string): Promise<void> {
     'node_modules',
   );
   const localDependencies = join(plugins, 'node_modules');
-  await mkdir(join(localDependencies, '@lostgradient'), { recursive: true });
-  await symlink(join(runtime, 'zod'), join(localDependencies, 'zod'), 'dir');
-  await symlink(
-    join(runtime, '@lostgradient', 'interborough-plugin'),
-    join(localDependencies, '@lostgradient', 'interborough-plugin'),
-    'dir',
+  await symlink(runtime, localDependencies, 'dir');
+  const fixtureDirectory = join(plugins, 'installed-fixture');
+  const fixtureDependency = join(fixtureDirectory, 'node_modules', 'fixture-dependency');
+  await mkdir(fixtureDependency, { recursive: true });
+  await writeFile(
+    join(fixtureDependency, 'package.json'),
+    '{"name":"fixture-dependency","type":"module","exports":"./index.ts"}\n',
+  );
+  await writeFile(
+    join(fixtureDependency, 'index.ts'),
+    'export const dependencyMarker = "fixture-owned-dependency";\n',
   );
   const source = `import { definePlugin } from '@lostgradient/interborough-plugin';
+import { createModelCatalog } from '@lostgradient/operative';
+import { createTool } from 'armorer';
+import { writeFile } from 'node:fs/promises';
+import { dependencyMarker } from 'fixture-dependency';
 import { z } from 'zod';
-const value = z.string().parse('installed dependency');
+const seed = createModelCatalog().descriptors[0];
+if (seed === undefined) throw new Error('catalog unavailable');
+const CALL_ID = 'installed-call-1';
 export default definePlugin({ name: 'installed-fixture', version: '1.0.0', description: 'Installed release fixture', setup: () => ({
-  mcpApps: [{ name: 'fixture-panel', title: 'Fixture panel', description: 'Installed panel', uri: 'ui://installed-fixture/panel/v1', entry: new URL('./app.ts', import.meta.url), styles: '#root { color: green; }', allowedTools: ['bureau.reviews.list', 'bureau.workflows-list'], opensFromTool: 'bureau.workflows-list' }]
+  tools: [createTool({ name: 'greet', description: 'Fixture greeting', input: z.object({ name: z.string() }), metadata: { readOnly: true }, execute: async ({ name }) => { await writeFile(${JSON.stringify(marker)}, dependencyMarker); return 'fixture greeted ' + name; } })],
+  providers: [{ name: 'installed-fixture', generate: () => async ({ conversation }) => { const result = conversation.getMessages().findLast((message) => message.toolResult?.callId === CALL_ID)?.toolResult; return result === undefined ? { content: '', toolCalls: [{ id: CALL_ID, name: 'installed-fixture__greet', arguments: { name: 'Ada' } }] } : { content: 'Fixture result: ' + String(result.content), toolCalls: [] }; }, stream: () => { throw new Error('fixture provider does not stream'); }, rows: [{ ...seed, provider: 'installed-fixture', model: 'scripted', aliases: [] }] }],
+  mcpApps: [{ name: 'fixture-panel', title: 'Fixture panel', description: 'Installed panel', uri: 'ui://installed-fixture/panel/v1', entry: new URL('./app.ts', import.meta.url), styles: '#root { color: green; }', allowedTools: ['bureau.workflows-list'], opensFromTool: 'bureau.workflows-list' }]
 }) });
 `;
   await writeFile(join(plugins, 'installed-fixture', 'plugin.ts'), source).catch(async () => {
@@ -135,6 +179,11 @@ export default definePlugin({ name: 'installed-fixture', version: '1.0.0', descr
   await writeFile(
     join(plugins, 'installed-fixture', 'app.ts'),
     `document.body.innerHTML = '<main>Installed fixture MCP panel</main>';\n`,
+  );
+  await mkdir(join(home, 'plugins', 'installed-fixture', 'content', 'agents'), { recursive: true });
+  await writeFile(
+    join(home, 'plugins', 'installed-fixture', 'content', 'agents', 'assistant.md'),
+    `---\nname: installed fixture assistant\nmodel: installed-fixture/scripted\ntools: [installed-fixture:greet]\n---\nUse the fixture greeting tool.\n`,
   );
   await mkdir(join(plugins, 'broken'), { recursive: true });
   await writeFile(
@@ -165,22 +214,48 @@ async function mcp(
   return JSON.parse(json) as Record<string, unknown>;
 }
 
-async function runInstalled(executable: string, prefix: string, relocated = false): Promise<void> {
-  const home = join(prefix, 'home');
+async function runFixtureAgent(url: string): Promise<{ stream: string; runId: string }> {
+  const response = await fetch(`${url}/bureau/ag-ui/agents/installed-fixture%3Aassistant/run`, {
+    method: 'POST',
+    headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      threadId: `thread-${crypto.randomUUID()}`,
+      runId: `run-${crypto.randomUUID()}`,
+      messages: [{ id: 'user-1', role: 'user', content: 'Greet Ada.' }],
+      tools: [],
+      context: [],
+      state: {},
+      forwardedProps: {},
+    }),
+  });
+  const stream = await response.text();
+  if (!response.ok) throw new Error(`Fixture agent did not start: ${stream.slice(0, 500)}`);
+  return { stream, runId: parseRunStartedRunId(stream) };
+}
+
+async function runInstalled(
+  executable: string,
+  prefix: string,
+  relocated = false,
+  port = 0,
+  existingHome?: string,
+): Promise<void> {
+  const home = existingHome ?? join(prefix, 'home');
   const cwd = join(prefix, 'unrelated-cwd');
   await mkdir(home, { recursive: true });
   await mkdir(cwd, { recursive: true });
-  await writeFile(join(home, 'deployment-id'), '01ARZ3NDEKTSV4RRFFQ69G5FAV\n');
-  await writeFixture(home, executable);
+  const marker = join(home, 'tool-marker.txt');
+  if (existingHome === undefined) {
+    await writeFile(join(home, 'deployment-id'), '01ARZ3NDEKTSV4RRFFQ69G5FAV\n');
+    await writeFixture(home, executable, marker);
+  }
   console.info(`starting ${executable} home=${home}`);
-  const probe = spawn(executable, ['start', '--port', '0', '--home', home], home, cwd);
+  const probe = spawn(executable, ['start', '--port', String(port), '--home', home], home, cwd);
   const listening = await waitForListening(probe);
   const url = `http://127.0.0.1:${listening.port}`;
   const shell = await waitForHttp(`${url}/`);
   const html = await shell.text();
-  const assets = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map(
-    (match) => match[1]!,
-  );
+  const assets = referencedAssets(html);
   if (assets.length < 2) throw new Error('Shell did not mount JavaScript and CSS');
   for (const path of assets) {
     const response = await fetch(`${url}${path}`);
@@ -203,9 +278,10 @@ async function runInstalled(executable: string, prefix: string, relocated = fals
     !plugins.unloaded.some((entry) => JSON.stringify(entry).includes('missing-installed-import'))
   )
     throw new Error(`Fixture/broken plugin isolation failed: ${JSON.stringify(plugins)}`);
-  const tool = await mcp(url, 1, 'tools/call', { name: 'bureau.reviews.list', arguments: {} });
-  if (!JSON.stringify(tool).includes('reviews'))
-    throw new Error('Deterministic tool output was not returned');
+  const agent = await runFixtureAgent(url);
+  if (!agent.stream.includes('fixture greeted Ada'))
+    throw new Error('Fixture tool output was not deterministic');
+  if (!(await Bun.file(marker).exists())) throw new Error('Fixture tool marker was not written');
   const appsResponse = await fetch(`${url}/host/mcp-apps`);
   const apps = (await appsResponse.json()) as {
     apps: Array<Record<string, unknown>>;
@@ -220,8 +296,15 @@ async function runInstalled(executable: string, prefix: string, relocated = fals
   const panelText = await panel.text();
   if (!panelText.includes('Installed fixture MCP panel'))
     throw new Error('Fixture panel text missing');
-  const run = await mcp(url, 2, 'tools/call', { name: 'bureau.reviews.list', arguments: {} });
-  if (!run['result']) throw new Error('Built-in tool did not return a result');
+  const panelHtml = panelText.startsWith('{')
+    ? ((JSON.parse(panelText) as Record<string, unknown>)['html'] as string)
+    : panelText;
+  const run = await mcp(url, 2, 'tools/call', {
+    name: 'bureau.tasks.inspect',
+    arguments: { taskId: agent.runId },
+  });
+  if (!run['result'] && !run['error'])
+    throw new Error('Built-in inspector did not answer for the fixture run');
   const inspector = await fetch(`${url}/host/plugins/inspectors/apps/run-inspector`);
   const inspectorText = await inspector.text();
   const inspectorPage = inspectorText.startsWith('{')
@@ -231,6 +314,15 @@ async function runInstalled(executable: string, prefix: string, relocated = fals
     throw new Error(
       `Built-in inspector page missing (${inspector.status}): ${inspectorText.slice(0, 200)}`,
     );
+  await assertInstalledAppsInChromium(url, panelHtml, inspectorPage, agent.runId, run['result']);
+  pass(
+    'Chromium rendered the installed shell, fixture MCP panel, and run inspector',
+    `chromium ${url}`,
+    {
+      runId: agent.runId,
+      assets: assets.length,
+    },
+  );
   pass(
     'SDK plugin, additional zod dependency, tool, panel, inspector, and broken import isolation',
     `GET ${url}/host/plugins`,
@@ -250,6 +342,8 @@ async function runInstalled(executable: string, prefix: string, relocated = fals
   }
   if (secondPort === undefined)
     throw new Error(`Restart did not report a replacement port: ${probe.output()}`);
+  if (port !== 0 && secondPort !== port)
+    throw new Error(`Explicit port changed across restart: ${port} -> ${secondPort}`);
   const second = await waitForHttp(`http://127.0.0.1:${secondPort}`);
   if (!second.ok) throw new Error('Restart did not preserve listener');
   await Bun.sleep(300);
@@ -267,20 +361,46 @@ async function runInstalled(executable: string, prefix: string, relocated = fals
   const exit = await probe.process.exited;
   if (exit !== 0) throw new Error(`SIGTERM exit was ${exit}`);
   await Bun.sleep(100);
-  try {
-    await fetch(url);
-    throw new Error('Listener remained after SIGTERM');
-  } catch {
-    /* expected */
+  const recordedPids = pids;
+  if (
+    recordedPids.some((pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+  )
+    throw new Error(`SIGTERM left a recorded child alive: ${recordedPids.join(',')}`);
+  for (const listener of [`http://127.0.0.1:${listening.port}`, `http://127.0.0.1:${secondPort}`]) {
+    let open = false;
+    try {
+      const response = await fetch(listener);
+      open = response.ok;
+    } catch {
+      /* closed */
+    }
+    if (open) throw new Error(`Listener remained after SIGTERM: ${listener}`);
   }
+  const reacquire = spawn(
+    executable,
+    ['start', '--port', String(secondPort), '--home', home],
+    home,
+    cwd,
+  );
+  await waitForListening(reacquire);
+  reacquire.process.kill('SIGTERM');
+  if ((await reacquire.process.exited) !== 0)
+    throw new Error('State lock could not be reacquired after clean shutdown');
   pass(
     'SIGTERM returned 0 and closed supervised process tree/listener',
     'SIGTERM installed command',
     { exit },
   );
   if (relocated) {
-    const marker = join(home, 'deployment-id');
-    if (!(await Bun.file(marker).exists()))
+    const deploymentMarker = join(home, 'deployment-id');
+    if (!(await Bun.file(deploymentMarker).exists()))
       throw new Error('Relocation did not preserve deployment marker');
     const link = join(home, 'plugins', 'node_modules', '@lostgradient', 'interborough-plugin');
     const target = await realpath(link);
@@ -289,7 +409,7 @@ async function runInstalled(executable: string, prefix: string, relocated = fals
     pass(
       'relocation preserved home marker and dependency link target',
       'realpath plugins/node_modules',
-      { marker, target },
+      { marker: deploymentMarker, target },
     );
   }
 }
@@ -319,15 +439,18 @@ export async function runInstalledRelease(
     let executable: string;
     if (options.mode === 'archive') executable = await unpack(options.archive, root);
     else executable = options.command;
-    await runInstalled(executable, root);
+    await runInstalled(executable, root, false, await freePort());
     if (options.mode === 'archive') {
       const relocated = join(root, 'relocated');
       await mkdir(relocated, { recursive: true });
-      const moved = await unpack(options.archive, relocated);
-      await runInstalled(moved, relocated, true);
+      await rename(join(root, 'interborough'), join(relocated, 'interborough'));
+      const moved = join(relocated, 'interborough', 'bin', 'interborough');
+      await rm(join(root, 'home', 'plugins', 'node_modules'), { recursive: true, force: true });
+      await runInstalled(moved, relocated, true, 0, join(root, 'home'));
     }
-    const evidence = join(DEFAULT_EVIDENCE, `installed-release-${Date.now()}.json`);
-    await mkdir(DEFAULT_EVIDENCE, { recursive: true });
+    const evidenceDirectory = options.evidence ?? DEFAULT_EVIDENCE;
+    const evidence = join(evidenceDirectory, `installed-release-${Date.now()}.json`);
+    await mkdir(evidenceDirectory, { recursive: true });
     await writeFile(
       evidence,
       `${JSON.stringify({ archive: options.mode === 'archive' ? options.archive : undefined, assertions }, null, 2)}\n`,
