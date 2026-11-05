@@ -26,6 +26,7 @@ import {
   removeAgent,
 } from './agent-support.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
@@ -82,6 +83,28 @@ async function unconnectedProviderOptions(request: APIRequestContext): Promise<s
 }
 
 test.describe('a new agent', () => {
+  test('preserves child-agent grants through an editor read and save', async ({
+    page,
+    request,
+  }) => {
+    await makeAgent(request, 'e2e-child-agent-preserve', { childAgents: ['demo:echo'] });
+    await page.goto('/agents/e2e-child-agent-preserve/edit');
+    await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+    await captureForDesignReview(page, {
+      route: '/agents/:agent/edit',
+      state: 'ready',
+      source: '24-define-agents.spec.ts',
+    });
+    await page.getByRole('button', { name: copy.saveAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-child-agent-preserve$/);
+
+    const saved = await readAgent(request, 'e2e-child-agent-preserve');
+    expect(saved.definition?.childAgents).toEqual(['demo:echo']);
+    const text = await readFile(await agentFilePath(request, 'e2e-child-agent-preserve'), 'utf8');
+    expect(text).toContain('childAgents:');
+    expect(text).toContain('demo:echo');
+  });
+
   for (const width of WIDTHS) {
     test(`is made from what the catalog offers, and written as a file, at ${width} pixels`, async ({
       page,

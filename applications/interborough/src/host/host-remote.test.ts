@@ -113,7 +113,8 @@ describe('remote mode needs the delegation secret', () => {
     const server = createS3TestServer();
     servers.push(server);
     const port = await freePort();
-    const { INTERBOROUGH_SECRET_DELEGATION_SECRET: _delegation, ...environment } = {
+    const { INTERBOROUGH_SECRET_DELEGATION_SECRET: _delegation, ...environment }:
+      Record<string, string> = {
       ...remoteVariables(server),
       INTERBOROUGH_SECRET_APPROVAL_SECRET: 'approval-secret-for-the-test-0123456789',
       INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY: TEST_ANSWER_ENCRYPTION_KEY,
