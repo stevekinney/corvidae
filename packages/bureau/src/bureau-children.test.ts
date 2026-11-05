@@ -1119,6 +1119,7 @@ describe('bureau.children across a process restart', () => {
     readonly settleBeforeParent?: boolean;
     readonly cancelParent?: boolean;
     readonly duplicateWake?: boolean;
+    readonly realDuplicateWake?: boolean;
     readonly competingPark?: 'human' | 'wakeup';
   };
 
@@ -1266,7 +1267,38 @@ describe('bureau.children across a process restart', () => {
           return child?.status === 'completed' || child?.status === 'failed';
         });
       }
-      if (testCase.forgeWake) {
+      if (
+        testCase.childMode === 'running' &&
+        testCase.dispatchChild !== false &&
+        !testCase.settleBeforeParent &&
+        testCase.competingPark === undefined
+      ) {
+        const engine = bureau.durableEngine();
+        expect(engine).toBeDefined();
+        await pollUntil(async () => {
+          const state = await engine?.get(parent.id);
+          return (
+            state?.waitingForSignals?.includes(
+              `durable-child:${parent.id}:${testCase.childRunId}`,
+            ) === true
+          );
+        });
+      }
+      if (testCase.realDuplicateWake) {
+        childRelease.resolve();
+        await pollUntil(async () => {
+          const child = await bureau.children.get({
+            parentRunId: parent.id,
+            childRunId: testCase.childRunId,
+          });
+          return child?.status === 'completed';
+        });
+        const signalName = `durable-child:${parent.id}:${testCase.childRunId}`;
+        const engine = bureau.durableEngine();
+        expect(engine).toBeDefined();
+        await engine?.signal(parent.id, signalName, null);
+        await engine?.signal(parent.id, signalName, null);
+      } else if (testCase.forgeWake) {
         await pollUntil(async () => {
           const workflow = await bureau.tasks.workflow(parent.id);
           return workflow?.status === 'running';
@@ -1422,10 +1454,9 @@ describe('bureau.children across a process restart', () => {
     const outcome = await runDurableChildWaitCase({
       childRunId: 'child-duplicate-wake',
       childMode: 'running',
-      forgeWake: true,
-      duplicateWake: true,
+      realDuplicateWake: true,
     });
-    expect(outcome.child?.status).toBe('aborted');
+    expect(outcome.child?.status).toBe('completed');
     expect(outcome.generations).toBe(2);
     expect(outcome.toolResults).toHaveLength(1);
   });

@@ -179,10 +179,120 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
   }
 }
 
+async function unobservableScenario(scope: ScenarioScope): Promise<void> {
+  const runtime = createDefaultRuntimeServices();
+  const directory = createTemporaryDirectory('corvidae-cor2052-child-unobservable-');
+  const storagePath = join(directory, 'bureau.sqlite');
+  const markerPath = join(directory, 'marker.json');
+  const fixture = createSqliteStorageFixture({ path: storagePath });
+  try {
+    const crashed = spawnWithHangGuard(
+      ['bun', CHILD, 'child-wait-running', 'sqlite', storagePath, markerPath],
+      { stdout: 'pipe', stderr: 'pipe' },
+    );
+    scope.onHang(() => crashed.kill());
+    await waitUntil(() => existsSync(markerPath));
+    await crashed.exited;
+    expect(crashed.signalCode).toBe('SIGKILL');
+    const { runId, childRunId } = readChildJson<{ runId: string; childRunId: string }>(markerPath);
+    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
+
+    const waitForChild = createTool({
+      name: 'wait-for-child',
+      description: 'Wait for the named child.',
+      input: z.object({ childRunId: z.string() }),
+      metadata: { durableChildWait: true },
+      execute: async ({ childRunId }, context) => {
+        const wait = context.executionContext?.['durableChildWait'];
+        if (typeof wait !== 'function') throw new Error('missing durable child wait');
+        return wait({ childRunId, toolCallId: context.meta?.callId ?? context.toolCall.id });
+      },
+    });
+    let generations = 0;
+    let toolResults: readonly unknown[] = [];
+    const rawStorage = fixture.open();
+    const storage = new Proxy(rawStorage, {
+      get(target, property, receiver) {
+        if (property === 'get') {
+          return async (key: string) => {
+            if (key === 'wf:child-1') throw new Error('child workflow unavailable during recovery');
+            return target.get(key);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const bureau = await createBureau({
+      agents: {
+        planner: createAgent({
+          name: 'planner',
+          toolbox: createToolbox([waitForChild]),
+          generate: async ({ step, conversation }) => {
+            generations += 1;
+            toolResults = conversation
+              .getMessages()
+              .filter((message) => message.role === 'tool-result')
+              .map((message) => message.toolResult);
+            return step === 0
+              ? {
+                  content: 'unexpected replay',
+                  toolCalls: [
+                    {
+                      id: CHILD_WAIT_CALL_ID,
+                      name: 'wait-for-child',
+                      arguments: { childRunId },
+                    },
+                  ],
+                }
+              : { content: 'recovered', toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage,
+      durable: true,
+      onDiagnostic: () => {},
+      runtime,
+      durableOwnership: {
+        ownership: 'workflow-lease',
+        workflowClaimTtlMs: CLAIM_TTL_MS,
+        workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
+      },
+    });
+    scope.onHang(() => bureau.shutdown());
+    try {
+      await bureau.recovery();
+      const result = await bureau.tasks.wait(runId);
+      expect(result?.status).toBe('completed');
+      expect(generations).toBe(2);
+      expect(toolResults).toContainEqual(
+        expect.objectContaining({
+          callId: CHILD_WAIT_CALL_ID,
+          content: { status: 'unobservable', child: expect.objectContaining({ childRunId }) },
+        }),
+      );
+      expect(await bureau.children.get({ parentRunId: runId, childRunId })).toMatchObject({
+        status: 'running',
+      });
+    } finally {
+      await bureau.shutdown();
+    }
+  } finally {
+    await fixture.dispose();
+    removeTemporaryPath(directory);
+  }
+}
+
 const outcome = await settleScenario(crashScenario, HANG_GUARD_MILLISECONDS);
+const unobservableOutcome = await settleScenario(unobservableScenario, HANG_GUARD_MILLISECONDS);
 
 describe('durable child settlement across SIGKILL', () => {
   it('recovers a parked parent and publishes one original-call result from SQLite', () => {
     expectScenarioPassed(outcome);
+  });
+
+  it('reports a recovered running child as unobservable after topology recovery', () => {
+    expectScenarioPassed(unobservableOutcome);
   });
 });

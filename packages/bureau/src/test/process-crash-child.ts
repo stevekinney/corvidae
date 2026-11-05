@@ -666,6 +666,106 @@ async function childWaitParked(): Promise<void> {
   });
 }
 
+/** COR-2052: leaves a genuinely running child behind so a fresh Bureau must report it unobservable. */
+async function childWaitRunning(): Promise<void> {
+  const parentReady = Promise.withResolvers<void>();
+  const allowParent = Promise.withResolvers<void>();
+  let parentId: string | undefined;
+  let durableEngine: {
+    get(runId: string): Promise<{ waitingForSignals?: readonly string[] } | null>;
+  };
+  const waitForChild = createTool({
+    name: 'wait-for-child',
+    description: 'Wait for the named child.',
+    input: z.object({ childRunId: z.string() }),
+    metadata: { durableChildWait: true },
+    execute: async ({ childRunId }, context) => {
+      const wait = context.executionContext?.['durableChildWait'];
+      if (typeof wait !== 'function') throw new Error('missing durable child wait');
+      return wait({ childRunId, toolCallId: context.meta?.callId ?? context.toolCall.id });
+    },
+  });
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      planner: createAgent({
+        name: 'planner',
+        toolbox: createToolbox([waitForChild]),
+        generate: async ({ step }) => {
+          if (step === 0) {
+            parentReady.resolve();
+            await allowParent.promise;
+            return {
+              content: 'waiting',
+              toolCalls: [
+                {
+                  id: 'parent-child-wait-call',
+                  name: 'wait-for-child',
+                  arguments: { childRunId: 'child-1' },
+                },
+              ],
+            };
+          }
+          return { content: 'recovered', toolCalls: [] };
+        },
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+      worker: createAgent({
+        name: 'worker',
+        generate: async () => {
+          const signalName = `durable-child:${parentId}:child-1`;
+          await pollUntil('parent durable child wait', async () => {
+            if (parentId === undefined) return false;
+            const state = await durableEngine?.get(parentId);
+            return state?.waitingForSignals?.includes(signalName) === true;
+          });
+          return new Promise<never>(() => {});
+        },
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    },
+    storage:
+      backend === 'lmdb'
+        ? new LMDBStorage(storagePath as string)
+        : new BunSQLiteStorage(storagePath),
+    durable: true,
+    durableOwnership: {
+      ownership: 'workflow-lease',
+      workflowClaimTtlMs: CLAIM_TTL_MS,
+      workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
+    },
+  });
+  const parent = await bureau.tasks.start('planner', 'wait for child', { principal: 'alice' });
+  const engine = bureau.durableEngine();
+  if (engine === undefined) throw new Error('child: durable engine unavailable');
+  parentId = parent.id;
+  durableEngine = engine;
+  await parentReady.promise;
+  const child = await bureau.children.dispatch({
+    parentRunId: parent.id,
+    childRunId: 'child-1',
+    agentName: 'worker',
+    input: 'work',
+  });
+  if (child.outcome !== 'started') throw new Error(`child did not start: ${child.outcome}`);
+  publishChildFile(
+    markerPath as string,
+    JSON.stringify({ runId: parent.id, childRunId: 'child-1', contextId: parent.contextId }),
+  );
+  allowParent.resolve();
+  await pollUntil('parent park', async () => {
+    const workflow = await bureau.tasks.workflow(parent.id);
+    return workflow?.status === 'running';
+  });
+  await pollUntil('running child record', async () => {
+    const childRecord = await bureau.children.get({
+      parentRunId: parent.id,
+      childRunId: 'child-1',
+    });
+    return childRecord?.status === 'running';
+  });
+  return killSelf();
+}
+
 async function peerApprovalThenCrash(): Promise<void> {
   let bureau: Awaited<ReturnType<typeof createHarnessBureau>> | undefined;
   const toolbox = createPeerApprovalToolbox(async () => {
@@ -842,6 +942,7 @@ const scenarios: Record<string, () => Promise<void>> = {
   'human-wait-two-calls-parked': () => humanWaitParked(true),
   'approve-then-crash': approveThenCrash,
   'child-wait-parked': childWaitParked,
+  'child-wait-running': childWaitRunning,
   'peer-approval-then-crash': peerApprovalThenCrash,
   'peer-recovery-attach-then-crash': peerRecoveryAttachThenCrash,
   'peer-recovery-post-commit-then-crash': peerRecoveryPostCommitThenCrash,
