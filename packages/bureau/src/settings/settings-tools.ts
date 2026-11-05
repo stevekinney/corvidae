@@ -17,14 +17,8 @@ import { z } from 'zod';
 
 import { runIdOf } from '../workflow-tools.ts';
 import type { BureauSettings, SettingsSnapshot, SettingsUpdateResult } from './types.ts';
-import { mayRunAccess } from '../run-authority.ts';
-
-function mayUseSettingsTool(
-  owner: string | undefined,
-  scope: 'bureau.settings:read' | 'bureau.settings:write',
-): boolean {
-  return mayRunAccess(owner, scope);
-}
+import { mayRunUseSharedConfiguration } from '../run-authority.ts';
+import type { WorkspaceRuntimeAuthority } from '../http/workspace-principal.ts';
 
 /** The names of the two tools. Hyphens, because provider tool-name grammars exclude dots. */
 export const SETTINGS_TOOL_NAMES = ['settings-get', 'settings-update'] as const;
@@ -43,6 +37,7 @@ export function collidingSettingsToolName(
 
 /** What the tools read from the Bureau that owns them. */
 export interface SettingsToolHost {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   /** The settings. Read on every call, because the tools exist before the settings do. */
   readonly settings: () => BureauSettings;
   /** The owner of record of a run, for the run that made a tool call. */
@@ -65,7 +60,9 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
     execute: async (_input, context): Promise<SettingsSnapshot | SettingsForbidden> => {
       const runId = runIdOf(context);
       const owner = runId === undefined ? undefined : await host.authorityForRun(runId);
-      if (!mayUseSettingsTool(owner, 'bureau.settings:read')) {
+      if (
+        !(await mayRunUseSharedConfiguration(host.workspace, owner, 'bureau.settings:read', true))
+      ) {
         return {
           outcome: 'rejected',
           reason: 'forbidden',
@@ -97,7 +94,9 @@ export function createSettingsTools(host: SettingsToolHost): Record<string, Tool
     execute: async (input, context): Promise<SettingsUpdateResult | SettingsForbidden> => {
       const runId = runIdOf(context);
       const owner = runId === undefined ? undefined : await host.authorityForRun(runId);
-      if (!mayUseSettingsTool(owner, 'bureau.settings:write')) {
+      if (
+        !(await mayRunUseSharedConfiguration(host.workspace, owner, 'bureau.settings:write', true))
+      ) {
         return {
           outcome: 'rejected',
           reason: 'forbidden',

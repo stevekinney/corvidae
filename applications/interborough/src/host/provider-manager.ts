@@ -25,6 +25,8 @@
  * @module provider-manager
  */
 
+import { createHash } from 'node:crypto';
+
 import type { Bungalow, ConfigurationSnapshot } from '@lostgradient/bungalow';
 import {
   ANONYMOUS_LOCAL_OWNER,
@@ -293,16 +295,22 @@ export type ProviderManagerOptions = {
   readonly audit?: (entry: ProviderAuditEntry) => Promise<void>;
 };
 
-/** What {@link ProviderManagerOptions.audit} is handed: the audit entry of a removed provider key. */
+/** What {@link ProviderManagerOptions.audit} is handed for a provider configuration change. */
 export type ProviderAuditEntry = {
   /** `provider:<name>`, the resource the entry is filed under. */
   readonly runId: string;
-  /** `provider.disconnected`. */
-  readonly type: 'provider.disconnected';
+  /** The committed configuration change. */
+  readonly type: 'provider.connected' | 'provider.configured' | 'provider.disconnected';
   /** The person who removed it, as the host's routes act: `anonymous:local`. */
   readonly principal: string;
-  /** The provider, by its plugin's name, such as `anthropic`. */
-  readonly detail: { readonly provider: string };
+  /** Metadata only: never a key, request, or configuration value. */
+  readonly detail: {
+    readonly provider: string;
+    readonly outcome?: 'committed';
+    readonly changedKeys?: readonly string[];
+    readonly hash?: string;
+    readonly previousRevision?: string | null;
+  };
 };
 
 /** The page's view of a catalog row. */
@@ -556,6 +564,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         : connection.models;
       return serialized(async () => {
         const { document, revision } = await readDocument();
+        const wasConnected = loaded.apiKeys.has(provider);
         const text = validated(
           withAllowlist(document, contributed.plugin, models),
           new Set([...loaded.apiKeys.keys(), provider]),
@@ -619,6 +628,20 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
         // The plugin manager reports what is stored, so it reads the file again; the write stands
         // either way.
         await options.afterConfigurationWrite?.().catch(() => undefined);
+        await options
+          .audit?.({
+            runId: `provider:${provider}`,
+            type: wasConnected ? 'provider.configured' : 'provider.connected',
+            principal: ANONYMOUS_LOCAL_OWNER,
+            detail: {
+              provider,
+              outcome: 'committed',
+              ...(models === undefined ? {} : { changedKeys: ['models'] }),
+              hash: createHash('sha256').update(text).digest('hex'),
+              previousRevision: revision,
+            },
+          })
+          .catch(() => undefined);
         return apply();
       });
     },
@@ -670,6 +693,28 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
             `write outcome: ${result.outcome}. Reload before retrying.`,
           );
         }
+        const changedProviders = [
+          ...new Set([...current, ...parsed].map((edit) => edit.provider)),
+        ].filter((provider) => names.has(provider));
+        await Promise.all(
+          changedProviders.map(
+            async (provider) =>
+              await options
+                .audit?.({
+                  runId: `provider:${provider}`,
+                  type: 'provider.configured',
+                  principal: ANONYMOUS_LOCAL_OWNER,
+                  detail: {
+                    provider,
+                    outcome: 'committed',
+                    changedKeys: ['catalog'],
+                    hash: createHash('sha256').update(text).digest('hex'),
+                    previousRevision: revision,
+                  },
+                })
+                .catch(() => undefined),
+          ),
+        );
         return apply();
       });
     },

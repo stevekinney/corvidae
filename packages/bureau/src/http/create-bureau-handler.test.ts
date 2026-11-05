@@ -21,6 +21,7 @@ import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import type { AgentDefinitions } from '../agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
+import type { WorkspaceMembershipOptions } from './workspace-principal.ts';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const API_KEY = 'handler-test-key';
@@ -44,6 +45,7 @@ async function buildBureau(
     persist?: boolean;
     assets?: boolean;
     durable?: boolean;
+    workspace?: WorkspaceMembershipOptions;
   } = {},
 ) {
   const agents = Object.fromEntries(
@@ -59,6 +61,7 @@ async function buildBureau(
       ? { storage: new MemoryStorage() }
       : {}),
     ...(options.durable === true ? { durable: true } : {}),
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     // The handler serves the asset operations, so it needs the service behind them.
     ...(options.assets === false ? {} : { assets: { storage: createMemoryAssetStorage() } }),
   });
@@ -102,6 +105,49 @@ async function withBureau<T>(
 }
 
 describe('createBureauHandler options', () => {
+  const workspaceBinding = (): WorkspaceMembershipOptions => ({
+    workspaceId: 'workspace-a',
+    resolveMembership: async ({ subject }) => ({
+      version: 1,
+      workspaceId: 'workspace-a',
+      actorId: subject ?? 'unknown',
+      actorKind: 'user',
+      owner: `api-key:${subject ?? 'unknown'}`,
+      membershipRevision: 'revision-1',
+      capabilities: ['workspace:use'],
+    }),
+  });
+
+  it('requires the handler to include the Bureau workspace binding exactly', async () => {
+    await withBureau({}, (bureau) => {
+      expect(() =>
+        createBureauHandler(bureau, {
+          unauthenticatedAccess: 'allow',
+          workspace: workspaceBinding(),
+        }),
+      ).toThrow(/workspace must match/);
+    });
+
+    const workspace = workspaceBinding();
+    await withBureau({ workspace }, (bureau) => {
+      expect(() => createBureauHandler(bureau, { unauthenticatedAccess: 'allow' })).toThrow(
+        /workspace must match/,
+      );
+      expect(() =>
+        createBureauHandler(bureau, {
+          unauthenticatedAccess: 'allow',
+          workspace: { ...workspace, resolveMembership: async () => null },
+        }),
+      ).toThrow(/workspace must match/);
+      expect(() =>
+        createBureauHandler(bureau, { unauthenticatedAccess: 'allow', workspace }),
+      ).not.toThrow();
+      expect(bureau.workspaceBinding).toMatchObject({ workspaceId: workspace.workspaceId });
+      expect(bureau.workspaceBinding?.resolveMembership).toBe(workspace.resolveMembership);
+      expect(Object.isFrozen(bureau.workspaceBinding)).toBe(true);
+    });
+  });
+
   it('throws on an option it does not know', async () => {
     await withBureau({}, (bureau) => {
       expect(() =>

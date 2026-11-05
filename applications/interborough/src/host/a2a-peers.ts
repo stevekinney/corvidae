@@ -50,6 +50,13 @@ function redactText(value: string, secret: string): string {
   return value.split(secret).join('[REDACTED]');
 }
 
+function redactError(error: unknown, secret: string): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  const scrubbed = new Error(redactText(message, secret));
+  scrubbed.name = error instanceof Error ? error.name : 'Error';
+  return scrubbed;
+}
+
 function parsePeer(value: unknown, location: string, field: string): ConfiguredA2APeer {
   if (!isObject(value))
     throw new ProviderConfigurationError(location, field, 'expected an object.');
@@ -148,6 +155,8 @@ export type A2APeerToolOptions = {
   readonly peers: readonly ConfiguredA2APeer[];
   /** Reads a Bungalow secret without exposing its value. */
   readonly readSecret: (key: string) => string | undefined;
+  /** Fetch implementation for the peer transport; tests use this to observe JSON-RPC boundaries. */
+  readonly fetch?: typeof fetch;
   /** Egress policy applied before card and task requests. */
   readonly egressPolicy?: EgressPolicy;
   /** The journal handoff installed before Bureau boot recovery. */
@@ -180,6 +189,7 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
     }
     const client = createA2APeerClient({
       url: peer.url,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       egressPolicy: options.egressPolicy,
       ...(secret === undefined
         ? {}
@@ -227,21 +237,49 @@ export function createA2APeerTools(options: A2APeerToolOptions): Readonly<Record
     options.recoverableStartedApprovals?.set(tool.id, {
       version: 1,
       attach: async (input) => {
-        const task = await client.attach({
-          taskId: input.journalEntry.taskId,
-          contextId: input.journalEntry.contextId,
-          signal: input.signal,
-        });
-        const outcome = await task.result();
-        const successful = outcome.state === 'completed';
-        return {
-          callId: input.callId,
-          toolCallId: input.callId,
-          toolName: tool.name,
-          outcome: successful ? 'success' : 'error',
-          content: outcome.message,
-          result: successful ? outcome.message : `Peer task ended ${outcome.state}.`,
-        };
+        try {
+          const task = await client.attach({
+            taskId: input.journalEntry.taskId,
+            contextId: input.journalEntry.contextId,
+            signal: input.signal,
+          });
+          const outcome = await task.result();
+          const successful = outcome.state === 'completed';
+          const safeMessage =
+            secret === undefined ? outcome.message : redactText(outcome.message, secret);
+          return {
+            callId: input.callId,
+            toolCallId: input.callId,
+            toolName: tool.name,
+            outcome: successful ? 'success' : 'error',
+            content: safeMessage,
+            result: successful
+              ? secret === undefined
+                ? {
+                    untrusted: true,
+                    provenance: outcome.provenance,
+                    taskId: outcome.taskId,
+                    contextId: outcome.contextId,
+                    message: outcome.message,
+                    artifacts: outcome.artifacts,
+                  }
+                : redactSecret(
+                    {
+                      untrusted: true,
+                      provenance: outcome.provenance,
+                      taskId: outcome.taskId,
+                      contextId: outcome.contextId,
+                      message: outcome.message,
+                      artifacts: outcome.artifacts,
+                    },
+                    secret,
+                  )
+              : `Peer task ended ${outcome.state}.`,
+          };
+        } catch (error) {
+          if (secret === undefined) throw error;
+          throw redactError(error, secret);
+        }
       },
     });
   }

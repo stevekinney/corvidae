@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.plugins.kinds` and `bureau.events.format` (COR-1893): the two reads a client needs to
  * show what running plugins contribute to workflows and hooks.
@@ -75,6 +77,7 @@ export const pluginKindsOperation = defineOperation<
   BureauPluginKindsOperationHost
 >({
   name: 'bureau.plugins.kinds',
+  authorize: authorizeWorkspaceOperation('bureau.plugins.kinds'),
   mcpExposable: false,
   summary: 'List the trigger and hook action kinds plugins contribute',
   description:
@@ -152,6 +155,7 @@ export const eventsFormatOperation = defineOperation<
   BureauEventFormatOperationHost
 >({
   name: 'bureau.events.format',
+  authorize: authorizeWorkspaceOperation('bureau.events.format'),
   mcpExposable: false,
   summary: 'Format events as a person reads them',
   description:

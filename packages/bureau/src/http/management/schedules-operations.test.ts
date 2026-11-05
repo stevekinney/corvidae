@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 /**
  * COR-1482 — `bureau.schedules.*` over a real Bureau and its handler: each operation, the owner
  * predicate and the operator scopes (read and write apart), `expectedRevision`, and a workflow
@@ -24,6 +25,7 @@ import {
 } from './management-fixtures.test-support.ts';
 import { bureauSchedulesOperations } from './schedules-operations.ts';
 import { serveWorkflows } from './workflows-fixtures.test-support.ts';
+import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -35,12 +37,13 @@ const writer = createAgent({
   generate: async () => ({ content: 'ok', toolCalls: [] }),
 });
 
-async function serve(): Promise<OpenedBureau> {
+async function serve(workspace?: WorkspaceMembershipOptions): Promise<OpenedBureau> {
   // A key with no scope schedules only an agent that opts into A2A (COR-1904).
   const opened = await openBureau({
     agents: { writer },
     a2aAgents: ['writer'],
     generate: answering(),
+    ...(workspace === undefined ? {} : { handlerOptions: { workspace } }),
   });
   cleanups.push(() => opened.dispose());
   return opened;
@@ -759,4 +762,94 @@ describe('a schedule whose creation lost its locator', () => {
     expect(lost.error?.message).toContain(schedules[0]!.id);
     expect(lost.error?.message).toContain('bureau.schedules.get');
   });
+});
+
+it('workspace administrators manage shared configuration without private schedule observations', async () => {
+  const workspace: WorkspaceMembershipOptions = {
+    workspaceId: 'workspace-a',
+    resolveMembership: async ({ subject }) => ({
+      version: 1,
+      workspaceId: 'workspace-a',
+      actorId: subject ?? 'unknown',
+      actorKind: 'user',
+      owner: `api-key:${subject ?? 'unknown'}`,
+      membershipRevision: 'revision-1',
+      capabilities: ['workspace:use', 'workspace:manage'],
+    }),
+  };
+  const opened = await serve(workspace);
+  const id = await createdBy(opened, 'alice-key');
+  const handler = opened.handler;
+  const owned = await rpc(handler, 'bureau.schedules.get', { scheduleId: id }, 'alice-key');
+  expect(owned.result).toMatchObject({
+    inputPreview: NEW_SCHEDULE.input,
+    missedFireCount: 0,
+    skippedCount: 0,
+  });
+  const read = await rpc(handler, 'bureau.schedules.get', { scheduleId: id }, 'bob-key');
+  expect(read.result).toMatchObject({
+    id,
+    inputPreview: null,
+    lastFireAt: null,
+    missedFireCount: null,
+    skippedCount: null,
+  });
+  expect(JSON.stringify(read)).not.toContain(NEW_SCHEDULE.input);
+  const paused = await rpc(handler, 'bureau.schedules.pause', { scheduleId: id }, 'bob-key');
+  expect(paused.result).toMatchObject({ id, status: 'paused' });
+  for (const method of ['bureau.schedules.runnow', 'bureau.schedules.missed']) {
+    const foreign = await rpc(handler, method, { scheduleId: id }, 'bob-key');
+    const missing = await rpc(handler, method, { scheduleId: 'missing' }, 'bob-key');
+    expect(JSON.stringify(foreign).replaceAll(id, '<id>')).toBe(
+      JSON.stringify(missing).replaceAll('missing', '<id>'),
+    );
+  }
+});
+
+it('workspace schedules cannot attach another owner or an unknown private session', async () => {
+  const opened = await openBureau({
+    agents: { writer },
+    generate: answering(),
+    bureauOptions: {
+      workspace: {
+        workspaceId: 'workspace-a',
+        resolveMembership: async ({ subject }) => ({
+          version: 1,
+          workspaceId: 'workspace-a',
+          actorId: subject ?? 'unknown',
+          actorKind: 'user',
+          owner: `api-key:${subject ?? 'unknown'}`,
+          membershipRevision: 'revision-1',
+          capabilities: ['workspace:use', 'workspace:manage'],
+        }),
+        resolveOwnerMembership: async (owner) => ({
+          version: 1,
+          workspaceId: 'workspace-a',
+          actorId: owner,
+          actorKind: 'user',
+          owner,
+          membershipRevision: 'revision-1',
+          capabilities: ['workspace:use', 'workspace:manage'],
+        }),
+      },
+    },
+  });
+  cleanups.push(() => opened.dispose());
+  const task = await opened.bureau.tasks.start('writer', 'PRIVATE-SESSION-SENTINEL', {
+    principal: 'owner-a',
+  });
+  for (const sessionId of [task.contextId, 'missing-session']) {
+    expect(
+      await rejectionOf(
+        opened.bureau.schedules.create({ ...NEW_SCHEDULE, sessionId, principal: 'owner-b' }),
+      ),
+    ).toMatchObject({ code: 'NOT_FOUND', message: 'Session not found' });
+  }
+  expect(
+    await opened.bureau.schedules.create({
+      ...NEW_SCHEDULE,
+      sessionId: task.contextId,
+      principal: 'owner-a',
+    }),
+  ).toMatchObject({ status: 'active' });
 });

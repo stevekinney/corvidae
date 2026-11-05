@@ -1,3 +1,6 @@
+import { workspaceOwnerAuthority, type BureauWorkspaceHost } from '../workspace-principal.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.assets.*`: upload and read Bureau's managed assets (COR-1547) over the lifecycle
  * `AssetService` already owns (`assets/`).
@@ -50,7 +53,7 @@ import {
 } from './management-schemas.ts';
 
 /** What the asset operations read from the handler's `host`. */
-export type BureauAssetsOperationHost = {
+export type BureauAssetsOperationHost = BureauWorkspaceHost & {
   /** The Bureau's asset service, or `undefined` for a host built over a Bureau that has none. */
   readonly assets: AssetService | undefined;
 };
@@ -84,7 +87,14 @@ function assetPrincipalOf(
   }
   // A caller that can own nothing (a credential with no subject) reaches nothing.
   if (owner === undefined) throw resourceNotFound(resource, identifier);
-  return { service: host.assets, caller: { id: owner } };
+  return {
+    service: host.assets,
+    caller: {
+      id: owner,
+      workspaceAuthority:
+        host.workspaceAuthority?.(principal) ?? workspaceOwnerAuthority(undefined, principal),
+    },
+  };
 }
 
 /**
@@ -221,6 +231,7 @@ export const assetsUploadsCreateOperation = defineOperation<
   BureauAssetsOperationHost
 >({
   name: 'bureau.assets.uploads.create',
+  authorize: authorizeWorkspaceOperation('bureau.assets.uploads.create'),
   mcpExposable: false,
   summary: 'Begin an asset upload',
   description:
@@ -263,6 +274,7 @@ export const assetsUploadsAppendOperation = defineOperation<
   BureauAssetsOperationHost
 >({
   name: 'bureau.assets.uploads.append',
+  authorize: authorizeWorkspaceOperation('bureau.assets.uploads.append'),
   mcpExposable: false,
   summary: 'Append a chunk to an asset upload',
   description:
@@ -315,6 +327,7 @@ export const assetsUploadsAbortOperation = defineOperation<
   BureauAssetsOperationHost
 >({
   name: 'bureau.assets.uploads.abort',
+  authorize: authorizeWorkspaceOperation('bureau.assets.uploads.abort'),
   mcpExposable: false,
   summary: 'Abort an asset upload',
   description:
@@ -361,6 +374,7 @@ export const assetsUploadsCompleteOperation = defineOperation<
   BureauAssetsOperationHost
 >({
   name: 'bureau.assets.uploads.complete',
+  authorize: authorizeWorkspaceOperation('bureau.assets.uploads.complete'),
   mcpExposable: false,
   summary: 'Complete an asset upload',
   description:
@@ -453,6 +467,7 @@ export const assetsGetOperation = defineOperation<
   BureauAssetsOperationHost
 >({
   name: 'bureau.assets.get',
+  authorize: authorizeWorkspaceOperation('bureau.assets.get'),
   mcpExposable: false,
   summary: 'Read one asset',
   description:

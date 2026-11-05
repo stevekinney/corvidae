@@ -93,6 +93,7 @@ export type OpenedHooksBureau = {
 
 /** What {@link openHooksBureau} takes beyond the storage and the receiver. */
 export type OpenHooksBureauOptions = {
+  readonly workspace?: BureauOptions['workspace'];
   readonly storage: Storage;
   readonly fetch: typeof fetch;
   readonly key: EncryptionKey;
@@ -111,6 +112,7 @@ export type OpenHooksBureauOptions = {
 export async function openHooksBureau(options: OpenHooksBureauOptions): Promise<OpenedHooksBureau> {
   const bureau = await createBureau<AgentDefinitions>({
     id: 'hooks-bureau',
+    ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
     agents: {
       default: createAgent({
         generate: async () => ({ content: 'done', toolCalls: [] }),

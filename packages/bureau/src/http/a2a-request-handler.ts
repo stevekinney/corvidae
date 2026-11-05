@@ -1,3 +1,4 @@
+import { workspaceOwnerAuthority, type BureauWorkspaceHost } from './workspace-principal.ts';
 /**
  * Bureau's `A2ARequestHandler` for one agent that opts into A2A (COR-903): A2A 1.0.1's methods over the
  * Bureau's runs, tasks, and reviews, served by the kit's `createA2AHandler` (`a2a-mount.ts`).
@@ -320,7 +321,7 @@ export type A2ABureau = Pick<
 };
 
 /** What {@link createBureauA2ARequestHandler} needs. */
-export type BureauA2ARequestHandlerOptions = {
+export type BureauA2ARequestHandlerOptions = BureauWorkspaceHost & {
   /** The agent this handler serves: every task it reads or creates is this agent's. */
   readonly agentName: string;
   readonly card: () => AgentCard;
@@ -870,6 +871,8 @@ export function createBureauA2ARequestHandler(
       publicUrl: options.publicUrl,
       assets,
       owner,
+      workspaceAuthority:
+        options.workspaceAuthority?.(principal) ?? workspaceOwnerAuthority(undefined, principal),
       mayReadAssets: authenticated && principal.hasScope('bureau.assets:read'),
       mayWriteAssets: authenticated && principal.hasScope('bureau.assets:write'),
       inputModes,

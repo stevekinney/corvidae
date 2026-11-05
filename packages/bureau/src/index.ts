@@ -1,3 +1,4 @@
+export type { WorkspaceOperationClass } from './http/operation-map.ts';
 export type {
   WorkspaceCredential,
   WorkspaceMembership,
@@ -883,6 +884,7 @@ export {
  * attach through its `mounts` option.
  */
 export {
+  type BureauResourceInventoryEntry,
   type BureauHandlerHost,
   type BureauHandlerSource,
   type BureauHandlerOptions,

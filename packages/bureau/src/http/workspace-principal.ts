@@ -2,6 +2,7 @@ import {
   type AuthenticatedPrincipal,
   type OperationHandlerAuthenticate,
   type WorkspaceIdentity,
+  type Principal,
 } from '@lostgradient/weft';
 import { z } from 'zod';
 import { ANONYMOUS_LOCAL_OWNER, isReservedOwnerSubject } from '../owner-of-record.ts';
@@ -16,6 +17,9 @@ export type WorkspaceCredential = Readonly<Pick<AuthenticatedPrincipal, 'method'
 export type WorkspaceMembershipOptions = {
   /** The configured runtime identity; a result for any other workspace is refused. */
   readonly workspaceId: string;
+  /** Resolve another opaque owner for an explicit share; absent means self-only sharing. */
+  readonly resolveOwnerMembership?:
+    ((owner: string) => Promise<WorkspaceMembership | null>) | undefined;
   /** Resolve current membership after verification; null removes access and errors fail closed. */
   readonly resolveMembership: (
     credential: WorkspaceCredential,
@@ -107,5 +111,67 @@ export function withWorkspaceMembership(
         workspace,
       }),
     };
+  };
+}
+
+/** A trusted per-request directory capability, never part of the wire identity. */
+export type WorkspaceOwnerAuthority = (owner: string) => Promise<boolean>;
+
+export type BureauWorkspaceHost = {
+  readonly workspaceAuthority?:
+    ((principal: Principal) => WorkspaceOwnerAuthority | undefined) | undefined;
+};
+
+export function workspaceOwnerAuthority(
+  options: WorkspaceMembershipOptions | undefined,
+  principal: Principal,
+): WorkspaceOwnerAuthority | undefined {
+  if (principal.method === 'unauthenticated' || principal.workspace === undefined) return undefined;
+  const workspace = principal.workspace;
+  return async (owner) => {
+    if (!workspace.capabilities.includes('workspace:use')) return false;
+    if (owner === workspace.owner) return true;
+    if (workspace.actorKind === 'service') return false;
+    if (options === undefined || options.workspaceId !== workspace.workspaceId) return false;
+    const target = await resolveWorkspaceOwner(options, owner);
+    return target !== undefined && target.actorKind !== 'service';
+  };
+}
+
+/** Runtime directory configuration shared by run/tool execution and request authentication. */
+export type WorkspaceRuntimeAuthority = Readonly<
+  Pick<WorkspaceMembershipOptions, 'workspaceId' | 'resolveOwnerMembership'>
+>;
+
+export async function resolveWorkspaceOwner(
+  options: WorkspaceRuntimeAuthority,
+  owner: string,
+): Promise<WorkspaceMembership | undefined> {
+  try {
+    const value = await options.resolveOwnerMembership?.(owner);
+    const parsed = membershipSchema.safeParse(value);
+    if (!parsed.success || parsed.data.owner !== owner) return undefined;
+    return resolveSnapshot(value, options.workspaceId, {
+      method: parsed.data.actorKind === 'local' ? 'unauthenticated-local' : 'api-key',
+      subject: undefined,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+/** A value capability for runtime asset use; every call resolves current directory membership. */
+export function runtimeWorkspaceOwnerAuthority(
+  options: WorkspaceRuntimeAuthority | undefined,
+  owner: string,
+): WorkspaceOwnerAuthority | undefined {
+  if (options === undefined) return undefined;
+  return async (otherOwner) => {
+    const current = await resolveWorkspaceOwner(options, owner);
+    if (current === undefined) return false;
+    if (otherOwner === owner) return true;
+    if (current.actorKind === 'service') return false;
+    const target = await resolveWorkspaceOwner(options, otherOwner);
+    return target !== undefined && target.actorKind !== 'service';
   };
 }

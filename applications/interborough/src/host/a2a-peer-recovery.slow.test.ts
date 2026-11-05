@@ -1,3 +1,4 @@
+import { openBungalow } from '@lostgradient/bungalow';
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -12,6 +13,7 @@ import { writeProviderHome } from './stub-provider.ts';
 const homes: string[] = [];
 const hosts: Host[] = [];
 const children: ReturnType<typeof spawnWithHangGuard>[] = [];
+const PEER_BEARER = 'fixture-peer-bearer-cor-2025';
 async function exists(path: string, text?: string): Promise<boolean> {
   try {
     const contents = await readFile(path, 'utf8');
@@ -53,6 +55,12 @@ afterEach(async () => {
 const recovery = await (async () => {
   const peerHome = await mkdtemp(join(tmpdir(), 'interborough-peer-recovery-'));
   homes.push(peerHome);
+  const peerBungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: peerHome },
+  });
+  peerBungalow.writeSecret('a2a-api-key', PEER_BEARER);
+  peerBungalow.close();
   const state = { sends: 0, active: false, release: () => {} };
   const peer = await startHost({
     environment: { INTERBOROUGH_HOME: peerHome },
@@ -74,7 +82,7 @@ const recovery = await (async () => {
                 resolve();
               };
             });
-            return { content: 'peer result', toolCalls: [] };
+            return { content: `peer result ${PEER_BEARER}`, toolCalls: [] };
           },
           stopWhen: stopWhen.noToolCalls(),
         }),
@@ -85,6 +93,12 @@ const recovery = await (async () => {
   const callerHome = await mkdtemp(join(tmpdir(), 'interborough-caller-recovery-'));
   homes.push(callerHome);
   await writeProviderHome(callerHome);
+  const callerBungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: callerHome },
+  });
+  callerBungalow.writeSecret('peer-bearer', PEER_BEARER);
+  callerBungalow.close();
   await mkdir(join(callerHome, 'agents'), { recursive: true });
   await writeFile(
     join(callerHome, 'agents', 'caller.md'),
@@ -96,7 +110,12 @@ const recovery = await (async () => {
     unknown
   >;
   configuration['a2aPeers'] = [
-    { id: 'peer', description: 'Peer', url: new URL('/bureau/a2a/peer', peer.url).href },
+    {
+      id: 'peer',
+      description: 'Peer',
+      url: new URL('/bureau/a2a/peer', peer.url).href,
+      bearerSecret: 'peer-bearer',
+    },
   ];
   await writeFile(configurationPath, JSON.stringify(configuration));
   const files = {
@@ -110,6 +129,7 @@ const recovery = await (async () => {
     REVIEW_FILE: join(callerHome, 'review_file'),
     RESULT_FILE: join(callerHome, 'result_file'),
     ERROR_FILE: join(callerHome, 'error_file'),
+    SEND_FILE: join(callerHome, 'send_file'),
     URL_FILE: join(callerHome, 'caller-url-first'),
   };
   const env = { ...files, PEER_PORT: peer.url.port };
@@ -141,6 +161,9 @@ const recovery = await (async () => {
   );
   state.release();
   await waitUntil(() => exists(files.RESULT_FILE, 'completed'), { message: 'replayed result' });
+  const resultText = await readFile(files.RESULT_FILE, 'utf8');
+  expect(resultText).not.toContain(PEER_BEARER);
+  expect(await readFile(files.SEND_FILE, 'utf8')).toBe('1');
   const resultObserved = await exists(files.RESULT_FILE, 'completed');
   if (!resultObserved) throw new Error('replayed result was not observed');
   second.kill('SIGKILL');

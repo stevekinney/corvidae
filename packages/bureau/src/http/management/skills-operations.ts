@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.skills.list`: the executable Agent Skills a deployment's host has discovered (COR-1818),
  * each with the source it came from and whether that source is trusted.
@@ -128,6 +130,7 @@ export const skillsListOperation = defineOperation<
   BureauSkillsOperationHost
 >({
   name: 'bureau.skills.list',
+  authorize: authorizeWorkspaceOperation('bureau.skills.list'),
   mcpExposable: false,
   summary: 'List the executable skills and their sources',
   description:

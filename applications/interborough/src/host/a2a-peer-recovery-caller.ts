@@ -15,6 +15,7 @@ const required = [
   'KEY_FILE',
   'RESULT_FILE',
   'ERROR_FILE',
+  'SEND_FILE',
   'PEER_PORT',
 ];
 const value = (key: string): string => {
@@ -37,6 +38,38 @@ function isPeerCallKey(candidate: unknown): candidate is {
 const home = value('INTERBOROUGH_HOME');
 for (const key of required) value(key);
 await Bun.write(value('BOOT_FILE'), 'booting');
+if (!(await Bun.file(value('SEND_FILE')).exists())) await Bun.write(value('SEND_FILE'), '0');
+
+const fetchWithoutCredentials = globalThis.fetch;
+const peerFetch = Object.assign(
+  async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    let body = typeof init?.body === 'string' ? init.body : undefined;
+    if (body === undefined) {
+      try {
+        body = await new Request(input, init).clone().text();
+      } catch {
+        body = undefined;
+      }
+    }
+    let method: unknown;
+    try {
+      const parsed: unknown = body === undefined ? undefined : JSON.parse(body);
+      method =
+        typeof parsed === 'object' && parsed !== null && 'method' in parsed
+          ? parsed.method
+          : undefined;
+    } catch {
+      method = undefined;
+    }
+    if (method === 'SendMessage' || method === 'SendStreamingMessage') {
+      const countFile = Bun.file(value('SEND_FILE'));
+      const previous = (await countFile.exists()) ? Number(await countFile.text()) : 0;
+      await Bun.write(value('SEND_FILE'), String(previous + 1));
+    }
+    return fetchWithoutCredentials(input, init);
+  },
+  { preconnect: globalThis.fetch.preconnect },
+);
 
 const calls = { count: 0 };
 const client = {
@@ -87,6 +120,7 @@ const host = await startHost({
     allowlist: [`127.0.0.1:${value('PEER_PORT')}`],
     allowInsecureHttp: true,
   }),
+  a2aPeerFetch: peerFetch,
 });
 const peerCalls = host.bureau.peerCalls;
 const originalWrite = peerCalls.write.bind(peerCalls);

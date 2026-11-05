@@ -7,7 +7,7 @@ import {
   AssetNotFoundError,
   AssetUnavailableError,
 } from './errors';
-import type { AssetService } from './types';
+import type { AssetService, AssetPrincipal } from './types';
 
 type ResolvedSafety = 'clean' | 'flagged' | 'unknown';
 
@@ -78,7 +78,10 @@ export interface McpResourceRegistration {
 export function createAssetContentSourceResolver(
   assets: AssetService,
   principalId: string,
-  options: { readonly mcpResources?: readonly McpResourceRegistration[] | undefined } = {},
+  options: {
+    readonly mcpResources?: readonly McpResourceRegistration[] | undefined;
+    readonly workspaceAuthority?: AssetPrincipal['workspaceAuthority'];
+  } = {},
 ): ContentSourceResolver {
   return async (part, position) => {
     const { source } = part;
@@ -96,8 +99,17 @@ export function createAssetContentSourceResolver(
       ...(source.revision !== undefined ? { revision: source.revision } : {}),
     };
     try {
-      const resolved = await untilAborted(assets.resolve(reference, { id: principalId }), signal);
-      const safety = await untilAborted(readSafety(assets, source.assetId, principalId), signal);
+      const resolved = await untilAborted(
+        assets.resolve(reference, {
+          id: principalId,
+          workspaceAuthority: options.workspaceAuthority,
+        }),
+        signal,
+      );
+      const safety = await untilAborted(
+        readSafety(assets, source.assetId, principalId, options.workspaceAuthority),
+        signal,
+      );
       const { descriptor } = resolved;
       const facts = {
         ...(descriptor.mediaType !== undefined ? { mimeType: descriptor.mediaType } : {}),
@@ -187,11 +199,12 @@ async function readSafety(
   assets: AssetService,
   assetId: string,
   principalId: string,
+  workspaceAuthority?: AssetPrincipal['workspaceAuthority'],
 ): Promise<ResolvedSafety> {
   try {
     const descriptor = await assets.inspect(
       assetId,
-      { id: principalId, privileged: true },
+      { id: principalId, privileged: true, workspaceAuthority },
       { projection: 'privileged' },
     );
     if (descriptor.projection !== 'privileged' || descriptor.safety.length === 0) return 'unknown';
