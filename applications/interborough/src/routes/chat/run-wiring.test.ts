@@ -457,6 +457,20 @@ describe('an attach', () => {
     expect(terminal.content).toBe('Done.');
   });
 
+  test('fails the turn with the Bureau’s words when the stream hit its deadline or overflowed', async () => {
+    for (const code of ['STREAM_DEADLINE', 'STREAM_OVERFLOW']) {
+      const conversation = appendUserMessage(empty(), 'Hello');
+      const { wiring } = wiringOver(
+        [stream([started(), { type: 'RUN_ERROR', message: `the stream ended: ${code}`, code }])],
+        () => conversation,
+      );
+
+      const failure = await rejectionOf(frames(wiring, conversation));
+
+      expect(failure).toEqual(new Error(`the stream ended: ${code}`));
+    }
+  });
+
   test('opens nothing for a thread with no run to attach to', async () => {
     const { wiring } = wiringOver(
       [stream([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }])],
@@ -1223,6 +1237,23 @@ describe('the assets a run announces', () => {
 
     expect(conversation.messages['reply-1']?.metadata?.['bureau:assetParts']).toBeUndefined();
     expect(JSON.stringify(conversation)).not.toContain('asset-a');
+  });
+
+  test('ignore an announcement that names no asset, or a media type that is not text', async () => {
+    const malformed = (value: Record<string, unknown>) => ({
+      type: 'CUSTOM',
+      name: 'bureau.asset-part',
+      value,
+    });
+    const conversation = await completed([
+      started(),
+      ...text('reply-1', 'Plain.'),
+      malformed({ messageId: 'reply-1', index: 0, mediaType: 'image/png' }),
+      malformed({ messageId: 'reply-1', index: 1, assetId: 'asset-a', mediaType: 7 }),
+      finished(),
+    ]);
+
+    expect(conversation.messages['reply-1']?.metadata?.['bureau:assetParts']).toBeUndefined();
   });
 
   test('are not carried into the next run’s turn', async () => {

@@ -145,6 +145,28 @@ describe('chat-assets.ts reads the assets of a row', () => {
     ]);
   });
 
+  test('keeps the name and size an announced asset carries, and drops an empty name or a negative size', () => {
+    const message = row({
+      metadata: {
+        'bureau:assetParts': [
+          {
+            index: 0,
+            assetId: 'a',
+            mediaType: 'image/png',
+            name: 'refund-photo.png',
+            size: 245760,
+          },
+          { index: 1, assetId: 'b', mediaType: 'image/png', name: '', size: -1 },
+        ],
+      },
+    });
+
+    expect(assetsOf(message)).toEqual([
+      { assetId: 'a', mediaType: 'image/png', name: 'refund-photo.png', size: 245760 },
+      { assetId: 'b', mediaType: 'image/png' },
+    ]);
+  });
+
   test('lists the assets of a tool-call row, which is where a step with calls and no text keeps them', () => {
     const message = row({
       role: 'tool-call',

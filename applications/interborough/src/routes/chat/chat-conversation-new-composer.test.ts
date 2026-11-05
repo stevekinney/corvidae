@@ -66,7 +66,12 @@ interface Served {
 }
 
 /** A Bureau with Tool runner (a model agent) and Assistant (scripted), and a first run that finishes. */
-function serve(options: { hasKey?: boolean } = {}): Served {
+function serve(
+  options: {
+    hasKey?: boolean;
+    steer?: (params: Record<string, unknown>) => unknown;
+  } = {},
+): Served {
   const steers: Array<Record<string, unknown>> = [];
   const runs: string[] = [];
   let version = 0;
@@ -93,7 +98,7 @@ function serve(options: { hasKey?: boolean } = {}): Served {
       'bureau.contexts.steer': (params) => {
         steers.push(params);
         version += 1;
-        return { outcome: 'accepted', command: {} };
+        return options.steer?.(params) ?? { outcome: 'accepted', command: {} };
       },
       'bureau.tasks.list': () => ({ tasks: [], nextOffset: null }),
     },
@@ -199,6 +204,48 @@ describe('a new chat with a model agent and a provider', () => {
     expect(steers[0]).toMatchObject({ contextId: 'thread-1', override: HAIKU_NAME });
     expect(steers[1]).toMatchObject({ effort: 'high' });
     expect(steers[2]).toMatchObject({ permissionMode: 'always' });
+  });
+
+  test('applies only what was chosen', async () => {
+    const { steers } = serve();
+    landAt('/chats/new?agent=tool-runner');
+    const { container } = mount();
+    await waitFor(() =>
+      expect(footer(container).querySelector('#weft-chat-effort')).not.toBeNull(),
+    );
+
+    await chooseOption(container, 'Always asks', 'weft-chat-permission');
+    const box = editor(container)!;
+    await fireEvent.input(box, { target: { value: 'Hello' } });
+    await fireEvent.keyDown(box, { key: 'Enter' });
+
+    await waitFor(() => expect(steers).toHaveLength(1));
+    expect(steers[0]).toMatchObject({ permissionMode: 'always' });
+  });
+
+  test('stops at a change the Bureau refused, and says why under the composer', async () => {
+    const { steers } = serve({
+      steer: () => ({ outcome: 'rejected', failure: { failedAt: 'now', reason: 'policy-denied' } }),
+    });
+    landAt('/chats/new?agent=tool-runner');
+    const { container } = mount();
+    await waitFor(() =>
+      expect(footer(container).querySelector('#weft-chat-effort')).not.toBeNull(),
+    );
+
+    await chooseOption(container, 'High', 'weft-chat-effort');
+    await chooseOption(container, 'Always asks', 'weft-chat-permission');
+    const box = editor(container)!;
+    await fireEvent.input(box, { target: { value: 'Hello' } });
+    await fireEvent.keyDown(box, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(container.querySelector('.chat-input-status')?.textContent).toContain(
+        CHAT_COPY.settings.effortNotices.denied,
+      ),
+    );
+    // The permission change after the refused effort was never asked for.
+    expect(steers).toHaveLength(1);
   });
 
   test('applies nothing when nothing was chosen', async () => {

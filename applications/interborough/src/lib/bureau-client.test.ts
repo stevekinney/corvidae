@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   callBureau,
+  chatContextSchema,
   type ContextWindow,
   deleteContext,
   type Fetcher,
@@ -712,5 +713,15 @@ describe('the lists and details the chat and agents views read', () => {
     const error = await failureOf(getThreadMessages('nope', { fetch: stub }));
 
     expect(error).toMatchObject({ status: 404 });
+  });
+});
+
+describe('a chat’s end reason', () => {
+  test('reads the one reason this client knows, null, and any other reason as other', () => {
+    const reason = chatContextSchema.shape.endReason;
+    expect(reason.parse('host-stopped')).toBe('host-stopped');
+    expect(reason.parse(null)).toBeNull();
+    expect(reason.parse(undefined)).toBeUndefined();
+    expect(reason.parse('quota-exhausted')).toBe('other');
   });
 });

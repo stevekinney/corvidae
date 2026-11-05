@@ -182,6 +182,24 @@ describe('removing a queued follow-up', () => {
     await run;
   });
 
+  test('a follow-up the host never accepted is only dropped here, with no retraction asked', async () => {
+    const refusal = deferred();
+    const { harness, retractions, sendFollowUp } = holdingHarness({
+      acknowledgement: refusal.promise,
+    });
+    const { run, sent, id } = await sendFollowUp();
+    sent.catch(() => undefined);
+    const removal = harness.controller.adapter.removeRunInput!(id);
+    refusal.reject(new Error('the host refused it'));
+    await removal;
+    await settle();
+
+    expect(retractions).toEqual([]);
+    expect(harness.rowNamed(FOLLOW_UP)).toBeUndefined();
+    harness.releaseRun();
+    await run;
+  });
+
   test('a second Remove while the first settles asks the host once', async () => {
     const answer = deferred<ChatSessionRunInputRetraction>();
     const { harness, retractions, sendFollowUp } = holdingHarness({

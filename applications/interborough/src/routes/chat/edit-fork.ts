@@ -1,9 +1,9 @@
 import type { ConversationHistory } from '@lostgradient/chat';
 
 /**
- * Where a message the person sent can be edited from. Editing resends by fork: the chat is branched
- * at the reply before the message (`bureau.contexts.fork`), or before its first message, and the
- * edited text is sent on the branch. The Bureau branches only after the final reply of a finished
+ * Where a message the person sent can be branched from: the chat is branched at the reply before
+ * the message (`bureau.contexts.fork`), or before its first message, and the person types again
+ * there. The Bureau branches only after the final reply of a finished
  * run (`branch-points.ts`), so the message must be the first one, or follow such a reply.
  *
  * Answers the message to branch through, `null` to branch before the first message, or `undefined`
@@ -35,24 +35,4 @@ export function lastBranchPoint(
   branchPoints: ReadonlySet<string>,
 ): string | undefined {
   return conversation.ids.findLast((id) => branchPoints.has(id));
-}
-
-/**
- * The edited text of messages whose branch has been made and not yet opened, by the branch's
- * session. The branch is a page of its own, and the text goes with the person to it in memory, not
- * in the address, so it is not in a history entry or a shared link. The page that opens the branch
- * sends it once and removes it.
- */
-const pending = new Map<string, string>();
-
-/** Keeps the edited text for the branch `sessionId` until its page opens. */
-export function holdEdit(sessionId: string, content: string): void {
-  pending.set(sessionId, content);
-}
-
-/** Takes the edited text held for `sessionId`, if any; it is held no longer. */
-export function takeEdit(sessionId: string): string | undefined {
-  const content = pending.get(sessionId);
-  pending.delete(sessionId);
-  return content;
 }

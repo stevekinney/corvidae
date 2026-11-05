@@ -2954,23 +2954,6 @@ export const CHAT_COPY = {
     description: 'It no longer exists, so nothing more can be sent here.',
     back: 'Back to chats',
   },
-  /** Editing a message you sent: the chat is branched before it and the edited text is sent there. */
-  edit: {
-    /** Said when the message follows no finished reply, so there is nowhere to branch before it. */
-    unavailable:
-      'That message was sent while a run was going, so it cannot be edited. Edit one that follows a finished reply.',
-    /** Said when the message carries files, which an edited copy would leave behind. */
-    withFiles:
-      'That message has files attached, so it cannot be edited. Send a new message instead.',
-    /** Any other fault; the chat the person is in is untouched. */
-    fault: 'The message could not be edited. You are still in this chat.',
-    /** Heads the edited text kept after an edit that did not branch. */
-    kept: 'Your edited text is kept here:',
-    copy: 'Copy text',
-    copied: 'Copied.',
-    copyFailed: 'The text could not be copied. Select it and copy it by hand.',
-    tryAgain: 'Try again',
-  },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {
     listLabel: 'Files',

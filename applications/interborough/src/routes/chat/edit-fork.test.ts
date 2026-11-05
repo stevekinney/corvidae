@@ -6,7 +6,7 @@ import {
 import { describe, expect, test } from 'bun:test';
 
 import { branchPointIds } from './branch-points.ts';
-import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
+import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
 
 function conversationOf(
   rows: ReadonlyArray<{ id: string; role: 'user' | 'assistant'; hidden?: boolean }>,
@@ -88,15 +88,5 @@ describe('lastBranchPoint', () => {
 
   test('is nothing while a run is going', () => {
     expect(lastBranchPoint(TURNS, branchPointIds(TURNS, true))).toBeUndefined();
-  });
-});
-
-describe('the edited text held for a branch', () => {
-  test('is taken once, by the branch it was held for', () => {
-    holdEdit('branch-1', 'edited');
-
-    expect(takeEdit('branch-2')).toBeUndefined();
-    expect(takeEdit('branch-1')).toBe('edited');
-    expect(takeEdit('branch-1')).toBeUndefined();
   });
 });

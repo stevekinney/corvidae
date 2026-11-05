@@ -25,9 +25,8 @@
    * message of each completed turn offers Branch from here (`branch-points.ts`), which opens a new
    * session that continues from that reply. A branch's header says where it came from
    * (`branch-origin.svelte`). The header's More menu (`chat-more-menu.svelte`) renames, branches,
-   * exports and deletes the chat, and editing a message the person sent resends by fork
-   * (`edit-fork.ts`): the chat is branched before the message and the edited text is sent on the
-   * branch. An edit that does not branch keeps its text in a notice with Copy and Try again.
+   * exports and deletes the chat. A message the person sent offers Branch and Copy, and Branch
+   * (`edit-fork.ts` finds where) opens a branch from just before it, where the person types again.
    * A chat deleted while its page is open closes the composer and says so, with a way back to the
    * list: the Bureau would start it again if it were sent to.
    *
@@ -115,7 +114,7 @@
   import { ChatSessionState } from './chat-session.svelte.ts';
   import type { GrantNotLoosened } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
-  import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
+  import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
   import { composerStatusOf } from './composer-state.ts';
   import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
@@ -165,8 +164,6 @@
   const session = new ChatSessionState({
     sessionId: untrack(() => sessionId),
     agentName: () => agent,
-    // Editing a message resends by fork (`editMessage`), not in place.
-    onEdit: (event) => editMessage(event),
     // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
     closed: () => gone,
     onNotFound: () => void context.refetch(),
@@ -599,9 +596,6 @@
   }
   let branching = $state(false);
   let branchFailure = $state<string | undefined>(undefined);
-  // The text of an edit that did not branch. Chat closes its editor when the person saves, so this
-  // is the only place the text is kept.
-  let keptEdit = $state<{ readonly messageId: string; readonly content: string } | undefined>();
   const branchCommands = createPendingCommandKey();
   // The reply the More menu's Branch branches from: the last one a branch can be made from.
   const lastBranchTarget = $derived(lastBranchPoint(session.conversation, branchPoints));
@@ -641,13 +635,11 @@
 
   /**
    * Branches the chat through `messageId`, or before its first message when that is `null`, and
-   * opens the branch. A message `edited` is the person's edited text, which goes with them to the
-   * branch and is sent there as a new turn (`edit-fork.ts`); the original chat keeps what it had.
+   * opens the branch. The original chat keeps what it had.
    */
-  async function branchThrough(messageId: string | null, edited?: string): Promise<void> {
+  async function branchThrough(messageId: string | null): Promise<void> {
     branching = true;
     branchFailure = undefined;
-    if (edited === undefined) keptEdit = undefined;
     try {
       const branchId = await forkContext({
         contextId: sessionId,
@@ -655,8 +647,6 @@
         throughMessageId: messageId,
       });
       branchCommands.confirmed();
-      keptEdit = undefined;
-      if (edited !== undefined) holdEdit(branchId, edited);
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
       router.navigate(chatSessionPath(branchId));
     } catch (error) {
@@ -667,45 +657,9 @@
       if (reason !== undefined && Object.hasOwn(CHAT_COPY.branch.refused, reason)) {
         branchCommands.confirmed();
       }
-      branchFailure = branchFailureText(
-        error,
-        edited === undefined ? CHAT_COPY.branch.fault : CHAT_COPY.edit.fault,
-      );
+      branchFailure = branchFailureText(error, CHAT_COPY.branch.fault);
     } finally {
       branching = false;
-    }
-  }
-
-  /**
-   * Editing a message resends by fork: the chat is branched at the reply before the message, and
-   * the edited text is sent on the branch. The chat the person edited from is left as it was.
-   */
-  function editMessage(event: { readonly messageId: string; readonly content: string }): void {
-    // Kept until the branch is made: the editor has closed on the text, and a refusal or a failed
-    // branch would otherwise lose it.
-    keptEdit = event;
-    const sent = session.conversation.messages[event.messageId];
-    // The edited text is all that goes to the branch, so a message that carried files would lose them.
-    if (sent !== undefined && assetsOf(sent).length > 0) {
-      branchFailure = CHAT_COPY.edit.withFiles;
-      return;
-    }
-    const point = editForkPoint(session.conversation, event.messageId, branchPoints);
-    if (point === undefined) {
-      branchFailure = CHAT_COPY.edit.unavailable;
-      return;
-    }
-    void branchThrough(point, event.content);
-  }
-
-  /** Puts the kept edit on the clipboard, and says whether it got there. */
-  async function copyKeptEdit(): Promise<void> {
-    if (keptEdit === undefined) return;
-    try {
-      await navigator.clipboard.writeText(keptEdit.content);
-      showToast(CHAT_COPY.edit.copied);
-    } catch {
-      showToast(CHAT_COPY.edit.copyFailed, { variant: 'danger', duration: 0 });
     }
   }
 
@@ -1012,9 +966,6 @@
     );
     // A new chat has no thread yet, so there is nothing to attach to or to read back.
     if (!untrack(() => isNew)) void session.attach();
-    // A branch made to resend an edited message opens with that message to send.
-    const edited = untrack(() => (isNew ? undefined : takeEdit(sessionId)));
-    if (edited !== undefined) void session.send(edited).catch(() => undefined);
     return () => {
       for (const remove of removals) remove();
       restart.dispose();
@@ -1099,30 +1050,9 @@
       dismissible
       onDismiss={() => {
         branchFailure = undefined;
-        keptEdit = undefined;
       }}
     >
       <p class="weft-chat-approval__message">{branchFailure}</p>
-      {#if keptEdit !== undefined}
-        <p class="weft-chat-approval__message">{CHAT_COPY.edit.kept}</p>
-        <blockquote class="weft-chat-approval__message" data-testid="kept-edit">
-          {keptEdit.content}
-        </blockquote>
-        <Button
-          size="sm"
-          variant="secondary"
-          label={CHAT_COPY.edit.copy}
-          onclick={() => void copyKeptEdit()}
-        />
-        <Button
-          data-changes
-          size="sm"
-          variant="secondary"
-          label={CHAT_COPY.edit.tryAgain}
-          disabled={branching}
-          onclick={() => keptEdit !== undefined && editMessage(keptEdit)}
-        />
-      {/if}
     </Alert>
   {/if}
 

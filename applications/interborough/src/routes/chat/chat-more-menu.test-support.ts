@@ -48,21 +48,7 @@ export function serve(
       if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages });
       if (url.includes('/ag-ui/agents/')) {
         runs.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
-        if (runResponse !== undefined) return runResponse();
-        return new Response(
-          [
-            { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-9' },
-            {
-              type: 'RUN_FINISHED',
-              threadId: 'session-1',
-              runId: 'run-9',
-              outcome: { type: 'success' },
-            },
-          ]
-            .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
-            .join(''),
-          { headers: { 'content-type': 'text/event-stream' } },
-        );
+        return runResponse?.();
       }
       if (url.includes('/threads/')) {
         return new Response(

@@ -151,6 +151,26 @@ describe('the stop note on the transcript', () => {
     expect(hasFailedStop(reworded)).toBe(true);
   });
 
+  test('rewords the failed note and leaves the notes beside it as they were', () => {
+    const base = calling('issue-refund');
+    const beside = { kind: 'stopped', id: 'earlier', reason: 'Stopped.' };
+    const mixed = {
+      ...base,
+      messages: {
+        ...base.messages,
+        s0: {
+          ...base.messages['s0']!,
+          metadata: { [CINDER_NOTES_METADATA_KEY]: [beside, FAILED] },
+        },
+      },
+    };
+    const notes = resolveMessageNotes(withStopLine(mixed, { tools }).messages['s0']!);
+    expect(notes?.[0]).toMatchObject(beside);
+    expect(notes?.[1]?.kind === 'stopped' && notes[1].reason).toContain(
+      'Issue refund may have run.',
+    );
+  });
+
   test('a stop the person asked for stays the plain line it was', () => {
     const base = calling('issue-refund');
     const plain = {

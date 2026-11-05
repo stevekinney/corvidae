@@ -89,6 +89,12 @@ describe('the runs of a chat session', () => {
     expect(sentence(container)?.getAttribute('href')).toBe('/runs/run-2');
   });
 
+  test('say the only run was canceled, and link to it', async () => {
+    const { container } = mount('session-1', [taskFixture({ id: 'run-1', status: 'canceled' })]);
+    await waitFor(() => expect(sentence(container)?.textContent).toBe('Run canceled'));
+    expect(sentence(container)?.getAttribute('href')).toBe('/runs/run-1');
+  });
+
   test('say nothing when the only run finished well', async () => {
     const { container } = mount('session-1', [taskFixture({ id: 'run-1', status: 'completed' })]);
     await waitFor(() => expect(stub?.callsTo('bureau.tasks.list').length).toBe(1));

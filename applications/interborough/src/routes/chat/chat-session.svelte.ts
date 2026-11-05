@@ -62,12 +62,6 @@ export type ChatSessionOptions = {
   /** Told when a run this page started has begun. */
   readonly onRunStarted?: () => void;
   /**
-   * Takes over editing a message the person sent. Without it the controller edits in place, by
-   * rewinding the transcript to before the message and running it again on the same thread, which
-   * the Bureau's thread cannot follow; with it the page decides what an edit does.
-   */
-  readonly onEdit?: (event: { readonly messageId: string; readonly content: string }) => void;
-  /**
    * Whether the chat is closed: it was deleted, so a send would start a new chat under the same
    * identifier. A closed session sends nothing, and says why to whoever tried.
    */
@@ -320,13 +314,10 @@ export class ChatSessionState {
       },
     });
     // The controller's own edit rewinds this thread in place, which the Bureau's thread cannot
-    // follow, so it is replaced by the page's (`onEdit`) or removed.
+    // follow, so it is removed: a sent message is changed by branching before it.
     const { editMessage: _editInPlace, ...adapter } = this.controller.adapter;
     this.adapter = {
       ...adapter,
-      ...(options.onEdit === undefined
-        ? {}
-        : { editMessage: async (event) => options.onEdit?.(event) }),
       sendMessage: async (message, attachments) => {
         // A deleted chat is not written to: the run would start it again under the same identifier.
         if (options.closed?.() === true) throw new Error(CHAT_COPY.gone.title);

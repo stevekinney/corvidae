@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CHAT_COPY } from '../../app/copy.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
@@ -152,6 +153,29 @@ describe('a blocked composer', () => {
     expect(buttons[0]?.getAttribute('href')).toBe('/settings/models');
     expect(composer(container)).toBeNull();
     expect(container.querySelector('.chat-input-footer')).toBeNull();
+  });
+
+  test('replaces the text box with one row while the server does not answer, with no second retry', async () => {
+    serve();
+    const monitor = new ConnectionMonitor({ probe: () => new Promise<never>(() => undefined) });
+    monitor.reportUnreachable();
+    try {
+      const { container } = render(QueryPage, {
+        props: {
+          page: ChatConversation,
+          pageProps: { sessionId: 'session-1', title: 'Plan the week', agentName: 'tool-runner' },
+          client: createQueryClient(),
+          connection: monitor,
+        },
+      } as never);
+
+      await waitFor(() => expect(row(container)).not.toBeNull());
+      expect(row(container)?.textContent).toContain(COPY.unreachable);
+      expect(composer(container)).toBeNull();
+      expect([...row(container)!.querySelectorAll('a, button')]).toEqual([]);
+    } finally {
+      monitor.dispose();
+    }
   });
 
   test('on a new chat also offers Use Assistant, which switches to the scripted agent and brings the composer back', async () => {
