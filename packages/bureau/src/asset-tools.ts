@@ -22,7 +22,14 @@ async function serviceAndPrincipal(
   context: ToolContext | undefined,
 ): Promise<{ service: AssetService; principal: { id: string } } | undefined> {
   const service = host.assets();
-  const runId = context?.requestContext?.runId;
+  // Registered tools in a top-level run receive the request context, while a durable child run
+  // carries its own run id directly on the tool context. Both identify the persisted owner.
+  const runId =
+    context?.requestContext?.runId ??
+    context?.runId ??
+    (typeof context?.executionContext?.['parentRunId'] === 'string'
+      ? context.executionContext['parentRunId']
+      : undefined);
   if (typeof runId !== 'string' || runId === '') return undefined;
   const id = await host.ownerOfRun(runId);
   return service === undefined || id === undefined ? undefined : { service, principal: { id } };
@@ -139,8 +146,19 @@ export function createAssetTools(host: AssetToolHost): readonly Tool[] {
 
 /** Builds a content part naming a managed asset for a child run. */
 export function managedAssetPart(descriptor: AssetDescriptor, fileName?: string) {
+  const type: 'image' | 'audio' | 'video' | 'document' =
+    descriptor.modality === 'image'
+      ? 'image'
+      : descriptor.modality === 'audio'
+        ? 'audio'
+        : descriptor.modality === 'video'
+          ? 'video'
+          : 'document';
   return {
-    type: 'file' as const,
+    // `file` is a storage modality, not an input modality supported by the model catalog. Text and
+    // otherwise generic application bytes travel as documents so providers can admit them as
+    // inline content while the transcript retains the managed-asset source.
+    type,
     mimeType: descriptor.mediaType ?? 'application/octet-stream',
     ...(fileName === undefined ? {} : { name: fileName }),
     source: managedAssetSource(descriptor),
