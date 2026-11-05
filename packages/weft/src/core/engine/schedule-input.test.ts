@@ -119,3 +119,18 @@ it('keeps workflow observables available when schedule operations initialize bef
   expect(typeof handle[Symbol.observable]).toBe('function');
   await handle.result();
 });
+
+it('replaces persisted schedule input before the reopened engine catalog has initialized', async () => {
+  const storage = new MemoryStorage();
+  using first = new Engine({ storage, ownership: 'none' });
+  registerWorkflow(first, 'report', async function* () {
+    return 'done';
+  });
+  await first.schedule('report', { actor: 'original' }, { every: '24h' }, { id: 'report' });
+  using reopened = new Engine({ storage, ownership: 'none' });
+  await reopened.replaceScheduleInput('report', { actor: 'replacement' }, { expectedRevision: 1 });
+  expect(await reopened.getSchedule('report')).toMatchObject({ status: 'paused', revision: 2 });
+  expect(decode((await storage.get(KEYS.schedule('report')))!)).toMatchObject({
+    input: { actor: 'replacement' },
+  });
+});

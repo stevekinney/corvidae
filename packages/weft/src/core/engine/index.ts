@@ -2501,7 +2501,7 @@ export class Engine<
     }
     return pauseScheduleFromInternals(internals, scheduleId, options);
   }
-  /** Atomically replace future input, retain historic runs, and leave the schedule paused. */
+  /** Atomically replace future input and status, retaining historic runs; paused unless explicitly activated. */
   async replaceScheduleInput(
     scheduleId: string,
     input: unknown,
