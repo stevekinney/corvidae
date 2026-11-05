@@ -168,6 +168,7 @@ describe('registered child-run tools on file agents', () => {
     let attackerGetAttempted = false;
     let attackerCancelAttempted = false;
     let childRunId: string | undefined;
+    let sameOwnerA2A: unknown[] = [];
     const { bureau } = await open({
       childAgents: '[worker]',
       approval: 'bureau:child-runs-dispatch=never,bureau:child-runs-cancel=never',
@@ -225,6 +226,29 @@ describe('registered child-run tools on file agents', () => {
           expect(result.status).toBe('ok');
           expect(result.children?.map(({ childRunId: id }) => id)).toEqual([childRunId]);
           fetched = true;
+          if (context.runId === undefined) throw new Error('expected a parent run id');
+          const requestContext = {
+            authority: {
+              principalId: 'api-key:a2a',
+              tenantId: 'child-tools-test',
+              ownerId: 'alice',
+              capabilities: ['tools:execute'],
+              authorizationRevision: 'test:1',
+            },
+            audience: 'tenant' as const,
+            agentId: 'parent',
+            runId: context.runId,
+          };
+          sameOwnerA2A = [
+            await context.toolbox.execute(
+              { name: 'bureau__child-runs-get', arguments: { childRunId } },
+              { requestContext },
+            ),
+            await context.toolbox.execute(
+              { name: 'bureau__child-runs-cancel', arguments: { childRunId } },
+              { requestContext },
+            ),
+          ];
           return {
             content: '',
             toolCalls: [{ name: 'bureau__child-runs-get', arguments: { childRunId } }],
@@ -255,6 +279,10 @@ describe('registered child-run tools on file agents', () => {
     expect(attackerResult.content).toBe('attacker denied');
     expect(attackerGetAttempted).toBe(true);
     expect(attackerCancelAttempted).toBe(true);
+    expect(sameOwnerA2A.map((result) => (result as { result: unknown }).result)).toEqual([
+      { status: 'not-found' },
+      { status: 'not-found' },
+    ]);
   });
 
   it('refuses dispatch without a grant and does not expose the registered dispatch tool', async () => {
@@ -329,6 +357,7 @@ describe('registered child-run tools on file agents', () => {
 
   it('raises approval for a mutating tool after a real child was dispatched', async () => {
     let dispatched = false;
+    let canceledChildRunId: string | undefined;
     const { bureau } = await open({
       childAgents: '[worker]',
       rootAuthority: { levels: 2, concurrentChildren: 4 },
@@ -349,6 +378,7 @@ describe('registered child-run tools on file agents', () => {
         }
         const childRunId = (resultObject(context)?.['child'] as { childRunId?: string } | undefined)
           ?.childRunId;
+        canceledChildRunId = childRunId;
         return {
           content: '',
           toolCalls: [{ name: 'bureau__child-runs-cancel', arguments: { childRunId } }],
@@ -369,7 +399,15 @@ describe('registered child-run tools on file agents', () => {
       decision: 'approve',
       principal: 'bob',
     });
-    expect(resolved).toMatchObject({ decision: 'approve' });
+    expect(resolved).toMatchObject({
+      decision: 'approve',
+      result: { result: { status: 'requested' } },
+    });
+    const settled = await bureau.children.wait({
+      parentRunId: task.id,
+      childRunId: canceledChildRunId!,
+    });
+    expect(settled).toMatchObject({ outcome: 'settled', child: { status: 'aborted' } });
   });
 
   it('holds a registered child mutating tool in the real chat-root path', async () => {
