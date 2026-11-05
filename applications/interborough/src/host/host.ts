@@ -124,7 +124,7 @@ import {
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
-import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
+import { HOST_STORAGE_ROUTE, HOST_STORAGE_SUMMARY_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
@@ -150,7 +150,7 @@ import {
 import { HOST_DEPENDENCIES, loadFolderPlugins, PLUGIN_FOLDER_NAME } from './folder-plugins.ts';
 import { hookOptionsFor } from './hook-options.ts';
 import { buildDiagnostics, providerDiagnostics, type HostDiagnostics } from './host-diagnostics.ts';
-import { hostStorageReport } from './host-storage.ts';
+import { hostStorageReport, hostStorageSummary } from './host-storage.ts';
 import {
   bureauUpgradeServer,
   hostWebSocketHandlers,
@@ -703,7 +703,8 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           }
         }
         const storage =
-          claimedRemoteStorage ?? createHostStorage({ kind: 'postgres', url: databaseUrl });
+          claimedRemoteStorage ??
+          createHostStorage({ kind: 'postgres', url: databaseUrl }, clock.now);
         claimedRemoteStorage = storage;
         await claimWorkspaceBinding(storage, prefix, workspaceId);
       },
@@ -729,7 +730,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
-    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database);
+    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database, clock.now);
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step
@@ -1137,6 +1138,18 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         // The key prefixes the Bureau writes, which the storage explorer refuses to edit.
         [HOST_STORAGE_ROUTE]: {
           GET: (request: Request) => refuse(request) ?? Response.json(hostStorageReport()),
+        },
+        // How many keys storage holds under a prefix, and how large it is, for the storage page's
+        // footer and its "Storage details".
+        [HOST_STORAGE_SUMMARY_ROUTE]: {
+          GET: async (request: Request) =>
+            refuse(request) ??
+            Response.json(
+              await hostStorageSummary(
+                storage,
+                new URL(request.url).searchParams.get('prefix') ?? '',
+              ),
+            ),
         },
         [HOST_PATHS_ROUTE]: {
           GET: async (request: Request) =>

@@ -144,12 +144,15 @@ export function hostPathsReport(
 
 /**
  * The storage for the host's database: a SQLite file on this machine, or a Postgres server. The
- * Postgres pool connects when first used, and it is the only place the URL is read.
+ * Postgres pool connects when first used, and it is the only place the URL is read. `now` is the
+ * clock each key's write time is read from, the host's own, so a host running on an injected
+ * runtime records the times its records carry; it defaults to the system clock.
  */
-export function createHostStorage(database: DatabaseLocation): Storage {
+export function createHostStorage(database: DatabaseLocation, now?: () => number): Storage {
+  const clock = now === undefined ? {} : { now };
   return database.kind === 'sqlite'
-    ? new BunSQLiteStorage(database.path)
-    : new PostgresStorage({ url: database.url });
+    ? new BunSQLiteStorage(database.path, clock)
+    : new PostgresStorage({ url: database.url, ...clock });
 }
 
 /** Release a storage the host opened, awaiting a pool's shutdown when the storage has one. */

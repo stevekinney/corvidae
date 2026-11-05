@@ -83,6 +83,7 @@ describe('a rebound Host', () => {
       '/bureau/v1/health',
       '/host/paths',
       '/host/storage',
+      '/host/storage/summary',
       '/',
       '/assets/main.js',
     ]) {
@@ -119,6 +120,27 @@ describe('/host/storage', () => {
       expect(report.bureauKeyPrefixes).toContain(family.prefix);
     }
     expect(report.bureauKeyPrefixes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('/host/storage/summary', () => {
+  test('counts the keys under a prefix and reports the storage size, so the page can say "of N keys"', async () => {
+    const host = await start();
+    const everything = (await (
+      await fetch(new URL('/host/storage/summary', host.url))
+    ).json()) as { keyCount: number; sizeBytes: number | null };
+    expect(everything.keyCount).toBeGreaterThan(0);
+    // A SQLite file has a size; a backend that cannot say would answer null, never zero.
+    expect(everything.sizeBytes).toBeGreaterThan(0);
+
+    const none = (await (
+      await fetch(new URL('/host/storage/summary?prefix=no-such-group%3A', host.url))
+    ).json()) as { keyCount: number };
+    expect(none.keyCount).toBe(0);
+    const some = (await (
+      await fetch(new URL('/host/storage/summary?prefix=wf%3A', host.url))
+    ).json()) as { keyCount: number };
+    expect(some.keyCount).toBeLessThanOrEqual(everything.keyCount);
   });
 });
 
@@ -192,7 +214,13 @@ describe('a cross-site request', () => {
 
   test('is refused on Bureau and on the application too', async () => {
     const host = await start();
-    for (const path of ['/bureau/v1/health', '/host/paths', '/host/storage', '/']) {
+    for (const path of [
+      '/bureau/v1/health',
+      '/host/paths',
+      '/host/storage',
+      '/host/storage/summary',
+      '/',
+    ]) {
       const response = await fetch(new URL(path, host.url), {
         headers: { origin: 'https://attacker.example' },
       });
