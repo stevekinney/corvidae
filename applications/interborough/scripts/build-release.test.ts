@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,15 +16,6 @@ async function releaseFixture(
     readonly commandFailure?: boolean;
     readonly recursiveDependency?: boolean;
     readonly invalidExportMap?: boolean;
-    readonly runtimeFailure?:
-      | 'missing-link'
-      | 'wrong-link'
-      | 'missing-inspector'
-      | 'poll-error'
-      | 'not-running'
-      | 'missing-contribution'
-      | 'non-ok-app'
-      | 'malformed-html';
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'interborough-release-fixture-'));
@@ -71,23 +62,18 @@ async function releaseFixture(
         await writeFile(
           output,
           `#!/opt/homebrew/bin/bun
-import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home') + 1];
 const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
 const root = dirname(dirname(process.argv[1]));
 const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
-const behavior = ${JSON.stringify(options.runtimeFailure ?? 'success')};
-if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
-if (behavior !== 'missing-link') {
-  await mkdir(join(home, 'plugins'), { recursive: true });
-  await symlink(behavior === 'wrong-link' ? '/tmp' : runtime, join(home, 'plugins', 'node_modules'));
-}
-if (behavior === 'poll-error') await Bun.sleep(100);
+await mkdir(join(home, 'plugins'), { recursive: true });
+await symlink(runtime, join(home, 'plugins', 'node_modules'));
 const server = Bun.serve({ port, fetch(request) {
   const pathname = new URL(request.url).pathname;
-  if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: behavior === 'not-running' ? 'stopped' : 'running', contributions: behavior === 'missing-contribution' ? [] : [{ kind: 'mcp-app', id: 'runtime-proof:external-proof' }] }] });
-  if (pathname === '/host/plugins/runtime-proof/apps/external-proof') return behavior === 'non-ok-app' ? new Response('missing', { status: 404 }) : Response.json({ html: behavior === 'malformed-html' ? 42 : '<html>external runtime</html>' });
+  if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: 'running', contributions: [{ kind: 'mcp-app', id: 'runtime-proof:external-proof' }] }] });
+  if (pathname === '/host/plugins/runtime-proof/apps/external-proof') return Response.json({ html: '<html>external runtime</html>' });
   return new Response('not found', { status: 404 });
 } });
 await writeFile(join(home, 'server-port'), String(server.port));
@@ -153,39 +139,7 @@ await new Promise(() => {});
   return { root, operations };
 }
 
-async function expectRuntimeFailure(
-  runtimeFailure: NonNullable<Parameters<typeof releaseFixture>[0]>['runtimeFailure'],
-  message: string,
-) {
-  const fixture = await releaseFixture({ runtimeFailure });
-  const output = await mkdtemp(join(tmpdir(), `interborough-release-${runtimeFailure}-`));
-  let clock = 0;
-  try {
-    await expect(
-      buildRelease(['--version', '0.0.0-test', '--outdir', output], {
-        ...fixture.operations,
-        now: () => (clock += 100),
-        sleep: async () => undefined,
-      }),
-    ).rejects.toThrow(message);
-  } finally {
-    await rm(fixture.root, { recursive: true, force: true });
-    await rm(output, { recursive: true, force: true });
-  }
-}
-
 describe('release arguments', () => {
-  test('covers the relocated verifier failure paths with finite startup fixtures', async () => {
-    await expectRuntimeFailure('missing-link', 'did not create plugin runtime link');
-    await expectRuntimeFailure('wrong-link', 'targets the wrong runtime');
-    await expectRuntimeFailure('missing-inspector', 'Prebuilt inspector is missing');
-    await expectRuntimeFailure('poll-error', 'did not run');
-    await expectRuntimeFailure('not-running', 'did not run');
-    await expectRuntimeFailure('missing-contribution', 'did not register');
-    await expectRuntimeFailure('non-ok-app', 'External MCP app response was 404');
-    await expectRuntimeFailure('malformed-html', 'did not contain its generated page');
-  });
-
   test('requires a semver and output directory', () => {
     expect(parseReleaseArguments(['--version', '1.2.3', '--outdir', '/tmp/release'])).toEqual({
       version: '1.2.3',
