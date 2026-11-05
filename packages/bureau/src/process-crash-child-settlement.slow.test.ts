@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createAgent, createCheckpointStore, stopWhen } from '@lostgradient/operative';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { textValueStore } from '@lostgradient/storage';
+import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import {
@@ -20,6 +22,8 @@ import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './test/process-crash-work-integrity-fixtures';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
+const CHILD_WAIT_CALL_ID = 'parent-child-wait-call';
+const SIBLING_CALL_ID = 'parent-sibling-call';
 
 async function crashScenario(scope: ScenarioScope): Promise<void> {
   const runtime = createDefaultRuntimeServices();
@@ -42,9 +46,17 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       childRunId: string;
       contextId: string;
     }>(markerPath);
+    const barrier = readChildJson<{
+      childRecord: { status: string; outcome?: unknown };
+      parentWaitingForSignals: readonly string[];
+    }>(join(directory, 'afterChildSettlementBeforeParentWake'));
+    expect(barrier.childRecord.status).toBe('completed');
+    expect(barrier.parentWaitingForSignals).toEqual([`durable-child:${runId}:${childRunId}`]);
+    expect(readChildJson<string>(join(directory, 'siblingAction'))).toBe('ran');
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
     let generations = 0;
+    let nextGenerationToolResults: readonly unknown[] = [];
     const waitForChild = createTool({
       name: 'wait-for-child',
       description: 'Wait for the named child.',
@@ -61,12 +73,22 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         planner: createAgent({
           name: 'planner',
           toolbox: createToolbox([waitForChild]),
-          generate: async ({ step }) => {
+          generate: async ({ step, conversation }) => {
             generations += 1;
+            nextGenerationToolResults = conversation
+              .getMessages()
+              .filter((message) => message.role === 'tool-result')
+              .map((message) => message.toolResult);
             return step === 0
               ? {
                   content: 'unexpected replay',
-                  toolCalls: [{ name: 'wait-for-child', arguments: { childRunId } }],
+                  toolCalls: [
+                    {
+                      id: CHILD_WAIT_CALL_ID,
+                      name: 'wait-for-child',
+                      arguments: { childRunId },
+                    },
+                  ],
                 }
               : { content: 'recovered', toolCalls: [] };
           },
@@ -96,6 +118,46 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       expect(generations).toBe(1);
       const childRecord = await bureau.children.get({ parentRunId: runId, childRunId });
       expect(childRecord?.status).toBe('completed');
+      const currentChildRecord = childRecord;
+      if (currentChildRecord === undefined) throw new Error('child terminal record disappeared');
+      const inspectionStorage = new BunSQLiteStorage(storagePath);
+      try {
+        const checkpointStore = createCheckpointStore(
+          textValueStore(inspectionStorage, { disposeUnderlyingStorage: false }),
+        );
+        const steps = await checkpointStore.loadSteps(runId, { strict: true });
+        expect(steps).toHaveLength(2);
+        const step = steps[0];
+        if (step === undefined) throw new Error('missing durable parent step');
+        const settledResults = step.results.filter(
+          (result) => result.callId === CHILD_WAIT_CALL_ID,
+        );
+        expect(settledResults).toHaveLength(1);
+        expect(settledResults[0]).toMatchObject({
+          callId: CHILD_WAIT_CALL_ID,
+          toolCallId: CHILD_WAIT_CALL_ID,
+          outcome: 'success',
+          result: { outcome: 'settled', child: currentChildRecord },
+        });
+        expect(step.results.filter((result) => result.callId === SIBLING_CALL_ID)).toHaveLength(1);
+        expect(nextGenerationToolResults).toHaveLength(2);
+        expect(
+          nextGenerationToolResults.filter(
+            (result) =>
+              typeof result === 'object' &&
+              result !== null &&
+              (result as { callId?: unknown }).callId === CHILD_WAIT_CALL_ID,
+          ),
+        ).toHaveLength(1);
+        expect(nextGenerationToolResults).toContainEqual(
+          expect.objectContaining({
+            callId: CHILD_WAIT_CALL_ID,
+            content: { outcome: 'settled', child: currentChildRecord },
+          }),
+        );
+      } finally {
+        inspectionStorage[Symbol.dispose]();
+      }
       const inspection = await bureau.tasks.inspect(runId, { step: 0 });
       expect(inspection?.steps).toHaveLength(1);
       expect(inspection?.steps[0]).toMatchObject({ step: 0, messageId: expect.any(String) });
@@ -105,6 +167,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
           JSON.stringify(message).includes('recovered'),
         ),
       ).toBe(true);
+      expect(generations).toBe(1);
     } finally {
       await bureau.shutdown();
     }

@@ -519,8 +519,14 @@ async function approveThenCrash(): Promise<void> {
 
 /** COR-2051: journals a peer task, then dies while the approved peer call is in flight. */
 async function childWaitParked(): Promise<void> {
+  const childWaitCallId = 'parent-child-wait-call';
+  const siblingCallId = 'parent-sibling-call';
   const parentReady = Promise.withResolvers<void>();
   const allowParent = Promise.withResolvers<void>();
+  let parentId: string | undefined;
+  let durableEngine: {
+    get(runId: string): Promise<{ waitingForSignals?: readonly string[] } | null>;
+  };
   const waitForChild = createTool({
     name: 'wait-for-child',
     description: 'Wait for the named child.',
@@ -532,18 +538,34 @@ async function childWaitParked(): Promise<void> {
       return wait({ childRunId, toolCallId: context.meta?.callId ?? context.toolCall.id });
     },
   });
+  const siblingAction = createTool({
+    name: 'sibling-action',
+    description: 'A sibling action that must not replay after the park.',
+    input: z.object({}),
+    execute: async () => {
+      publishChildFile(join(dirname(markerPath as string), 'siblingAction'), JSON.stringify('ran'));
+      return { action: 'ran-once' };
+    },
+  });
   const bureau = await createBureau<AgentDefinitions>({
     agents: {
       planner: createAgent({
         name: 'planner',
-        toolbox: createToolbox([waitForChild]),
+        toolbox: createToolbox([waitForChild, siblingAction]),
         generate: async ({ step }) => {
           if (step === 0) {
             parentReady.resolve();
             await allowParent.promise;
             return {
               content: 'waiting',
-              toolCalls: [{ name: 'wait-for-child', arguments: { childRunId: 'child-1' } }],
+              toolCalls: [
+                {
+                  id: childWaitCallId,
+                  name: 'wait-for-child',
+                  arguments: { childRunId: 'child-1' },
+                },
+                { id: siblingCallId, name: 'sibling-action', arguments: {} },
+              ],
             };
           }
           return { content: 'recovered', toolCalls: [] };
@@ -552,7 +574,21 @@ async function childWaitParked(): Promise<void> {
       }),
       worker: createAgent({
         name: 'worker',
-        generate: async () => ({ content: 'child done', toolCalls: [] }),
+        generate: async () => {
+          const signalName = `durable-child:${parentId}:child-1`;
+          let observed = false;
+          await pollUntil('parent durable child wait', async () => {
+            if (parentId === undefined) return false;
+            const state = await durableEngine?.get(parentId);
+            const waiting = state?.waitingForSignals?.includes(signalName) === true;
+            if (waiting && !observed) {
+              observed = true;
+              publishChildFile(join(dirname(markerPath as string), 'workerGate'), 'observed');
+            }
+            return waiting;
+          });
+          return { content: 'child done', toolCalls: [] };
+        },
         stopWhen: stopWhen.noToolCalls(),
       }),
     },
@@ -570,6 +606,8 @@ async function childWaitParked(): Promise<void> {
   const parent = await bureau.tasks.start('planner', 'wait for child', { principal: 'alice' });
   const engine = bureau.durableEngine();
   if (engine === undefined) throw new Error('child: durable engine unavailable');
+  parentId = parent.id;
+  durableEngine = engine;
   const signalTarget = engine as {
     signal: (runId: string, signalName: string, payload?: unknown) => Promise<void>;
   };
@@ -577,7 +615,27 @@ async function childWaitParked(): Promise<void> {
   spyOn(signalTarget, 'signal').mockImplementation(async (runId, signalName, payload) => {
     if (runId === parent.id && signalName === `durable-child:${parent.id}:child-1`) {
       const directory = dirname(markerPath as string);
-      publishChildFile(join(directory, 'afterChildSettlementBeforeParentWake'), 'pending');
+      const childRecord = await bureau.children.get({
+        parentRunId: parent.id,
+        childRunId: 'child-1',
+      });
+      const parentState = await engine.get(parent.id);
+      const wakeName = `durable-child:${parent.id}:child-1`;
+      if (
+        childRecord?.status !== 'completed' ||
+        parentState?.waitingForSignals?.includes(wakeName) !== true
+      ) {
+        throw new Error(
+          `child: wake barrier was not durable: ${JSON.stringify({ childRecord, parentState })}`,
+        );
+      }
+      publishChildFile(
+        join(directory, 'afterChildSettlementBeforeParentWake'),
+        JSON.stringify({ childRecord, parentWaitingForSignals: parentState.waitingForSignals }),
+      );
+      if (!existsSync(join(directory, 'workerGate'))) {
+        throw new Error('child: worker completed before the durable parent wait was visible');
+      }
       killSelf();
     }
     return parentSignal(runId, signalName, payload);

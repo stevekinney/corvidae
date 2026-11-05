@@ -1839,6 +1839,29 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     pendingRecovery.clear();
     pendingRecoveryToolCapabilities.clear();
     pendingRecoveryAuthorizationFailures.clear();
+
+    // A parent can have checkpointed its child-wait memo and durable signal park, then lose the
+    // process after this child's terminal record committed but before the live notifier delivered
+    // its wake. Re-issue only the exact wake names still present in the recovered parent's
+    // persisted wait list. The parent re-reads the child record, so this is a notification repair,
+    // never trusted result delivery; the engine's signal deduplication makes repeated recovery
+    // passes harmless.
+    const engine = dependencies.getEngine();
+    if (engine === undefined) return;
+    const signalMethod = (
+      engine as ChildTopologyEngine & {
+        signal?: (workflowId: string, signalName: string, payload: unknown) => Promise<void>;
+      }
+    ).signal;
+    if (signalMethod === undefined) return;
+    const signalChild = signalMethod.bind(engine);
+    for (const record of await store.listAll()) {
+      if (record.status === 'running') continue;
+      const parentState = await engine.get(record.parentRunId);
+      const signalName = `durable-child:${record.parentRunId}:${record.childRunId}`;
+      if (parentState?.waitingForSignals?.includes(signalName) !== true) continue;
+      await signalChild(record.parentRunId, signalName, null).catch(() => undefined);
+    }
   }
 
   function recoveredRunContext(

@@ -2976,10 +2976,13 @@ async function constructBureau<const D extends AgentDefinitions>(
     services.resolveChildWait = async (request) => {
       const topology = childTopologyForWait;
       if (topology === undefined) return { outcome: 'not-found' };
-      const outcome = await topology.children.wait({
-        parentRunId: request.parentRunId,
-        childRunId: request.childRunId,
-      });
+      const outcome = await topology.children.wait(
+        {
+          parentRunId: request.parentRunId,
+          childRunId: request.childRunId,
+        },
+        { signal: AbortSignal.abort() },
+      );
       if (outcome.outcome === 'settled')
         return { outcome: 'settled', child: outcome.child as unknown as JSONValue };
       if (outcome.outcome === 'unobservable')
