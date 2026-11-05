@@ -39,12 +39,149 @@ const invoke = (arguments_: string[], env: Record<string, string> = {}) =>
     env: { ...environment, ...env },
   });
 
+async function runRealPty(arguments_: string[]) {
+  let outputText = '';
+  const decoder = new TextDecoder();
+  const process_ = spawnWithHangGuard([executable, ...arguments_], {
+    cwd: directory,
+    env: environment,
+    terminal: {
+      cols: 80,
+      rows: 24,
+      data: (_terminal, data) => {
+        outputText += decoder.decode(data);
+      },
+    },
+  });
+  return {
+    process: process_,
+    terminal: process_.terminal,
+    output: () => outputText,
+    exited: process_.exited,
+  };
+}
+
 const productionRequests: Request[] = [];
+const uploadChunks: Buffer[] = [];
+const uploadedChatBodies: Record<string, unknown>[] = [];
+const compiledStreamHandshakes: string[] = [];
 const productionServer = Bun.serve({
   hostname: '127.0.0.1',
   port: 0,
   async fetch(request) {
     productionRequests.push(request.clone());
+    const pathname = new URL(request.url).pathname;
+    if (pathname === '/bureau/jsonrpc') {
+      const body = (await request.json()) as {
+        method?: string;
+        params?: Record<string, unknown>;
+      };
+      if (body.method === 'bureau.assets.uploads.create')
+        return Response.json({ result: { uploadId: 'compiled-upload' } });
+      if (body.method === 'bureau.assets.uploads.append') {
+        const chunk = body.params?.['chunk'];
+        if (typeof chunk !== 'string')
+          return Response.json({ message: 'Missing upload chunk' }, { status: 400 });
+        uploadChunks.push(Buffer.from(chunk, 'base64'));
+        return Response.json({ result: { uploadId: 'compiled-upload' } });
+      }
+      if (body.method === 'bureau.assets.uploads.complete')
+        return Response.json({ result: { assetId: 'compiled-asset' } });
+      if (body.method === 'bureau.assets.uploads.abort') return Response.json({ result: {} });
+      return Response.json({ jsonrpc: '2.0', id: 'production', result: body.params });
+    }
+    if (pathname.startsWith('/bureau/ag-ui/')) {
+      const input =
+        request.method === 'POST' ? ((await request.json()) as Record<string, unknown>) : {};
+      if (Array.isArray(input['messages'])) uploadedChatBodies.push(input);
+      const message =
+        Array.isArray(input['messages']) && typeof input['messages'][0] === 'object'
+          ? (() => {
+              const content = (input['messages'][0] as Record<string, unknown>)['content'];
+              return typeof content === 'string' ? content : JSON.stringify(content ?? '');
+            })()
+          : '';
+      const stream = new TransformStream<Uint8Array, Uint8Array>();
+      const writer = stream.writable.getWriter();
+      const encoder = new TextEncoder();
+      const send = async (event: Record<string, unknown>, id?: string) => {
+        const prefix = id === undefined ? '' : `id: ${id}\n`;
+        await writer.write(encoder.encode(`${prefix}data: ${JSON.stringify(event)}\n\n`));
+      };
+      if (message === 'terminal hello') {
+        compiledStreamHandshakes.push('terminal-started');
+        void (async () => {
+          await send({ type: 'RUN_STARTED', threadId: 'thread-terminal', runId: 'run-terminal' });
+          await send({ type: 'TEXT_MESSAGE_CONTENT', delta: 'terminal text' });
+          await send({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
+          await writer.close();
+        })();
+        return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
+      }
+      if (message.startsWith('hello')) {
+        compiledStreamHandshakes.push('sigint-started');
+        void (async () => {
+          await writer.write(
+            encoder.encode(
+              'data: {"type":"RUN_STARTED","threadId":"thread-sigint","runId":"run-sigint"}\n\n',
+            ),
+          );
+          await Bun.sleep(500);
+          try {
+            await writer.close();
+          } catch {
+            // SIGINT intentionally closes the client side of this fixture stream.
+          }
+        })();
+        return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
+      }
+      void (async () => {
+        if (message.includes('interrupt')) {
+          compiledStreamHandshakes.push('interrupt-started');
+          await send({ type: 'RUN_STARTED', threadId: 'thread-compiled', runId: 'run-compiled' });
+          await send({
+            type: 'RUN_FINISHED',
+            outcome: { type: 'interrupt', interrupts: [{ id: 'interrupt-compiled' }] },
+          });
+        } else if (
+          message.includes('events') ||
+          request.headers.get('last-event-id') === 'cursor-attach'
+        ) {
+          await send(
+            { type: 'RUN_STARTED', threadId: 'thread-events', runId: 'run-events' },
+            'durable-start',
+          );
+          await send({
+            type: 'MESSAGES_SNAPSHOT',
+            messages: [{ role: 'assistant', content: 'snapshot' }],
+          });
+          await send({ type: 'TEXT_MESSAGE_CONTENT', delta: 'same' });
+          await send({ type: 'TEXT_MESSAGE_CONTENT', delta: 'same' });
+          await send({ type: 'TEXT_MESSAGE_CONTENT', delta: 'durable' }, 'durable-text');
+          await send({ type: 'TEXT_MESSAGE_CONTENT', delta: 'durable' }, 'durable-text');
+          await send({ type: 'REASONING_MESSAGE_CONTENT', delta: 'private-reasoning' });
+          await send({
+            type: 'TOOL_CALL_START',
+            toolCallId: 'private-tool',
+            toolCallName: 'lookup',
+            args: { secret: 'private-args' },
+          });
+          await send({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
+        } else if (message.includes('binary-upload')) {
+          await send({ type: 'RUN_STARTED', threadId: 'thread-upload', runId: 'run-upload' });
+          await send({ type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } });
+        } else {
+          await send({ type: 'RUN_STARTED', threadId: 'thread-sigint', runId: 'run-sigint' });
+          await Bun.sleep(500);
+        }
+        try {
+          await writer.close();
+        } catch {
+          // SIGINT intentionally closes the client side of this fixture stream.
+        }
+      })();
+      return new Response(stream.readable, { headers: { 'content-type': 'text/event-stream' } });
+    }
     if (request.headers.get('authorization') !== 'Bearer production-secret')
       return Response.json({ message: 'Forbidden' }, { status: 403 });
     if (new URL(request.url).pathname === '/host/status')
@@ -108,6 +245,146 @@ const [productionCallStdout, productionCallStderr, productionCallExitCode] = awa
   new Response(productionCall.stderr).text(),
   productionCall.exited,
 ]);
+const sigintCall = spawnWithHangGuard(
+  [
+    executable,
+    'chat',
+    '--agent',
+    'demo',
+    '--message',
+    'hello',
+    '--url',
+    `http://127.0.0.1:${productionServer.port}`,
+  ],
+  { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
+);
+await Bun.sleep(50);
+await waitUntil(() => compiledStreamHandshakes.includes('sigint-started'), {
+  message: 'compiled chat to connect to the AG-UI stream',
+  yieldTurn: () => Bun.sleep(10),
+});
+await Bun.sleep(250);
+sigintCall.kill('SIGINT');
+const [sigintStdout, sigintStderr, sigintExitCode] = await Promise.all([
+  new Response(sigintCall.stdout).text(),
+  new Response(sigintCall.stderr).text(),
+  sigintCall.exited,
+]);
+const initialPtyRequestCount = productionRequests.length;
+const initialPty = await runRealPty([
+  'chat',
+  '--agent',
+  'demo',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+initialPty.terminal?.write('terminal hello\n');
+const initialPtyExitCode = await initialPty.exited;
+const initialPtyRequestSeen = productionRequests.length > initialPtyRequestCount;
+const initialPtyOutput = initialPty.output();
+const noInputPty = await runRealPty([
+  'chat',
+  '--agent',
+  'demo',
+  '--message',
+  'interrupt-no-input',
+  '--no-input',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+await waitUntil(
+  () => compiledStreamHandshakes.filter((item) => item === 'interrupt-started').length >= 1,
+  {
+    message: 'compiled TTY no-input stream to start',
+    yieldTurn: () => Bun.sleep(10),
+  },
+);
+const noInputPtyExitCode = await noInputPty.exited;
+noInputPty.terminal?.close();
+const noInputPtyOutput = noInputPty.output();
+const promptPty = await runRealPty([
+  'chat',
+  '--agent',
+  'demo',
+  '--message',
+  'interrupt-prompt',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+await waitUntil(
+  () => compiledStreamHandshakes.filter((item) => item === 'interrupt-started').length >= 2,
+  {
+    message: 'compiled TTY prompt stream to start',
+    yieldTurn: () => Bun.sleep(10),
+  },
+);
+await waitUntil(() => promptPty.output().includes('Input required:'), {
+  message: 'compiled TTY prompt to render',
+  yieldTurn: () => Bun.sleep(10),
+});
+promptPty.terminal?.write('\u0003');
+const promptPtyExitCode = await promptPty.exited;
+promptPty.terminal?.close();
+const promptPtyOutput = promptPty.output();
+const compiledNonTtyPending = await invoke([
+  'chat',
+  '--agent',
+  'demo',
+  '--message',
+  'interrupt-nontty',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledEventsJson = await invoke([
+  'chat',
+  '--agent',
+  'demo',
+  '--message',
+  'events',
+  '--output',
+  'json',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledEventsJsonl = await invoke([
+  'chat',
+  '--agent',
+  'demo',
+  '--message',
+  'events',
+  '--output',
+  'jsonl',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const compiledCursorAttach = await invoke([
+  'chat',
+  '--agent',
+  'demo',
+  '--thread',
+  'thread-events',
+  '--cursor',
+  'cursor-attach',
+  '--output',
+  'json',
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
+const binaryPath = join(directory, 'binary-upload.bin');
+const binary = Buffer.alloc(256 * 1024 + 17);
+for (let index = 0; index < binary.length; index += 1) binary[index] = (index * 37) % 256;
+writeFileSync(binaryPath, binary);
+const compiledUpload = await invoke([
+  'chat',
+  '--agent',
+  'demo',
+  '--message',
+  'binary-upload',
+  '--attachment',
+  binaryPath,
+  '--url',
+  `http://127.0.0.1:${productionServer.port}`,
+]);
 
 test('compiled help and version write stdout without validating or creating a home', () => {
   for (const result of [help, startHelp]) {
@@ -131,6 +408,68 @@ test('compiled commands use the production environment and preserve piped JSON p
   expect(productionCallStderr).toBe('');
   expect(JSON.parse(productionCallStdout)).toEqual({ revision: 'r1', idempotencyKey: 'i1' });
   expect(productionRequests[0]?.headers.get('authorization')).toBe('Bearer production-secret');
+});
+
+test('compiled chat detaches on SIGINT and reports resumable identifiers', () => {
+  expect(sigintExitCode).toBe(130);
+  expect(`${sigintStdout}${sigintStderr}`).toMatch(/thread-[\w-]+/);
+  expect(`${sigintStdout}${sigintStderr}`).toMatch(/run-[\w-]+/);
+});
+
+test('compiled PTY accepts initial user text without terminal EOF', () => {
+  expect(initialPtyRequestSeen).toBe(true);
+  expect(initialPtyExitCode).toBe(0);
+  expect(initialPtyOutput).toContain('terminal text');
+});
+
+test('compiled TTY --no-input exits 5 without prompting', () => {
+  expect(noInputPtyExitCode).toBe(5);
+  expect(noInputPtyOutput).not.toContain('Input required:');
+  expect(noInputPtyOutput).toContain('thread-compiled');
+});
+
+test('compiled PTY prompt SIGINT detaches with identifiers and no resubmission', () => {
+  expect(promptPtyExitCode).toBe(130);
+  expect(promptPtyOutput).toContain('Input required:');
+  expect(promptPtyOutput).toContain('thread-compiled');
+  expect(promptPtyOutput).toContain('run-compiled');
+  expect(
+    uploadedChatBodies.filter((body) => JSON.stringify(body).includes('interrupt-prompt')),
+  ).toHaveLength(1);
+});
+
+test('compiled non-TTY pending input exits 5 with resumable identifiers', () => {
+  expect(compiledNonTtyPending.exitCode).toBe(5);
+  expect(compiledNonTtyPending.stdout.toString()).toContain('thread-compiled');
+  expect(compiledNonTtyPending.stdout.toString()).toContain('interrupt-compiled');
+});
+
+test('compiled structured output preserves idless deltas, dedupes durable events, snapshots, and redacts private frames', () => {
+  const json = JSON.parse(compiledEventsJson.stdout.toString()) as {
+    data: { text: string; events: unknown[] };
+  };
+  expect(compiledEventsJson.exitCode).toBe(0);
+  expect(json.data.text).toBe('snapshotsamesamedurable');
+  expect(json.data.events).toContainEqual({ kind: 'snapshot', text: 'snapshot' });
+  expect(JSON.stringify(json)).not.toContain('private-reasoning');
+  expect(JSON.stringify(json)).not.toContain('private-args');
+  expect(compiledEventsJsonl.exitCode).toBe(0);
+  expect(compiledEventsJsonl.stdout.toString()).toContain('"kind":"snapshot"');
+  expect(compiledEventsJsonl.stdout.toString().match(/"delta":"durable"/g)).toHaveLength(1);
+  expect(compiledCursorAttach.exitCode).toBe(0);
+  expect(JSON.parse(compiledCursorAttach.stdout.toString()).data.resynced).toBe(true);
+});
+
+test('compiled binary upload preserves every non-UTF8 byte in bounded chunks and completes a provider part', () => {
+  expect(compiledUpload.exitCode).toBe(0);
+  expect(uploadChunks).toHaveLength(2);
+  expect(Buffer.concat(uploadChunks)).toEqual(binary);
+  const body = uploadedChatBodies.find((candidate) =>
+    JSON.stringify(candidate).includes('compiled-asset'),
+  );
+  expect(body).toBeDefined();
+  expect(JSON.stringify(body)).toContain('"provider":"bureau"');
+  expect(JSON.stringify(body)).toContain('"value":"compiled-asset"');
 });
 
 const invalidOptions = [
