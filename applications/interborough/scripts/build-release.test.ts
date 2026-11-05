@@ -16,6 +16,8 @@ async function releaseFixture(
     readonly commandFailure?: boolean;
     readonly recursiveDependency?: boolean;
     readonly invalidExportMap?: boolean;
+    readonly runtimeFailure?: 'missing-link';
+    readonly markerPath?: string;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'interborough-release-fixture-'));
@@ -68,8 +70,18 @@ const home = process.argv[process.argv.indexOf('--home') + 1];
 const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
 const root = dirname(dirname(process.argv[1]));
 const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
-await mkdir(join(home, 'plugins'), { recursive: true });
-await symlink(runtime, join(home, 'plugins', 'node_modules'));
+const marker = ${JSON.stringify(options.markerPath ?? '')};
+if (${JSON.stringify(options.runtimeFailure ?? '')} !== 'missing-link') {
+  await mkdir(join(home, 'plugins'), { recursive: true });
+  await symlink(runtime, join(home, 'plugins', 'node_modules'));
+}
+if (marker) {
+  await writeFile(marker, 'started');
+  process.on('SIGTERM', async () => {
+    await writeFile(marker, 'terminated');
+    process.exit(0);
+  });
+}
 const server = Bun.serve({ port, fetch(request) {
   const pathname = new URL(request.url).pathname;
   if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: 'running', contributions: [{ kind: 'mcp-app', id: 'runtime-proof:external-proof' }] }] });
@@ -205,6 +217,30 @@ describe('release arguments', () => {
         platform: 'linux',
       }),
     ).rejects.toThrow('macOS arm64 is required');
+  });
+
+  test('stops a persistent relocated host before reporting a missing runtime link', async () => {
+    const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
+    const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'missing-link' });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-link-'));
+    let clock = 0;
+    try {
+      await expect(
+        buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+          ...fixture.operations,
+          now: () => clock,
+          sleep: async () => {
+            while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
+            clock += 100;
+          },
+        }),
+      ).rejects.toThrow('did not create plugin runtime link');
+      expect(await Bun.file(marker).text()).toBe('terminated');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+      await rm(marker, { force: true });
+    }
   });
 
   test('runs staging, SDK export bundling, manifest creation, and cleanup with real files', async () => {

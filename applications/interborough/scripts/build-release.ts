@@ -226,10 +226,19 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
   );
   const stdout = new Response(childProcess.stdout).text();
   const stderr = new Response(childProcess.stderr).text();
+  let stopped = false;
+  const stopChild = async (): Promise<void> => {
+    if (stopped) return;
+    stopped = true;
+    if (childProcess.exitCode === null || childProcess.exitCode === undefined)
+      childProcess.kill('SIGTERM');
+    await childProcess.exited;
+    await Promise.all([stdout, stderr]);
+  };
   try {
     const deadline = now() + 20_000;
     const link = join(home, 'plugins', 'node_modules');
-    while (Date.now() < deadline) {
+    while (now() < deadline) {
       try {
         await lstat(link);
         break;
@@ -240,7 +249,8 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
     try {
       await lstat(link);
     } catch {
-      const [, errorOutput] = await Promise.all([stdout, stderr]);
+      await stopChild();
+      const errorOutput = await stderr;
       throw new Error(
         `Relocated host did not create plugin runtime link (exit ${childProcess.exitCode ?? 'running'}): ${errorOutput}`,
       );
@@ -263,7 +273,7 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
       throw new Error('Prebuilt inspector is missing');
     let listing: Record<string, unknown> | undefined;
     let snapshot: Record<string, unknown> | undefined;
-    while (Date.now() < deadline) {
+    while (now() < deadline) {
       try {
         const response = await fetch(`http://127.0.0.1:${port}/host/plugins`);
         if (response.ok) {
@@ -305,10 +315,11 @@ export default definePlugin({ name: 'runtime-proof', title: 'Runtime proof', ver
     if (typeof app.html !== 'string' || !app.html.includes('external runtime'))
       throw new Error('External MCP app response did not contain its generated page');
   } finally {
-    childProcess.kill('SIGTERM');
-    await childProcess.exited;
-    await Promise.all([stdout, stderr]);
-    await rm(home, { recursive: true, force: true });
+    try {
+      await stopChild();
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   }
 }
 
