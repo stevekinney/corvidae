@@ -189,6 +189,7 @@ import { HOST_RESTART_ROUTE, type HostRestartStanding } from './restart.ts';
 import { isShellNavigation } from './shell-request.ts';
 import { createSkillManager, discoverFirstSkills, type SkillManager } from './skill-manager.ts';
 import { skillRoutes } from './skill-routes.ts';
+import { storageDeletionApplied, storageDeletionOf, storageResourceOf } from './storage-audit.ts';
 import { agentToolUseOf } from './tool-source-agents.ts';
 import { createToolSourceManager, type ToolSourceManager } from './tool-source-manager.ts';
 import { toolSourceRoutes } from './tool-source-routes.ts';
@@ -1182,7 +1183,22 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           if (data !== undefined && listener.upgrade(request, { data })) return undefined;
           return new Response('WebSocket upgrade failed', { status: 500 });
         }
-        return relayRequest(request, url, key);
+        // A storage key deleted through the relay is recorded once the engine says it is gone.
+        const deletion = await storageDeletionOf(request);
+        const relayed = await relayRequest(request, url, key);
+        if (deletion !== undefined && (await storageDeletionApplied(deletion, relayed))) {
+          for (const deleted of deletion.keys) {
+            await held.bureau?.internals.auditTrail
+              ?.record({
+                runId: storageResourceOf(deleted),
+                type: 'storage.key.deleted',
+                principal: ANONYMOUS_LOCAL_OWNER,
+                detail: null,
+              })
+              .catch(() => undefined);
+          }
+        }
+        return relayed;
       },
       websocket: hostWebSocketHandlers(bureauSockets),
     });
