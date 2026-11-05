@@ -29,6 +29,7 @@
     tone = 'info',
     kind = 'event',
     detail,
+    bare = false,
     expandLabel = 'Show',
     collapseLabel = 'Hide',
     connectorAfter = 'visible',
@@ -78,6 +79,7 @@
   data-cinder-tone={tone}
   data-cinder-kind={kind}
   data-cinder-connector-after={connectorAfter}
+  data-cinder-bare={bare ? '' : undefined}
 >
   {#if groupHeader}
     <svelte:element this={groupHeaderTag} class="cinder-timeline__group-header">
@@ -121,12 +123,16 @@
         {/if}
       </span>
       <div class="cinder-timeline-item__content">
-        <header class="cinder-timeline-item__header">
-          <time class="cinder-timeline-item__time" {datetime}>{timestamp}</time>
-          <span class="cinder-timeline-item__title">{title}</span>
-        </header>
-        {#if children}
-          <div class="cinder-timeline-item__body">{@render children()}</div>
+        {#if bare}
+          {#if children}{@render children()}{/if}
+        {:else}
+          <header class="cinder-timeline-item__header">
+            <time class="cinder-timeline-item__time" {datetime}>{timestamp}</time>
+            <span class="cinder-timeline-item__title">{title}</span>
+          </header>
+          {#if children}
+            <div class="cinder-timeline-item__body">{@render children()}</div>
+          {/if}
         {/if}
       </div>
       {#if actions}

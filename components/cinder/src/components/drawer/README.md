@@ -72,6 +72,7 @@ A bottom drawer is a sheet, and every sheet follows the same rules (design rows 
 | --- | --- | --- | --- | --- |
 | `ariaLabelledby` | `string` | no | — | Optional id of an element that names the drawer. When supplied, drawer wires `aria-labelledby` to this id and renders no internal heading. Use this when a custom `header` snippet has its own visible heading — supply `ariaLabelledby` pointing to that heading's id so the visible and accessible names stay in sync. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-drawer`. |
+| `closeLabel` | `string` | no | — | Words for the close control. When set, the control is a text button that reads these words ("Close", as on the shared sheets) instead of the X icon, and they are its accessible name. Left out, the control is the X icon named "Close drawer". |
 | `dragHandleVisible` | `boolean` | no | `true` | Whether a `placement="bottom"` drawer shows the grabber, the small pill above the header that marks it as a sheet. Swipe-to-close is not implemented, so the pill is a visual affordance only. Ignored for `left`/`right` placements. Named `dragHandleVisible` (not `draggable`) to avoid colliding with the native HTML `draggable` attribute on the underlying `<dialog>`. |
 | `modal` | `boolean` | no | `true` | Whether the drawer is modal. Modal drawers use the native dialog top layer, backdrop, body scroll lock, and focus trap. Non-modal drawers render as an aside and leave the page interactive. |
 | `open` | `boolean` | no | — | Whether the drawer is open. Bindable via `bind:open`. |

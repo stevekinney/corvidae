@@ -2105,3 +2105,292 @@ describe('CSS snapshot', () => {
     expect(css).toContain("@import '../status-dot/status-dot.css';");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Narrative variant: the run's story (rows 54m, 54n, 55a, 56d, 56h)
+// ---------------------------------------------------------------------------
+
+describe('RunStepTimeline narrative variant', () => {
+  const started: RunStep = {
+    id: 'started',
+    label: 'Started',
+    status: 'recorded',
+    time: '10:45:20 AM',
+    description: 'You started Release notes from the run page',
+  };
+  const stepOne: RunStep = {
+    id: 'one',
+    label: 'Step 1 · Find the last release',
+    status: 'succeeded',
+    time: '+1.2 s',
+    description: 'Found the last release, 1.4.2, on Oct 23',
+  };
+
+  function rowText(row: Element | null | undefined, selector: string): string | undefined {
+    return row?.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim();
+  }
+
+  test('marks the list and keeps the detailed look the default', () => {
+    const narrative = render(RunStepTimeline, { steps: [started], variant: 'narrative' });
+    expect(narrative.container.querySelector('ol')?.getAttribute('data-cinder-variant')).toBe(
+      'narrative',
+    );
+    cleanup();
+    const detailed = render(RunStepTimeline, { steps: [started] });
+    expect(detailed.container.querySelector('ol')?.getAttribute('data-cinder-variant')).toBe(
+      'detailed',
+    );
+    expect(detailed.container.querySelector('.cinder-run-step-timeline__status')).not.toBeNull();
+  });
+
+  test('draws the marker, the label with its time, and one line of description', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [started, stepOne],
+      variant: 'narrative',
+    });
+    const rows = container.querySelectorAll('li.cinder-run-step-timeline__item');
+
+    expect(rowText(rows[0], '.cinder-run-step-timeline__time')).toBe('10:45:20 AM');
+    expect(rowText(rows[0], '.cinder-run-step-timeline__description')).toBe(
+      'You started Release notes from the run page',
+    );
+    expect(
+      rows[0]?.querySelector('.cinder-run-step-marker')?.getAttribute('data-cinder-status'),
+    ).toBe('recorded');
+    expect(rows[1]?.querySelector('.cinder-run-step-marker svg')).not.toBeNull();
+    expect(rowText(rows[1], '.cinder-run-step-timeline__time')).toBe('+1.2 s');
+  });
+
+  test('draws no status chip or metadata list, yet the status word is still read aloud', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [{ ...stepOne, startTime: '2026-11-02T10:45:21Z', duration: '1.2 s' }],
+      variant: 'narrative',
+    });
+    const row = container.querySelector('li.cinder-run-step-timeline__item');
+
+    expect(row?.querySelector('.cinder-run-step-timeline__status')).toBeNull();
+    expect(row?.querySelector('.cinder-run-step-timeline__meta')).toBeNull();
+    expect(row?.querySelector('.cinder-sr-only')?.textContent).toBe('Succeeded: ');
+    expect(row?.querySelector('.cinder-run-step-marker')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('a step that is under way is marked current, shows "now", and streams a partial note', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [
+        started,
+        stepOne,
+        {
+          id: 'two',
+          label: 'Step 2 · Collect merged changes',
+          status: 'running',
+          time: 'now',
+          description:
+            'Reading merged pull requests from GitHub. Streaming, so this entry is partial and grows.',
+          note: {
+            title: 'Merged since Oct 23, so far',
+            lines: [
+              'Fixes the refund total when an order has a promo code',
+              'Adds a staging check before releases go out',
+            ],
+            streaming: true,
+          },
+        },
+        {
+          id: 'three',
+          label: 'Step 3 · Draft the notes',
+          status: 'pending',
+          description: 'Waits for step 2',
+        },
+        {
+          id: 'four',
+          label: 'Step 4 · Wait for approval',
+          status: 'pending',
+          description: 'Waits for step 3. Resumes on the signal `notes-approved`.',
+        },
+      ],
+      variant: 'narrative',
+    });
+    const rows = container.querySelectorAll('li.cinder-run-step-timeline__item');
+    const note = rows[2]?.querySelector('.cinder-run-step-timeline__note');
+
+    expect(rows[2]?.getAttribute('aria-current')).toBe('step');
+    expect(rows[2]?.getAttribute('data-cinder-status')).toBe('running');
+    expect(rowText(rows[2], '.cinder-run-step-timeline__time')).toBe('now');
+    expect(note?.hasAttribute('data-cinder-streaming')).toBe(true);
+    expect(rowText(note, '.cinder-run-step-timeline__note-title')).toBe(
+      'Merged since Oct 23, so far',
+    );
+    const lines = note?.querySelectorAll('.cinder-run-step-timeline__note-line') ?? [];
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.querySelector('.cinder-run-step-timeline__cursor')).toBeNull();
+    expect(lines[1]?.querySelector('.cinder-run-step-timeline__cursor')).not.toBeNull();
+    // Later steps are drawn dashed and say what they wait for.
+    expect(
+      rows[3]?.querySelector('.cinder-run-step-marker')?.getAttribute('data-cinder-status'),
+    ).toBe('pending');
+    expect(rowText(rows[3], '.cinder-run-step-timeline__description')).toBe('Waits for step 2');
+    expect(rows[4]?.querySelector('code.cinder-run-step-timeline__code')?.textContent).toBe(
+      'notes-approved',
+    );
+    expect(rowText(rows[4], '.cinder-run-step-timeline__description')).toBe(
+      'Waits for step 3. Resumes on the signal notes-approved.',
+    );
+  });
+
+  test('a note that is not streaming has no cursor', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [{ id: 'a', label: 'A', status: 'succeeded', note: { lines: ['done'] } }],
+      variant: 'narrative',
+    });
+
+    expect(container.querySelector('.cinder-run-step-timeline__cursor')).toBeNull();
+    expect(
+      container.querySelector('.cinder-run-step-timeline__note')?.getAttribute('data-cinder-tone'),
+    ).toBe('neutral');
+  });
+
+  test('a failed step is red, says Failed, and its cause opens under it; later steps say Not run', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [
+        { id: 'started', label: 'Started', status: 'recorded', time: '11:00:01 AM' },
+        stepOne,
+        {
+          id: 'two',
+          label: 'Step 2 · Collect merged changes',
+          status: 'failed',
+          time: '+3.4 s',
+          description: 'Failed',
+          note: {
+            title: 'Why it failed',
+            tone: 'danger',
+            lines: ["GitHub didn't answer (HTTP 503) while Collect merged changes was reading."],
+          },
+        },
+        {
+          id: 'three',
+          label: 'Step 3 · Draft the notes',
+          status: 'skipped',
+          description: 'Not run',
+        },
+        {
+          id: 'four',
+          label: 'Step 4 · Wait for approval',
+          status: 'skipped',
+          description: 'Not run',
+        },
+      ],
+      variant: 'narrative',
+    });
+    const rows = container.querySelectorAll('li.cinder-run-step-timeline__item');
+
+    expect(
+      rows[2]?.querySelector('.cinder-run-step-marker')?.getAttribute('data-cinder-status'),
+    ).toBe('failed');
+    expect(rows[2]?.querySelector('.cinder-sr-only')?.textContent).toBe('Failed: ');
+    expect(rowText(rows[2], '.cinder-run-step-timeline__description')).toBe('Failed');
+    expect(
+      rows[2]?.querySelector('.cinder-run-step-timeline__note')?.getAttribute('data-cinder-tone'),
+    ).toBe('danger');
+    expect(rowText(rows[3], '.cinder-run-step-timeline__description')).toBe('Not run');
+    expect(
+      rows[4]?.querySelector('.cinder-run-step-marker')?.getAttribute('data-cinder-status'),
+    ).toBe('skipped');
+  });
+
+  test('a dropped stream shows how stale the step is and that it may be behind', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [
+        started,
+        {
+          id: 'two',
+          label: 'Step 2 · Collect merged changes',
+          status: 'running',
+          time: 'last update 40 s ago',
+          description:
+            'GitHub was answering. This entry may be behind until the connection is back.',
+        },
+        {
+          id: 'three',
+          label: 'Step 3 · Draft the notes',
+          status: 'pending',
+          description: 'Waits for step 2',
+        },
+        {
+          id: 'four',
+          label: 'Step 4 · Wait for approval',
+          status: 'pending',
+          description: 'Waits for step 3',
+        },
+      ],
+      variant: 'narrative',
+    });
+    const rows = container.querySelectorAll('li.cinder-run-step-timeline__item');
+
+    expect(rowText(rows[1], '.cinder-run-step-timeline__time')).toBe('last update 40 s ago');
+    expect(rowText(rows[1], '.cinder-run-step-timeline__description')).toBe(
+      'GitHub was answering. This entry may be behind until the connection is back.',
+    );
+    expect(rows[1]?.getAttribute('aria-current')).toBe('step');
+    expect(rowText(rows[2], '.cinder-run-step-timeline__description')).toBe('Waits for step 2');
+    expect(rowText(rows[3], '.cinder-run-step-timeline__description')).toBe('Waits for step 3');
+  });
+
+  test('a run waiting on a signal ends in an open ring that names the signal', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [
+        stepOne,
+        {
+          id: 'four',
+          label: 'Step 4 · Wait for approval',
+          status: 'waiting',
+          description:
+            'Waiting for signal `notes-approved`. It starts again when something sends it.',
+        },
+      ],
+      variant: 'narrative',
+    });
+    const rows = container.querySelectorAll('li.cinder-run-step-timeline__item');
+
+    expect(rows[1]?.getAttribute('data-cinder-status')).toBe('waiting');
+    expect(rows[1]?.getAttribute('aria-current')).toBe('step');
+    expect(rows[1]?.querySelector('.cinder-sr-only')?.textContent).toBe('Waiting: ');
+    expect(rows[1]?.querySelector('code')?.textContent).toBe('notes-approved');
+    expect(rowText(rows[1], '.cinder-run-step-timeline__description')).toBe(
+      'Waiting for signal notes-approved. It starts again when something sends it.',
+    );
+  });
+
+  test('a step with no time or description draws neither', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [{ id: 'a', label: 'A', status: 'pending' }],
+      variant: 'narrative',
+    });
+
+    expect(container.querySelector('.cinder-run-step-timeline__time')).toBeNull();
+    expect(container.querySelector('.cinder-run-step-timeline__description')).toBeNull();
+    expect(container.querySelector('.cinder-run-step-timeline__note')).toBeNull();
+  });
+
+  test('time, description and note also work in the detailed variant', () => {
+    const { container } = render(RunStepTimeline, {
+      steps: [{ ...stepOne, note: { lines: ['x'] } }],
+    });
+
+    expect(container.querySelector('.cinder-run-step-timeline__time')?.textContent).toBe('+1.2 s');
+    expect(container.querySelector('.cinder-run-step-timeline__description')).not.toBeNull();
+    expect(container.querySelector('.cinder-run-step-timeline__note')).not.toBeNull();
+    expect(container.querySelector('.cinder-run-step-timeline__status')).not.toBeNull();
+  });
+
+  test('the cursor stops blinking when reduced motion is on', () => {
+    const { readFileSync } = require('node:fs');
+    const css = readFileSync(
+      new URL('./run-step-timeline.css', import.meta.url).pathname,
+      'utf8',
+    ) as string;
+
+    expect(css).toMatch(
+      /prefers-reduced-motion: reduce\)[^{]*\{[^}]*\.cinder-run-step-timeline__cursor[^}]*animation: none/s,
+    );
+  });
+});

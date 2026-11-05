@@ -50,6 +50,9 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Connected', 'success'],
   ['Draining', 'neutral'],
   ['Disconnected', 'warning'],
+  ['Live', 'info'],
+  ['Live · last event 1 s ago', 'info'],
+  ['Reconnecting…', 'pending'],
 ];
 
 function rootOf(container: HTMLElement): HTMLElement {
@@ -114,6 +117,17 @@ describe('StatusDot word prop', () => {
     expect(root.getAttribute('data-cinder-status')).toBe(tone);
     expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe(word);
     expect(root.getAttribute('aria-label')).toBe(word);
+  });
+
+  test('a label gives the text while the word keeps the tone, as the dropped-stream line needs', () => {
+    const { container } = render(StatusDot, {
+      props: { word: 'Reconnecting…', label: 'Reconnecting… last event 40 s ago' },
+    });
+    const root = rootOf(container);
+    expect(root.getAttribute('data-cinder-status')).toBe('pending');
+    expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe(
+      'Reconnecting… last event 40 s ago',
+    );
   });
 
   test('an unknown word renders a neutral dot with that word', () => {

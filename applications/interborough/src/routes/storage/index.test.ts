@@ -228,11 +228,14 @@ describe('the selected key', () => {
     expect(pane.queryByText('Theme')).toBeNull();
   });
 
-  test('shows a value that is not a JSON object as it is, with no switch', async () => {
+  test('shows a value that is not a JSON object as it is, and as a quoted string in the JSON view', async () => {
     const view = await open();
     const pane = within(await select(view, 'app:notes'));
     await waitFor(() => expect(pane.getByText('plain text note')).not.toBeNull());
-    expect(pane.queryByRole('radio', { name: STORAGE_COPY.detail.jsonSwitch })).toBeNull();
+
+    await fireEvent.click(pane.getByRole('radio', { name: STORAGE_COPY.detail.jsonSwitch }));
+
+    await waitFor(() => expect(pane.getByText('"plain text note"')).not.toBeNull());
   });
 
   test('says a binary value is not text, and offers no Edit', async () => {

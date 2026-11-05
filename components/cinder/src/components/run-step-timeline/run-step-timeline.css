@@ -405,6 +405,253 @@
   }
 
   /* ----------------------------------------
+   * Time, description and note: the line a step says about itself
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline__time {
+    flex: none;
+    margin-inline-start: auto;
+    padding-inline-start: var(--cinder-space-3);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-subtle);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .cinder-run-step-timeline__description {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-subtle);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-run-step-timeline__code {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-run-step-timeline__note {
+    display: flex;
+    flex-direction: column;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-inset);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-run-step-timeline__note[data-cinder-tone='danger'] {
+    border-color: var(--cinder-status-danger-border);
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-run-step-timeline__note-title,
+  .cinder-run-step-timeline__note-line {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+  }
+
+  .cinder-run-step-timeline__note-title {
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-run-step-timeline__note[data-cinder-tone='danger'] .cinder-run-step-timeline__note-title {
+    color: var(--cinder-status-danger-text);
+  }
+
+  /* "Your note · " before the first line of a note that is somebody's words. */
+  .cinder-run-step-timeline__note-label {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-run-step-timeline__note[data-cinder-tone='neutral'] .cinder-run-step-timeline__note-line {
+    color: var(--cinder-text-default);
+  }
+
+  /* The text cursor of a note that is still arriving. */
+  .cinder-run-step-timeline__cursor {
+    display: inline-block;
+    inline-size: 0.4375rem;
+    block-size: 0.875rem;
+    margin-inline-start: var(--cinder-space-0-5);
+    vertical-align: -0.125rem;
+    background: var(--cinder-accent-solid);
+    animation: cinder-run-step-timeline-cursor 1.1s steps(1, end) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-run-step-timeline__cursor {
+      animation: none;
+    }
+  }
+
+  @keyframes cinder-run-step-timeline-cursor {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* ----------------------------------------
+   * Narrative variant: the run as a story. Marker, label and time, one line of description.
+   * ---------------------------------------- */
+
+  .cinder-run-step-timeline[data-cinder-variant='narrative'] {
+    --_cinder-rst-rail-size: 0.875rem;
+    --_cinder-rst-rail-center: 0.4375rem;
+  }
+
+  .cinder-run-step-timeline[data-cinder-variant='narrative']
+    > .cinder-run-step-timeline__item::before {
+    inset-block-start: 1.3125rem;
+  }
+
+  .cinder-run-step-timeline[data-cinder-variant='narrative'] .cinder-run-step-timeline__marker {
+    padding-top: 0.1875rem;
+  }
+
+  .cinder-run-step-timeline[data-cinder-variant='narrative'] .cinder-run-step-timeline__content {
+    gap: var(--cinder-space-0-5);
+  }
+
+  .cinder-run-step-timeline[data-cinder-variant='narrative'] .cinder-run-step-timeline__label {
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-run-step-timeline[data-cinder-variant='narrative'] .cinder-run-step-timeline__note {
+    margin-block-start: var(--cinder-space-1-5);
+  }
+
+  /* A fold row ("3 more calls") has a faint filled marker and one quiet action. */
+  .cinder-run-step-timeline__item[data-cinder-fold] .cinder-run-step-marker {
+    --_cinder-rst-marker-color: var(--cinder-border-faint);
+  }
+
+  .cinder-run-step-timeline__fold-action {
+    padding: 0;
+    border: 0;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-accent-text);
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .cinder-run-step-timeline__fold-action:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (hover: hover) {
+    .cinder-run-step-timeline__fold-action:hover {
+      text-decoration: underline;
+    }
+  }
+
+  /* What has not run, or has not started, reads quieter than what has. */
+  .cinder-run-step-timeline[data-cinder-variant='narrative']
+    .cinder-run-step-timeline__item[data-cinder-status='skipped']
+    .cinder-run-step-timeline__label,
+  .cinder-run-step-timeline[data-cinder-variant='narrative']
+    .cinder-run-step-timeline__item[data-cinder-status='pending']
+    .cinder-run-step-timeline__label {
+    color: var(--cinder-text-subtle);
+  }
+
+  /* ----------------------------------------
+   * Narrative marker (see _run-step-marker.svelte)
+   * ---------------------------------------- */
+
+  .cinder-run-step-marker {
+    --_cinder-rst-marker-color: var(--cinder-border-control);
+
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--_cinder-rst-marker-size, 0.875rem);
+    block-size: var(--_cinder-rst-marker-size, 0.875rem);
+    border-radius: var(--cinder-radius-full);
+    background: var(--_cinder-rst-marker-color);
+    color: var(--cinder-surface-raised);
+  }
+
+  .cinder-run-step-marker__glyph {
+    inline-size: 0.625rem;
+    block-size: 0.625rem;
+    stroke-width: 3;
+  }
+
+  .cinder-run-step-marker[data-cinder-status='succeeded'] {
+    --_cinder-rst-marker-color: var(--cinder-status-success-solid);
+
+    color: var(--cinder-status-success-contrast);
+  }
+
+  .cinder-run-step-marker[data-cinder-status='failed'],
+  .cinder-run-step-marker[data-cinder-status='timed-out'] {
+    --_cinder-rst-marker-color: var(--cinder-status-danger-solid);
+
+    color: var(--cinder-status-danger-contrast);
+  }
+
+  /* Rings: under way (blue, tinted, with a halo), waiting on a person (amber), waiting on a signal
+     (neutral). The centre is open, so none of them reads as finished. */
+  .cinder-run-step-marker[data-cinder-status='running'],
+  .cinder-run-step-marker[data-cinder-status='retrying'],
+  .cinder-run-step-marker[data-cinder-status='waiting_approval'],
+  .cinder-run-step-marker[data-cinder-status='waiting'] {
+    border: 2px solid var(--_cinder-rst-marker-ring, var(--cinder-border-control));
+    background: var(--_cinder-rst-marker-fill, var(--cinder-surface-raised));
+  }
+
+  .cinder-run-step-marker[data-cinder-status='running'] {
+    --_cinder-rst-marker-ring: var(--cinder-status-info-solid);
+    --_cinder-rst-marker-fill: var(--cinder-status-info-background);
+
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--cinder-status-info-solid), transparent 82%);
+  }
+
+  .cinder-run-step-marker[data-cinder-status='retrying'],
+  .cinder-run-step-marker[data-cinder-status='waiting_approval'] {
+    --_cinder-rst-marker-ring: var(--cinder-status-warning-solid);
+  }
+
+  /* Not started, or not run: a dashed ring, so it reads as a place still to be filled. */
+  .cinder-run-step-marker[data-cinder-status='pending'],
+  .cinder-run-step-marker[data-cinder-status='skipped'] {
+    border: 1.5px dashed var(--cinder-border-control);
+    background: var(--cinder-surface-raised);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-run-step-marker {
+      forced-color-adjust: none;
+      background: CanvasText;
+      color: Canvas;
+    }
+
+    .cinder-run-step-marker[data-cinder-status='running'],
+    .cinder-run-step-marker[data-cinder-status='retrying'],
+    .cinder-run-step-marker[data-cinder-status='waiting_approval'],
+    .cinder-run-step-marker[data-cinder-status='waiting'],
+    .cinder-run-step-marker[data-cinder-status='pending'],
+    .cinder-run-step-marker[data-cinder-status='skipped'] {
+      border-color: CanvasText;
+      background: Canvas;
+      box-shadow: none;
+    }
+  }
+
+  /* ----------------------------------------
    * Focus ring (not applicable to the root list, but included for
    * completeness if the component is ever given an interactive element)
    * ---------------------------------------- */

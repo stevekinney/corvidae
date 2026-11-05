@@ -9,8 +9,12 @@ Repeatable approval unit rendered as an `<article>` with native button controls.
 | Element | Role | Accessible name | State |
 | --- | --- | --- | --- |
 | Root `<article>` | `article` | Heading text, for example `Approval required for deploy-cloud` | `data-cinder-state`, `data-cinder-risk` |
-| Header status | text + `StatusDot` | State label such as `Pending` or `Expired` | — |
-| Risk icon | `img`, `tabindex="0"` | Risk label, e.g. `Medium risk` (via `aria-label`) | Bar count scales with risk; `Tooltip` shows the same label on hover/focus |
+| Header status | text + `StatusDot` | State label such as `Expired` or `Unavailable` | Shown for anything but an answerable pending approval |
+| Risk glyph | `img` (`tabindex="0"` in the `card` layout) | Risk label, e.g. `High risk` (via `aria-label`) | `Tooltip` shows the same label on hover/focus in the `card` layout; the muted risk word is also written in text |
+| Input toggle (`row`) | button | `Input` and the summary pairs | `aria-expanded`, `aria-controls` the disclosed region |
+| Add a note (`row`) | button | `Add a note` | Opens the `Note (optional)` textarea |
+| Allow checkbox | checkbox | `Allow <tool> for <scope>` | Rendered only when `rememberScope` is set |
+| Disabled reason | text | The reason | Named by Deny and Approve through `aria-describedby` while they are off |
 | Action group | `group` | `Approval actions` | Rendered only while actionable and `onResolve` is wired |
 | Action buttons | button | Visible button text | `Approve with edits` is a disclosure with `aria-expanded` |
 | Edited arguments textarea | textbox | `Edited arguments JSON` | `aria-invalid` and `role="alert"` error text when JSON is invalid |
@@ -26,9 +30,11 @@ The card title renders at `headingLevel` (default `3`) and section headings one 
 
 ## State communication
 
-Risk and approval state are communicated with more than color. The status dot is accompanied by its visible text label. The risk indicator is a stacked-bar signal icon whose bar count differs by level (low/medium/high), so shape carries the distinction independent of color; its `aria-label` and `Tooltip` both surface the same `Low risk` / `Medium risk` / `High risk` text for anyone who needs it named explicitly.
+Risk and approval state are communicated with more than color. The status dot is accompanied by its visible text label. The risk is also written as a muted word (Reads, Changes things, Dangerous), and "Can't be undone" is written out, so the amber glyph is never the only signal; the glyph's `aria-label` names the level (`Low risk` / `Medium risk` / `High risk`). A denied approval is neutral text, not an error colour. An unavailable approval shows the word "Unavailable" and its reason, with no decision buttons.
 
 When `expiresAt` passes, the effective state becomes `expired` and the action buttons are removed. Expiration never fires `onResolve`; the host remains the source of truth for persisted state.
+
+While an answer is in flight (`resolving`), the button being answered carries `aria-busy` and `aria-disabled` (it stays focusable), shows a spinner, and a polite status announces "Approving…" or "Denying…"; the other button is natively disabled. A failed answer (`failure`) is written in a `role="alert"` region so it is announced when it appears, and its meaning never rests on colour: the summary is bold, a glyph leads it, and the sentence says what failed and what is still true.
 
 ## Security boundary
 

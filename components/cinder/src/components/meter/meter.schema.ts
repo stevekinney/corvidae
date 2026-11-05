@@ -19,6 +19,50 @@ const schema = {
       description:
         'Semantic label for a measurement; `unknown` represents the non-numeric status case.',
     },
+    segments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: {
+            type: 'string',
+            description: 'Visible name of the share, shown in the legend.',
+          },
+          value: {
+            type: 'number',
+            description:
+              'Size of the share, in the same unit as `max`. Negative and non-finite values count as 0.',
+          },
+          valueLabel: {
+            type: 'string',
+            description:
+              'Text shown beside the label in the legend, such as `28K`. Defaults to the number.',
+          },
+        },
+        additionalProperties: false,
+        required: ['label', 'value'],
+      },
+      description:
+        'Splits the filled part of the track into named shares and lists them in a legend beneath it,\nsuch as the instructions, conversation and tool results that make up a context window. The\nshares stack from the start of the track in the order given, each a lighter tone of the accent,\nso the legend carries the meaning and colour never has to. The reading is their sum, so\n`value` is ignored, and threshold regions are not drawn.',
+    },
+    remainder: {
+      type: 'object',
+      properties: {
+        label: {
+          type: 'string',
+          description: 'Visible name of the unfilled part, such as `Free`.',
+        },
+        valueLabel: {
+          type: 'string',
+          description:
+            'Text shown beside the label in the legend, such as `124K`. Defaults to what is left of `max`.',
+        },
+      },
+      additionalProperties: false,
+      required: ['label'],
+      description:
+        'With `segments`, adds a last legend line for the unfilled track, such as "Free 124K".',
+    },
     value: {
       type: 'number',
       description: 'Current measurement value. Defaults to 0.',

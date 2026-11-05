@@ -931,7 +931,7 @@ test.describe('chat harness — mounts cleanly', () => {
         await expect(
           card.getByRole('heading', { name: 'Approve running this tool before it executes?' }),
         ).toBeVisible();
-        const viewInputButton = card.getByRole('button', { name: 'View input' });
+        const viewInputButton = card.getByRole('button', { name: /^Input/ });
         await expect(viewInputButton).toHaveAttribute('aria-expanded', 'false');
         await viewInputButton.click();
         await expect(viewInputButton).toHaveAttribute('aria-expanded', 'true');

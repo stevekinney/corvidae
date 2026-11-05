@@ -15,6 +15,8 @@
    */
   export type {
     MeterProps,
+    MeterRemainder,
+    MeterSegment,
     MeterSize,
     MeterState,
     MeterVerdict,
@@ -29,10 +31,14 @@
 
   const DEFAULT_MIN = 0;
   const DEFAULT_MAX = 100;
+  /** Shares past the fourth reuse the lightest tone, so the legend still names each one. */
+  const MAX_TIER = 3;
   type OptimumDirection = 'low' | 'mid' | 'high';
 
   let {
     verdict,
+    segments,
+    remainder,
     value = 0,
     min = DEFAULT_MIN,
     max = DEFAULT_MAX,
@@ -74,9 +80,37 @@
 
   const hasFiniteValue = $derived(Number.isFinite(value));
   const rawValue = $derived(hasFiniteValue ? value : effectiveMin);
-  const clampedValue = $derived(Math.max(effectiveMin, Math.min(effectiveMax, rawValue)));
+  const stackedSegments = $derived.by(() => {
+    if (!Array.isArray(segments) || segments.length === 0) return undefined;
+    let used = 0;
+    return segments.map((segment, index) => {
+      const share = Number.isFinite(segment.value) ? Math.max(0, segment.value) : 0;
+      const filled = Math.min(share, Math.max(0, effectiveMax - effectiveMin - used));
+      used += filled;
+      return {
+        segment,
+        index,
+        filled,
+        percent: (filled * 100) / range,
+        valueLabel: segment.valueLabel ?? String(segment.value),
+      };
+    });
+  });
+  const isStacked = $derived(stackedSegments !== undefined && !isUnknownVerdict);
+  const stackedTotal = $derived(
+    stackedSegments?.reduce((sum, entry) => sum + entry.filled, 0) ?? 0,
+  );
+  const remainderValueLabel = $derived(
+    remainder?.valueLabel ?? String(Math.max(0, range - stackedTotal)),
+  );
+  const clampedValue = $derived(
+    isStacked
+      ? Math.min(effectiveMax, effectiveMin + stackedTotal)
+      : Math.max(effectiveMin, Math.min(effectiveMax, rawValue)),
+  );
   const hasThresholds = $derived(
     !hasVerdict &&
+      !isStacked &&
       ((low !== undefined && Number.isFinite(low)) ||
         (high !== undefined && Number.isFinite(high)) ||
         (optimum !== undefined && Number.isFinite(optimum))),
@@ -170,12 +204,12 @@
         `[cinder/Meter] received an invalid range (min=${String(min)}, max=${String(max)}). Falling back to 0..100.`,
       );
     }
-    if (!hasFiniteValue) {
+    if (!isStacked && !hasFiniteValue) {
       devWarn(
         `[cinder/Meter] received a non-finite value (${String(value)}). Falling back to min (${String(effectiveMin)}).`,
       );
     }
-    if (hasFiniteValue && value !== clampedValue) {
+    if (!isStacked && hasFiniteValue && value !== clampedValue) {
       devWarn(
         `[cinder/Meter] value ${String(value)} is outside the [min,max] range (${String(effectiveMin)}..${String(effectiveMax)}). The rendered value is clamped.`,
       );
@@ -269,8 +303,40 @@
         ></div>
       </div>
     {/if}
-    {#if !isUnknownVerdict}
+    {#if isStacked && stackedSegments}
+      <div class="cinder-meter__stack" aria-hidden="true">
+        {#each stackedSegments as entry (entry.index)}
+          <div
+            class="cinder-meter__share"
+            data-cinder-tier={Math.min(entry.index, MAX_TIER)}
+            style:inline-size="{entry.percent}%"
+          ></div>
+        {/each}
+      </div>
+    {:else if !isUnknownVerdict}
       <div class="cinder-meter__fill" style:--_cinder-meter-progress={progressScale}></div>
     {/if}
   </div>
+  {#if isStacked && stackedSegments}
+    <ul class="cinder-meter__legend">
+      {#each stackedSegments as entry (entry.index)}
+        <li class="cinder-meter__legend-item">
+          <span
+            class="cinder-meter__swatch"
+            data-cinder-tier={Math.min(entry.index, MAX_TIER)}
+            aria-hidden="true"
+          ></span>
+          <span class="cinder-meter__legend-label">{entry.segment.label}</span>
+          <span class="cinder-meter__legend-value">{entry.valueLabel}</span>
+        </li>
+      {/each}
+      {#if remainder}
+        <li class="cinder-meter__legend-item" data-cinder-remainder>
+          <span class="cinder-meter__swatch" aria-hidden="true"></span>
+          <span class="cinder-meter__legend-label">{remainder.label}</span>
+          <span class="cinder-meter__legend-value">{remainderValueLabel}</span>
+        </li>
+      {/if}
+    </ul>
+  {/if}
 </div>

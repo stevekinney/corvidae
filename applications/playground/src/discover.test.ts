@@ -365,6 +365,8 @@ const SIDEBAR_BASELINE = [
   'timeline',
   'toast-region',
   'toggle',
+  'tool-call-panel',
+  'tool-call-rail',
   'tool-picker',
   'toolbar',
   'tooltip',

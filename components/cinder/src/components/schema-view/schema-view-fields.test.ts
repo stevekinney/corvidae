@@ -46,7 +46,7 @@ describe('readSchemaFields', () => {
       required: true,
     });
     expect(fields[1]?.type).toBe('list of lines');
-    expect(fields[1]?.fields[0]?.label).toBe('Sku');
+    expect(fields[1]?.fields[0]?.label).toBe('SKU');
   });
 
   test('follows local references and merges allOf members', () => {

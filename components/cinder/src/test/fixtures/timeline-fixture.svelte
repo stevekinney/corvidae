@@ -13,6 +13,7 @@
       body?: string | undefined;
     }>;
     orientation?: 'vertical' | 'horizontal' | undefined;
+    variant?: 'rail' | 'list' | 'rows' | undefined;
     groupBy?: 'none' | 'day' | 'week' | undefined;
     weekStartsOn?: 'sunday' | 'monday' | undefined;
     groupHeaderLevel?: 1 | 2 | 3 | 4 | 5 | 6 | undefined;
@@ -26,6 +27,7 @@
   let {
     items,
     orientation = 'vertical',
+    variant = 'rail',
     groupBy = 'none',
     weekStartsOn = 'monday',
     groupHeaderLevel,
@@ -43,6 +45,7 @@
     groupLabel: item.groupLabel,
   }))}
   {orientation}
+  {variant}
   {groupBy}
   {weekStartsOn}
   {groupHeaderLevel}

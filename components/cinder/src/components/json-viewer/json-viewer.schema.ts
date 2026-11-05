@@ -17,6 +17,21 @@ const schema = {
       type: 'number',
       description: 'Hard byte cap on the serialized payload. Default 1_048_576 (1 MB).',
     },
+    largeArrayAbove: {
+      type: 'number',
+      description:
+        'An array with more items than this shows its first two items followed by a muted\n"… N more" line, so a very large array cannot build an unbounded tree. Arrays at or under\nthe limit show every item. Unset, every array shows every item.',
+    },
+    maxKeyLength: {
+      type: 'number',
+      description:
+        'Longest property name shown before it is cut with an ellipsis. Unset, a name is never cut.\nThe value is display-only: the tree holds the stored name.',
+    },
+    maxStringLength: {
+      type: 'number',
+      description:
+        'Longest string value shown before it is cut with an ellipsis. Unset, a value is never cut.\nThe value is display-only: the tree holds the stored string.',
+    },
     class: {
       type: 'string',
       description: 'Additional class names merged with `.cinder-json-viewer`.',
