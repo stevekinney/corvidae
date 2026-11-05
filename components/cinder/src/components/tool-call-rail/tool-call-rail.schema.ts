@@ -30,7 +30,7 @@ const schema = {
           result: {
             type: 'string',
             description:
-              'What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow\n("→ $42.00, delivered Mon"); a `denied` call shows it as its own words ("Denied by you 10:40 AM ·\nnothing refunded"); a `running` or `waiting` call has none and reads "Running…" or "Waiting on\nyou", unless this is set.',
+              'What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow\n("→ $42.00, delivered Mon"); an `interrupted` call shows it as its own words ("Interrupted ·\ndidn\'t finish"); a `denied` call shows it as its own words ("Denied by you 10:40 AM ·\nnothing refunded"); a `running` or `waiting` call has none and reads "Running…" or "Waiting on\nyou", unless this is set.',
           },
           decision: {
             type: 'string',
@@ -43,7 +43,7 @@ const schema = {
               'How long the call took, formatted by the caller ("0.2s"), at the end of the row. Elapsed while `running`.',
           },
           status: {
-            enum: ['done', 'approved', 'running', 'waiting', 'denied', 'failed'],
+            enum: ['done', 'approved', 'running', 'waiting', 'denied', 'failed', 'interrupted'],
             description: 'Where the call stands.',
           },
           failure: {

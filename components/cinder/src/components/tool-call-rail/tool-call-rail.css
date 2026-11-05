@@ -198,7 +198,8 @@
     block-size: 0.875rem;
   }
 
-  .cinder-tool-call-rail__marker[data-cinder-status='failed'] {
+  .cinder-tool-call-rail__marker[data-cinder-status='failed'],
+  .cinder-tool-call-rail__marker[data-cinder-status='interrupted'] {
     color: var(--cinder-status-danger-text);
   }
 
@@ -247,7 +248,8 @@
     color: var(--cinder-text-muted);
   }
 
-  .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__result {
+  .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__result,
+  .cinder-tool-call-rail__item[data-cinder-status='interrupted'] .cinder-tool-call-rail__result {
     color: var(--cinder-status-danger-text);
   }
 
@@ -483,7 +485,8 @@
       content: ' · ';
     }
 
-    .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__detail {
+    .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__detail,
+    .cinder-tool-call-rail__item[data-cinder-status='interrupted'] .cinder-tool-call-rail__detail {
       color: var(--cinder-status-danger-text);
     }
 

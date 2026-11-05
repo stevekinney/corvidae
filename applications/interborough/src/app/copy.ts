@@ -395,11 +395,21 @@ export const AGENT_EDITOR_COPY = {
     /** Said when the agent stopped to ask before a tool, which a trial cannot answer. */
     approvalEnded:
       'The agent stopped to ask before using a tool, and a trial cannot take that answer, so the trial ended. Set the tool to run without asking, or save the agent and chat with it.',
-    messageLabel: 'First message',
-    messagePlaceholder: 'Say something to the agent',
-    send: 'Start chatting',
+    /** The line under the title: what the trial runs on. */
+    usesChanges: 'Uses your unsaved changes',
+    messagePlaceholder: 'Send a test message',
+    /** The line under the composer, said while no other status is. */
+    hint: 'Tools run for real, under this agent’s approval rules. Test chats aren’t saved and leave no memories.',
     chatLabel: 'Trial chat',
-    startOver: 'Start over',
+    /** Ends the chat and starts a fresh one with the form as it is now. */
+    startOver: 'Reset',
+    /** The title of a test answer that failed, and what it adds to the reason: the trial saves nothing. */
+    failureTitle: 'Couldn’t get an answer',
+    nothingSaved: 'Nothing was saved.',
+    tryAgain: 'Try again',
+    /** The name of a tool call that is running, "Using Lookup order…", and one that finished. */
+    usingTool: 'Using',
+    usedTool: 'Used',
     close: 'End trial',
     /** Said when the form has changed since the trial chat started. */
     changed: 'The form changed after this chat started, so the agent here is the earlier version.',
@@ -2627,7 +2637,12 @@ export const CHAT_COPY = {
   /** The empty chat page's second action, to the agents a chat can start with. */
   browseAgents: 'Browse agents',
   agentLabel: 'Agent',
-  agentPlaceholder: 'Search agents',
+  agentPlaceholder: 'Choose an agent',
+  /** The agent select at the top of a new chat's composer. */
+  agentSelect: {
+    /** Said under an agent that runs on a model while no provider is connected. */
+    needsProvider: 'Needs a provider',
+  },
   sessionsTitle: 'Chats',
   /** The headings the list of chats is cut under; "Needs you" is the run states' word for waiting on a person. */
   groups: {
@@ -2677,16 +2692,51 @@ export const CHAT_COPY = {
   approvalTitle: 'Needs your approval',
   /** The tool calls of a turn. */
   tools: {
-    /** The chevron on a folded group of calls, which opens its rows. */
-    show: 'Show tool calls',
-    hide: 'Hide tool calls',
-    /** The chevron on one call, which opens the arguments it was given and what it answered. */
-    detailsFor: (name: string): string => `Details for ${name}`,
-    running: 'Running',
-    waitingForApproval: 'Waiting for your approval',
+    /** The accessible name of the rail of one turn's calls. */
+    railLabel: 'Tool calls',
+    /** The words of the arguments and result a chosen call opens. */
     resultPrefix: 'Result:',
     /** A call the person refused reads Denied: it did not fail. */
     denied: 'Denied',
+    /**
+     * A call the run ended on. A tool that only reads can say it did not finish; one that changes
+     * things, or that nothing classifies, may have run, and a line that says nothing changed would
+     * be a guess.
+     */
+    interruptedReads: 'Interrupted · didn’t finish',
+    interruptedChanges: 'Interrupted · may have run',
+    /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
+    runFinishedNoReply: 'Run finished · no reply',
+  },
+  /**
+   * The status line under a reply that stopped, in danger text with a Retry beside it. It is the
+   * product speaking, not the agent. `cause` is why the run stopped, without its full stop.
+   */
+  stopLine: {
+    partway: (cause: string): string => `The reply stopped partway: ${cause}.`,
+    whileRunning: (tool: string, cause: string): string =>
+      `The reply stopped while ${tool} was running: ${cause}.`,
+    /** Added for an interrupted tool that only reads. */
+    didNotFinish: (tool: string): string => `${tool} didn’t finish and nothing was changed.`,
+    /**
+     * Added for an interrupted tool that changes things, or that nothing classifies. `subject` is
+     * what the call acted on ("order", from an `orderId` argument); a call that names none says
+     * "result".
+     */
+    mayHaveRun: (tool: string, subject: string = 'result'): string =>
+      `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
+    retry: 'Retry',
+    /**
+     * Said when Retry could not put the interrupted tool back behind its approval, so it sent
+     * nothing rather than let the call run again unasked.
+     */
+    retryFailed:
+      'Retry could not ask for the tool’s approval again, so nothing was sent. Try again.',
+    /**
+     * Said when Stop, pressed while the page was reconnecting, could not reach the run to cancel
+     * it: the run may still be going, and Reconnect shows what it is doing.
+     */
+    stopFailed: 'The run could not be stopped, and it may still be going. Reconnect to check.',
   },
   /** The chat's header and its strip of runs. */
   strip: {
@@ -2751,8 +2801,6 @@ export const CHAT_COPY = {
    * picker, `modelPicker`), the reasoning effort and the permission mode.
    */
   settings: {
-    /** The header's summary of the settings. */
-    summaryLabel: 'Chat settings',
     model: 'Model',
     effort: 'Effort',
     permission: 'Permissions',
@@ -2765,26 +2813,37 @@ export const CHAT_COPY = {
       { value: 'xhigh', label: 'Extra high' },
       { value: 'max', label: 'Max' },
     ],
-    /** The modes, in the order of how much they ask. */
+    /** The modes, in the order of how much they ask, each with the help line under its option. */
     permissionOptions: [
-      { value: 'always', label: 'Always ask' },
-      { value: 'on-changes', label: 'Ask on changes' },
-      { value: 'allow-all', label: 'Allow all' },
-      { value: 'read-only', label: 'Read-only' },
+      { value: 'always', label: 'Always asks', description: 'Every tool call asks first.' },
+      {
+        value: 'on-changes',
+        label: 'On changes asks',
+        description: 'Tools set to On changes ask before they run.',
+      },
+      {
+        value: 'allow-all',
+        label: 'Allow all',
+        description:
+          'Skips the On changes asks for this chat. Tools set to Always still ask; Blocked tools stay blocked.',
+      },
+      {
+        value: 'read-only',
+        label: 'Read-only',
+        description: 'Every tool that is not read-only is denied.',
+      },
     ],
-    /** What each mode does, as `bureau.contexts.steer` defines it. */
-    permissionDescriptions: {
-      'on-changes': 'Tools ask as each tool’s own setting says.',
-      always: 'Every tool call asks first.',
-      'allow-all':
-        'Skips the asks that Ask on changes would raise. A tool set to always ask still asks, a tool that declares no setting of its own still asks, a blocked tool is still refused, and a child agent keeps its own stricter mode.',
-      'read-only': 'Every tool that is not read-only is denied.',
-    },
-    /** When a change takes effect. A mode is read at each tool call; the model and effort at each step. */
+    /**
+     * The line under the composer after a change, saying when it takes effect: a mode is read at each
+     * tool call, the model and the effort at each step, and with no run going, at the next run.
+     */
     applies: {
-      step: 'Applies from the run’s next step.',
-      toolCall: 'Applies from the run’s next tool call.',
-      nextRun: 'Applies to the next run.',
+      step: (setting: string, value: string): string =>
+        `${setting} ${value} applies from the next step.`,
+      toolCall: (setting: string, value: string): string =>
+        `${setting} ${value} applies from the next tool call.`,
+      nextRun: (setting: string, value: string): string =>
+        `${setting} ${value} applies to the next run.`,
     },
     /** Why the controls are disabled for a chat this principal did not start. */
     notYours: 'Only the person who started this chat can change its settings.',
@@ -2887,8 +2946,74 @@ export const CHAT_COPY = {
     category: (name: string, tokens: string) => `${name}: ${tokens} tokens`,
     unavailable: 'Context window unavailable',
   },
+  /** What the composer says in place of its text box, and the line under it. */
+  composer: {
+    /** The placeholder of a chat with an agent, which `{name}` fills with the agent's name. */
+    placeholder: (agent: string): string => `Message ${agent}…`,
+    unreachable: 'Sending is off until Interborough is reachable',
+    restarting: 'Sending resumes when Interborough is back.',
+    pluginDisabled: (agent: string, plugin: string): string =>
+      `${agent} isn’t available. Enable the ${plugin} plugin to continue.`,
+    enableAndRestart: 'Enable and restart',
+    /** The confirmation that enables the plugin: what it does to work that is running. */
+    enableDialog: {
+      title: (plugin: string): string => `Enable the ${plugin} plugin and restart?`,
+      description: 'Running work picks up where it stopped; reviews stay waiting.',
+      confirm: 'Enable and restart',
+    },
+    ended: 'This chat has ended. The server stopped it when it restarted.',
+    newChat: 'New chat',
+    /** The composer's placeholder while a question that draws choices waits. */
+    answerPlaceholder: 'Choose an answer above, or type your own…',
+    noProvider: 'Connect a model provider to chat',
+    connectProvider: 'Connect a provider',
+    useAssistant: 'Use Assistant',
+    /** Said in the blocked row of a chat started from Workflows when no agent has the tool. */
+    noWorkflowAgent:
+      'No agent can create workflows. Add the Create workflow tool to an agent’s Access tab.',
+    openAgents: 'Open Agents',
+    /**
+     * The one control that holds Model, Effort and Permissions when the composer is too narrow for
+     * them side by side. Its name lists what it holds.
+     */
+    settings: {
+      word: 'Settings',
+      label: 'Settings: Model, Effort and Permissions',
+    },
+  },
+  /** The context meter in the composer: a bar and a reading of how full the window is. */
+  contextMeter: {
+    /** The meter's accessible name; `percent` is `null` when the model's window is not known. */
+    label: (percent: number | null, used: string) =>
+      percent === null ? `Context ${used} tokens` : `Context ${String(percent)}%`,
+    /** The visible reading beside the bar. */
+    reading: (percent: number | null, used: string) =>
+      percent === null ? used : `${String(percent)}%`,
+    /** The tooltip: tokens in use of the window, as short numbers. */
+    tooltip: (used: string, max: string | null) =>
+      max === null ? `About ${used} tokens` : `${used} of ${max} tokens`,
+    unavailable: 'Context unavailable',
+  },
   /** Branching a chat from one of an agent's replies. */
+  /** What a message that was not sent says in the popover its red icon opens. */
+  notSent: {
+    online: 'Not sent. Interborough couldn’t deliver this message. Your message is kept.',
+    unreachable: 'Not sent. Interborough can’t be reached. Your message is kept.',
+    retryNote: 'Retries when you’re back online.',
+  },
+  /** The chat's status beside its title. */
+  status: {
+    waiting: 'Waiting on you',
+    running: 'Running',
+    failed: 'Failed',
+    ended: 'Ended',
+    done: 'Done',
+  },
   branch: {
+    /** The visible words of the action on a message, which is named `action` for assistive technology. */
+    short: 'Branch',
+    /** The name of Branch on a message the person sent, which branches from just before it. */
+    before: 'Branch before this message',
     /** The action on a reply that ends a completed turn. */
     action: 'Branch from here',
     /** What a branch's header says, before the link to the chat it came from. */
@@ -2967,30 +3092,20 @@ export const CHAT_COPY = {
     description: 'It no longer exists, so nothing more can be sent here.',
     back: 'Back to chats',
   },
-  /** Editing a message you sent: the chat is branched before it and the edited text is sent there. */
-  edit: {
-    /** Said when the message follows no finished reply, so there is nowhere to branch before it. */
-    unavailable:
-      'That message was sent while a run was going, so it cannot be edited. Edit one that follows a finished reply.',
-    /** Said when the message carries files, which an edited copy would leave behind. */
-    withFiles:
-      'That message has files attached, so it cannot be edited. Send a new message instead.',
-    /** Any other fault; the chat the person is in is untouched. */
-    fault: 'The message could not be edited. You are still in this chat.',
-    /** Heads the edited text kept after an edit that did not branch. */
-    kept: 'Your edited text is kept here:',
-    copy: 'Copy text',
-    copied: 'Copied.',
-    copyFailed: 'The text could not be copied. Select it and copy it by hand.',
-    tryAgain: 'Try again',
-  },
   /** The names of the files a row carries: attached by the person, or returned by the agent. */
   assets: {
     listLabel: 'Files',
     image: (position: number) => `Image ${position}`,
     audio: (position: number) => `Audio ${position}`,
     video: (position: number) => `Video ${position}`,
-    download: (mediaType: string) => `Download file (${mediaType})`,
+    /** A file's name and size ("settings-page.png · 182 KB"), or "Download file" when the row carries neither; never its media type. */
+    download: (name?: string, size?: number): string => {
+      const facts = [name, size === undefined ? undefined : formatBytes(size)].filter(
+        (fact): fact is string => fact !== undefined && fact !== '',
+      );
+      if (name !== undefined && name !== '') return facts.join(' · ');
+      return facts.length === 0 ? 'Download file' : `Download file · ${facts.join(' · ')}`;
+    },
   },
   /**
    * What a person is told when a file cannot be attached or sent. An upload fault shows on the
@@ -2998,17 +3113,23 @@ export const CHAT_COPY = {
    * message, which can name an asset or an upload.
    */
   attachments: {
-    /** The file is over the limit the selected agent's model states. */
-    tooLarge: (limit: number) =>
-      `This file is larger than the ${formatBytes(limit)} this agent accepts.`,
-    /** The file is of a type the selected agent's model does not take. */
-    typeNotAccepted: 'This agent does not accept that type of file.',
+    /** The file is over the limit its own type has, which the selected agent's model states. */
+    tooLarge: (size: number, limit: number) =>
+      `Can’t attach: ${formatBytes(size)} is over the ${formatBytes(limit)} limit.`,
+    /**
+     * The file is of a type the selected agent's model does not take. `kind` names the file's type
+     * (`TIFF`), and `accepted` the types the agent does take (`PNG, JPG, PDF or text`).
+     */
+    typeNotAccepted: (kind: string, accepted: string) =>
+      `Can’t attach: ${kind} files aren’t supported. Use ${accepted}.`,
+    /** The selected agent takes no file at all, so whatever was attached is refused. */
+    noFiles: 'Can’t attach: this agent does not take files.',
     /** The upload did not finish, for a reason the person cannot act on beyond trying again. */
-    uploadFailed: 'The file could not be uploaded. Remove it and attach it again.',
+    uploadFailed: 'Upload failed. Try again, or remove it.',
     /** The Bureau looked at the bytes and refused them: a safety gate flagged the file, or it is not the type it says. */
-    rejected: 'The server would not accept this file. Its content was refused.',
+    rejected: 'Can’t attach: the server would not accept this file’s content.',
     /** The upload session was gone before the file finished arriving. */
-    expired: 'The upload expired before it finished. Remove the file and attach it again.',
+    expired: 'The upload expired. Try again, or remove it.',
     /** The run was refused because the model could not take an attachment. */
     modelRefusedMedia:
       'The agent’s model could not take an attached file. Send again without the file.',
@@ -3561,9 +3682,33 @@ export const TASK_COPY = {
   followUnavailable:
     'This server cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
-  waitsHeading: 'Waiting on you',
+  waitsHeading: 'What you can do',
+  /** The line under the heading while the run waits on questions. */
+  waitsSummary: (questions: number): string =>
+    questions === 1
+      ? 'This run is waiting on one question.'
+      : `This run is waiting on ${String(questions)} questions.`,
   /** The heading once everything the run asked has been answered. */
   waitsAnsweredHeading: 'Answered',
+  /** The small line over a question: who asked and how long ago. */
+  questionFrom: (agent: string, age: string): string => `Question from ${agent} · ${age}`,
+  /** Said under a question: what choosing an answer does, with the Undo window in seconds. */
+  answerSendsNote: (seconds: number): string =>
+    seconds <= 0
+      ? 'Choosing an answer sends it at once.'
+      : `Choosing an answer sends it at once. The run waits ${String(seconds)} seconds before it continues, so you can undo it.`,
+  /** Said under a question, and after an answer, while no model provider is connected. */
+  continuesOnProvider: (agent: string): string =>
+    `${agent} continues once a provider is connected.`,
+  /** The inline line while an answer is held: what was sent and that it can still be undone. */
+  answerSentLine: (label: string, seconds: number): string =>
+    `Answer sent: ${label}. Undo for ${String(seconds)} s.`,
+  /** The Undo action on that line. */
+  answerUndo: 'Undo',
+  /** Said under the choice that was picked, while its answer is held. */
+  answerSelected: 'Selected',
+  /** The run's status line while an answer is held. */
+  answerSentStatus: (seconds: number): string => `answer sent, undo for ${String(seconds)} s`,
   readingWait: 'Reading what the run is waiting on.',
   /** The answer is on its way and the wait has already closed. */
   sendingAnswer: 'Sending your answer.',
@@ -3579,6 +3724,11 @@ export const TASK_COPY = {
   respondFailed: 'The answer was not sent',
   cancelHeading: 'Cancellation',
   cancelAction: 'Cancel run',
+  /** The run page's message bar while no model provider is connected, so nothing can be sent. */
+  messageBlocked: {
+    reason: 'Connect a model provider to send messages',
+    connect: 'Connect a provider',
+  },
   cancelFailed: 'The run was not canceled',
   cancelConfirm: {
     title: 'Cancel this run?',
@@ -3663,8 +3813,10 @@ export const REVIEWS_COPY = {
   reasonLabel: 'Reason (required to reject)',
   reasonDescription: 'Sent with the decision. A rejection cannot be sent without one.',
   answerLabel: 'Your answer',
-  /** Said once under an answer field: what the agent does with the answer. */
-  answerHint: 'The agent continues with your answer.',
+  /** Said once in the footer of an open question: what the agent does with the answer. */
+  answerHint: 'The agent continues as soon as you answer.',
+  /** The footer button that commits a structured answer (a form), which picking a value does not send. */
+  sendAnswer: 'Send answer',
   /** The optional note saved with any decision; on a denial the agent reads it. */
   noteLabel: 'Note (optional)',
   /** Said under the note field: where the note goes. */

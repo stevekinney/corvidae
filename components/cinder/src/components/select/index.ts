@@ -7,6 +7,7 @@ export type {
   SelectOption,
   SelectPresentation,
   SelectProps,
+  SelectTone,
   SelectVariant,
 } from './select.types.ts';
 export { Select };

@@ -25,6 +25,7 @@ import {
   type FileAgentGenerateOptions,
   ModelOverrideUnusableError,
   ModelPolicyDeniedError,
+  REPLY_MODEL_METADATA_KEY,
 } from './file-agent-generate';
 import { modelPolicyDenialOf } from './model-policy';
 
@@ -560,5 +561,59 @@ describe('a file agent’s default effort (COR-1961)', () => {
     expect(await failureOf(guarded(stepOf({ model: GPT.model })))).toBeInstanceOf(
       ModelPolicyDeniedError,
     );
+  });
+});
+
+describe('the model a reply names (COR-2014)', () => {
+  it('names the row each step ran on: the default, or the one its steering switched to', async () => {
+    const { generate } = harness([DEFAULT, OPUS_5]);
+    const unswitched = await generate(step());
+    expect(unswitched.metadata?.[REPLY_MODEL_METADATA_KEY]).toEqual({
+      provider: 'anthropic',
+      model: 'claude-opus-5-5',
+    });
+    const switched = await generate(step({ model: OPUS_5.model }));
+    expect(switched.metadata?.[REPLY_MODEL_METADATA_KEY]).toEqual({
+      provider: 'anthropic',
+      model: 'claude-opus-5',
+    });
+  });
+
+  it('keeps what the provider put in the metadata beside it', async () => {
+    const generate = createFileAgentGenerate({
+      defaultDescriptor: DEFAULT,
+      defaultGenerate: async () => ({
+        content: 'hi',
+        toolCalls: [],
+        metadata: { effectiveModel: 'claude-opus-5-5' },
+      }),
+      allowed: () => [DEFAULT],
+      resolveGenerate: () => {
+        throw new Error('not switched');
+      },
+    });
+    const response = await generate(step());
+    expect(response.metadata).toEqual({
+      effectiveModel: 'claude-opus-5-5',
+      [REPLY_MODEL_METADATA_KEY]: { provider: 'anthropic', model: 'claude-opus-5-5' },
+    });
+  });
+
+  it('is written onto the reply’s row, so the transcript reads it from the stored thread', async () => {
+    const { generate } = harness([DEFAULT]);
+    const result = await createActiveRun({
+      generate,
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      runId: 'run-model',
+    }).result;
+    const reply = result.conversation
+      .getMessages({ includeHidden: true })
+      .find((message) => message.role === 'assistant');
+    expect(reply?.metadata[REPLY_MODEL_METADATA_KEY]).toEqual({
+      provider: 'anthropic',
+      model: 'claude-opus-5-5',
+    });
   });
 });

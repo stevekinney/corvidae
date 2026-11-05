@@ -13,10 +13,12 @@ describe('ChatInput — shortcut accessibility', () => {
     expect(chatInputSource).not.toContain('../../markdown-editor/markdown-editor.svelte');
   });
 
-  test('derives a shortcut description id without a permanent visual hint', () => {
+  test('derives a shortcut description id and shows its words as a hint under the box', () => {
     expect(chatInputSource).toMatch(/shortcutDescriptionId\s*=\s*\$derived/);
     expect(chatInputSource).toMatch(/shortcut-description/);
-    expect(chatInputSource).not.toContain('chat-input-hint');
+    // The hint is for sighted readers; the hidden description is what the controls point at.
+    expect(chatInputSource).toMatch(/class="chat-input-hint" aria-hidden="true"/);
+    expect(chatInputSource).toContain('Enter to send · Shift and Enter for a new line');
   });
 
   test('renders a visually hidden shortcut description element', () => {
@@ -34,8 +36,11 @@ describe('ChatInput — shortcut accessibility', () => {
   });
 
   test('stop button aria-describedby references the hidden streaming shortcut description', () => {
-    const stopButtonMatch = chatInputSource.match(/data-stop[\s\S]*?<\/button>/);
+    const stopButtonMatch = chatInputSource.match(/data-chat-side-stop[\s\S]*?<\/Button>/);
     expect(stopButtonMatch?.[0]).toMatch(/aria-describedby=\{shortcutDescriptionId\}/);
+    const mainButtonMatch = chatInputSource.match(/data-chat-send[\s\S]*?<\/Button>/);
+    // Send also names the paused reason while one is shown, so the description id leads a ternary.
+    expect(mainButtonMatch?.[0]).toMatch(/aria-describedby=\{[^}]*shortcutDescriptionId/);
   });
 
   test('send button does not reference the visible hint id via aria-describedby', () => {
@@ -58,9 +63,11 @@ describe('ChatInput — shortcut accessibility', () => {
     );
     expect(chatInputSource).toContain("'Wait for attachments'");
     expect(chatInputSource).toContain("'Add a message or attachment'");
+    expect(chatInputSource).toContain("'Type an answer'");
     expect(chatInputSource).toContain("'Stop generating'");
     expect(chatInputSource).toContain("'Send (Command or Control + Enter)'");
     expect(chatInputSource).toContain("'Send message'");
     expect(chatInputSource).toContain("'Send (Enter)'");
+    expect(chatInputSource).toContain("'Answer (Enter)'");
   });
 });

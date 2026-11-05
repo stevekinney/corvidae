@@ -23,9 +23,14 @@
 
   interface RunCancelProps {
     task: TaskView;
+    /**
+     * Whether to say where the cancellation stands, under the button. The header says it once; a
+     * second Cancel run elsewhere on the page leaves it there.
+     */
+    showStatus?: boolean;
   }
 
-  let { task }: RunCancelProps = $props();
+  let { task, showStatus = true }: RunCancelProps = $props();
 
   const queryClient = useQueryClient();
 
@@ -92,7 +97,7 @@
     onCancel={() => (confirming = false)}
   />
 {/if}
-{#if words !== undefined || failure !== undefined}
+{#if showStatus && (words !== undefined || failure !== undefined)}
   <div class="ib-run__cancel-note">
     {#if words !== undefined}
       <p role="status" data-cleanup={words}>

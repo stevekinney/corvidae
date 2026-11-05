@@ -31,6 +31,38 @@ function formFrom(container: HTMLElement): HTMLFormElement {
 describe('SchemaForm', () => {
   afterEach(() => cleanup());
 
+  test('draws no submit button of its own when submitVisible is false, and still submits as a form', async () => {
+    let submitted: unknown;
+    const { container } = render(SchemaForm, {
+      props: {
+        id: 'details-form',
+        schema: {
+          type: 'object',
+          properties: { name: { type: 'string', minLength: 1 } },
+          required: ['name'],
+        },
+        value: { name: 'Ada' },
+        submitVisible: false,
+        onSubmit: (value: unknown) => {
+          submitted = value;
+        },
+      },
+    });
+
+    const form = formFrom(container);
+    expect(form.id).toBe('details-form');
+    expect(form.querySelector('[type="submit"]')).toBeNull();
+    await submit(form);
+    expect(submitted).toEqual({ name: 'Ada' });
+  });
+
+  test('draws its own submit button by default', () => {
+    const { container } = render(SchemaForm, {
+      props: { schema: { type: 'object', properties: { name: { type: 'string' } } } },
+    });
+    expect(formFrom(container).querySelector('[type="submit"]')).not.toBeNull();
+  });
+
   test('submits JSON Schema values and exposes the same object through FormData', async () => {
     const schema = {
       type: 'object',

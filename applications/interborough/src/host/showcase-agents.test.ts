@@ -20,12 +20,14 @@ import {
   orderNamedIn,
   SHOWCASE_AGENT_IDENTIFIERS,
   SHOWCASE_ASSISTANT_REPLY,
+  SHOWCASE_HUMAN_INPUT,
   SHOWCASE_ORDERS,
   SHOWCASE_TOOL_APPROVAL,
   SHOWCASE_TOOL_RUNNER_PLAN,
   SHOWCASE_WORKFLOW_AUTHOR_REPLY,
   SHOWCASE_WORKFLOW_AUTHOR_TOOLS,
   showcaseBuiltInAgents,
+  showcaseHumanInputGenerate,
   showcaseToolRunnerGenerate,
   toolRunnerLookupReply,
   type ShowcasePacing,
@@ -149,6 +151,34 @@ describe('the showcase built-in agents', () => {
       ['lookup', '4471'],
       ['refund-ask', '4471'],
     ]);
+  });
+
+  test('Request human input says why it asks, then asks Staging or Production with a sentence for each', async () => {
+    const generate = showcaseHumanInputGenerate();
+    const conversation = { getMessages: () => [{ role: 'user', content: 'Ship the release.' }] };
+    const response = await generate({ conversation } as unknown as Parameters<typeof generate>[0]);
+    expect(response.content).toBe('Before I ship it I need one answer.');
+    expect(response.toolCalls).toEqual([
+      {
+        id: 'showcase-requestHumanInput-1',
+        name: 'requestHumanInput',
+        arguments: {
+          signalName: 'environment',
+          prompt: 'Which environment should the release go to?',
+          answerSchema: SHOWCASE_HUMAN_INPUT.answerSchema,
+        },
+      },
+    ]);
+    // The tool takes the schema as it is: Staging and Production with their own descriptions, or
+    // the person's own words.
+    expect(SHOWCASE_HUMAN_INPUT.answerSchema).toMatchObject({
+      'x-allowOther': true,
+      'x-labels': { staging: 'Staging', production: 'Production' },
+      'x-descriptions': {
+        staging: 'Deploys to the staging site',
+        production: 'Deploys to the live site',
+      },
+    });
   });
 
   test('Tool runner ends a refund’s run with no reply once the refund is decided', async () => {

@@ -33,7 +33,7 @@ Opening a group keeps focus on the control that opened it; the rows it reveals f
 
 ### Names, roles and state
 
-The rail is a labelled region (`label`, default "Tool calls") around an ordered list, so the number of rows is announced. Status glyphs and dots are decorative and hidden from assistive technology; the state is in words: a failed call's row begins with a visually hidden "Failed", an approved call with "Approved", and `Running…`, `Waiting on you` and the denial words are visible text. The running spinner is decorative; the summary says `so far…`. The tooltip carrying the identifier is a `title`, so the name never relies on it.
+The rail is a labelled region (`label`, default "Tool calls") around an ordered list, so the number of rows is announced. Status glyphs and dots are decorative and hidden from assistive technology; the state is in words: a failed call's row begins with a visually hidden "Failed", an interrupted call with "Interrupted", an approved call with "Approved", and `Running…`, `Waiting on you` and the denial words are visible text. The running spinner is decorative; the summary says `so far…`. The tooltip carrying the identifier is a `title`, so the name never relies on it.
 
 ## Verification
 

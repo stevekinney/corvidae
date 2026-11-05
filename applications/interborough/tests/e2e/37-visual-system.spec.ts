@@ -195,9 +195,8 @@ test.describe('a chat', () => {
     await page.setViewportSize(DESKTOP);
     await page.goto(`/chats/${threadId}`);
     await expect(conversation(page).getByText('Order order-1001 was refunded.')).toBeVisible();
-    // The tool calls open into their rows, the tallest the transcript gets.
-    await page.getByRole('button', { name: 'Show tool calls' }).click();
-    await expect(page.locator('[data-tool-call-row]').first()).toBeVisible();
+    // The tool calls are rows on the rail, the tallest the transcript gets.
+    await expect(page.locator('[data-cinder-tool-call-row]').first()).toBeVisible();
 
     const timeline = page.locator('.chat-timeline');
     const first = await timeline.locator('> *').first().boundingBox();

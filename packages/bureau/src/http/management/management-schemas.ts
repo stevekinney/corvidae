@@ -167,6 +167,7 @@ export function resourceNotFound(
   resource:
     | 'task'
     | 'context'
+    | 'input'
     | 'agent'
     | 'workflow'
     | 'run'

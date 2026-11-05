@@ -42,6 +42,33 @@
   min-inline-size: 0;
 }
 
+/* The open question: its content scrolls and its footer stays in view, with what the agent does next. */
+.ib-review-pane__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-inline-size: 0;
+}
+
+.ib-review-pane__footer {
+  position: sticky;
+  inset-block-end: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-3);
+  padding-block: var(--cinder-space-3-5);
+  border-block-start: 1px solid var(--cinder-border-muted);
+  background: var(--cinder-surface);
+}
+
+.ib-review-pane__footer-note {
+  flex: 1;
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
 .ib-review-pane__question {
   margin: 0;
   font-size: var(--cinder-text-lg);

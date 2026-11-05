@@ -150,6 +150,14 @@ export function installBureauStub(
     readonly passThrough?: boolean;
     /** Answers the subscriptions it names, by operation name; any other one is `Not found`. */
     readonly subscriptions?: Readonly<Record<string, StubSubscriptionHandler>>;
+    /**
+     * Answers a request to the Bureau's AG-UI door (`/bureau/ag-ui/...`: a chat's run stream and its
+     * messages), given the request's path and init. Left out, the door answers `Not found`.
+     */
+    readonly agUi?: (
+      pathname: string,
+      init: RequestInit | undefined,
+    ) => Response | Promise<Response>;
   } = {},
 ): BureauStub {
   const table = new Map(Object.entries(handlers));
@@ -192,6 +200,9 @@ export function installBureauStub(
         lastEventId: new Headers(init?.headers).get('last-event-id') ?? undefined,
         signal: init?.signal ?? undefined,
       });
+    }
+    if (url.pathname.startsWith('/bureau/ag-ui/') && options.agUi !== undefined) {
+      return options.agUi(url.pathname, init);
     }
     if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
       return new Response('Not found', { status: 404 });

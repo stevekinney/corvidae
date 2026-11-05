@@ -99,7 +99,6 @@
     ". AnthropicWebSearchToolResultBlock.content",
     ". AnthropicWebSearchToolResultBlock.tool_use_id",
     ". AnthropicWebSearchToolResultBlock.type",
-    ". AppendBatchOptions.messageIds",
     ". AppendToolCallOptions.content",
     ". AppendToolCallOptions.hidden",
     ". AppendToolCallOptions.metadata",

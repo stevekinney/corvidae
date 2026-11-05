@@ -17,6 +17,10 @@ type Message = ConversationHistory['messages'][string];
 export type ChatAsset = {
   readonly assetId: string;
   readonly mediaType: string;
+  /** The file's name, when the row carries it. A download says it instead of the media type. */
+  readonly name?: string | undefined;
+  /** The file's size in bytes, when the row carries it. */
+  readonly size?: number | undefined;
 };
 
 /** How a row shows an asset. */
@@ -58,6 +62,12 @@ function announcedAssets(message: Message): ChatAsset[] {
                   typeof entry['mediaType'] === 'string' && entry['mediaType'] !== ''
                     ? entry['mediaType']
                     : UNKNOWN_MEDIA_TYPE,
+                ...(typeof entry['name'] === 'string' && entry['name'] !== ''
+                  ? { name: entry['name'] }
+                  : {}),
+                ...(typeof entry['size'] === 'number' && entry['size'] >= 0
+                  ? { size: entry['size'] }
+                  : {}),
               },
             },
           ]

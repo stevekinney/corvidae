@@ -904,6 +904,7 @@ export type {
   SelectOption,
   SelectPresentation,
   SelectProps,
+  SelectTone,
   SelectVariant,
 } from './components/select/index.ts';
 

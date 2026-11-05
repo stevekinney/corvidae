@@ -541,7 +541,12 @@ export type {
   PlanSelectionRequest,
 } from './model-policy';
 export { createModelPolicyPlanner, modelPolicyDenialOf } from './model-policy';
-export { EffortNotSupportedError, ModelPolicyDeniedError } from './file-agent-generate';
+export {
+  EffortNotSupportedError,
+  ModelPolicyDeniedError,
+  REPLY_MODEL_METADATA_KEY,
+  type ReplyModel,
+} from './file-agent-generate';
 export type {
   CatalogFactory,
   Models,

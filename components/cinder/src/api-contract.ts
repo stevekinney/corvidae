@@ -113,10 +113,12 @@ export const CONTRACT: Record<string, ComponentContract> = {
       dismissible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onDismiss: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+      heading: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
     },
     snippets: {
       children: s0(false),
       icon: s0(true),
+      actions: s0(true),
     },
   },
 
@@ -525,6 +527,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       size: { optional: true, type_kind: 'TSUnionType', default: L('md') },
       variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      tone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       presentation: { optional: true, type_kind: 'TSTypeReference', default: L('native') },
       placeholder: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       valuePrefix: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },

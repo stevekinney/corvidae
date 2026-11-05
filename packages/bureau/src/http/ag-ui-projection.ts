@@ -65,6 +65,8 @@ import {
   type ChildRunSettledAnnouncement,
   type ChildRunStartedAnnouncement,
   type EventStamp,
+  INPUTS_DELIVERED_EVENT_NAME,
+  type InputsDeliveredAnnouncement,
   MEMORY_WRITTEN_EVENT_NAME,
   type MemoryWrittenAnnouncement,
   stamp,
@@ -282,7 +284,9 @@ export class RunProjector {
     const data = record(detail);
     switch (name) {
       case RECORDED.stepStarted:
-        return { events: this.startStep(stepOf(data)) };
+        return {
+          events: [...this.startStep(stepOf(data)), ...this.announceInputsDelivered(data)],
+        };
       case RECORDED.generateCompleted: {
         const response = record(data['response']);
         return {
@@ -541,6 +545,16 @@ export class RunProjector {
       wakeAt,
     };
     return [this.liveOnly({ type: EventType.CUSTOM, name: WAKEUP_SCHEDULED_EVENT_NAME, value })];
+  }
+
+  /** The inputs a starting step took in (`sessionInputIds` on `step.started`), when it took any. */
+  private announceInputsDelivered(data: Record<string, unknown>): Event[] {
+    const ids = data['sessionInputIds'];
+    if (!Array.isArray(ids)) return [];
+    const inputIds = ids.filter((id): id is string => typeof id === 'string' && id !== '');
+    if (inputIds.length === 0) return [];
+    const value: InputsDeliveredAnnouncement = { runId: this.runId, inputIds };
+    return [this.liveOnly({ type: EventType.CUSTOM, name: INPUTS_DELIVERED_EVENT_NAME, value })];
   }
 
   private announceChildStarted(data: Record<string, unknown>): Event[] {

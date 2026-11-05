@@ -3,8 +3,9 @@
  * draws a choice as a column of buttons and offers no handle to press one from outside, so the
  * keys press the buttons it drew. A choice question, a pick-one-or-something-else question and a
  * yes-or-no question are drawn as buttons; the others (text, several picks, a rating, a form) have
- * no single press that answers them, so no key picks anything there. "Something else…" is not a
- * choice: it opens a field, so it takes no number.
+ * no single press that answers them, so no key picks anything there. The field below a
+ * pick-one-or-something-else question is not a choice, so it takes no number. Once a choice is
+ * picked the question is held for its Undo window, and no key picks another.
  */
 
 /** The question kinds `ChatQuestion` answers with one press of a button. */
@@ -16,12 +17,7 @@ export function choiceButtons(root: ParentNode | null | undefined): HTMLButtonEl
   if (question === null || question === undefined) return [];
   const kind = question.getAttribute('data-question-kind');
   if (kind === null || !BUTTON_KINDS.has(kind)) return [];
-  const buttons = [
-    ...question.querySelectorAll<HTMLButtonElement>('.chat-question-choices button'),
-  ];
-  // Until the field of "Something else…" is open, the last button of a pick-or-other question is it.
-  const otherOpen = question.querySelector('.chat-question-row') !== null;
-  return kind === 'choice-other' && !otherOpen ? buttons.slice(0, -1) : buttons;
+  return [...question.querySelectorAll<HTMLButtonElement>('.chat-question-choices button')];
 }
 
 /**
@@ -30,7 +26,12 @@ export function choiceButtons(root: ParentNode | null | undefined): HTMLButtonEl
  */
 export function pickChoice(root: ParentNode | null | undefined, position: number): boolean {
   const button = choiceButtons(root)[position - 1];
-  if (button === undefined || button.disabled) return false;
+  if (button === undefined || button.disabled || button.getAttribute('aria-disabled') === 'true') {
+    return false;
+  }
+  // A choice already picked is held; the question is not open for another pick.
+  const phase = button.closest('.chat-question')?.getAttribute('data-question-phase');
+  if (phase !== undefined && phase !== null && phase !== 'open') return false;
   button.click();
   return true;
 }

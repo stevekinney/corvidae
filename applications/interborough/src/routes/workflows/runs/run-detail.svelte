@@ -28,6 +28,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import NotFoundState from '../../../app/not-found-state.svelte';
   import { getContext } from '../../../lib/bureau-client.ts';
@@ -60,6 +61,7 @@
   import RunHeader from './run-header.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunPanels from './run-panels.svelte';
+  import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
 
@@ -358,6 +360,9 @@
   );
 
   let restartOpen = $state(false);
+  /** Whether an answer to the run's question is in its Undo window, which the status line says. */
+  let answerHeld = $state(false);
+  const answerUndoSeconds = $derived(Math.round(answerUndoMilliseconds() / 1000));
 </script>
 
 {#if follower.removed || unknownRun}
@@ -401,6 +406,7 @@
           : undefined}
         task={task.data}
         chat={chatLink}
+        note={answerHeld ? TASK_COPY.answerSentStatus(answerUndoSeconds) : undefined}
         engineStatus={workflow?.status}
         pendingAction={engine.pendingAction}
         actionGate={engine.actionGate}
@@ -421,7 +427,8 @@
     <div class="ib-run__layout">
       <div class="ib-run__main">
         {#if task.data}
-          <RunWaiting task={task.data} />
+          <RunWaiting task={task.data} onAnswerHold={(held) => (answerHeld = held)} />
+          <RunMessageBlocked task={task.data} />
         {/if}
         {#if summary !== undefined}
           <RunInputOutput

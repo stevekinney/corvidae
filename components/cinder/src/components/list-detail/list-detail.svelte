@@ -378,6 +378,7 @@
   class={classNames('cinder-list-detail', className)}
   data-cinder-layout={narrow ? 'stacked' : 'split'}
   data-cinder-flush-detail={flushDetail ? '' : undefined}
+  data-cinder-showing={narrow ? (selectedEntry ? 'detail' : 'list') : undefined}
 >
   {#if narrow}
     {#if selectedEntry}

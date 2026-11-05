@@ -258,6 +258,13 @@
     border-color: transparent;
   }
 
+  /* An action inside a line of text (Undo, Remove): the label alone, in the accent text colour. */
+  .cinder-button[data-cinder-variant='ghost-accent'] {
+    background: transparent;
+    color: var(--cinder-accent-text);
+    border-color: transparent;
+  }
+
   .cinder-button[data-cinder-icon-only][data-cinder-variant='ghost'] {
     background: var(--cinder-surface);
     background: color-mix(in oklch, var(--cinder-surface), var(--cinder-text-default) 4%);
@@ -272,6 +279,21 @@
 
   .cinder-button[data-cinder-variant='ghost']:disabled:not([data-cinder-loading]),
   .cinder-button[data-cinder-variant='ghost'][aria-disabled='true']:not([data-cinder-loading]) {
+    background: transparent;
+    color: var(--cinder-text-disabled);
+    border-color: transparent;
+  }
+
+  .cinder-button[data-cinder-variant='ghost-accent'][data-cinder-loading] {
+    background: transparent;
+    color: var(--cinder-accent-text);
+    border-color: transparent;
+  }
+
+  .cinder-button[data-cinder-variant='ghost-accent']:disabled:not([data-cinder-loading]),
+  .cinder-button[data-cinder-variant='ghost-accent'][aria-disabled='true']:not(
+      [data-cinder-loading]
+    ) {
     background: transparent;
     color: var(--cinder-text-disabled);
     border-color: transparent;
@@ -406,6 +428,12 @@
       color: var(--cinder-text-default);
     }
 
+    .cinder-button[data-cinder-variant='ghost-accent']:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ) {
+      background: var(--cinder-surface-hover);
+    }
+
     .cinder-button[data-cinder-variant='ghost-danger']:hover:not(:disabled):not(
         [aria-disabled='true']
       ) {
@@ -453,6 +481,12 @@
   }
 
   .cinder-button[data-cinder-variant='ghost']:active:not(:disabled):not([aria-disabled='true']) {
+    background: var(--cinder-surface-pressed);
+  }
+
+  .cinder-button[data-cinder-variant='ghost-accent']:active:not(:disabled):not(
+      [aria-disabled='true']
+    ) {
     background: var(--cinder-surface-pressed);
   }
 

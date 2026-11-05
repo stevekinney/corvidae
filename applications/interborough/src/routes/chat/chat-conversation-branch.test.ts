@@ -12,6 +12,7 @@ import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
+import { chooseOption, listboxTrigger, shownLabel } from './listbox.test-support.ts';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
@@ -81,7 +82,7 @@ function branchOffers(container: HTMLElement): Array<readonly [string, boolean]>
     if (text === '') continue;
     // The message's actions sit beside its article, under the element that holds both.
     const offered = [...(row.parentElement?.querySelectorAll('button') ?? [])].some(
-      (button) => button.textContent?.trim() === CHAT_COPY.branch.action,
+      (button) => button.getAttribute('aria-label') === CHAT_COPY.branch.action,
     );
     offers.push([text, offered]);
   }
@@ -93,10 +94,13 @@ const BRANCH = { name: CHAT_COPY.branch.action };
 describe('Branch from here', () => {
   test('is offered on the final agent message of each completed turn, and on no other message', async () => {
     serve();
-    const { findByText, findAllByRole } = mount();
+    const { findByText, container } = mount();
     await findByText('Second answer');
 
-    const buttons = await findAllByRole('button', BRANCH);
+    // A person's own message offers Branch too (from just before it); this is about the replies.
+    const buttons = container.querySelectorAll(
+      `[data-role="assistant"] button[aria-label="${CHAT_COPY.branch.action}"]`,
+    );
     expect(buttons.length).toBe(2);
   });
 
@@ -360,9 +364,8 @@ describe('the model picker in a session’s composer', () => {
     const { container, findByText } = mount();
     await findByText('Second answer');
 
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
-    const select = container.querySelector('select');
-    expect(select?.value.endsWith('claude-haiku-4-5')).toBe(true);
+    await waitFor(() => expect(container.querySelector('[role="combobox"]') === null).toBe(false));
+    expect(shownLabel(container, 'weft-chat-model')).toBe('claude-haiku-4-5');
     expect(served.calls.find((call) => call.method === 'bureau.agents.models')?.params).toEqual({
       agentName: 'assistant',
     });
@@ -390,14 +393,10 @@ describe('the model picker in a session’s composer', () => {
     });
     const { container, findByText } = mount();
     await findByText('Second answer');
-    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
-    const select = container.querySelector('select');
-    if (select === null) throw new Error('The picker did not render.');
-    expect(select.value.endsWith('claude-sonnet-5')).toBe(true);
+    await waitFor(() => expect(container.querySelector('[role="combobox"]') === null).toBe(false));
+    expect(shownLabel(container, 'weft-chat-model')).toBe('claude-sonnet-5');
 
-    const haiku = [...select.options].find((option) => option.value.endsWith('claude-haiku-4-5'));
-    if (haiku === undefined) throw new Error('The picker lists no claude-haiku-4-5.');
-    await fireEvent.change(select, { target: { value: haiku.value } });
+    await chooseOption(container, 'claude-haiku-4-5', 'weft-chat-model');
 
     await waitFor(() =>
       expect(served.calls.filter((call) => call.method === 'bureau.contexts.steer')).toHaveLength(
@@ -407,7 +406,7 @@ describe('the model picker in a session’s composer', () => {
     const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
     expect(steer?.params['expectedRevision']).toBe(1);
     // The session is read again after the switch, which is where the new model comes from.
-    await waitFor(() => expect(select.value.endsWith('claude-haiku-4-5')).toBe(true));
+    await waitFor(() => expect(shownLabel(container, 'weft-chat-model')).toBe('claude-haiku-4-5'));
     await waitFor(() =>
       expect(served.calls.filter((call) => call.method === 'bureau.contexts.get').length).toBe(2),
     );
@@ -430,10 +429,8 @@ describe('the model picker in a session’s composer', () => {
     );
     await tick();
 
-    const select = container.querySelector<HTMLSelectElement>('#weft-chat-model');
-    expect(select?.disabled).toBe(true);
-    expect([...(select?.options ?? [])].map((option) => option.textContent)).toEqual([
-      'claude-sonnet-5',
-    ]);
+    // A select with one model to show opens to nothing, so it only shows the model.
+    expect(listboxTrigger(container, 'weft-chat-model').disabled).toBe(true);
+    expect(shownLabel(container, 'weft-chat-model')).toBe('claude-sonnet-5');
   });
 });

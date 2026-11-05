@@ -37,15 +37,16 @@ describe('the buttons a number key presses', () => {
     ]);
   });
 
-  test('leave out Something else… until its field is open, and then count the last button', () => {
-    question('choice-other', ['staging', 'production', 'Something else…']);
+  test('leave out the own-answer field of a pick-one-or-something-else question', () => {
+    question(
+      'choice-other',
+      ['staging', 'production'],
+      '<form class="chat-question-own"><button type="submit">Answer</button></form>',
+    );
     expect(choiceButtons(root).map((button) => button.textContent)).toEqual([
       'staging',
       'production',
     ]);
-    // Its field is open: the button is gone and the last button is a choice again.
-    question('choice-other', ['staging', 'production'], '<form class="chat-question-row"></form>');
-    expect(choiceButtons(root)).toHaveLength(2);
   });
 
   test('are yes and no for a yes-or-no question', () => {
@@ -82,6 +83,16 @@ describe('picking a choice by its number', () => {
     question('choice', ['staging']);
     expect(pickChoice(root, 2)).toBe(false);
     expect(pickChoice(root, 0)).toBe(false);
+  });
+
+  test('presses nothing while an answer is held, or on a choice that stands back', () => {
+    question('choice', ['staging', 'production']);
+    root.querySelector('.chat-question')?.setAttribute('data-question-phase', 'held');
+    expect(pickChoice(root, 1)).toBe(false);
+    root.querySelector('.chat-question')?.setAttribute('data-question-phase', 'open');
+    choiceButtons(root)[1]!.setAttribute('aria-disabled', 'true');
+    expect(pickChoice(root, 2)).toBe(false);
+    expect(pickChoice(root, 1)).toBe(true);
   });
 
   test('presses nothing while the choice is disabled, as while an answer is being sent', () => {

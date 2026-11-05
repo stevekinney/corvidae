@@ -6,6 +6,7 @@ import type { ConversationHistory as Conversation, MessageInput } from '../../ty
 import { getOwn } from '../../utilities/type-helpers';
 import { parseJSONValue, toJSONValue } from '../shared';
 import { fromAGUIContent, readTextParts, withoutTextParts } from './content';
+import { readCreatedAt, withoutCreatedAt } from './created-at';
 import { AGUIMappingError } from './errors';
 import { callRowId } from './ids';
 import { fromAGUIToolMessage, withoutEmbeddedResult } from './tool-result';
@@ -24,17 +25,30 @@ function assertValidAGUIMessages(messages: ReadonlyArray<AGUIMessage>): void {
   });
 }
 
-function toMetadata(metadata: Record<string, unknown> | undefined): Pick<MessageInput, 'metadata'> {
-  if (metadata === undefined || Object.keys(metadata).length === 0) return {};
+/**
+ * The row's metadata and, when the message recorded one, the time the row was written: the
+ * `conversationalist:createdAt` entry (`CREATED_AT_METADATA_KEY`) becomes the row's `createdAt` and leaves its metadata.
+ */
+function toMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Pick<MessageInput, 'metadata'> & { createdAt?: string } {
+  const createdAt = readCreatedAt(metadata);
+  const rest = withoutCreatedAt(metadata);
+  const recorded = createdAt === undefined ? {} : { createdAt };
+  if (rest === undefined || Object.keys(rest).length === 0) return recorded;
   return {
+    ...recorded,
     metadata: Object.fromEntries(
-      Object.entries(metadata).map(([key, value]) => [key, toJSONValue(value)]),
+      Object.entries(rest).map(([key, value]) => [key, toJSONValue(value)]),
     ),
   };
 }
 
-/** A message input that carries the id AG-UI gave the message it came from. */
-type IdentifiedInput = MessageInput & { id: string };
+/**
+ * A message input that carries the id AG-UI gave the message it came from, and the time the
+ * message recorded for its row, which `appendMessages` keeps in place of the time of the import.
+ */
+type IdentifiedInput = MessageInput & { id: string; createdAt?: string };
 
 function toAssistantInputs(
   message: AssistantMessage,

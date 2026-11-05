@@ -32,6 +32,7 @@
     stepsExpanded = true,
     onsteps,
     onSuggestionSelect,
+    noteAction,
     toolActivityActive = true,
   }: ChatMessagePartsRendererProps = $props();
 
@@ -99,7 +100,7 @@
   {:else if part.type === 'transcript-entry'}
     <TranscriptEntryPart {part} />
   {:else if part.type === 'note'}
-    <NotePart note={part} />
+    <NotePart note={part} action={noteAction} />
   {:else}
     <!-- Unhandled part type — a new ChatMessagePart variant was added without a
          renderer branch. `part` narrows to `never` here, so svelte-check flags

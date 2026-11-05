@@ -143,9 +143,14 @@ function withAssetFileSources(history: ConversationHistory): ConversationHistory
   return { ...history, messages };
 }
 
+/** How a snapshot is exported: every row carries the time the Bureau wrote it (COR-2014). */
+const SNAPSHOT_EXPORT = { createdAt: true } as const;
+
 /**
  * The `messages` of a `MESSAGES_SNAPSHOT` for `history`, with no reasoning in it and none of the
- * rows a run's memory recall appended. It never throws
+ * rows a run's memory recall appended. Each message carries the time its row was written on the
+ * Bureau's clock (Conversationalist's `CREATED_AT_METADATA_KEY`), so a client shows when a message
+ * was sent, a reply written or a tool called, not when it read the thread. It never throws
  * for a part the AG-UI mapping cannot carry (COR-713): an assistant row keeps its text, and should
  * any other row still be refused, every row is reduced to its text.
  */
@@ -154,9 +159,12 @@ export function snapshotMessages(history: ConversationHistory): AgUiMessage[] {
     withoutReasoning(withAssetPartsInMetadata(withoutMemoryEvidence(history))),
   );
   try {
-    return agUiConversationAdapter.export(textOnly(visible, new Set(['assistant'])));
+    return agUiConversationAdapter.export(
+      textOnly(visible, new Set(['assistant'])),
+      SNAPSHOT_EXPORT,
+    );
   } catch {
-    return agUiConversationAdapter.export(textOnly(visible));
+    return agUiConversationAdapter.export(textOnly(visible), SNAPSHOT_EXPORT);
   }
 }
 

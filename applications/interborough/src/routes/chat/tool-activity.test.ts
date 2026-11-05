@@ -4,9 +4,12 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_DENIAL,
   DENIED_CODE,
-  groupSummary,
+  interruptedWords,
+  keyInput,
+  railCall,
+  toolDisplayName,
   toolGroups,
-  type ToolCallEntry,
+  type ToolInfo,
 } from './tool-activity.ts';
 
 type Row = ConversationHistory['messages'][string];
@@ -94,6 +97,22 @@ describe('toolGroups', () => {
   });
 });
 
+describe('a call of a failed attempt that Retry kept (B06, row 20b)', () => {
+  test('reads as interrupted while the new turn’s run is going, and the new turn’s call as running', () => {
+    const { groups } = toolGroups(
+      conversation(
+        row({ id: 'u1', role: 'user', content: 'Refund it' }),
+        call('s0', 'c1', 'issue-refund'),
+        row({ id: 'u2', role: 'user', content: 'Refund it' }),
+        call('s1', 'c2', 'issue-refund'),
+      ),
+      { runActive: true },
+    );
+    expect(groups.get('s0')?.entries.map((entry) => entry.state)).toEqual(['interrupted']);
+    expect(groups.get('s1')?.entries.map((entry) => entry.state)).toEqual(['running']);
+  });
+});
+
 describe('a call the person refused', () => {
   const refused = (outcome: string, content: unknown, error?: Record<string, unknown>) =>
     toolGroups(
@@ -141,43 +160,70 @@ describe('a call the person refused', () => {
   });
 });
 
-describe('groupSummary', () => {
-  const entry = (state: ToolCallEntry['state'], name = 't'): ToolCallEntry => ({
-    callId: `${state}-${name}`,
-    name,
-    arguments: {},
-    state,
-    summary: '',
-    result: undefined,
+describe('a call the run ended on', () => {
+  const ended = conversation(
+    row({ id: 'u1', role: 'user', content: 'Refund it' }),
+    call('s0', 'c1', 'issue-refund', { orderId: 4471, reason: 'Arrived damaged' }),
+  );
+  const tools = new Map<string, ToolInfo>([
+    ['issue-refund', { title: 'Issue refund', tier: 'dangerous' }],
+  ]);
+
+  test('is running while the run goes, and interrupted once nothing is working on it', () => {
+    const live = toolGroups(ended, { runActive: true, tools }).groups.get('s0')?.entries[0];
+    const over = toolGroups(ended, { runActive: false, tools }).groups.get('s0')?.entries[0];
+    expect(live?.state).toBe('running');
+    expect(over?.state).toBe('interrupted');
   });
 
-  test('counts the tools, names each once with its count, and says how many need a decision or failed', () => {
-    expect(groupSummary([entry('done'), entry('done')])).toBe('Used 2 tools · t ×2');
-    expect(groupSummary([entry('done', 'a'), entry('needs-you', 'b')])).toBe(
-      'Used 2 tools · a, b · 1 needs you',
-    );
-    expect(groupSummary([entry('failed', 'a'), entry('done', 'b'), entry('done', 'b')])).toBe(
-      'Used 3 tools · a, b ×2 · 1 failed',
-    );
-    expect(groupSummary([entry('done', 'lookup-order')])).toBe('Used 1 tool · lookup-order');
+  test('keeps the key input, the tool’s name for a person and what it may do', () => {
+    const entry = toolGroups(ended, { runActive: false, tools }).groups.get('s0')?.entries[0];
+    expect(entry).toMatchObject({ title: 'Issue refund', tier: 'dangerous', input: '4471' });
   });
 
-  test('lists the names in the order the calls were made, and a repeated name where it first appeared', () => {
-    expect(
-      groupSummary([
-        entry('done', 'lookup-order'),
-        entry('done', 'issue-refund'),
-        entry('done', 'lookup-order'),
-      ]),
-    ).toBe('Used 3 tools · lookup-order ×2, issue-refund');
+  test('says it may have run for a tool that changes things or that nothing classifies, and did not finish for one that only reads', () => {
+    expect(interruptedWords({ tier: 'mutating' })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: 'dangerous' })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: null })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: undefined })).toBe('Interrupted · may have run');
+    expect(interruptedWords({ tier: 'read-only' })).toBe('Interrupted · didn’t finish');
   });
 
-  test('says denied for a refused call, and failed only for one that failed', () => {
-    expect(groupSummary([entry('denied', 'a'), entry('done', 'b')])).toBe(
-      'Used 2 tools · a, b · 1 denied',
+  test('is a rail row that never carries an arrow, a result or a green dot', () => {
+    const entry = toolGroups(ended, { runActive: false, tools }).groups.get('s0')!.entries[0]!;
+    expect(railCall(entry, false)).toMatchObject({
+      status: 'interrupted',
+      name: 'Issue refund',
+      identifier: 'issue-refund',
+      input: '4471',
+      result: 'Interrupted · may have run',
+    });
+  });
+
+  test('a call that has its answer is never interrupted, whether or not the run still goes', () => {
+    const answered = conversation(
+      call('s0', 'c1', 'lookup-order', { orderId: 'o1' }),
+      result('s0:r', 'c1', 'success', { status: 'delivered' }),
     );
-    expect(groupSummary([entry('denied', 'a'), entry('failed', 'b'), entry('done', 'c')])).toBe(
-      'Used 3 tools · a, b, c · 1 failed · 1 denied',
+    expect(toolGroups(answered, { runActive: false }).groups.get('s0')?.entries[0]?.state).toBe(
+      'done',
     );
+  });
+});
+
+describe('how a call is named', () => {
+  test('the first scalar it was given is its key input', () => {
+    expect(keyInput({ orderId: 4471, reason: 'x' })).toBe('4471');
+    expect(keyInput({ nested: { a: 1 }, name: 'Parcelly' })).toBe('Parcelly');
+    expect(keyInput('  multi\nline  ')).toBe('multi line');
+    expect(keyInput({})).toBe('');
+    expect(keyInput(undefined)).toBe('');
+  });
+
+  test('a tool with no title reads as its identifier in words', () => {
+    expect(toolDisplayName('lookup-order')).toBe('Lookup order');
+    expect(toolDisplayName('issue_refund', null)).toBe('Issue refund');
+    expect(toolDisplayName('lookup-order', 'Find an order')).toBe('Find an order');
+    expect(toolDisplayName('', null)).toBe('');
   });
 });

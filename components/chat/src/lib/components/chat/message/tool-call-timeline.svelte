@@ -72,6 +72,16 @@
       };
     }),
   );
+  // A call that has no answer yet and that the host words in the present tense ("Using Lookup
+  // order…") is what the group's line says while it runs, in place of the past-tense count.
+  const runningRow = $derived(
+    rows.findLast(
+      (row) =>
+        row.presentation?.tense === 'present' &&
+        row.pair.result === undefined &&
+        row.status === 'pending',
+    ),
+  );
   const hasProblem = $derived(rows.some((row) => isProblemStatus(row.status)));
   const summarySegments = $derived(
     toolCallSummarySegments(
@@ -233,11 +243,16 @@
       onclick={toggleGroup}
     >
       <ChevronRight class="chat-tool-call-chevron" aria-hidden="true" />
-      <span>Used {pairs.length === 1 ? '1 tool' : `${pairs.length} tools`}</span>
-      {#each summarySegments as segment, index (index)}
-        <span aria-hidden="true">{' · '}</span>
-        <span class="chat-tool-call-summary-segment">{segment}</span>
-      {/each}
+      {#if runningRow?.presentation}
+        {#if runningRow.icon}{@render runningRow.icon()}{/if}
+        <span class="chat-tool-call-running">{formatToolCallProse(runningRow.presentation)}</span>
+      {:else}
+        <span>Used {pairs.length === 1 ? '1 tool' : `${pairs.length} tools`}</span>
+        {#each summarySegments as segment, index (index)}
+          <span aria-hidden="true">{' · '}</span>
+          <span class="chat-tool-call-summary-segment">{segment}</span>
+        {/each}
+      {/if}
     </button>
   </h3>
   <ol id={listId} class="chat-tool-call-list" aria-label={callsLabel} hidden={!groupOpen}>

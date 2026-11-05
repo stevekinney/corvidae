@@ -18,6 +18,9 @@
 <script lang="ts">
   import type { HTMLAttributes } from 'svelte/elements';
   import { tick } from 'svelte';
+  import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import Info from '@lucide/svelte/icons/info';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
   import { classNames } from '../../utilities/class-names.ts';
   import type { AlertProps } from './alert.types.ts';
@@ -30,12 +33,17 @@
     dismissible = false,
     onDismiss,
     class: className,
+    heading,
     children,
     icon,
+    actions,
     ...rest
   }: AlertProps = $props();
 
   const resolvedVariant = $derived(variant === 'error' ? 'danger' : variant);
+  const DefaultGlyph = $derived(
+    resolvedVariant === 'success' ? CircleCheck : resolvedVariant === 'info' ? Info : TriangleAlert,
+  );
 
   let visible = $state(true);
   let rootElement: HTMLDivElement | undefined = $state();
@@ -128,11 +136,28 @@
       <div class="cinder-alert__icon" aria-hidden="true">
         {@render icon()}
       </div>
+    {:else if heading !== undefined}
+      <div class="cinder-alert__icon" aria-hidden="true">
+        <DefaultGlyph />
+      </div>
     {/if}
 
     <div class="cinder-alert__content">
-      {@render children()}
+      {#if heading !== undefined}
+        <p class="cinder-alert__heading">{heading}</p>
+        <div class="cinder-alert__body">
+          {@render children()}
+        </div>
+      {:else}
+        {@render children()}
+      {/if}
     </div>
+
+    {#if actions}
+      <div class="cinder-alert__actions">
+        {@render actions()}
+      </div>
+    {/if}
 
     {#if dismissible}
       <button

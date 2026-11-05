@@ -1,8 +1,18 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
+  import { CircleAlert } from '@lostgradient/cinder';
+
   import type { ChildRunStatus, MessageNoteInfo } from '../../utilities/types.ts';
 
-  /** One line a run left under a message: what it remembered, when it continues, a child run, why it stopped. */
-  let { note }: { note: MessageNoteInfo } = $props();
+  /**
+   * One line a run left under a message: what it remembered, when it continues, a child run, why it
+   * stopped. A run that failed reads as a status line in danger text with an error glyph, not as the
+   * agent's own words; `action` draws at its end, for a Retry the host can act on.
+   */
+  let {
+    note,
+    action,
+  }: { note: MessageNoteInfo; action?: Snippet<[note: MessageNoteInfo]> | undefined } = $props();
 
   const childRunLabels: Record<ChildRunStatus, string> = {
     running: 'Running',
@@ -60,7 +70,11 @@
     {/if}
   </div>
 {:else}
-  <div class="chat-note" data-kind={note.kind}>
+  <div
+    class="chat-note"
+    data-kind={note.kind}
+    data-failed={note.kind === 'stopped' && note.failed === true ? '' : undefined}
+  >
     {#if note.kind === 'memory'}
       <span class="chat-note__label">Remembered</span>
       <span>{note.collection} · {note.memoryClass}</span>
@@ -73,9 +87,15 @@
       {#if note.note !== undefined && note.note !== ''}
         <span class="chat-note__detail">{note.note}</span>
       {/if}
+    {:else if note.failed === true}
+      <CircleAlert class="chat-note__glyph" aria-hidden="true" />
+      <span class="chat-note__reason" role="status">{note.reason}</span>
     {:else}
       <span class="chat-note__label">Stopped</span>
       <span>{note.reason}</span>
+    {/if}
+    {#if action}
+      <span class="chat-note__action">{@render action(note)}</span>
     {/if}
   </div>
 {/if}
@@ -95,6 +115,30 @@
     padding: var(--cinder-space-2) var(--cinder-space-3);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
+  }
+
+  /* A failed run: one danger line that wraps beside its action, nothing filled. */
+  .chat-note[data-kind='stopped'][data-failed] {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    color: var(--cinder-status-danger-text);
+  }
+
+  .chat-note[data-kind='stopped'][data-failed] .chat-note__reason {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  :global(.chat-note__glyph) {
+    flex: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin-block-start: 0.125rem;
+  }
+
+  .chat-note__action {
+    flex: none;
+    margin-inline-start: auto;
   }
 
   .chat-note__label {

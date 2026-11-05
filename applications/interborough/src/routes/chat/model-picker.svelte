@@ -8,6 +8,9 @@
    * that model (or on "Agent default"), because a single model is no choice but is still the answer
    * to which model this chat runs on.
    *
+   * A new chat has no session to switch yet, so with `draft` a choice only goes to `onDraft`: the
+   * page keeps it, passes it back as `current`, and switches the session once it exists.
+   *
    * Choosing a model asks the Bureau to switch the session (`bureau.contexts.steer`) with the
    * `configVersion` the page last read as `expectedRevision`, and the new model is used from the
    * live run's next step, or by the next run of an idle chat. The choice is shown at once and stays
@@ -41,8 +44,13 @@
     unavailable?: string | undefined;
     /** Called as a change starts and as it ends, so the other settings wait for the new revision. */
     onBusyChange?: (busy: boolean) => void;
-    /** Called when the Bureau took a switch. */
-    onApplied?: () => void;
+    /** Called when the Bureau took a switch, with the name of the model it switched to. */
+    onApplied?: (label: string) => void;
+    /** The chat has no session yet: a choice is handed to `onDraft` instead of being sent. */
+    draft?: boolean;
+    /** Called with the chosen model and its name when a choice is made on a chat with no session yet. */
+    onDraft?:
+      ((choice: { provider: string; model: string; displayName: string }) => void) | undefined;
   }
 
   let {
@@ -55,6 +63,8 @@
     unavailable,
     onBusyChange,
     onApplied,
+    draft = false,
+    onDraft,
   }: ModelPickerProps = $props();
 
   const COPY = CHAT_COPY.modelPicker;
@@ -68,6 +78,9 @@
     undefined,
   );
   const choices = $derived(models.data?.models ?? []);
+
+  // A listbox takes an empty value for no selection, so "the agent's default" has a value of its own.
+  const UNSET = 'agent-default';
 
   /** A model as an option's value. Neither a provider nor a model name holds a newline. */
   const keyOf = (name: { readonly provider: string | null; readonly model: string }): string =>
@@ -84,7 +97,7 @@
 
   const known = $derived(current ?? agentModel(models.data));
   const knownKey = $derived.by(() => {
-    if (known === null) return '';
+    if (known === null) return UNSET;
     const choice = listed(known);
     return choice === undefined ? keyOf(known) : keyOf(choice);
   });
@@ -104,8 +117,8 @@
 
   const options = $derived([
     // A session with no model of its own, on an agent that names no default, has nothing to show.
-    ...(knownKey === '' && pending === undefined
-      ? [{ value: '', label: COPY.agentDefault, disabled: true }]
+    ...(knownKey === UNSET && pending === undefined
+      ? [{ value: UNSET, label: COPY.agentDefault, disabled: true }]
       : []),
     // The model the session runs on may no longer be one the agent lists.
     ...(known !== null && listed(known) === undefined
@@ -136,7 +149,16 @@
 
   async function choose(next: string): Promise<void> {
     const choice = choices.find((entry) => keyOf(entry) === next);
-    if (choice === undefined || next === shown || revision === undefined) return;
+    if (choice === undefined || next === shown) return;
+    if (draft) {
+      onDraft?.({
+        provider: choice.provider,
+        model: choice.model,
+        displayName: choice.displayName,
+      });
+      return;
+    }
+    if (revision === undefined) return;
     pending = next;
     busy = true;
     onBusyChange?.(true);
@@ -159,7 +181,7 @@
       notice = result.notice;
       // Until the session is read again the admitted choice stays on screen.
       if (!result.applied || result.reloaded) pending = undefined;
-      if (result.applied) onApplied?.();
+      if (result.applied) onApplied?.(choice.displayName);
     } finally {
       busy = false;
       onBusyChange?.(false);
@@ -173,13 +195,17 @@
   class="weft-chat-model"
   label={COPY.label}
   labelVisible={false}
+  valuePrefix={COPY.label}
+  variant="ghost"
+  presentation="listbox"
+  size="sm"
   {options}
   value={shown}
-  onchange={(event) => void choose(event.currentTarget.value)}
+  onValueChange={(next) => void choose(next)}
   disabled={busy ||
     locked ||
     unavailable !== undefined ||
-    revision === undefined ||
+    (revision === undefined && !draft) ||
     choices.length < 2}
   title={unavailable}
   {...notice === undefined ? {} : { error: notice }}

@@ -62,6 +62,7 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 - `running`: a spinner in place of the dot, `Running…` in place of a result, and the elapsed time.
 - `waiting`: an amber shield and `Waiting on you`, as its own row.
 - `denied`: a prohibition glyph and neutral words. It is not called failed and carries no error block.
+- `interrupted`: a red circled cross and the result in red with no arrow, for a call the run ended on before it answered. Word it by the tool's risk: `Interrupted · didn't finish` for a tool that only reads, `Interrupted · may have run` for one that changes things. It never folds and is never a green or neutral dot.
 - `failed`: a red cross and the result in red. `failure` adds one danger-text line with an error glyph and the quiet links `Details` (when `onSelect` is set), `Ask the agent to retry` (`onRetry`) and `Copy input` (`onCopyInput`).
 
 ## Selecting a row and nesting an approval
@@ -138,7 +139,7 @@ input       string   optional  The key input, muted and truncated.
 result      string   optional  What came back, in one line.
 decision    string   optional  What a person decided, in their own words and without an arrow.
 duration    string   optional  How long it took, formatted by the caller.
-status      done | approved | running | waiting | denied | failed   required
+status      done | approved | running | waiting | denied | failed | interrupted   required
 failure     string   optional  A failed call's consequence, in one danger line.
 nested      boolean  optional  Draw `children` under this row.
 ```

@@ -35,6 +35,7 @@ import {
 import { createSessionRunner } from './session-controller-run.ts';
 import {
   cleanIncompleteToolRows,
+  ownRowEnvironment,
   pruneMessageAttachments,
   type ChatHistoryToken,
   type ChatSessionController,
@@ -197,7 +198,7 @@ export function createChatSessionController(
     const current = options.getConversation();
     const cleaned = cleanIncompleteToolRows(current);
     if (cleaned !== current) update(cleaned);
-    const next = appendMessages(cleaned, message);
+    const next = appendMessages(cleaned, message, ownRowEnvironment(options));
     update(next);
     const userMessageId = next.ids.at(-1);
     if (userMessageId) {
@@ -322,6 +323,14 @@ export function createChatSessionController(
     // a run ends without delivering. A browser-owned run does not offer them.
     ...(options.sendRunInput && executionOwner === 'server'
       ? { sendRunInput, ordersRunInput: true }
+      : {}),
+    ...(options.sendRunInput && options.retractRunInput && executionOwner === 'server'
+      ? {
+          removeRunInput: async (messageId: string) => {
+            assertNotDisposed();
+            await followUps.remove(messageId);
+          },
+        }
       : {}),
     retryMessage: async (messageId) => {
       assertNotDisposed();
@@ -454,6 +463,9 @@ export function createChatSessionController(
     captureHistoryToken,
     isHistoryTokenCurrent,
     adoptHistory,
+    markFollowUpsDelivered: (messageIds) => {
+      if (!lifecycle.disposed) followUps.delivered(messageIds);
+    },
     invalidate,
     dispose: () => {
       invalidate();

@@ -223,8 +223,8 @@ function drawer(page: Page) {
 /** Opens Try it on the open editor, and starts a chat with `message`. */
 async function startTrial(page: Page, message: string): Promise<string> {
   await page.getByRole('button', { name: words.try.action }).click();
-  await drawer(page).getByRole('textbox', { name: words.try.messageLabel }).fill(message);
-  await drawer(page).getByRole('button', { name: words.try.send }).click();
+  await drawer(page).getByRole('textbox', { name: 'Message' }).fill(message);
+  await drawer(page).getByRole('button', { name: /^Send/ }).click();
   await expect(drawer(page).getByRole('region', { name: words.try.chatLabel })).toBeVisible();
   const contextId = await page.getByTestId('agent-try').getAttribute('data-context-id');
   expect(contextId).toBeTruthy();
@@ -313,8 +313,8 @@ test.describe('Try it', () => {
     await addTools(page, [refused]);
 
     await page.getByRole('button', { name: words.try.action }).click();
-    await drawer(page).getByRole('textbox', { name: words.try.messageLabel }).fill('Hello');
-    await drawer(page).getByRole('button', { name: words.try.send }).click();
+    await drawer(page).getByRole('textbox', { name: 'Message' }).fill('Hello');
+    await drawer(page).getByRole('button', { name: /^Send/ }).click();
     await expect(page.getByTestId('agent-try-failure')).toContainText(refused);
     expect(await chatRows(request, 'try')).toEqual([]);
   });

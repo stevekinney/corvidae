@@ -28,12 +28,16 @@ test.describe('a new chat', () => {
 
     const pill = page.getByRole('combobox', { name: 'Agent' });
     await expect(pill).toBeVisible();
-    await expect(pill).toHaveValue(E2E_DEFAULT_AGENT);
-    // The pill is inside the composer's own region, and not in the header above it.
+    await expect(pill).toContainText(E2E_DEFAULT_AGENT);
+    // The pill is the top row of the composer's own bordered surface, above its text, and not in
+    // the header above the page.
     expect(await pill.evaluate((element) => element.closest('header') === null)).toBe(true);
+    expect(await pill.evaluate((element) => element.closest('form.chat-input') !== null)).toBe(
+      true,
+    );
     const composerBox = await composer(page).boundingBox();
     const pillBox = await pill.boundingBox();
-    expect(pillBox?.y ?? 0).toBeGreaterThan(composerBox?.y ?? 0);
+    expect(pillBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(composerBox?.y ?? 0);
     // One agent control, no agent card, no second title.
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(1);
     await expect(page.getByTestId('agent-card')).toHaveCount(0);

@@ -18,10 +18,8 @@ import {
   restoreBureau,
   serve,
   TURNS,
-  type Mounted,
 } from './chat-more-menu.test-support.ts';
 import ChatToasts from './chat-toasts.test-harness.svelte';
-import { holdEdit } from './edit-fork.ts';
 import { CONTEXT } from './pages.test-support.ts';
 
 afterEach(() => {
@@ -55,6 +53,26 @@ describe('the More menu', () => {
     await view.findByTestId('chat-header');
 
     expect(view.queryByRole('button', { name: MORE.label })).toBeNull();
+  });
+});
+
+describe('the stubbed Bureau', () => {
+  test('starts and finishes a run sent without a response of its own', async () => {
+    const served = serve();
+    const view = mount();
+    await view.findByText('Second answer');
+
+    const box = view.getByRole('textbox', { name: /message/i }) as HTMLTextAreaElement;
+    await fireEvent.input(box, { target: { value: 'Third question' } });
+    await fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(served.runs).toHaveLength(1));
+    // The turn has ended once Stop gives way to Send again.
+    await waitFor(() =>
+      expect(view.queryByRole('button', { name: /^stop/i })?.outerHTML ?? null).toBeNull(),
+    );
+
+    expect(view.queryByText('Not sent')).toBeNull();
+    expect(view.queryByText(/HTTP 500/)).toBeNull();
   });
 });
 
@@ -353,113 +371,5 @@ describe('Export', () => {
     expect(text).toContain('# Plan the week');
     expect(text).toContain('## You\n\nFirst question');
     expect(text).toContain('## Assistant\n\nSecond answer');
-  });
-});
-
-describe('editing a sent message', () => {
-  async function editSecondQuestion(view: Mounted, text: string): Promise<void> {
-    await view.findByText('Second answer');
-    const row = view.getByText('Second question').closest('[data-message-role="user"]');
-    if (row === null) throw new Error('The second question did not render.');
-    const scope = row.parentElement ?? row;
-    await fireEvent.click(within(scope as HTMLElement).getByRole('button', { name: /edit/i }));
-    const box = await waitFor(() => {
-      const found = scope.querySelector('textarea');
-      if (found === null) throw new Error('The editor did not open.');
-      return found;
-    });
-    await fireEvent.input(box, { target: { value: text } });
-    await fireEvent.click(
-      within(scope as HTMLElement).getByRole('button', { name: /save|send|submit/i }),
-    );
-  }
-
-  test('branches before the message and opens the branch, leaving the original alone', async () => {
-    const served = serve(TURNS, {
-      'bureau.contexts.fork': () => ({ contextId: 'branch-1', carriedOverride: null }),
-    });
-    const view = mount();
-
-    await editSecondQuestion(view, 'A better question');
-
-    await waitFor(() => expect(router.pathname).toBe('/chats/branch-1'));
-    expect(callsTo(served, 'bureau.contexts.fork')[0]?.params).toMatchObject({
-      contextId: 'session-1',
-      throughMessageId: 'a1',
-    });
-    expect(callsTo(served, 'bureau.contexts.delete')).toHaveLength(0);
-    expect(callsTo(served, 'bureau.contexts.rename')).toHaveLength(0);
-  });
-
-  test('says why and stays when the Bureau refuses the branch', async () => {
-    serve(TURNS, {
-      'bureau.contexts.fork': () => {
-        throw new StubFault('Conflict', 409, 'Not a branch point.', {
-          reason: 'not-a-branch-point',
-        });
-      },
-    });
-    const view = mount();
-
-    await editSecondQuestion(view, 'A better question');
-
-    expect(await view.findByText(CHAT_COPY.branch.refused['not-a-branch-point'])).not.toBeNull();
-    expect(router.pathname).toBe('/chats/session-1');
-  });
-
-  test('says the message cannot be edited when it follows no finished reply', async () => {
-    serve([
-      { id: 'u1', role: 'user', content: 'Start the work' },
-      { id: 'run-1:step:0', role: 'assistant', content: 'Early reply' },
-      { id: 'u2', role: 'user', content: 'Second question' },
-      { id: 'run-1:step:1', role: 'assistant', content: 'Second answer' },
-    ]);
-    const view = mount();
-
-    await editSecondQuestion(view, 'A better question');
-
-    expect(await view.findByText(CHAT_COPY.edit.unavailable)).not.toBeNull();
-    expect(router.pathname).toBe('/chats/session-1');
-  });
-
-  test('says a message with files cannot be edited, because the branch would leave them behind', async () => {
-    const served = serve([
-      { id: 'u1', role: 'user', content: 'First question' },
-      { id: 'a1', role: 'assistant', content: 'First answer' },
-      {
-        id: 'u2',
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Second question' },
-          {
-            type: 'image',
-            source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
-          },
-        ],
-      },
-      { id: 'a2', role: 'assistant', content: 'Second answer' },
-    ]);
-    const view = mount();
-
-    await editSecondQuestion(view, 'A better question');
-
-    expect(await view.findByText(CHAT_COPY.edit.withFiles)).not.toBeNull();
-    expect(router.pathname).toBe('/chats/session-1');
-    expect(callsTo(served, 'bureau.contexts.fork')).toHaveLength(0);
-  });
-
-  test('a branch opened with an edited message sends it as the next turn, once', async () => {
-    holdEdit('session-1', 'A better question');
-    const served = serve([
-      { id: 'u1', role: 'user', content: 'First question' },
-      { id: 'a1', role: 'assistant', content: 'First answer' },
-    ]);
-    const view = mount();
-    await view.findByText('First answer');
-
-    await waitFor(() => expect(served.runs).toHaveLength(1));
-    const messages = served.runs[0]?.['messages'] as Array<{ role: string; content: string }>;
-    expect(messages.at(-1)).toMatchObject({ role: 'user', content: 'A better question' });
-    expect(await view.findByText('A better question')).not.toBeNull();
   });
 });

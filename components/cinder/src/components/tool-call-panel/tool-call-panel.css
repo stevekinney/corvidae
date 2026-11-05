@@ -130,11 +130,13 @@
     background: var(--cinder-status-success-solid);
   }
 
-  .cinder-tool-call-panel__status[data-cinder-status='failed'] .cinder-tool-call-panel__dot {
+  .cinder-tool-call-panel__status[data-cinder-status='failed'] .cinder-tool-call-panel__dot,
+  .cinder-tool-call-panel__status[data-cinder-status='interrupted'] .cinder-tool-call-panel__dot {
     background: var(--cinder-status-danger-solid);
   }
 
-  .cinder-tool-call-panel__status[data-cinder-status='failed']
+  .cinder-tool-call-panel__status[data-cinder-status='failed'] .cinder-tool-call-panel__status-word,
+  .cinder-tool-call-panel__status[data-cinder-status='interrupted']
     .cinder-tool-call-panel__status-word {
     color: var(--cinder-status-danger-text);
   }

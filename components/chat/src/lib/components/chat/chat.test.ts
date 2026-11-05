@@ -236,11 +236,13 @@ function liveRegion(
   // class, which happened to make it invisible to this exact selector), a
   // bare `.cinder-sr-only[aria-live="polite"][aria-atomic="true"]` query now
   // also matches ChatInput's own status region alongside ChatStatusAnnouncer's
-  // — the one `announce()` actually writes to. Excluding `.chat-input`
-  // descendants disambiguates without depending on DOM order.
+  // — the one `announce()` actually writes to. Excluding `.chat-input-shell`
+  // descendants (the composer's own region sits beside its form, so it also
+  // announces while a blocked row replaces the form) disambiguates without
+  // depending on DOM order.
   const regions = Array.from(
     container.querySelectorAll<HTMLElement>(`.cinder-sr-only[aria-live="${level}"]`),
-  ).filter((region) => !region.closest('.chat-input'));
+  ).filter((region) => !region.closest('.chat-input-shell'));
   return regions.find((region) => region.getAttribute('aria-atomic') === 'true');
 }
 

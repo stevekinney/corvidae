@@ -167,7 +167,7 @@ Row actions stay visible. A `SelectableRow` never hides its trailing actions unt
 | `detailLabel` | `string` | no | `"Details"` | Accessible name of the detail region. |
 | `emptyDescription` | `string` | no | `"Choose an item from the list to see it here."` | Description of the default empty detail, used when `empty` is omitted. |
 | `emptyTitle` | `string` | no | `"Nothing selected"` | Title of the default empty detail, used when `empty` is omitted. |
-| `flushDetail` | `boolean` | no | `false` | Removes the detail pane's inner padding, for a detail view that lays out its own header, body and footer edge to edge (an open chat, a table, a code frame). |
+| `flushDetail` | `boolean` | no | `false` | Removes the detail pane's inner padding, for a detail view that lays out its own header, body and footer edge to edge (an open chat, a table, a code frame). In the stacked layout the open detail also fills the height the component is given, so what it docks at its bottom edge, such as a composer, sits at the bottom of the screen instead of after its content. |
 | `label` | `string` | yes | — | Accessible name of the list region, for example "Chats". |
 | `loading` | `boolean` | no | `false` | Shows a placeholder in place of the rows and the open item while the records load: five list rows in the list pane and a block in the detail pane. Nothing shows for the first 300 milliseconds, so a fast load never flickers, and a slow one adds a "still loading" line after ten seconds. |
 | `loadingLabel` | `string` | no | `"Loading"` | What the loading region announces, politely, once the placeholder appears: "Loading memories". |

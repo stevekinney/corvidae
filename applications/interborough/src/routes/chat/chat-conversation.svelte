@@ -25,9 +25,8 @@
    * message of each completed turn offers Branch from here (`branch-points.ts`), which opens a new
    * session that continues from that reply. A branch's header says where it came from
    * (`branch-origin.svelte`). The header's More menu (`chat-more-menu.svelte`) renames, branches,
-   * exports and deletes the chat, and editing a message the person sent resends by fork
-   * (`edit-fork.ts`): the chat is branched before the message and the edited text is sent on the
-   * branch. An edit that does not branch keeps its text in a notice with Copy and Try again.
+   * exports and deletes the chat. A message the person sent offers Branch and Copy, and Branch
+   * (`edit-fork.ts` finds where) opens a branch from just before it, where the person types again.
    * A chat deleted while its page is open closes the composer and says so, with a way back to the
    * list: the Bureau would start it again if it were sent to.
    *
@@ -42,12 +41,26 @@
   import { onMount, tick, untrack } from 'svelte';
   import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
-  import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
-  import { Chat, ChatNote, ChatQuestion, McpApp, resolveMessageNotes } from '@lostgradient/chat';
-  import { GitBranch } from '@lucide/svelte';
+  import {
+    Alert,
+    Button,
+    ConfirmDialog,
+    EmptyState,
+    PageHeader,
+    StatusDot,
+  } from '@lostgradient/cinder';
+  import {
+    Chat,
+    ChatNote,
+    ChatQuestion,
+    McpApp,
+    resolveMessageNotes,
+    type MessageNoteInfo,
+  } from '@lostgradient/chat';
+  import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY, CONNECTION_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
@@ -60,7 +73,6 @@
     listAgents,
     steerContext,
     wireCodeOf,
-    type AgentSummary,
     type Effort,
     type PermissionMode,
   } from '../../lib/bureau-client.ts';
@@ -69,7 +81,11 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
+  import { getAgentCatalog, getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
+  import { getProviders } from '../../lib/host-providers.ts';
+  import { answerUndoMilliseconds } from '../../lib/answer-undo.ts';
   import { uploadAsset } from '../../lib/bureau-assets.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
@@ -87,7 +103,6 @@
   import { downloadText } from '../audit/audit-export.ts';
   import BranchOrigin from './branch-origin.svelte';
   import { branchPointIds } from './branch-points.ts';
-  import { agentModel } from './agent-model.ts';
   import { choiceButtons, pickChoice } from '../reviews/choice-buttons.ts';
   import ChatAssets from './chat-assets.svelte';
   import {
@@ -97,19 +112,28 @@
     hasExportableText,
   } from './chat-export.ts';
   import ChatMoreMenu from './chat-more-menu.svelte';
+  import AgentSelect from './agent-select.svelte';
+  import ComposerSettings from './composer-settings.svelte';
+  import ContextMeter from './context-meter.svelte';
   import ContextWindowRing from './context-window-ring.svelte';
   import SettingSelect from './setting-select.svelte';
+  import RestartDialog from '../../app/restart/restart-dialog.svelte';
+  import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
   import type { GrantNotLoosened } from './run-wiring.ts';
   import { decidedKey, SeenReviews } from './decided-elsewhere.ts';
-  import { editForkPoint, holdEdit, lastBranchPoint, takeEdit } from './edit-fork.ts';
+  import { editForkPoint, lastBranchPoint } from './edit-fork.ts';
+  import { composerStatusOf } from './composer-state.ts';
+  import { changeSetting, type SteerNotices } from './steer-change.ts';
   import ModelPicker from './model-picker.svelte';
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
+  import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
-  import { toolGroups, type ToolCallEntry } from './tool-activity.ts';
+  import { toolGroups, type ToolCallEntry, type ToolInfo } from './tool-activity.ts';
+  import { failedStopNoteId, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -121,6 +145,11 @@
     isNew?: boolean;
     /** For a new chat: whether the address names the agent, rather than the default being used. */
     agentChosen?: boolean;
+    /**
+     * For a new chat started from Workflows: no agent has the Create workflow tool, so the
+     * composer says so in its blocked row, with the way to Agents, and keeps what was typed.
+     */
+    noWorkflowAgent?: boolean;
   }
 
   let {
@@ -129,6 +158,7 @@
     agentName,
     isNew = false,
     agentChosen = false,
+    noWorkflowAgent = false,
   }: ChatConversationProps = $props();
 
   const queryClient = useQueryClient();
@@ -144,8 +174,6 @@
   const session = new ChatSessionState({
     sessionId: untrack(() => sessionId),
     agentName: () => agent,
-    // Editing a message resends by fork (`editMessage`), not in place.
-    onEdit: (event) => editMessage(event),
     // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
     closed: () => gone,
     onNotFound: () => void context.refetch(),
@@ -157,6 +185,7 @@
       // person came from, and this page stays mounted so the run carries on.
       router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
+      void applyDraft();
     },
   });
 
@@ -167,14 +196,6 @@
     }),
     undefined,
   );
-  const choices = $derived(
-    (agents.data ?? []).map((entry: AgentSummary) => ({
-      value: entry.name,
-      label: entry.displayName,
-      ...(entry.description === null ? {} : { description: entry.description }),
-    })),
-  );
-
   // What the selected agent's model lets a person attach. An agent the Bureau has not listed yet,
   // or one that names no model, takes no attachment.
   const settings = $derived(
@@ -249,37 +270,103 @@
     }),
     undefined,
   );
-  const shownModel = $derived.by(() => {
-    if (context.data === undefined) return undefined;
-    const name = context.data.model ?? agentModel(models.data);
-    if (name === null) return SETTINGS.agentDefault;
-    const listed = models.data?.models.find(
-      (choice) =>
-        choice.model === name.model &&
-        (name.provider === null || choice.provider === name.provider),
-    );
-    return listed?.displayName ?? name.model;
+  // The agents are read once and then known; until then the composer holds Model and Effort back, so
+  // a scripted agent's composer never shows them for a moment, and no provider is asked for.
+  // Whether the agent runs on a model, which is what needs a provider and what Model and Effort
+  // change. A scripted agent names none (`media` is null) and offers no model to switch to, so its
+  // composer has Permissions only.
+  const agentSummary = $derived(agents.data?.find((entry) => entry.name === agent));
+  const agentKnown = $derived(!agents.isPending);
+  const usesModel = $derived(
+    agentKnown &&
+      (agentSummary === undefined ||
+        agentSummary.media !== null ||
+        (models.data?.models.length ?? 0) > 0),
+  );
+  // Whether any provider holds a key, the rule the first-run checklist states. Until the host has
+  // answered, the composer is not blocked.
+  const providers = createQuery(
+    () => ({
+      queryKey: queryKeys.hostProviders(),
+      queryFn: ({ signal }) => getProviders({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const noProvider = $derived(
+    usesModel &&
+      providers.data !== undefined &&
+      !providers.data.providers.some((provider) => provider.hasKey),
+  );
+
+  // An agent that a disabled plugin ships (`plugin:name`) cannot run, and the composer says so with
+  // the way back: enable the plugin and restart the host.
+  const definition = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.definition(agent),
+      queryFn: ({ signal }) => getAgentDefinition(agent, { signal }),
+      enabled: !choosing && agent.includes(':'),
+      retry: false,
+    }),
+    undefined,
+  );
+  const agentUnavailable = $derived(definition.data?.state === 'unavailable');
+  // What the catalog says of each tool, for its name as a person reads it and for what an
+  // interrupted call may have done. A catalog that cannot be read leaves the identifiers as names and
+  // treats every tool as one that may change things.
+  const catalog = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.catalog(),
+      queryFn: ({ signal }) => getAgentCatalog({ signal }),
+      enabled: !choosing,
+      retry: false,
+    }),
+    undefined,
+  );
+  const toolInfo = $derived(
+    new Map<string, ToolInfo>(
+      (catalog.data?.tools ?? []).map(
+        (tool) => [tool.name, { title: tool.title, tier: tool.tier }] as const,
+      ),
+    ),
+  );
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      enabled: agentUnavailable,
+      retry: false,
+    }),
+    undefined,
+  );
+  const pluginName = $derived(agent.split(':')[0] ?? agent);
+  const pluginTitle = $derived(
+    plugins.data?.plugins.find((entry) => entry.descriptor.name === pluginName)?.descriptor.title ??
+      /^Plugin (.+) is disabled$/.exec(definition.data?.unavailable?.message ?? '')?.[1] ??
+      pluginName,
+  );
+  const restart = new RestartFlow();
+  let confirmingEnable = $state(false);
+  // Once the host answers again the plugin is on, so the agent is available and the chat reads the
+  // host again.
+  $effect(() => {
+    if (restart.phase !== 'back') return;
+    untrack(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(agent) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.hostPlugins() });
+    });
   });
-  const shownEffort = $derived(
-    context.data === undefined
-      ? undefined
-      : (SETTINGS.effortOptions.find((option) => option.value === context.data?.effort)?.label ??
-          SETTINGS.agentDefault),
-  );
-  const shownPermission = $derived(
-    SETTINGS.permissionOptions.find((option) => option.value === context.data?.permissionMode)
-      ?.label,
-  );
-  const permissionDescription = $derived(
-    context.data === undefined || context.data.permissionMode === 'on-changes'
-      ? undefined
-      : SETTINGS.permissionDescriptions[context.data.permissionMode],
-  );
 
   // The settings share one revision, so while one is being changed the others wait for it.
   let steering = $state(false);
-  // When the change the person made takes effect, which depends on whether a run is going.
+  // When the change the person made takes effect, as the line under the composer says it: which
+  // setting, which value, and from when, which depends on whether a run is going.
   let appliesNote = $state<string | undefined>(undefined);
+  // How many rows the transcript held when the note was made. A step of the run adds rows, and
+  // the note is out of date once the next one does.
+  let notedRows = 0;
+  const rowCount = $derived(Object.keys(session.conversation.messages).length);
   // A run is going while it streams, and also while it is parked on an approval or a question: it
   // streams nothing then, but it resumes into the same run, which reads a mode at each tool call
   // and the model and effort at each step. Only the Bureau's reading of the chat says it is parked
@@ -290,8 +377,162 @@
     void runGoing;
     untrack(() => (appliesNote = undefined));
   });
-  function noted(setting: 'step' | 'toolCall'): void {
-    appliesNote = runGoing ? SETTINGS.applies[setting] : SETTINGS.applies.nextRun;
+  $effect(() => {
+    // ...and once the next step has started, which adds to the transcript.
+    const rows = rowCount;
+    untrack(() => {
+      if (appliesNote !== undefined && rows > notedRows) appliesNote = undefined;
+    });
+  });
+  function noted(setting: 'step' | 'toolCall', name: string, value: string): void {
+    notedRows = untrack(() => rowCount);
+    appliesNote = runGoing
+      ? SETTINGS.applies[setting](name, value)
+      : SETTINGS.applies.nextRun(name, value);
+  }
+
+  // Assistant is the scripted agent a chat can fall back on without a provider: the host's own
+  // (`assistant`) or the Demo plugin's copy (`demo:assistant`).
+  const assistantName = $derived(
+    (
+      agents.data?.find((entry) => entry.name === 'assistant') ??
+      agents.data?.find((entry) => entry.name.endsWith(':assistant'))
+    )?.name,
+  );
+  const composerStatus = $derived(
+    composerStatusOf({
+      unreachable: connection.unreachable,
+      restarting: restart.running,
+      unavailable: agentUnavailable
+        ? {
+            agent: definition.data?.name ?? agent,
+            plugin: pluginTitle,
+            enable: () => (confirmingEnable = true),
+          }
+        : undefined,
+      ended: context.data?.endReason === 'host-stopped',
+      noProvider,
+      noWorkflowAgent: choosing && noWorkflowAgent,
+      agentsHref: router.href('/agents'),
+      connectHref: router.href('/settings/models'),
+      useAssistant:
+        choosing && assistantName !== undefined && agent !== assistantName
+          ? () => chooseAgent(assistantName)
+          : undefined,
+      newChatHref: router.href('/chats/new'),
+      reconnectAttempt: session.reconnectAttempt,
+      queuedFollowUps: session.queuedFollowUps,
+      note: appliesNote,
+      working: session.streaming,
+    }),
+  );
+
+  // What the person chose in the composer before the chat had a session. A session is what the
+  // Bureau steers, so the choices wait here and are applied, one after the other, as soon as the
+  // first message has started it (`applyDraft`); they take effect from the run's next step.
+  let draftModel = $state<{ provider: string; model: string; displayName: string } | undefined>();
+  let draftEffort = $state<string | undefined>();
+  let draftPermission = $state<string | undefined>();
+  const settingNotices = {
+    model: {
+      staleRevision: CHAT_COPY.modelPicker.staleRevision,
+      denied: CHAT_COPY.modelPicker.modelNotAllowed,
+      sessionTerminal: CHAT_COPY.modelPicker.sessionTerminal,
+      unsupportedCapability: CHAT_COPY.modelPicker.unsupportedCapability,
+      notChanged: CHAT_COPY.modelPicker.notSwitched,
+      fault: CHAT_COPY.modelPicker.fault,
+    },
+    effort: SETTINGS.effortNotices,
+    permission: SETTINGS.permissionNotices,
+  } satisfies Record<string, SteerNotices>;
+
+  /** Applies what was chosen before the session existed, each change under the revision the last left. */
+  async function applyDraft(): Promise<void> {
+    const model = draftModel;
+    const effort = draftEffort;
+    const permission = draftPermission;
+    draftModel = draftEffort = draftPermission = undefined;
+    if (model === undefined && effort === undefined && permission === undefined) return;
+    const commands = createPendingCommandKey();
+    const first = await context.refetch();
+    let revision = first.data?.configVersion;
+    const changes = [
+      ...(model === undefined
+        ? []
+        : [
+            {
+              name: SETTINGS.model,
+              label: model.displayName,
+              kind: 'step' as const,
+              notices: settingNotices.model,
+              request: (commandId: string, expectedRevision: number) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  override: { provider: model.provider, model: model.model },
+                }),
+            },
+          ]),
+      ...(effort === undefined
+        ? []
+        : [
+            {
+              name: SETTINGS.effort,
+              label:
+                SETTINGS.effortOptions.find((entry) => entry.value === effort)?.label ?? effort,
+              kind: 'step' as const,
+              notices: settingNotices.effort,
+              request: (commandId: string, expectedRevision: number) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  effort: effort as Effort,
+                }),
+            },
+          ]),
+      ...(permission === undefined
+        ? []
+        : [
+            {
+              name: SETTINGS.permission,
+              label:
+                SETTINGS.permissionOptions.find((entry) => entry.value === permission)?.label ??
+                permission,
+              kind: 'toolCall' as const,
+              notices: settingNotices.permission,
+              request: (commandId: string, expectedRevision: number) =>
+                steerContext({
+                  contextId: sessionId,
+                  commandId,
+                  expectedRevision,
+                  permissionMode: permission as PermissionMode,
+                }),
+            },
+          ]),
+    ];
+    for (const change of changes) {
+      if (revision === undefined) {
+        appliesNote = change.notices.fault;
+        return;
+      }
+      const expected = revision;
+      const result = await changeSetting({
+        commands,
+        scope: sessionId,
+        content: `${change.name}:${change.label}`,
+        send: (commandId) => change.request(commandId, expected),
+        reload: reloadContext,
+        notices: change.notices,
+      });
+      if (!result.applied) {
+        appliesNote = result.notice ?? change.notices.notChanged;
+        return;
+      }
+      revision = context.data?.configVersion;
+      noted(change.kind, change.name, change.label);
+    }
   }
 
   // Steering admits only the chat's own principal (`bureau.contexts.steer`). The page knows who that
@@ -335,9 +576,21 @@
 
   // Chat lays out the conversation without the Bureau's files in it; they are shown under their
   // rows (`chat-assets.svelte`). An answer to a question is shown as it was typed (`answer-rows.ts`).
+  // The status line under a reply that stopped is worded here, from what the run was in the middle
+  // of, so it is drawn on the row it belongs to (`withStopLine`).
   const shown = $derived(
-    withoutAssetParts(withTypedAnswers(session.conversation, session.schemaOfAnswer)),
+    withoutAssetParts(
+      withTypedAnswers(
+        withStopLine(session.conversation, { tools: toolInfo }),
+        session.schemaOfAnswer,
+      ),
+    ),
   );
+
+  // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
+  // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
+  // turn again.
+  const retryNoteId = $derived(failedStopNoteId(shown));
 
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
   // not finished its last message.
@@ -356,14 +609,78 @@
     event.preventDefault();
     router.navigate(href);
   }
+  const retryCommands = createPendingCommandKey();
+
+  /**
+   * Runs the last turn again (Retry on the status line under a reply that stopped), after the
+   * failed attempt, which stays on record. A call the run was interrupted on that may change things
+   * goes back through its approval, so a chat set to Allow all is set to On changes first, and the
+   * composer says so (the chat's "Allow for the rest of this chat" grant for the tool is forgotten,
+   * `ChatSessionState.retryTurn`). When the setting cannot be changed, nothing is sent: the call
+   * would otherwise run unasked.
+   */
+  async function retryTurn(): Promise<void> {
+    const changing = session.interruptedCallsThatMayChange(toolInfo);
+    const data = context.data;
+    if (changing.length > 0 && data?.permissionMode === 'allow-all') {
+      const result = await changeSetting({
+        commands: retryCommands,
+        scope: sessionId,
+        content: 'on-changes',
+        send: (commandId) =>
+          steerContext({
+            contextId: sessionId,
+            commandId,
+            expectedRevision: data.configVersion,
+            permissionMode: 'on-changes',
+          }),
+        reload: reloadContext,
+        notices: SETTINGS.permissionNotices,
+      });
+      if (!result.applied) {
+        showToast(result.notice ?? SETTINGS.permissionNotices.notChanged, {
+          variant: 'warning',
+          duration: 0,
+        });
+        return;
+      }
+      const onChanges = SETTINGS.permissionOptions.find((entry) => entry.value === 'on-changes');
+      noted('toolCall', SETTINGS.permission, onChanges?.label ?? 'On changes asks');
+    }
+    await session.retryTurn({ tools: toolInfo });
+  }
+
   let branching = $state(false);
   let branchFailure = $state<string | undefined>(undefined);
-  // The text of an edit that did not branch. Chat closes its editor when the person saves, so this
-  // is the only place the text is kept.
-  let keptEdit = $state<{ readonly messageId: string; readonly content: string } | undefined>();
   const branchCommands = createPendingCommandKey();
   // The reply the More menu's Branch branches from: the last one a branch can be made from.
   const lastBranchTarget = $derived(lastBranchPoint(session.conversation, branchPoints));
+
+  /**
+   * Where Branch on a message branches: a reply branches from itself, and a message the person sent
+   * from just before it. `undefined` where the Bureau offers no branch (a run is going, or the
+   * message follows no finished reply).
+   */
+  function branchTargetOf(message: { readonly id: string; readonly role: string }) {
+    if (choosing || gone) return undefined;
+    if (message.role === 'assistant') {
+      return branchPoints.has(message.id) ? { messageId: message.id } : undefined;
+    }
+    if (message.role !== 'user') return undefined;
+    const before = editForkPoint(session.conversation, message.id, branchPoints);
+    return before === undefined ? undefined : { messageId: before };
+  }
+
+  /**
+   * The model a reply was written by, by its name for a person: the one the Bureau recorded on the
+   * reply's row, never the one the chat runs on now. `undefined` for a reply that records none.
+   */
+  function replyModelName(metadata: Readonly<Record<string, unknown>>): string | undefined {
+    const replyModel = replyModelOf(metadata);
+    return replyModel === undefined
+      ? undefined
+      : replyModelLabel(replyModel, models.data?.models ?? []);
+  }
 
   /** What a refused or failed branch says: the Bureau's reason when it gave one, else `fault`. */
   function branchFailureText(error: unknown, fault: string): string {
@@ -374,13 +691,11 @@
 
   /**
    * Branches the chat through `messageId`, or before its first message when that is `null`, and
-   * opens the branch. A message `edited` is the person's edited text, which goes with them to the
-   * branch and is sent there as a new turn (`edit-fork.ts`); the original chat keeps what it had.
+   * opens the branch. The original chat keeps what it had.
    */
-  async function branchThrough(messageId: string | null, edited?: string): Promise<void> {
+  async function branchThrough(messageId: string | null): Promise<void> {
     branching = true;
     branchFailure = undefined;
-    if (edited === undefined) keptEdit = undefined;
     try {
       const branchId = await forkContext({
         contextId: sessionId,
@@ -388,8 +703,6 @@
         throughMessageId: messageId,
       });
       branchCommands.confirmed();
-      keptEdit = undefined;
-      if (edited !== undefined) holdEdit(branchId, edited);
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
       router.navigate(chatSessionPath(branchId));
     } catch (error) {
@@ -400,45 +713,9 @@
       if (reason !== undefined && Object.hasOwn(CHAT_COPY.branch.refused, reason)) {
         branchCommands.confirmed();
       }
-      branchFailure = branchFailureText(
-        error,
-        edited === undefined ? CHAT_COPY.branch.fault : CHAT_COPY.edit.fault,
-      );
+      branchFailure = branchFailureText(error, CHAT_COPY.branch.fault);
     } finally {
       branching = false;
-    }
-  }
-
-  /**
-   * Editing a message resends by fork: the chat is branched at the reply before the message, and
-   * the edited text is sent on the branch. The chat the person edited from is left as it was.
-   */
-  function editMessage(event: { readonly messageId: string; readonly content: string }): void {
-    // Kept until the branch is made: the editor has closed on the text, and a refusal or a failed
-    // branch would otherwise lose it.
-    keptEdit = event;
-    const sent = session.conversation.messages[event.messageId];
-    // The edited text is all that goes to the branch, so a message that carried files would lose them.
-    if (sent !== undefined && assetsOf(sent).length > 0) {
-      branchFailure = CHAT_COPY.edit.withFiles;
-      return;
-    }
-    const point = editForkPoint(session.conversation, event.messageId, branchPoints);
-    if (point === undefined) {
-      branchFailure = CHAT_COPY.edit.unavailable;
-      return;
-    }
-    void branchThrough(point, event.content);
-  }
-
-  /** Puts the kept edit on the clipboard, and says whether it got there. */
-  async function copyKeptEdit(): Promise<void> {
-    if (keptEdit === undefined) return;
-    try {
-      await navigator.clipboard.writeText(keptEdit.content);
-      showToast(CHAT_COPY.edit.copied);
-    } catch {
-      showToast(CHAT_COPY.edit.copyFailed, { variant: 'danger', duration: 0 });
     }
   }
 
@@ -466,6 +743,30 @@
   $effect(() => {
     void session.humanRequests[0]?.interruptId;
     pickable = choiceButtons(questionElement).length > 0;
+  });
+
+  /** Whether an answer is held for its Undo window, which keeps the composer from taking a second. */
+  let answerHeld = $state(false);
+  // The composer answers while a question waits (or its answer is held for the Undo window): it reads
+  // the choices above when the question draws some, and Answer when it takes free text.
+  const answering = $derived(
+    (session.humanRequests.length > 0 && !session.streaming) || answerHeld,
+  );
+  /** The question whose answer was just sent, kept on show as "You answered" while the run goes on. */
+  let sentRequest = $state.raw<(typeof session.humanRequests)[number] | undefined>();
+  // The run reports a question as it parks, a moment before the turn that carried it is over; a
+  // message sent in between would be a follow-up, so the question waits for the turn's end. Once its
+  // answer is sent the question stays, answered, while the run continues.
+  const shownRequests = $derived.by(() => {
+    if (!session.streaming) return session.humanRequests.slice(0, 1);
+    return sentRequest === undefined ? [] : [sentRequest];
+  });
+  $effect(() => {
+    // A question that is open again, or none at all, is not the one that was sent.
+    if (!session.streaming && sentRequest !== undefined) {
+      const open = session.humanRequests[0];
+      if (open?.interruptId !== sentRequest.interruptId) sentRequest = undefined;
+    }
   });
 
   async function uploadQuestionFile(file: File, signal: AbortSignal): Promise<string> {
@@ -510,7 +811,78 @@
   const approvalsByCall = $derived(
     new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
-  const activity = $derived(toolGroups(session.conversation));
+  // A call with no answer that nothing is working on any more was interrupted.
+  // A failure the transcript already says, on the row it belongs to, is not said again above it: a
+  // message that never got an answer is marked "Not sent".
+  const failureShownInTranscript = $derived(
+    session.failureWasTransport &&
+      Object.values(session.conversation.messages).some(
+        (row) => row.metadata['_deliveryStatus'] === 'failed',
+      ),
+  );
+  const lastRowId = $derived(
+    shown.ids.findLast((rowId) => shown.messages[rowId]?.hidden === false),
+  );
+  /** Whether a group of calls is the end of a turn that finished with no reply, so its rail closes with the run's end state. */
+  function endsTheTurn(group: {
+    readonly entries: readonly { readonly state: string }[];
+    readonly messageIds: readonly string[];
+  }): boolean {
+    return (
+      !runGoing &&
+      approvals.length === 0 &&
+      shownRequests.length === 0 &&
+      session.failure === undefined &&
+      group.messageIds.at(-1) === lastRowId &&
+      group.entries.every((entry) => entry.state === 'done' || entry.state === 'denied')
+    );
+  }
+  // The chat's state beside its title, in the shared status words: a person's turn first, then a
+  // run going, then how the last one ended. A new chat, and one with nothing said yet, has none.
+  const chatStatus = $derived.by(() => {
+    if (choosing || Object.keys(session.conversation.messages).length === 0) return undefined;
+    if (context.data?.endReason === 'host-stopped') return CHAT_COPY.status.ended;
+    if (
+      approvals.length > 0 ||
+      shownRequests.length > 0 ||
+      context.data?.activity === 'awaiting-input'
+    ) {
+      return CHAT_COPY.status.waiting;
+    }
+    if (runGoing) return CHAT_COPY.status.running;
+    if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
+    return CHAT_COPY.status.done;
+  });
+  // The Bureau's time, which a running call's duration counts to. It moves only while a call runs,
+  // a tenth of a second at a time, which is the precision the rail prints.
+  const RUNNING_CALL_TICK_MILLISECONDS = 100;
+  let bureauNow = $state(session.clock.now());
+  const activity = $derived(
+    toolGroups(session.conversation, {
+      runActive: runGoing,
+      tools: toolInfo,
+      timing: {
+        now: bureauNow,
+        callStarts: session.callStarts,
+        callEnds: session.callEnds,
+        ...(session.stoppedAt === undefined ? {} : { stoppedAt: session.stoppedAt }),
+      },
+    }),
+  );
+  const callRunning = $derived(
+    [...activity.groups.values()].some((group) =>
+      group.entries.some((entry) => entry.state === 'running'),
+    ),
+  );
+  $effect(() => {
+    if (!callRunning) return;
+    bureauNow = untrack(() => session.clock.now());
+    // poll-reason: clock
+    const timer = setInterval(() => {
+      bureauNow = session.clock.now();
+    }, RUNNING_CALL_TICK_MILLISECONDS);
+    return () => clearInterval(timer);
+  });
   const mcpApps = createQuery(
     () => ({
       queryKey: queryKeys.hostMcpApps(),
@@ -700,11 +1072,9 @@
     // person to send or change. It sends nothing.
     const about = untrack(() => (isNew ? router.current.search.get('about') : null));
     if (about !== null && about.trim() !== '') void tick().then(() => fillComposer(about));
-    // A branch made to resend an edited message opens with that message to send.
-    const edited = untrack(() => (isNew ? undefined : takeEdit(sessionId)));
-    if (edited !== undefined) void session.send(edited).catch(() => undefined);
     return () => {
       for (const remove of removals) remove();
+      restart.dispose();
       session.dispose();
     };
   });
@@ -718,6 +1088,12 @@
   >
   {#if context.data?.parentContextId}
     <BranchOrigin parentId={context.data.parentContextId} />
+  {/if}
+{/snippet}
+
+{#snippet headerStatus()}
+  {#if chatStatus !== undefined}
+    <StatusDot word={chatStatus} />
   {/if}
 {/snippet}
 
@@ -746,64 +1122,15 @@
       headingLevel={1}
       description={details}
       actions={headerActions}
+      status={headerStatus}
+      statusPlacement="inline"
     />
   {/if}
-  {#if !choosing}
-    <div class="weft-chat-settings" data-testid="chat-settings">
-      {#if context.data !== undefined}
-        <dl class="weft-chat-settings__list" aria-label={SETTINGS.summaryLabel}>
-          <div class="weft-chat-settings__item">
-            <dt>{SETTINGS.model}</dt>
-            <dd data-setting="model">{shownModel}</dd>
-          </div>
-          <div class="weft-chat-settings__item">
-            <dt>{SETTINGS.effort}</dt>
-            <dd data-setting="effort">{shownEffort}</dd>
-          </div>
-          <div class="weft-chat-settings__item">
-            <dt>{SETTINGS.permission}</dt>
-            <dd data-setting="permission">{shownPermission}</dd>
-          </div>
-        </dl>
-      {/if}
-      <p class="weft-chat-strip" role="status" data-testid="chat-settings-note">
-        {#if appliesNote !== undefined}{appliesNote}{/if}
-        {#if permissionDescription !== undefined}
-          <span data-testid="permission-description">{permissionDescription}</span>
-        {/if}
-      </p>
-    </div>
-  {/if}
-
   {#if !choosing}
     <SessionTasks {sessionId} streaming={session.streaming} />
   {/if}
 
-  <!-- The run reports a question as it parks, a moment before the turn that carried it is over; a
-       message sent in between would be a follow-up, so the question waits for the turn's end. -->
-  {#each session.streaming ? [] : session.humanRequests.slice(0, 1) as request (request.interruptId)}
-    <div class="weft-chat-question" data-interrupt={request.interruptId}>
-      <p class="weft-chat-question__prompt">
-        {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
-      </p>
-      <div bind:this={questionElement} data-question-answer-region>
-        <ChatQuestion
-          {...{ 'data-changes': true }}
-          id={`chat-question-${request.interruptId}`}
-          schema={request.schema ?? FREE_TEXT_SCHEMA}
-          answerInComposer
-          busy={session.attaching}
-          uploadFile={uploadQuestionFile}
-          onSubmit={(value) => void session.answerQuestion(request.interruptId, value)}
-        />
-      </div>
-      {#if pickable}
-        <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
-      {/if}
-    </div>
-  {/each}
-
-  {#if session.failure !== undefined}
+  {#if session.failure !== undefined && !failureShownInTranscript}
     <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
       <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
       <p class="weft-chat-approval__message">{session.failure}</p>
@@ -829,30 +1156,9 @@
       dismissible
       onDismiss={() => {
         branchFailure = undefined;
-        keptEdit = undefined;
       }}
     >
       <p class="weft-chat-approval__message">{branchFailure}</p>
-      {#if keptEdit !== undefined}
-        <p class="weft-chat-approval__message">{CHAT_COPY.edit.kept}</p>
-        <blockquote class="weft-chat-approval__message" data-testid="kept-edit">
-          {keptEdit.content}
-        </blockquote>
-        <Button
-          size="sm"
-          variant="secondary"
-          label={CHAT_COPY.edit.copy}
-          onclick={() => void copyKeptEdit()}
-        />
-        <Button
-          data-changes
-          size="sm"
-          variant="secondary"
-          label={CHAT_COPY.edit.tryAgain}
-          disabled={branching}
-          onclick={() => keptEdit !== undefined && editMessage(keptEdit)}
-        />
-      {/if}
     </Alert>
   {/if}
 
@@ -878,13 +1184,30 @@
       adapter={session.chatAdapter}
       streaming={session.streaming}
       surfaceMode="transparent"
-      disabled={connection.unreachable || session.disconnected || gone}
-      pausedReason={connection.unreachable ? CONNECTION_COPY.changesOff : undefined}
+      variant="transcript"
+      notSent={connection.unreachable
+        ? {
+            summary: CHAT_COPY.notSent.unreachable,
+            retryDisabled: true,
+            retryNote: CHAT_COPY.notSent.retryNote,
+          }
+        : { summary: CHAT_COPY.notSent.online }}
+      disabled={session.disconnected || gone || answerHeld}
+      composerPlaceholder={answering
+        ? pickable
+          ? CHAT_COPY.composer.answerPlaceholder
+          : CHAT_COPY.questionAnswerLabel
+        : CHAT_COPY.composer.placeholder(agentSummary?.displayName ?? agent)}
+      {composerStatus}
+      composerHeader={choosing ? newChatHeader : undefined}
+      composerFormattingToolbar
+      composerAnswering={answering}
       streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{
         attachments: attachable && !gone,
-        // A new chat has no context to branch yet, and a deleted one has none to branch from.
-        editing: !session.attaching && !choosing && !gone,
+        // The transcript offers Branch on a message and no Edit: editing a sent message is a
+        // fork, which Branch on that message is.
+        editing: false,
         quote: true,
       }}
       uploadAttachment={upload}
@@ -892,6 +1215,38 @@
       maxFileSize={settings?.maxFileSize}
       formatAttachmentError={chatAttachmentErrorMessage}
     >
+      {#snippet trailing()}
+        {#each shownRequests as request (request.interruptId)}
+          <div class="weft-chat-question" data-interrupt={request.interruptId}>
+            <p class="weft-chat-question__prompt">
+              <CircleHelp class="weft-chat-question__glyph" size={16} aria-hidden="true" />
+              {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+            </p>
+            <div bind:this={questionElement} data-question-answer-region>
+              <ChatQuestion
+                {...{ 'data-changes': true }}
+                id={`chat-question-${request.interruptId}`}
+                schema={request.schema ?? FREE_TEXT_SCHEMA}
+                answerInComposer
+                busy={session.attaching}
+                uploadFile={uploadQuestionFile}
+                undoMilliseconds={answerUndoMilliseconds()}
+                onHoldChange={(held) => (answerHeld = held)}
+                onSubmit={async (value) => {
+                  sentRequest = request;
+                  const taken = await session.answerQuestion(request.interruptId, value);
+                  // An answer the session did not take leaves the question open, not "answered".
+                  if (!taken) sentRequest = undefined;
+                  return taken;
+                }}
+              />
+            </div>
+            {#if pickable}
+              <p class="weft-chat-question__hint">{CHAT_COPY.pickHint}</p>
+            {/if}
+          </div>
+        {/each}
+      {/snippet}
       {#snippet empty()}
         {#if choosing}
           <NewChatWelcome
@@ -911,100 +1266,59 @@
           />
         {/if}
       {/snippet}
-      {#snippet composerActions()}
-        {#if choosing}
-          <div class="ib-agent-pill">
-            <Combobox
-              id="weft-chat-agent"
-              aria-label={CHAT_COPY.agentLabel}
-              placeholder={CHAT_COPY.agentPlaceholder}
-              size="sm"
-              options={choices}
-              value={agent}
-              onValueChange={chooseAgent}
-            />
-          </div>
+      {#snippet composerControls({ folded })}
+        {#if folded}
+          <ComposerSettings>{@render settingControls()}</ComposerSettings>
         {:else}
-          <div class="weft-chat-controls">
-            <ModelPicker
-              {sessionId}
-              agentName={agent}
-              current={context.data?.model}
-              revision={context.data?.configVersion}
-              reload={reloadContext}
-              locked={steering}
-              unavailable={cannotSteer}
-              onBusyChange={(busy) => (steering = busy)}
-              onApplied={() => noted('step')}
-            />
-            <SettingSelect
-              {sessionId}
-              id="weft-chat-effort"
-              label={SETTINGS.effort}
-              options={SETTINGS.effortOptions}
-              current={context.data?.effort}
-              unsetLabel={SETTINGS.agentDefault}
-              revision={context.data?.configVersion}
-              send={(value, commandId, expectedRevision) =>
-                steerContext({
-                  contextId: sessionId,
-                  commandId,
-                  expectedRevision,
-                  effort: value as Effort,
-                })}
-              notices={SETTINGS.effortNotices}
-              reload={reloadContext}
-              locked={steering}
-              unavailable={cannotSteer}
-              onBusyChange={(busy) => (steering = busy)}
-              onApplied={() => noted('step')}
-            />
-            <SettingSelect
-              {sessionId}
-              id="weft-chat-permission"
-              label={SETTINGS.permission}
-              options={SETTINGS.permissionOptions}
-              current={context.data?.permissionMode}
-              revision={context.data?.configVersion}
-              send={(value, commandId, expectedRevision) =>
-                steerContext({
-                  contextId: sessionId,
-                  commandId,
-                  expectedRevision,
-                  permissionMode: value as PermissionMode,
-                })}
-              notices={SETTINGS.permissionNotices}
-              reload={reloadContext}
-              locked={steering}
-              unavailable={cannotSteer}
-              onBusyChange={(busy) => (steering = busy)}
-              onApplied={() => noted('toolCall')}
-            />
-          </div>
+          {@render settingControls()}
+        {/if}
+      {/snippet}
+      {#snippet composerActions()}
+        {#if !choosing && usesModel}
+          <ContextMeter report={contextWindow.data} failed={contextWindow.isError} />
         {/if}
       {/snippet}
       {#snippet messageActions({ message })}
         {@const replyStep = message.role === 'assistant' ? replyStepOf(message.id) : undefined}
+        {@const branchAt = branchTargetOf(message)}
         {#if replyStep !== undefined && !session.streaming}
+          {@const replyModel = replyModelName(message.metadata)}
+          {#if replyModel !== undefined}
+            <span class="weft-chat-model">· {replyModel}</span>
+          {/if}
           <ReplyDetails
             runId={replyStep.runId}
             step={replyStep.step}
             usage={session.usage.get(replyStep.runId)}
           />
         {/if}
-        {#if branchPoints.has(message.id)}
+        {#if branchAt !== undefined}
           <Button
             data-changes
             type="button"
             class="chat-message-action-button"
             size="xs"
             variant="ghost"
-            iconOnly
-            label={CHAT_COPY.branch.action}
+            aria-label={message.role === 'user' ? CHAT_COPY.branch.before : CHAT_COPY.branch.action}
             disabled={branching}
-            onclick={() => void branchThrough(message.id)}
+            onclick={() => void branchThrough(branchAt.messageId)}
           >
             <GitBranch class="cinder-icon-xs" />
+            {CHAT_COPY.branch.short}
+          </Button>
+        {/if}
+      {/snippet}
+      {#snippet noteAction(note: MessageNoteInfo)}
+        {#if note.id === retryNoteId}
+          <Button
+            data-changes
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!session.canRetryTurn || connection.unreachable}
+            onclick={() => void retryTurn()}
+          >
+            {CHAT_COPY.stopLine.retry}
           </Button>
         {/if}
       {/snippet}
@@ -1012,7 +1326,11 @@
         {@const group = activity.groups.get(message.id)}
         {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
         {#if group !== undefined}
-          <ToolCalls id={`tools-${message.id}`} entries={group.entries}>
+          <ToolCalls
+            id={`tools-${message.id}`}
+            entries={group.entries}
+            endLabel={endsTheTurn(group) ? CHAT_COPY.tools.runFinishedNoReply : undefined}
+          >
             {#snippet decision(entry)}
               {@const asked = approvalsByCall.get(entry.callId)}
               {#if asked !== undefined}
@@ -1055,10 +1373,13 @@
           </ToolCalls>
           <!-- A group stands in for its rows, so the lines a run left on them are shown with it. -->
           {#each group.messageIds as rowId (rowId)}
-            {@const held = session.conversation.messages[rowId]}
+            {@const held = shown.messages[rowId]}
             {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
             {#each notes as note (note.id)}
-              <ChatNote {note} />
+              <ChatNote
+                {note}
+                action={note.kind === 'stopped' && note.id === retryNoteId ? noteAction : undefined}
+              />
             {/each}
           {/each}
         {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}
@@ -1075,4 +1396,94 @@
       {/snippet}
     </Chat>
   </div>
+  <!-- Model, Effort and Permissions: the live session's, or, on a new chat, the person's choices
+       before it has a session (applied once the first message has started it). Rendered once, in
+       the row or folded into the one Settings control. -->
+  {#snippet settingControls()}
+    {#if usesModel}
+      <ModelPicker
+        {sessionId}
+        agentName={agent}
+        current={choosing
+          ? draftModel === undefined
+            ? null
+            : { provider: draftModel.provider, model: draftModel.model }
+          : context.data?.model}
+        revision={context.data?.configVersion}
+        reload={reloadContext}
+        locked={steering}
+        unavailable={cannotSteer}
+        onBusyChange={(busy) => (steering = busy)}
+        onApplied={(value) => noted('step', SETTINGS.model, value)}
+        draft={choosing}
+        onDraft={(choice) => (draftModel = choice)}
+      />
+      <SettingSelect
+        {sessionId}
+        id="weft-chat-effort"
+        label={SETTINGS.effort}
+        options={SETTINGS.effortOptions}
+        current={choosing ? (draftEffort ?? null) : context.data?.effort}
+        unsetLabel={SETTINGS.agentDefault}
+        revision={context.data?.configVersion}
+        send={(value, commandId, expectedRevision) =>
+          steerContext({
+            contextId: sessionId,
+            commandId,
+            expectedRevision,
+            effort: value as Effort,
+          })}
+        notices={SETTINGS.effortNotices}
+        reload={reloadContext}
+        locked={steering}
+        unavailable={cannotSteer}
+        onBusyChange={(busy) => (steering = busy)}
+        onApplied={(value) => noted('step', SETTINGS.effort, value)}
+        draft={choosing}
+        onDraft={(value) => (draftEffort = value)}
+      />
+    {/if}
+    <SettingSelect
+      {sessionId}
+      id="weft-chat-permission"
+      label={SETTINGS.permission}
+      options={SETTINGS.permissionOptions}
+      current={choosing ? (draftPermission ?? 'on-changes') : context.data?.permissionMode}
+      revision={context.data?.configVersion}
+      send={(value, commandId, expectedRevision) =>
+        steerContext({
+          contextId: sessionId,
+          commandId,
+          expectedRevision,
+          permissionMode: value as PermissionMode,
+        })}
+      notices={SETTINGS.permissionNotices}
+      reload={reloadContext}
+      locked={steering}
+      unavailable={cannotSteer}
+      onBusyChange={(busy) => (steering = busy)}
+      onApplied={(value) => noted('toolCall', SETTINGS.permission, value)}
+      draft={choosing}
+      onDraft={(value) => (draftPermission = value)}
+    />
+  {/snippet}
+
+  <!-- The agent a new chat is with, at the top of the composer. -->
+  {#snippet newChatHeader()}
+    <AgentSelect
+      agents={agents.data ?? []}
+      value={agent}
+      providerConnected={providers.data?.providers.some((provider) => provider.hasKey)}
+      onChange={chooseAgent}
+    />
+  {/snippet}
+  <ConfirmDialog
+    bind:open={confirmingEnable}
+    title={CHAT_COPY.composer.enableDialog.title(pluginTitle)}
+    description={CHAT_COPY.composer.enableDialog.description}
+    confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
+    onConfirm={() =>
+      void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
+  />
+  <RestartDialog flow={restart} />
 </section>

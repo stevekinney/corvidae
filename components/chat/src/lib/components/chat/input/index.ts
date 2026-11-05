@@ -12,7 +12,9 @@ export type {
   ChatAttachmentReference,
   ChatAttachmentUpload,
 } from './chat-attachment.ts';
+export { default as ChatComposerSettings } from './chat-composer-settings.svelte';
 export { default as ChatInput } from './chat-input.svelte';
+export { COMPOSER_FOLD_WIDTH, type ChatComposerControlsContext } from './composer-controls.ts';
 export {
   applyComposerFormat,
   highlightComposerMarkdown,
@@ -22,4 +24,8 @@ export {
   type ComposerMarkdownSegment,
   type ComposerMarkdownSegmentKind,
 } from './composer-markdown.ts';
-export { composerStatusText, type ChatComposerStatus } from './composer-status.ts';
+export {
+  composerStatusText,
+  type ChatComposerBlockedAction,
+  type ChatComposerStatus,
+} from './composer-status.ts';

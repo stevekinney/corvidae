@@ -8,6 +8,10 @@ import { effectiveContextTail } from '../effective-context-record';
 import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';
 import { runStep } from '../run-step';
+import {
+  SESSION_INPUT_COMMAND_ID_METADATA_KEY,
+  SESSION_INPUT_ID_METADATA_KEY,
+} from '../session-input-turns';
 import type { FinishReason, StepResult } from '../types';
 import { CHECKPOINT_RECORD_SCHEMA_VERSION } from './checkpoint-version';
 import { runDepsFrom } from './run-workflow-input';
@@ -359,11 +363,14 @@ async function deliverSessionInputs(
     // Hidden messages count: a hidden turn still holds its command and its id.
     const messages = conversation.getMessages({ includeHidden: true });
     const existing = messages.find(
-      (message) => message.metadata?.['sessionInputCommandId'] === input.commandId,
+      (message) => message.metadata?.[SESSION_INPUT_COMMAND_ID_METADATA_KEY] === input.commandId,
     );
     let messageId = existing?.id;
     if (messageId === undefined) {
-      const metadata = { sessionInputId: input.id, sessionInputCommandId: input.commandId };
+      const metadata = {
+        [SESSION_INPUT_ID_METADATA_KEY]: input.id,
+        [SESSION_INPUT_COMMAND_ID_METADATA_KEY]: input.commandId,
+      };
       const idIsFree = !messages.some((message) => message.id === input.id);
       const turn: MessageInput & { readonly id?: string } = {
         role: 'user',

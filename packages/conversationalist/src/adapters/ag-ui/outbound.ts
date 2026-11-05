@@ -10,6 +10,7 @@ import type {
 } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
 import { toAGUIContent, toAGUIText } from './content';
+import { type AGUIExportOptions, CREATED_AT_METADATA_KEY } from './created-at';
 import { AGUIMappingError, unsupportedAGUIContent } from './errors';
 import { callRowParent, REASONING_ID_SEPARATOR } from './ids';
 import { toAGUIToolMessage } from './tool-result';
@@ -35,15 +36,24 @@ import { toAGUIToolMessage } from './tool-result';
  *   adapters. Token usage, goal completion, and cache boundaries have no AG-UI
  *   field and are not exported.
  *
+ * - With `options.createdAt`, each row's `createdAt` rides in its message's
+ *   metadata, and each tool call's in the call's, under
+ *   `CREATED_AT_METADATA_KEY`, which import reads back as the row's time.
+ *
  * Every message is parsed with the `@ag-ui/core` message schema before it is
  * returned, so the result is always a valid snapshot payload.
  */
-export function toAGUIMessages(conversation: Conversation): AGUIMessage[] {
+export function toAGUIMessages(
+  conversation: Conversation,
+  options: AGUIExportOptions = {},
+): AGUIMessage[] {
   assertConversationSafe(conversation);
   const messages: AGUIMessage[] = [];
+  const recorded = options.createdAt === true;
 
-  for (const message of getOrderedMessages(conversation)) {
-    if (message.hidden || isStreamingMessage(message)) continue;
+  for (const original of getOrderedMessages(conversation)) {
+    if (original.hidden || isStreamingMessage(original)) continue;
+    const message = recorded ? withRecordedTime(original) : original;
 
     if (message.role === 'tool-call') {
       if (message.toolCall) addToolCall(messages, message, message.toolCall);
@@ -75,6 +85,14 @@ function addToolCall(
     return;
   }
   messages.push({ id: message.id, role: 'assistant', toolCalls: [call] });
+}
+
+/** The row with its `createdAt` in its metadata, which every AG-UI shape of the row carries. */
+function withRecordedTime(message: Message): Message {
+  return {
+    ...message,
+    metadata: { ...message.metadata, [CREATED_AT_METADATA_KEY]: message.createdAt },
+  };
 }
 
 function validateAGUIMessage(message: AGUIMessage): AGUIMessage {

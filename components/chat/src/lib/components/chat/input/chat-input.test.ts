@@ -30,7 +30,7 @@ test('server compilation does not retain lifecycle hooks from the external Svelt
     generate: 'client',
     runes: true,
   }).js.code;
-  const actionRegistrationMarker = '$.action(';
+  const actionRegistrationMarker = '$.user_effect(';
 
   expect(clientCode).toContain(actionRegistrationMarker);
   expect(serverCode).not.toContain(actionRegistrationMarker);
@@ -108,7 +108,7 @@ describe('ChatInput', () => {
     expect(restoredSendTrigger.hasAttribute('data-stop')).toBe(false);
   });
 
-  test('allowFollowUp keeps Send and attachments live and shows Stop beside Send while sending', async () => {
+  test('allowFollowUp keeps the composer live: Stop takes Send place until a follow-up is typed, then both show', async () => {
     let submitCount = 0;
     let stopCount = 0;
     const { container } = render(ChatInput, {
@@ -123,25 +123,32 @@ describe('ChatInput', () => {
       },
     });
     const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
-    const send = container.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
     const stop = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Stop generating"]',
     )!;
 
+    // With nothing typed, Stop replaces Send: one button, labelled Stop.
     expect(composer.disabled).toBe(false);
-    expect(send.type).toBe('submit');
-    expect(send.hasAttribute('data-stop')).toBe(false);
     expect(stop.type).toBe('button');
     expect(stop.hasAttribute('data-stop')).toBe(true);
+    expect(stop.textContent).toContain('Stop');
+    expect(container.querySelector('button[aria-label="Send message"]')).toBeNull();
     expect(
       container.querySelector<HTMLButtonElement>('button[aria-label="Attach file"]')?.disabled,
     ).toBe(false);
 
     await fireEvent.input(composer, { target: { value: 'follow up' } });
+    // A typed message brings Send back beside Stop, so it can be sent without a keyboard.
+    const send = container.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
+    expect(send.type).toBe('submit');
+    expect(send.hasAttribute('data-stop')).toBe(false);
     await fireEvent.keyDown(composer, { key: 'Enter' });
     expect(submitCount).toBe(1);
 
-    await fireEvent.click(stop);
+    await fireEvent.input(composer, { target: { value: 'again' } });
+    await fireEvent.click(
+      container.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!,
+    );
     expect(stopCount).toBe(1);
     expect(submitCount).toBe(1);
   });
@@ -849,7 +856,9 @@ describe('ChatInput', () => {
         `#${composer.getAttribute('aria-describedby')}`,
       );
       expect(shortcutDescription?.textContent).toContain('Command+Enter or Control+Enter to send');
-      expect(target.querySelector('.chat-input-hint')).toBeNull();
+      expect(target.querySelector('.chat-input-hint')?.textContent).toBe(
+        'Command or Control and Enter to send · Enter for a new line',
+      );
       await fireEvent.input(composer, { target: { value: 'send this' } });
 
       await fireEvent.keyDown(composer, { key: 'Enter' });
@@ -876,7 +885,9 @@ describe('ChatInput', () => {
       });
       const composer = target.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
       await fireEvent.input(composer, { target: { value: 'first\nsecond' } });
-      expect(target.querySelector('.chat-input-hint')).toBeNull();
+      expect(target.querySelector('.chat-input-hint')?.textContent).toBe(
+        'Enter to send · Shift and Enter for a new line',
+      );
       await fireEvent.keyDown(composer, { key: 'Enter' });
       expect(submitCount).toBe(0);
       await fireEvent.input(composer, { target: { value: 'single line' } });

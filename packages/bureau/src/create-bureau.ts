@@ -81,6 +81,8 @@ import {
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
   type SessionInputAdmissionRequest,
+  type SessionInputRetractionOutcome,
+  type SessionInputRetractionRequest,
   type SessionInputGate,
   type SessionListOptions,
   SessionOutboxAppendedEvent,
@@ -113,6 +115,8 @@ import {
   humanInputSchemaOf,
   sessionOwnerOf,
   type ScheduleTick,
+  TOOL_TIMING_METADATA_KEY,
+  type ToolTiming,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -583,6 +587,8 @@ import {
   type PersistedSessionInput,
   readSessionInputReceipt,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
+  SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
+  SESSION_INPUT_RETRACTED_REASON,
 } from './session-input-durability';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
 import {
@@ -608,6 +614,7 @@ import {
   type ForkSessionResult,
   SessionForkRefusedError,
 } from './session-fork';
+import { withoutGrantsFor } from './session-grants';
 import {
   answerSteeringRetry,
   type BureauSteeringGate,
@@ -16795,6 +16802,108 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * B06 (row 18k) — takes back one input its own principal admitted and no run has taken yet: a
+   * follow-up the person removes before the run reaches it. The command is cancelled in the
+   * session's mailbox, so no step boundary can claim it, and the answer says whether that landed
+   * in time. A command a run already claimed is the run's: the gate keeps its lease, the step
+   * appends the turn, and the cancellation only closes the command once the turn commits, so that
+   * case is answered `delivered`, as is an input already promoted. Another principal's input, an
+   * unknown id, and an unknown session or incarnation all answer `not-found`.
+   */
+  async function retractSessionInput(
+    sessionId: string,
+    request: SessionInputRetractionRequest,
+  ): Promise<SessionInputRetractionOutcome> {
+    assertSessionInputAdmissionOpen();
+    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
+    if (session === undefined) return { outcome: 'not-found' };
+    if (request.incarnation !== undefined && request.incarnation !== session.incarnation) {
+      return { outcome: 'not-found' };
+    }
+    const sessionMailbox = tryGetSessionInputMailbox(sessionId, session.incarnation);
+    const kv = runtime.kv;
+    if (sessionMailbox === undefined || kv === undefined) {
+      return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+    }
+    const admitted = await sessionMailbox.receiptByIdempotencyKey(request.id);
+    // An id is unique within its session whatever its principal, so another caller's input is
+    // answered as one that is not there.
+    if (admitted === null || admitted.caller !== request.principal) {
+      return { outcome: 'not-found' };
+    }
+    const { commandId } = admitted;
+    const before = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
+    if (before.state === 'promoted') return { outcome: 'delivered', receipt: before };
+    const cancellation = await sessionMailbox.requestCancellation({
+      commandId,
+      reason: SESSION_INPUT_RETRACTED_REASON,
+    });
+    // `requested` is a command a step boundary holds. The boundary honors a cancellation that
+    // landed before its last check by rejecting the command, so it is never appended; one that
+    // landed after is closed once the turn commits, and the run has the input. The wait lets the
+    // boundary settle the first kind, and the receipt, never the wait, says which it was: a turn
+    // that appended the input is `promoted`, one the boundary rejected has ended undelivered, and a
+    // command still open when the wait runs out is held by a step that is appending it.
+    if (cancellation.status === 'requested') {
+      await sessionMailbox
+        .awaitCleanup({
+          commandId,
+          timeoutMs: SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
+          pollIntervalMs: 10,
+        })
+        .catch(() => undefined);
+    }
+    const receipt = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
+    const endedUndelivered =
+      receipt.state === 'canceled' || receipt.state === 'failed' || receipt.state === 'expired';
+    const heldByStep = cancellation.status === 'requested' && !endedUndelivered;
+    return receipt.state === 'promoted' || heldByStep
+      ? { outcome: 'delivered', receipt }
+      : { outcome: 'retracted', receipt };
+  }
+
+  /**
+   * B06 (row 20c) — forget the chat's "Allow for the rest of this chat" grants of `tools`, so Retry
+   * on a reply that failed sends the turn again with the interrupted tool back behind its approval.
+   * Only the session's metadata changes: every row of the conversation stays, and the failed
+   * attempt is kept on record. Like a rename it is not activity, so `updatedAt` does not move.
+   */
+  async function forgetSessionGrants(
+    id: string,
+    tools: readonly string[],
+    forgetOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<readonly string[] | undefined> {
+    const sessions = requireSessionStore();
+    if (runAdmissionClosed) {
+      throw new BureauShuttingDownError(
+        'Cannot forget grants: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
+    }
+    let forgotten: readonly string[] | undefined;
+    await sessions.update(
+      id,
+      (session) => {
+        if (session === undefined) return undefined;
+        if (
+          forgetOptions?.incarnation !== undefined &&
+          session.incarnation !== forgetOptions.incarnation
+        ) {
+          return undefined;
+        }
+        const without = withoutGrantsFor(session.metadata, tools);
+        forgotten = without.forgotten;
+        // Nothing to forget is no write: undefined leaves the session as it is.
+        return without.metadata === session.metadata
+          ? undefined
+          : { ...session, metadata: without.metadata };
+      },
+      { refreshActivity: false },
+    );
+    return forgotten;
+  }
+
+  /**
    * AB-67/AB-199 — admit a `pause`/`resume` steering command. Pre-admission
    * checks reuse `submitSessionInput`'s fixed order (authorization, then
    * session lifecycle, then capability): an unauthorized caller or unknown
@@ -18627,6 +18736,25 @@ async function constructBureau<const D extends AgentDefinitions>(
    * `stopWhen: pendingApproval()`) can write its own copy of the conversation
    * over this one at its terminal save, so a host serving approvals configures it.
    */
+  /**
+   * When each approved call ran, by review id (COR-2014): the Bureau runs an approved call itself
+   * (`resumeApproval`), so it times the run, and the outcome it writes over the call's waiting row
+   * says when the call ran rather than when it was asked for.
+   */
+  const approvalRunTimes = new Map<string, ToolTiming>();
+
+  /**
+   * The metadata the outcome's row is written with: the waiting row's own, with no time the asking
+   * left on it, and the time the approved call ran when it ran.
+   */
+  function approvalOutcomeMetadata(
+    waiting: Readonly<Record<string, JSONValue>> | undefined,
+    ran: ToolTiming | undefined,
+  ): Record<string, JSONValue> {
+    const { [TOOL_TIMING_METADATA_KEY]: _asked, ...kept } = waiting ?? {};
+    return ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } };
+  }
+
   async function writeApprovalOutcomeToSession(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     input: ResolveReviewInput,
@@ -18679,9 +18807,15 @@ async function constructBureau<const D extends AgentDefinitions>(
               missing = true;
               return undefined;
             }
+            const waiting = history.ids
+              .map((id) => getOwn(history.messages, id))
+              .find((row) => row?.toolResult?.callId === callId);
+            const ran = input.decision === 'approve' ? approvalRunTimes.get(review.id) : undefined;
             return {
               ...session,
-              conversationHistory: resolveToolResult(history, callId, toolResult),
+              conversationHistory: resolveToolResult(history, callId, toolResult, {
+                metadata: approvalOutcomeMetadata(waiting?.metadata, ran),
+              }),
             };
           });
           if (continuingFire) {
@@ -18690,13 +18824,19 @@ async function constructBureau<const D extends AgentDefinitions>(
             );
             break;
           }
-          if (!missing) return undefined;
+          if (!missing) {
+            approvalRunTimes.delete(review.id);
+            return undefined;
+          }
           // A conversation that never held a row for the call (a review restored
           // from persisted metadata alone) shows no approval as pending, so there is
           // nothing stale to replace. A run that is still going is different: its
           // row is not stored yet, and the terminal save would put the stale one
           // there, so the outcome is lost unless the caller is told.
-          if (!stillGoing) return undefined;
+          if (!stillGoing) {
+            approvalRunTimes.delete(review.id);
+            return undefined;
+          }
           lastError = new Error(
             'the run is still going and has not stored the conversation the row is in',
           );
@@ -19403,6 +19543,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             peerRecovery,
           );
           actionStarted = true;
+          const approvedCallStartedAt = runtimeServices.clock.nowISO();
           result = await approvalToolbox.resumeApproval(
             { ...approval, approvalToken: approval.approvalToken },
             {
@@ -19418,6 +19559,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                 : { durableOperationKey: peerRecovery.durableOperationKey }),
             },
           );
+          approvalRunTimes.set(review.id, {
+            startedAt: approvedCallStartedAt,
+            endedAt: runtimeServices.clock.nowISO(),
+          });
 
           // `resumeApproval` re-runs the tool's `beforeExecute` policy from
           // scratch — a policy that re-evaluates on edited arguments (or has
@@ -23176,6 +23321,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     rename: renameSession,
     signal: signalSession,
     input: submitSessionInput,
+    retract: retractSessionInput,
+    forgetGrants: forgetSessionGrants,
     inputsDeliveredBy: sessionInputsDeliveredBy,
     steer: submitSteeringCommand,
     steering: getSessionSteering,

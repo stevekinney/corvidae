@@ -201,6 +201,10 @@ const CONTEXT_COMMAND_PARAMETERS = {
   commandId: 'command-1',
   override: { provider: 'anthropic', model: 'claude-opus-5-5' },
   throughMessageId: 'message-1',
+  // The input a retract takes back.
+  inputId: 'input-1',
+  // The tools whose remembered grant a forgetgrants call forgets.
+  tools: ['issue-refund'],
   // Clearing a title the context never had changes nothing, so the rename reaches its own check
   // without altering the title the transcript scan looks for.
   title: null,
@@ -834,8 +838,9 @@ describe('identifiers grant nothing', () => {
   /** The string-valued id parameters an operation declares, found from its own schema. */
   function idParameters(operation: (typeof BUREAU_HANDLER_OPERATIONS)[number]): string[] {
     const shape = (operation.inputSchema as unknown as { shape: Record<string, unknown> }).shape;
-    // `messageId` and `signalId` are a caller's idempotency keys and `callId` selects a wait
-    // within a task: none is the id of a resource, and `callId` needs its task named beside it.
+    // `messageId` and `signalId` are a caller's idempotency keys, `callId` selects a wait within a
+    // task, and `inputId` an input within a context: none is the id of a resource on its own, and
+    // `callId` and `inputId` need their task or context named beside them (the context is probed).
     return Object.keys(shape).filter(
       (key) =>
         key !== 'messageId' &&
@@ -843,6 +848,7 @@ describe('identifiers grant nothing', () => {
         key !== 'commandId' &&
         key !== 'signalId' &&
         key !== 'callId' &&
+        key !== 'inputId' &&
         (key === 'id' || key.endsWith('Id')),
     );
   }

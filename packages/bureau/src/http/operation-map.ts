@@ -114,6 +114,11 @@ export const OPERATION_MAP = {
   'bureau.contexts.get': { workspaceClass: 'private-owned', member: 'contexts.get' },
   'bureau.contexts.delete': { workspaceClass: 'private-owned', member: 'contexts.delete' },
   'bureau.contexts.input': { workspaceClass: 'private-owned', member: 'contexts.input' },
+  'bureau.contexts.retract': { workspaceClass: 'private-owned', member: 'contexts.retract' },
+  'bureau.contexts.forgetgrants': {
+    workspaceClass: 'private-owned',
+    member: 'contexts.forgetGrants',
+  },
   'bureau.contexts.steer': { workspaceClass: 'private-owned', member: 'contexts.steer' },
   'bureau.contexts.fork': { workspaceClass: 'private-owned', member: 'contexts.fork' },
   'bureau.contexts.rename': { workspaceClass: 'private-owned', member: 'contexts.rename' },

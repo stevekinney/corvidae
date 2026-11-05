@@ -4,7 +4,7 @@
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Message, ToolCallPair } from '../conversation-model.ts';
   import type { MarkdownNodeOverride, MessagePartOverride } from './chat-message-parts.ts';
-  import type { StepInfo } from '../utilities/types.ts';
+  import type { ChatNotSent, MessageNoteInfo, StepInfo } from '../utilities/types.ts';
 
   export type ChatMessageProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
     /** The message to render */
@@ -18,6 +18,26 @@
     class?: string;
     /** Whether this message is the active in-conversation search match */
     searchMatch?: boolean;
+    /**
+     * How the message is drawn. `'transcript'` is the Interborough transcript: a reply is plain
+     * text with no card or role label, and one muted line under each message carries its time, the
+     * host's `actions`, Copy and Quote as visible words. A message that was not sent keeps its
+     * bubble under a red icon, its time and "Not sent", and a follow-up the run has not taken yet is
+     * a dashed bubble marked "Queued". A run's notes sit outside the bubble. Default `'default'`.
+     */
+    presentation?: 'default' | 'transcript';
+    /** The words of a message's "Not sent" popover, for the transcript presentation. */
+    notSent?: ChatNotSent | undefined;
+    /** Whether the "Not sent" popover is open. Bindable; it opens from the red icon. */
+    notSentOpen?: boolean;
+    /**
+     * Called when the person removes a queued follow-up. Remove shows on a queued message only when
+     * this is set, because only the host knows whether a message it has sent can still be taken
+     * back.
+     */
+    onRemoveQueued?: ((messageId: string) => void) | undefined;
+    /** Drawn at the end of a run's note line, such as a Retry beside a failed run's stop note. */
+    noteAction?: Snippet<[note: MessageNoteInfo]> | undefined;
     /** Actions region snippet (copy, edit, retry buttons) */
     actions?: Snippet;
     /** Status indicator snippet that belongs to the semantic message article. */
@@ -124,13 +144,21 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
-  import { mediaDisplayUrl } from '../builders.ts';
+  import { isStreamingMessage, mediaDisplayUrl } from '../builders.ts';
   import {
     deriveMessageParts,
     getMessageRoleLabel,
     getMessageText,
   } from '../utilities/utilities.ts';
-  import { Button, Pencil, Quote, RotateCcw, CopyButton } from '@lostgradient/cinder';
+  import {
+    Button,
+    CircleAlert,
+    CopyButton,
+    Pencil,
+    Popover,
+    Quote,
+    RotateCcw,
+  } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
@@ -153,6 +181,11 @@
     overrideContent,
     onExpandedChange,
     onRetry,
+    presentation = 'default',
+    notSent,
+    notSentOpen = $bindable(false),
+    onRemoveQueued,
+    noteAction,
     onEdit,
     onQuote,
     quoteDisabled = false,
@@ -382,7 +415,15 @@
   // parts (text/markdown/tool) live inside `.chat-message-body`, image parts
   // render as a sibling AFTER it — exactly where MessageAttachments used to sit,
   // so the flex layout and spacing are unchanged.
-  const bodyParts = $derived(messageParts.filter((part) => part.type !== 'image'));
+  const transcript = $derived(presentation === 'transcript');
+  // The agent's instructions open the transcript as muted text, folded to one line by default.
+  const systemRow = $derived(transcript && message.role === 'system');
+  let systemOpen = $state(false);
+  // In the transcript a run's notes are rows of their own under the message, not lines inside its bubble.
+  const noteParts = $derived(transcript ? messageParts.filter((part) => part.type === 'note') : []);
+  const bodyParts = $derived(
+    messageParts.filter((part) => part.type !== 'image' && !(transcript && part.type === 'note')),
+  );
   const imageParts = $derived(messageParts.filter((part) => part.type === 'image'));
   const copyHtml = $derived.by(() => {
     const body = `<div data-cinder-chat-message style="white-space: pre-wrap">${escapeHtml(textContent)}</div>`;
@@ -429,8 +470,115 @@
   }
 </script>
 
+{#snippet transcriptLine()}
+  <div
+    class="chat-message-line"
+    data-state={isFailed ? 'not-sent' : isPending ? 'queued' : 'sent'}
+    role="group"
+    aria-label="Message details"
+  >
+    {#if isFailed}
+      <Popover
+        bind:open={notSentOpen}
+        placement="bottom-end"
+        label="Not sent"
+        focusManagement="panel"
+      >
+        {#snippet trigger()}
+          <button
+            type="button"
+            class="chat-message-not-sent-icon"
+            aria-label="Not sent: details"
+            aria-expanded={notSentOpen}
+            onclick={() => (notSentOpen = !notSentOpen)}
+          >
+            <CircleAlert aria-hidden="true" />
+          </button>
+        {/snippet}
+        <div class="chat-message-not-sent-popover">
+          <p class="chat-message-not-sent-summary">
+            <CircleAlert class="chat-message-not-sent-glyph" aria-hidden="true" />
+            <span>{notSent?.summary ?? 'Not sent. Your message is kept.'}</span>
+          </p>
+          {#if onRetry}
+            <div class="chat-message-not-sent-actions">
+              <Button
+                type="button"
+                class="chat-message-retry"
+                size="xs"
+                variant="secondary"
+                disabled={notSent?.retryDisabled === true}
+                onclick={() => onRetry(message.id)}
+              >
+                Retry
+              </Button>
+              {#if notSent?.retryNote}
+                <span class="chat-message-not-sent-note">{notSent.retryNote}</span>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      </Popover>
+      {#if createdAtValue && formattedCreatedAt}
+        <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+      {/if}
+      <span class="chat-message-not-sent-label" role="status">Not sent</span>
+    {:else if isPending}
+      <span class="chat-message-queued-label">Queued · sends when the run is ready</span>
+      {#if onRemoveQueued}
+        <Button
+          type="button"
+          class="chat-message-remove-queued"
+          size="xs"
+          variant="ghost-accent"
+          onclick={() => onRemoveQueued(message.id)}
+        >
+          Remove
+        </Button>
+      {/if}
+    {:else if createdAtValue && formattedCreatedAt}
+      <time datetime={createdAtValue}>{formattedCreatedAt}</time>
+    {/if}
+    {#if !isPending && !streaming}
+      <span class="chat-message-line-actions">
+        {#if actions}
+          {@render actions()}
+        {/if}
+        {#if metadata}
+          {@render metadata()}
+        {/if}
+        {#if showDefaultActions && copyValue}
+          <CopyButton
+            value={copyValue}
+            html={copyHtml}
+            {...copyImage ? { image: copyImage } : {}}
+            label="Copy"
+            copiedLabel="Copied"
+            confirmDuration={2000}
+            class="chat-message-action-button chat-message-copy"
+          />
+        {/if}
+        {#if canQuote && !isFailed}
+          <button
+            type="button"
+            class="chat-message-action-button chat-message-quote-button"
+            onclick={quoteMessage}
+            disabled={quoteDisabled}
+            aria-label="Quote message"
+            aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
+          >
+            Quote
+          </button>
+        {/if}
+      </span>
+    {/if}
+  </div>
+{/snippet}
+
 <div
   class={classNames('chat-message-wrapper', className)}
+  data-presentation={transcript ? 'transcript' : undefined}
+  data-streaming={streaming || undefined}
   data-role={message.role}
   data-hidden={message.hidden || undefined}
   data-failed={isFailed || undefined}
@@ -456,7 +604,23 @@
       <span id={roleId} class="chat-message-role">{roleLabel}</span>
     </header>
 
-    <div class="chat-message-body">
+    {#if systemRow}
+      <button
+        type="button"
+        class="chat-message-system-toggle"
+        aria-expanded={systemOpen}
+        aria-controls={`${messageId}-body`}
+        onclick={() => (systemOpen = !systemOpen)}
+      >
+        Instructions · {systemOpen ? 'Hide' : 'Show'}
+      </button>
+    {/if}
+
+    <div
+      class="chat-message-body"
+      id={systemRow ? `${messageId}-body` : undefined}
+      hidden={systemRow && !systemOpen}
+    >
       {#if isEditing}
         <!-- Edit mode replaces the body parts with a textarea, but attachments
              stay visible (they were never inside the editable body). -->
@@ -530,13 +694,13 @@
       <ChatMessagePartsRenderer parts={imageParts} {messageId} />
     {/if}
 
-    {#if isPending}
+    {#if isPending && !transcript}
       <div class="chat-message-pending-actions">
         <span class="chat-message-pending-label">Sending…</span>
       </div>
     {/if}
 
-    {#if isFailed && onRetry}
+    {#if isFailed && onRetry && !transcript}
       <div class="chat-message-failed-actions">
         <span class="chat-message-failed-label" role="alert">Failed to send</span>
         <Button
@@ -560,7 +724,20 @@
     {/if}
   </article>
 
-  {#if hasMetadata}
+  {#if transcript}
+    <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
+         line under it yet: no time, Copy or Quote until it ends. -->
+    {#if !isEditing && !systemRow && !streaming && !isStreamingMessage(message)}
+      {@render transcriptLine()}
+    {/if}
+    {#if noteParts.length > 0}
+      <div class="chat-message-notes">
+        <ChatMessagePartsRenderer parts={noteParts} {messageId} {noteAction} />
+      </div>
+    {/if}
+  {/if}
+
+  {#if hasMetadata && !transcript}
     <div class="chat-message-metadata">
       {#if createdAtValue && formattedCreatedAt}
         <time datetime={createdAtValue}>{formattedCreatedAt}</time>
@@ -571,7 +748,7 @@
     </div>
   {/if}
 
-  {#if !isEditing && (actions || canQuote || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onRollback))}
+  {#if !transcript && !isEditing && (actions || canQuote || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onRollback))}
     <footer class="chat-message-footer" role="none">
       <div class="chat-message-actions" role="group" aria-label="Message actions">
         {#if actions}
@@ -1303,5 +1480,267 @@
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: 3px;
     }
+  }
+  /* ----------------------------------------
+   * Transcript presentation
+   *
+   * A reply is plain text on the page, with no card and no role label; a person's message keeps its
+   * tinted bubble. One muted line under each message carries its time, the host's actions, Copy and
+   * Quote, always visible, as words. A message that was not sent keeps its bubble under a red icon;
+   * a queued follow-up is a dashed, pale bubble. A run's notes sit outside the bubble, full width.
+   * ---------------------------------------- */
+  .chat-message-wrapper[data-presentation='transcript'] {
+    gap: var(--cinder-space-1);
+  }
+
+  .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'] {
+    inline-size: 100%;
+    max-inline-size: 100%;
+  }
+
+  /* The role stays in the accessible name; it is not drawn. */
+  .chat-message-wrapper[data-presentation='transcript'] .chat-message-header {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .chat-message-wrapper[data-presentation='transcript'][data-role='assistant'] .chat-message {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding-inline: 0;
+    border-radius: 0;
+  }
+
+  .chat-message-wrapper[data-presentation='transcript'][data-pending][data-role='user']
+    .chat-message {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 94%);
+    border: 1px dashed color-mix(in oklch, var(--cinder-accent-solid), transparent 55%);
+  }
+
+  .chat-message-wrapper[data-presentation='transcript'][data-failed] .chat-message {
+    border: none;
+    background: var(
+      --user-message-background,
+      color-mix(in oklch, var(--cinder-accent-solid), transparent 88%)
+    );
+  }
+
+  .chat-message-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-block-size: 1.5rem;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    line-height: 1.2;
+  }
+
+  .chat-message-wrapper[data-role='user'] .chat-message-line {
+    justify-content: flex-end;
+  }
+
+  .chat-message-line-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+  }
+
+  /* Actions are words in this line, not icon buttons in a hover footer. */
+  .chat-message-line :global(.chat-message-action-button) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    min-block-size: 1.5rem;
+    padding: 0 var(--cinder-space-1);
+    border: none;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-text-muted);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .chat-message-line :global(.chat-message-action-button:hover) {
+    color: var(--cinder-text-default);
+    text-decoration: underline;
+  }
+
+  .chat-message-line :global(.chat-message-action-button:disabled) {
+    cursor: not-allowed;
+    opacity: 0.5;
+    text-decoration: none;
+  }
+
+  .chat-message-line :global(.chat-message-action-button:focus-visible),
+  .chat-message-not-sent-icon:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  .chat-message-queued-label {
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-message-not-sent-label {
+    color: var(--cinder-status-danger-text);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .chat-message-not-sent-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: var(--cinder-status-danger-background);
+    color: var(--cinder-status-danger-text);
+    cursor: pointer;
+  }
+
+  .chat-message-not-sent-icon :global(svg) {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .chat-message-not-sent-popover {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    max-inline-size: 20rem;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+  }
+
+  .chat-message-not-sent-summary {
+    display: flex;
+    gap: var(--cinder-space-2);
+    margin: 0;
+    color: var(--cinder-text-default);
+  }
+
+  .chat-message-not-sent-summary :global(.chat-message-not-sent-glyph) {
+    flex: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin-block-start: 0.125rem;
+    color: var(--cinder-status-danger-text);
+  }
+
+  .chat-message-not-sent-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .chat-message-not-sent-actions :global(.chat-message-retry) {
+    inline-size: auto;
+    min-inline-size: 0;
+    max-inline-size: none;
+    padding-inline: var(--cinder-space-3);
+  }
+
+  .chat-message-not-sent-note {
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-message-notes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+  }
+
+  /* A streaming reply ends in a caret, not three dots, and the caret sits at the end of the last
+   * line of text, never on a line of its own: it is drawn after the last block of the rendered
+   * Markdown, or after the raw tail that has not been rendered yet. */
+  .chat-message-wrapper[data-presentation='transcript'] :global(.chat-message-streaming-progress) {
+    display: none;
+  }
+
+  .chat-message-wrapper[data-presentation='transcript']
+    :global(
+      .message-content-streaming:not([data-streaming-tail])
+        .message-content-preview
+        > :last-child::after
+    ),
+  .chat-message-wrapper[data-presentation='transcript']
+    :global(.message-content-streaming[data-streaming-tail] .message-content-tail::after) {
+    content: '';
+    display: inline-block;
+    inline-size: 0.5em;
+    block-size: 1.05em;
+    margin-inline-start: 0.125em;
+    vertical-align: text-bottom;
+    background: var(--cinder-text-default);
+    animation: chat-message-caret 1.1s steps(1) infinite;
+  }
+
+  @keyframes chat-message-caret {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-message-wrapper[data-presentation='transcript']
+      :global(
+        .message-content-streaming:not([data-streaming-tail])
+          .message-content-preview
+          > :last-child::after
+      ),
+    .chat-message-wrapper[data-presentation='transcript']
+      :global(.message-content-streaming[data-streaming-tail] .message-content-tail::after) {
+      animation: none;
+    }
+  }
+  .chat-message-wrapper[data-presentation='transcript'][data-role='system'] {
+    margin-inline: 0;
+    max-inline-size: 100%;
+    inline-size: 100%;
+  }
+
+  .chat-message-wrapper[data-presentation='transcript'][data-role='system'] .chat-message {
+    background: none;
+    color: var(--cinder-text-muted);
+    padding-inline: 0;
+    text-align: start;
+  }
+
+  .chat-message-wrapper[data-presentation='transcript'] .chat-message-body[hidden] {
+    display: none;
+  }
+
+  .chat-message-system-toggle {
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--cinder-text-muted);
+    font: inherit;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    cursor: pointer;
+  }
+
+  .chat-message-system-toggle:hover {
+    color: var(--cinder-text-default);
+    text-decoration: underline;
+  }
+
+  .chat-message-system-toggle:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 </style>
