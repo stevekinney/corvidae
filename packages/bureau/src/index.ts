@@ -1,3 +1,8 @@
+export type {
+  WorkspaceCredential,
+  WorkspaceMembership,
+  WorkspaceMembershipOptions,
+} from './http/workspace-principal.ts';
 export {
   BUREAU_RESERVED_KEY_FAMILIES,
   BUREAU_RESERVED_KEY_PREFIXES,

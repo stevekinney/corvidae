@@ -59,6 +59,25 @@ async function principalOver(host: Host, headers: HeadersInit = {}): Promise<Pri
 }
 
 describe('the host’s listener', () => {
+  test('the Bureau principal reports the explicit local workspace owner', async () => {
+    const host = await start();
+    const response = await fetch(new URL('/bureau/jsonrpc', host.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'weft.system.principal', params: {} }),
+    });
+    expect(response.status).toBe(200);
+    const principal = await response.json();
+    expect(principal.result.workspace).toEqual({
+      version: 1,
+      workspaceId: host.workspaceId,
+      actorId: 'local-owner',
+      actorKind: 'local',
+      owner: 'anonymous:local',
+      membershipRevision: 'local-owner-v1',
+      capabilities: ['workspace:use', 'workspace:manage', 'deployment:operate'],
+    });
+  });
   test('listens on loopback only', async () => {
     const host = await start();
     expect(host.url.hostname).toBe('127.0.0.1');

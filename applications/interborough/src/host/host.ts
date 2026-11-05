@@ -92,6 +92,7 @@
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { join, resolve as resolvePath, sep } from 'node:path';
+import { localWorkspaceMembership } from './workspace-principal.ts';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import {
@@ -1198,6 +1199,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       detail: {},
     });
     bureauHandler = createBureauHandler(bureau, {
+      workspace: localWorkspaceMembership(bungalow.workspaceId),
       // The local caller, unless the request carries a credential. With an A2A key configured
       // (COR-1904), a credential is checked against it, and A2A's JSON-RPC routes require one.
       unauthenticatedAccess: 'allow',
