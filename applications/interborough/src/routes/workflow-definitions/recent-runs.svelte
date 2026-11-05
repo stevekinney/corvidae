@@ -162,11 +162,14 @@
           </a>
           <span>{formatRelativeTime(run.createdAt)}</span>
           <span>
-            {origin === null
-              ? 'Not recorded'
-              : origin.kind === 'agent-run'
-                ? `${STARTED_BY_LABELS['agent-run']} · ${origin.agentId}`
-                : STARTED_BY_LABELS[origin.kind]}
+            {#if origin === null}
+              Not recorded
+            {:else if origin.kind === 'agent-run'}
+              An agent's tool call · {origin.agentId} ·
+              <a href={router.href(`/runs/${origin.runId}`)}>Calling run</a>
+            {:else}
+              {STARTED_BY_LABELS[origin.kind]}
+            {/if}
           </span>
           {#if took !== undefined}<span class="ib-workflow__muted"
               >{copy.page.runDuration(took)}</span

@@ -192,11 +192,10 @@
 
 {#snippet startedBy()}
   {#if workflowOrigin?.kind === 'agent-run'}
-    <span data-testid="run-lineage"
-      >An agent's tool call · <code>{workflowOrigin.agentId}</code> ·
-      <a href={router.href(`/runs/${workflowOrigin.runId}`)}><code>{workflowOrigin.runId}</code></a
-      ></span
-    >
+    <span data-testid="run-lineage">
+      An agent's tool call · <span>{workflowOrigin.agentId}</span> ·
+      <a href={router.href(`/runs/${workflowOrigin.runId}`)}>Calling run</a>
+    </span>
   {:else}
     <ol class="ib-run-lineage" data-testid="run-lineage">
       <RunLineage {runId} {task} {goal} {chat} />

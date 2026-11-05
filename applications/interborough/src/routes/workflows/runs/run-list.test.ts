@@ -246,6 +246,11 @@ describe('Started by', () => {
       origin: { kind: 'agent', parentRunId: 'run-parent', agentName: 'planner' },
     }),
     taskFixture({
+      id: 'o-agent-run',
+      kind: 'catalog',
+      origin: { kind: 'agent-run', runId: 'calling-run-1', agentId: 'journey-author' },
+    }),
+    taskFixture({
       id: 'o-goal',
       kind: 'catalog',
       origin: { kind: 'goal', goalRunId: 'goal-9', attemptId: 'a' },
@@ -275,6 +280,8 @@ describe('Started by', () => {
     expect(text('o-api')).toBe('The API');
     expect(text('o-agent')).toBe(`planner (${TASK_COPY.agent})`);
     expect(href('o-agent')).toBe('/runs/run-parent');
+    expect(text('o-agent-run')).toBe("An agent's tool call · journey-author · Calling run");
+    expect(href('o-agent-run')).toBe('/runs/calling-run-1');
     expect(text('o-goal')).toBe(`goal-9 (${TASK_COPY.goal})`);
     expect(href('o-goal')).toBe('/goals/goal-9');
     expect(text('o-parent')).toBe(`wf-instance (${TASK_COPY.workflow})`);

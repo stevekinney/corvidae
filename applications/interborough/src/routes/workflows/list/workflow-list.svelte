@@ -31,6 +31,7 @@
   } from '../../../lib/live-source/cache-integration.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
+  import { listWorkflowFileRuns, type WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import {
     ENGINE_RUNS_PATH,
@@ -104,6 +105,32 @@
 
   const rows = $derived(listQuery.data?.items ?? []);
   const total = $derived(listQuery.data?.total ?? 0);
+
+  // A scoped file-workflow list has the engine's run summaries for status/revision and the
+  // Bureau's durable record for human provenance. Code workflows have no file records; their
+  // lookup simply remains empty.
+  const fileRuns = createQuery(
+    () => ({
+      queryKey: queryKeys.workflowCatalog.recentRuns('agent-authored', scopedType ?? ''),
+      queryFn: ({ signal }) => listWorkflowFileRuns(scopedType ?? '', 100, { signal }),
+      enabled: scopedType !== undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+  const workflowOrigins = $derived(
+    new Map(
+      (fileRuns.data ?? [])
+        .filter(
+          (
+            run,
+          ): run is WorkflowFileRun & {
+            origin: { kind: 'agent-run'; runId: string; agentId: string };
+          } => run.origin?.kind === 'agent-run',
+        )
+        .map((run) => [run.id, run.origin]),
+    ),
+  );
 
   // One `weft.workflows.active.get` per DISTINCT workflow type on the page
   // (COR-15), never per row; gated on `workflows:read`, the operation's own
@@ -339,6 +366,7 @@
     {:else}
       <WorkflowTable
         {rows}
+        {workflowOrigins}
         {selectedIds}
         onSelectionChange={(next) => (selectedIds = next)}
         revisionComparison={revisionComparisons.compare}

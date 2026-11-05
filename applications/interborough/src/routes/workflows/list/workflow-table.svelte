@@ -44,6 +44,7 @@
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { router, workflowRunPath } from '../../../lib/router.svelte.ts';
   import type { RevisionActiveComparison } from '../../../lib/workflow-revision.ts';
+  import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import RevisionComparisonBadge from '../revision-comparison-badge.svelte';
   import { workflowStatusBadge } from './workflow-status-badge.ts';
   import WorkflowStatusIcon from './workflow-status-icon.svelte';
@@ -65,6 +66,10 @@
     recentlyChangedIds?: ReadonlySet<string>;
     /** How a row's persisted revision compares to its type's active revision (COR-15). Omitted: no comparison badge is shown. */
     revisionComparison?: (type: string, revision: string | undefined) => RevisionActiveComparison;
+    workflowOrigins?: ReadonlyMap<
+      string,
+      Extract<WorkflowFileRun['origin'], { kind: 'agent-run' }>
+    >;
   }
 
   let {
@@ -73,6 +78,7 @@
     onSelectionChange,
     recentlyChangedIds,
     revisionComparison,
+    workflowOrigins,
   }: WorkflowTableProps = $props();
 
   const selectionEnabled = $derived(selectedIds !== undefined);
@@ -140,6 +146,7 @@
     {#each rows as row (row.id)}
       {@const badge = workflowStatusBadge(row.status)}
       {@const selected = selectedIds?.has(row.id) ?? false}
+      {@const workflowOrigin = workflowOrigins?.get(row.id)}
       <Table.Row
         {...recentlyChangedIds?.has(row.id) ? { class: 'weft-workflows-table__row--recent' } : {}}
         {...selectionEnabled
@@ -188,9 +195,13 @@
           {/if}
         </Table.Cell>
         <Table.Cell>
-          {#if row.tags && row.tags.length > 0}
+          {#if workflowOrigin !== undefined}
+            An agent's tool call · {workflowOrigin.agentId} ·
+            <a href={router.href(`/runs/${workflowOrigin.runId}`)}>Calling run</a>
+          {/if}
+          {#if row.tags && row.tags.filter((tag) => tag !== 'origin:agent-run').length > 0}
             <span class="weft-workflows-table__tags">
-              {#each row.tags as tag (tag)}
+              {#each row.tags.filter((tag) => tag !== 'origin:agent-run') as tag (tag)}
                 <Badge variant="neutral" size="xs">{tag}</Badge>
               {/each}
             </span>
