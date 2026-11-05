@@ -55,7 +55,7 @@ export function parseReleaseArguments(argv: readonly string[]): ReleaseArguments
   return { version, outdir: resolve(outdir) };
 }
 
-async function runCommand(arguments_: string[], cwd = REPOSITORY_ROOT): Promise<void> {
+export async function runCommand(arguments_: string[], cwd = REPOSITORY_ROOT): Promise<void> {
   const childProcess = Bun.spawn(arguments_, { cwd, stdout: 'pipe', stderr: 'pipe' });
   const [exitCode, stdout, stderr] = await Promise.all([
     childProcess.exited,

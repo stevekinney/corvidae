@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   buildRelease,
   parseReleaseArguments,
+  runCommand,
   runReleaseCommand,
   type ReleaseOperations,
 } from './build-release.ts';
@@ -15,8 +16,9 @@ async function releaseFixture(
     readonly escapingLink?: boolean;
     readonly commandFailure?: boolean;
     readonly recursiveDependency?: boolean;
+    readonly missingDependency?: boolean;
     readonly invalidExportMap?: boolean;
-    readonly runtimeFailure?: 'missing-link';
+    readonly runtimeFailure?: 'missing-link' | 'wrong-link';
     readonly markerPath?: string;
   } = {},
 ) {
@@ -46,7 +48,7 @@ async function releaseFixture(
     'export {};',
   );
   const dependency = join(dependencies, 'fixture-dependency');
-  if (options.recursiveDependency) {
+  if (options.recursiveDependency && !options.missingDependency) {
     await mkdir(dependency, { recursive: true });
     await writeFile(
       join(dependency, 'package.json'),
@@ -73,7 +75,7 @@ const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modu
 const marker = ${JSON.stringify(options.markerPath ?? '')};
 if (${JSON.stringify(options.runtimeFailure ?? '')} !== 'missing-link') {
   await mkdir(join(home, 'plugins'), { recursive: true });
-  await symlink(runtime, join(home, 'plugins', 'node_modules'));
+  await symlink(${JSON.stringify(options.runtimeFailure === 'wrong-link' ? home : runtime)}, join(home, 'plugins', 'node_modules'));
 }
 if (marker) {
   await writeFile(marker, 'started');
@@ -152,6 +154,12 @@ await new Promise(() => {});
 }
 
 describe('release arguments', () => {
+  test('runs the default command and reports failures', async () => {
+    await runCommand([process.execPath, '-e', 'process.stdout.write("ok")']);
+    await expect(runCommand([process.execPath, '-e', 'process.stderr.write("bad"); process.exit(3)'])).rejects.toThrow(
+      'failed (3): bad',
+    );
+  });
   test('requires a semver and output directory', () => {
     expect(parseReleaseArguments(['--version', '1.2.3', '--outdir', '/tmp/release'])).toEqual({
       version: '1.2.3',
@@ -240,6 +248,35 @@ describe('release arguments', () => {
       await rm(fixture.root, { recursive: true, force: true });
       await rm(output, { recursive: true, force: true });
       await rm(marker, { force: true });
+    }
+  });
+
+  test('reports a relocated host linked to the wrong runtime', async () => {
+    const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
+    const fixture = await releaseFixture({ markerPath: marker, runtimeFailure: 'wrong-link' });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-wrong-link-'));
+    try {
+      await expect(buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations)).rejects.toThrow(
+        'targets the wrong runtime',
+      );
+      expect(await Bun.file(marker).text()).toBe('terminated');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+      await rm(marker, { force: true });
+    }
+  });
+
+  test('rejects a dependency absent from the frozen production install', async () => {
+    const fixture = await releaseFixture({ recursiveDependency: true, missingDependency: true });
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-missing-dependency-'));
+    try {
+      await expect(
+        buildRelease(['--version', '0.0.0-test', '--outdir', output], fixture.operations),
+      ).rejects.toThrow('Frozen production install cannot resolve fixture-dependency');
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
     }
   });
 
