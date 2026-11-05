@@ -232,9 +232,16 @@ async function runStream(
           text += delta;
           write?.(delta);
         }
-        if (projected?.kind === 'snapshot' && !text.endsWith(projected.text)) {
-          text += projected.text;
-          write?.(projected.text);
+        if (projected?.kind === 'snapshot') {
+          const snapshotDelta = text.startsWith(projected.text)
+            ? ''
+            : projected.text.startsWith(text)
+              ? projected.text.slice(text.length)
+              : projected.text;
+          if (snapshotDelta !== '') {
+            text += snapshotDelta;
+            write?.(snapshotDelta);
+          }
         }
       }
     }
@@ -260,10 +267,7 @@ async function runStream(
   if (pendingInterrupts !== undefined && pendingInterrupts.length > 0) {
     if (!parsed.noInput && dependencies.stdinIsTTY === true && dependencies.prompt !== undefined) {
       const firstInterrupt = record(pendingInterrupts[0]);
-      const schema = record(firstInterrupt?.['responseSchema']);
-      const decisionOnly =
-        schema?.['properties'] !== undefined &&
-        record(schema['properties'])?.['decision'] !== undefined;
+      const decisionOnly = record(firstInterrupt)?.['reason'] === 'tool-approval';
       let answer: string;
       try {
         answer = await dependencies.prompt(

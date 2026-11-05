@@ -114,7 +114,19 @@ describe('CLI chat control', () => {
         return body.resume === undefined
           ? sse(
               { type: 'RUN_STARTED', threadId: 'thread-1', runId: 'run-1' },
-              { type: 'RUN_FINISHED', outcome: { type: 'interrupt', interrupts: [{ id: 'i-1' }] } },
+              {
+                type: 'RUN_FINISHED',
+                outcome: {
+                  type: 'interrupt',
+                  interrupts: [
+                    {
+                      id: 'i-1',
+                      reason: 'human-wait',
+                      responseSchema: { properties: { decision: { enum: ['approve'] } } },
+                    },
+                  ],
+                },
+              },
             )
           : sse(
               { type: 'TEXT_MESSAGE_CONTENT', delta: 'resumed' },
@@ -124,6 +136,29 @@ describe('CLI chat control', () => {
     });
     expect(result.exitCode).toBe(0);
     expect(starts).toBe(2);
+  });
+
+  // spawn-free: cumulative snapshots verify attach replay does not duplicate rendered history.
+  test('reconciles cumulative snapshots without duplicating assistant history', async () => {
+    const result = await executeCli(
+      ['chat', '--agent', 'demo', '--message', 'hello', '--output', 'json'],
+      {
+        fetch: async () =>
+          sse(
+            { type: 'MESSAGES_SNAPSHOT', messages: [{ role: 'assistant', content: 'Earlier.' }] },
+            {
+              type: 'MESSAGES_SNAPSHOT',
+              messages: [
+                { role: 'assistant', content: 'Earlier.' },
+                { role: 'assistant', content: 'New.' },
+              ],
+            },
+            { type: 'RUN_FINISHED', outcome: { type: 'success', interrupts: [] } },
+          ),
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).data.text).toBe('Earlier.New.');
   });
 
   // spawn-free: injected fetch and prompt dependencies replace child-process boundaries.
