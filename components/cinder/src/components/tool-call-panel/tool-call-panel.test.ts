@@ -4,6 +4,25 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { setupHappyDom } from '@lostgradient/testing';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
 import { installDrawerDialogStubs } from '../drawer/drawer-test-helpers.ts';
+import { readPanelPayload } from './tool-call-panel.utilities.ts';
+
+test('invalid stored JSON remains a scalar and copies the original text', () => {
+  expect(readPanelPayload('{ unfinished')).toEqual({
+    present: true,
+    fields: [{ key: 'value', label: 'Value', text: '{ unfinished', kind: 'text' }],
+    json: '"{ unfinished"',
+    copy: '{ unfinished',
+  });
+});
+
+test('a bigint root has one numeric Value row and copies its digits', () => {
+  expect(readPanelPayload(7n)).toEqual({
+    present: true,
+    fields: [{ key: 'value', label: 'Value', text: '7', kind: 'number' }],
+    json: '7',
+    copy: '7',
+  });
+});
 
 setupHappyDom();
 installDrawerDialogStubs();

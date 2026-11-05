@@ -10,6 +10,9 @@ import {
 } from './payload-inspector-secrets.ts';
 
 describe('maskSecrets', () => {
+  test('string coercion of a secret remains masked', () => {
+    expect(String(new SecretValue())).toBe(SECRET_MASK);
+  });
   test('hides exactly the paths it is given', () => {
     const masked = maskSecrets(
       { orderId: 4471, authorization: 'Bearer abc', headers: { apiKey: 'k', accept: 'json' } },
