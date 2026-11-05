@@ -221,8 +221,9 @@ export type AuditDependencies = {
 };
 
 /**
- * Build `bureau.audit`. `query` reads the trail oldest first, drops the records `options.owner`
- * does not own, and returns the survivors redacted to metadata.
+ * Build `bureau.audit`. `query` reads the trail oldest first (or newest first, for `order:
+ * 'newest'`), drops the records `options.owner` does not own, and returns the survivors redacted
+ * to metadata.
  */
 export function createAudit(dependencies: AuditDependencies): BureauAudit {
   async function query(
@@ -242,11 +243,16 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
       principal,
       cursor,
       limit = DEFAULT_AUDIT_PAGE_LIMIT,
+      order = 'oldest',
+      includeTotal = false,
     } = filter;
     const { owner } = options;
     const refuse = (message: string): Error => dependencies.refusal(message, 'BAD_REQUEST');
     if (!Number.isInteger(limit) || limit < 1 || limit > MAXIMUM_AUDIT_PAGE_LIMIT) {
       throw refuse(`limit must be an integer from 1 to ${MAXIMUM_AUDIT_PAGE_LIMIT}`);
+    }
+    if (order !== 'oldest' && order !== 'newest') {
+      throw refuse('order must be oldest or newest');
     }
     if (since !== undefined && (!Number.isInteger(since) || since < 0)) {
       throw refuse('since must be a non-negative integer of epoch milliseconds');
@@ -269,8 +275,8 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
     if (type !== undefined && (typeof type !== 'string' || type.length < 1 || type.length > 128)) {
       throw refuse('type must be a string of 1 to 128 characters');
     }
-    let after = cursor === undefined ? undefined : decodeAuditCursor(cursor);
-    if (cursor !== undefined && after === undefined) throw refuse('Invalid cursor');
+    const decoded = cursor === undefined ? undefined : decodeAuditCursor(cursor);
+    if (cursor !== undefined && decoded === undefined) throw refuse('Invalid cursor');
 
     const owners = new Map<string, string | undefined>();
     const mayRead = async (record: AuditRecord): Promise<boolean> => {
@@ -283,39 +289,95 @@ export function createAudit(dependencies: AuditDependencies): BureauAudit {
       return recordOwner !== undefined && recordOwner === owner;
     };
 
-    const page: AuditRecord[] = [];
-    for (;;) {
-      const chunk = await trail.query({
-        ...(runId === undefined ? {} : { runId }),
-        ...(type === undefined ? {} : { type }),
-        ...(since === undefined ? {} : { since }),
-        ...(after === undefined ? {} : { after }),
-        limit: SCAN_CHUNK,
-      });
-      for (const record of chunk) {
-        // The trail is oldest first, so the first record past `until` ends the scan: no later one is in range.
-        if (until !== undefined && record.timestampMs > until) {
-          return { records: page.map(viewOf), nextCursor: null };
+    /**
+     * Walks the trail from `start` in `direction`, a chunk at a time, calling `visit` for each
+     * record in range that the reader may see; `visit` answers `true` to stop. The position a
+     * record moves the walk to is handed back with it, so a caller that stops can name where.
+     */
+    const walk = async (
+      direction: 'oldest' | 'newest',
+      start: { timestampMs: number; sequence: number } | undefined,
+      visit: (record: AuditRecord) => boolean,
+    ): Promise<void> => {
+      let position = start;
+      for (;;) {
+        const chunk = await trail.query({
+          ...(runId === undefined ? {} : { runId }),
+          ...(type === undefined ? {} : { type }),
+          ...(since === undefined ? {} : { since }),
+          ...(direction === 'oldest'
+            ? position === undefined
+              ? {}
+              : { after: position }
+            : {
+                select: 'newest' as const,
+                ...(position === undefined ? {} : { before: position }),
+              }),
+          limit: SCAN_CHUNK,
+        });
+        // The trail answers each chunk oldest first; a newest-first walk reads it backward.
+        const records = direction === 'newest' ? chunk.toReversed() : chunk;
+        for (const record of records) {
+          const here = { timestampMs: record.timestampMs, sequence: record.sequence ?? -1 };
+          if (until !== undefined && record.timestampMs > until) {
+            // Oldest first, the first record past `until` ends the walk: no later one is in range.
+            // Newest first, every record past `until` is skipped until the walk comes back in range.
+            if (direction === 'oldest') return;
+            position = here;
+            continue;
+          }
+          // The actor filter drops a record the way the owner filter does: the walk moves past it.
+          if (principal !== undefined && record.principal !== principal) {
+            position = here;
+            continue;
+          }
+          if (!(await mayRead(record))) {
+            position = here;
+            continue;
+          }
+          if (visit(record)) return;
+          position = here;
         }
-        // The actor filter drops a record the way the owner filter does: the cursor moves past it.
-        if (principal !== undefined && record.principal !== principal) {
-          after = { timestampMs: record.timestampMs, sequence: record.sequence ?? -1 };
-          continue;
-        }
-        if (!(await mayRead(record))) {
-          after = { timestampMs: record.timestampMs, sequence: record.sequence ?? -1 };
-          continue;
-        }
-        // One more than the page: it is what says there is a next page.
-        if (page.length === limit) {
-          const last = page[limit - 1]!;
-          return { records: page.map(viewOf), nextCursor: encodeCursor(last) };
-        }
-        page.push(record);
-        after = { timestampMs: record.timestampMs, sequence: record.sequence ?? -1 };
+        if (chunk.length < SCAN_CHUNK) return;
       }
-      if (chunk.length < SCAN_CHUNK) return { records: page.map(viewOf), nextCursor: null };
+    };
+
+    // A cursor names the last record the previous page returned. A newest-first query with no
+    // cursor starts at `until`, so the walk does not read the records past it.
+    const start =
+      decoded ??
+      (order === 'newest' && until !== undefined
+        ? { timestampMs: until + 1, sequence: -1 }
+        : undefined);
+
+    const page: AuditRecord[] = [];
+    let more = false;
+    await walk(order, start, (record) => {
+      // One more than the page: it is what says there is a next page.
+      if (page.length === limit) {
+        more = true;
+        return true;
+      }
+      page.push(record);
+      return false;
+    });
+    const last = page.at(-1);
+    const nextCursor = more && last !== undefined ? encodeCursor(last) : null;
+
+    let total: number | undefined;
+    if (includeTotal) {
+      let counted = 0;
+      await walk('oldest', undefined, () => {
+        counted += 1;
+        return false;
+      });
+      total = counted;
     }
+    return {
+      records: page.map(viewOf),
+      nextCursor,
+      ...(total === undefined ? {} : { total }),
+    };
   }
 
   return { query };

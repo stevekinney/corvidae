@@ -1737,6 +1737,18 @@ export type AuditQuery = {
   readonly cursor?: string | undefined;
   /** How many records a page holds, 1 to 100. Defaults to 50. */
   readonly limit?: number | undefined;
+  /**
+   * Which end of the trail the page starts from: `oldest` (the default) reads forward in time, and
+   * `newest` reads backward from the latest record, so a page holds the most recent records,
+   * newest first, and `nextCursor` continues into older ones.
+   */
+  readonly order?: 'oldest' | 'newest' | undefined;
+  /**
+   * Also answer how many records match the filter and the reader may see, as
+   * {@link AuditQueryPage.total}. It reads the whole matching trail, so ask for it once, not on
+   * every page.
+   */
+  readonly includeTotal?: boolean | undefined;
 };
 
 /** Who is asking, for {@link BureauAudit.query}. */
@@ -1771,10 +1783,12 @@ export type AuditQueryRecord = {
 
 /** One page of {@link BureauAudit.query}. */
 export type AuditQueryPage = {
-  /** The records, oldest first. */
+  /** The records: oldest first, or newest first when the query asked for `order: 'newest'`. */
   readonly records: readonly AuditQueryRecord[];
   /** Pass it as `cursor` for the next page; `null` on the last. */
   readonly nextCursor: string | null;
+  /** How many records match the filter and the reader may see; present only when `includeTotal` was asked for. */
+  readonly total?: number;
 };
 
 /**

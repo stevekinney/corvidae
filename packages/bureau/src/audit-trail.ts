@@ -353,6 +353,13 @@ export interface AuditQueryOptions {
    * many records an outside filter dropped between them.
    */
   after?: { readonly timestampMs: number; readonly sequence: number };
+  /**
+   * Only records before this position: earlier by `timestampMs`, or at the same millisecond with a
+   * lesser `sequence` (a record with no `sequence` counts as `-1`). It pages a `select: 'newest'`
+   * query the way `after` pages an oldest-first one: pass the position of the oldest record the
+   * previous page returned.
+   */
+  before?: { readonly timestampMs: number; readonly sequence: number };
 }
 
 /**
@@ -973,6 +980,16 @@ function isAfterPosition(
 ): boolean {
   if (record.timestampMs !== position.timestampMs) return record.timestampMs > position.timestampMs;
   return (record.sequence ?? -1) > position.sequence;
+}
+
+/** Whether `record` sits exactly at `position` in the order `query` returns records in. */
+function sameSortPosition(
+  record: Pick<AuditRecord, 'timestampMs' | 'sequence'>,
+  position: { readonly timestampMs: number; readonly sequence: number },
+): boolean {
+  return (
+    record.timestampMs === position.timestampMs && (record.sequence ?? -1) === position.sequence
+  );
 }
 
 /** The `runId` prefix of a schedule's synthetic audit owner, `schedule:<id>`. */
@@ -2771,7 +2788,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     async query(options: AuditQueryOptions = {}): Promise<AuditRecord[]> {
       if (!kv) return [];
 
-      const { since, runId, type, filter, limit = 500, after, select = 'oldest' } = options;
+      const { since, runId, type, filter, limit = 500, after, before, select = 'oldest' } = options;
 
       // AB-228 (Codex P2 review findings, PR #566: "Wait for schedule audit
       // writes before returning success", then "Avoid blocking every audit
@@ -2847,6 +2864,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         // The key leads with its record's zero-padded timestamp, so a record that is earlier than
         // `after` is skipped without being read.
         if (after !== undefined && keyTimestampMilliseconds(key) < after.timestampMs) continue;
+        if (before !== undefined && keyTimestampMilliseconds(key) > before.timestampMs) continue;
         const raw = await kv.get(key);
         if (!raw) continue;
 
@@ -2874,6 +2892,8 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
 
         if (since !== undefined && record.timestampMs < since) continue;
         if (after !== undefined && !isAfterPosition(record, after)) continue;
+        if (before !== undefined && isAfterPosition(record, before)) continue;
+        if (before !== undefined && sameSortPosition(record, before)) continue;
         if (runId !== undefined && record.runId !== runId) continue;
         if (type !== undefined && record.type !== type) continue;
         if (filter !== undefined && !filter(record)) continue;
