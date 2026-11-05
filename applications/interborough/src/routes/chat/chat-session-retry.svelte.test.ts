@@ -172,6 +172,53 @@ const stoppedOnCall = (empty: ConversationHistory) =>
     },
   );
 
+/**
+ * A chat opened on a run that finished a refund and then stopped on a read-only lookup: the
+ * refund's call has its result, the lookup has none.
+ */
+const stoppedAfterRefund = (empty: ConversationHistory) =>
+  appendMessages(
+    empty,
+    { id: 'u0', role: 'user', content: 'Earlier question' },
+    {
+      id: 'c0',
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-0', name: 'issue-credit', arguments: { orderId: '1' } },
+    },
+    {
+      id: 'r0',
+      role: 'tool-result',
+      content: '',
+      toolResult: { callId: 'call-0', outcome: 'success', content: {} },
+    },
+    { id: 'u1', role: 'user', content: 'Please refund 4471' },
+    {
+      id: 'c1',
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-1', name: 'issue-refund', arguments: { orderId: '4471' } },
+    },
+    {
+      id: 'r1',
+      role: 'tool-result',
+      content: '',
+      toolResult: { callId: 'call-1', outcome: 'success', content: {} },
+    },
+    {
+      id: 'c2',
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-2', name: 'lookup-order', arguments: { orderId: '4471' } },
+    },
+  );
+
+const REFUND_THEN_LOOKUP = new Map<string, ToolInfo>([
+  ['issue-credit', { title: 'Issue credit', tier: 'dangerous' }],
+  ['issue-refund', { title: 'Issue refund', tier: 'dangerous' }],
+  ['lookup-order', { title: 'Lookup order', tier: 'read-only' }],
+]);
+
 describe('running the last turn again', () => {
   test('is offered for a last message that is plain text, once nothing is going', () => {
     expect(open(FAILED_PARTWAY, stopped).session.canRetryTurn).toBe(true);
@@ -230,6 +277,23 @@ describe('running the last turn again', () => {
     expect(state.rewinds).toEqual([
       { contextId: THREAD, fromMessageId: 'u1', forgetGrantsFor: ['issue-refund'] },
     ]);
+  });
+
+  test('forgets the grant of a changing call that finished inside the failed turn, since the rewind takes its result row away', async () => {
+    const { session, state } = open(
+      [
+        { id: 'u1', role: 'user', content: 'Please refund 4471' },
+        { id: 'a1', role: 'assistant', content: 'Order 4471 is' },
+      ],
+      stoppedAfterRefund,
+    );
+
+    expect(session.callsThatMayChangeInLastTurn(REFUND_THEN_LOOKUP)).toEqual(['issue-refund']);
+
+    await session.retryTurn({ tools: REFUND_THEN_LOOKUP });
+
+    // Only the retried turn's calls count: the credit from the earlier turn stays remembered.
+    expect(state.rewinds[0]?.forgetGrantsFor).toEqual(['issue-refund']);
   });
 
   test('forgets the grant of a call the catalog does not classify', async () => {

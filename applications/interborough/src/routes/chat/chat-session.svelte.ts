@@ -530,8 +530,8 @@ export class ChatSessionState {
    * attempt is kept, here or in the thread the Bureau sends back when the run ends or the chat is
    * opened again. It never resumes a call the run was in the middle of: the agent decides again,
    * and a tool that may change things goes back through its approval, because the chat's "Allow for
-   * the rest of this chat" grant for the tools `tools` classifies that way, among the calls
-   * that never got an answer, is forgotten with the turn, so a refund cannot be issued twice. When
+   * the rest of this chat" grant for every tool `tools` classifies that way among the calls of the
+   * turn, finished or not, is forgotten with the turn, so a refund cannot be issued twice. When
    * the Bureau will not take the turn back (a run still holds the chat), nothing is sent and the
    * failure says so. A last message with files, or one that is not plain text, is not offered again
    * here (`canRetryTurn`).
@@ -541,7 +541,7 @@ export class ChatSessionState {
     const row = id === undefined ? undefined : this.conversation.messages[id];
     const text = row === undefined ? undefined : retryText(row);
     if (id === undefined || text === undefined) return;
-    const forgetGrantsFor = this.#unansweredCallsThatMayChange(options.tools);
+    const forgetGrantsFor = this.callsThatMayChangeInLastTurn(options.tools);
     try {
       await rewindContext(
         {
@@ -561,8 +561,10 @@ export class ChatSessionState {
       return;
     }
     const index = this.conversation.ids.indexOf(id);
+    // Last row first: a call's result may not outlive the call, so the results leave before the calls.
     this.conversation = this.conversation.ids
       .slice(index)
+      .toReversed()
       .reduce(
         (current, rowId) =>
           current.messages[rowId] === undefined ? current : removeMessage(current, rowId),
@@ -573,13 +575,21 @@ export class ChatSessionState {
   }
 
   /**
-   * The names of the tools the last turn called that never got an answer and may change things
-   * (the catalog says so, or says nothing): the calls a retry must put back through their approval.
+   * The names of the tools the last turn called that may change things (the catalog says so, or says
+   * nothing), whether the call finished or was interrupted: the calls a retry must put back through
+   * their approval. The retry takes every row of the turn out of the thread, so the record that a
+   * finished call ran goes with it, and the chat's grant for the tool must go too, or the call would
+   * run a second time unasked.
    */
-  #unansweredCallsThatMayChange(tools: ReadonlyMap<string, ToolInfo> | undefined): string[] {
-    const rows = this.conversation.ids.flatMap((rowId) => this.conversation.messages[rowId] ?? []);
+  callsThatMayChangeInLastTurn(tools: ReadonlyMap<string, ToolInfo> | undefined): string[] {
+    const id = this.#lastUserRowId();
+    const from = id === undefined ? -1 : this.conversation.ids.indexOf(id);
+    if (from < 0) return [];
+    const rows = this.conversation.ids
+      .slice(from)
+      .flatMap((rowId) => this.conversation.messages[rowId] ?? []);
     const names = pairToolCallsWithResults(rows)
-      .filter((pair) => pair.result === undefined && mayChange(tools?.get(pair.call.name)?.tier))
+      .filter((pair) => mayChange(tools?.get(pair.call.name)?.tier))
       .map((pair) => pair.call.name);
     return [...new Set(names)];
   }

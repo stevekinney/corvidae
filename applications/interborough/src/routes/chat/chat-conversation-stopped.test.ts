@@ -43,24 +43,57 @@ const task = {
   openWaits: [],
 };
 
-const catalog = (tier: 'read-only' | 'dangerous') => ({
+const catalogEntry = (name: string, title: string, tier: 'read-only' | 'dangerous') => ({
+  name,
+  description: title,
+  shortDescription: null,
+  title,
+  inputSchema: null,
+  tier,
+  defaultApproval: 'ask',
+  source: 'host',
+  plugin: null,
+  skill: null,
+  users: [],
+});
+
+const catalog = (tier: 'read-only' | 'dangerous', lookup: boolean) => ({
   models: [],
   tools: [
-    {
-      name: 'issue-refund',
-      description: 'Refunds an order',
-      shortDescription: null,
-      title: 'Issue refund',
-      inputSchema: null,
-      tier,
-      defaultApproval: 'ask',
-      source: 'host',
-      plugin: null,
-      skill: null,
-      users: [],
-    },
+    catalogEntry('issue-refund', 'Issue refund', tier),
+    ...(lookup ? [catalogEntry('lookup-order', 'Lookup order', 'read-only')] : []),
   ],
 });
+
+/** A refund that ran to completion, then a read-only lookup the run stopped on. */
+const REFUND_THEN_LOOKUP_THREAD: Served['thread'] = [
+  { id: 'u1', role: 'user', content: 'Please refund order 4471, it arrived damaged.' },
+  {
+    id: 'a1',
+    role: 'assistant',
+    content: '',
+    toolCalls: [
+      {
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'issue-refund', arguments: '{"orderId":"4471"}' },
+      },
+    ],
+  },
+  { id: 'a1:result:call-1', role: 'tool', toolCallId: 'call-1', content: 'Refunded $42.00' },
+  {
+    id: 'a2',
+    role: 'assistant',
+    content: '',
+    toolCalls: [
+      {
+        id: 'call-2',
+        type: 'function',
+        function: { name: 'lookup-order', arguments: '{"orderId":"4471"}' },
+      },
+    ],
+  },
+];
 
 /** What the stubbed Bureau was asked while a chat was open, and the thread it holds. */
 type Served = {
@@ -80,25 +113,29 @@ function open(
     readonly permissionMode?: string;
     readonly steer?: 'accepted' | 'rejected';
     readonly served?: Partial<Served>;
+    readonly thread?: Served['thread'];
+    readonly lookup?: boolean;
   } = {},
 ): { served: Served; view: ReturnType<typeof mount> } {
   const served: Served = {
     calls: [],
     started: options.served?.started ?? [],
     thread: [
-      { id: 'u1', role: 'user', content: 'Please refund order 4471, it arrived damaged.' },
-      {
-        id: 'a1',
-        role: 'assistant',
-        content: '',
-        toolCalls: [
-          {
-            id: 'call-1',
-            type: 'function',
-            function: { name: 'issue-refund', arguments: '{"orderId":"4471"}' },
-          },
-        ],
-      },
+      ...(options.thread ?? [
+        { id: 'u1', role: 'user', content: 'Please refund order 4471, it arrived damaged.' },
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            {
+              id: 'call-1',
+              type: 'function',
+              function: { name: 'issue-refund', arguments: '{"orderId":"4471"}' },
+            },
+          ],
+        },
+      ]),
     ],
   };
   const stub = bureau(
@@ -108,7 +145,7 @@ function open(
         ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }),
       }),
       'bureau.tasks.list': () => ({ tasks: [task], nextPageToken: null }),
-      'bureau.agents.catalog': () => catalog(tier),
+      'bureau.agents.catalog': () => catalog(tier, options.lookup === true),
       'bureau.contexts.rewind': (params) => {
         const at = served.thread.findIndex((row) => row.id === params['fromMessageId']);
         const removed = served.thread.splice(at).map((row) => row.id);
@@ -223,6 +260,27 @@ describe('a chat whose run failed on a call', () => {
     );
     const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
     expect(steer?.params).toMatchObject({ contextId: 'session-1', permissionMode: 'on-changes' });
+  });
+
+  test('Retry on a chat set to Allow all sets it to On changes when the refund finished and the run stopped on a read-only lookup', async () => {
+    const { served, view } = open('dangerous', {
+      permissionMode: 'allow-all',
+      thread: REFUND_THEN_LOOKUP_THREAD,
+      lookup: true,
+    });
+    const { findByRole } = view;
+
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(served.started).toHaveLength(1));
+    const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
+    expect(steer?.params).toMatchObject({ permissionMode: 'on-changes' });
+    const rewind = served.calls.find((call) => call.method === 'bureau.contexts.rewind');
+    expect(rewind?.params).toEqual({
+      contextId: 'session-1',
+      fromMessageId: 'u1',
+      forgetGrantsFor: ['issue-refund'],
+    });
   });
 
   test('Retry on a chat not set to Allow all changes no setting', async () => {
