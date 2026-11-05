@@ -75,7 +75,7 @@ const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modu
 const marker = ${JSON.stringify(options.markerPath ?? '')};
 if (${JSON.stringify(options.runtimeFailure ?? '')} !== 'missing-link') {
   await mkdir(join(home, 'plugins'), { recursive: true });
-  await symlink(${JSON.stringify(options.runtimeFailure === 'wrong-link' ? home : runtime)}, join(home, 'plugins', 'node_modules'));
+  await symlink(${options.runtimeFailure === 'wrong-link' ? 'home' : 'runtime'}, join(home, 'plugins', 'node_modules'));
 }
 if (marker) {
   await writeFile(marker, 'started');
@@ -114,7 +114,7 @@ await new Promise(() => {});
         const installed = join(destination, 'applications', 'interborough', 'node_modules');
         await mkdir(join(installed, '@lostgradient'), { recursive: true });
         await cp(sdk, join(installed, '@lostgradient', 'interborough-plugin'), { recursive: true });
-        if (options.recursiveDependency) {
+        if (options.recursiveDependency && !options.missingDependency) {
           const store = join(
             destination,
             'node_modules',
