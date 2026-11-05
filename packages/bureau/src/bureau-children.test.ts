@@ -1117,6 +1117,9 @@ describe('bureau.children across a process restart', () => {
     readonly forgeWake?: boolean;
     readonly foreignChild?: boolean;
     readonly settleBeforeParent?: boolean;
+    readonly cancelParent?: boolean;
+    readonly duplicateWake?: boolean;
+    readonly competingPark?: 'human' | 'wakeup';
   };
 
   async function runDurableChildWaitCase(testCase: DurableChildWaitCase) {
@@ -1154,15 +1157,27 @@ describe('bureau.children across a process restart', () => {
             if (step === 0) {
               parentReady.resolve();
               await allowParent.promise;
+              const toolCalls = [
+                {
+                  id: 'durable-child-wait-call',
+                  name: 'wait-for-child',
+                  arguments: { childRunId: testCase.childRunId },
+                },
+                ...(testCase.competingPark === 'human'
+                  ? [
+                      {
+                        id: 'human-park-call',
+                        name: 'requestHumanInput',
+                        arguments: { signalName: 'human' },
+                      },
+                    ]
+                  : testCase.competingPark === 'wakeup'
+                    ? [{ id: 'wakeup-park-call', name: 'scheduleWakeup', arguments: { in: '1h' } }]
+                    : []),
+              ];
               return {
                 content: 'waiting',
-                toolCalls: [
-                  {
-                    id: 'durable-child-wait-call',
-                    name: 'wait-for-child',
-                    arguments: { childRunId: testCase.childRunId },
-                  },
-                ],
+                toolCalls,
               };
             }
             return { content: 'done', toolCalls: [] };
@@ -1261,6 +1276,13 @@ describe('bureau.children across a process restart', () => {
           `durable-child:${parent.id}:${testCase.childRunId}`,
           null,
         );
+        if (testCase.duplicateWake) {
+          await bureau.contexts.signal(
+            parent.contextId,
+            `durable-child:${parent.id}:${testCase.childRunId}`,
+            null,
+          );
+        }
         await new Promise((resolve) => setTimeout(resolve, 20));
         expect(generations).toBe(1);
         childRelease.resolve();
@@ -1269,6 +1291,26 @@ describe('bureau.children across a process restart', () => {
           childRunId: testCase.childRunId,
           reason: 'finish forged-wake case',
         });
+      }
+      if (testCase.cancelParent) {
+        await pollUntil(async () => {
+          const workflow = await bureau.tasks.workflow(parent.id);
+          return workflow?.status === 'running';
+        });
+        expect(await bureau.tasks.cancel(parent.id)).toMatchObject({ receipt: 'cancel-requested' });
+        await pollUntil(async () => {
+          const workflow = await bureau.tasks.workflow(parent.id);
+          return workflow?.status === 'cancelled';
+        });
+        return {
+          child: await bureau.children.get({
+            parentRunId: parent.id,
+            childRunId: testCase.childRunId,
+          }),
+          generations,
+          result: undefined,
+          toolResults,
+        };
       }
       await pollUntil(async () => {
         const workflow = await bureau.tasks.workflow(parent.id);
@@ -1363,5 +1405,41 @@ describe('bureau.children across a process restart', () => {
         content: { status: 'settled', child: expect.objectContaining({ status: 'aborted' }) },
       }),
     );
+  });
+
+  it('cancels a parked parent without publishing a late ordinary child result', async () => {
+    const outcome = await runDurableChildWaitCase({
+      childRunId: 'child-parent-cancel',
+      childMode: 'running',
+      cancelParent: true,
+    });
+    expect(outcome.child?.status).toBe('aborted');
+    expect(outcome.generations).toBe(1);
+    expect(outcome.toolResults).toEqual([]);
+  });
+
+  it('does not duplicate a real child wake delivered twice', async () => {
+    const outcome = await runDurableChildWaitCase({
+      childRunId: 'child-duplicate-wake',
+      childMode: 'running',
+      forgeWake: true,
+      duplicateWake: true,
+    });
+    expect(outcome.child?.status).toBe('aborted');
+    expect(outcome.generations).toBe(2);
+    expect(outcome.toolResults).toHaveLength(1);
+  });
+
+  it('honors one first park when child-wait races human input or a wakeup', async () => {
+    for (const competingPark of ['human', 'wakeup'] as const) {
+      const outcome = await runDurableChildWaitCase({
+        childRunId: `child-${competingPark}-race`,
+        childMode: 'running',
+        competingPark,
+        cancelParent: true,
+      });
+      expect(outcome.generations).toBe(1);
+      expect(outcome.toolResults).toHaveLength(0);
+    }
   });
 });
