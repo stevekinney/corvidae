@@ -1,6 +1,7 @@
 /**
  * `weft.workers.forget` operation + REST binding (COR-2018, rows 78t and 79i).
  */
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -47,7 +48,7 @@ describe('weft.workers.forget', () => {
 
   it('faults with NotFound for a worker nobody lists', async () => {
     const operation = createForgetWorkerOperation({ workerRegistry: new WorkerRegistry() });
-    await expect(invoke(operation, { workerId: 'nobody' })).rejects.toMatchObject({
+    expect(await rejectionOf(invoke(operation, { workerId: 'nobody' }))).toMatchObject({
       code: 'NotFound',
       data: { resource: 'worker', identifier: 'nobody' },
     });
@@ -57,14 +58,14 @@ describe('weft.workers.forget', () => {
     const operation = createForgetWorkerOperation({
       workerRegistry: registryWithWorker('payments-worker-1'),
     });
-    await expect(invoke(operation, { workerId: 'payments-worker-1' })).rejects.toMatchObject({
+    expect(await rejectionOf(invoke(operation, { workerId: 'payments-worker-1' }))).toMatchObject({
       code: 'Conflict',
       data: { reason: WORKER_CONFLICT_REASONS.workerStillConnected },
     });
   });
 
   it('is metadata only without a registry, so a misconfigured server fails loudly', async () => {
-    await expect(invoke(forgetWorkerOperation, { workerId: 'x' })).rejects.toThrow(
+    expect(String(await rejectionOf(invoke(forgetWorkerOperation, { workerId: 'x' })))).toContain(
       'discovery-only operation registry',
     );
   });

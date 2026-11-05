@@ -3,6 +3,7 @@
  * tasks of one queue, failed first, with the counts the queue holds and a page cursor.
  */
 import { MemoryStorage } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -106,9 +107,9 @@ describe('collectQueueTasks', () => {
   });
 
   it('refuses a cursor it did not hand out', async () => {
-    await expect(
-      collectQueueTasks(await seed(), { ...input, cursor: 'not-a-cursor' }),
-    ).rejects.toMatchObject({ code: 'InvalidParams' });
+    expect(
+      await rejectionOf(collectQueueTasks(await seed(), { ...input, cursor: 'not-a-cursor' })),
+    ).toMatchObject({ code: 'InvalidParams' });
   });
 
   it('is an empty queue when no task is waiting or failed there', async () => {
