@@ -157,18 +157,20 @@ describe('a configuration write that fails', () => {
     expect(await manager.snapshot()).toEqual({ sources: [] });
   });
 
-  test('takes a write that threw after it replaced the file as done, and keeps its credentials', async () => {
+  test('reports an uncertain write and keeps credentials without replay or a success audit', async () => {
     const home = memoryHome();
     const { manager, audited } = await managerOver(home);
     home.state.configurationFailure = 'after-replacing';
 
-    const change = await connect(manager, 'kept-key');
+    const failure = await failureOf(connect(manager, 'kept-key'));
 
-    expect(change).toEqual({ id: 'pets', changed: true, restartRequired: true });
+    expect(failure).toMatchObject({
+      message: 'Configuration write outcome is unknown. Reload before retrying.',
+    });
     expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe('');
     const listed = await sourcesOf(manager);
     expect(listed.map((source) => source.id)).toEqual(['pets']);
-    expect(audited.map((entry) => entry.type)).toEqual(['tool.source.connected']);
+    expect(audited).toEqual([]);
   });
 
   test('says the change is partial when the previous credentials cannot be put back', async () => {

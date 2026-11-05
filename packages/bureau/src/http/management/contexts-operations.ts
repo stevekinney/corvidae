@@ -32,7 +32,11 @@ import {
   type TaskRegistry,
 } from '../../task-registry.ts';
 import type { Bureau, BureauContexts, BureauInternals } from '../../types.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import {
+  mayUseCrossOwnerScope,
+  type BureauOwnershipHost,
+  ownerOfPrincipal,
+} from '../owner-predicate.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -42,7 +46,7 @@ import {
   unknownKeyPolicy,
   waitMillisecondsField,
 } from './management-schemas.ts';
-import { holdsScope } from './tasks-operations.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /** What the context operations read from the handler's `host`. */
 export type BureauContextsOperationHost = BureauOwnershipHost & {
@@ -106,6 +110,7 @@ export const contextsDeleteOperation = defineOperation<
   BureauContextsOperationHost
 >({
   name: 'bureau.contexts.delete',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.delete'),
   mcpExposable: false,
   summary: 'Delete a context',
   description:
@@ -140,7 +145,8 @@ export const contextsDeleteOperation = defineOperation<
     // Who may be told which tasks were cancelled: the owner, or a caller that can read both.
     const mayNameTasks =
       sessionOwnerOf(session.metadata) === ownerOfPrincipal(principal) ||
-      (holdsScope(principal, 'bureau.contexts:read') && holdsScope(principal, 'bureau.tasks:read'));
+      (mayUseCrossOwnerScope(principal, 'bureau.contexts:read') &&
+        mayUseCrossOwnerScope(principal, 'bureau.tasks:read'));
     const named = (tasks: readonly { taskId: string; cleanup: TaskCleanupState }[]) =>
       mayNameTasks ? { tasks: tasks.map((task) => ({ ...task })) } : {};
     if (host.contexts.lifecycle !== 'ready') {
@@ -307,6 +313,7 @@ export const contextsListOperation = defineOperation<
   BureauContextsOperationHost
 >({
   name: 'bureau.contexts.list',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.list'),
   mcpExposable: true,
   summary: 'List contexts',
   description:
@@ -323,7 +330,7 @@ export const contextsListOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     if (host.contexts.internals.sessionStore === undefined) throw noSessions();
     const everyOwner = input.allOwners === true;
-    if (everyOwner && !holdsScope(principal, 'bureau.contexts:read')) {
+    if (everyOwner && !mayUseCrossOwnerScope(principal, 'bureau.contexts:read')) {
       throw {
         code: 'Forbidden',
         message: 'Listing every owner’s contexts requires bureau.contexts:read',
@@ -404,6 +411,7 @@ export const contextsGetOperation = defineOperation<
   BureauContextsOperationHost
 >({
   name: 'bureau.contexts.get',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.get'),
   mcpExposable: true,
   summary: 'Read one context',
   description:

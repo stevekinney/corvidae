@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from './http/workspace-authorization.ts';
+
 /**
  * `bureau.events` — a bureau's feed, as a catalog subscription.
  *
@@ -137,6 +139,7 @@ export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAcces
     BureauEventsOperationHost
   >({
     name: 'bureau.events',
+    authorize: authorizeWorkspaceOperation('bureau.events'),
     mcpExposable: false,
     kind: 'subscription',
     summary: 'Subscribe to a bureau’s lifecycle events with replay-from-cursor',

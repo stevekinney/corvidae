@@ -452,6 +452,8 @@ const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 // because a home is locked by the host that holds it, and one workflow file whose trigger is a
 // schedule, so the seeded agent run is not the only schedule it has.
 const bureauHome = join(scratch, 'bureau-home');
+// Establish the empty home's identity before adding workflow content.
+await enableDemoPlugin(bureauHome);
 const bureauWorkflowDirectory = join(bureauHome, 'workflows');
 await writeProviderHome(bureauHome);
 await mkdir(bureauWorkflowDirectory, { recursive: true });
@@ -459,7 +461,6 @@ await writeFile(
   join(bureauWorkflowDirectory, 'e2e-digest.json'),
   `${JSON.stringify(SEEDED_WORKFLOW_FILES['e2e-digest'], null, 2)}\n`,
 );
-await enableDemoPlugin(bureauHome);
 const bureauHost = await startHost({
   extraAgents: {
     agents: {

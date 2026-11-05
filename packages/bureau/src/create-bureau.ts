@@ -1,4 +1,9 @@
 import {
+  resolveWorkspaceOwner,
+  type WorkspaceRuntimeAuthority,
+  runtimeWorkspaceOwnerAuthority,
+} from './http/workspace-principal.ts';
+import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   mergeHookRegistries,
@@ -421,6 +426,7 @@ import {
   type TaskToolGrant,
 } from './task-registry';
 import {
+  isTaskOrigin,
   parseStartTaskOrigin,
   type StartTaskOrigin,
   type TaskOrigin,
@@ -704,6 +710,9 @@ import {
   type WebhookNotifier,
   type WebhookNotifierOptions,
 } from './webhook-notifier';
+import { workspaceHookEvents } from './hooks/workspace-hook-events.ts';
+import { mayRunUseSharedConfiguration } from './run-authority.ts';
+import type { HooksDependencies } from './hooks/create-hooks.ts';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
 import type { HookSubjectSources } from './hooks/hook-scope';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
@@ -717,6 +726,7 @@ function createBureauMemoryTools(
   memoryAuthority: Parameters<typeof createToolMemoryAuthority>[2],
   tenantId: string,
   ownerForRun: (runId: string | undefined) => Promise<string | undefined>,
+  workspace: WorkspaceRuntimeAuthority | undefined,
 ): Record<string, Tool> {
   if (memory === undefined) return {};
   return createGovernedMemoryTools(memory, {
@@ -726,6 +736,11 @@ function createBureauMemoryTools(
         requestContext.runId === undefined
           ? requestContext.authority.ownerId
           : ((await ownerForRun(requestContext.runId)) ?? requestContext.authority.ownerId);
+      if (
+        workspace !== undefined &&
+        (await resolveWorkspaceOwner(workspace, ownerId)) === undefined
+      )
+        return undefined;
       return {
         collection: requestContext.agentId ?? BUREAU_AGENT_NAME,
         authority: createToolMemoryAuthority(requestContext, toolName, memoryAuthority, {
@@ -2561,6 +2576,8 @@ function webhookNotifierOptionsOf(
  * Bureau's workflows are loaded.
  */
 function composeHooks(input: {
+  readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
+  readonly mayStartWorkflows?: HooksDependencies['mayStartWorkflows'];
   readonly options: BureauOptions<AgentDefinitions>['hooks'];
   readonly engine: WebhookDeliveryEngine | undefined;
   readonly kv: ConditionalTextValueStore | undefined;
@@ -2580,6 +2597,8 @@ function composeHooks(input: {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
   const created = createHooks({
+    eventForHookOwner: input.eventForHookOwner,
+    mayStartWorkflows: input.mayStartWorkflows,
     kv,
     engine,
     secrets: options.secrets,
@@ -2630,22 +2649,36 @@ function resumeHooks(input: {
   );
 }
 
+/** Preserve one immutable membership directory binding throughout runtime construction. */
+function snapshotWorkspaceOptions<const D extends AgentDefinitions>(
+  options: LayeredBureauOptions<D>,
+): LayeredBureauOptions<D> {
+  return options.workspace === undefined
+    ? options
+    : { ...options, workspace: Object.freeze({ ...options.workspace }) };
+}
+
+/** Snapshot caller-owned answer keys before asynchronous construction begins. */
+function snapshotAnswerEncryption(
+  keys: AnswerEncryptionKeys | undefined,
+): AnswerEncryptionKeys | undefined {
+  return keys === undefined
+    ? undefined
+    : {
+        current: keys.current,
+        ...(keys.retired === undefined ? {} : { retired: keys.retired }),
+      };
+}
+
 async function constructBureau<const D extends AgentDefinitions>(
   given: BureauOptions<D>,
   construction: BureauConstruction<D>,
 ): Promise<void> {
   // COR-1873: several definition sources are read as one layered source from here on.
-  let options = withLayeredSources(given);
+  let options = snapshotWorkspaceOptions(withLayeredSources(given));
+  const workspace = options.workspace;
   // COR-1920: the answer keys are the caller's, so they are read once, before the first await.
-  const answerEncryption: AnswerEncryptionKeys | undefined =
-    options.answerEncryption === undefined
-      ? undefined
-      : {
-          current: options.answerEncryption.current,
-          ...(options.answerEncryption.retired === undefined
-            ? {}
-            : { retired: options.answerEncryption.retired }),
-        };
+  const answerEncryption = snapshotAnswerEncryption(options.answerEncryption);
   // AB-194: validated here (BAD_REQUEST at construction time). Admission
   // enforces these same validated values (defaulting to
   // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`)
@@ -2713,6 +2746,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       : Object.values(
           // COR-1529: the workflow tools read the workflow runtime and the run's identity when called.
           createWorkflowTools({
+            workspace: workspace,
             workflows: () => workflowRuntime?.workflows,
             runIdentity: async (runId) => ({
               agent: runAttribution.get(runId)?.agentName,
@@ -3030,6 +3064,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (assetServiceHolder.current !== undefined) {
           return createAssetContentSourceResolver(assetServiceHolder.current, owner, {
             mcpResources: options.mcpResources,
+            workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, owner),
           });
         }
         // No asset service: a host that reads MCP resources still resolves a linked one.
@@ -3049,6 +3084,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                 // `assets/row-asset-claims.ts`). A catalog dispatch (`bureau.run()`, a child, a
                 // goal attempt, a workflow step) never has a session, whether or not it is
                 // registered with the store, so it holds its own rows.
+                workspaceAuthority: runtimeWorkspaceOwnerAuthority(
+                  workspace,
+                  ownerOrLocal(principalId),
+                ),
                 claimSeededInput: rowHolder === 'run',
                 claimHolderFor:
                   rowHolder === 'run'
@@ -3388,6 +3427,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // workflow runtime and the run's identity when called, which is after construction has finished.
     // COR-1710: the settings tools are always in the catalog; an agent file that lists them gets them.
     const settingsTools = createSettingsTools({
+      workspace: workspace,
       settings: () => settingsOf().settings,
       authorityForRun: async (runId) => (await ownerOf({ kind: 'run', id: runId })) ?? undefined,
     });
@@ -3396,6 +3436,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       options.memoryAuthority,
       bureauId,
       async (runId) => (runId === undefined ? undefined : ownerOf({ kind: 'run', id: runId })),
+      workspace,
     );
     const memoryToolsByName = Object.fromEntries(
       Object.values(memoryTools).map((tool) => [tool.name, tool]),
@@ -12162,6 +12203,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       workflowRuntime !== undefined &&
       (await workflowRuntime.isWorkflowType(fire.type))
     ) {
+      const input = fire.input;
+      const origin =
+        typeof input === 'object' && input !== null && 'origin' in input ? input.origin : undefined;
+      if (isTaskOrigin(origin) && origin.kind === 'person') return origin.principal;
       return workflowRuntime.workflows.owner;
     }
     if (fire !== null && isScheduledAgentRunInput(fire.input)) {
@@ -15825,6 +15870,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       context.holderOf,
       context.rows,
       {
+        workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, context.principalId),
         onFailure: (assetId, error, rowId) => {
           context.onFailure(assetId, error, rowId);
           if (!isPermanentClaimFailure(error)) transientFailure ??= { error };
@@ -17086,7 +17132,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       assetService === undefined
         ? undefined
         : await sizeManagedAssets(session.conversationHistory, async (assetId) => {
-            const descriptor = await assetService.inspect(assetId, { id: owner });
+            const descriptor = await assetService.inspect(assetId, {
+              id: owner,
+              workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, owner),
+            });
             return {
               state: descriptor.state,
               custody: descriptor.custody,
@@ -20442,6 +20491,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1879 — the plugin whose host API creates the schedule; its `schedule.created` names it.
     source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
+    definition = structuredClone(definition);
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
       // A schedule's session is made by its first fire when none exists yet. Only `.` and `..` are
@@ -20456,6 +20506,13 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
+    if (
+      workspace !== undefined &&
+      definition.sessionId !== undefined &&
+      (await sessionOwner(definition.sessionId.trim())) !== owner
+    ) {
+      throw new BureauError('Session not found', 'NOT_FOUND');
+    }
     if (!runtime.durable) return undefined;
     // COR-1667 — resolve the name the way a fire does (`agentCatalog.find`, which includes file
     // agents), so a typo is refused now instead of as `missing-agent` at the first fire. An agent
@@ -22818,6 +22875,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
 
   const bureau: Bureau<D> = {
+    workspaceBinding: workspace,
     id: bureauId,
     plugins: pluginRegistry.plugins,
     // COR-2009: what needs attention, read now from the parts this Bureau has.
@@ -23142,6 +23200,12 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   // COR-1939: user-defined hooks, on the notifier's delivery engine.
   hooksInstance = composeHooks({
+    eventForHookOwner:
+      workspace === undefined ? undefined : workspaceHookEvents(workspace, ownerOf),
+    mayStartWorkflows:
+      workspace === undefined
+        ? undefined
+        : (owner) => mayRunUseSharedConfiguration(workspace, owner, 'bureau.workflows:write', true),
     options: options.hooks,
     engine: webhookNotifierInstance?.engine,
     kv: runtime.kv,

@@ -283,6 +283,7 @@ type TopLevelMembers =
   | 'frames'
   // The members that did not change.
   | 'id'
+  | 'workspaceBinding'
   | 'durableEngine'
   | 'lifecycle'
   | 'shutdown'

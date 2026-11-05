@@ -531,6 +531,75 @@ describe('workflows-get and workflow revisions', () => {
     });
   });
 
+  it('shares definitions with members but keeps revision usage private from administrators', async () => {
+    const harness = await start({
+      overrides: {
+        workspace: {
+          workspaceId: 'workspace-a',
+          resolveMembership: async ({ subject }) => ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: subject ?? 'unknown',
+            actorKind: 'user',
+            owner: `api-key:${subject ?? 'unknown'}`,
+            membershipRevision: 'revision-1',
+            capabilities: ['workspace:use', 'workspace:manage'],
+          }),
+          resolveOwnerMembership: async (owner) => ({
+            version: 1,
+            workspaceId: 'workspace-a',
+            actorId: owner,
+            actorKind: 'user',
+            owner,
+            membershipRevision: 'revision-1',
+            capabilities:
+              owner === 'owner-admin' ? ['workspace:use', 'workspace:manage'] : ['workspace:use'],
+          }),
+        },
+      },
+    });
+    await harness.callTool(
+      'bureau__workflows-create',
+      { name: 'Digest', trigger: TRIGGER, steps: STEPS },
+      { principal: 'owner-admin' },
+    );
+    const listed = await harness.callTool(
+      'bureau__workflows-list',
+      {},
+      { principal: 'owner-member' },
+    );
+    expect(listed.result).toMatchObject({ status: 'ok', workflows: [{ id: 'digest' }] });
+    const refused = await harness.callTool(
+      'bureau__workflows-update',
+      { id: 'digest', expectedHash: hashOf(harness, 'digest'), trigger: TRIGGER, steps: STEPS },
+      { principal: 'owner-member' },
+    );
+    expect(refused.result).toMatchObject({ status: 'not-found' });
+    const run = await harness.bureau
+      .durableEngine()!
+      .start(
+        'digest',
+        { origin: { kind: 'person', principal: 'owner-member', surface: 'api' } },
+        { id: 'private-member-run' },
+      );
+    await run.result();
+    const member = await harness.callTool(
+      'bureau__workflows-revisions-list',
+      { id: 'digest' },
+      { principal: 'owner-member' },
+    );
+    expect(member.result).toMatchObject({
+      status: 'ok',
+      revisions: [expect.objectContaining({ workflowVersion: expect.any(String) })],
+    });
+    const administrator = await harness.callTool(
+      'bureau__workflows-revisions-list',
+      { id: 'digest' },
+      { principal: 'owner-admin' },
+    );
+    expect(administrator.result).toMatchObject({ status: 'ok', revisions: [] });
+  });
+
   it('lists and reads the revisions that have run', async () => {
     const harness = await start();
     await harness.callTool('bureau__workflows-create', {

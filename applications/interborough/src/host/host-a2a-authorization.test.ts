@@ -136,13 +136,13 @@ const ROWS: readonly Row[] = [
     operation: { kind: 'get', path: '/host/paths' },
     expected: { kind: 'answered' },
   },
-  // The A2A key is not an operator: it sees only the agents that opt in (part 1's rules).
+  // A workspace service key invokes opted-in agents but cannot browse shared definitions.
   {
     caller: 'loopback',
     configurations: KEYED,
     credential: A2A_KEY,
     operation: { kind: 'rpc', method: 'bureau.agents.list' },
-    expected: { kind: 'agents', view: 'opted in only' },
+    expected: { kind: 'forbidden' },
   },
   {
     caller: 'loopback',

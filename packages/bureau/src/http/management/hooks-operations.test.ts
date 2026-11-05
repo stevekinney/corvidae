@@ -8,11 +8,13 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
 import { createReceiver, SIGNING_SECRET } from '../../hooks/hooks.test-support.ts';
+import { HOOK_SIGNATURE_HEADER, verifyHookSignature } from '../../hooks/hook-signature.ts';
 import { HOOK_DELIVERY_KEY_PREFIX } from '../../hooks/hook-store.ts';
 import type { HookDeliveryRecord, HookSecretStore } from '../../hooks/hook-types.ts';
-import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
 import { bureauHooksOperations } from './hooks-operations.ts';
 import { openBureau, type OpenedBureau, rpc } from './management-fixtures.test-support.ts';
+import type { WorkspaceMembershipOptions } from '../workspace-principal.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -20,7 +22,12 @@ afterEach(async () => {
 });
 
 async function open(
-  options: { secrets?: HookSecretStore; withoutHooks?: boolean; storage?: MemoryStorage } = {},
+  options: {
+    secrets?: HookSecretStore;
+    withoutHooks?: boolean;
+    storage?: MemoryStorage;
+    workspace?: WorkspaceMembershipOptions;
+  } = {},
 ) {
   const receiver = createReceiver((_call, index) =>
     index === 0 ? new Response('pong', { status: 200 }) : new Response('again'),
@@ -36,6 +43,9 @@ async function open(
           }),
       webhooks: { targets: [], fetch: receiver.fetch, sleep: () => Promise.resolve() },
     },
+    ...(options.workspace === undefined
+      ? {}
+      : { handlerOptions: { workspace: options.workspace } }),
   });
   cleanups.push(() => opened.dispose());
   return { opened, receiver };
@@ -705,4 +715,145 @@ describe('bureau.hooks.*', () => {
     expect(response.error?.data).toMatchObject({ capability: 'encryption' });
     expect(await resultOf(opened, 'bureau.hooks.list', {}, 'alice-key')).toEqual({ hooks: [] });
   });
+});
+
+it('workspace administration cannot retarget private hooks or bypass the secret operation', async () => {
+  const workspace: WorkspaceMembershipOptions = {
+    workspaceId: 'workspace-a',
+    resolveMembership: async ({ subject }) => ({
+      version: 1,
+      workspaceId: 'workspace-a',
+      actorId: subject ?? 'unknown',
+      actorKind: 'user',
+      owner: `api-key:${subject ?? 'unknown'}`,
+      membershipRevision: 'revision-1',
+      capabilities: ['workspace:use', 'workspace:manage'],
+    }),
+  };
+  const { opened } = await open({ workspace });
+  const handler = opened.handler;
+  const created = await rpc(handler, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+  expect(created.error).toBeUndefined();
+  expect(created.result?.['signingSecret']).toBeNull();
+  const hookId = created.result?.['id'] as string;
+  const retarget = { hookId, url: 'https://other.example/hook' };
+  const denied = await rpc(handler, 'bureau.hooks.update', retarget, 'bob-observer-key');
+  expect(denied.error?.data?.httpStatus).toBe(404);
+  const retainedHook = await opened.bureau.hooks!.get(hookId);
+  expect(retainedHook?.action).toMatchObject({ url: NEW_HOOK.url });
+  const narrowed = await rpc(
+    handler,
+    'bureau.hooks.update',
+    { ...retarget, events: ['definitions.changed'] },
+    'bob-observer-key',
+  );
+  expect(narrowed.error).toBeUndefined();
+  expect(narrowed.result?.['events']).toEqual(['definitions.changed']);
+  const widened = await rpc(
+    handler,
+    'bureau.hooks.update',
+    { hookId, events: ['run.settled'] },
+    'bob-observer-key',
+  );
+  expect(widened.error).toBeDefined();
+  const secret = await rpc(
+    handler,
+    'bureau.hooks.update',
+    { hookId, signingSecret: SIGNING_SECRET },
+    'alice-observer-key',
+  );
+  expect(secret.error?.data?.httpStatus).toBe(403);
+  const testForeign = await rpc(handler, 'bureau.hooks.test', { hookId }, 'bob-observer-key');
+  expect(testForeign.error?.data?.httpStatus).toBe(404);
+});
+
+it('projects hook delivery summaries for their owner and trusted local operator, but not a foreign administrator', async () => {
+  const workspace: WorkspaceMembershipOptions = {
+    workspaceId: 'workspace-a',
+    resolveMembership: async ({ subject, method }) => ({
+      version: 1,
+      workspaceId: 'workspace-a',
+      actorId: subject ?? 'local-owner',
+      actorKind: method === 'unauthenticated-local' ? 'local' : 'user',
+      owner: method === 'unauthenticated-local' ? 'anonymous:local' : `api-key:${subject}`,
+      membershipRevision: '1',
+      capabilities:
+        method === 'unauthenticated-local'
+          ? ['workspace:use', 'workspace:manage', 'deployment:operate']
+          : ['workspace:use', 'workspace:manage'],
+    }),
+  };
+  const { opened, receiver } = await open({ workspace });
+  const hook = await wire(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
+  await wire(opened, 'bureau.hooks.test', { hookId: hook.id }, 'alice-key');
+  const own = await wire(opened, 'bureau.hooks.list', {}, 'alice-key');
+  expect(own.hooks[0].lastDelivery).toMatchObject({ kind: 'hook.test', status: 'delivered' });
+  const foreign = await wire(opened, 'bureau.hooks.list', {}, 'bob-observer-key');
+  expect(foreign.hooks[0].lastDelivery).toBeNull();
+  const local = createBureauHandler(opened.bureau, { workspace, unauthenticatedAccess: 'allow' });
+  const response = await local(
+    new Request('http://localhost/jsonrpc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.hooks.list', params: {} }),
+    }),
+  );
+  const result = (await response.json()) as { result: { hooks: Array<{ lastDelivery: unknown }> } };
+  expect(result.result.hooks[0]?.lastDelivery).toMatchObject({
+    kind: 'hook.test',
+    status: 'delivered',
+  });
+  const administratorCreated = await call(
+    opened,
+    'bureau.hooks.create',
+    {
+      url: NEW_HOOK.url,
+      events: ['definitions.changed'],
+    },
+    'bob-observer-key',
+  );
+  expect(administratorCreated.error).toBeUndefined();
+  expect(administratorCreated.result?.['signingSecret']).toBeNull();
+  const localCall = async (method: string, params: unknown) => {
+    const response = await local(
+      new Request('http://localhost/jsonrpc', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      }),
+    );
+    return (await response.json()) as { result?: Record<string, unknown>; error?: unknown };
+  };
+  const created = await localCall('bureau.hooks.create', {
+    url: NEW_HOOK.url,
+    events: ['run.settled'],
+  });
+  expect(created.error).toBeUndefined();
+  expect(created.result?.['signingSecret']).toMatch(/^whsec_[0-9a-f]{24}$/);
+  const localHookId = created.result?.['id'];
+  const replacement = 'whsec-local-editor-replacement-1234567890';
+  const updated = await localCall('bureau.hooks.update', {
+    hookId: localHookId,
+    signingSecret: replacement,
+  });
+  expect(updated.error).toBeUndefined();
+  expect(JSON.stringify(updated)).not.toContain(replacement);
+  const delivered = await localCall('bureau.hooks.test', { hookId: localHookId });
+  expect(delivered.error).toBeUndefined();
+  const delivery = receiver.calls.at(-1)!;
+  expect(
+    verifyHookSignature({
+      secret: replacement,
+      header: delivery.headers.get(HOOK_SIGNATURE_HEADER)!,
+      body: delivery.body,
+      now: Date.now(),
+    }),
+  ).toEqual({ ok: true });
+  const foreignUpdate = await call(
+    opened,
+    'bureau.hooks.update',
+    { hookId: localHookId, signingSecret: SIGNING_SECRET },
+    'bob-observer-key',
+  );
+  expect(foreignUpdate.error?.data?.httpStatus).toBe(403);
 });

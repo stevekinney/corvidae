@@ -158,7 +158,10 @@ export interface AgentSnapshotStore {
    */
   load(id: string, hash: string): Promise<AgentSnapshot | undefined>;
   /** The snapshots that have run for `id`, most recently run first. One that is not valid is skipped. */
-  revisions(id: string): Promise<readonly AgentRevision[]>;
+  revisions(
+    id: string,
+    mayReadRun?: (runId: string) => Promise<boolean>,
+  ): Promise<readonly AgentRevision[]>;
   /**
    * Drop every reference settled before `cutoff` (epoch milliseconds), then every snapshot left
    * with none. Resolves how many snapshots it removed.
@@ -454,7 +457,29 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
       return parsed.kind === 'ok' ? parsed.snapshot : undefined;
     },
 
-    async revisions(id) {
+    async revisions(id, mayReadRun) {
+      const usage = new Map<string, { first: string; last: string }>();
+      if (mayReadRun !== undefined) {
+        for (const key of await store.list(AGENT_RUN_REFERENCE_KEY_PREFIX)) {
+          const reference = parseReference(await store.get(key));
+          if (
+            reference?.id !== id ||
+            !(await mayReadRun(key.slice(AGENT_RUN_REFERENCE_KEY_PREFIX.length)))
+          )
+            continue;
+          const previous = usage.get(reference.hash);
+          usage.set(reference.hash, {
+            first:
+              previous === undefined || reference.startedAt < previous.first
+                ? reference.startedAt
+                : previous.first,
+            last:
+              previous === undefined || reference.startedAt > previous.last
+                ? reference.startedAt
+                : previous.last,
+          });
+        }
+      }
       const found: AgentRevision[] = [];
       for (const key of await store.list(`${AGENT_SNAPSHOT_KEY_PREFIX}${id}:`)) {
         const parsed = parseSnapshot(await store.get(key));
@@ -462,11 +487,13 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
         const { snapshot } = parsed;
         // The prefix of `linear` also lists the plugin agent `linear:triager` (COR-1873).
         if (snapshot.id !== id) continue;
+        const visible = usage.get(snapshot.hash);
+        if (mayReadRun !== undefined && visible === undefined) continue;
         found.push({
           id: snapshot.id,
           hash: snapshot.hash,
-          firstRunAt: snapshot.firstRunAt,
-          lastRunAt: snapshot.lastRunAt,
+          firstRunAt: visible?.first ?? snapshot.firstRunAt,
+          lastRunAt: visible?.last ?? snapshot.lastRunAt,
           definition: snapshot.definition,
         });
       }

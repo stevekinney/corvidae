@@ -45,6 +45,24 @@ import {
  */
 export type JwtClaims = Record<string, unknown>;
 
+/** A host-resolved identity snapshot, distinct from the credential that authenticated it. */
+export type WorkspaceIdentity = {
+  /** Version of this resolved identity contract. */
+  readonly version: 1;
+  /** Stable identity of the runtime's one workspace. */
+  readonly workspaceId: string;
+  /** Stable directory identity, independent of a credential's method or rotation. */
+  readonly actorId: string;
+  /** User membership, a limited service actor, or the explicitly composed local owner. */
+  readonly actorKind: 'user' | 'service' | 'local';
+  /** Opaque durable resource owner; resolving a credential never rewrites stored owners. */
+  readonly owner: string;
+  /** Equality-only token scoped to this workspace and actor; changes with membership authority. */
+  readonly membershipRevision: string;
+  /** Workspace permissions; deployment operation is granted only by trusted local composition. */
+  readonly capabilities: readonly ('workspace:use' | 'workspace:manage' | 'deployment:operate')[];
+};
+
 /**
  * An authenticated caller — JWT, API key, or mTLS. Carries the granted scope
  * set and a `hasScope` accessor; downstream code should narrow to this shape
@@ -71,6 +89,8 @@ export type JwtClaims = Record<string, unknown>;
  * ```
  */
 export type AuthenticatedPrincipal = {
+  /** Supplied by the host after credential verification, never by request metadata. */
+  readonly workspace?: WorkspaceIdentity;
   readonly method: 'jwt' | 'api-key' | 'mtls' | 'stdio-local' | 'unauthenticated-local';
   readonly scopes: ReadonlySet<AuthorizationScope>;
   readonly claims: JwtClaims | undefined;

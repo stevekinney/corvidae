@@ -8,6 +8,7 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { describe, expect, it } from 'bun:test';
+import type { WorkspaceIdentity } from '@lostgradient/weft';
 
 import { waitForCondition } from '../../test';
 import type { BureauHandlerSource } from '../create-bureau-handler.ts';
@@ -77,6 +78,49 @@ const editor = createAgent({ name: 'editor', generate: answering() });
 const catalog = { agents: { writer, editor }, generate: answering() };
 
 describe('bureau.contexts.list', () => {
+  it('forbids allOwners and filters a workspace administrator’s legacy scope', async () => {
+    await withBureau(
+      {
+        ...catalog,
+        handlerOptions: {
+          workspace: {
+            workspaceId: 'workspace-a',
+            resolveMembership: async ({ subject }) =>
+              ({
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: subject ?? 'unknown',
+                actorKind: 'user',
+                owner: `api-key:${subject ?? 'unknown'}`,
+                membershipRevision: 'revision-1',
+                capabilities: ['workspace:use', 'workspace:manage'],
+              }) satisfies WorkspaceIdentity,
+          },
+        },
+      },
+      async (opened) => {
+        const own = await finishedSession(opened, {
+          principal: 'api-key:operator',
+          message: 'own',
+        });
+        const foreign = await finishedSession(opened, {
+          principal: OWNER.alice,
+          message: 'foreign',
+        });
+        const listed = await rpc(opened.handler, 'bureau.contexts.list', {}, 'operator-key');
+        expect(contextsOf(listed).map((context) => context.id)).toEqual([own.contextId]);
+        expect(contextsOf(listed).map((context) => context.id)).not.toContain(foreign.contextId);
+        const allOwners = await rpc(
+          opened.handler,
+          'bureau.contexts.list',
+          { allOwners: true },
+          'operator-key',
+        );
+        expect(allOwners.error?.data?.httpStatus).toBe(403);
+      },
+    );
+  });
+
   it('returns the caller’s own sessions newest update first, with title, preview, count, owner and times', async () => {
     await withBureau(catalog, async (opened) => {
       const first = await finishedSession(opened, {

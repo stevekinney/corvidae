@@ -270,20 +270,20 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       const loaded = await loadRecord(storage, assetId);
       const record =
         projection === 'privileged'
-          ? authorizePrivileged(
+          ? await authorizePrivileged(
               loaded?.record,
               assetId,
               principal,
               'read the privileged projection of',
             )
-          : authorize(loaded?.record, assetId, principal);
+          : await authorize(loaded?.record, assetId, principal);
       return projectFor(record, principal, projection);
     },
 
     async resolve(reference, principal): Promise<ResolvedAsset> {
       open();
       const loaded = await loadRecord(storage, reference.assetId);
-      const record = authorize(loaded?.record, reference.assetId, principal);
+      const record = await authorize(loaded?.record, reference.assetId, principal);
       if (reference.revision !== undefined && reference.revision > record.revision) {
         throw new AssetUnavailableError(reference.assetId, record.state);
       }

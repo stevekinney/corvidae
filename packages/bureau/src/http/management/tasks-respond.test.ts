@@ -4,6 +4,7 @@ import {
   createOperationHandlerAuthenticator,
   principalFromJwtClaims,
 } from '@lostgradient/weft';
+import type { WorkspaceIdentity } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
@@ -106,6 +107,39 @@ async function parkedApproval(opened: OpenedBureau, principal = OWNER.alice) {
 }
 
 describe('bureau.tasks.respond answering a human wait', () => {
+  it('does not let a workspace administrator use a legacy write scope on a foreign wait', async () => {
+    await withBureau(
+      {
+        generate: parksThenAnswers(),
+        handlerOptions: {
+          workspace: {
+            workspaceId: 'workspace-a',
+            resolveMembership: async ({ subject }) =>
+              ({
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: subject ?? 'unknown',
+                actorKind: 'user',
+                owner: `api-key:${subject ?? 'unknown'}`,
+                membershipRevision: 'revision-1',
+                capabilities: ['workspace:use', 'workspace:manage'],
+              }) satisfies WorkspaceIdentity,
+          },
+        },
+      },
+      async (opened) => {
+        const run = await parkedRun(opened);
+        const body = await rpc(
+          opened.handler,
+          'bureau.tasks.respond',
+          { taskId: run.id, messageId: 'workspace-foreign', answer: 'no access' },
+          'tasks-writer-key',
+        );
+        expect(body.error?.data?.httpStatus).toBe(404);
+      },
+    );
+  });
+
   it('answers with text, delivered to the run as the signal payload, and the run finishes', async () => {
     await withBureau({ generate: parksThenAnswers() }, async (opened) => {
       const run = await parkedRun(opened);

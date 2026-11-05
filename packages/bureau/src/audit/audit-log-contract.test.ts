@@ -202,3 +202,54 @@ describe('a schedule’s missed occurrences', () => {
     }
   });
 });
+
+describe('workspace configuration audit projection', () => {
+  it('adds shared change metadata without foreign execution or configuration payloads', async () => {
+    const { bureau } = createStubBureau();
+    const trail = createAuditTrail(bureau, textValueStore(new MemoryStorage()));
+    try {
+      await trail.record({
+        runId: 'agent:shared',
+        type: 'agent.updated',
+        principal: 'bob',
+        detail: {
+          revision: 2,
+          hash: 'revision-hash',
+          instructions: 'PRIVATE-INSTRUCTIONS',
+          commandLine: 'PRIVATE-COMMAND',
+          sessionId: 'PRIVATE-SESSION',
+        },
+      });
+      await trail.record({
+        runId: 'foreign-run',
+        type: 'run.completed',
+        principal: 'bob',
+        detail: { status: 'completed' },
+      });
+      await trail.record({
+        runId: 'schedule:shared',
+        type: 'schedule.fired',
+        principal: 'bob',
+        detail: { status: 'running' },
+      });
+      const audit = createAudit({
+        trail: () => trail,
+        ownerOf: async () => 'bob',
+        refusal: (message) => new Error(message),
+      });
+      const privatePage = await audit.query({}, { owner: 'alice' });
+      expect(privatePage.records).toEqual([]);
+      const shared = await audit.query({}, { owner: 'alice', includeSharedConfiguration: true });
+      expect(shared.records).toHaveLength(1);
+      expect(shared.records[0]).toMatchObject({
+        resource: 'agent:shared',
+        principal: 'bob',
+        detail: { revision: 2, hash: 'revision-hash' },
+      });
+      expect(JSON.stringify(shared)).not.toContain('PRIVATE-');
+      expect(shared.nextCursor).toBeNull();
+    } finally {
+      trail.dispose();
+    }
+  });
+});
