@@ -239,8 +239,12 @@ describe('remote mode: the lock', () => {
       throw new Error('flock was requested');
     };
     using remote = await openBungalowWithDependencies(
-      { name: TEST_NAME, environment: remoteEnvironment(server.endpoint) },
-      { acquireLock, claimDatabaseWorkspace: async () => {} },
+      {
+        name: TEST_NAME,
+        environment: remoteEnvironment(server.endpoint),
+        databaseWorkspaceClaim: async () => {},
+      },
+      { acquireLock },
     );
     expect(remote.mode).toBe('remote');
     const local = await throwingRejectionOf(
@@ -258,20 +262,25 @@ describe('remote mode: exact addressing', () => {
     const proxy = startProxy(startServer());
     // Past the prefix validation, as a later caller of `openRemoteBungalow` could be.
     const error = await rejectionOf(
-      openRemoteBungalow(TEST_NAME, {
-        databaseUrl: DATABASE_URL,
-        bucket: BUCKET,
-        prefix: 'a/./',
-        client: {
-          endpoint: proxy.endpoint,
-          region: 'us-east-1',
-          accessKeyId: ACCESS_KEY_ID,
-          secretAccessKey: SECRET_ACCESS_KEY,
+      openRemoteBungalow(
+        TEST_NAME,
+        {
+          databaseUrl: DATABASE_URL,
           bucket: BUCKET,
-          virtualHostedStyle: false,
+          prefix: 'a/./',
+          client: {
+            endpoint: proxy.endpoint,
+            region: 'us-east-1',
+            accessKeyId: ACCESS_KEY_ID,
+            secretAccessKey: SECRET_ACCESS_KEY,
+            bucket: BUCKET,
+            virtualHostedStyle: false,
+          },
+          secrets: new Map(),
         },
-        secrets: new Map(),
-      }),
+        undefined,
+        async () => {},
+      ),
     );
     expect(error).toBeInstanceOf(BungalowInputError);
     expectNothingLeaked(error, proxy.endpoint);
@@ -307,6 +316,106 @@ describe('remote mode: the bucket prefix', () => {
 });
 
 describe('remote mode: the deployment ID outcome matrix', () => {
+  test('requires the database binding port before making any remote request', async () => {
+    const server = startServer();
+    const proxy = startProxy(server);
+    expect(
+      await throwingRejectionOf(
+        openBungalow({ name: TEST_NAME, environment: remoteEnvironment(proxy.endpoint) }),
+      ),
+    ).toThrow('database workspace binding callback');
+    expect(proxy.requests).toEqual([]);
+    expect(server.objects().size).toBe(0);
+  });
+
+  test('refuses existing content without an identity and leaves it intact', async () => {
+    const server = startServer();
+    server.put(CONFIGURATION_KEY, '{}');
+    expect(await throwingRejectionOf(openRemote(server.endpoint))).toThrow('Restore');
+    expect([...server.objects().keys()]).toEqual([CONFIGURATION_KEY]);
+  });
+
+  test('rejects a configured identity mismatch before claiming the database', async () => {
+    const server = startServer();
+    server.put(DEPLOYMENT_KEY, generateUlid());
+    let claims = 0;
+    expect(
+      await throwingRejectionOf(
+        openBungalow({
+          name: TEST_NAME,
+          environment: remoteEnvironment(server.endpoint),
+          workspaceId: generateUlid(),
+          databaseWorkspaceClaim: async () => {
+            claims++;
+          },
+        }),
+      ),
+    ).toThrow('does not match');
+    expect(claims).toBe(0);
+    expect(server.objects().has(WORKSPACE_KEY)).toBe(false);
+  });
+
+  test('publishes no workspace marker after a rejected database claim and retries its original identity', async () => {
+    const server = startServer();
+    const claims: Array<string | undefined> = [];
+    expect(
+      await throwingRejectionOf(
+        openBungalow({
+          name: TEST_NAME,
+          environment: remoteEnvironment(server.endpoint),
+          databaseWorkspaceClaim: async (_url, _prefix, identity) => {
+            claims.push(identity);
+            if (identity !== undefined) throw new Error('database belongs to another workspace');
+          },
+        }),
+      ),
+    ).toThrow('another workspace');
+    const deployment = new TextDecoder().decode(server.objects().get(DEPLOYMENT_KEY)).trim();
+    expect(claims).toEqual([undefined, deployment]);
+    expect([...server.objects().keys()]).toEqual([DEPLOYMENT_KEY]);
+    using reopened = await openBungalow({
+      name: TEST_NAME,
+      environment: remoteEnvironment(server.endpoint),
+      databaseWorkspaceClaim: async (_url, _prefix, identity) => {
+        expect(identity).toBe(deployment);
+      },
+    });
+    expect(reopened.workspaceId).toBe(deployment);
+    expect(new TextDecoder().decode(server.objects().get(WORKSPACE_KEY)).trim()).toBe(deployment);
+  });
+
+  test('retries a failed workspace publication using the identity already claimed in the database', async () => {
+    const server = startServer();
+    const proxy = startProxy(server);
+    let claimed: string | undefined;
+    const open = () =>
+      openBungalow({
+        name: TEST_NAME,
+        environment: remoteEnvironment(proxy.endpoint),
+        databaseWorkspaceClaim: async (_url, _prefix, identity) => {
+          if (identity === undefined) {
+            expect(claimed).toBeUndefined();
+            return;
+          }
+          if (claimed !== undefined) expect(identity).toBe(claimed);
+          claimed = identity;
+        },
+      });
+    proxy.intercept(({ method, key }) =>
+      method === 'PUT' && key === WORKSPACE_KEY
+        ? new Response('unavailable', { status: 500 })
+        : undefined,
+    );
+    expect(await rejectionOf(open())).toBeInstanceOf(BungalowFilesystemError);
+    expect(claimed).toBeDefined();
+    expect(server.objects().has(WORKSPACE_KEY)).toBe(false);
+    const deployment = server.objects().get(DEPLOYMENT_KEY);
+    proxy.intercept(undefined);
+    using reopened = await open();
+    expect(reopened.workspaceId).toBe(claimed!);
+    expect(server.objects().get(DEPLOYMENT_KEY)).toEqual(deployment);
+  });
+
   test('an empty bucket: written with If-None-Match, read back, and used', async () => {
     const server = startServer();
     const proxy = startProxy(server);
@@ -318,6 +427,8 @@ describe('remote mode: the deployment ID outcome matrix', () => {
     expect(proxy.requests).toEqual([
       { method: 'GET', key: DEPLOYMENT_KEY },
       { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'GET', key: '' },
+      { method: 'GET', key: DEPLOYMENT_KEY },
       { method: 'GET', key: DEPLOYMENT_KEY },
       { method: 'PUT', key: DEPLOYMENT_KEY },
       { method: 'GET', key: DEPLOYMENT_KEY },

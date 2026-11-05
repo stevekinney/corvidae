@@ -76,36 +76,41 @@ The prefix is normalized: a leading `/` is removed and a trailing `/` is added, 
 | `<prefix><name>/` | The content named `<name>`, handed out by `content(name)`. |
 
 ```typescript
-import { openBungalow } from '@lostgradient/bungalow';
+import { openBungalow, type DatabaseWorkspaceClaim } from '@lostgradient/bungalow';
 
-const bungalow = await openBungalow({
-  name: 'interborough',
-  environment: {
-    INTERBOROUGH_DATABASE_URL: 'postgres://interborough@db.internal/interborough',
-    INTERBOROUGH_BUCKET: 'interborough-state',
-    INTERBOROUGH_BUCKET_PREFIX: 'production',
-    S3_ENDPOINT: 'https://storage.example.com',
-    S3_REGION: 'auto',
-    S3_ACCESS_KEY_ID: 'example-access-key-id',
-    S3_SECRET_ACCESS_KEY: 'example-secret-access-key',
-    INTERBOROUGH_SECRET_API_KEY: 'sk-example',
-  },
-});
+async function openRemoteHome(databaseWorkspaceClaim: DatabaseWorkspaceClaim) {
+  const bungalow = await openBungalow({
+    name: 'interborough',
+    databaseWorkspaceClaim,
+    environment: {
+      INTERBOROUGH_DATABASE_URL: 'postgres://interborough@db.internal/interborough',
+      INTERBOROUGH_BUCKET: 'interborough-state',
+      INTERBOROUGH_BUCKET_PREFIX: 'production',
+      S3_ENDPOINT: 'https://storage.example.com',
+      S3_REGION: 'auto',
+      S3_ACCESS_KEY_ID: 'example-access-key-id',
+      S3_SECRET_ACCESS_KEY: 'example-secret-access-key',
+      INTERBOROUGH_SECRET_API_KEY: 'sk-example',
+    },
+  });
 
-bungalow.mode; // 'remote'
-bungalow.database; // { kind: 'postgres', url: 'postgres://interborough@db.internal/interborough' }
-bungalow.content('agents'); // { kind: 's3', bucket: 'interborough-state', prefix: 'production/agents/' }
-bungalow.configurationLocation; // 's3://interborough-state/production/configuration.json'
-await bungalow.readConfiguration(); // the object's text, or undefined when it is absent
-bungalow.secretLocation('api-key'); // 'INTERBOROUGH_SECRET_API_KEY'
-bungalow.readSecret('api-key'); // 'sk-example', or undefined when the variable is unset or empty
-bungalow.s3Client(); // the Bun.S3Client configured above; undefined in local mode
-bungalow.logs; // undefined: remote mode has no local directory
+  bungalow.mode; // 'remote'
+  bungalow.database; // { kind: 'postgres', url: 'postgres://interborough@db.internal/interborough' }
+  bungalow.content('agents'); // { kind: 's3', bucket: 'interborough-state', prefix: 'production/agents/' }
+  bungalow.configurationLocation; // 's3://interborough-state/production/configuration.json'
+  await bungalow.readConfiguration(); // the object's text, or undefined when it is absent
+  bungalow.secretLocation('api-key'); // 'INTERBOROUGH_SECRET_API_KEY'
+  bungalow.readSecret('api-key'); // 'sk-example', or undefined when the variable is unset or empty
+  bungalow.s3Client(); // the Bun.S3Client configured above; undefined in local mode
+  bungalow.logs; // undefined: remote mode has no local directory
 
-bungalow.close();
+  bungalow.close();
+}
 ```
 
 `writeSecret` throws `BungalowStateError` in remote mode, since secrets come from the environment, and so does `writeConfiguration`, since the configuration is an object a person puts in the bucket. `s3Client()` returns a `Bun.S3Client` built from the variables above, passed explicitly, so Bun's default endpoint and region are never used; it uses path-style addressing. The credentials appear in no location Bungalow hands out. Credentials come only from the environment Bungalow is given, never from the process's own, with one exception that Bungalow refuses instead of allowing: when no session token is set, `Bun.S3Client` signs every request with the `AWS_SESSION_TOKEN` or `S3_SESSION_TOKEN` the process had when Bun started, and no option turns that off. Before any request, Bungalow presigns a probe key, and if the URL carries `X-Amz-Security-Token` while the given environment has no `S3_SESSION_TOKEN` (an empty one counts as unset), `openBungalow` throws `BungalowInputError`, whose message names `AWS_SESSION_TOKEN` and `S3_SESSION_TOKEN` and never a value. Set `S3_SESSION_TOKEN` in the given environment, which is then the token every request carries, or unset the two in the process (an aws-vault or SSO shell, a Lambda, or a `.env` file sets them).
+
+Remote mode requires the trusted application to supply `databaseWorkspaceClaim`. Before bootstrapping an empty prefix, Bungalow calls it with an undefined identity; the application must reject an existing nonempty database. Once the deployment identity is persisted, Bungalow calls it with that identity and the `s3://` resource location. The application must atomically claim one fixed key in the raw database, accept only an identical existing binding, and reject conflicts regardless of connection URL spelling. Only then does Bungalow publish `workspace-id`. Interborough implements this through its PostgreSQL storage adapter and reuses that adapter for the host. An empty prefix may retain only its newly generated `deployment-id` if the database claim fails; reopening retries that same identity. Existing content without a deployment identity requires restoring the original identity from backup.
 
 Remote mode takes no lock and loads no C library. Two overlapping instances, as in a rolling deploy, agree on one deployment ID: an instance that finds no `<prefix>deployment-id` writes a new ULID with `If-None-Match: *` (through a URL signed by `client.presign` and sent with `fetch`, since `Bun.S3Client.write` drops a conditional header), then reads the object back and uses whatever it holds, whether its own write succeeded or got `412`. A stored value that is not a ULID throws `BungalowStateError` and is left as it is. An object still absent after the write is a failed read, not a reason to write again.
 

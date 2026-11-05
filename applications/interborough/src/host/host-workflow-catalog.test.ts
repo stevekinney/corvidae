@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * The Workflows area's data functions against a host composed the way production composes it: no
  * `createConsoleEngine`, so the console's engine is the Bureau's durable engine and the Bureau's
@@ -60,6 +61,7 @@ const FILES = {
 
 async function start(): Promise<{ host: Host; client: HttpClient; options: { fetch: Fetcher } }> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-catalog-'));
+  await initializeWorkspaceHome(home);
   directories.push(home);
   await mkdir(join(home, 'workflows'), { recursive: true });
   for (const [id, document] of Object.entries(FILES)) {

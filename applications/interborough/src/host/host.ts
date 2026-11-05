@@ -160,6 +160,7 @@ import {
 } from './host-websocket.ts';
 import { resolveLaunchCommand } from './launch-command.ts';
 import {
+  claimWorkspaceBinding,
   createAgentSource,
   createHostStorage,
   createPluginAgentSource,
@@ -671,7 +672,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       );
     }
   }
-  const environment = options.environment ?? processEnvironment();
+  const environment = { ...(options.environment ?? processEnvironment()) };
   // The caller's lock list is read before the first await, so a later change to it cannot reach the Bureau.
   const callerLocks = { ...options.settings?.locked };
   // The A2A allowlist is read the same way: after the first await it would be the caller's live array.
@@ -683,15 +684,40 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   // The A2A public origin (COR-1904) is read from the caller's environment before it can change,
   // and a malformed one stops the host before anything opens.
   const a2aPublicOrigin = resolveA2aPublicOrigin(environment);
-  const bungalow: Bungalow = await openBungalow({
-    name: APPLICATION_NAME,
-    environment,
-    ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
-  });
-  const held: Held = { bungalow };
+  let claimedRemoteStorage: Storage | undefined;
+  let bungalow: Bungalow;
   try {
-    // Read before the database opens, so a remote host without its approval secret stops before
-    // anything connects to Postgres or listens.
+    bungalow = await openBungalow({
+      name: APPLICATION_NAME,
+      environment,
+      ...(options.workspaceId === undefined ? {} : { workspaceId: options.workspaceId }),
+      databaseWorkspaceClaim: async (databaseUrl, prefix, workspaceId) => {
+        // Required deployment secrets must be present before opening its database. The
+        // normal secret readers below still validate their values before starting engines.
+        for (const variable of [
+          'INTERBOROUGH_SECRET_APPROVAL_SECRET',
+          'INTERBOROUGH_SECRET_ANSWER_ENCRYPTION_KEY',
+        ]) {
+          if (environment[variable] === undefined || environment[variable] === '') {
+            throw new Error(`${variable} is not set. Remote mode needs it on every host.`);
+          }
+        }
+        const storage =
+          claimedRemoteStorage ?? createHostStorage({ kind: 'postgres', url: databaseUrl });
+        claimedRemoteStorage = storage;
+        await claimWorkspaceBinding(storage, prefix, workspaceId);
+      },
+    });
+  } catch (error) {
+    if (claimedRemoteStorage !== undefined) await disposeHostStorage(claimedRemoteStorage);
+    throw error;
+  }
+  const held: Held = {
+    bungalow,
+    ...(claimedRemoteStorage === undefined ? {} : { storage: claimedRemoteStorage }),
+  };
+  try {
+    // No engine, plugin or listener may start before the workspace is bound and secrets validate.
     const database = redactDatabase(bungalow.database);
     const approval = approvalSecret(bungalow);
     // The A2A key and public origin (COR-1904), read as early, so a public origin without a key
@@ -703,7 +729,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     );
     // The key secret answers are sealed with (COR-1920), read or created the same way and as early.
     const answerKeys = await answerEncryptionKeys(bungalow);
-    const storage = createHostStorage(bungalow.database);
+    const storage = claimedRemoteStorage ?? createHostStorage(bungalow.database);
     held.storage = storage;
     // The catalog holds the models of the providers `configuration.json` names that have a key in
     // the secrets, and nothing else. The Bureau is created with exactly these rows, so no boot step

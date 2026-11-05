@@ -1,6 +1,4 @@
-import { createHash } from 'node:crypto';
-
-import type { Bungalow } from './bungalow.ts';
+import type { Bungalow, DatabaseWorkspaceClaim } from './bungalow.ts';
 import { BungalowFilesystemError, BungalowInputError, BungalowStateError } from './errors.ts';
 import { secretVariable, type RemoteConfiguration } from './remote-configuration.ts';
 import { generateUlid, isUlid } from './ulid.ts';
@@ -136,41 +134,6 @@ async function bindWorkspaceId(
   return expected;
 }
 
-/** Claim the workspace and S3 prefix together in the raw Postgres database. */
-export async function claimDatabaseWorkspace(
-  databaseUrl: string,
-  prefix: string,
-  workspaceId: string,
-): Promise<void> {
-  const databaseKey = createHash('sha256').update(databaseUrl).digest('hex');
-  const sql = new Bun.SQL(databaseUrl);
-  try {
-    await sql`
-      CREATE TABLE IF NOT EXISTS bungalow_workspace_markers (
-        database_key text PRIMARY KEY,
-        workspace_id text NOT NULL,
-        resource_prefix text NOT NULL
-      )
-    `;
-    await sql`
-      INSERT INTO bungalow_workspace_markers (database_key, workspace_id, resource_prefix)
-      VALUES (${databaseKey}, ${workspaceId}, ${prefix})
-      ON CONFLICT (database_key) DO NOTHING
-    `;
-    const rows = await sql`
-      SELECT workspace_id, resource_prefix
-      FROM bungalow_workspace_markers
-      WHERE database_key = ${databaseKey}
-    `;
-    const row = rows[0] as { workspace_id?: unknown; resource_prefix?: unknown } | undefined;
-    if (row?.workspace_id !== workspaceId || row.resource_prefix !== prefix) {
-      throw new BungalowStateError('The Postgres database is already bound to another workspace.');
-    }
-  } finally {
-    await sql.close();
-  }
-}
-
 /**
  * The deployment ID stored at `key`, created on the first open. Overlapping first opens each try
  * a conditional create and then all read the one value the store kept, so they agree. An object
@@ -186,7 +149,7 @@ async function loadDeploymentId(client: Bun.S3Client, key: string): Promise<stri
   const identifier = stored.trim();
   if (!isUlid(identifier)) {
     throw new BungalowStateError(
-      'The deployment-id object does not hold a ULID. Remove it to generate a new identity.',
+      'The deployment-id object does not hold a ULID. Restore the original identity from a backup.',
     );
   }
   return identifier;
@@ -272,12 +235,8 @@ function assertNoAmbientSessionToken(
 export async function openRemoteBungalow(
   name: string,
   configuration: RemoteConfiguration,
-  configuredWorkspaceId?: string,
-  databaseWorkspaceClaim: (
-    databaseUrl: string,
-    prefix: string,
-    workspaceId: string,
-  ) => Promise<void> = async () => {},
+  configuredWorkspaceId: string | undefined,
+  databaseWorkspaceClaim: DatabaseWorkspaceClaim,
 ): Promise<Bungalow> {
   const { bucket, prefix, secrets } = configuration;
   const client = s3Client(configuration);
@@ -291,7 +250,7 @@ export async function openRemoteBungalow(
   const existingDeployment = await readObject(client, deploymentKey, 'read deployment ID');
   if (existingDeployment !== undefined && !isUlid(existingDeployment.trim())) {
     throw new BungalowStateError(
-      'The deployment-id object does not hold a ULID. Remove it to generate a new identity.',
+      'The deployment-id object does not hold a ULID. Restore the original identity from a backup.',
     );
   }
   const existingWorkspace = await readObject(client, workspaceKey, 'read workspace identity');
@@ -303,14 +262,53 @@ export async function openRemoteBungalow(
       );
     }
   }
+  if (existingDeployment === undefined && existingWorkspace === undefined) {
+    // An unmarked remote home may bootstrap only when neither backend already holds state.
+    const entries = await client.list({ prefix, maxKeys: 1 }).catch((error: unknown) => {
+      throw s3Failure('read workspace identity', { code: codeOf(error) });
+    });
+    const racedDeployment = await readObject(client, deploymentKey, 'read deployment ID');
+    if (racedDeployment === undefined) {
+      if ((entries.contents?.length ?? 0) > 0) {
+        throw new BungalowStateError(
+          'Existing remote state has no persisted deployment identity. Restore it from a backup.',
+        );
+      }
+      try {
+        await databaseWorkspaceClaim(
+          configuration.databaseUrl,
+          `s3://${bucket}/${prefix}`,
+          undefined,
+        );
+      } catch (error) {
+        // Another opener may have persisted this prefix's identity and claimed its database
+        // between our read and emptiness check. Continue only from that persisted identity.
+        if ((await readObject(client, deploymentKey, 'read deployment ID')) === undefined)
+          throw error;
+      }
+    }
+  }
   const deploymentId = await loadDeploymentId(client, deploymentKey);
+  const expectedWorkspaceId = (configuredWorkspaceId ?? deploymentId).trim();
+  if (expectedWorkspaceId !== deploymentId) {
+    throw new BungalowStateError('The configured workspace identity does not match deployment-id.');
+  }
+  if (existingWorkspace !== undefined && existingWorkspace.trim() !== expectedWorkspaceId) {
+    throw new BungalowStateError('The backing store belongs to a different workspace.');
+  }
+  // Claim the raw database before publishing the S3 workspace marker. A fresh prefix may have
+  // written only its permitted deployment-id bootstrap; a losing claim performs no other write.
+  await databaseWorkspaceClaim(
+    configuration.databaseUrl,
+    `s3://${bucket}/${prefix}`,
+    expectedWorkspaceId,
+  );
   const workspaceId = await bindWorkspaceId(
     client,
     workspaceKey,
     deploymentId,
     configuredWorkspaceId,
   );
-  await databaseWorkspaceClaim(configuration.databaseUrl, prefix, workspaceId);
 
   let closed = false;
   const assertOpen = (): void => {

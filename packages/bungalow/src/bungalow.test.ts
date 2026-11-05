@@ -165,6 +165,15 @@ describe('deploymentId', () => {
     expect(readFileSync(join(root, 'database.sqlite'), 'utf8')).toBe('existing database');
   });
 
+  test('recovers a fresh home interrupted before its identity rename', async () => {
+    const root = temporaryDirectory();
+    const temporary = join(root, 'deployment-id.4242-12345678-1234-1234-1234-123456789abc.tmp');
+    writeFileSync(temporary, 'interrupted identity');
+    using bungalow = await openIn(root);
+    expect(bungalow.workspaceId).toBe(bungalow.deploymentId);
+    expect(existsSync(temporary)).toBe(false);
+  });
+
   test('refuses a workspace marker mismatch without rewriting either identity', async () => {
     const root = temporaryDirectory();
     await openAndClose(root);

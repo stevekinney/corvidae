@@ -31,11 +31,11 @@ async function scratch(prefix: string): Promise<string> {
 /** A home that offers the Anthropic provider, with its key in Bungalow's secrets. */
 async function homeWithProvider(): Promise<string> {
   const home = await scratch('interborough-diagnostics-home-');
-  await writeFile(join(home, 'configuration.json'), JSON.stringify({ plugins: { anthropic: {} } }));
   const bungalow = await openBungalow({
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: home },
   });
+  await writeFile(join(home, 'configuration.json'), JSON.stringify({ plugins: { anthropic: {} } }));
   try {
     bungalow.writeSecret('anthropic-api-key', FIXTURE_KEY);
   } finally {

@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * The host's workflow directory (COR-1527): JSON files in Bungalow's `workflows/` directory are
  * workflows of the Bureau. Their agent steps run the host's agents, here the seeded `assistant`,
@@ -33,6 +34,7 @@ async function startAt(files: Readonly<Record<string, string>> = {}): Promise<{
   readonly home: string;
 }> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-workflows-'));
+  await initializeWorkspaceHome(home);
   directories.push(home);
   if (Object.keys(files).length > 0) {
     await mkdir(join(home, 'workflows'), { recursive: true });

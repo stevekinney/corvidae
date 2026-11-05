@@ -23,7 +23,7 @@ import {
 } from './errors.ts';
 import { acquireRootLock, type RootLock } from './lock.ts';
 import { remoteConfiguration } from './remote-configuration.ts';
-import { claimDatabaseWorkspace, openRemoteBungalow } from './remote.ts';
+import { openRemoteBungalow } from './remote.ts';
 import {
   bungalowHomeVariable,
   resolveBungalowRoot,
@@ -119,6 +119,14 @@ export type Bungalow = {
   [Symbol.dispose](): void;
 };
 
+/** Trusted composition hook: undefined identity checks an empty database before bootstrap;
+ * a persisted identity atomically binds the raw store before workspace publication. */
+export type DatabaseWorkspaceClaim = (
+  databaseUrl: string,
+  resourceLocation: string,
+  workspaceId: string | undefined,
+) => Promise<void>;
+
 export type OpenBungalowOptions = {
   readonly name: string;
   /** Defaults to the process environment. */
@@ -127,12 +135,8 @@ export type OpenBungalowOptions = {
   readonly homeDirectory?: string;
   /** An operator-supplied workspace identity; omitted means the persisted deployment identity. */
   readonly workspaceId?: string;
-  /** Internal test seam for remote stores; production uses Bungalow's database claim. */
-  readonly databaseWorkspaceClaim?: (
-    databaseUrl: string,
-    prefix: string,
-    workspaceId: string,
-  ) => Promise<void>;
+  /** Required in remote mode: the application binds the database it owns before recovery. */
+  readonly databaseWorkspaceClaim?: DatabaseWorkspaceClaim;
 };
 
 export type OpenTemporaryBungalowOptions = {
@@ -218,7 +222,7 @@ function loadDeploymentId(path: string): string {
   }
   if (!isUlid(stored)) {
     throw new BungalowStateError(
-      'The deployment-id file does not hold a ULID. Remove it to generate a new identity.',
+      'The deployment-id file does not hold a ULID. Restore the original identity from a backup.',
     );
   }
   return stored;
@@ -259,11 +263,6 @@ export type OpenAtRootDependencies = {
   /** Replaces the rename that publishes a written configuration, so a test can fail it. */
   readonly renameConfiguration?: (from: string, to: string) => void;
   readonly workspaceId?: string;
-  readonly claimDatabaseWorkspace?: (
-    databaseUrl: string,
-    prefix: string,
-    workspaceId: string,
-  ) => Promise<void>;
 };
 
 /**
@@ -292,6 +291,9 @@ export function openAtRoot(
   let workspaceId: string;
   try {
     const deploymentPath = join(root, 'deployment-id');
+    filesystem('remove leftover temporary root files', () =>
+      removeTemporaryFiles(root, ROOT_TEMPORARY_FILE),
+    );
     const deployment = readEntry(deploymentPath, 'deployment-id file')?.trim();
     const existingEntries = readdirSync(root).filter((entry) => entry !== 'lock');
     if (deployment === undefined && existingEntries.length > 0) {
@@ -310,7 +312,6 @@ export function openAtRoot(
     );
     filesystem('prepare the logs directory', () => ensureDirectory(logs, 'logs directory'));
     filesystem('remove leftover temporary files', () => {
-      removeTemporaryFiles(root, ROOT_TEMPORARY_FILE);
       removeTemporaryFiles(secrets, SECRET_TEMPORARY_FILE);
     });
   } catch (error) {
@@ -448,13 +449,14 @@ export async function openBungalowWithDependencies(
   const environment = options.environment ?? processEnvironment();
   const remote = remoteConfiguration(options.name, environment);
   if (remote !== undefined) {
+    if (options.databaseWorkspaceClaim === undefined) {
+      throw new BungalowInputError('Remote mode requires a database workspace binding callback.');
+    }
     return openRemoteBungalow(
       options.name,
       remote,
       options.workspaceId,
-      options.databaseWorkspaceClaim ??
-        dependencies.claimDatabaseWorkspace ??
-        claimDatabaseWorkspace,
+      options.databaseWorkspaceClaim,
     );
   }
   const variable = bungalowHomeVariable(options.name);
