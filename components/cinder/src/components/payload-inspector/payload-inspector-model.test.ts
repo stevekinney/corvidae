@@ -49,6 +49,10 @@ describe('headerCount', () => {
 });
 
 describe('chooseFieldsLayout', () => {
+  test('missing and non-JSON scalar values fit the inline layout', () => {
+    expect(chooseFieldsLayout(pairs({ maybe: undefined }))).toBe('inline');
+    expect(chooseFieldsLayout(pairs({ value: Symbol('unserializable') }))).toBe('inline');
+  });
   test('a few short pairs read inline', () => {
     expect(chooseFieldsLayout(pairs({ orderId: 4471, amount: '$42.00' }))).toBe('inline');
     expect(
@@ -144,6 +148,36 @@ describe('table columns, long text and long keys', () => {
 });
 
 describe('readPartialObject', () => {
+  test('reads escaped quotes without ending the string early', () => {
+    expect(readPartialObject(String.raw`{"note":"say \"hi\"","done":true}`)).toEqual({
+      entries: [
+        ['note', 'say "hi"'],
+        ['done', true],
+      ],
+    });
+  });
+
+  test('keeps invalid escapes and incomplete nested objects pending', () => {
+    expect(readPartialObject(String.raw`{"note":"\x"}`)).toEqual({
+      entries: [],
+      pendingKey: 'note',
+      pendingText: String.raw`"\x"}`,
+    });
+    expect(readPartialObject('{"payload":{"id":1')).toEqual({
+      entries: [],
+      pendingKey: 'payload',
+      pendingText: '{"id":1',
+    });
+  });
+
+  test('does not publish malformed key suffixes or primitive values as complete fields', () => {
+    expect(readPartialObject('{"a" nope')).toEqual({ entries: [] });
+    expect(readPartialObject('{"state":nope,')).toEqual({
+      entries: [],
+      pendingKey: 'state',
+      pendingText: 'nope,',
+    });
+  });
   test('is undefined when the text is not an object', () => {
     expect(readPartialObject('[1,2')).toBeUndefined();
     expect(readPartialObject('hello')).toBeUndefined();
@@ -197,4 +231,8 @@ describe('readPartialObject', () => {
   test('stops at text that is not a key', () => {
     expect(readPartialObject('{ nope')).toEqual({ entries: [] });
   });
+});
+
+test('an object passed to scalar formatting preserves its JSON value', () => {
+  expect(describeScalar({ nested: true })).toEqual({ kind: 'text', text: '{"nested":true}' });
 });
