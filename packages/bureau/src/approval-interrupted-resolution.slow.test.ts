@@ -21,6 +21,7 @@ import { createSessionStore } from '@lostgradient/operative';
 import { textValueStore } from '@lostgradient/storage';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { base64Of, pngBytes } from './testing/asset-fixtures.test-support';
+import { KEYS } from './assets/records';
 
 import {
   CLAIM_TTL_MS,
@@ -282,6 +283,16 @@ async function peerApprovalRecoveryScenario(
             ? image.source.assetId
             : undefined;
         expect(assetId).toBeDefined();
+        const rawAsset = await assetFixture?.storage.get(KEYS.record(assetId!));
+        expect(rawAsset).not.toBeNull();
+        const ownerId = (JSON.parse(rawAsset as string) as { ownerId: string }).ownerId;
+        expect(await recoverer.assets?.inspect(assetId!, { id: ownerId })).toMatchObject({
+          owner: ownerId,
+          state: 'available',
+        });
+        await expect(
+          recoverer.assets?.inspect(assetId!, { id: 'foreign-principal' }),
+        ).rejects.toThrow();
         expect(JSON.stringify(session?.conversationHistory)).not.toContain(
           base64Of(pngBytes(2, 2)),
         );
