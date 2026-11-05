@@ -141,6 +141,7 @@ const recovery = await (async () => {
   const first = await startCaller(callerHome, env);
   expect(await exists(files.JOURNAL_FILE)).toBe(false);
   await waitUntil(() => exists(files.REVIEW_FILE), { message: 'caller approval' });
+  expect(await readFile(files.SEND_FILE, 'utf8')).toBe('0');
   await writeFile(files.APPROVE_FILE, 'approve');
   await waitUntil(() => state.active, { message: 'peer send' });
   await writeFile(files.GO_FILE, 'read journal');
@@ -194,8 +195,30 @@ const recovery = await (async () => {
   expect(auditText).toContain('peer-call-1');
   const sessionText = await readFile(files.SESSION_FILE, 'utf8');
   expect(sessionText).not.toContain(PEER_BEARER);
-  expect(sessionText).toContain('peer-call-1');
-  expect(sessionText).toContain('[REDACTED]');
+  const session = JSON.parse(sessionText) as {
+    conversationHistory?: {
+      messages?: Record<
+        string,
+        {
+          toolResult?: {
+            callId?: string;
+            outcome?: string;
+            content?: string;
+          };
+        }
+      >;
+    };
+  };
+  const recoveredToolResult = Object.values(session.conversationHistory?.messages ?? {})
+    .map((message) => message.toolResult)
+    .find((toolResult) => toolResult?.callId === 'peer-call-1');
+  if (recoveredToolResult === undefined)
+    throw new Error('recovered session has no peer-call-1 tool result');
+  expect(recoveredToolResult).toMatchObject({
+    callId: 'peer-call-1',
+    outcome: 'success',
+    content: 'peer result [REDACTED]',
+  });
   expect(await readFile(files.SEND_FILE, 'utf8')).toBe('1');
   const resultObserved = await exists(files.RESULT_FILE, 'completed');
   if (!resultObserved) throw new Error('replayed result was not observed');
