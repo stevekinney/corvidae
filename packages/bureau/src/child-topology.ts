@@ -292,6 +292,11 @@ export interface BureauChildDelegationOptions {
   readonly policyVersion?: string | undefined;
   /** Defaults to one hour. */
   readonly defaultTimeToLiveMilliseconds?: number | undefined;
+  /** Optional limits for each root run. `levels` counts levels below the root. */
+  readonly rootAuthority?: {
+    readonly levels: number;
+    readonly budget?: DelegationBudget | undefined;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -957,9 +962,66 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     if ('reason' in loaded) {
       return { status: 'rejected', code: 'delegation-invalid', reason: loaded.reason };
     }
-    const { chain } = loaded;
+    let chain = loaded.chain;
+    const root = options.rootAuthority;
+    if (parentRecord === undefined && root !== undefined) {
+      const rootGrantId = `delegation:root:${request.parentRunId}`;
+      const existing = await store.loadGrant(rootGrantId);
+      if (existing.status === 'found') {
+        const verification = verifyDelegationGrant(existing.grant, options.secret, now);
+        if (!verification.valid) {
+          return { status: 'rejected', code: 'delegation-invalid', reason: verification.reason };
+        }
+        chain = [existing.grant];
+      } else {
+        const unsignedRoot: UnsignedDelegationGrant = {
+          version: DELEGATION_GRANT_VERSION,
+          id: rootGrantId,
+          parentRunId: request.parentRunId,
+          childRunId: request.parentRunId,
+          agentName: 'root',
+          agentVersion: 'root',
+          objective: 'root delegation authority',
+          recipientId: request.parentRunId,
+          effectiveCapabilities: {},
+          budget: root.budget ?? {},
+          delegatedAuthority: { policyVersion },
+          depth: root.levels,
+          policyVersion,
+          issuedAt: now,
+          expiresAt: now + defaultTimeToLive(),
+          revoked: false,
+          disclosurePolicy: 'redacted',
+        };
+        const rootGrant = signDelegationGrant(unsignedRoot, options.secret);
+        await store.issueGrant(rootGrant);
+        chain = [rootGrant];
+      }
+    } else if (root !== undefined && chain.length > 0) {
+      const terminal = chain.at(-1)!;
+      const rootLoad = await store.loadGrant(`delegation:root:${terminal.parentRunId}`);
+      if (rootLoad.status !== 'found') {
+        return {
+          status: 'rejected',
+          code: 'delegation-invalid',
+          reason: `root grant is ${rootLoad.status}`,
+        };
+      }
+      const rootVerification = verifyDelegationGrant(rootLoad.grant, options.secret, now);
+      if (!rootVerification.valid) {
+        return { status: 'rejected', code: 'delegation-invalid', reason: rootVerification.reason };
+      }
+      chain = [...chain, rootLoad.grant];
+    }
     const parentGrant = chain[0];
-    const authority = request.authority;
+    const authority =
+      parentRecord === undefined && options.rootAuthority !== undefined
+        ? {
+            ...request.authority,
+            depth: options.rootAuthority.levels - 1,
+            budget: options.rootAuthority.budget ?? request.authority?.budget,
+          }
+        : request.authority;
     if (parentGrant) {
       if (parentGrant.depth === 0) {
         return {

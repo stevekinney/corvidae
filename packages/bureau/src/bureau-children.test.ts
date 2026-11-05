@@ -461,6 +461,19 @@ describe('bureau.children over an ephemeral bureau', () => {
         }),
       ),
     ).toThrow('defaultTimeToLiveMilliseconds');
+    expect(
+      await throwingRejectionOf(
+        createBureau({
+          agents: {},
+          children: {
+            delegation: {
+              secret: 's',
+              rootAuthority: { levels: 2, budget: { concurrentChildren: -1 } },
+            },
+          },
+        }),
+      ),
+    ).toThrow('rootAuthority.budget.concurrentChildren');
   });
 });
 

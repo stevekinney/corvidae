@@ -226,6 +226,22 @@ export function validateChildrenOption(
     badRequest('"options.children.delegation.secret" must be a non-empty string');
   }
   validateDelegationTimeToLive(delegation.defaultTimeToLiveMilliseconds, badRequest);
+  const root = delegation.rootAuthority;
+  if (root !== undefined && (!Number.isInteger(root.levels) || root.levels < 1)) {
+    badRequest('"options.children.delegation.rootAuthority.levels" must be a positive integer');
+  }
+  if (root?.budget !== undefined) {
+    for (const [dimension, budgetValue] of Object.entries(root.budget)) {
+      if (
+        budgetValue !== undefined &&
+        (typeof budgetValue !== 'number' || !Number.isFinite(budgetValue) || budgetValue < 0)
+      ) {
+        badRequest(
+          `"options.children.delegation.rootAuthority.budget.${dimension}" must be a finite non-negative number`,
+        );
+      }
+    }
+  }
 }
 
 /** `children.delegation.defaultTimeToLiveMilliseconds`: a positive, finite number when given. */
