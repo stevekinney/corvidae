@@ -23,6 +23,7 @@ import { sessionOwnerOf } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { BureauError } from '../../create-bureau.ts';
 import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -64,6 +65,7 @@ export const contextsRewindOperation = defineOperation<
   BureauContextsRewindOperationHost
 >({
   name: 'bureau.contexts.rewind',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.rewind'),
   mcpExposable: false,
   summary: 'Take a turn back out of a context',
   description:

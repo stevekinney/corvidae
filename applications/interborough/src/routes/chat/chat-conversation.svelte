@@ -53,7 +53,7 @@
   import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY, CONNECTION_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
@@ -110,7 +110,7 @@
   import ContextMeter from './context-meter.svelte';
   import ContextWindowRing from './context-window-ring.svelte';
   import SettingSelect from './setting-select.svelte';
-  import RestartDialog from '../settings/plugins/restart-dialog.svelte';
+  import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
   import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
@@ -1464,7 +1464,7 @@
     title={CHAT_COPY.composer.enableDialog.title(pluginTitle)}
     description={CHAT_COPY.composer.enableDialog.description}
     confirmLabel={CHAT_COPY.composer.enableDialog.confirm}
-    onConfirm={() => void restart.run([{ name: pluginName, enabled: true }])}
+    onConfirm={() => void restart.run([{ name: pluginName, enabled: true }], false, { changes: [pluginTitle] })}
   />
   <RestartDialog flow={restart} />
 </section>

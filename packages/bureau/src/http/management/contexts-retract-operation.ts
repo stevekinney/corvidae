@@ -26,6 +26,7 @@ import { sessionOwnerOf, type SessionInputRetractionOutcome } from '@lostgradien
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { BureauError } from '../../create-bureau.ts';
 import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -67,6 +68,7 @@ export const contextsRetractOperation = defineOperation<
   BureauContextsRetractOperationHost
 >({
   name: 'bureau.contexts.retract',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.retract'),
   mcpExposable: false,
   summary: 'Take back input sent to a context',
   description:

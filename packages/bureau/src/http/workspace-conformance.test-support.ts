@@ -143,6 +143,8 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
     operations: [
       ['bureau.contexts.delete', 'owner'],
       ['bureau.contexts.input', 'owner'],
+      ['bureau.contexts.retract', 'owner'],
+      ['bureau.contexts.rewind', 'owner'],
       ['bureau.contexts.steer', 'owner'],
       ['bureau.contexts.fork', 'owner'],
       ['bureau.contexts.rename', 'owner'],
