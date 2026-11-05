@@ -1,18 +1,15 @@
-import {
-  closeSync,
-  constants,
-  fsyncSync,
-  mkdtempSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  writeSync,
-} from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
-import { ensureDirectory, openEntry, readEntry, syncDirectory } from './entry-guard.ts';
+import type {
+  ConfigurationSnapshot,
+  ConfigurationWriteCapability,
+  ConfigurationWriteCondition,
+  ConfigurationWriteResult,
+} from './configuration.ts';
+import { localConfigurationSnapshot, writeLocalConfiguration } from './configuration.ts';
+import { ensureDirectory, readEntry, writePrivateFile } from './entry-guard.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import { sanitizeCause } from './error-code.ts';
 import {
@@ -85,17 +82,15 @@ export type Bungalow = {
   content(name: string): ContentLocation;
   /** The `Bun.S3Client` remote mode configured from the environment, or `undefined` locally. */
   s3Client(): Bun.S3Client | undefined;
-  /** The text of the configuration, or `undefined` when none has been written. Absence is valid. */
-  readConfiguration(): Promise<string | undefined>;
-  /**
-   * Replace the configuration with `text`, atomically: the text goes to a temporary file that is
-   * synced and then renamed over `configuration.json`, so a crash or a failure at any step leaves
-   * the previous file whole. The file is mode 0600. Bungalow stores the text as given and never
-   * parses it, so the caller validates it first. Remote mode keeps the configuration in a bucket
-   * object a person puts there, so it throws `BungalowStateError`. A failure throws
-   * `BungalowFilesystemError`, whose message and cause never carry the text or a path.
-   */
-  writeConfiguration(text: string): void;
+  /** The backend's write capability, independent of mode and caller permissions. */
+  readonly configurationWriteCapability: ConfigurationWriteCapability;
+  /** Configuration bytes and their backend revision from one read. */
+  readConfiguration(): Promise<ConfigurationSnapshot>;
+  /** Await one conditional replacement; unknown means a commit cannot safely be ruled out. */
+  writeConfiguration(
+    text: string,
+    condition: ConfigurationWriteCondition,
+  ): Promise<ConfigurationWriteResult>;
   /**
    * Where the secret `key` is stored: its 0600 file path in local mode, the name of its
    * `<NAME>_SECRET_<KEY>` variable in remote mode. The key is validated.
@@ -137,6 +132,8 @@ export type OpenBungalowOptions = {
   readonly workspaceId?: string;
   /** Required in remote mode: the application binds the database it owns before recovery. */
   readonly databaseWorkspaceClaim?: DatabaseWorkspaceClaim;
+  /** Opt in to conditional remote configuration writes. Defaults to read-only; authorization is separate. */
+  readonly writableConfiguration?: boolean;
 };
 
 export type OpenTemporaryBungalowOptions = {
@@ -153,51 +150,6 @@ function filesystem<Result>(description: string, step: () => Result): Result {
       cause: sanitizeCause(error),
     });
   }
-}
-
-/** Write every byte, since `writeSync` may write fewer than it was given. */
-function writeFully(descriptor: number, contents: Buffer): void {
-  let offset = 0;
-  while (offset < contents.length) {
-    offset += writeSync(descriptor, contents, offset, contents.length - offset);
-  }
-}
-
-/**
- * Write a file that is 0600 from its first byte, then rename it into place and sync the entry.
- * The rename replaces whatever entry was at `path` (a symbolic link, a FIFO, a stale file) rather
- * than writing through it, so a write can never land on something that is not Bungalow's.
- */
-function writePrivateFile(
-  path: string,
-  contents: string,
-  rename: (from: string, to: string) => void = renameSync,
-): void {
-  const temporary = `${path}.${process.pid}-${crypto.randomUUID()}.tmp`;
-  let descriptor: number | undefined;
-  try {
-    descriptor = openEntry(
-      temporary,
-      'temporary file',
-      'file',
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
-      SECRET_MODE,
-    );
-    writeFully(descriptor, Buffer.from(contents));
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = undefined;
-    rename(temporary, path);
-  } catch (error) {
-    if (descriptor !== undefined) closeSync(descriptor);
-    try {
-      unlinkSync(temporary);
-    } catch {
-      // The temporary file was never created, or is already gone.
-    }
-    throw error;
-  }
-  syncDirectory(dirname(path));
 }
 
 /**
@@ -360,19 +312,28 @@ export function openAtRoot(
       filesystem('prepare a content directory', () => ensureDirectory(path, 'content directory'));
       return { kind: 'directory', path };
     },
+    configurationWriteCapability: 'writable',
     async readConfiguration() {
       assertOpen();
-      return filesystem('read the configuration', () =>
-        readEntry(configurationLocation, 'configuration file'),
+      return localConfigurationSnapshot(
+        filesystem('read the configuration', () =>
+          readEntry(configurationLocation, 'configuration file'),
+        ),
       );
     },
-    writeConfiguration(text) {
+    async writeConfiguration(text, condition) {
       assertOpen();
-      if (typeof text !== 'string') {
-        throw new BungalowInputError('The configuration must be text.');
-      }
-      filesystem('write the configuration', () =>
-        writePrivateFile(configurationLocation, text, renameConfiguration),
+      return writeLocalConfiguration(
+        text,
+        condition,
+        () =>
+          filesystem('read the configuration', () =>
+            readEntry(configurationLocation, 'configuration file'),
+          ),
+        (next) =>
+          filesystem('write the configuration', () =>
+            writePrivateFile(configurationLocation, next, renameConfiguration),
+          ),
       );
     },
     secretLocation(key) {
@@ -457,6 +418,7 @@ export async function openBungalowWithDependencies(
       remote,
       options.workspaceId,
       options.databaseWorkspaceClaim,
+      options.writableConfiguration === true,
     );
   }
   const variable = bungalowHomeVariable(options.name);

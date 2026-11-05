@@ -801,7 +801,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         mode: bungalow.mode,
         configurationLocation: bungalow.configurationLocation,
         readConfiguration: () => bungalow.readConfiguration(),
-        writeConfiguration: (text) => bungalow.writeConfiguration(text),
+        writeConfiguration: (text, condition) => bungalow.writeConfiguration(text, condition),
         readSecret: (key) => bungalow.readSecret(key),
         writeSecret: (key, value) => pluginManager.writeSecret(key, value),
       },

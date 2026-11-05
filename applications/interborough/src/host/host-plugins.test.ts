@@ -567,10 +567,10 @@ describe('a remote home', () => {
       bungalow: {
         mode: 'remote' as const,
         configurationLocation: 's3://bucket/configuration.json',
-        readConfiguration: async () => undefined,
-        writeConfiguration: () => {
+        readConfiguration: async () => ({ text: undefined, revision: null }),
+        writeConfiguration: async () => {
           writes.push('configuration');
-          throw new Error('The remote home cannot be written.');
+          return { outcome: 'read-only' as const };
         },
         readSecret: (key: string) => environment[key],
         writeSecret: () => {
@@ -673,8 +673,8 @@ describe('a secret write that stores the file and then fails', () => {
       bungalow: {
         mode: 'local' as const,
         configurationLocation: '/home/configuration.json',
-        readConfiguration: async () => undefined,
-        writeConfiguration: () => {},
+        readConfiguration: async () => ({ text: undefined, revision: null }),
+        writeConfiguration: async () => ({ outcome: 'committed' as const }),
         readSecret: (key: string) => stored.get(key),
         writeSecret: (key: string, value: string) => {
           stored.set(key, value);

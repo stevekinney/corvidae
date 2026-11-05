@@ -1,5 +1,6 @@
 /**
- * Ban Bun's `.resolves` and `.rejects` expect modifiers.
+ * Ban Bun's `.resolves` and `.rejects` expect modifiers and discarded asynchronous configuration writes.
+ * The mutation check also covers test doubles, where no-floating-promises is disabled.
  *
  * In Bun these modifiers do not return a promise. `expect(promise).resolves.toBe(x)`
  * returns `undefined` after blocking synchronously: the matcher spins a nested
@@ -125,13 +126,43 @@ export function findPromiseAssertionModifierViolations(
   return violations;
 }
 
+/** Discarded calls to asynchronous configuration mutations, including test doubles. */
+export function findFloatingConfigurationWrites(
+  sourceFile: ts.SourceFile,
+): PromiseAssertionModifierViolation[] {
+  const violations: PromiseAssertionModifierViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const called = node.expression;
+    const name = ts.isPropertyAccessExpression(called)
+      ? called.name.text
+      : ts.isElementAccessExpression(called) && ts.isStringLiteralLike(called.argumentExpression)
+        ? called.argumentExpression.text
+        : undefined;
+    if (name !== 'writeConfiguration') return;
+    let result: ts.Node = node;
+    while (ts.isParenthesizedExpression(result.parent)) result = result.parent;
+    if (!ts.isExpressionStatement(result.parent) && !ts.isVoidExpression(result.parent)) return;
+    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    violations.push({
+      line: line + 1,
+      text: `Await, return, or retain the configuration mutation promise: ${node.getText(sourceFile)}`,
+    });
+  });
+  return violations;
+}
+
 /**
  * Cheap text prefilter before parsing. It matches the bare modifier names, not
  * `.resolves`, so the computed form `expect(promise)['resolves']` still reaches
  * the AST check.
  */
 export function mayContainPromiseAssertionModifier(source: string): boolean {
-  return source.includes('resolves') || source.includes('rejects');
+  return (
+    source.includes('resolves') ||
+    source.includes('rejects') ||
+    source.includes('writeConfiguration')
+  );
 }
 
 export function collectScannedFiles(directory: string, paths: string[]): void {
@@ -163,7 +194,10 @@ async function scan(): Promise<string[]> {
       true,
       path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
     );
-    for (const violation of findPromiseAssertionModifierViolations(sourceFile)) {
+    for (const violation of [
+      ...findPromiseAssertionModifierViolations(sourceFile),
+      ...findFloatingConfigurationWrites(sourceFile),
+    ]) {
       findings.push(`${relativePath}:${violation.line} — ${violation.text}`);
     }
   }
@@ -174,12 +208,14 @@ async function scan(): Promise<string[]> {
 async function main(): Promise<void> {
   const findings = await scan();
   if (findings.length === 0) {
-    process.stdout.write('check-promise-assertion-modifiers — OK (no .resolves/.rejects).\n');
+    process.stdout.write(
+      'check-promise-assertion-modifiers — OK (no .resolves/.rejects or discarded configuration writes).\n',
+    );
     return;
   }
 
   process.stderr.write(
-    'check-promise-assertion-modifiers — expect(...).resolves or .rejects.\n' +
+    'check-promise-assertion-modifiers — unsafe promise use. Await configuration writes.\n' +
       'Bun runs these synchronously in a nested event loop, which can starve Worker\n' +
       'messages until the test times out. Assert on the awaited value instead:\n\n' +
       '  expect(await promise).toBe(value);\n' +

@@ -71,7 +71,8 @@ describe('openBungalow layout', () => {
     expect(handle.secretLocation('api-key')).toBe(join(root, 'secrets', 'api-key'));
     expect(existsSync(join(root, 'database.sqlite'))).toBe(false);
     expect(existsSync(handle.configurationLocation)).toBe(false);
-    expect(await handle.readConfiguration()).toBeUndefined();
+    const configurationSnapshot1 = await handle.readConfiguration();
+    expect(configurationSnapshot1.text).toBeUndefined();
     expect(readdirSync(root).toSorted()).toEqual([
       'deployment-id',
       'lock',
@@ -86,7 +87,8 @@ describe('openBungalow layout', () => {
     await openAndClose(root);
     writeFileSync(join(root, 'configuration.json'), '{}');
     using handle = await openIn(root);
-    expect(await handle.readConfiguration()).toBe('{}');
+    const configurationSnapshot2 = await handle.readConfiguration();
+    expect(configurationSnapshot2.text).toBe('{}');
   });
 
   test('rejects an invalid name', async () => {
@@ -191,10 +193,22 @@ describe('writeConfiguration', () => {
   test('writes the configuration 0600, reads it back, and replaces an earlier one', async () => {
     const root = temporaryDirectory();
     using handle = await openIn(root);
-    handle.writeConfiguration('{"first":1}\n');
-    expect(await handle.readConfiguration()).toBe('{"first":1}\n');
-    handle.writeConfiguration('{"second":2}\n');
-    expect(await handle.readConfiguration()).toBe('{"second":2}\n');
+    const configurationSnapshot3 = await handle.readConfiguration();
+    expect(
+      await handle.writeConfiguration('{"first":1}\n', {
+        expectedRevision: configurationSnapshot3.revision,
+      }),
+    ).toEqual({ outcome: 'committed' });
+    const configurationSnapshot4 = await handle.readConfiguration();
+    expect(configurationSnapshot4.text).toBe('{"first":1}\n');
+    const configurationSnapshot5 = await handle.readConfiguration();
+    expect(
+      await handle.writeConfiguration('{"second":2}\n', {
+        expectedRevision: configurationSnapshot5.revision,
+      }),
+    ).toEqual({ outcome: 'committed' });
+    const configurationSnapshot6 = await handle.readConfiguration();
+    expect(configurationSnapshot6.text).toBe('{"second":2}\n');
     expect(modeOf(handle.configurationLocation)).toBe(0o600);
     expect(readdirSync(root).toSorted()).toEqual([
       'configuration.json',
@@ -209,10 +223,16 @@ describe('writeConfiguration', () => {
   test('persists across reopen', async () => {
     const root = temporaryDirectory();
     const first = await openIn(root);
-    first.writeConfiguration('{"kept":true}');
+    const configurationSnapshot7 = await first.readConfiguration();
+    expect(
+      await first.writeConfiguration('{"kept":true}', {
+        expectedRevision: configurationSnapshot7.revision,
+      }),
+    ).toEqual({ outcome: 'committed' });
     first.close();
     using second = await openIn(root);
-    expect(await second.readConfiguration()).toBe('{"kept":true}');
+    const configurationSnapshot8 = await second.readConfiguration();
+    expect(configurationSnapshot8.text).toBe('{"kept":true}');
   });
 
   test('a failure while publishing the file leaves the previous file whole and no temporary file', async () => {
@@ -223,17 +243,15 @@ describe('writeConfiguration', () => {
       },
     });
     writeFileSync(join(root, 'configuration.json'), '{"previous":true}');
-    let thrown: unknown;
-    try {
-      handle.writeConfiguration(SENTINEL);
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(BungalowFilesystemError);
-    expect(String(thrown)).not.toContain(SENTINEL);
-    expect(String(thrown)).not.toContain(root);
-    expect(JSON.stringify((thrown as Error).cause)).not.toContain(root);
-    expect(await handle.readConfiguration()).toBe('{"previous":true}');
+    const configurationSnapshot9 = await handle.readConfiguration();
+    const result = await handle.writeConfiguration(SENTINEL, {
+      expectedRevision: configurationSnapshot9.revision,
+    });
+    expect(result.outcome).toBe('unknown');
+    expect(JSON.stringify(result)).not.toContain(SENTINEL);
+    expect(JSON.stringify(result)).not.toContain(root);
+    const configurationSnapshot10 = await handle.readConfiguration();
+    expect(configurationSnapshot10.text).toBe('{"previous":true}');
     expect(readdirSync(root).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
@@ -248,14 +266,21 @@ describe('writeConfiguration', () => {
     using handle = await openIn(root);
     expect(existsSync(join(root, leftover))).toBe(false);
     expect(existsSync(join(root, unrelated))).toBe(true);
-    expect(await handle.readConfiguration()).toBe('{"previous":true}');
+    const configurationSnapshot11 = await handle.readConfiguration();
+    expect(configurationSnapshot11.text).toBe('{"previous":true}');
   });
 
   test('refuses a closed handle and a value that is not text', async () => {
     const handle = await openIn(temporaryDirectory());
-    expect(() => handle.writeConfiguration(42 as unknown as string)).toThrow(BungalowInputError);
+    expect(
+      await throwingRejectionOf(
+        handle.writeConfiguration(42 as unknown as string, { expectedRevision: null }),
+      ),
+    ).toThrow(BungalowInputError);
     handle.close();
-    expect(() => handle.writeConfiguration('{}')).toThrow(BungalowStateError);
+    expect(
+      await throwingRejectionOf(handle.writeConfiguration('{}', { expectedRevision: null })),
+    ).toThrow(BungalowStateError);
   });
 });
 
