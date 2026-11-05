@@ -663,11 +663,18 @@ describe('registered child-run tools on file agents', () => {
       },
     });
     const shared = await bureau.assets!.admit(
-      { source: { kind: 'inline', bytes: new TextEncoder().encode('private') } },
+      {
+        source: { kind: 'inline', bytes: new TextEncoder().encode('private') },
+        readers: [service],
+      },
       { id: owner },
     );
     await shared.work.result();
     assetId = shared.assetId;
+    const plain = await bureau.assets!.inspect(shared.assetId, { id: service });
+    expect(plain.authorization).toEqual({ access: 'reader' });
+    const resolved = await bureau.assets!.resolve({ assetId: shared.assetId }, { id: service });
+    expect(resolved.content.kind).toBe('bytes');
     const task = await bureau.tasks.start('parent', 'service asset denial', { principal: service });
     const result = await task.result();
     expect(result.content).toBe('service denied');
