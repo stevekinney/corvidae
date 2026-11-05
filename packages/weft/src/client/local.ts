@@ -20,6 +20,7 @@ import type {
   BulkRetryFailedResult,
   BulkSignalResult,
   BulkTagResult,
+  CancelWorkflowResult,
   CoordinatedUpdateResult,
   DefaultActivityTypes,
   DefaultWorkflowRegistry,
@@ -260,7 +261,7 @@ export class LocalClient<
     return this.#engine.listSchedules(filter);
   }
 
-  async cancel(id: string): Promise<void> {
+  async cancel(id: string): Promise<CancelWorkflowResult> {
     return this.#engine.cancel(id);
   }
 

@@ -42,7 +42,9 @@ export function registerChildCancellationHandler(
   childWorkflowId: string,
   callbacks: ChildCancellationCallbacks,
 ): void {
-  registerCancelHandler(internals, workflowId, () => callbacks.getHandle(childWorkflowId).cancel());
+  registerCancelHandler(internals, workflowId, async () => {
+    await callbacks.getHandle(childWorkflowId).cancel();
+  });
 }
 
 export async function rehydrateChildCancellationHandlers(

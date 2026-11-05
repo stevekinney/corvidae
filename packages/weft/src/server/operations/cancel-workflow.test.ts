@@ -24,7 +24,7 @@ const registry = createOperationRegistry([cancelWorkflowOperation]);
 const bindings = [cancelWorkflowRestBinding];
 
 describe('weft.workflows.cancel', () => {
-  it('cancels a workflow and returns 204', async () => {
+  it('cancels a workflow and returns the durable cancellation outcome', async () => {
     await using engine = createEngine();
     const handle = await engine.start('hold', null, { id: 'cancel-success' });
     await waitForWorkflowStatus(engine, handle.id, 'running');
@@ -39,9 +39,36 @@ describe('weft.workflows.cancel', () => {
       },
     );
 
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      workflowId: handle.id,
+      status: 'cancel-requested',
+    });
     await resultPromise;
     await waitForWorkflowStatus(engine, handle.id, 'cancelled');
+  });
+
+  it('returns the exact terminal status when cancellation loses the terminal race', async () => {
+    await using engine = createEngine();
+    const completed = workflow({ name: 'completed' }).execute(async function* () {
+      return 'done';
+    });
+    engine.register(completed);
+    const handle = await engine.start('completed', null, { id: 'cancel-completed' });
+    await handle.result();
+
+    const response = await handleRequest(
+      new Request(`http://localhost/v1/workflows/${handle.id}`, { method: 'DELETE' }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      workflowId: handle.id,
+      status: 'already-terminal',
+      terminalStatus: 'completed',
+    });
   });
 
   it('returns 404 when the engine reports that the workflow was not found', async () => {
@@ -65,6 +92,40 @@ describe('weft.workflows.cancel', () => {
       expect(await response.json()).toEqual({
         error: 'workflow not found',
         data: { resource: 'workflow', identifier: 'missing' },
+      });
+    } finally {
+      engine.cancel = originalCancel;
+    }
+  });
+
+  it('returns 404 for an absent workflow without invoking a mutation', async () => {
+    await using engine = createEngine();
+    const response = await handleRequest(
+      new Request('http://localhost/v1/workflows/missing-live', { method: 'DELETE' }),
+      engine,
+      { operationRegistry: registry, restBindings: bindings },
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it('returns a conflict when the captured workflow generation was replaced', async () => {
+    await using engine = createEngine();
+    const originalCancel = engine.cancel.bind(engine);
+    engine.cancel = async () => {
+      throw new Error('Workflow "wf-1" was replaced before it was cancelled.');
+    };
+
+    try {
+      const response = await handleRequest(
+        new Request('http://localhost/v1/workflows/wf-1', { method: 'DELETE' }),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        error: 'Workflow "wf-1" was replaced before it was cancelled.',
       });
     } finally {
       engine.cancel = originalCancel;
