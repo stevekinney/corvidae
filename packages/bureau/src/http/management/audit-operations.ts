@@ -16,13 +16,18 @@
  * @module audit-operations
  */
 
-import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { auditRecordsToJsonLines, decodeAuditCursor } from '../../audit/create-audit.ts';
 import type { BureauAudit } from '../../types.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import {
+  mayUseCrossOwnerScope,
+  type BureauOwnershipHost,
+  ownerOfPrincipal,
+} from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /** What the audit operation reads from the handler's `host`. */
 export type BureauAuditOperationHost = BureauOwnershipHost & {
@@ -117,16 +122,13 @@ function unsupported(): OperationFault {
   };
 }
 
-function holdsAuditRead(principal: Principal): boolean {
-  return principal.method !== 'unauthenticated' && principal.hasScope('bureau.audit:read');
-}
-
 export const auditQueryOperation = defineOperation<
   typeof queryInput,
   typeof queryOutput,
   BureauAuditOperationHost
 >({
   name: 'bureau.audit.query',
+  authorize: authorizeWorkspaceOperation('bureau.audit.query'),
   mcpExposable: false,
   summary: 'Query the audit trail',
   description:
@@ -143,13 +145,23 @@ export const auditQueryOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     if (!host.audit.keepsTrail()) throw unsupported();
     const { format, ...filter } = input;
-    const everyOwner = holdsAuditRead(principal);
+    const everyOwner = mayUseCrossOwnerScope(principal, 'bureau.audit:read');
     const caller = ownerOfPrincipal(principal);
     // A caller without the scope is read as its owner; with it, as every owner.
     const page =
       !everyOwner && caller === undefined
         ? { records: [], nextCursor: null }
-        : await host.audit.query(filter, everyOwner ? {} : { owner: caller });
+        : await host.audit.query(
+            filter,
+            everyOwner
+              ? {}
+              : {
+                  owner: caller,
+                  includeSharedConfiguration:
+                    principal.method !== 'unauthenticated' &&
+                    principal.workspace?.capabilities.includes('workspace:manage') === true,
+                },
+          );
     // Both formats render the one redacted page, so an export can never carry more than the read.
     if (format === 'jsonl') {
       return {

@@ -34,6 +34,7 @@ import {
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { holdsScope, mayAccessTask } from './tasks-operations.ts';
 
 const tasksRespondOutput = z.object({
@@ -102,13 +103,15 @@ export async function respondToTask(
   principal: Principal,
   input: TasksRespondInput,
 ): Promise<TaskRespondResult> {
+  // The caller's owner does not itself grant the legacy operator tier. Workspace principals must
+  // pass the same owner predicate before the response is dispatched, even when they hold write.
+  if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
+    throw resourceNotFound('task', input.taskId);
+  }
   const caller = ownerOfPrincipal(principal);
   if (caller === undefined) {
     // No receipt can be this caller's, and nothing could record it as the resolver: a task it may
     // not see is missing, as for anyone, and one it may see is refused for the credential.
-    if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
-      throw resourceNotFound('task', input.taskId);
-    }
     if ((await host.tasks.get(input.taskId)) === undefined) {
       throw resourceNotFound('task', input.taskId);
     }
@@ -135,6 +138,7 @@ export const tasksRespondOperation = defineOperation<
   BureauTasksRespondOperationHost
 >({
   name: 'bureau.tasks.respond',
+  authorize: authorizeWorkspaceOperation('bureau.tasks.respond'),
   mcpExposable: true,
   summary: 'Answer a task’s open human-input or approval wait',
   description:

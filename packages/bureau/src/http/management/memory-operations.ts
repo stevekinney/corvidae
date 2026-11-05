@@ -1,3 +1,6 @@
+import { workspaceOwnerAuthority, type BureauWorkspaceHost } from '../workspace-principal.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.memory.*`: what an agent remembers, served to the owner whose chats wrote it (COR-1546).
  *
@@ -66,16 +69,17 @@ import {
 import { holdsScope } from './tasks-operations.ts';
 
 /** What the memory operations read from the handler's `host`. */
-export type BureauMemoryOperationHost = BureauAgentVisibilityHost & {
-  readonly memory: {
-    /** The Bureau's governed memory, or `undefined` for one composed without it. */
-    readonly governed: GovernedMemory | undefined;
-    /** The Bureau's identifier: the tenant every run's memory is partitioned under. */
-    readonly tenantId: string;
-    /** Whether the Bureau's agent catalog holds an agent named `name`: `remember` writes for one. */
-    readonly hasAgent: (name: string) => boolean;
+export type BureauMemoryOperationHost = BureauWorkspaceHost &
+  BureauAgentVisibilityHost & {
+    readonly memory: {
+      /** The Bureau's governed memory, or `undefined` for one composed without it. */
+      readonly governed: GovernedMemory | undefined;
+      /** The Bureau's identifier: the tenant every run's memory is partitioned under. */
+      readonly tenantId: string;
+      /** Whether the Bureau's agent catalog holds an agent named `name`: `remember` writes for one. */
+      readonly hasAgent: (name: string) => boolean;
+    };
   };
-};
 
 /** The governance principal a legal hold from this surface is placed by; the ledger's `ownerId` names the caller. */
 const GOVERNANCE_PRINCIPAL = 'governance:bureau.memory';
@@ -340,6 +344,7 @@ export const memoryListOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.list',
+  authorize: authorizeWorkspaceOperation('bureau.memory.list'),
   mcpExposable: false,
   summary: 'List an agent’s memories',
   description:
@@ -394,6 +399,7 @@ export const memorySearchOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.search',
+  authorize: authorizeWorkspaceOperation('bureau.memory.search'),
   mcpExposable: false,
   summary: 'Search an agent’s memories',
   description:
@@ -444,6 +450,7 @@ export const memoryGetOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.get',
+  authorize: authorizeWorkspaceOperation('bureau.memory.get'),
   mcpExposable: false,
   summary: 'Read one memory with its lineage',
   description:
@@ -460,6 +467,14 @@ export const memoryGetOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const { memory, authority } = acting(host, principal, ACCESS.get);
     if (authority === undefined) throw resourceNotFound('memory', input.id);
+    const peerAuthority =
+      host.workspaceAuthority?.(principal) ?? workspaceOwnerAuthority(undefined, principal);
+    if (
+      input.ownerId !== undefined &&
+      peerAuthority !== undefined &&
+      !(await peerAuthority(input.ownerId))
+    )
+      throw resourceNotFound('memory', input.id);
     const record = await memory.get(authority, {
       id: input.id,
       collection: input.agentId,
@@ -512,6 +527,7 @@ export const memoryRememberOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.remember',
+  authorize: authorizeWorkspaceOperation('bureau.memory.remember'),
   mcpExposable: false,
   summary: 'Add a memory',
   description:
@@ -598,6 +614,7 @@ export const memoryForgetOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.forget',
+  authorize: authorizeWorkspaceOperation('bureau.memory.forget'),
   mcpExposable: false,
   summary: 'Forget one memory',
   description:
@@ -661,6 +678,7 @@ export const memoryCorrectOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.correct',
+  authorize: authorizeWorkspaceOperation('bureau.memory.correct'),
   mcpExposable: false,
   summary: 'Correct one memory',
   description:
@@ -781,6 +799,10 @@ async function changeShare(
 ): Promise<z.infer<typeof shareOutput>> {
   const { memory, authority } = acting(host, principal, ACCESS.share);
   if (authority === undefined) throw resourceNotFound('memory', input.id);
+  const peerAuthority =
+    host.workspaceAuthority?.(principal) ?? workspaceOwnerAuthority(undefined, principal);
+  if (grant && peerAuthority !== undefined && !(await peerAuthority(input.granteeOwnerId)))
+    throw resourceNotFound('memory', input.id);
   const locator = { id: input.id, collection: input.agentId };
   const result = grant
     ? await memory.share(authority, locator, input.granteeOwnerId)
@@ -803,6 +825,7 @@ export const memoryShareOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.share',
+  authorize: authorizeWorkspaceOperation('bureau.memory.share'),
   mcpExposable: false,
   summary: 'Share one memory with another owner',
   description:
@@ -832,6 +855,7 @@ export const memoryRevokeShareOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.share.revoke',
+  authorize: authorizeWorkspaceOperation('bureau.memory.share.revoke'),
   mcpExposable: false,
   summary: 'Withdraw a shared memory from another owner',
   description:
@@ -890,6 +914,7 @@ export const memoryHoldOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.hold',
+  authorize: authorizeWorkspaceOperation('bureau.memory.hold'),
   mcpExposable: false,
   summary: 'Place a legal hold on one memory',
   description:
@@ -913,6 +938,7 @@ export const memoryReleaseHoldOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.hold.release',
+  authorize: authorizeWorkspaceOperation('bureau.memory.hold.release'),
   mcpExposable: false,
   summary: 'Lift the legal hold on one memory',
   description:
@@ -948,6 +974,7 @@ export const memoryQuarantineOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.quarantine',
+  authorize: authorizeWorkspaceOperation('bureau.memory.quarantine'),
   mcpExposable: false,
   summary: 'Quarantine one memory',
   description:
@@ -997,6 +1024,7 @@ export const memoryExportOperation = defineOperation<
   BureauMemoryOperationHost
 >({
   name: 'bureau.memory.export',
+  authorize: authorizeWorkspaceOperation('bureau.memory.export'),
   mcpExposable: false,
   summary: 'Export an agent’s memories',
   description:

@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.agents.models`: the models an agent allows a session of it to be switched to, and the
  * model its next step would use with no override (COR-1559).
@@ -60,6 +62,7 @@ export const agentsModelsOperation = defineOperation<
   BureauAgentModelsOperationHost & BureauDeploymentOperationHost
 >({
   name: 'bureau.agents.models',
+  authorize: authorizeWorkspaceOperation('bureau.agents.models'),
   mcpExposable: false,
   summary: 'List the models an agent allows',
   description:

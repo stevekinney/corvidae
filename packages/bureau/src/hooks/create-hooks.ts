@@ -303,6 +303,10 @@ export interface BureauHooks {
 
 /** What {@link createHooks} is built from. */
 export interface HooksDependencies {
+  /** Workspace privacy projection applied before any delivery is persisted. */
+  readonly eventForHookOwner?:
+    | ((owner: string, event: HookEventToDeliver) => Promise<HookEventToDeliver | undefined>)
+    | undefined;
   /** The Bureau's key-value store. */
   readonly kv: ConditionalTextValueStore;
   /** The notifier's delivery machinery. */
@@ -323,7 +327,7 @@ export interface HooksDependencies {
    * Whether `owner` may start workflows, asked when a `start-workflow` hook is written and for each
    * delivery. Defaults to the deployment's owner of record alone.
    */
-  readonly mayStartWorkflows?: ((owner: string) => boolean) | undefined;
+  readonly mayStartWorkflows?: ((owner: string) => boolean | Promise<boolean>) | undefined;
   /**
    * The hook that started the run `runId` names, or a run above it, or `undefined` when no hook
    * did. A `start-workflow` hook does not start a workflow for an event whose run a hook started,
@@ -710,7 +714,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
    */
   async function assertActionAllowed(action: HookAction, owner: string): Promise<void> {
     if (action.type !== 'start-workflow') return;
-    if (!mayStartWorkflows(owner)) {
+    if (!(await mayStartWorkflows(owner))) {
       throw new HookError('forbidden', 'This owner may not start workflows from a hook');
     }
     const workflows = dependencies.workflows?.();
@@ -739,7 +743,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         // Decided as the event was dispatched; see `dispatch`.
         if (work.skip !== undefined) throw new HookActionError(work.skip, true);
         // Asked again as the event fires: the authority is the owner's now, not at creation.
-        if (!mayStartWorkflows(context.owner)) {
+        if (!(await mayStartWorkflows(context.owner))) {
           throw new HookActionError('The hook’s owner may not start workflows', true);
         }
         const workflows = dependencies.workflows?.();
@@ -1291,6 +1295,11 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
         let starter: Promise<string | undefined> | undefined;
         let subjects: Promise<HookEventSubjects | undefined> | undefined;
         for (const hook of await matching(event.kind)) {
+          const projected =
+            dependencies.eventForHookOwner === undefined
+              ? event
+              : await dependencies.eventForHookOwner(hook.owner, event);
+          if (projected === undefined) continue;
           if (hook.scope !== undefined) {
             // Asked once per event, and only when a scoped hook lists its kind.
             subjects ??= subjectsOf(event);
@@ -1306,7 +1315,7 @@ export function createHooks(dependencies: HooksDependencies): CreatedHooks {
               skip = chainSkipReason(await starter, hook, event);
             }
           }
-          driving.push(deliveries.drive(await deliveries.enqueue(hook, event, false, skip)));
+          driving.push(deliveries.drive(await deliveries.enqueue(hook, projected, false, skip)));
         }
       } finally {
         await Promise.allSettled(driving);

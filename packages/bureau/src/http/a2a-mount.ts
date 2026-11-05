@@ -1,3 +1,4 @@
+import type { BureauWorkspaceHost } from './workspace-principal.ts';
 /**
  * The A2A mount (COR-903): every agent that opts into A2A served over A2A 1.0.1 at
  * `<publicUrl>/a2a/<catalog-name>`, through Weft's kit (`createA2AHandler`) and Bureau's own
@@ -58,48 +59,49 @@ export type BureauA2AOptions = {
 };
 
 /** What the mount reads beyond the Bureau itself. */
-export type BureauA2AMountOptions = BureauA2AOptions & {
-  readonly bureau: A2ABureau & { readonly id: string };
-  readonly optedIn: { readonly includes: (agentName: string) => boolean };
-  /**
-   * Whether any task of the agent is still addressable. An agent that opted out and has one keeps a
-   * tombstone at its path until the last has passed its retention.
-   */
-  readonly hasTasks: (agentName: string) => Promise<boolean>;
-  /** The card source of a catalog agent, or `undefined` when the catalog has none. */
-  readonly describe: (
-    agentName: string,
-  ) => Omit<A2AAgentCardSource, 'security' | 'durableHistory' | 'pushNotifications'> | undefined;
-  /**
-   * The credentials the handler enforces, which every card advertises; `undefined` when every
-   * request is the local caller. Set, every request but the card and key routes needs a credential,
-   * and the local caller is refused.
-   */
-  readonly security: A2ASecurityDeclaration | undefined;
-  readonly records: A2ATaskRecords;
-  readonly ledger: A2ASendLedger;
-  /**
-   * The runtime the handlers read deadlines and schedule waits on. Defaults to the process's own
-   * services; `createBureauHandler` passes the Bureau's.
-   */
-  readonly runtime?: RuntimeServices | undefined;
-  /** The handler's request-body bound, applied to A2A requests too. */
-  readonly maxRequestBodyBytes?: number | undefined;
-  readonly respond: BureauA2ARequestHandlerOptions['respond'];
-  /**
-   * Push notification delivery (COR-1543): the sender and outbox, the checkpoints the projector
-   * keeps, and the projector. Omitted, no card declares push.
-   */
-  readonly push?:
-    | {
-        readonly delivery: A2APushDelivery;
-        readonly checkpoints: A2APushCheckpoints;
-        readonly projector: A2APushProjector;
-        /** Settles once the start-up recovery has: no install runs before it, so none races it. */
-        readonly ready: Promise<void>;
-      }
-    | undefined;
-};
+export type BureauA2AMountOptions = BureauWorkspaceHost &
+  BureauA2AOptions & {
+    readonly bureau: A2ABureau & { readonly id: string };
+    readonly optedIn: { readonly includes: (agentName: string) => boolean };
+    /**
+     * Whether any task of the agent is still addressable. An agent that opted out and has one keeps a
+     * tombstone at its path until the last has passed its retention.
+     */
+    readonly hasTasks: (agentName: string) => Promise<boolean>;
+    /** The card source of a catalog agent, or `undefined` when the catalog has none. */
+    readonly describe: (
+      agentName: string,
+    ) => Omit<A2AAgentCardSource, 'security' | 'durableHistory' | 'pushNotifications'> | undefined;
+    /**
+     * The credentials the handler enforces, which every card advertises; `undefined` when every
+     * request is the local caller. Set, every request but the card and key routes needs a credential,
+     * and the local caller is refused.
+     */
+    readonly security: A2ASecurityDeclaration | undefined;
+    readonly records: A2ATaskRecords;
+    readonly ledger: A2ASendLedger;
+    /**
+     * The runtime the handlers read deadlines and schedule waits on. Defaults to the process's own
+     * services; `createBureauHandler` passes the Bureau's.
+     */
+    readonly runtime?: RuntimeServices | undefined;
+    /** The handler's request-body bound, applied to A2A requests too. */
+    readonly maxRequestBodyBytes?: number | undefined;
+    readonly respond: BureauA2ARequestHandlerOptions['respond'];
+    /**
+     * Push notification delivery (COR-1543): the sender and outbox, the checkpoints the projector
+     * keeps, and the projector. Omitted, no card declares push.
+     */
+    readonly push?:
+      | {
+          readonly delivery: A2APushDelivery;
+          readonly checkpoints: A2APushCheckpoints;
+          readonly projector: A2APushProjector;
+          /** Settles once the start-up recovery has: no install runs before it, so none races it. */
+          readonly ready: Promise<void>;
+        }
+      | undefined;
+  };
 
 function trimTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
@@ -182,6 +184,7 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
   if (options.signing !== undefined) {
     createA2AHandler({
       requestHandler: createBureauA2ARequestHandler({
+        workspaceAuthority: options.workspaceAuthority,
         agentName: '',
         card: () => ({ ...probeCard, supportedInterfaces: [], signatures: [] }),
         bureau: options.bureau,
@@ -228,6 +231,7 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
       pushNotifications: keepsHistory && options.push !== undefined,
     });
     const requestHandler = createBureauA2ARequestHandler({
+      workspaceAuthority: options.workspaceAuthority,
       agentName,
       card: () => ({ ...agentCard, supportedInterfaces: [], signatures: [] }),
       bureau: options.bureau,

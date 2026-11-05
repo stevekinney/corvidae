@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.schedules.*`: the durable schedules of a Bureau (COR-1482), over the Bureau's own
  * schedule methods.
@@ -122,8 +124,8 @@ const scheduleViewSchema = z.object({
    */
   skipUntil: z.string().nullable(),
   lastFireAt: z.string().nullable(),
-  missedFireCount: z.number().int(),
-  skippedCount: z.number().int(),
+  missedFireCount: z.number().int().nullable(),
+  skippedCount: z.number().int().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   /**
@@ -162,12 +164,14 @@ function viewOf(
   agentName: string | undefined,
   inputPreview: string | undefined,
   blocker: WorkflowScheduleBlocker | undefined,
+  principal: Principal,
 ): z.infer<typeof scheduleViewSchema> {
+  const workspace = principal.method !== 'unauthenticated' && principal.workspace !== undefined;
   return {
     id: summary.id,
     owner,
     agentName: agentName ?? null,
-    inputPreview: inputPreview ?? null,
+    inputPreview: workspace ? null : (inputPreview ?? null),
     workflowType: summary.workflowType,
     description: summary.description ?? null,
     cronExpression: summary.cronExpression ?? null,
@@ -178,9 +182,9 @@ function viewOf(
     revision: summary.revision,
     nextFireAt: iso(summary.nextFireAt),
     skipUntil: iso(summary.skipUntil),
-    lastFireAt: iso(summary.lastFireAt),
-    missedFireCount: summary.missedFireCount,
-    skippedCount: summary.skippedCount,
+    lastFireAt: workspace ? null : iso(summary.lastFireAt),
+    missedFireCount: workspace ? null : summary.missedFireCount,
+    skippedCount: workspace ? null : summary.skippedCount,
     createdAt: iso(summary.createdAt)!,
     updatedAt: iso(summary.updatedAt)!,
     blocker:
@@ -305,16 +309,25 @@ function faultOf(error: unknown, scheduleId: string): never {
  * `NotFound` otherwise: for a caller who may not, a schedule that is not there, and one that is
  * not a Bureau schedule, are the same answer.
  */
+function isWorkspaceAdministrator(principal: Principal): boolean {
+  return (
+    principal.method !== 'unauthenticated' &&
+    principal.workspace?.capabilities.includes('workspace:manage') === true
+  );
+}
+
 async function ownerFor(
   host: BureauSchedulesOperationHost,
   principal: Principal,
   scheduleId: string,
   operatorScope: BureauScope,
+  privateExecution = false,
 ): Promise<string> {
   const owner = await host.schedules.owner(scheduleId);
   if (
     owner === undefined ||
-    !host.ownership.mayAccess({ principal, resourceOwner: owner, operatorScope })
+    (!(!privateExecution && isWorkspaceAdministrator(principal)) &&
+      !host.ownership.mayAccess({ principal, resourceOwner: owner, operatorScope }))
   ) {
     throw resourceNotFound('schedule', scheduleId);
   }
@@ -348,6 +361,7 @@ export const schedulesListOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.list',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.list'),
   mcpExposable: true,
   summary: 'List schedules',
   description:
@@ -363,7 +377,10 @@ export const schedulesListOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const everyOwner =
-      principal.method !== 'unauthenticated' && principal.hasScope('bureau.schedules:read');
+      isWorkspaceAdministrator(principal) ||
+      (principal.method !== 'unauthenticated' &&
+        principal.workspace === undefined &&
+        principal.hasScope('bureau.schedules:read'));
     const caller = ownerOfPrincipal(principal);
     if (!everyOwner && caller === undefined) return { schedules: [], nextOffset: null };
     const visible: z.infer<typeof scheduleViewSchema>[] = [];
@@ -381,6 +398,7 @@ export const schedulesListOperation = defineOperation<
             await host.schedules.agentName(summary.id),
             await host.schedules.inputPreview(summary.id),
             await host.schedules.blocker(summary.id),
+            principal,
           );
           if (input.status === undefined || view.status === input.status) visible.push(view);
         }
@@ -404,6 +422,7 @@ export const schedulesGetOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.get',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.get'),
   mcpExposable: true,
   summary: 'Read one schedule',
   description:
@@ -429,6 +448,7 @@ export const schedulesGetOperation = defineOperation<
       await host.schedules.agentName(input.scheduleId),
       await host.schedules.inputPreview(input.scheduleId),
       await host.schedules.blocker(input.scheduleId),
+      principal,
     );
   },
 });
@@ -463,6 +483,7 @@ export const schedulesCreateOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.create',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.create'),
   mcpExposable: false,
   summary: 'Create a schedule',
   description:
@@ -513,7 +534,14 @@ export const schedulesCreateOperation = defineOperation<
       if (summary === undefined) throw unsupported();
       // The preview comes from the request's own text, never a second read of storage: a read that
       // failed after the schedule was made would hide the schedule from a retry (COR-411).
-      return viewOf(summary, owner, input.agentName, scheduleInputPreview(input.input), undefined);
+      return viewOf(
+        summary,
+        owner,
+        input.agentName,
+        scheduleInputPreview(input.input),
+        undefined,
+        principal,
+      );
     } catch (error) {
       return faultOf(error, input.agentName);
     }
@@ -523,7 +551,7 @@ export const schedulesCreateOperation = defineOperation<
 const guardedInput = z.object({ scheduleId: scheduleIdentifier, expectedRevision });
 
 function defineGuardedWrite(
-  name: string,
+  name: 'bureau.schedules.pause' | 'bureau.schedules.resume' | 'bureau.schedules.cancel',
   summary: string,
   description: string,
   run: (
@@ -534,6 +562,7 @@ function defineGuardedWrite(
 ) {
   return defineOperation<typeof guardedInput, typeof receiptSchema, BureauSchedulesOperationHost>({
     name,
+    authorize: authorizeWorkspaceOperation(name),
     mcpExposable: false,
     summary,
     description,
@@ -608,6 +637,7 @@ export const schedulesSkipNextOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.skipnext',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.skipnext'),
   mcpExposable: false,
   summary: 'Skip the next fire of a schedule',
   description: `Skips the next fire of an active schedule: the next fire that would start a task starts none, and the one after it runs as usual. That fire is the view’s \`skipUntil\` until the schedule moves past it; it is not always \`nextFireAt\`, which in a time zone can be the end of a daylight-saving gap that starts nothing. The skip leaves the schedule’s \`revision\` as it is, skipping again before that fire has passed changes nothing, and a pause, a cancel, or a new cadence ends the skip. A fire moves neither the \`revision\` nor the \`status\`, so the fire a caller read can start before the skip is written: pass \`occurrence\`, the fire to skip as an ISO 8601 instant, and the skip is a \`Conflict\` (\`data.reason\` \`occurrence-not-next\`) when that is not the schedule’s next fire, or the one already skipped, as the write lands. An \`occurrence\` that is not an ISO 8601 instant, or is before 1970, is \`InvalidParams\`. A paused or cancelled schedule has no next fire and is a \`Conflict\` (\`data.reason\` \`schedule-not-active\`). ${STALE_NOTE}`,
@@ -674,6 +704,7 @@ export const schedulesRunNowOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.runnow',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.runnow'),
   mcpExposable: false,
   summary: 'Run a schedule now',
   description:
@@ -688,7 +719,7 @@ export const schedulesRunNowOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write');
+    await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:write', true);
     try {
       const result = await host.schedules.runNow(input.scheduleId);
       if (result === undefined) throw unsupported();
@@ -734,6 +765,7 @@ export const schedulesMissedOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.missed',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.missed'),
   mcpExposable: false,
   summary: 'List the fires a schedule missed',
   description:
@@ -748,7 +780,7 @@ export const schedulesMissedOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const owner = await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:read');
+    const owner = await ownerFor(host, principal, input.scheduleId, 'bureau.schedules:read', true);
     const rows = await host.schedules.missed(
       input.scheduleId,
       input.limit === undefined ? undefined : { limit: input.limit },
@@ -798,6 +830,7 @@ export const schedulesUpdateOperation = defineOperation<
   BureauSchedulesOperationHost
 >({
   name: 'bureau.schedules.update',
+  authorize: authorizeWorkspaceOperation('bureau.schedules.update'),
   mcpExposable: false,
   summary: 'Change a schedule’s cadence, description, overlap policy, or time zone',
   description: `Replaces a schedule’s cadence with \`spec\` (a cron expression or a duration; an interval counts from now), and changes its \`description\`, \`overlap\`, and \`timeZone\` when they are given (a zone left out is kept; an unknown one, or one other than \`UTC\` given with an interval, is \`InvalidParams\` on \`timeZone\`). Its agent, input, owner, and session are not changed, and \`overlap: "allow"\` is refused for a schedule with a recurring session. An update always counts as a change. ${STALE_NOTE}`,

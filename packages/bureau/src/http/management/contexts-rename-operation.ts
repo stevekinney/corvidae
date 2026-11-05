@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.contexts.rename`: give a context (a Bureau session) a title, or take the one it was given
  * away, through `Bureau.contexts.rename` (COR-1909).
@@ -64,6 +66,7 @@ export const contextsRenameOperation = defineOperation<
   BureauContextsRenameOperationHost
 >({
   name: 'bureau.contexts.rename',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.rename'),
   mcpExposable: false,
   summary: 'Rename a context',
   description:

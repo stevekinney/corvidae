@@ -50,6 +50,29 @@ async function admitPng(assets: Awaited<ReturnType<typeof open>>['assets'], owne
 const position = { messageId: 'm-1', partIndex: 0 };
 
 describe('createAssetContentSourceResolver', () => {
+  it('checks the runtime workspace directory before resolving explicitly shared bytes', async () => {
+    const { assets } = await open();
+    const bytes = pngBytes(4, 3);
+    const admission = await assets.admit(
+      { source: { kind: 'inline', bytes }, declaredMediaType: 'image/png', readers: ['bob'] },
+      alice,
+    );
+    await admission.work.result();
+    let currentMember = true;
+    const checked: string[] = [];
+    const resolve = createAssetContentSourceResolver(assets, 'bob', {
+      workspaceAuthority: async (owner) => {
+        checked.push(owner);
+        return currentMember && owner === 'alice';
+      },
+    });
+    const part: MediaContent = { type: 'image', source: admission.source };
+    expect(await resolve(part, position)).toMatchObject({ outcome: 'resolved' });
+    expect(checked).toContain('alice');
+    currentMember = false;
+    expect(await resolve(part, position)).toMatchObject({ outcome: 'unavailable' });
+  });
+
   it('resolves a managed asset to inline base64 with its media type, size, and an unknown safety state when no gate ran', async () => {
     const { assets } = await open();
     const { admission, bytes } = await admitPng(assets);

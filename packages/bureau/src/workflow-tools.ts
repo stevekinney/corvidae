@@ -24,7 +24,8 @@ import { z } from 'zod';
 
 import { AGENT_IDENTIFIER_PATTERN } from './agent-file';
 import { BUREAU_PLUGIN_NAME } from './plugins/bureau-plugin';
-import { mayRunAccess } from './run-authority.ts';
+import { mayRunUseSharedConfiguration } from './run-authority.ts';
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
 import {
   checkWorkflowIdentifier,
   type WorkflowFileDefinition,
@@ -52,6 +53,7 @@ export const WORKFLOW_TOOL_NAMES = [
 
 /** What the tools read from the Bureau that owns them. */
 export interface WorkflowToolHost {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   /** The workflow files. Read on every call, because the tools exist before the runtime does. */
   readonly workflows: () => BureauWorkflows | undefined;
   /**
@@ -326,6 +328,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         readonly workflows: BureauWorkflows;
         readonly agent: string;
         readonly actor: string;
+        readonly owner: string | undefined;
         readonly hookOrigin: string | undefined;
       }
     | { readonly refusal: WorkflowToolResult }
@@ -337,9 +340,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       workflows === undefined ||
       runId === undefined ||
       identity === undefined ||
-      !mayRunAccess(identity.owner, operationScope, workflows.owner, {
-        allowOperatorScope: false,
-      })
+      !(await mayRunUseSharedConfiguration(
+        host.workspace,
+        identity.owner,
+        operationScope,
+        operationScope === 'bureau.workflows:write',
+        workflows.owner,
+        {
+          allowOperatorScope: false,
+        },
+      ))
     ) {
       return { refusal: { status: 'not-found', id } };
     }
@@ -358,7 +368,13 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
         },
       };
     }
-    return { workflows, agent, actor: `agent-run:${runId}`, hookOrigin: identity.hookOrigin };
+    return {
+      workflows,
+      agent,
+      actor: `agent-run:${runId}`,
+      owner: identity.owner,
+      hookOrigin: identity.hookOrigin,
+    };
   }
 
   const definition = (agent: string, input: Record<string, unknown>): WorkflowFileDefinition => {
@@ -679,7 +695,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
           ? { status: 'ok', revisions: [] }
           : calling.refusal;
       }
-      const revisions = await calling.workflows.revisions(input.id);
+      const revisions = await calling.workflows.revisions(
+        input.id,
+        host.workspace === undefined
+          ? undefined
+          : async (runId) => {
+              if (calling.owner === undefined) return false;
+              const identity = await host.runIdentity(runId);
+              return identity.owner === calling.owner;
+            },
+      );
       if (revisions === undefined) return { status: 'not-found', id: input.id };
       return { status: 'ok', revisions: revisions.map(revisionOf) };
     },
@@ -702,7 +727,16 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     execute: async (input, context): Promise<WorkflowToolResult | Record<string, unknown>> => {
       const calling = await caller(context, input.id, 'bureau.workflows:read');
       if ('refusal' in calling) return calling.refusal;
-      const revisions = await calling.workflows.revisions(input.id);
+      const revisions = await calling.workflows.revisions(
+        input.id,
+        host.workspace === undefined
+          ? undefined
+          : async (runId) => {
+              if (calling.owner === undefined) return false;
+              const identity = await host.runIdentity(runId);
+              return identity.owner === calling.owner;
+            },
+      );
       const revision = revisions?.find(
         (candidate) => candidate.workflowVersion === input.workflowVersion,
       );

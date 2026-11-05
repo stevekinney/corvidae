@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { principalFromApiKey, type OperationHandlerAuthenticate } from '@lostgradient/weft';
-import { withWorkspaceMembership, type WorkspaceMembership } from './workspace-principal.ts';
+import {
+  withWorkspaceMembership,
+  workspaceOwnerAuthority,
+  type WorkspaceMembership,
+  type WorkspaceMembershipOptions,
+} from './workspace-principal.ts';
 import { ownerOfPrincipal } from './owner-predicate.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { openBureau, answering, rpc } from './management/management-fixtures.test-support.ts';
@@ -12,7 +17,16 @@ const request = () =>
   });
 
 test('two verified credentials retain one durable owner across rotation, without admitting another user', async () => {
-  const opened = await openBureau({ generate: answering() });
+  const workspace: WorkspaceMembershipOptions = {
+    workspaceId: 'workspace-a',
+    resolveMembership: async ({ subject }) =>
+      subject === 'other-key' ? { ...member(), actorId: 'user-b', owner: 'owner-b' } : member(),
+  };
+  const opened = await openBureau({
+    generate: answering(),
+    bureauOptions: { workspace },
+    handlerOptions: { workspace },
+  });
   try {
     const task = await startTaskFrom(opened.bureau, {
       agentName: 'default',
@@ -24,6 +38,7 @@ test('two verified credentials retain one durable owner across rotation, without
       mounts: [
         {
           pathPrefix: '/resolved-identity',
+          workspaceClass: 'private-owned',
           fetch: async (_request, context) =>
             Response.json(
               context.principal.method === 'unauthenticated' ? null : context.principal.workspace,
@@ -35,11 +50,7 @@ test('two verified credentials retain one durable owner across rotation, without
         resolveApiKeyPrincipal: async (key) =>
           keys.has(key) ? principalFromApiKey({ subject: key, scopes: [] }) : null,
       },
-      workspace: {
-        workspaceId: 'workspace-a',
-        resolveMembership: async ({ subject }) =>
-          subject === 'other-key' ? { ...member(), actorId: 'user-b', owner: 'owner-b' } : member(),
-      },
+      workspace,
     });
     for (const key of ['first-key', 'rotated-key']) {
       const result = await rpc(handler, 'bureau.tasks.get', { taskId: task.id }, key);
@@ -100,6 +111,37 @@ const member = (): WorkspaceMembership => ({
 });
 
 describe('workspace membership after credential verification', () => {
+  test('authorizes explicit same-workspace owners and fails closed for foreign, removed, unknown, or errored owners', async () => {
+    const principal = {
+      ...principalFromApiKey({ subject: 'user-a', scopes: [] }),
+      workspace: member(),
+    };
+    const authority = workspaceOwnerAuthority(
+      {
+        workspaceId: 'workspace-a',
+        resolveMembership: async () => member(),
+        resolveOwnerMembership: async (owner) => {
+          if (owner === 'api-key:user-b') return { ...member(), actorId: 'user-b', owner };
+          if (owner === 'api-key:foreign')
+            return { ...member(), workspaceId: 'workspace-b', owner };
+          if (owner === 'api-key:error') throw new Error('membership-sentinel');
+          return null;
+        },
+      },
+      principal,
+    );
+    expect(authority).toBeDefined();
+    expect(await authority!('api-key:existing-owner')).toBe(true);
+    expect(await authority!('api-key:user-b')).toBe(true);
+    expect(await authority!('api-key:foreign')).toBe(false);
+    expect(await authority!('api-key:removed')).toBe(false);
+    expect(await authority!('api-key:unknown')).toBe(false);
+    expect(await authority!('api-key:error')).toBe(false);
+    const selfOnly = workspaceOwnerAuthority(undefined, principal)!;
+    expect(await selfOnly('api-key:existing-owner')).toBe(true);
+    expect(await selfOnly('api-key:user-b')).toBe(false);
+  });
+
   test('uses only the server resolver and snapshots immutable identity', async () => {
     const capabilities: ('workspace:use' | 'workspace:manage')[] = ['workspace:use'];
     const membership = { ...member(), capabilities };

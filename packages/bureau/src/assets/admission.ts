@@ -292,7 +292,7 @@ export async function preflightAdmission(
   if (source.kind === 'managed-asset' || source.kind === 'derived') {
     const sourceId = source.kind === 'derived' ? source.sourceAssetId : source.assetId;
     const loaded = await loadRecord(internals.storage, sourceId);
-    const record = authorize(loaded?.record, sourceId, principal);
+    const record = await authorize(loaded?.record, sourceId, principal);
     if (
       source.kind === 'managed-asset' &&
       source.revision !== undefined &&
@@ -318,6 +318,21 @@ export async function beginAdmission(
   options: { readonly preflighted?: boolean } = {},
 ): Promise<AssetAdmission> {
   if (!options.preflighted) await preflightAdmission(internals, principal, request.source);
+  if (principal.workspaceAuthority !== undefined) {
+    for (const reader of request.readers ?? []) {
+      let allowed = false;
+      try {
+        allowed = await principal.workspaceAuthority(reader);
+      } catch {
+        allowed = false;
+      }
+      if (!allowed)
+        throw new AssetAdmissionError(
+          'source-not-available',
+          'The requested reader is unavailable.',
+        );
+    }
+  }
   const assetId = internals.runtime.identifiers.next('asset');
   const now = internals.nowIso();
   const retainFor = request.retainForMilliseconds ?? internals.policy.defaultRetentionMilliseconds;

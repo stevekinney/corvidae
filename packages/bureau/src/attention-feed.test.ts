@@ -1,3 +1,9 @@
+import {
+  openWorkspacePrivacyBureau,
+  workspacePrivacyCall,
+  WORKSPACE_PRIVACY_ACTORS,
+  type WorkspacePrivacyActor,
+} from './http/workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-2009 — what needs attention (Health's Needs attention list and its Advanced checks): the kinds
  * the Bureau finds, the one order they are listed in, the checks counted from the same list, and the
@@ -7,6 +13,7 @@ import {
   StorageSizeReportedEvent,
   type AlertStateSnapshot,
   type ScheduleSummary,
+  type WorkspaceIdentity,
 } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -425,4 +432,99 @@ describe('bureau.health.attention', () => {
 
     expect(answered.error?.data).toMatchObject({ httpStatus: 403 });
   });
+
+  it('workspace members receive only public configuration notices, not private alert, hook, or schedule data', async () => {
+    const opened = await open({
+      bureauOptions: {
+        attention: async () => {
+          const report = await readAttention(
+            sampleWorld({
+              plugins: () => Promise.resolve([plugin('inspectors', 'skipped')]),
+              hooks: () => Promise.resolve([failedHook('private-hook', ALERT_FIRED, false)]),
+            }),
+          );
+          return report.items;
+        },
+      },
+      handlerOptions: {
+        workspace: {
+          workspaceId: 'workspace-a',
+          resolveMembership: async ({ subject }) =>
+            ({
+              version: 1,
+              workspaceId: 'workspace-a',
+              actorId: subject ?? 'unknown',
+              actorKind: 'user',
+              owner: `api-key:${subject ?? 'unknown'}`,
+              membershipRevision: 'revision-1',
+              capabilities: ['workspace:use', 'workspace:manage'],
+            }) satisfies WorkspaceIdentity,
+        },
+      },
+    });
+
+    const answered = await rpc(
+      opened.handler,
+      'bureau.health.attention',
+      {},
+      'diagnostics-reader-key',
+    );
+
+    expect(answered.error).toBeUndefined();
+    expect(answered.result?.['items']).toEqual([
+      NO_PROVIDER,
+      {
+        kind: 'plugin-not-loaded',
+        area: 'plugins',
+        at: SERVER_STARTED,
+        plugin: 'inspectors',
+        problems: ['setup-failed'],
+      },
+    ]);
+    expect(answered.result?.['count']).toBe(2);
+    expect(answered.result?.['checks']).toEqual([
+      { area: 'providers', count: 1 },
+      { area: 'plugins', count: 1 },
+    ]);
+    expect(JSON.stringify(answered)).not.toContain('storage.size');
+    expect(JSON.stringify(answered)).not.toContain('daily-summary');
+    expect(JSON.stringify(answered)).not.toContain('hooks.slack.com');
+  });
+});
+
+it('workspace attention six-actor projections hide private hook alerts and recompute counts', async () => {
+  const opened = await openWorkspacePrivacyBureau({
+    bureauOptions: {
+      attention: async () => {
+        const report = await readAttention(
+          sampleWorld({
+            plugins: () => Promise.resolve([plugin('inspectors', 'skipped')]),
+            hooks: () =>
+              Promise.resolve([failedHook('PRIVATE-HOOK-ATTENTION-b5fe', ALERT_FIRED, false)]),
+          }),
+        );
+        return report.items;
+      },
+    },
+  });
+  try {
+    for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+      const response = await workspacePrivacyCall(opened, actor, 'bureau.health.attention', {});
+      if (actor === 'foreign' || actor === 'removed') expect(response.status).toBe(403);
+      else if (actor === 'administrator') {
+        expect(response.body?.error).toBeUndefined();
+        const items = response.body?.result?.['items'] as unknown[];
+        expect(items).toHaveLength(2);
+        expect(response.body?.result?.['count']).toBe(2);
+        expect(response.body?.result?.['checks']).toEqual([
+          { area: 'providers', count: 1 },
+          { area: 'plugins', count: 1 },
+        ]);
+        expect(response.text).toContain('plugin-not-loaded');
+        expect(response.text).not.toContain('PRIVATE-HOOK-ATTENTION-b5fe');
+      } else expect(response.body?.error?.data?.httpStatus).toBe(403);
+    }
+  } finally {
+    await opened.dispose();
+  }
 });

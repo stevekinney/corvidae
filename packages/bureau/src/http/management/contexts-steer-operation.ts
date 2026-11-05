@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.contexts.steer`: change one setting of a context (a Bureau session) through
  * `Bureau.contexts.steer` (COR-1559, COR-1935, COR-1936).
@@ -309,6 +311,7 @@ export const contextsSteerOperation = defineOperation<
   BureauContextsSteerOperationHost
 >({
   name: 'bureau.contexts.steer',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.steer'),
   mcpExposable: false,
   summary: 'Switch a context’s model, effort or permission mode',
   description:

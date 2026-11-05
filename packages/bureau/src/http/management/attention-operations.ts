@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.health.attention`: what needs attention now (COR-2009), through `Bureau.attention()`.
  *
@@ -125,6 +127,7 @@ export const healthAttentionOperation = defineOperation<
   BureauAttentionOperationHost
 >({
   name: 'bureau.health.attention',
+  authorize: authorizeWorkspaceOperation('bureau.health.attention'),
   mcpExposable: false,
   summary: 'List what needs attention',
   description:
@@ -138,8 +141,20 @@ export const healthAttentionOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host }) => {
+  invoke: async ({ host, principal }) => {
     const attention = await host.attention();
+    if (principal.method !== 'unauthenticated' && principal.workspace !== undefined) {
+      const items = attention.items
+        .filter((entry) => entry.kind === 'plugin-not-loaded' || entry.kind === 'no-provider')
+        .map(wireItem);
+      const counts = new Map<z.infer<typeof area>, number>();
+      for (const entry of items) counts.set(entry.area, (counts.get(entry.area) ?? 0) + 1);
+      return {
+        items,
+        count: items.length,
+        checks: [...counts].map(([entryArea, count]) => ({ area: entryArea, count })),
+      };
+    }
     return {
       items: attention.items.map(wireItem),
       count: attention.count,

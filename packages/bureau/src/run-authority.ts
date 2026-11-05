@@ -6,6 +6,10 @@ import {
 
 import { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes.ts';
 import { mayAccessOwnedResource } from './http/owner-predicate.ts';
+import {
+  resolveWorkspaceOwner,
+  type WorkspaceRuntimeAuthority,
+} from './http/workspace-principal.ts';
 import { ANONYMOUS_LOCAL_OWNER } from './owner-of-record.ts';
 
 /** Builds the transport principal represented by a Bureau run's owner record. */
@@ -44,4 +48,23 @@ export function mayRunAccess(
   if (options.allowOperatorScope === false) return owner !== undefined && owner === resourceOwner;
   const principal = createRunPrincipal(owner);
   return mayAccessOwnedResource({ principal, resourceOwner, operatorScope: operationScope });
+}
+
+/** Run tools use current directory roles; the agent's tool catalog remains the action grant. */
+export async function mayRunUseSharedConfiguration(
+  workspace: WorkspaceRuntimeAuthority | undefined,
+  owner: string | undefined,
+  operationScope: BureauScope,
+  administrator: boolean,
+  resourceOwner?: string,
+  options: RunAccessOptions = {},
+): Promise<boolean> {
+  if (workspace === undefined) return mayRunAccess(owner, operationScope, resourceOwner, options);
+  if (owner === undefined) return false;
+  const membership = await resolveWorkspaceOwner(workspace, owner);
+  return (
+    membership !== undefined &&
+    membership.actorKind !== 'service' &&
+    (!administrator || membership.capabilities.includes('workspace:manage'))
+  );
 }

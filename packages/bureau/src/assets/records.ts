@@ -276,12 +276,21 @@ export function accessOf(
  * The persisted resource authorization every operation and both projections
  * enforce. A principal it does not reach is told the asset does not exist.
  */
-export function authorize(
+export async function authorize(
   record: AssetRecord | undefined,
   assetId: string,
   principal: AssetPrincipal,
-): AssetRecord {
+): Promise<AssetRecord> {
   if (!record || accessOf(record, principal) === undefined) throw new AssetNotFoundError(assetId);
+  if (record.ownerId !== principal.id && principal.workspaceAuthority !== undefined) {
+    let allowed = false;
+    try {
+      allowed = await principal.workspaceAuthority(record.ownerId);
+    } catch {
+      allowed = false;
+    }
+    if (!allowed) throw new AssetNotFoundError(assetId);
+  }
   return record;
 }
 
@@ -296,13 +305,13 @@ export function authorizeOwner(
 }
 
 /** Authorization first, then the privileged capability — never instead of authorization. */
-export function authorizePrivileged(
+export async function authorizePrivileged(
   record: AssetRecord | undefined,
   assetId: string,
   principal: AssetPrincipal,
   operation: string,
-): AssetRecord {
-  const authorized = authorize(record, assetId, principal);
+): Promise<AssetRecord> {
+  const authorized = await authorize(record, assetId, principal);
   if (principal.privileged !== true) throw new AssetAccessDeniedError(assetId, operation);
   return authorized;
 }
