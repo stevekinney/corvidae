@@ -3097,10 +3097,10 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
     await terminator.cancel(id);
 
-    expect((await terminator.get(id))?.status).toBe('cancelled');
-    expect(
-      (await terminator.getEvents(id)).filter((event) => event.type.startsWith('file-workflow:')),
-    ).toEqual([]);
+    const cancelledState = await terminator.get(id);
+    const recordedEvents = await terminator.getEvents(id);
+    expect(cancelledState?.status).toBe('cancelled');
+    expect(recordedEvents.filter((event) => event.type.startsWith('file-workflow:'))).toEqual([]);
   });
 
   it('fences terminal history when the persisted generation is absent on both reads', async () => {
@@ -3114,11 +3114,11 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
     await terminator.cancel(id);
 
-    expect((await terminator.get(id))?.status).toBe('cancelled');
+    const cancelledState = await terminator.get(id);
+    const recordedEvents = await terminator.getEvents(id);
+    expect(cancelledState?.status).toBe('cancelled');
     expect(
-      (await terminator.getEvents(id)).filter(
-        (event) => event.type === 'file-workflow:run-terminal',
-      ),
+      recordedEvents.filter((event) => event.type === 'file-workflow:run-terminal'),
     ).toHaveLength(1);
   });
 

@@ -485,7 +485,6 @@ function workflowPurgePrefixes(workflowId: string): string[] {
     `sigres:v1:${encodedWorkflowId}:`,
   ];
 }
-
 function appendKeyDeleteOperations(
   deleteOperations: BatchOperation[],
   deleteKeys: Iterable<string>,
