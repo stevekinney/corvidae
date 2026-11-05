@@ -47,6 +47,7 @@
     saved: 'Saved just now',
     restart: 'Applies after restart',
     'saved-restart': 'Saved, waiting for a restart',
+    reverted: 'Reverted · in effect now',
   };
 </script>
 
@@ -69,7 +70,7 @@
           <CircleCheck size={14} aria-hidden="true" class="cinder-setting-row__glyph" />
         {:else if status === 'restart'}
           <RotateCw size={14} aria-hidden="true" class="cinder-setting-row__glyph" />
-        {:else}
+        {:else if status === 'saved-restart'}
           <span class="cinder-setting-row__dot" aria-hidden="true"></span>
         {/if}
         {statusLabel ?? STATUS_WORDS[status]}

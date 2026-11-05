@@ -9,8 +9,10 @@ import type { FormFieldManaged } from '../form-field/form-field.types.ts';
  * - `restart`: the static property of a setting that only applies after a restart, before it is
  *   changed ("Applies after restart", with a restart glyph).
  * - `saved-restart`: saved but not yet in effect ("Saved, waiting for a restart", with an amber dot).
+ * - `reverted`: a saved change that waited for a restart was put back to the value in effect
+ *   ("Reverted · in effect now", muted, with no glyph).
  */
-export type SettingRowStatus = 'saving' | 'saved' | 'restart' | 'saved-restart';
+export type SettingRowStatus = 'saving' | 'saved' | 'restart' | 'saved-restart' | 'reverted';
 
 export type SettingRowProps = {
   /**
@@ -30,10 +32,10 @@ export type SettingRowProps = {
    */
   identifier?: string;
   /**
-   * Where the setting's own save has got to: `saving`, `saved`, `restart` or `saved-restart`. It
-   * draws a status line under the description, in a polite live region that is always mounted, so
-   * a change from Saving to Saved is announced. Leave it unset for a setting at rest. Pair it with
-   * `error` for the failures: an invalid value or a save that did not go through.
+   * Where the setting's own save has got to: `saving`, `saved`, `restart`, `saved-restart` or
+   * `reverted`. It draws a status line under the description, in a polite live region that is
+   * always mounted, so a change from Saving to Saved is announced. Leave it unset for a setting at
+   * rest. Pair it with `error` for the failures: an invalid value or a save that did not go through.
    */
   status?: SettingRowStatus;
   /** Replaces the words of the status line, such as "Saved 2 minutes ago" for `saved`. The glyph and tone still follow `status`. */

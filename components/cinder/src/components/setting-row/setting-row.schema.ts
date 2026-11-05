@@ -19,9 +19,9 @@ const schema = {
         'The raw key behind the label, drawn small and monospaced beside it ("engine.maxConcurrentRuns").\nIt sits outside the `<label>`, so it never becomes part of the control\'s accessible name.',
     },
     status: {
-      enum: ['saving', 'saved', 'restart', 'saved-restart'],
+      enum: ['saving', 'saved', 'restart', 'saved-restart', 'reverted'],
       description:
-        "Where the setting's own save has got to: `saving`, `saved`, `restart` or `saved-restart`. It\ndraws a status line under the description, in a polite live region that is always mounted, so\na change from Saving to Saved is announced. Leave it unset for a setting at rest. Pair it with\n`error` for the failures: an invalid value or a save that did not go through.",
+        "Where the setting's own save has got to: `saving`, `saved`, `restart`, `saved-restart` or\n`reverted`. It draws a status line under the description, in a polite live region that is\nalways mounted, so a change from Saving to Saved is announced. Leave it unset for a setting at\nrest. Pair it with `error` for the failures: an invalid value or a save that did not go through.",
     },
     statusLabel: {
       type: 'string',

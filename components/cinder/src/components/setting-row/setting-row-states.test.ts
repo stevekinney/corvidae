@@ -55,6 +55,18 @@ describe('SettingRow status (rows 47i, 47j, 47l)', () => {
     expect(line.querySelector('svg')).toBeNull();
   });
 
+  test('reverted reads "Reverted · in effect now" with no glyph or dot', () => {
+    const { container } = render(Fixture, { props: { status: 'reverted' } });
+    const line = requiredInstance(
+      container.querySelector('.cinder-setting-row__status-line'),
+      HTMLElement,
+    );
+    expect(line.textContent?.trim()).toBe('Reverted · in effect now');
+    expect(line.getAttribute('data-cinder-status')).toBe('reverted');
+    expect(line.querySelector('svg')).toBeNull();
+    expect(line.querySelector('.cinder-setting-row__dot')).toBeNull();
+  });
+
   test('statusLabel replaces the words and keeps the glyph and tone', () => {
     const { container } = render(Fixture, {
       props: { status: 'saved', statusLabel: 'Saved 2 minutes ago' },
@@ -191,6 +203,28 @@ describe('SettingRow label, key, error and lock (rows 47k, 47l, 47m, 47n)', () =
     );
     // As the rules are written: the control (2), the description (1), status and managed (3), the error (4).
     expect(orders).toEqual([2, 1, 3, 4]);
+  });
+
+  test('the row grid outranks the form field’s flex column, whichever stylesheet loads last', async () => {
+    const css = await Bun.file(new URL('./setting-row.css', import.meta.url)).text();
+    // `.cinder-form-field { display: flex }` has one class; the row's layout rules need two, or a
+    // bundle that loads form-field.css after this file draws every row as one column.
+    const rules = css.replaceAll(/\/\*[\s\S]*?\*\//g, '');
+    const layouts = [...rules.matchAll(/([^{}]+)\{[^{}]*display: (?:grid|flex);/g)]
+      .map((match) => match[1]?.trim() ?? '')
+      .filter((selector) => selector.endsWith('cinder-setting-row__field'));
+    expect(layouts).toEqual([
+      '.cinder-form-field.cinder-setting-row__field',
+      '.cinder-form-field.cinder-setting-row__field',
+    ]);
+  });
+
+  test('the control keeps a size it sets itself, so a switch is never drawn zero wide', async () => {
+    const css = await Bun.file(new URL('./setting-row.css', import.meta.url)).text();
+    const control =
+      /\.cinder-setting-row__field\s*>\s*:not\([^)]*\)\s*\{([^}]*)\}/s.exec(css)?.[1] ?? '';
+    expect(control).toContain('justify-self: end');
+    expect(control).not.toMatch(/(^|[^-])inline-size:/m);
   });
 
   test('Retry is an accent link, not the error red (row 47k)', async () => {
