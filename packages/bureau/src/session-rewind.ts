@@ -9,6 +9,9 @@
  * caller names also loses its "Allow for the rest of this chat" grant, so the call that was
  * interrupted goes back through its approval when the turn is run again.
  *
+ * The pending-approval rule here is the one the AG-UI mount decides a thread is busy with, so a
+ * start and a rewind never disagree about whether a run holds the thread.
+ *
  * @module session-rewind
  */
 

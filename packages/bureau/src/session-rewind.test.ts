@@ -67,8 +67,10 @@ describe('rewoundSession', () => {
 });
 
 describe('holdsPendingApproval', () => {
-  const metadata = (expiresAt: unknown) => ({
-    pendingApprovalOverrides: { 'approval:run-1:call-1': { approvalBinding: { expiresAt } } },
+  const metadata = (expiresAt: number | undefined) => ({
+    pendingApprovalOverrides: {
+      'approval:run-1:call-1': { approvalBinding: expiresAt === undefined ? {} : { expiresAt } },
+    },
   });
 
   it('holds an approval of the run that has not expired, or that carries no expiry', () => {

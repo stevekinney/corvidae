@@ -54,7 +54,7 @@ describe('bureau.contexts.rewind', () => {
       const run = await finishedSession(opened);
       const before = await rowIds(opened, run.contextId);
       expect(before.length).toBeGreaterThan(1);
-      const [first, ...rest] = before;
+      const first = before[0]!;
 
       const body = await rewind(opened, run.contextId, 'alice-key', {
         fromMessageId: before[1],
@@ -63,9 +63,8 @@ describe('bureau.contexts.rewind', () => {
       expect(body.error).toBeUndefined();
       expect(body.result).toEqual({ removed: before.slice(1), forgotten: [] });
       expect(await rowIds(opened, run.contextId)).toEqual([first]);
-      expect(rest.length).toBeGreaterThan(0);
       const read = await opened.bureau.contexts.get(run.contextId);
-      expect(Object.keys(read?.conversationHistory.messages ?? {})).toEqual([first!]);
+      expect(Object.keys(read?.conversationHistory.messages ?? {})).toEqual([first]);
     });
   });
 

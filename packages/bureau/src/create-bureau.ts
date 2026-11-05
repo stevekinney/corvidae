@@ -16063,22 +16063,26 @@ async function constructBureau<const D extends AgentDefinitions>(
     });
     // `requested` is a command a step boundary holds. The boundary honors a cancellation that
     // landed before its last check by rejecting the command, so it is never appended; one that
-    // landed after is closed once the turn commits, and the run has the input. Which one it is
-    // shows in whether the command settles promptly: a rejection does, an appended turn does not.
-    let settled = cancellation.status !== 'requested';
-    if (!settled) {
-      const cleanup = await sessionMailbox
+    // landed after is closed once the turn commits, and the run has the input. The wait lets the
+    // boundary settle the first kind, and the receipt, never the wait, says which it was: a turn
+    // that appended the input is `promoted`, one the boundary rejected has ended undelivered, and a
+    // command still open when the wait runs out is held by a step that is appending it.
+    if (cancellation.status === 'requested') {
+      await sessionMailbox
         .awaitCleanup({
           commandId,
           timeoutMs: SESSION_INPUT_RETRACT_SETTLE_MILLISECONDS,
           pollIntervalMs: 10,
         })
         .catch(() => undefined);
-      settled = cleanup?.status === 'settled';
     }
     const receipt = await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId);
-    if (receipt.state === 'promoted' || !settled) return { outcome: 'delivered', receipt };
-    return { outcome: 'retracted', receipt };
+    const endedUndelivered =
+      receipt.state === 'canceled' || receipt.state === 'failed' || receipt.state === 'expired';
+    const heldByStep = cancellation.status === 'requested' && !endedUndelivered;
+    return receipt.state === 'promoted' || heldByStep
+      ? { outcome: 'delivered', receipt }
+      : { outcome: 'retracted', receipt };
   }
 
   /**
