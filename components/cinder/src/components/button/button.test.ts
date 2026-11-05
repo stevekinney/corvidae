@@ -44,6 +44,16 @@ describe('Button rendering', () => {
     );
   });
 
+  test('supports the ghost-accent variant', () => {
+    const { container } = render(Button, {
+      props: { label: 'Undo', variant: 'ghost-accent' },
+    });
+
+    expect(container.querySelector('button')?.getAttribute('data-cinder-variant')).toBe(
+      'ghost-accent',
+    );
+  });
+
   test('loading button is aria-disabled and aria-busy, and stays focusable (no native disabled)', () => {
     const { container } = render(Button, { props: { label: 'sending', loading: true } });
     const button = container.querySelector('button');

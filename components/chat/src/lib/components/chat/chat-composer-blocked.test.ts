@@ -41,6 +41,17 @@ describe('a blocked composer', () => {
     expect(message.contains(actions)).toBe(false);
   });
 
+  test('on a phone-width composer the actions fill a line of their own, as touch targets', async () => {
+    const source = await Bun.file(new URL('./input/chat-input.svelte', import.meta.url)).text();
+    const narrow = /@container \(max-inline-size: 28rem\) \{([\s\S]*?)\n  \}\n/u.exec(
+      source.slice(source.indexOf('.chat-input-blocked-actions {')),
+    )?.[1];
+
+    expect(narrow).toContain('flex: 1 0 100%;');
+    expect(narrow).not.toContain('justify-content: flex-end');
+    expect(narrow).toMatch(/\.cinder-button\) \{[^}]*flex: 1 1 auto;[^}]*min-block-size/u);
+  });
+
   test('draws one row with the reason, and no text box, controls or Send', () => {
     const { container } = render(ChatInput, {
       id: 'blocked',

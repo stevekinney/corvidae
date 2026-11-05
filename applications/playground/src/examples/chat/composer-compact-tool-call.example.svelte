@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Compact composer: a tool call under way';
   export const description =
-    'Try it while an answer streams: the tool call shows as the line “Using Lookup order…” under the person’s message, beside the partial reply “Category: damaged item, urgency”, and the field is disabled with Stop in the place of Send.';
+    'Try it while an answer streams: the tool call shows as the line “Using Lookup order…” under the person’s message, above the partial reply “Category: damaged item, urgency” and its caret, with no line of time or Copy under the reply yet, and the field is disabled with Stop in the place of Send.';
 </script>
 
 <script lang="ts">
@@ -24,23 +24,25 @@
         ? { verb: 'Using', detail: `${call.name}…`, tense: 'present' }
         : { verb: 'Used', detail: call.name, tense: 'past' },
   };
-  const opened = appendStreamingMessage(
+  // The agent looked the order up first, and is now writing its reply: the call has no answer yet,
+  // and the reply is the streaming row at the end, so it draws the caret and no line of time.
+  const called = appendToolCall(
     appendUserMessage(
       createConversation({ id: 'composer-compact-tool-call' }),
       'My order 4471 arrived broken.',
     ),
-    'assistant',
+    {
+      id: 'call-1',
+      name: 'Lookup order',
+      arguments: { orderId: '4471' },
+    },
   );
-  const streaming = updateStreamingMessage(
+  const opened = appendStreamingMessage(called, 'assistant');
+  const conversation = updateStreamingMessage(
     opened.conversation,
     opened.messageId,
     'Category: damaged item, urgency',
   );
-  const conversation = appendToolCall(streaming, {
-    id: 'call-1',
-    name: 'Lookup order',
-    arguments: { orderId: '4471' },
-  });
 </script>
 
 <div style="block-size: 20rem; max-inline-size: 26rem;">

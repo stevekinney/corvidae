@@ -165,6 +165,15 @@ describe('the question card on a run waiting for you', () => {
     expect(view.container.querySelector('.chat-question-status')?.textContent).toContain(
       'Request human input continues once a provider is connected.',
     );
+    // The sentence and the provider note come first; Undo is an accent action at the end (RunDetail C2).
+    const line = view.container.querySelector('.chat-question-status');
+    expect(line?.lastElementChild).toBe(view.getByRole('button', { name: 'Undo' }));
+    expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Answer sent: Production. Undo for 5 s. Request human input continues once a provider is connected. Undo',
+    );
+    expect(view.getByRole('button', { name: 'Undo' }).getAttribute('data-cinder-variant')).toBe(
+      'ghost-accent',
+    );
     expect(view.container.querySelector('[data-run-header]')?.textContent).toContain(
       'answer sent, undo for 5 s',
     );

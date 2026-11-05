@@ -108,6 +108,14 @@ describe('Button icon-only ghost CSS contract', () => {
     );
     expectDeclaration(ghostDangerBlock, 'background', 'transparent');
     expectDeclaration(ghostDangerBlock, 'border-color', 'transparent');
+
+    const ghostAccentBlock = readCssRuleBlock(
+      source,
+      ".cinder-button[data-cinder-variant='ghost-accent']",
+    );
+    expectDeclaration(ghostAccentBlock, 'background', 'transparent');
+    expectDeclaration(ghostAccentBlock, 'border-color', 'transparent');
+    expectDeclaration(ghostAccentBlock, 'color', 'var(--cinder-accent-text)');
   });
 
   test('icon-only ghost variants declare resting chrome', () => {

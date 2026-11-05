@@ -1861,15 +1861,15 @@
     margin-inline-start: auto;
   }
 
-  /* On a phone-width composer the actions drop to a line of their own, at the right, and are touch
-   * targets, instead of overlapping the reason. */
+  /* On a phone-width composer the actions drop to a line of their own and fill it, from the left
+   * edge to the right, as touch targets (rows 05a, 06m, 24x), instead of overlapping the reason. */
   @container (max-inline-size: 28rem) {
     .chat-input-blocked-actions {
       flex: 1 0 100%;
-      justify-content: flex-end;
     }
 
     .chat-input-blocked-actions :global(.cinder-button) {
+      flex: 1 1 auto;
       min-block-size: var(--cinder-touch-target-min);
     }
   }

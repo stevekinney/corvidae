@@ -80,6 +80,9 @@ describe('a one-click answer is held for a short Undo window', () => {
     );
     // One line, and one Undo: the line is the only place the answer can be taken back.
     expect(screen.getAllByRole('button', { name: /Undo/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Undo/ }).getAttribute('data-cinder-variant')).toBe(
+      'ghost-accent',
+    );
   });
 
   test('the count runs down and, at the end, the answer is sent once and reads "You answered: Staging"', async () => {
@@ -256,7 +259,12 @@ describe('a one-click answer is held for a short Undo window', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: 'Production' }));
     expect(status(container)?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Answer sent: Production. Undo Request human input continues once a provider is connected.',
+      'Answer sent: Production. Request human input continues once a provider is connected. Undo',
+    );
+    // The sentence comes first and Undo ends the line, as an accent text action (ChatPage k).
+    expect(status(container)?.lastElementChild).toBe(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByRole('button', { name: 'Undo' }).getAttribute('data-cinder-variant')).toBe(
+      'ghost-accent',
     );
   });
 

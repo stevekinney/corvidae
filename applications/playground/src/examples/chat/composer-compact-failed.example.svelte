@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Alert, Button } from '@lostgradient/cinder';
+  import { Alert, Button, RotateCcw } from '@lostgradient/cinder';
   import {
     appendUserMessage,
     Chat,
@@ -33,12 +33,16 @@
     capabilities={{ attachments: false, editing: false, quote: false }}
   >
     {#snippet trailing()}
-      <Alert variant="danger">
-        <p style="margin: 0; font-weight: 600;">Couldn’t get an answer</p>
-        <p style="margin: 0;">
-          The provider answered with an error (429, too many requests). Nothing was saved.
-        </p>
-        <Button type="button" size="sm" variant="secondary" label="Try again" />
+      <Alert variant="danger" heading="Couldn’t get an answer">
+        The provider answered with an error (429, too many requests). Nothing was saved.
+        {#snippet actions()}
+          <Button type="button" size="sm" variant="secondary" label="Try again">
+            {#snippet leadingIcon()}<RotateCcw
+                class="cinder-icon-sm"
+                aria-hidden="true"
+              />{/snippet}
+          </Button>
+        {/snippet}
       </Alert>
     {/snippet}
   </Chat>

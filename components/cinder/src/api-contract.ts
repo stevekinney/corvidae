@@ -113,10 +113,12 @@ export const CONTRACT: Record<string, ComponentContract> = {
       dismissible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       onDismiss: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
+      heading: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
     },
     snippets: {
       children: s0(false),
       icon: s0(true),
+      actions: s0(true),
     },
   },
 

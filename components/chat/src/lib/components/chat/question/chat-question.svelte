@@ -668,12 +668,12 @@
     <div class="chat-question-status" data-state="held">
       <Check class="cinder-icon-sm" aria-hidden="true" />
       <span class="chat-question-status-text">{copy.held(hold.label, hold.seconds)}</span>
-      <Button type="button" variant="ghost" size="xs" onclick={undo}>
-        {copy.undo(hold.seconds)}
-      </Button>
       {#if holdCopy?.note !== undefined}
         <span class="chat-question-status-text">{holdCopy.note}</span>
       {/if}
+      <Button type="button" variant="ghost-accent" size="xs" onclick={undo}>
+        {copy.undo(hold.seconds)}
+      </Button>
     </div>
   {:else if hold.phase === 'sent'}
     <div class="chat-question-status" data-state="sent">
@@ -716,9 +716,18 @@
     color: var(--cinder-text-default);
   }
 
+  /* The choices of a held or sent answer stand still but keep their contrast: the board draws the
+   * one that was not picked as the ordinary choice it was (surface, border and text of an enabled
+   * secondary button), not in Cinder's faded disabled look. */
   .chat-question-choices :global(.chat-question-choice[aria-disabled='true']) {
     cursor: default;
-    opacity: 0.7;
+    opacity: 1;
+  }
+
+  .chat-question-choices :global(.chat-question-choice[aria-disabled='true']:not([data-selected])) {
+    background: var(--cinder-button-background);
+    color: var(--cinder-button-foreground);
+    border-color: var(--cinder-button-border);
   }
 
   .chat-question-choice-text {

@@ -33,8 +33,10 @@ type SnapshotAlertProps = Omit<
   dismissible?: boolean;
   onDismiss?: () => void;
   class?: string;
+  heading?: string;
   children: Snippet;
   icon?: Snippet;
+  actions?: Snippet;
 };
 
 // --- Bidirectional-assignability helper ----------------------------------------------

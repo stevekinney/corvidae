@@ -530,7 +530,7 @@
           type="button"
           class="chat-message-remove-queued"
           size="xs"
-          variant="ghost"
+          variant="ghost-accent"
           onclick={() => onRemoveQueued(message.id)}
         >
           Remove
@@ -725,7 +725,8 @@
   </article>
 
   {#if transcript}
-    {#if !isEditing && !systemRow}
+    <!-- A reply that is still streaming has no line under it yet: no time, Copy or Quote until it ends. -->
+    {#if !isEditing && !systemRow && !streaming}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
@@ -1554,8 +1555,7 @@
   }
 
   /* Actions are words in this line, not icon buttons in a hover footer. */
-  .chat-message-line :global(.chat-message-action-button),
-  .chat-message-line :global(.chat-message-remove-queued) {
+  .chat-message-line :global(.chat-message-action-button) {
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
@@ -1569,17 +1569,9 @@
     cursor: pointer;
   }
 
-  .chat-message-line :global(.chat-message-action-button:hover),
-  .chat-message-line :global(.chat-message-remove-queued:hover) {
+  .chat-message-line :global(.chat-message-action-button:hover) {
     color: var(--cinder-text-default);
     text-decoration: underline;
-  }
-
-  /* Remove on a queued follow-up is a link in the accent colour, the one thing on the bubble's line
-   * the person can do (ChatPage frame s), not a muted action word. */
-  .chat-message-line :global(.chat-message-remove-queued),
-  .chat-message-line :global(.chat-message-remove-queued:hover) {
-    color: var(--cinder-accent-text);
   }
 
   .chat-message-line :global(.chat-message-action-button:disabled) {
@@ -1589,7 +1581,6 @@
   }
 
   .chat-message-line :global(.chat-message-action-button:focus-visible),
-  .chat-message-line :global(.chat-message-remove-queued:focus-visible),
   .chat-message-not-sent-icon:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
@@ -1671,13 +1662,21 @@
     inline-size: 100%;
   }
 
-  /* A streaming reply ends in a caret, not three dots. */
-  .chat-message-wrapper[data-presentation='transcript'] :global(.chat-message-streaming-dot) {
+  /* A streaming reply ends in a caret, not three dots, and the caret sits at the end of the last
+   * line of text, never on a line of its own: it is drawn after the last block of the rendered
+   * Markdown, or after the raw tail that has not been rendered yet. */
+  .chat-message-wrapper[data-presentation='transcript'] :global(.chat-message-streaming-progress) {
     display: none;
   }
 
   .chat-message-wrapper[data-presentation='transcript']
-    :global(.chat-message-streaming-progress)::after {
+    :global(
+      .message-content-streaming:not([data-streaming-tail])
+        .message-content-preview
+        > :last-child::after
+    ),
+  .chat-message-wrapper[data-presentation='transcript']
+    :global(.message-content-streaming[data-streaming-tail] .message-content-tail::after) {
     content: '';
     display: inline-block;
     inline-size: 0.5em;
@@ -1696,7 +1695,13 @@
 
   @media (prefers-reduced-motion: reduce) {
     .chat-message-wrapper[data-presentation='transcript']
-      :global(.chat-message-streaming-progress)::after {
+      :global(
+        .message-content-streaming:not([data-streaming-tail])
+          .message-content-preview
+          > :last-child::after
+      ),
+    .chat-message-wrapper[data-presentation='transcript']
+      :global(.message-content-streaming[data-streaming-tail] .message-content-tail::after) {
       animation: none;
     }
   }

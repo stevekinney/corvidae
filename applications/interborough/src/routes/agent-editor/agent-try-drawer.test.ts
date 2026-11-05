@@ -391,8 +391,14 @@ describe('Try it', () => {
       );
       await startChat(view, 'My order 4471 arrived broken.');
 
-      await view.findByText(/Using/);
-      expect(view.container.textContent).toMatch(/Using\s*Lookup order…/);
+      // The group's line is the call in the present tense, and its row says the same inside.
+      await view.findAllByText(/Using/);
+      expect(
+        view.container
+          .querySelector('.chat-tool-call-heading')
+          ?.textContent?.replace(/\s+/g, ' ')
+          .trim(),
+      ).toBe('Using Lookup order…');
       expect(view.container.textContent).toContain('Category: damaged');
       expect(view.getByText(copy.try.hint)).not.toBeNull();
     });
@@ -417,6 +423,18 @@ describe('Try it', () => {
         block.querySelector('[role="alert"], [data-cinder-variant="danger"], .cinder-alert'),
       ).not.toBeNull();
       expect(within(block).getByRole('button', { name: copy.try.tryAgain })).not.toBeNull();
+      // The board's shape: a glyph, a heading in the severity colour, the body in the default text
+      // colour, and Try again at the right, in the alert's own actions slot.
+      expect(block.querySelector('.cinder-alert__icon svg')).not.toBeNull();
+      expect(block.querySelector('.cinder-alert__heading')?.textContent).toBe(
+        copy.try.failureTitle,
+      );
+      expect(block.querySelector('.cinder-alert__body')?.textContent).toContain('429');
+      expect(
+        block
+          .querySelector('.cinder-alert__actions')
+          ?.contains(within(block).getByRole('button', { name: copy.try.tryAgain })),
+      ).toBe(true);
     });
   });
 });

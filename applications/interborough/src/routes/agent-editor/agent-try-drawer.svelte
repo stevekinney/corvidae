@@ -18,7 +18,7 @@
    */
   import { onDestroy } from 'svelte';
 
-  import { Alert, Button, Drawer } from '@lostgradient/cinder';
+  import { Alert, Button, Drawer, RotateCcw } from '@lostgradient/cinder';
   import {
     Chat,
     ChatQuestion,
@@ -227,18 +227,25 @@
           {#snippet trailing()}
             {#if chat.failure !== undefined && !chat.streaming}
               <div class="weft-agent-try__failure" data-testid="agent-try-answer-failure">
-                <Alert variant="danger">
-                  <p class="weft-agent-try__alert-title">{copy.failureTitle}</p>
-                  <p class="weft-agent-try__alert-body">{chat.failure} {copy.nothingSaved}</p>
-                  <Button
-                    data-changes
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    label={copy.tryAgain}
-                    disabled={!chat.canRetryTurn}
-                    onclick={() => void chat.retryTurn()}
-                  />
+                <Alert variant="danger" heading={copy.failureTitle}>
+                  {chat.failure}
+                  {copy.nothingSaved}
+                  {#snippet actions()}
+                    <Button
+                      data-changes
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      label={copy.tryAgain}
+                      disabled={!chat.canRetryTurn}
+                      onclick={() => void chat.retryTurn()}
+                    >
+                      {#snippet leadingIcon()}<RotateCcw
+                          class="cinder-icon-sm"
+                          aria-hidden="true"
+                        />{/snippet}
+                    </Button>
+                  {/snippet}
                 </Alert>
               </div>
             {/if}

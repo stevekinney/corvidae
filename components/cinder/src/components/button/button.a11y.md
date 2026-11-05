@@ -75,5 +75,6 @@ A button that is a toggle carries `aria-pressed="true"` or `"false"` and keeps t
 - `danger`: high-emphasis destructive action.
 - `ghost`: low-emphasis, transparent background.
 - `ghost-danger`: low-emphasis destructive action.
+- `ghost-accent`: low-emphasis action drawn as accent-coloured text, for an action inside a line of text (Undo, Remove) that is the one thing the line offers. Its label takes the accent text colour, which clears 4.5:1 on the surfaces it sits on.
 
 Icon-only `ghost` and `ghost-danger` buttons keep a subtle resting border/background because there is no visible text label to provide the clickable affordance.

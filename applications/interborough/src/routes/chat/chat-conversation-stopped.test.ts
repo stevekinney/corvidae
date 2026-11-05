@@ -99,7 +99,13 @@ const REFUND_THEN_LOOKUP_THREAD: Served['thread'] = [
 type Served = {
   calls: { method: string; params: Record<string, unknown> }[];
   readonly started: string[];
-  thread: { id: string; role: string; content: string; toolCalls?: unknown[] }[];
+  thread: {
+    id: string;
+    role: string;
+    content: string;
+    toolCalls?: unknown[];
+    toolCallId?: string;
+  }[];
 };
 
 /**

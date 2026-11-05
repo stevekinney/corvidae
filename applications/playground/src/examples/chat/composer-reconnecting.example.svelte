@@ -6,11 +6,12 @@
 
 <script lang="ts">
   import {
-    appendAssistantMessage,
+    appendStreamingMessage,
     appendUserMessage,
     Chat,
     ChatComposerSettings,
     createConversation,
+    updateStreamingMessage,
     type ChatAdapter,
   } from '@lostgradient/chat';
   import { Meter, Select } from '@lostgradient/cinder';
@@ -48,11 +49,19 @@
     stopGenerating: async () => undefined,
   };
 
-  const conversation = appendAssistantMessage(
+  // The reply is a row that was still streaming when the stream dropped. Nothing is streaming into
+  // the transcript now (`streaming` is off, as the page leaves it while it reconnects), so the text
+  // stays at full contrast and draws no caret.
+  const opened = appendStreamingMessage(
     appendUserMessage(
       createConversation({ id: 'composer-reconnecting' }),
       'Please refund order 4471, it arrived damaged.',
     ),
+    'assistant',
+  );
+  const conversation = updateStreamingMessage(
+    opened.conversation,
+    opened.messageId,
     'Order 4471 is $42.00, delivered Monday. I can refund the full amount to the original card.',
   );
 </script>
@@ -62,6 +71,7 @@
     id="composer-reconnecting"
     {conversation}
     surfaceMode="transparent"
+    variant="transcript"
     composerPlaceholder="Message Tool runner…"
     {adapter}
     composerStatus={{ kind: 'reconnecting', attempt: 3 }}

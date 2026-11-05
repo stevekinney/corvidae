@@ -143,14 +143,31 @@ describe('transcript presentation', () => {
     expect(remove).toHaveBeenCalledWith('m1');
   });
 
-  test('Remove on a queued follow-up is the accent link of the board, at rest and on hover', async () => {
-    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
-    const rule =
-      /\.chat-message-line :global\(\.chat-message-remove-queued\),\s*\.chat-message-line :global\(\.chat-message-remove-queued:hover\) \{([^}]*)\}/u.exec(
-        source,
-      )?.[1];
+  test('Remove on a queued follow-up is Cinder’s accent text action, the one thing on the bubble’s line the person can do', () => {
+    const { getByRole } = mount({
+      message: message({ metadata: { _deliveryStatus: 'sending' } }),
+      onRemoveQueued: () => undefined,
+    });
 
-    expect(rule).toContain('color: var(--cinder-accent-text)');
+    expect(getByRole('button', { name: 'Remove' }).getAttribute('data-cinder-variant')).toBe(
+      'ghost-accent',
+    );
+  });
+
+  test('a reply that is still streaming has no line under it, and ends in a caret drawn after its last text', async () => {
+    const { container } = mount({
+      message: message({ role: 'assistant', content: 'Looking up order 4398…' }),
+      streaming: true,
+    });
+    expect(container.querySelector('.chat-message-line')).toBeNull();
+    expect(container.querySelector('time')).toBeNull();
+
+    // The caret is a pseudo-element on the last block of text (or the raw tail), so it shares that
+    // line instead of wrapping onto a line of its own.
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    expect(source).toMatch(/\.message-content-preview\s+> :last-child::after/u);
+    expect(source).toContain('.message-content-tail::after');
+    expect(source).not.toMatch(/chat-message-streaming-progress\)::after/u);
   });
 
   test('a run’s notes are outside the bubble, and a failed run’s stop note takes the host action', () => {
