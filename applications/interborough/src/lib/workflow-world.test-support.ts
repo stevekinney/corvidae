@@ -97,6 +97,7 @@ export type RunFixture = {
   status: string;
   createdAt: number;
   updatedAt: number;
+  origin?: Record<string, unknown> | null;
 };
 
 export type RevisionFixture = {
@@ -620,6 +621,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
           status: run.status,
           createdAt: new Date(run.createdAt).toISOString(),
           updatedAt: new Date(run.updatedAt).toISOString(),
+          ...(run.origin === undefined ? {} : { origin: run.origin }),
         }));
       return { runs, nextOffset: null };
     },

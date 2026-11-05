@@ -276,6 +276,20 @@ describe('instances in flight across a restart', () => {
 });
 
 describe('history', () => {
+  it('projects the real file-workflow event union without raw payloads', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'history'));
+    const { engine, runtime } = await w.boot();
+    await engine.start('digest', null, { id: 'history-run' });
+    await parkedOnSignal(engine, 'history-run');
+
+    const history = await runtime.workflows.historyRuns('history-run', 500);
+    expect(history?.events.length).toBeGreaterThan(0);
+    expect(history?.events.every((event) => event.type.startsWith('file-workflow:'))).toBe(true);
+    expect(history?.events.every((event) => !Object.hasOwn(event, 'data'))).toBe(true);
+    expect(history?.events.map((event) => event.type)).toContain('file-workflow:step-started');
+  });
+
   it('lists the revisions that have run, newest first, and a revision that never ran is not listed', async () => {
     const w = await world();
     await w.put('digest', parked('digest', 'a'));
@@ -926,6 +940,29 @@ describe('a contributed trigger that fires while the Bureau closes (COR-1874)', 
 });
 
 describe('the version a manual start reports (COR-1927)', () => {
+  it('filters ownership before reading origin state and preserves the page order', async () => {
+    const w = await world();
+    await w.put('lookup', parked('lookup', 'ask'));
+    const { engine, runtime } = await w.boot();
+    await engine.start('lookup', null, { id: 'visible-run' });
+    await engine.start('lookup', null, { id: 'foreign-run' });
+    const reads: string[] = [];
+    const get = engine.get.bind(engine);
+    engine.get = async (id: string) => {
+      reads.push(id);
+      return get(id);
+    };
+
+    const listed = await runtime.workflows.listRuns({
+      limit: 10,
+      offset: 0,
+      mayReadRun: async (id) => id === 'visible-run',
+    });
+
+    expect(listed.runs.map((run) => run.id)).toEqual(['visible-run']);
+    expect(reads).toEqual(['visible-run']);
+  });
+
   it('is the revision the started run is pinned to, not the one the catalog holds', async () => {
     const w = await world();
     await w.put('lookup', parked('lookup', 'ask'));

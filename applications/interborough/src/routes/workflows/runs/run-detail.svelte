@@ -211,15 +211,14 @@
     undefined,
   );
 
-  // A run of a workflow file that the engine behind the console does not hold may still be the
-  // Bureau's (`bureau.workflows.runs.get`): the end-to-end host's engine is a fixture, and answers
-  // the read by the run's identifier with a 404. Asked only once the engine has said it does not
-  // have the run, and only for a run no task describes.
+  // A workflow-file run's durable origin belongs to the Bureau even when the engine also holds the
+  // live workflow. Read it for every run with no task or goal, so the page does not lose agent-run
+  // provenance merely because Weft still has the instance.
   const fileRun = createQuery(
     () => ({
       queryKey: queryKeys.workflows.fileRun(initialRunId),
       queryFn: ({ signal }) => getWorkflowFileRun(initialRunId, { signal }),
-      enabled: engineAllowed && engine.notFound && notFound && attempt === undefined,
+      enabled: engineAllowed && notFound && attempt === undefined,
       retry: false,
     }),
     undefined,
@@ -431,7 +430,7 @@
             answerTruncated={follower.artifact?.truncated === true}
             followState={follower.state}
             {workflow}
-            record={workflow === undefined ? record : undefined}
+            {record}
           />
           <RunActivity
             task={task.data}
@@ -472,6 +471,7 @@
           engine={workflow === undefined ? undefined : engine}
           {workflow}
           recordWorkflow={record?.workflow}
+          workflowOrigin={record?.origin?.kind === 'agent-run' ? record.origin : null}
           startedAt={summary.startedAt}
           updatedAt={summary.updatedAt}
           over={summary.over}

@@ -45,7 +45,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the sixteen workflow operations, with their scopes registered', () => {
+  it('serves the eighteen workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -60,6 +60,8 @@ describe('the operations list', () => {
       'bureau.workflows.impact',
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
+      'bureau.workflows.runs.cancel',
+      'bureau.workflows.runs.history',
       'bureau.workflows.start',
       'bureau.workflows.internal.get',
       'bureau.workflows.signal',
@@ -69,6 +71,68 @@ describe('the operations list', () => {
     for (const operation of bureauWorkflowsOperations) {
       expect(BUREAU_HANDLER_OPERATIONS).toContain(operation);
     }
+  });
+
+  it('keeps run cancellation strict HTTP-only and destructive', () => {
+    const cancel = bureauWorkflowsOperations.find(
+      (operation) => operation.name === 'bureau.workflows.runs.cancel',
+    );
+    expect(cancel).toMatchObject({
+      mcpExposable: false,
+      destructive: true,
+      transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+    });
+  });
+
+  it('allows a writer-only API key to cancel, while read-only and foreign keys cannot', async () => {
+    const served = await serve();
+    await seed(served);
+    const writer = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'workflows-writer-key',
+    );
+    expect(writer.error).toBeUndefined();
+    expect(writer.result).toMatchObject({ runId: 'digest-run', status: 'cancel-requested' });
+
+    const reader = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'workflows-reader-key',
+    );
+    expect(reader.error?.data?.httpStatus).toBe(404);
+
+    const foreign = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'alice-key',
+    );
+    expect(foreign.error?.data?.httpStatus).toBe(404);
+  });
+
+  it('denies an A2A request at the HTTP boundary without trusting a caller-supplied owner', async () => {
+    const served = await serve();
+    await seed(served);
+    const history = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.history',
+      { runId: 'digest-run' },
+      'a2a-key',
+    );
+    expect(history.result).toBeUndefined();
+    expect(history.error?.data?.httpStatus).toBe(404);
+
+    const cancel = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'a2a-key',
+    );
+    expect(cancel.result).toBeUndefined();
+    expect(cancel.error?.data?.httpStatus).toBe(404);
   });
 });
 
@@ -98,6 +162,16 @@ const CALLS: readonly Call[] = [
   },
   { method: 'bureau.workflows.runs.list', params: () => ({}), scope: 'read' },
   { method: 'bureau.workflows.runs.get', params: () => ({ runId: 'digest-run' }), scope: 'read' },
+  {
+    method: 'bureau.workflows.runs.cancel',
+    params: () => ({ runId: 'digest-run' }),
+    scope: 'write',
+  },
+  {
+    method: 'bureau.workflows.runs.history',
+    params: () => ({ runId: 'digest-run' }),
+    scope: 'read',
+  },
   {
     method: 'bureau.workflows.create',
     params: () => ({ id: 'another', definition: DEFINITION }),
@@ -681,6 +755,10 @@ describe('results', () => {
       error: null,
       result: { content: 'written', output: null, finishReason: 'stop-condition' },
     });
+    const cancelled = await ownerRpc(served.owner, 'bureau.workflows.runs.cancel', {
+      runId: 'digest-run',
+    });
+    expect(cancelled.result).toEqual({ runId: 'digest-run', status: 'cancel-requested' });
     const none = await ownerRpc(served.owner, 'bureau.workflows.runs.list', {
       workflow: 'unknown-flow',
     });

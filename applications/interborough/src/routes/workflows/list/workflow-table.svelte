@@ -42,9 +42,11 @@
   import type { WorkflowSummary } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
-  import { router, workflowRunPath } from '../../../lib/router.svelte.ts';
+  import { router, workflowDetailPath, workflowRunPath } from '../../../lib/router.svelte.ts';
   import type { RevisionActiveComparison } from '../../../lib/workflow-revision.ts';
+  import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import RevisionComparisonBadge from '../revision-comparison-badge.svelte';
+  import { STARTED_BY_LABELS } from '../runs/started-by.ts';
   import { workflowStatusBadge } from './workflow-status-badge.ts';
   import WorkflowStatusIcon from './workflow-status-icon.svelte';
 
@@ -65,6 +67,10 @@
     recentlyChangedIds?: ReadonlySet<string>;
     /** How a row's persisted revision compares to its type's active revision (COR-15). Omitted: no comparison badge is shown. */
     revisionComparison?: (type: string, revision: string | undefined) => RevisionActiveComparison;
+    workflowOrigins?: ReadonlyMap<
+      string,
+      Extract<NonNullable<WorkflowFileRun['origin']>, { kind: 'agent-run' }>
+    >;
   }
 
   let {
@@ -73,6 +79,7 @@
     onSelectionChange,
     recentlyChangedIds,
     revisionComparison,
+    workflowOrigins,
   }: WorkflowTableProps = $props();
 
   const selectionEnabled = $derived(selectedIds !== undefined);
@@ -140,6 +147,7 @@
     {#each rows as row (row.id)}
       {@const badge = workflowStatusBadge(row.status)}
       {@const selected = selectedIds?.has(row.id) ?? false}
+      {@const workflowOrigin = workflowOrigins?.get(row.id)}
       <Table.Row
         {...recentlyChangedIds?.has(row.id) ? { class: 'weft-workflows-table__row--recent' } : {}}
         {...selectionEnabled
@@ -158,18 +166,31 @@
         </Table.Cell>
         <Table.Cell as="th">
           <span class="weft-workflows-table__id-cell">
-            <Tooltip text={row.id} placement="top">
-              <a
-                class="weft-workflows-table__id-link"
-                href={router.href(workflowRunPath(row.type, row.id))}
-                onclick={(event) => onIdLinkClick(event, row.type, row.id)}
-              >
-                <code>{truncateId(row.id)}</code>
-              </a>
-            </Tooltip>
-            <CopyButton value={row.id} iconOnly label={`Copy workflow ID ${truncateId(row.id)}`}>
-              <Copy aria-hidden="true" size={13} />
-            </CopyButton>
+            <span class="weft-workflows-table__id-line">
+              <Tooltip text={row.id} placement="top">
+                <a
+                  class="weft-workflows-table__id-link"
+                  href={router.href(workflowRunPath(row.type, row.id))}
+                  onclick={(event) => onIdLinkClick(event, row.type, row.id)}
+                >
+                  <code>{truncateId(row.id)}</code>
+                </a>
+              </Tooltip>
+              <CopyButton value={row.id} iconOnly label={`Copy workflow ID ${truncateId(row.id)}`}>
+                <Copy aria-hidden="true" size={13} />
+              </CopyButton>
+            </span>
+            {#if workflowOrigin !== undefined}
+              <span class="weft-workflows-table__origin">
+                <span>
+                  <span class="weft-workflows-table__origin-label"
+                    >{STARTED_BY_LABELS['agent-run']}</span
+                  >
+                  · {workflowOrigin.agentId}
+                </span>
+                <a href={router.href(workflowDetailPath(workflowOrigin.runId))}>Calling run</a>
+              </span>
+            {/if}
           </span>
         </Table.Cell>
         <Table.Cell>{row.type}</Table.Cell>
@@ -188,9 +209,9 @@
           {/if}
         </Table.Cell>
         <Table.Cell>
-          {#if row.tags && row.tags.length > 0}
+          {#if row.tags && row.tags.filter((tag) => tag !== 'origin:agent-run').length > 0}
             <span class="weft-workflows-table__tags">
-              {#each row.tags as tag (tag)}
+              {#each row.tags.filter((tag) => tag !== 'origin:agent-run') as tag (tag)}
                 <Badge variant="neutral" size="xs">{tag}</Badge>
               {/each}
             </span>
