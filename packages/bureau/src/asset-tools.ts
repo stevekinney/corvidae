@@ -120,7 +120,7 @@ export function createAssetTools(host: AssetToolHost): readonly Tool[] {
       const settled = await admission.work.result();
       if (settled.outcome !== 'completed')
         return { status: 'refused' as const, reason: settled.outcome };
-      return { status: 'ok' as const, assetId: admission.assetId };
+      return { status: 'ok' as const, assetId: settled.value.assetId };
     },
   });
 

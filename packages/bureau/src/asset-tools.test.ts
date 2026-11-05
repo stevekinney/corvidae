@@ -95,6 +95,32 @@ describe('registered managed-asset tools', () => {
     expect(payload(read)).toMatchObject({ content: 'hello', truncated: false });
   });
 
+  it('returns the existing readable asset id when duplicate publication reuses it', async () => {
+    const fixture = await createAssetHarness({
+      storage: createMemoryAssetStorage(),
+      policy: { duplicatePolicy: 'reuse' },
+    });
+    opened.push(fixture);
+    const toolbox = createToolbox(
+      createAssetTools({ assets: () => fixture.assets, ownerOfRun: async () => 'alice' }),
+    );
+    const first = await toolbox.execute(
+      { name: 'assets-publish', arguments: { text: 'same', mediaType: 'text/plain' } },
+      runContext,
+    );
+    const firstAssetId = payload(first)['assetId'];
+    const second = await toolbox.execute(
+      { name: 'assets-publish', arguments: { text: 'same', mediaType: 'text/plain' } },
+      runContext,
+    );
+    expect(payload(second)).toEqual({ status: 'ok', assetId: firstAssetId });
+    const read = await toolbox.execute(
+      { name: 'assets-read', arguments: { assetId: firstAssetId } },
+      runContext,
+    );
+    expect(payload(read)).toMatchObject({ status: 'ok', content: 'same' });
+  });
+
   it('cuts UTF-8 content back to a complete code point at the read cap', async () => {
     const { toolbox } = await toolsFor();
     const text = `${'a'.repeat(65_534)}🙂${'b'.repeat(140_000)}`;
