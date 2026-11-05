@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { MemoryStorage } from '@lostgradient/storage';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
-import { createTool, type Tool } from 'armorer';
+import { createTool, type Tool, type ToolContext } from 'armorer';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -358,12 +358,14 @@ describe('registered child-run tools on file agents', () => {
   it('raises approval for a mutating tool after a real child was dispatched', async () => {
     let dispatched = false;
     let canceledChildRunId: string | undefined;
+    let ownerContext: ToolContext | undefined;
     const { bureau } = await open({
       childAgents: '[worker]',
       rootAuthority: { levels: 2, concurrentChildren: 4 },
       approval: 'bureau:child-runs-cancel=on-changes,bureau:child-runs-dispatch=never',
       child: async () => new Promise(() => {}),
       parent: async (context) => {
+        ownerContext = context;
         if (!dispatched) {
           dispatched = true;
           return {
@@ -408,6 +410,21 @@ describe('registered child-run tools on file agents', () => {
       childRunId: canceledChildRunId!,
     });
     expect(settled).toMatchObject({ outcome: 'settled', child: { status: 'aborted' } });
+    expect(
+      await bureau.children.get({ parentRunId: task.id, childRunId: canceledChildRunId! }),
+    ).toMatchObject({
+      childRunId: canceledChildRunId,
+      status: 'aborted',
+    });
+    if (ownerContext === undefined) throw new Error('expected the owner toolbox context');
+    const postSettlementGet = await ownerContext.toolbox.execute(
+      { name: 'bureau__child-runs-get', arguments: { childRunId: canceledChildRunId } },
+      { executionContext: { parentRunId: task.id } },
+    );
+    expect((postSettlementGet as { result: unknown }).result).toMatchObject({
+      status: 'ok',
+      child: { childRunId: canceledChildRunId, status: 'aborted' },
+    });
   });
 
   it('holds a registered child mutating tool in the real chat-root path', async () => {
