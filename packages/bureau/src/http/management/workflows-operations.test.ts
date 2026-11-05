@@ -108,6 +108,28 @@ describe('the operations list', () => {
       transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
     });
   });
+
+  it('denies an A2A request at the HTTP boundary without trusting a caller-supplied owner', async () => {
+    const served = await serve(undefined, workspaceBinding());
+    await seed(served);
+    const history = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.history',
+      { runId: 'digest-run' },
+      'a2a-key',
+    );
+    expect(history.result).toBeUndefined();
+    expect(history.error?.data?.httpStatus).toBe(404);
+
+    const cancel = await rpc(
+      served.keyed,
+      'bureau.workflows.runs.cancel',
+      { runId: 'digest-run' },
+      'a2a-key',
+    );
+    expect(cancel.result).toBeUndefined();
+    expect(cancel.error?.data?.httpStatus).toBe(404);
+  });
 });
 
 /** The state of the world the operations act on, as the file system and the Bureau see it. */

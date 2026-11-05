@@ -1264,6 +1264,15 @@ describe('agent-owned workflow runs', () => {
     expect(history?.events.length).toBeGreaterThan(0);
     expect(history?.events.every((event) => !Object.hasOwn(event, 'data'))).toBe(true);
     expect(history?.events.every((event) => event.type.startsWith('file-workflow:'))).toBe(true);
+    const toolHistory = await harness.callTool('bureau__workflows-runs-history', {
+      runId,
+      limit: 500,
+    });
+    expect(toolHistory.result).toMatchObject({ status: 'ok' });
+    const toolEvents = (toolHistory.result as { events: readonly Record<string, unknown>[] })
+      .events;
+    expect(toolEvents.length).toBeGreaterThan(0);
+    expect(toolEvents.every((event) => !Object.hasOwn(event, 'data'))).toBe(true);
   });
 
   it('signals a matching workflow and cancels a waiting run', async () => {

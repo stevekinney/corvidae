@@ -27,7 +27,7 @@ import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { STATUS_WORDS } from '../../../lib/status.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import { FILTER_LABEL_LIMIT, filterLabelOf, SINCE_RANGES } from './run-rows.ts';
-import { STARTED_BY_LABELS } from './started-by.ts';
+import { STARTED_BY_KINDS, STARTED_BY_LABELS } from './started-by.ts';
 
 let stub: BureauWorldStub | undefined;
 afterEach(() => {
@@ -287,7 +287,10 @@ describe('Started by', () => {
     await fireEvent.click(await view.findByRole('combobox', { name: TASK_COPY.startedByLabel }));
     const options = await view.findAllByRole('option');
     const labels = options.map((option) => option.textContent?.trim());
-    expect(labels).toEqual(expect.arrayContaining(Object.values(STARTED_BY_LABELS)));
+    expect(labels).toEqual(
+      expect.arrayContaining(STARTED_BY_KINDS.map((kind) => STARTED_BY_LABELS[kind])),
+    );
+    expect(labels).not.toContain(STARTED_BY_LABELS['agent-run']);
     cleanup();
     stub?.restore();
 
