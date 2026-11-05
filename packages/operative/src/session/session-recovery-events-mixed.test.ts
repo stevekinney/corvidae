@@ -203,7 +203,7 @@ describe('recover() — mixed outcomes and failures', () => {
       resume: async (_workflowId: string) => {
         throw resumeError;
       },
-      cancel: async () => {},
+      cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
       signal: async () => {},
       update: async () => {},
       query: async () => {},

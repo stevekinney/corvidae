@@ -39,7 +39,7 @@ describe('recover() — rejected run reporting', () => {
         attemptedRunIds.push(workflowId);
         throw new Error(`engine rejected resume for "${workflowId}"`);
       },
-      cancel: async () => {},
+      cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
       signal: async () => {},
       update: async () => {},
       query: async () => {},
