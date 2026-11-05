@@ -48,6 +48,11 @@ const schema = {
       description:
         'Line two as text, shown as a tooltip over line two, which ends in an ellipsis when it is long.\nSet it to the same text the `meta` (or `description`) snippet renders.',
     },
+    wrapMeta: {
+      type: 'boolean',
+      description:
+        'Lets line two wrap onto more lines instead of ending in an ellipsis, so a control in it (a "View\npayload" link after a sentence about why a task failed) is never cut off and can always be\npressed. Default `false`.',
+    },
     error: {
       type: 'string',
       description:

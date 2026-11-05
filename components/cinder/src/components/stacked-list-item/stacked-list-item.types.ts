@@ -112,6 +112,12 @@ type StackedListItemBase = ForwardedLiAttributes & {
    */
   metaTooltip?: string;
   /**
+   * Lets line two wrap onto more lines instead of ending in an ellipsis, so a control in it (a "View
+   * payload" link after a sentence about why a task failed) is never cut off and can always be
+   * pressed. Default `false`.
+   */
+  wrapMeta?: boolean;
+  /**
    * Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts
    * under the title (not under the status) and ends in an ellipsis rather than wrapping. A line
    * that must carry a control (an error with its own "Try again") may put one in.

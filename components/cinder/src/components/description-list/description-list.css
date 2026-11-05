@@ -122,7 +122,7 @@
    * rules. The columns wrap as the container narrows, so a phone stacks them two to a row. */
   .cinder-description-list[data-cinder-variant='facts'] {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
     gap: var(--cinder-space-3) var(--cinder-space-4);
     padding-block: var(--cinder-space-3);
     border-block: 1px solid var(--cinder-border-muted);

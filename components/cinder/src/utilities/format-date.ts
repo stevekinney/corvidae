@@ -1,4 +1,6 @@
 const MINUTE = 60_000;
+/** With `seconds`, how long a moment must be past before the label counts seconds instead of saying "just now". */
+const SECONDS_FROM = 3_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 
@@ -31,6 +33,12 @@ export type RelativeTimeFormatOptions = DateFormatOptions & {
    * "in 16 hours", "in 2 days", "3 days ago", falling back to the absolute form beyond a week.
    */
   units?: 'compact' | 'spelled' | undefined;
+  /**
+   * Reads the first minute in seconds, "4 s ago", from the third second on ("just now" before it),
+   * for a time that is a heartbeat or a pulse rather than an event. Without it the whole first
+   * minute is "just now". Applies to the compact reading only.
+   */
+  seconds?: boolean | undefined;
 };
 
 /** Options for {@link formatTimeZoneLabel}. */
@@ -196,12 +204,12 @@ export function formatDateTime(input: DateInput, options: DateFormatOptions = {}
 
 function relativeUnit(
   value: number,
-  unit: 'minute' | 'hour',
+  unit: 'second' | 'minute' | 'hour',
   past: boolean,
   locale: Intl.LocalesArgument | undefined,
 ): string {
   if (isEnglish(locale)) {
-    const text = `${value} ${unit === 'minute' ? 'min' : 'h'}`;
+    const text = `${value} ${unit === 'second' ? 's' : unit === 'minute' ? 'min' : 'h'}`;
     return past ? `${text} ago` : `in ${text}`;
   }
   return new Intl.RelativeTimeFormat(locale, { style: 'short' }).format(
@@ -229,6 +237,9 @@ export function formatRelativeTime(
 
   if (options.units === 'spelled') return formatSpelledRelativeTime(date, now, elapsed, options);
 
+  if (options.seconds === true && distance >= SECONDS_FROM && distance < MINUTE) {
+    return relativeUnit(Math.floor(distance / 1000), 'second', past, options.locale);
+  }
   if (distance < MINUTE)
     return isEnglish(options.locale) ? 'just now' : relativeNow(options.locale);
   if (distance < HOUR) {

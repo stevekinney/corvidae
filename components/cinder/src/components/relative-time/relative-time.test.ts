@@ -51,6 +51,29 @@ describe('RelativeTime', () => {
     expect(element?.getAttribute('class')).toContain('my-custom-class');
   });
 
+  test('counts the first minute in seconds with `seconds`, and says "just now" without it', () => {
+    const realNow = Date.now;
+    Date.now = () => Date.UTC(2026, 0, 2, 18);
+    try {
+      const counted = render(RelativeTime, {
+        date: Date.UTC(2026, 0, 2, 18) - 9_000,
+        locale: 'en',
+        seconds: true,
+        tick: false,
+      });
+      expect(counted.container.querySelector('time')?.textContent).toBe('9 s ago');
+      cleanup();
+      const plain = render(RelativeTime, {
+        date: Date.UTC(2026, 0, 2, 18) - 9_000,
+        locale: 'en',
+        tick: false,
+      });
+      expect(plain.container.querySelector('time')?.textContent).toBe('just now');
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
   test('reads past and future deltas on the shared design format', () => {
     const realNow = Date.now;
     Date.now = () => Date.UTC(2026, 0, 2, 18);

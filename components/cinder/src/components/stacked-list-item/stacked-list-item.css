@@ -349,6 +349,14 @@
     white-space: nowrap;
   }
 
+  /* `wrapMeta`: line two carries a control, so it wraps and nothing on it is cut. */
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--wrap-meta
+    .cinder-stacked-list-item__meta {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
   /* A third line (a phone schedule's reason and cadence): muted like line two, but it wraps, so
      nothing on it is cut. It shares the details row, which no row uses at the same time, and
      starts under the title; on a phone, where the status leads line two, it starts at the left

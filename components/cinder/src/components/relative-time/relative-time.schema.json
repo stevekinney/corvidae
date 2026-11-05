@@ -32,6 +32,11 @@
       "enum": [false, true, "today"],
       "description": "Which days the label may name with a word. `true` says \"Today\", \"Yesterday\" and \"Tomorrow\";\n`'today'` says only \"Today\" and names every other day (\"Sun Nov 1, 4:12 PM\"); `false` always\nnames the calendar day. Defaults to `'today'` for `format=\"absolute\"` and `true` for `relative`."
     },
+    "seconds": {
+      "type": "boolean",
+      "description": "Counts the first minute in seconds (\"4 s ago\", and \"just now\" before the third second), for a\ntime that is a heartbeat or a pulse, such as a worker last heard from. The label then ticks every\nsecond during that minute. Applies to the `relative` format.",
+      "default": false
+    },
     "tick": {
       "type": "boolean",
       "description": "Recalculate the label on an interval. Set false to disable ticking."

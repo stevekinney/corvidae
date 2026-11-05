@@ -26,9 +26,11 @@
   const SLOW_POLL = 5 * MINUTE;
 
   /** Milliseconds until the label can next read differently: the next whole minute, then a slow poll. */
-  function nextDisplayedValueDelay(timestamp: number, now: number): number {
+  function nextDisplayedValueDelay(timestamp: number, now: number, seconds = false): number {
     if (!Number.isFinite(timestamp)) return 86_400_000;
     const distance = Math.abs(now - timestamp);
+    // Counting seconds, the label changes every second of the first minute.
+    if (seconds && distance < MINUTE) return 1_000;
     if (distance >= HOUR) return SLOW_POLL;
     const remainder = distance % MINUTE;
     const untilBoundary =
@@ -85,6 +87,7 @@
     timeZone,
     format = 'relative',
     dayWords,
+    seconds = false,
     tick = true,
     class: customClassName,
     children,
@@ -109,6 +112,7 @@
       : formatRelativeTime(timestamp, {
           ...options,
           ...(dayWords === undefined ? {} : { dayWords }),
+          seconds,
         });
   });
   // The other reading of the same moment, so the tooltip adds what the visible label leaves out.
@@ -133,7 +137,7 @@
     const currentTimestamp = timestamp;
     return subscribeToClock({
       notify: (nextNow) => (now = nextNow),
-      getDelay: (nextNow) => nextDisplayedValueDelay(currentTimestamp, nextNow),
+      getDelay: (nextNow) => nextDisplayedValueDelay(currentTimestamp, nextNow, seconds),
       nextAt: 0,
     });
   });
