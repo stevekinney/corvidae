@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { Fetcher } from './bureau-client.ts';
 import {
+  answerRefusalIssues,
   cancelTask,
   followTaskEvents,
   getTask,
@@ -408,6 +409,41 @@ describe('a refused page token', () => {
     expect(isRefusedPageToken(refusal('InvalidParams', 'page-token-expired'))).toBe(false);
     expect(isRefusedPageToken(refusal('NotFound', [{ code: 'page-token-expired' }]))).toBe(false);
     expect(isRefusedPageToken(new Error('page-token-expired'))).toBe(false);
+  });
+});
+
+describe('answerRefusalIssues', () => {
+  const refusal = (weftCode: string, issues: unknown) =>
+    new HttpClientError(400, 'The answer was refused.', {
+      data: { weftCode, issues },
+    });
+
+  test('returns answer issue paths without the answer root and preserves the message', () => {
+    expect(
+      answerRefusalIssues(
+        refusal('InvalidParams', [
+          {
+            path: ['answer', 'choice', 1, { ignored: true }],
+            message: 'Choose a valid option.',
+          },
+        ]),
+      ),
+    ).toEqual([{ path: ['choice', 1], message: 'Choose a valid option.' }]);
+  });
+
+  test('returns undefined when no usable answer issue is present', () => {
+    const issues = [
+      { path: ['workflow', 'name'], message: 'Not an answer issue.' },
+      { path: ['answer', 'choice'], message: 42 },
+      'malformed issue',
+      null,
+    ];
+
+    expect(answerRefusalIssues(refusal('InvalidParams', issues))).toBeUndefined();
+    expect(answerRefusalIssues(refusal('InvalidParams', []))).toBeUndefined();
+    expect(answerRefusalIssues(refusal('NotFound', issues))).toBeUndefined();
+    expect(answerRefusalIssues(refusal('InvalidParams', 'not an issue list'))).toBeUndefined();
+    expect(answerRefusalIssues(new Error('The answer was refused.'))).toBeUndefined();
   });
 });
 
