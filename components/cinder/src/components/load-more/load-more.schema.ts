@@ -35,6 +35,11 @@ const schema = {
       type: 'number',
       description: 'How many items exist in all; pairs with `loadedCount`.',
     },
+    countNoun: {
+      type: 'string',
+      description:
+        'What the count counts, said after it: "waiting tasks" gives "Showing 3 of 12 waiting tasks".\nWithout it the footer reads "Showing 3 of 12".',
+    },
     itemLabel: {
       type: 'string',
       description:

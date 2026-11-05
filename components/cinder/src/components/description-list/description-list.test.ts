@@ -90,6 +90,15 @@ describe('DescriptionList', () => {
     expect(firstDd?.classList.contains('cinder-sr-only')).toBe(false);
   });
 
+  test('facts variant sets data-cinder-variant and keeps each term before its value', () => {
+    const { container } = render(DescriptionList, { items: sampleItems, variant: 'facts' });
+    const dl = container.querySelector('.cinder-description-list');
+    expect(dl?.getAttribute('data-cinder-variant')).toBe('facts');
+    expect(dl?.querySelectorAll('.cinder-description-list__row').length).toBe(2);
+    expect(dl?.querySelector('dt')?.classList.contains('cinder-sr-only')).toBe(false);
+    expect(dl?.querySelector('dt')?.nextElementSibling?.tagName).toBe('DD');
+  });
+
   test('actions snippet renders inside <dd> wrapped in .cinder-description-list__actions', () => {
     const actions = actionSnippet((item) => `<a aria-label="Edit ${item.term}">Edit</a>`);
     const { container } = render(DescriptionList, { items: sampleItems, actions });

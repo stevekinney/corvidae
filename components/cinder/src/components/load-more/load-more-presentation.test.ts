@@ -120,6 +120,20 @@ describe('LoadMore', () => {
     expect(getByRole('button', { name: 'Load more' })).toBeDefined();
   });
 
+  test('names what it counts after the numbers when countNoun is given', () => {
+    const { getByText } = render(LoadMore, {
+      props: {
+        onLoadMore: () => {},
+        hasMore: true,
+        loadedCount: 3,
+        totalCount: 12,
+        countNoun: 'waiting tasks',
+      },
+    });
+
+    expect(getByText('Showing 3 of 12 waiting tasks')).toBeDefined();
+  });
+
   test('shows no count unless both numbers are valid', () => {
     const { container } = render(LoadMore, {
       props: { onLoadMore: () => {}, hasMore: true, loadedCount: 10 },

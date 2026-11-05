@@ -75,6 +75,7 @@ const schema = {
               'Sent back',
               'Expired',
               'Failed',
+              'Failed for good',
               'Gave up',
               "Can't load",
               "Can't find workflow",

@@ -118,6 +118,25 @@
     gap: var(--cinder-space-2);
   }
 
+  /* Facts variant: one row of equal columns, each a muted term above its value, between two quiet
+   * rules. The columns wrap as the container narrows, so a phone stacks them two to a row. */
+  .cinder-description-list[data-cinder-variant='facts'] {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--cinder-space-3) var(--cinder-space-4);
+    padding-block: var(--cinder-space-3);
+    border-block: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-description-list[data-cinder-variant='facts'] .cinder-description-list__row {
+    padding: 0;
+    min-width: 0;
+  }
+
+  .cinder-description-list[data-cinder-variant='facts'] dt {
+    color: var(--cinder-text-muted);
+  }
+
   /* ----------------------------------------
    * Formatted values
    * ---------------------------------------- */

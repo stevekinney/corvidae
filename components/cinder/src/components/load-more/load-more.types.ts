@@ -26,6 +26,11 @@ export type LoadMoreProps = {
   /** How many items exist in all; pairs with `loadedCount`. */
   totalCount?: number;
   /**
+   * What the count counts, said after it: "waiting tasks" gives "Showing 3 of 12 waiting tasks".
+   * Without it the footer reads "Showing 3 of 12".
+   */
+  countNoun?: string;
+  /**
    * What the list holds, in the plural, for the failure message: "runs" gives "Couldn’t load more
    * runs." @default "items"
    */

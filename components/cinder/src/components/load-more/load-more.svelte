@@ -33,6 +33,7 @@
     endOfListMessage = 'End of list',
     loadedCount,
     totalCount,
+    countNoun,
     itemLabel = 'items',
     errorMessage,
     maxRetries = 5,
@@ -75,7 +76,7 @@
   // more to give, so the footer keeps the rows' count next to its button.
   const progressText = $derived(
     isCount(loadedCount) && isCount(totalCount)
-      ? `Showing ${Math.trunc(loadedCount)} of ${Math.trunc(totalCount)}`
+      ? `Showing ${Math.trunc(loadedCount)} of ${Math.trunc(totalCount)}${countNoun === undefined ? '' : ` ${countNoun}`}`
       : undefined,
   );
   // After a failed load the footer keeps the count and says what went wrong, once, in words:

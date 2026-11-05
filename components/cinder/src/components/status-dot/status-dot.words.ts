@@ -7,14 +7,14 @@ import type { StatusDotStatus } from './status-dot.types.ts';
  *
  * - Amber (`warning`) is only for waiting on you and Needs attention: "Waiting on you", "Missed
  *   runs", "Disconnected", "Needs attention" and "Needs sign-in".
- * - Red (`danger`) is only for "Failed", "Gave up", "Can't load", "Not loaded" and "Can't find
- *   workflow" (a schedule whose workflow was deleted, which can't run at all).
+ * - Red (`danger`) is only for "Failed", "Failed for good", "Gave up", "Can't load", "Not loaded"
+ *   and "Can't find workflow" (a schedule whose workflow was deleted, which can't run at all).
  * - Everything else that finished or stopped is neutral, and "Waiting" and "Scheduled" are the
  *   hollow `pending` ring.
  *
  * Some words are scoped: "Ended" is chats only, "Delivered" and "Retrying" are hooks only, and
- * "Connected", "Draining" and "Disconnected" are workers only, and "Live" and "Reconnecting…" are
- * for the line above a streaming run's steps. The table gives them a tone; the
+ * "Connected", "Draining" and "Disconnected" are workers only, "Failed for good" is a task that ran
+ * out of tries, and "Live" and "Reconnecting…" are for the line above a streaming run's steps. The table gives them a tone; the
  * page decides where they belong.
  */
 export const statusDotWordTones = {
@@ -30,6 +30,7 @@ export const statusDotWordTones = {
   'Sent back': 'neutral',
   Expired: 'neutral',
   Failed: 'danger',
+  'Failed for good': 'danger',
   'Gave up': 'danger',
   "Can't load": 'danger',
   "Can't find workflow": 'danger',

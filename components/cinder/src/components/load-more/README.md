@@ -38,6 +38,7 @@ Pass `loadedCount` and `totalCount` and the footer reads "Showing 10 of 19" besi
 | --- | --- | --- | --- | --- |
 | `buttonLabel` | `string` | no | `"Load more"` | Visible label for the load-more button. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-load-more`. |
+| `countNoun` | `string` | no | — | What the count counts, said after it: "waiting tasks" gives "Showing 3 of 12 waiting tasks". Without it the footer reads "Showing 3 of 12". |
 | `endOfListMessage` | `string` | no | `"End of list"` | Politely announced when the end of the list is reached. |
 | `errorMessage` | `string` | no | — | Replaces the whole failure message shown after `onLoadMore` rejects. By default it reads "Couldn’t load more {itemLabel}." followed by the count when `loadedCount` and `totalCount` are set. |
 | `hasMore` | `boolean` | no | — | Whether more items are available. Bindable. |

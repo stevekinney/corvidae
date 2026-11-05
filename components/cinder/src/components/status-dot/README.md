@@ -36,7 +36,7 @@ One word has one tone, identical in light and dark. A qualifier after a middle d
 | `info` (solid blue) | Running, Running · checking the result, Live, Live · last event 1 s ago |
 | `pending` (hollow ring) | Waiting, Scheduled, Reconnecting… |
 | `success` (green dot) | Done, Approved, Active, Available, Delivered, Connected |
-| `danger` (red) | Failed, Gave up, Can't load, Can't find workflow, Not loaded |
+| `danger` (red) | Failed, Failed for good, Gave up, Can't load, Can't find workflow, Not loaded |
 | `neutral` | Done · refund not issued, Check not met, Denied, Sent back, Expired, Canceled, Stopped, Paused, Off, Unavailable, Needs setup, Ended, Retrying, Draining |
 
 Only `warning`, `info` and `danger` words are coloured; every other word is muted, so the dot carries the tone. Amber is only for waiting on you and Needs attention, and red is reserved for failures to run or to load. The table is exported as `statusDotWordTones`, and `statusForStatusDotWord(word)` returns a word's status, or `undefined` for a word the table does not know (a `word` the table does not know renders a neutral dot).
