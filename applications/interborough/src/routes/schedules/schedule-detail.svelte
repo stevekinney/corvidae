@@ -9,9 +9,13 @@
    *
    * The heading's actions are Edit, Run now and a menu that holds Delete schedule. A schedule that
    * is the trigger in a workflow file whose values it fixes is changed in the file, so it offers
-   * Open file and Run now and nothing else. Run now is off, with its reason as its description,
+   * Open file and Run now and nothing else, with a chip under the sentence that names the file. Run now is off, with its reason as its description,
    * while the workflow cannot load or a model agent has no provider; Pause and resume are the
    * Active switch's alone.
+   *
+   * While a run of the schedule is going the status reads Running, the summary line leads with
+   * "Running now: started 38 seconds ago" and a link to the run, and Run now says beside it that it
+   * would start a second one; the schedule itself is still Active.
    *
    * The page refreshes the moment a `schedule:fired` or `schedule:missed-fire` event arrives. Every
    * write is made against the revision (or file hash) the page read, and one that was refused for
@@ -67,9 +71,11 @@
   import { scheduleOverlayOptions } from './overlay-query.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
   import ScheduleDetailsCard from './schedule-details-card.svelte';
+  import ScheduleFileChip from './schedule-file-chip.svelte';
   import {
     isFileDefined,
     nextSummary,
+    startedAgo,
     jsonProblemLine,
     problemLocation,
     runNowOffReason,
@@ -83,6 +89,7 @@
   import { cadenceIdentifiers, scheduleNameIdentifiers } from './schedule-presentation.ts';
   import {
     fetchScheduleDetail,
+    fetchScheduleRunHistory,
     scheduleDetailQueryKey,
     scheduleMissedQueryKey,
     scheduleRunHistoryQueryKey,
@@ -139,6 +146,15 @@
   const overlay = createQuery(() => scheduleOverlayOptions(client));
 
   const schedule = $derived(detailQuery.data ?? null);
+  // The runs the schedule launched, which the Runs list and the last-run words read from the same
+  // cache entry: the newest one that is going says so in the heading and the summary line.
+  const runHistory = createQuery(() => ({
+    queryKey: scheduleRunHistoryQueryKey(id),
+    queryFn: () => fetchScheduleRunHistory(client, id),
+    enabled: !readGate.disabled,
+    retry: false,
+  }));
+  const goingRun = $derived(runHistory.data?.items.find((run) => run.status === 'running'));
   // The clock the next run is counted from, read again whenever the schedule is.
   const now = $derived.by(() => {
     void detailQuery.dataUpdatedAt;
@@ -269,6 +285,8 @@
     {@const switchWritable = !fileDefined && (allowed.pause || allowed.resume)}
     {@const switchable = switchWritable || kind.kind === 'workflow-file'}
     {@const runNowReason = runNowOffReason(row)}
+    {@const going = row.statusKey === 'active' ? goingRun : undefined}
+    {@const statusWord = going === undefined ? row.statusWord : 'Running'}
     {@const workflowPaused = row.status === 'paused' && file?.paused === true}
     {@const writable = !writeGate.disabled && !actions.busy}
     {@const agentNames = fileDefined ? [] : row.agentIds}
@@ -321,80 +339,96 @@
         </span>
         <Divider orientation="vertical" decorative class="ib-schedule__status-divider" />
       {/if}
-      <StatusDot word={row.statusWord} data-status-word={row.statusWord} />
+      <StatusDot word={statusWord} data-status-word={statusWord} />
     {/snippet}
     {#snippet headerActions()}
-      {#if fileDefined && kind.kind === 'workflow-file'}
-        <Button variant="secondary" size="sm" href={router.href(workflowEditPath(kind.file.id))}>
-          <ExternalLink aria-hidden="true" size={14} />
-          {copy.openFile}
-        </Button>
-      {:else if allowed.edit}
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={writeGate.disabled}
-          title={writeGate.title}
-          onclick={() => router.navigate(scheduleEditPath(schedule.id))}
-        >
-          <Pencil aria-hidden="true" size={14} />
-          {copy.edit}
-        </Button>
-      {:else if allowed.editInWorkflow}
-        <Button
-          variant="secondary"
-          size="sm"
-          href={router.href(workflowEditPath(schedule.workflowType))}
-        >
-          <Pencil aria-hidden="true" size={14} />
-          {copy.edit}
-        </Button>
-      {/if}
-      {#if allowed.runNow}
-        <!-- A reason it is off keeps the button in the tab order, so the reason is read where it is felt. -->
-        <Button
-          data-changes
-          variant="secondary"
-          size="sm"
-          disabled={runNowReason === null && !writable}
-          title={writeGate.title}
-          {...runNowReason === null
-            ? {}
-            : { 'aria-disabled': 'true', 'aria-describedby': 'ib-schedule-run-now-reason' }}
-          onclick={() => {
-            if (runNowReason === null) actions.runNow.mutate(target);
-          }}
-        >
-          <Play aria-hidden="true" size={14} />
-          {copy.runNow}
-        </Button>
-        {#if runNowReason !== null}
-          <VisuallyHidden id="ib-schedule-run-now-reason">{runNowReason}</VisuallyHidden>
-        {/if}
-      {/if}
-      {#if !fileDefined && kind.kind !== 'unknown'}
-        <Dropdown id="ib-schedule-actions" placement="bottom-end">
-          <Dropdown.Trigger caretVisible={false}>
-            <Ellipsis aria-hidden="true" size={16} />
-            <VisuallyHidden>{SCHEDULE_COPY.moreActions}</VisuallyHidden>
-          </Dropdown.Trigger>
-          <Dropdown.Menu>
-            <Dropdown.Item
+      <div class="ib-schedule__actions">
+        <div class="ib-schedule__action-row">
+          {#if fileDefined && kind.kind === 'workflow-file'}
+            <Button
+              variant="secondary"
+              size="sm"
+              href={router.href(workflowEditPath(kind.file.id))}
+            >
+              <ExternalLink aria-hidden="true" size={14} />
+              {copy.openFile}
+            </Button>
+          {:else if allowed.edit}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={writeGate.disabled}
+              title={writeGate.title}
+              onclick={() => router.navigate(scheduleEditPath(schedule.id))}
+            >
+              <Pencil aria-hidden="true" size={14} />
+              {copy.edit}
+            </Button>
+          {:else if allowed.editInWorkflow}
+            <Button
+              variant="secondary"
+              size="sm"
+              href={router.href(workflowEditPath(schedule.workflowType))}
+            >
+              <Pencil aria-hidden="true" size={14} />
+              {copy.edit}
+            </Button>
+          {/if}
+          {#if allowed.runNow}
+            <!-- A reason it is off keeps the button in the tab order, so the reason is read where it is felt. -->
+            <Button
               data-changes
-              variant="danger"
-              disabled={!allowed.cancel || !writable}
-              title={allowed.cancel ? undefined : copy.deleteInFile}
+              variant="secondary"
+              size="sm"
+              disabled={runNowReason === null && !writable}
+              title={writeGate.title}
+              {...runNowReason === null
+                ? {}
+                : { 'aria-disabled': 'true', 'aria-describedby': 'ib-schedule-run-now-reason' }}
               onclick={() => {
-                deleteTarget = target;
-                deleteDialogOpen = true;
+                if (runNowReason === null) actions.runNow.mutate(target);
               }}
             >
-              <Trash2 aria-hidden="true" size={14} />
-              {copy.deleteAction}
-            </Dropdown.Item>
-          </Dropdown.Menu>
-        </Dropdown>
-      {/if}
+              <Play aria-hidden="true" size={14} />
+              {copy.runNow}
+            </Button>
+            {#if runNowReason !== null}
+              <VisuallyHidden id="ib-schedule-run-now-reason">{runNowReason}</VisuallyHidden>
+            {/if}
+          {/if}
+          {#if !fileDefined && kind.kind !== 'unknown'}
+            <Dropdown id="ib-schedule-actions" placement="bottom-end">
+              <Dropdown.Trigger caretVisible={false}>
+                <Ellipsis aria-hidden="true" size={16} />
+                <VisuallyHidden>{SCHEDULE_COPY.moreActions}</VisuallyHidden>
+              </Dropdown.Trigger>
+              <Dropdown.Menu>
+                <Dropdown.Item
+                  data-changes
+                  variant="danger"
+                  disabled={!allowed.cancel || !writable}
+                  title={allowed.cancel ? undefined : copy.deleteInFile}
+                  onclick={() => {
+                    deleteTarget = target;
+                    deleteDialogOpen = true;
+                  }}
+                >
+                  <Trash2 aria-hidden="true" size={14} />
+                  {copy.deleteAction}
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown>
+          {/if}
+        </div>
+        {#if going !== undefined && allowed.runNow}
+          <p
+            class="ib-records__muted ib-schedule__action-note"
+            data-testid="schedule-run-now-second"
+          >
+            {copy.runNowSecond}
+          </p>
+        {/if}
+      </div>
     {/snippet}
 
     <PageHeader
@@ -427,6 +461,9 @@
         identifiers={cadenceIdentifiers(schedule)}
       />.
     </p>
+    {#if fileDefined && kind.kind === 'workflow-file'}
+      <ScheduleFileChip id={kind.file.id} />
+    {/if}
     {#if workflowPaused && file !== undefined}
       <p class="ib-schedule__sentence" data-testid="schedule-workflow-paused">
         {copy.workflowPaused.text(row.workflowLabel)}
@@ -449,7 +486,15 @@
       <ScheduleBlockers blockers={row.allBlockers} {problems} id="ib-schedule-blockers" />
     {/if}
     <p class="ib-schedule__summary" data-testid="schedule-summary">
-      {#each nextSummary(schedule, row, now, connection.unreachable) as part, index (index)}
+      {#if going !== undefined}
+        <span class="ib-schedule__summary-part" data-tone="info" data-testid="schedule-running-now"
+          >{copy.summary.runningNow}</span
+        >{copy.summary.startedAgo(startedAgo(going.createdAt, now))}{' · '}<Link
+          underline="always"
+          href={router.href(workflowDetailPath(going.id))}>{copy.openRun}</Link
+        >{' · '}
+      {/if}
+      {#each nextSummary(schedule, row, now, connection.unreachable || going !== undefined) as part, index (index)}
         {#if index > 0}{' · '}{/if}
         {#if part.tone !== undefined}<span class="ib-schedule__summary-part" data-tone={part.tone}
             >{part.text}</span

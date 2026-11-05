@@ -1225,7 +1225,16 @@ export const SCHEDULE_COPY = {
       pausedNext: 'No next run while paused',
       noNext: 'No next run',
       neverRun: 'Never run',
+      /** The start of the line while a run is going, in the info tone, then when it started and a link to it. */
+      runningNow: 'Running now',
+      startedAgo: (ago: string): string => `: started ${ago}`,
+      /** The summary line's own words for how the last run ended, with the step a failed run stopped at. */
+      failedAtStep: (step: number): string => `, failed at step ${String(step)}`,
     },
+    /** The chip under the sentence of a schedule that is the trigger in a workflow's file. */
+    definedIn: 'Defined in',
+    /** Said beside Run now while a run is going, because Run now then starts a second one. */
+    runNowSecond: 'Another run is going; this starts a second one.',
     runsHeading: 'Runs',
     runsNote: (zone: string): string => `Upcoming above, past below · times in ${zone}`,
     /** The Runs list: upcoming runs, the Now marker, the missed runs, and what the schedule started. */

@@ -16,6 +16,7 @@ import {
   runNowOffReason,
   scheduleInput,
   sentenceCadence,
+  startedAgo,
   triggerInput,
   whenRows,
 } from './schedule-detail-model.ts';
@@ -47,6 +48,19 @@ function schedule(overrides: Partial<ScheduleSummary> = {}): ScheduleSummary {
 function file(trigger: Record<string, unknown> | null): WorkflowFileListing {
   return { id: 'digest', state: 'ready', trigger } as unknown as WorkflowFileListing;
 }
+
+describe('startedAgo (row 73e)', () => {
+  test('spells out the seconds of a run that has just started, then its minutes and hours', () => {
+    expect(startedAgo(NOW - 38_000, NOW)).toBe('38 seconds ago');
+    expect(startedAgo(NOW - 1_000, NOW)).toBe('1 second ago');
+    expect(startedAgo(NOW - 5 * 60_000, NOW)).toBe('5 minutes ago');
+    expect(startedAgo(NOW - 2 * 3_600_000, NOW)).toBe('2 hours ago');
+  });
+
+  test('never reads the future when the clocks differ by a moment', () => {
+    expect(startedAgo(NOW + 2_000, NOW)).toBe('0 seconds ago');
+  });
+});
 
 describe('nextSummary', () => {
   test('says when it runs next with how far away that is', () => {

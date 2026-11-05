@@ -34,6 +34,22 @@ export function sentenceCadence(schedule: ScheduleSummary, now: number): string 
   return `${text.full.charAt(0).toLowerCase()}${text.full.slice(1)}`;
 }
 
+/**
+ * How long ago a run that is going started, spelled out: "38 seconds ago", "5 minutes ago", "2 hours
+ * ago". A run that has gone for under a minute still says its seconds, because the line it sits in is
+ * the one that says it is going.
+ */
+export function startedAgo(startedAt: number, now: number): string {
+  const seconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  if (seconds < 60) {
+    return new Intl.RelativeTimeFormat('en-US', { numeric: 'always', style: 'long' }).format(
+      -seconds,
+      'second',
+    );
+  }
+  return formatRelativeTime(startedAt, { now, units: 'spelled' });
+}
+
 /** One part of the line that says when the schedule runs next. */
 export type SummaryPart = {
   readonly text: string;
@@ -50,7 +66,11 @@ export function nextSummary(
   schedule: Pick<ScheduleSummary, 'nextFireAt'>,
   row: Pick<ScheduleRow, 'status' | 'blockers'>,
   now: number,
-  /** The page shows old data while the server cannot answer, so "in 16 hours" would be a claim it cannot keep. */
+  /**
+   * Leave out "in 16 hours". The page shows old data while the server cannot answer, which would
+   * make it a claim the page cannot keep, and a line that already says a run is going gives its
+   * words to that.
+   */
   stale = false,
 ): readonly SummaryPart[] {
   if (row.status === 'paused') return [{ text: SCHEDULE_COPY.detail.summary.pausedNext }];

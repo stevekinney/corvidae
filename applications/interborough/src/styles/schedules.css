@@ -40,6 +40,66 @@
   color: var(--cinder-status-warning-text);
 }
 
+/* A run that is going: "Running now" leads the summary line in the info tone. */
+.ib-schedule__summary-part[data-tone='info'] {
+  color: var(--cinder-status-info-text);
+}
+
+/* The chip under the sentence of a schedule defined in a workflow's file: a lock, then the path, close under the sentence like a second one. */
+.ib-schedule__file {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-2);
+  margin: calc(-1 * var(--cinder-space-3)) 0 0;
+  color: var(--cinder-text-default);
+  font-size: var(--cinder-text-md);
+  overflow-wrap: anywhere;
+}
+
+.ib-schedule__file > svg {
+  flex-shrink: 0;
+  color: var(--cinder-text-muted);
+}
+
+/* The header's actions in one column: the buttons, and under them a muted line about Run now. */
+.ib-schedule__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-schedule__action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--cinder-space-2);
+}
+
+.ib-schedule__action-note {
+  margin: 0;
+  max-inline-size: 22rem;
+  text-align: end;
+}
+
+/* In a narrow header the actions take their own row beneath the title, so they start at the left. */
+@container cinder-page-header (max-width: 32rem) {
+  .ib-schedule__actions {
+    align-items: flex-start;
+    inline-size: 100%;
+  }
+
+  .ib-schedule__action-row {
+    justify-content: flex-start;
+  }
+
+  .ib-schedule__action-note {
+    text-align: start;
+  }
+}
+
 .ib-schedule__alert {
   margin: 0;
   font-weight: 600;

@@ -1,4 +1,6 @@
 /**
+ * (The file-defined schedule and the run in progress of `ScheduleDetail`, rows 73c, 73d, 73e, 73i
+ * and 73j, are asserted after the Release notes digest's failed run.)
  * (The runs timeline of `ScheduleDetail`, rows 72k, 72v, 72w, 72x to 72z, 73a, 73b, 73f, 73g, 73h,
  * 73k, 73l, 73m and 73p, is asserted at the end of this file.)
  *
@@ -585,6 +587,218 @@ test('Release notes digest: a failed run says where it stopped and why, in one l
   });
   await checkA11y('schedule detail, a failed run');
 });
+
+for (const width of WIDTHS) {
+  test(`Release notes digest, defined in its file: Active, the chip, and Open file and Run now only, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await openSchedule(page, 'Release notes digest');
+    const main = page.locator('main');
+
+    // The switch only shows its state, beside the one green status word.
+    const toggle = main.getByRole('switch', { name: 'Active, Release notes digest schedule' });
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await expect(toggle).toHaveAttribute('aria-readonly', 'true');
+    await expect(main.locator('.cinder-page-header [data-status-word]')).toHaveAttribute(
+      'data-status-word',
+      'Active',
+    );
+    // The file's trigger says America/Chicago, the viewer's own zone, so no second time follows.
+    await expect(main.getByTestId('schedule-status-line')).toHaveText(
+      'Runs Release notes every Friday at 11:00 AM.',
+    );
+    // The chip: the path relative to the home, the full path on hover, no callout.
+    const chip = main.getByTestId('schedule-file');
+    await expect(chip).toHaveText('Defined in workflows/release-notes.json');
+    await expect(chip.locator('svg')).toBeVisible();
+    await expect(chip.getByTestId('schedule-file-path')).toHaveAttribute(
+      'title',
+      /\/workflows\/release-notes\.json$/,
+    );
+    await expect(chip.getByTestId('schedule-file-path')).toHaveCSS(
+      'font-family',
+      /mono|Menlo|Courier/i,
+    );
+    await expect(main.locator('.cinder-callout')).toHaveCount(0);
+    // The only actions: Open file and Run now, both secondary.
+    await expect(main.getByRole('link', { name: 'Open file' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Run now' })).toHaveAttribute(
+      'data-cinder-variant',
+      'secondary',
+    );
+    await expect(main.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+    await expect(main.getByRole('button', { name: 'More actions' })).toHaveCount(0);
+    await expect(main.getByTestId('schedule-run-now-second')).toHaveCount(0);
+    // Nothing is going, so the summary line leads with the next run.
+    await expect(main.getByTestId('schedule-summary')).toHaveText(
+      'Next Fri Nov 6, 11:00 AM (in 4 days) · Last ran Oct 30, failed at step 2',
+    );
+    await captureForDesignReview(page, {
+      route: '/schedules/:schedule',
+      state: 'file-defined',
+      source: SOURCE,
+    });
+    await checkA11y(`schedule detail, file-defined, at ${width}px`);
+  });
+}
+
+const GOING_RUN = 'run-release-notes-going';
+
+/**
+ * Makes the Release notes digest's runs as the captioned state draws them: one that Run now
+ * started 38 seconds ago and that is on "Collecting merged changes", ahead of the runs the host
+ * holds. The world has no run going (`tmp/design-review/decisions.md`: "Captioned state outside the
+ * sample world"), so the specification answers the reads the page makes of it.
+ */
+async function answerGoingRun(page: Page): Promise<void> {
+  const clock = await page.evaluate(() => Date.now());
+  const startedAt = clock - 38_000;
+  await page.route(
+    (url) => url.pathname.endsWith('/workflows') && url.searchParams.has('schedule_id'),
+    async (route: Route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { items: unknown[]; total: number };
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          items: [
+            {
+              id: GOING_RUN,
+              type: 'release-notes',
+              status: 'running',
+              version: '1',
+              createdAt: startedAt,
+              updatedAt: startedAt,
+            },
+            ...body.items,
+          ],
+          total: body.total + 1,
+        },
+      });
+    },
+  );
+  await page.route(
+    (url) => url.pathname.endsWith(`/workflows/${GOING_RUN}/timeline`),
+    async (route: Route) => {
+      await route.fulfill({
+        json: [
+          { step: 1, stepIndex: 1, status: 'running', operationLabel: 'Collecting merged changes' },
+        ],
+      });
+    },
+  );
+  await page.route(
+    (url) => url.pathname.endsWith(`/workflows/${GOING_RUN}`),
+    async (route: Route) => {
+      await route.fulfill({
+        json: {
+          id: GOING_RUN,
+          type: 'release-notes',
+          status: 'running',
+          version: '1',
+          createdAt: startedAt,
+          updatedAt: startedAt,
+        },
+      });
+    },
+  );
+  await page.route('**/jsonrpc', async (route: Route) => {
+    const body = route.request().postDataJSON() as {
+      id?: unknown;
+      method?: string;
+      params?: unknown;
+    };
+    const params = body.params as { workflowId?: string } | undefined;
+    if (
+      body.method !== 'weft.workflows.scheduleprovenance.get' ||
+      params?.workflowId !== GOING_RUN
+    ) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        jsonrpc: '2.0',
+        id: body.id,
+        result: { scheduleId: 'release-notes-digest', manual: true },
+      },
+    });
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`Release notes digest while a run is going: Running, Running now with a link, and Run now beside its note, at ${width} pixels`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await answerGoingRun(page);
+    await openSchedule(page, 'Release notes digest');
+    const main = page.locator('main');
+
+    // The status reads Running in the info tone; the switch is still the read-only Active.
+    await expect(main.locator('.cinder-page-header [data-status-word]')).toHaveAttribute(
+      'data-status-word',
+      'Running',
+    );
+    const toggle = main.getByRole('switch', { name: 'Active, Release notes digest schedule' });
+    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await expect(toggle).toHaveAttribute('aria-readonly', 'true');
+    await expect(main.getByTestId('schedule-status-line')).toHaveText(
+      'Runs Release notes every Friday at 11:00 AM.',
+    );
+    // The chip, and Open file and Run now only, with the note beside Run now.
+    await expect(main.getByTestId('schedule-file')).toHaveText(
+      'Defined in workflows/release-notes.json',
+    );
+    await expect(main.getByRole('link', { name: 'Open file' })).toBeVisible();
+    const runNow = main.getByRole('button', { name: 'Run now' });
+    await expect(runNow).toBeEnabled();
+    await expect(runNow).toHaveAttribute('data-cinder-variant', 'secondary');
+    await expect(main.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+    await expect(main.getByRole('button', { name: 'More actions' })).toHaveCount(0);
+    const note = main.getByTestId('schedule-run-now-second');
+    await expect(note).toHaveText('Another run is going; this starts a second one.');
+    // The note sits under the buttons, at the right edge of the actions.
+    const noteBox = await note.boundingBox();
+    const runNowBox = await runNow.boundingBox();
+    if (noteBox === null || runNowBox === null) throw new Error('the note and Run now are drawn');
+    expect(noteBox.y).toBeGreaterThan(runNowBox.y + runNowBox.height - 1);
+    expect(noteBox.x + noteBox.width).toBeGreaterThan(runNowBox.x + runNowBox.width - 2);
+
+    // The summary line: the going run, in the info tone with a live link, then next and last.
+    const summary = main.getByTestId('schedule-summary');
+    await expect(summary).toHaveText(
+      'Running now: started 38 seconds ago · Open run · Next Fri Nov 6, 11:00 AM · Last ran Oct 30, failed at step 2',
+    );
+    await expect(main.getByTestId('schedule-running-now')).toHaveText('Running now');
+    await expect(main.getByTestId('schedule-running-now')).toHaveAttribute('data-tone', 'info');
+    await expect(summary.getByRole('link', { name: 'Open run' })).toHaveAttribute(
+      'href',
+      `/runs/${GOING_RUN}`,
+    );
+
+    // The Runs list: the upcoming run, Now, the run that is going, then the one that failed.
+    const list = runsList(page);
+    await expect(list.locator('li[data-cinder-tone="pending"]')).toHaveCount(1);
+    const going = list.locator('li[data-cinder-kind="run"]').first();
+    await expect(going).toContainText('Running');
+    await expect(going).toContainText('Mon Nov 2, 10:45 AM');
+    await expect(going).toContainText('Started with Run now · Collecting merged changes');
+    await expect(going).toContainText('38 s so far');
+    await expect(list.locator('li[data-cinder-kind="run"]').last()).toContainText('Failed');
+
+    await captureForDesignReview(page, {
+      route: '/schedules/:schedule',
+      state: 'file-defined run in progress',
+      source: SOURCE,
+    });
+    await checkA11y(`schedule detail, a run in progress, at ${width}px`);
+  });
+}
 
 for (const width of WIDTHS) {
   test(`Weekly refund audit says why it will not start, and never ran, at ${width} pixels`, async ({

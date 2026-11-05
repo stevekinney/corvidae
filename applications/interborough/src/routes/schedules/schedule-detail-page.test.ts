@@ -16,6 +16,7 @@ import {
   emptyWorld,
   installWorkflowWorld,
   readyFile,
+  runFixture,
   scheduleFixture,
   sourceDefinition,
   type WorkflowStub,
@@ -234,6 +235,76 @@ describe('a schedule that a file defines', () => {
     expect(queryByRole('button', { name: 'More actions' })).toBeNull();
     const toggle = await findByRole('switch', { name: 'Active, Release notes digest schedule' });
     expect(toggle.getAttribute('aria-readonly')).toBe('true');
+  });
+});
+
+describe('the chip of a schedule that a file defines (rows 73d and 73j)', () => {
+  test('says Defined in the file’s path relative to the home, with the full path on hover, and no callout', async () => {
+    const { findByTestId } = open(`/schedules/${DIGEST}`);
+
+    const chip = await findByTestId('schedule-file');
+    expect(chip.textContent?.replace(/\s+/g, ' ').trim()).toBe('Defined in workflows/digest.json');
+    const path = await findByTestId('schedule-file-path');
+    await waitFor(() => expect(path.getAttribute('title')).toMatch(/\/workflows\/digest\.json$/));
+    expect(path.getAttribute('title')).not.toBe('workflows/digest.json');
+    // A line under the sentence, not a callout, and nothing on the page says the file locks it.
+    expect(chip.closest('.cinder-alert, .cinder-callout')).toBeNull();
+    expect(document.querySelector('.cinder-callout')).toBeNull();
+  });
+
+  test('is not drawn for a schedule made for the workflow, which Edit opens', async () => {
+    const { findByRole, queryByTestId } = open(`/schedules/${DAILY}`);
+
+    await findByRole('button', { name: 'Edit' });
+    expect(queryByTestId('schedule-file')).toBeNull();
+  });
+});
+
+describe('a schedule while one of its runs is going (rows 73c, 73d and 73e)', () => {
+  const going = runFixture('run-now', 'digest', {
+    status: 'running',
+    createdAt: Date.now() - 38_000,
+    updatedAt: Date.now() - 38_000,
+  });
+
+  test('reads Running with its switch still on, and says so first in the summary line, with a link to the run', async () => {
+    const { findByRole, findByTestId } = open(`/schedules/${DIGEST}`, { runs: [going] });
+
+    const toggle = await findByRole('switch', { name: 'Active, Release notes digest schedule' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(toggle.getAttribute('aria-readonly')).toBe('true');
+    await waitFor(() => expect(headerStatus()).toBe('Running'));
+    const summary = await findByTestId('schedule-summary');
+    await waitFor(() =>
+      expect(summary.textContent?.replace(/\s+/g, ' ').trim()).toMatch(
+        /^Running now: started \d+ seconds ago · Open run · Next .*\d{1,2}:\d{2} [AP]M · /,
+      ),
+    );
+    expect(summary.textContent).not.toContain('(in ');
+    const leading = await findByTestId('schedule-running-now');
+    expect(leading.getAttribute('data-tone')).toBe('info');
+    expect(within(summary).getByRole('link', { name: 'Open run' }).getAttribute('href')).toBe(
+      '/runs/run-now',
+    );
+  });
+
+  test('keeps Run now on and says beside it that it starts a second run', async () => {
+    const { findByRole, findByTestId } = open(`/schedules/${DIGEST}`, { runs: [going] });
+
+    const runNow = await findByRole('button', { name: 'Run now' });
+    expect(runNow.hasAttribute('disabled')).toBe(false);
+    const note = await findByTestId('schedule-run-now-second');
+    expect(note.textContent?.trim()).toBe('Another run is going; this starts a second one.');
+  });
+
+  test('says none of it when no run is going', async () => {
+    const finished = runFixture('run-done', 'digest', { status: 'completed' });
+    const { findByRole, queryByTestId } = open(`/schedules/${DIGEST}`, { runs: [finished] });
+
+    await findByRole('button', { name: 'Run now' });
+    await waitFor(() => expect(headerStatus()).toBe('Active'));
+    expect(queryByTestId('schedule-running-now')).toBeNull();
+    expect(queryByTestId('schedule-run-now-second')).toBeNull();
   });
 });
 

@@ -29,12 +29,24 @@ function run(id: string, status: string, createdAt: number): Run {
   return { id, status, createdAt, updatedAt: createdAt + 1 };
 }
 
-/** Just what the component reads of the engine's client: the schedule's runs, newest first. */
-function clientListing(history: { runs: Run[] }): HttpClient {
+/**
+ * Just what the component reads of the engine's client: the schedule's runs, newest first, and for a
+ * run that failed the steps it went through, which say where it stopped.
+ */
+function clientListing(
+  history: { runs: Run[] },
+  failedStep?: { step: number; stepIndex: number },
+): HttpClient {
   return {
     baseUrl: 'http://localhost:1',
     headers: {},
     list: async () => ({ items: history.runs, nextCursor: null }),
+    get: async () => ({}),
+    getTimeline: async () =>
+      failedStep === undefined
+        ? []
+        : [{ ...failedStep, status: 'failed', operationLabel: 'Collect' }],
+    operations: { 'weft.workflows.scheduleprovenance.get': async () => null },
   } as unknown as HttpClient;
 }
 
@@ -72,6 +84,47 @@ describe('ScheduleLastFire in the summary line of a schedule’s page', () => {
 
     await rerender({ lastFireAt: undefined });
     expect(textOf(container)).toBe('Never run');
+  });
+});
+
+describe('ScheduleLastFire names the run the last fire launched', () => {
+  test('says where a failed run stopped in the summary line, and only there', async () => {
+    const history = { runs: [run('run-2', 'failed', 2_000)] };
+    const client = clientListing(history, { step: 1, stepIndex: 1 });
+    const summary = render(ScheduleLastFireHarness, {
+      props: { client, scheduleId: 'nightly', lastFireAt: 2_000, summary: true },
+    });
+    await waitFor(() =>
+      expect(textOf(summary.container)).toMatch(
+        /^Last ran [A-Z][a-z]{2} \d{1,2}, failed at step 2$/,
+      ),
+    );
+    summary.unmount();
+
+    const list = render(ScheduleLastFireHarness, {
+      props: { client, scheduleId: 'nightly', lastFireAt: 2_000 },
+    });
+    await waitFor(() =>
+      expect(textOf(list.container)).toMatch(/^Last run [A-Z][a-z]{2} \d{1,2}, failed$/),
+    );
+  });
+
+  test('is not a run a person started after the fire, which is going or newer', async () => {
+    // A run started with Run now two days after the last fire is the newest run, but not the fire's.
+    const history = {
+      runs: [run('run-now', 'running', 2_000_000_000), run('run-fire', 'failed', 1_000)],
+    };
+    const { container } = render(ScheduleLastFireHarness, {
+      props: {
+        client: clientListing(history, { step: 1, stepIndex: 1 }),
+        scheduleId: 'nightly',
+        lastFireAt: 1_000,
+        summary: true,
+      },
+    });
+    await waitFor(() =>
+      expect(textOf(container)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2}, failed at step 2$/),
+    );
   });
 });
 
