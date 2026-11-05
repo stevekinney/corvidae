@@ -7,6 +7,7 @@ import {
   appendToolCall,
   appendToolResult,
   appendUserMessage,
+  CINDER_NOTES_METADATA_KEY,
   createConversationHistory,
   resolveMessageNotes,
   type ConversationHistory,
@@ -19,18 +20,20 @@ import { join } from 'node:path';
 import type { TaskView } from '../../lib/bureau-tasks.ts';
 
 import {
+  carryLiveNotes,
   CHILD_RUN_SETTLED_EVENT_NAME,
   CHILD_RUN_STARTED_EVENT_NAME,
+  holdStopLines,
   INPUTS_DELIVERED_EVENT_NAME,
   MEMORY_STORE_TOOL_NAME,
   MEMORY_WRITTEN_EVENT_NAME,
-  TOOL_GRANT_SETTLED_EVENT_NAME,
-  WAKEUP_SCHEDULED_EVENT_NAME,
-  carryLiveNotes,
   noteAnnouncementOf,
   stopReasonOf,
   taskNoteAnnouncements,
+  TOOL_GRANT_SETTLED_EVENT_NAME,
+  WAKEUP_SCHEDULED_EVENT_NAME,
   withEventNotes,
+  withHeldStopLines,
   withStopReason,
   withStoredMemoryNotes,
   type NoteAnnouncement,
@@ -353,7 +356,9 @@ describe('withStoredMemoryNotes', () => {
 
 describe('why the last run stopped', () => {
   const task = (status: string, finishReason: string | null, statusMessage: string | null = null) =>
-    ({ status, finishReason, statusMessage }) as Parameters<typeof stopReasonOf>[0];
+    ({ id: 'task-1', status, finishReason, statusMessage }) as NonNullable<
+      Parameters<typeof withStopReason>[1]
+    >;
 
   test('is the task’s own message when it left one', () => {
     expect(stopReasonOf(task('failed', 'budget-exceeded', 'Budget exceeded: max calls 1'))).toBe(
@@ -386,7 +391,7 @@ describe('why the last run stopped', () => {
     );
 
     expect(notesOn(stopped, 'a2')).toEqual([
-      { kind: 'stopped', id: 'stopped', reason: 'Over budget', failed: true },
+      { kind: 'stopped', id: 'stopped:task-1', reason: 'Over budget', failed: true },
     ]);
     const held = conversation();
     expect(withStopReason(held, task('completed', null))).toBe(held);
@@ -399,6 +404,43 @@ describe('why the last run stopped', () => {
     const stopped = withStopReason(asked, task('failed', 'error', 'Provider unavailable'));
 
     expect(notesOn(stopped, asked.ids[0]!)).toMatchObject([{ kind: 'stopped' }]);
+  });
+});
+
+describe('the lines of why earlier runs stopped (B06, row 20b)', () => {
+  const line = {
+    kind: 'stopped',
+    id: 'stopped:run-1',
+    reason: 'Provider down',
+    failed: true,
+  } as const;
+  const noted = (history: ConversationHistory, rowId: string) => ({
+    ...history,
+    messages: {
+      ...history.messages,
+      [rowId]: {
+        ...history.messages[rowId]!,
+        metadata: { [CINDER_NOTES_METADATA_KEY]: [line] },
+      },
+    },
+  });
+
+  test('are put back on their row once a later conversation has it again, and only then', () => {
+    const first = conversation();
+    const held = holdStopLines(new Map(), noted(first, 'a1'));
+    const { a1: _dropped, ...rest } = first.messages;
+    const without = { ...first, ids: first.ids.filter((id) => id !== 'a1'), messages: rest };
+
+    expect(withHeldStopLines(held, without)).toBe(without);
+    expect(notesOn(withHeldStopLines(held, first), 'a1')).toEqual([line]);
+  });
+
+  test('leave a line the later conversation gives where it gives it', () => {
+    const first = conversation();
+    const held = holdStopLines(new Map(), noted(first, 'a1'));
+    const moved = noted(first, 'a2');
+
+    expect(withHeldStopLines(held, moved)).toBe(moved);
   });
 });
 

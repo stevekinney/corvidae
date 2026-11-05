@@ -1,8 +1,9 @@
 /**
  * A chat opened on a run that failed (COR-2014): the status beside the title reads Failed, the
  * rail shows the call the run ended on as interrupted in words that follow what its tool may do, the
- * status line says so in danger text with a Retry beside it, and Retry runs the turn again over a
- * fresh reply.
+ * status line says so in danger text with a Retry beside it, and Retry runs the turn again as a new
+ * turn after the failed attempt, which stays on record with its status line (row 20b), while the
+ * interrupted tool goes back through its approval (row 20c).
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -41,6 +42,16 @@ const task = {
   updatedAt: '2026-11-01T00:00:01.000Z',
   cleanup: null,
   openWaits: [],
+};
+
+/** The retry's run, which finished. */
+const retried = {
+  ...task,
+  id: 'task-2',
+  status: 'completed',
+  statusMessage: null,
+  createdAt: '2026-11-01T00:01:00.000Z',
+  updatedAt: '2026-11-01T00:01:01.000Z',
 };
 
 const catalogEntry = (name: string, title: string, tier: 'read-only' | 'dangerous') => ({
@@ -110,8 +121,8 @@ type Served = {
 
 /**
  * A chat whose last run stopped on a call of `issue-refund` that has no answer. The stubbed Bureau
- * holds the thread, takes the failed turn back out of it when asked, and answers the retry's run
- * with the thread it holds.
+ * holds the thread, which the retry's start adds the person's message to, and answers the retry's
+ * run with the thread it holds; once that run has started, it is the chat's last run.
  */
 function open(
   tier: 'read-only' | 'dangerous',
@@ -150,13 +161,12 @@ function open(
         ...CONTEXT,
         ...(options.permissionMode === undefined ? {} : { permissionMode: options.permissionMode }),
       }),
-      'bureau.tasks.list': () => ({ tasks: [task], nextPageToken: null }),
+      'bureau.tasks.list': () => ({
+        tasks: served.started.length === 0 ? [task] : [retried, task],
+        nextPageToken: null,
+      }),
       'bureau.agents.catalog': () => catalog(tier, options.lookup === true),
-      'bureau.contexts.rewind': (params) => {
-        const at = served.thread.findIndex((row) => row.id === params['fromMessageId']);
-        const removed = served.thread.splice(at).map((row) => row.id);
-        return { removed, forgotten: [] };
-      },
+      'bureau.contexts.forgetgrants': () => ({ forgotten: ['default:issue-refund@1.0.0'] }),
       'bureau.contexts.steer': () =>
         options.steer === 'rejected'
           ? { outcome: 'rejected', failure: { reason: 'policy-denied' } }
@@ -170,9 +180,15 @@ function open(
         return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
       }
       if (url.includes('/agents/')) {
-        served.started.push(typeof init?.body === 'string' ? init.body : '');
+        const sent = typeof init?.body === 'string' ? init.body : '';
+        served.started.push(sent);
+        // The rows the start sends that the thread does not hold yet: the person's new message.
+        const held = new Set(served.thread.map((row) => row.id));
+        const added = ((JSON.parse(sent) as { messages?: Served['thread'] }).messages ?? []).filter(
+          (row) => !held.has(row.id) && row.role === 'user',
+        );
         const reply = { id: 'run-2:step:0', role: 'assistant', content: 'Refunded.' };
-        served.thread = [...served.thread, reply];
+        served.thread = [...served.thread, ...added, reply];
         return sse([
           { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-2' },
           { type: 'MESSAGES_SNAPSHOT', messages: served.thread },
@@ -230,26 +246,36 @@ describe('a chat whose run failed on a call', () => {
     );
   });
 
-  test('Retry has the Bureau take the turn back out, and never resumes the call or brings the failed attempt back', async () => {
+  test('Retry sends a new turn after the failed attempt, which stays with its status line, and has the interrupted tool asked again', async () => {
     const { served, view } = open('dangerous');
-    const { container, findByRole } = view;
-    await findByRole('button', { name: 'Retry' });
+    const { container, findByRole, findByText } = view;
 
     await fireEvent.click(await findByRole('button', { name: 'Retry' }));
 
     await waitFor(() => expect(served.started).toHaveLength(1));
-    expect(served.started[0]).toContain('Please refund order 4471, it arrived damaged.');
-    expect(served.started[0]).not.toContain('call-1');
-    const rewind = served.calls.find((call) => call.method === 'bureau.contexts.rewind');
-    expect(rewind?.params).toEqual({
-      contextId: 'session-1',
-      fromMessageId: 'u1',
-      forgetGrantsFor: ['issue-refund'],
-    });
-    // The run ends with the thread the Bureau holds, which no longer holds the failed attempt.
-    await waitFor(() => expect(container.textContent).toContain('Refunded.'));
-    expect(container.querySelectorAll('[data-cinder-status="interrupted"]').length).toBe(0);
-    expect(container.textContent).not.toContain('The reply stopped while');
+    const methods = served.calls.map((call) => call.method);
+    const forget = served.calls.find((call) => call.method === 'bureau.contexts.forgetgrants');
+    expect(forget?.params).toEqual({ contextId: 'session-1', tools: ['issue-refund'] });
+    expect(methods.indexOf('bureau.contexts.forgetgrants')).toBeGreaterThan(-1);
+    // The thread still holds the failed attempt, and the message is added again after it.
+    expect(served.thread.map((row) => row.id).slice(0, 2)).toEqual(['u1', 'a1']);
+    expect(served.thread.filter((row) => row.role === 'user')).toHaveLength(2);
+    await findByText('Refunded.');
+    // The failed attempt stays on record: its call reads as interrupted, its line is still there,
+    // and only the last turn could offer Retry, which this one, finished, does not.
+    const line = await findByText(/The reply stopped while Issue refund was running/);
+    expect(line.textContent).toContain('Issue refund may have run.');
+    expect(
+      container.querySelectorAll('.cinder-tool-call-rail__item[data-cinder-status="interrupted"]')
+        .length,
+    ).toBe(1);
+    const labels = [...container.querySelectorAll('button')].map((button) =>
+      button.textContent?.trim(),
+    );
+    expect(labels).not.toContain('Retry');
+    expect(container.querySelector('[data-testid="chat-header"]')?.textContent).not.toContain(
+      'Failed',
+    );
   });
 
   test('Retry on a chat set to Allow all sets it to On changes first, so the call asks again', async () => {
@@ -262,13 +288,13 @@ describe('a chat whose run failed on a call', () => {
     const methods = served.calls.map((call) => call.method);
     expect(methods.indexOf('bureau.contexts.steer')).toBeGreaterThan(-1);
     expect(methods.indexOf('bureau.contexts.steer')).toBeLessThan(
-      methods.indexOf('bureau.contexts.rewind'),
+      methods.indexOf('bureau.contexts.forgetgrants'),
     );
     const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
     expect(steer?.params).toMatchObject({ contextId: 'session-1', permissionMode: 'on-changes' });
   });
 
-  test('Retry on a chat set to Allow all sets it to On changes when the refund finished and the run stopped on a read-only lookup', async () => {
+  test('Retry on a chat set to Allow all changes no setting when the refund finished and the run stopped on a read-only lookup', async () => {
     const { served, view } = open('dangerous', {
       permissionMode: 'allow-all',
       thread: REFUND_THEN_LOOKUP_THREAD,
@@ -278,15 +304,11 @@ describe('a chat whose run failed on a call', () => {
 
     await fireEvent.click(await findByRole('button', { name: 'Retry' }));
 
+    // The refund's result is on record for the agent to read, and the lookup only reads: no call
+    // that may change things was interrupted, so there is nothing to ask again.
     await waitFor(() => expect(served.started).toHaveLength(1));
-    const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
-    expect(steer?.params).toMatchObject({ permissionMode: 'on-changes' });
-    const rewind = served.calls.find((call) => call.method === 'bureau.contexts.rewind');
-    expect(rewind?.params).toEqual({
-      contextId: 'session-1',
-      fromMessageId: 'u1',
-      forgetGrantsFor: ['issue-refund'],
-    });
+    expect(served.calls.some((call) => call.method === 'bureau.contexts.steer')).toBe(false);
+    expect(served.calls.some((call) => call.method === 'bureau.contexts.forgetgrants')).toBe(false);
   });
 
   test('Retry on a chat not set to Allow all changes no setting', async () => {
@@ -306,7 +328,7 @@ describe('a chat whose run failed on a call', () => {
     await fireEvent.click(await findByRole('button', { name: 'Retry' }));
 
     await findByText('This chat cannot use that mode.');
-    expect(served.calls.some((call) => call.method === 'bureau.contexts.rewind')).toBe(false);
+    expect(served.calls.some((call) => call.method === 'bureau.contexts.forgetgrants')).toBe(false);
     expect(served.started).toEqual([]);
   });
 });

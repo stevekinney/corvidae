@@ -174,7 +174,7 @@ export type ContextsMembers = AssertNever<
     | 'signal'
     | 'input'
     | 'retract'
-    | 'rewind'
+    | 'forgetGrants'
     | 'inputsDeliveredBy'
     | 'steer'
     | 'steering'

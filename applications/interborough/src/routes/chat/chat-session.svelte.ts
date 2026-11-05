@@ -33,9 +33,8 @@ import {
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import {
-  forkRefusalReason,
+  forgetContextGrants,
   retractContextInput,
-  rewindContext,
   sendContextInput,
   wireCodeOf,
   type Fetcher,
@@ -44,7 +43,12 @@ import { BureauClock } from '../../lib/bureau-clock.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { AgUiHttpError } from './ag-ui-events.ts';
 import { questionKeyOf } from './answer-rows.ts';
-import { carryLiveNotes } from './event-notes.ts';
+import {
+  carryLiveNotes,
+  holdStopLines,
+  withHeldStopLines,
+  type HeldStopLine,
+} from './event-notes.ts';
 import {
   createChatRunWiring,
   withAnnouncements,
@@ -54,7 +58,7 @@ import {
   type Refusal,
   type RunUsage,
 } from './run-wiring.ts';
-import { mayChange, type ToolInfo } from './tool-activity.ts';
+import { lastTurnStart, mayChange, type ToolInfo } from './tool-activity.ts';
 
 export type ChatSessionOptions = {
   /** The session's identifier, which is the conversation's and the AG-UI thread's. */
@@ -262,8 +266,9 @@ export class ChatSessionState {
       // A message the person writes is stamped with the Bureau's time, as the Bureau stamps it.
       now: () => clock.nowISO(),
       getConversation: () => this.conversation,
+      // The line of a failed attempt Retry kept is not in the run's snapshot, so it is held.
       setConversation: (next) => {
-        this.conversation = next;
+        this.#setKeepingStopLines(next);
       },
       transport: this.#wiring.transport,
       // A follow-up goes to the run in flight. Its row id is the input's id, so a retry of the
@@ -524,72 +529,51 @@ export class ChatSessionState {
   }
 
   /**
-   * Runs the last turn again: the Bureau takes the turn back out of the thread (`rewindContext`),
-   * the reply that stopped and the calls it made leave the transcript, and the person's message is
-   * sent as a turn of its own, so the new reply replaces the old one and nothing of the failed
-   * attempt is kept, here or in the thread the Bureau sends back when the run ends or the chat is
-   * opened again. It never resumes a call the run was in the middle of: the agent decides again,
-   * and a tool that may change things goes back through its approval, because the chat's "Allow for
-   * the rest of this chat" grant for every tool `tools` classifies that way among the calls of the
-   * turn, finished or not, is forgotten with the turn, so a refund cannot be issued twice. When
-   * the Bureau will not take the turn back (a run still holds the chat), nothing is sent and the
-   * failure says so. A last message with files, or one that is not plain text, is not offered again
-   * here (`canRetryTurn`).
+   * Runs the last turn again: the person's message is sent as a new turn after the failed attempt,
+   * which stays on record, here and in the Bureau's thread, with its status line (B06, row 20b).
+   * It never resumes a call the run was in the middle of: the agent decides again over a thread
+   * that shows what happened, and a tool that may change things and was interrupted goes back
+   * through its approval (row 20c), because the chat's "Allow for the rest of this chat" grant for
+   * every tool `tools` classifies that way among the turn's unanswered calls is forgotten first
+   * (`forgetContextGrants`), so a refund cannot be issued twice unasked. When the grant cannot be
+   * forgotten, nothing is sent and the failure says so. A last message with files, or one that is
+   * not plain text, is not offered again here (`canRetryTurn`).
    */
   async retryTurn(options: { readonly tools?: ReadonlyMap<string, ToolInfo> } = {}): Promise<void> {
     const id = this.#lastUserRowId();
     const row = id === undefined ? undefined : this.conversation.messages[id];
     const text = row === undefined ? undefined : retryText(row);
     if (id === undefined || text === undefined) return;
-    const forgetGrantsFor = this.callsThatMayChangeInLastTurn(options.tools);
-    try {
-      await rewindContext(
-        {
-          contextId: this.sessionId,
-          fromMessageId: id,
-          ...(forgetGrantsFor.length === 0 ? {} : { forgetGrantsFor }),
-        },
-        { signal: this.#abort.signal },
-      );
-    } catch (error) {
-      if (this.#abort.signal.aborted) return;
-      if (isNotFound(error)) this.#onNotFound?.();
-      this.failure =
-        forkRefusalReason(error) === 'run-in-progress'
-          ? CHAT_COPY.stopLine.retryBusy
-          : CHAT_COPY.stopLine.retryFailed;
-      return;
+    const tools = this.interruptedCallsThatMayChange(options.tools);
+    if (tools.length > 0) {
+      try {
+        await forgetContextGrants(
+          { contextId: this.sessionId, tools },
+          { signal: this.#abort.signal },
+        );
+      } catch (error) {
+        if (this.#abort.signal.aborted) return;
+        if (isNotFound(error)) this.#onNotFound?.();
+        this.failure = CHAT_COPY.stopLine.retryFailed;
+        return;
+      }
     }
-    const index = this.conversation.ids.indexOf(id);
-    // Last row first: a call's result may not outlive the call, so the results leave before the calls.
-    this.conversation = this.conversation.ids
-      .slice(index)
-      .toReversed()
-      .reduce(
-        (current, rowId) =>
-          current.messages[rowId] === undefined ? current : removeMessage(current, rowId),
-        this.conversation,
-      );
     this.failure = undefined;
     return this.send(text);
   }
 
   /**
-   * The names of the tools the last turn called that may change things (the catalog says so, or says
-   * nothing), whether the call finished or was interrupted: the calls a retry must put back through
-   * their approval. The retry takes every row of the turn out of the thread, so the record that a
-   * finished call ran goes with it, and the chat's grant for the tool must go too, or the call would
-   * run a second time unasked.
+   * The names of the tools the last turn called that may change things (the catalog says so, or
+   * says nothing) and that have no answer: the calls the run was interrupted on, which may have run
+   * and which a retry must put back through their approval. A call that finished has its result on
+   * record, which the agent reads when it decides again, so its grant stands.
    */
-  callsThatMayChangeInLastTurn(tools: ReadonlyMap<string, ToolInfo> | undefined): string[] {
-    const id = this.#lastUserRowId();
-    const from = id === undefined ? -1 : this.conversation.ids.indexOf(id);
-    if (from < 0) return [];
+  interruptedCallsThatMayChange(tools: ReadonlyMap<string, ToolInfo> | undefined): string[] {
     const rows = this.conversation.ids
-      .slice(from)
+      .slice(lastTurnStart(this.conversation))
       .flatMap((rowId) => this.conversation.messages[rowId] ?? []);
     const names = pairToolCallsWithResults(rows)
-      .filter((pair) => mayChange(tools?.get(pair.call.name)?.tier))
+      .filter((pair) => pair.result === undefined && mayChange(tools?.get(pair.call.name)?.tier))
       .map((pair) => pair.call.name);
     return [...new Set(names)];
   }
@@ -696,9 +680,21 @@ export class ChatSessionState {
 
   /** Replaces the transcript with the authoritative snapshot from the Bureau. */
   private restore(restored: ConversationHistory): void {
-    // What the stream told this page about the run (a wakeup, a child run) is not in the Bureau's
-    // thread, so the rows that are still there keep it.
-    this.conversation = carryLiveNotes(this.conversation, restored);
+    // What the stream told this page about the run (a wakeup, a child run), and why an earlier
+    // attempt stopped, are not in the Bureau's thread, so the rows that are still there keep them.
+    this.#setKeepingStopLines(carryLiveNotes(this.conversation, restored));
+  }
+
+  /** Every line this page was shown of why a run stopped, by its identity, at its row. */
+  #stopLines: ReadonlyMap<string, HeldStopLine> = new Map();
+
+  /**
+   * Shows `next`, with the lines of why an earlier run stopped that it does not give, so the
+   * status line of a failed attempt Retry kept stays on its row (B06, row 20b).
+   */
+  #setKeepingStopLines(next: ConversationHistory): void {
+    this.#stopLines = holdStopLines(this.#stopLines, this.conversation);
+    this.conversation = withHeldStopLines(this.#stopLines, next);
   }
 
   /** Counts the failed reads in a row, and says so to the composer's reconnect line. */

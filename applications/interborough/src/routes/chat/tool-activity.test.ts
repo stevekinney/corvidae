@@ -97,6 +97,22 @@ describe('toolGroups', () => {
   });
 });
 
+describe('a call of a failed attempt that Retry kept (B06, row 20b)', () => {
+  test('reads as interrupted while the new turn’s run is going, and the new turn’s call as running', () => {
+    const { groups } = toolGroups(
+      conversation(
+        row({ id: 'u1', role: 'user', content: 'Refund it' }),
+        call('s0', 'c1', 'issue-refund'),
+        row({ id: 'u2', role: 'user', content: 'Refund it' }),
+        call('s1', 'c2', 'issue-refund'),
+      ),
+      { runActive: true },
+    );
+    expect(groups.get('s0')?.entries.map((entry) => entry.state)).toEqual(['interrupted']);
+    expect(groups.get('s1')?.entries.map((entry) => entry.state)).toEqual(['running']);
+  });
+});
+
 describe('a call the person refused', () => {
   const refused = (outcome: string, content: unknown, error?: Record<string, unknown>) =>
     toolGroups(

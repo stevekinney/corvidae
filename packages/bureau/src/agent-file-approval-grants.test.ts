@@ -58,10 +58,20 @@ const BOB = 'api-key:bob';
 const roots: string[] = [];
 const harnesses: FileBureauHarness[] = [];
 
+/** The calls the model has asked for, by `tool:orderId`: it asks for each once. */
+const asked = new Set<string>();
+/**
+ * A call after whose answer the model's next step fails, by `tool:orderId`, once: a reply that
+ * stops after the tool may have run.
+ */
+const failing = { after: undefined as string | undefined };
+
 afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.dispose();
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
   executed.length = 0;
+  asked.clear();
+  failing.after = undefined;
 });
 
 /** What the model asks for on its first step of a run; read when the step runs. */
@@ -70,13 +80,16 @@ const plan: { tool: string; orderId: string } = { tool: 'issue-refund', orderId:
 async function start(toolApproval?: string, storage?: MemoryStorage): Promise<FileBureauHarness> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-approval-grants-'));
   roots.push(directory);
-  const asked = new Set<string>();
   const harness = await startFileBureau({
     directory,
     scripts: {
       [KNOWN_MODEL.split('/')[1] as string]: () => {
         // A run asks once for an order. Its second step, after the result or the refusal, answers.
         const key = `${plan.tool}:${plan.orderId}`;
+        if (asked.has(key) && failing.after === key) {
+          failing.after = undefined;
+          throw new Error('The model provider dropped the connection.');
+        }
         if (asked.has(key)) return 'Done.';
         asked.add(key);
         return {
@@ -278,6 +291,52 @@ describe('approving with remember (COR-1828)', () => {
     // A chat made afterwards holds no grant.
     const fresh = await ask(bureau, 'issue-refund', 'A2');
     expect(pendingOf(bureau, fresh.id)).toHaveLength(1);
+  });
+});
+
+describe('Retry after a failed reply (B06, row 20c)', () => {
+  it('keeps the failed attempt in the stored chat, and the retried tool asks for approval again once its grant is forgotten', async () => {
+    const { bureau } = await start();
+    const first = await ask(bureau, 'issue-refund', 'A1');
+    await approveRemembering(bureau, first.id);
+    expect(executed).toEqual(['issue-refund:A1']);
+
+    // The grant lets the refund run unasked, and the reply stops after it: it may have run.
+    plan.tool = 'issue-refund';
+    plan.orderId = 'A2';
+    failing.after = 'issue-refund:A2';
+    const failed = await bureau.tasks.start('helper', 'Go.', {
+      principal: ALICE,
+      contextId: first.contextId,
+    });
+    await waitForTaskState(bureau, failed.id);
+    expect(bureau.tasks.detail(failed.id)?.status).toBe('error');
+    expect(executed).toEqual(['issue-refund:A1', 'issue-refund:A2']);
+    const stored = async () => {
+      const session = await bureau.internals.sessionStore?.load(first.contextId);
+      return session?.conversationHistory;
+    };
+    const before = await stored();
+    const failedRows = before?.ids ?? [];
+    // The failed attempt holds the call that ran.
+    const calls = failedRows.flatMap((id) => before?.messages[id]?.toolCall ?? []);
+    expect(calls.map((call) => call.arguments)).toContainEqual({ orderId: 'A2' });
+
+    // Retry: the interrupted tool's grant is forgotten, and a new turn is sent over the same thread.
+    expect(await bureau.contexts.forgetGrants(first.contextId, ['issue-refund'])).toEqual([
+      'default:issue-refund@1.0.0',
+    ]);
+    asked.delete('issue-refund:A2');
+    const retried = await ask(bureau, 'issue-refund', 'A2', first.contextId);
+
+    // The call goes back through its approval instead of running a second time unasked.
+    expect(pendingOf(bureau, retried.id)).toHaveLength(1);
+    expect(executed).toEqual(['issue-refund:A1', 'issue-refund:A2']);
+    // Every row of the failed attempt is still in the stored chat, in its place.
+    const after = await stored();
+    expect(after?.ids.slice(0, failedRows.length)).toEqual([...failedRows]);
+    expect(after?.ids.length).toBeGreaterThan(failedRows.length);
+    for (const id of failedRows) expect(after?.messages[id]).toEqual(before?.messages[id]);
   });
 });
 

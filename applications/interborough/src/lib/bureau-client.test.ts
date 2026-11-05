@@ -8,6 +8,7 @@ import {
   type ContextWindow,
   deleteContext,
   type Fetcher,
+  forgetContextGrants,
   forkContext,
   forkRefusalReason,
   getAgentModels,
@@ -18,7 +19,6 @@ import {
   listContexts,
   renameContext,
   retractContextInput,
-  rewindContext,
   sendContextInput,
   steerContext,
   type SteerOutcome,
@@ -238,7 +238,7 @@ describe('retractContextInput', () => {
   });
 });
 
-describe('rewindContext', () => {
+describe('forgetContextGrants', () => {
   async function withStub<T>(stub: Fetcher, body: () => Promise<T>): Promise<T> {
     const restore = installFetchImplementation(stub);
     try {
@@ -248,39 +248,33 @@ describe('rewindContext', () => {
     }
   }
 
-  test('asks the Bureau to remove the row and what follows it, and to forget the named grants', async () => {
-    const stub = answering(result({ removed: ['u1', 'a1'], forgotten: ['shop:issue_refund@1'] }));
+  test('asks the Bureau to forget the named grants, and answers the grants it forgot', async () => {
+    const stub = answering(result({ forgotten: ['shop:issue_refund@1'] }));
 
     const answer = await withStub(stub.fetch, () =>
-      rewindContext({ contextId: 'c1', fromMessageId: 'u1', forgetGrantsFor: ['issue_refund'] }),
+      forgetContextGrants({ contextId: 'c1', tools: ['issue_refund'] }),
     );
 
-    expect(answer).toBe('rewound');
+    expect(answer).toEqual(['shop:issue_refund@1']);
     expect(stub.calls[0]?.body).toEqual({
       jsonrpc: '2.0',
-      id: 'bureau.contexts.rewind',
-      method: 'bureau.contexts.rewind',
-      params: { contextId: 'c1', fromMessageId: 'u1', forgetGrantsFor: ['issue_refund'] },
+      id: 'bureau.contexts.forgetgrants',
+      method: 'bureau.contexts.forgetgrants',
+      params: { contextId: 'c1', tools: ['issue_refund'] },
     });
   });
 
-  test('answers absent for a row the Bureau does not hold, and throws for anything else', async () => {
-    const noRow = answering(fault(404, 'NotFound', 'No message', { resource: 'message' }));
+  test('throws for a session the Bureau does not hold, and for a Bureau that is shutting down', async () => {
     const noContext = answering(fault(404, 'NotFound', 'No context', { resource: 'context' }));
-    const busy = answering(fault(409, 'Conflict', 'A run is going', { reason: 'run-in-progress' }));
+    const down = answering(fault(503, 'Unavailable', 'Shutting down', { reason: 'shutting-down' }));
 
-    expect(
-      await withStub(noRow.fetch, () => rewindContext({ contextId: 'c1', fromMessageId: 'u1' })),
-    ).toBe('absent');
-    expect(
-      await withStub(noContext.fetch, () =>
-        failureOf(rewindContext({ contextId: 'c1', fromMessageId: 'u1' })),
-      ),
-    ).toBeInstanceOf(Error);
-    const refused = await withStub(busy.fetch, () =>
-      failureOf(rewindContext({ contextId: 'c1', fromMessageId: 'u1' })),
-    );
-    expect(forkRefusalReason(refused)).toBe('run-in-progress');
+    for (const stub of [noContext, down]) {
+      expect(
+        await withStub(stub.fetch, () =>
+          failureOf(forgetContextGrants({ contextId: 'c1', tools: ['issue_refund'] })),
+        ),
+      ).toBeInstanceOf(Error);
+    }
   });
 });
 

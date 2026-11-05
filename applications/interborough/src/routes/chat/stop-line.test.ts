@@ -11,7 +11,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   causeOf,
-  hasFailedStop,
+  failedStopNoteId,
   interruptedTool,
   stopSentence,
   subjectOf,
@@ -58,6 +58,15 @@ const calling = (name: string) =>
       toolCall: { id: 'c1', name, arguments: { orderId: 4471 } },
     }),
   );
+
+/** `history` with `extra` after its last row. */
+function appendLast(history: ConversationHistory, extra: Row): ConversationHistory {
+  return {
+    ...history,
+    ids: [...history.ids, extra.id],
+    messages: { ...history.messages, [extra.id]: extra },
+  };
+}
 
 const FAILED = {
   kind: 'stopped',
@@ -165,7 +174,7 @@ describe('the stop note on the transcript', () => {
     const note = resolveMessageNotes(reworded.messages['s0']!)?.[0];
     expect(note).toMatchObject({ kind: 'stopped', failed: true });
     expect(note?.kind === 'stopped' && note.reason).toContain('Issue refund may have run.');
-    expect(hasFailedStop(reworded)).toBe(true);
+    expect(failedStopNoteId(reworded)).toBe('stopped');
   });
 
   test('rewords the failed note and leaves the notes beside it as they were', () => {
@@ -203,12 +212,73 @@ describe('the stop note on the transcript', () => {
       },
     };
     expect(withStopLine(plain, { tools })).toBe(plain);
-    expect(hasFailedStop(plain)).toBe(false);
+    expect(failedStopNoteId(plain)).toBeUndefined();
   });
 
   test('a transcript with no failed stop note is the very transcript it was', () => {
     const base = calling('issue-refund');
     expect(withStopLine(base, { tools })).toBe(base);
+  });
+});
+
+describe('the lines of a failed attempt Retry kept (B06, row 20b)', () => {
+  const failedOn = (runId: string) => ({ ...FAILED, id: `stopped:${runId}` });
+  /** Two turns that each stopped: the first on a refund, the second on a lookup. */
+  const twoAttempts = () => {
+    const base = conversation(
+      row({ id: 'u1', role: 'user', content: 'Please refund order 4471' }),
+      row({
+        id: 's0',
+        role: 'tool-call',
+        toolCall: { id: 'c1', name: 'issue-refund', arguments: {} },
+      }),
+      row({ id: 'u2', role: 'user', content: 'Please refund order 4471' }),
+      row({
+        id: 's1',
+        role: 'tool-call',
+        toolCall: { id: 'c2', name: 'lookup-order', arguments: {} },
+      }),
+    );
+    const noted = (history: ConversationHistory, rowId: string, runId: string) => ({
+      ...history,
+      messages: {
+        ...history.messages,
+        [rowId]: {
+          ...history.messages[rowId]!,
+          metadata: { [CINDER_NOTES_METADATA_KEY]: [failedOn(runId)] },
+        },
+      },
+    });
+    return noted(noted(base, 's0', 'run-1'), 's1', 'run-2');
+  };
+
+  test('each line is worded from its own turn’s call', () => {
+    const reworded = withStopLine(twoAttempts(), { tools });
+    const first = resolveMessageNotes(reworded.messages['s0']!)?.[0];
+    const second = resolveMessageNotes(reworded.messages['s1']!)?.[0];
+    expect(first?.kind === 'stopped' && first.reason).toContain('Issue refund may have run.');
+    expect(second?.kind === 'stopped' && second.reason).toContain(
+      'Lookup order didn’t finish and nothing was changed.',
+    );
+  });
+
+  test('only the last turn’s line is the one Retry is offered beside', () => {
+    expect(failedStopNoteId(twoAttempts())).toBe('stopped:run-2');
+    const answered = appendLast(twoAttempts(), row({ id: 'u3', role: 'user', content: 'Thanks' }));
+    expect(failedStopNoteId(answered)).toBeUndefined();
+  });
+
+  test('the interrupted tool of the last turn is never an earlier turn’s', () => {
+    const base = twoAttempts();
+    const settled = appendLast(
+      base,
+      row({
+        id: 's1:r',
+        role: 'tool-result',
+        toolResult: { callId: 'c2', outcome: 'success', content: {} },
+      }),
+    );
+    expect(interruptedTool(settled, tools)).toBeUndefined();
   });
 });
 

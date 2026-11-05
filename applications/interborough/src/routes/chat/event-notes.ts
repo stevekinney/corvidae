@@ -230,8 +230,8 @@ function shownIds(conversation: ConversationHistory): string[] {
   return conversation.ids.filter((id) => !conversation.messages[id]?.hidden);
 }
 
-/** Whether `row` is a message the person opened a turn with. */
-function opensTurn(row: Row | undefined): boolean {
+/** Whether `row` is a message the person opened a turn with: a follow-up joins the turn it went to. */
+export function opensTurn(row: Row | undefined): boolean {
   return row?.role === 'user' && !row.hidden && row.metadata?.[FOLLOW_UP_METADATA_KEY] !== true;
 }
 
@@ -470,27 +470,35 @@ export function stopReasonOf(
 
 /**
  * `conversation` with why its last run stopped under its last turn's last reply, or under the
- * person's message when the turn has none, when that run did stop.
+ * person's message when the turn has none, when that run did stop. The note is the run's own
+ * (`stopped:<run>`), so the line of an earlier failed attempt, which Retry keeps on record, is a
+ * line of its own and is never moved onto a later turn.
  */
 export function withStopReason(
   conversation: ConversationHistory,
-  task: Pick<TaskView, 'status' | 'finishReason' | 'statusMessage'> | undefined,
+  task: Pick<TaskView, 'id' | 'status' | 'finishReason' | 'statusMessage'> | undefined,
 ): ConversationHistory {
-  const reason = task === undefined ? undefined : stopReasonOf(task);
+  if (task === undefined) return conversation;
+  const reason = stopReasonOf(task);
   if (reason === undefined) return conversation;
   return (
     putNote(
       conversation,
       {
         kind: 'stopped',
-        id: 'stopped',
+        id: stoppedNoteId(task.id),
         reason,
         // A run that failed is a status line in danger text; one a person stopped is a plain line.
-        ...(task?.status === 'failed' ? { failed: true } : {}),
+        ...(task.status === 'failed' ? { failed: true } : {}),
       },
       undefined,
     ) ?? conversation
   );
+}
+
+/** The identity of the line that says why the run `runId` stopped. */
+export function stoppedNoteId(runId: string): string {
+  return `stopped:${runId}`;
 }
 
 /**
@@ -500,6 +508,50 @@ export function withStopReason(
  * something only the stream said.
  */
 const LIVE_ONLY: ReadonlySet<MessageNoteInfo['kind']> = new Set(['wakeup', 'child-run']);
+
+/** A line saying why a run stopped, with the row it was on. */
+export type HeldStopLine = { readonly rowId: string; readonly note: MessageNoteInfo };
+
+/**
+ * `held` with the lines `conversation` holds of why a run stopped, each by its identity, at the
+ * row it is on now.
+ */
+export function holdStopLines(
+  held: ReadonlyMap<string, HeldStopLine>,
+  conversation: ConversationHistory,
+): Map<string, HeldStopLine> {
+  const next = new Map(held);
+  for (const rowId of conversation.ids) {
+    const row = conversation.messages[rowId];
+    if (row === undefined) continue;
+    for (const note of notesOf(row)) {
+      if (note.kind === 'stopped') next.set(note.id, { rowId, note });
+    }
+  }
+  return next;
+}
+
+/**
+ * `next` with each line of `held` on its row, when `next` has the row and gives the line nowhere
+ * else. Neither a thread read again nor a run's snapshot says why an earlier run stopped (the
+ * tasks say only the last one), and a new turn's send drops the interrupted call's row until the
+ * run's snapshot brings it back, so the line of a failed attempt that Retry kept on record (B06,
+ * row 20b) stays on its row only because the page holds it. A line `next` holds is `next`'s: one
+ * the last run's record says again is placed where it says. `next` itself comes back when there is
+ * nothing to put back.
+ */
+export function withHeldStopLines(
+  held: ReadonlyMap<string, HeldStopLine>,
+  next: ConversationHistory,
+): ConversationHistory {
+  let current = next;
+  for (const [id, { rowId, note }] of held) {
+    const row = current.messages[rowId];
+    if (row === undefined || rowHolding(current, id) !== undefined) continue;
+    current = withNotes(current, rowId, [...notesOf(row), note]);
+  }
+  return current;
+}
 
 /**
  * `next` with the stream-told notes `previous` holds, on the rows of `next` that have the same id.

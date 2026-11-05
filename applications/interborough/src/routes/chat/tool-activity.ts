@@ -14,6 +14,7 @@ import type { ToolCallRailCall } from '@lostgradient/cinder';
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
+import { opensTurn } from './event-notes.ts';
 
 /** One row of a conversation. */
 type Message = ConversationHistory['messages'][string];
@@ -283,10 +284,25 @@ export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCal
   }
 }
 
+/** The index of the row that opens the turn `index` is in: 0 when no row before it opens one. */
+export function turnStart(conversation: ConversationHistory, index: number): number {
+  for (let at = index; at >= 0; at -= 1) {
+    if (opensTurn(conversation.messages[conversation.ids[at] ?? ''])) return at;
+  }
+  return 0;
+}
+
+/** The index of the row that opens the last turn: 0 when no row opens one. */
+export function lastTurnStart(conversation: ConversationHistory): number {
+  return turnStart(conversation, conversation.ids.length - 1);
+}
+
 /**
  * The groups of a conversation: each by the id of its first row, which renders the group, and the
  * ids of the later rows, which render nothing. A row that is hidden, or that only carries a result,
- * does not break a run of tool rows.
+ * does not break a run of tool rows. A call of an earlier turn with no answer was interrupted, even
+ * while a run is going: Retry keeps a failed attempt on record (B06, row 20b), and the run going is
+ * the new turn's, which is not working on it.
  */
 export function toolGroups(
   conversation: ConversationHistory,
@@ -322,7 +338,8 @@ export function toolGroups(
     }
     current = undefined;
   };
-  for (const id of conversation.ids) {
+  const lastTurn = lastTurnStart(conversation);
+  for (const [index, id] of conversation.ids.entries()) {
     const message = conversation.messages[id];
     if (message === undefined || message.hidden) continue;
     if (message.toolResult !== undefined) continue;
@@ -337,7 +354,7 @@ export function toolGroups(
     current.entries.push(
       entryOf(
         pair,
-        options.runActive ?? true,
+        index >= lastTurn && (options.runActive ?? true),
         options.tools ?? new Map(),
         { call: message, result: resultRows.get(call.id) },
         options.timing,

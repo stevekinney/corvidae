@@ -2350,7 +2350,12 @@ describe('what a reloaded thread says of its last run', () => {
       params: { contextId: THREAD },
     });
     expect(history?.messages['a1']?.metadata?.['cinder:notes']).toEqual([
-      { kind: 'stopped', id: 'stopped', reason: 'Budget exceeded: max calls 1', failed: true },
+      {
+        kind: 'stopped',
+        id: 'stopped:task-1',
+        reason: 'Budget exceeded: max calls 1',
+        failed: true,
+      },
     ]);
   });
 

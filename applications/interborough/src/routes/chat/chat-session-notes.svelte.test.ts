@@ -179,7 +179,12 @@ describe('a thread read again', () => {
     await session.attach();
 
     expect(notesOn(session, 'a1')).toEqual([
-      { kind: 'stopped', id: 'stopped', reason: 'Budget exceeded: max calls 1', failed: true },
+      {
+        kind: 'stopped',
+        id: 'stopped:task-1',
+        reason: 'Budget exceeded: max calls 1',
+        failed: true,
+      },
     ]);
   });
 

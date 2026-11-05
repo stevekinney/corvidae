@@ -117,7 +117,6 @@ import type { Models, ModelsOptions } from './models/create-models';
 import type { BureauNotifications } from './notifications/notification-types';
 import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
-import type { SessionRewindOutcome, SessionRewindRequest } from './session-rewind';
 import type {
   SessionSteeringState,
   SteeringCommandAdmissionOutcome,
@@ -2514,16 +2513,21 @@ export interface BureauContexts {
   ): Promise<SessionInputRetractionOutcome>;
 
   /**
-   * B06 (rows 19r and 20c) — take a turn back out of the context so it can be sent again, which
-   * is Retry on a reply that failed: the conversation from `request.fromMessageId` to its end is
-   * removed, and the chat's "Allow for the rest of this chat" grant is forgotten for each tool
-   * named in `request.forgetGrantsFor`, so a changing tool asks again. The outcome is `rewound`
-   * with the identifiers removed and the grants forgotten, `not-found` for an unknown context,
-   * `message-not-found` for a row the conversation does not hold, and `run-in-progress` for a
-   * context a run still holds (going, or waiting on a tool approval); nothing is changed in
-   * either refusal. Throws a `BureauError` `CONFLICT` when Bureau is shutting down.
+   * B06 (row 20c) — forget the chat's "Allow for the rest of this chat" grant of each tool in
+   * `tools`, by the name a tool call carries (a grant is stored under `namespace:name@version`, so a
+   * name matches every version of the tool). Retry on a reply that failed sends a new turn over a
+   * thread that still holds the failed attempt, and this puts the interrupted tool back behind its
+   * approval. Nothing else of the context changes, no row of its conversation is removed, and
+   * `updatedAt` does not move. Resolves the grants forgotten, as they were stored (empty when none
+   * matched), or `undefined` for a context this Bureau does not hold (or none of
+   * `options.incarnation`). It does not authorize the caller, and throws a
+   * `BureauShuttingDownError` once the Bureau is shutting down.
    */
-  rewind(contextId: string, request: SessionRewindRequest): Promise<SessionRewindOutcome>;
+  forgetGrants(
+    contextId: string,
+    tools: readonly string[],
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<readonly string[] | undefined>;
 
   /**
    * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
@@ -2898,7 +2902,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly schedules: BureauSchedules;
   /**
-   * The contexts (sessions): `list`, `get`, `delete`, `signal`, `input`, `retract`, `rewind`, `inputsDeliveredBy`,
+   * The contexts (sessions): `list`, `get`, `delete`, `signal`, `input`, `retract`, `forgetGrants`, `inputsDeliveredBy`,
    * `steer`, `steering`, `fork`, and the context's event history (`events`, `subscribeEvents`).
    * See {@link BureauContexts}.
    */

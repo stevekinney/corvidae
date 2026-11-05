@@ -386,36 +386,19 @@ export async function retractContextInput(
 }
 
 /**
- * Takes a turn back out of a session (`bureau.contexts.rewind`): the row `fromMessageId` and every
- * row after it are removed from the Bureau's own record, and the grants of `forgetGrantsFor` (tool
- * names) are forgotten, so Retry sends the turn again over a thread that never held the failed
- * attempt and a changing tool asks again. `absent` means the Bureau holds no such row, so there is
- * nothing there to remove; a session a run still holds is a `Conflict` fault whose `data.reason` is
- * `run-in-progress` (`forkRefusalReason` reads it), and any other failure throws.
+ * Forgets a session's "Allow for the rest of this chat" grant of each tool in `tools` (tool names,
+ * `bureau.contexts.forgetgrants`), so the next call of that tool asks for approval again. It removes
+ * no row: Retry keeps the failed attempt on record and sends a new turn after it. Resolves the
+ * grants forgotten, as the Bureau stored them; a missing session is a `NotFound` fault, and any
+ * failure throws.
  */
-export async function rewindContext(
-  input: {
-    readonly contextId: string;
-    readonly fromMessageId: string;
-    readonly forgetGrantsFor?: readonly string[];
-  },
+export async function forgetContextGrants(
+  input: { readonly contextId: string; readonly tools: readonly string[] },
   options?: { readonly signal?: AbortSignal },
-): Promise<'rewound' | 'absent'> {
-  try {
-    z.object({ removed: z.array(z.string()), forgotten: z.array(z.string()) }).parse(
-      await callBureau('bureau.contexts.rewind', input, options),
-    );
-    return 'rewound';
-  } catch (error) {
-    if (
-      error instanceof HttpClientError &&
-      wireCodeOf(error) === 'NotFound' &&
-      error.data?.['resource'] === 'message'
-    ) {
-      return 'absent';
-    }
-    throw error;
-  }
+): Promise<readonly string[]> {
+  return z
+    .object({ forgotten: z.array(z.string()) })
+    .parse(await callBureau('bureau.contexts.forgetgrants', input, options)).forgotten;
 }
 
 /**

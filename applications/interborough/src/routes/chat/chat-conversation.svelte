@@ -49,7 +49,14 @@
     PageHeader,
     StatusDot,
   } from '@lostgradient/cinder';
-  import { Chat, ChatNote, ChatQuestion, McpApp, resolveMessageNotes } from '@lostgradient/chat';
+  import {
+    Chat,
+    ChatNote,
+    ChatQuestion,
+    McpApp,
+    resolveMessageNotes,
+    type MessageNoteInfo,
+  } from '@lostgradient/chat';
   import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -126,7 +133,7 @@
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
   import { toolGroups, type ToolCallEntry, type ToolInfo } from './tool-activity.ts';
-  import { hasFailedStop, withStopLine } from './stop-line.ts';
+  import { failedStopNoteId, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -580,6 +587,11 @@
     ),
   );
 
+  // The status line Retry is offered beside: the last turn's, when its run failed. A failed attempt
+  // of an earlier turn keeps its line (row 20b) with nothing beside it, since Retry runs the last
+  // turn again.
+  const retryNoteId = $derived(failedStopNoteId(shown));
+
   // The messages that offer a branch. A run that is going, or that the page is still reading, has
   // not finished its last message.
   const branchPoints = $derived(
@@ -600,14 +612,15 @@
   const retryCommands = createPendingCommandKey();
 
   /**
-   * Runs the last turn again (Retry on the status line under a reply that stopped). A call the turn
-   * made that may change things, finished or interrupted, goes back through its approval, so a chat
-   * set to Allow all is set to On changes first, and the composer says so (the chat's "Allow for the
-   * rest of this chat" grant for the tool is forgotten with the turn, `ChatSessionState.retryTurn`).
-   * When the setting cannot be changed, nothing is sent: the call would otherwise run unasked.
+   * Runs the last turn again (Retry on the status line under a reply that stopped), after the
+   * failed attempt, which stays on record. A call the run was interrupted on that may change things
+   * goes back through its approval, so a chat set to Allow all is set to On changes first, and the
+   * composer says so (the chat's "Allow for the rest of this chat" grant for the tool is forgotten,
+   * `ChatSessionState.retryTurn`). When the setting cannot be changed, nothing is sent: the call
+   * would otherwise run unasked.
    */
   async function retryTurn(): Promise<void> {
-    const changing = session.callsThatMayChangeInLastTurn(toolInfo);
+    const changing = session.interruptedCallsThatMayChange(toolInfo);
     const data = context.data;
     if (changing.length > 0 && data?.permissionMode === 'allow-all') {
       const result = await changeSetting({
@@ -837,7 +850,7 @@
       return CHAT_COPY.status.waiting;
     }
     if (runGoing) return CHAT_COPY.status.running;
-    if (hasFailedStop(shown)) return CHAT_COPY.status.failed;
+    if (retryNoteId !== undefined) return CHAT_COPY.status.failed;
     return CHAT_COPY.status.done;
   });
   // The Bureau's time, which a running call's duration counts to. It moves only while a call runs,
@@ -1295,17 +1308,19 @@
           </Button>
         {/if}
       {/snippet}
-      {#snippet noteAction()}
-        <Button
-          data-changes
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={!session.canRetryTurn || connection.unreachable}
-          onclick={() => void retryTurn()}
-        >
-          {CHAT_COPY.stopLine.retry}
-        </Button>
+      {#snippet noteAction(note: MessageNoteInfo)}
+        {#if note.id === retryNoteId}
+          <Button
+            data-changes
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!session.canRetryTurn || connection.unreachable}
+            onclick={() => void retryTurn()}
+          >
+            {CHAT_COPY.stopLine.retry}
+          </Button>
+        {/if}
       {/snippet}
       {#snippet row({ message }, renderDefault)}
         {@const group = activity.groups.get(message.id)}
@@ -1361,7 +1376,10 @@
             {@const held = shown.messages[rowId]}
             {@const notes = held === undefined ? [] : (resolveMessageNotes(held) ?? [])}
             {#each notes as note (note.id)}
-              <ChatNote {note} action={note.kind === 'stopped' ? noteAction : undefined} />
+              <ChatNote
+                {note}
+                action={note.kind === 'stopped' && note.id === retryNoteId ? noteAction : undefined}
+              />
             {/each}
           {/each}
         {:else if !activity.absorbed.has(message.id) && (assets.length === 0 || hasContent(message))}

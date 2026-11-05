@@ -1,16 +1,21 @@
 /**
- * Running the last turn again after a run stopped partway (COR-2014, rows 19r, 19x, 20a and 20c):
- * `retryTurn` asks the Bureau to take the failed turn back out of the thread (`bureau.contexts.rewind`)
- * and then sends the person's message again, so nothing of the failed attempt is kept, in the page or
- * in the thread the Bureau sends back (the snapshot that ends the run, and a thread read again). It
- * never resumes a call the run was in the middle of, and a tool that may change things goes back
- * through its approval because its remembered grant is forgotten with the turn.
+ * Running the last turn again after a run stopped partway (COR-2014, rows 19r, 19x, 20a, 20b and
+ * 20c): `retryTurn` sends the person's message again as a new turn after the failed attempt, which
+ * stays on record, in the page and in the thread the Bureau holds (the snapshot that ends the run,
+ * and a thread read again). It never resumes a call the run was in the middle of, and a tool that
+ * may change things and was interrupted goes back through its approval because its remembered
+ * grant is forgotten first (`bureau.contexts.forgetgrants`).
  *
- * The Bureau is stubbed with a thread of its own, which the stubbed rewind shortens and the stubbed
- * run answers with, as the real one does: a mock stream that ended with no snapshot would pass
- * whether or not the thread still held the rows.
+ * The Bureau is stubbed with a thread of its own, which a start adds the rows it lacks to, as the
+ * real mount does, and which the stubbed run answers with: a mock stream that ended with no
+ * snapshot would pass whether or not the thread still held the rows.
  */
-import { appendMessages, type ConversationHistory } from '@lostgradient/chat';
+import {
+  appendMessages,
+  CINDER_NOTES_METADATA_KEY,
+  resolveMessageNotes,
+  type ConversationHistory,
+} from '@lostgradient/chat';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { CHAT_COPY } from '../../app/copy.ts';
@@ -35,7 +40,7 @@ const started = (runId: string) => ({
   metadata: { '@lostgradient/bureau': { runId, sessionId: THREAD, durable: false } },
 });
 
-/** What the Bureau holds of the thread: the failed turn's rows, which a rewind takes out. */
+/** What the Bureau holds of the thread: the failed turn's rows, which a retry keeps. */
 const FAILED_PARTWAY: readonly WireMessage[] = [
   { id: 'u1', role: 'user', content: 'Please refund 4471' },
   { id: 'a1', role: 'assistant', content: 'Order 4471 is' },
@@ -47,34 +52,42 @@ const FAILED_ON_CALL: readonly WireMessage[] = [
     role: 'assistant',
     content: '',
     toolCalls: [
-      { id: 'call-1', type: 'function', function: { name: 'issue-refund', arguments: '{}' } },
+      {
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'issue-refund', arguments: '{"orderId":"4471"}' },
+      },
     ],
   },
 ];
 
-type Rewind = { contextId: string; fromMessageId: string; forgetGrantsFor?: string[] };
+type Forget = { contextId: string; tools: string[] };
 
 /**
- * A stubbed Bureau: its thread, the rewinds it was asked for, and how it answers one. A rewind
- * removes the row and what follows it from the thread, and the run that follows answers with the
- * thread it now holds, as the real one does when it ends.
+ * A stubbed Bureau: its thread, the grants it was asked to forget, the order of what it was asked,
+ * and how it answers a forget. A start adds the rows the thread lacks, as the mount does, and the
+ * run that follows answers with the thread it now holds, as the real one does when it ends.
  */
-function bureau(thread: readonly WireMessage[], rewindAnswer: () => Response | undefined) {
-  const state = { thread: [...thread], rewinds: [] as Rewind[], bodies: [] as string[] };
+function bureau(thread: readonly WireMessage[], forgetAnswer: () => Response | undefined) {
+  const state = {
+    thread: [...thread],
+    forgets: [] as Forget[],
+    bodies: [] as string[],
+    order: [] as string[],
+  };
   const restore = installFetchImplementation(async (_input, init) => {
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
       method?: string;
-      params?: Rewind;
+      params?: Forget;
     };
-    if (body.method !== 'bureau.contexts.rewind' || body.params === undefined) {
+    if (body.method !== 'bureau.contexts.forgetgrants' || body.params === undefined) {
       throw new Error(`Unexpected Bureau call: ${String(body.method)}`);
     }
-    state.rewinds.push(body.params);
-    const refused = rewindAnswer();
+    state.forgets.push(body.params);
+    state.order.push('forget');
+    const refused = forgetAnswer();
     if (refused !== undefined) return refused;
-    const at = state.thread.findIndex((message) => message.id === body.params?.fromMessageId);
-    const removed = state.thread.splice(at).map((message) => message.id);
-    return Response.json({ jsonrpc: '2.0', id: 1, result: { removed, forgotten: [] } });
+    return Response.json({ jsonrpc: '2.0', id: 1, result: { forgotten: [] } });
   });
   /** The AG-UI door: a start is answered with the new reply and the thread the Bureau holds. */
   const fetchAgUi: Fetcher = async (url, init) => {
@@ -94,11 +107,16 @@ function bureau(thread: readonly WireMessage[], rewindAnswer: () => Response | u
     if (target.includes('/threads/')) {
       return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
     }
-    state.bodies.push(typeof init?.body === 'string' ? init.body : '');
+    const sent = typeof init?.body === 'string' ? init.body : '';
+    state.bodies.push(sent);
+    state.order.push('start');
+    // The rows the start sends that the thread does not hold yet: the person's new message.
+    const held = new Set(state.thread.map((message) => message.id));
+    const added = ((JSON.parse(sent) as { messages?: WireMessage[] }).messages ?? []).filter(
+      (message) => !held.has(message.id) && message.role === 'user',
+    );
     const reply: WireMessage = { id: 'run-2:step:0', role: 'assistant', content: 'Refunded.' };
-    const user: WireMessage = { id: 'u2', role: 'user', content: 'Please refund 4471' };
-    const held = state.thread.some((message) => message.id === 'u1') ? [] : [user];
-    state.thread = [...state.thread, ...held, reply];
+    state.thread = [...state.thread, ...added, reply];
     return sse([
       started('run-2'),
       { type: 'TEXT_MESSAGE_START', messageId: reply.id, role: 'assistant' },
@@ -124,9 +142,9 @@ afterEach(() => {
 function open(
   thread: readonly WireMessage[],
   history: (empty: ConversationHistory) => ConversationHistory,
-  rewindAnswer: () => Response | undefined = () => undefined,
+  forgetAnswer: () => Response | undefined = () => undefined,
 ) {
-  const stub = bureau(thread, rewindAnswer);
+  const stub = bureau(thread, forgetAnswer);
   restores.push(stub.restore);
   const session = new ChatSessionState({
     sessionId: THREAD,
@@ -219,54 +237,94 @@ const REFUND_THEN_LOOKUP = new Map<string, ToolInfo>([
   ['lookup-order', { title: 'Lookup order', tier: 'read-only' }],
 ]);
 
+/** The text of the visible rows, the failed attempt's included. */
+const BOTH_ATTEMPTS = [
+  'user:Please refund 4471',
+  'assistant:Order 4471 is',
+  'user:Please refund 4471',
+  'assistant:Refunded.',
+];
+
 describe('running the last turn again', () => {
   test('is offered for a last message that is plain text, once nothing is going', () => {
     expect(open(FAILED_PARTWAY, stopped).session.canRetryTurn).toBe(true);
     expect(open([], (empty) => empty).session.canRetryTurn).toBe(false);
   });
 
-  test('has the Bureau take the turn back out of the thread, then sends the message again over a fresh reply', async () => {
+  test('sends the message again as a new turn over a thread that still holds the failed attempt', async () => {
     const { session, state } = open(FAILED_PARTWAY, stopped);
 
     await session.retryTurn();
 
-    expect(state.rewinds).toEqual([{ contextId: THREAD, fromMessageId: 'u1' }]);
+    // A reply that stopped with no call under way has no grant to forget.
+    expect(state.forgets).toEqual([]);
     expect(state.bodies).toHaveLength(1);
     expect(state.bodies[0]).toContain('Please refund 4471');
-    expect(state.bodies[0]).not.toContain('Order 4471 is');
+    expect(state.bodies[0]).toContain('Order 4471 is');
     expect(session.failure).toBeUndefined();
   });
 
-  test('keeps nothing of the failed attempt when the run ends with the thread the Bureau holds', async () => {
+  test('keeps the failed attempt when the run ends with the thread the Bureau holds', async () => {
     const { session, state } = open(FAILED_PARTWAY, stopped);
 
     await session.retryTurn();
 
-    expect(state.thread.map((message) => message.id)).not.toContain('a1');
-    expect(visibleText(session)).toEqual(['user:Please refund 4471', 'assistant:Refunded.']);
+    expect(state.thread.map((message) => message.id).slice(0, 2)).toEqual(['u1', 'a1']);
+    expect(state.thread).toHaveLength(4);
+    expect(visibleText(session)).toEqual(BOTH_ATTEMPTS);
   });
 
-  test('keeps nothing of the failed attempt in a chat opened again afterwards', async () => {
+  test('keeps the failed attempt in a chat opened again afterwards', async () => {
     const { session } = open(FAILED_PARTWAY, stopped);
     await session.retryTurn();
 
     expect(await session.refresh()).toBe(true);
 
-    expect(visibleText(session)).toEqual(['user:Please refund 4471', 'assistant:Refunded.']);
+    expect(visibleText(session)).toEqual(BOTH_ATTEMPTS);
   });
 
-  test('never resumes a call the run was in the middle of, and the interrupted call leaves the transcript for good', async () => {
+  test('never resumes a call the run was in the middle of, and the interrupted call stays on record', async () => {
     const { session, state } = open(FAILED_ON_CALL, stoppedOnCall);
 
     await session.retryTurn();
 
-    expect(state.bodies[0]).not.toContain('"toolCallId":"call-1"');
-    expect(state.bodies[0]).not.toContain('issue-refund');
-    expect(toolRows(session)).toEqual([]);
-    expect(visibleText(session)).toEqual(['user:Please refund 4471', 'assistant:Refunded.']);
+    expect(state.bodies[0]).not.toContain('"resume"');
+    expect(toolRows(session)).toEqual(['a1']);
+    expect(visibleText(session)).toEqual([
+      'user:Please refund 4471',
+      'tool-call:',
+      'user:Please refund 4471',
+      'assistant:Refunded.',
+    ]);
   });
 
-  test('has the Bureau forget the grant of an unanswered call that may change things, so it asks again', async () => {
+  test('keeps the failed attempt’s status line on its row through the run’s snapshot and a thread read again', async () => {
+    const line = {
+      kind: 'stopped',
+      id: 'stopped:task-1',
+      reason: 'The model provider dropped the connection.',
+      failed: true,
+    };
+    const { session } = open(FAILED_ON_CALL, (empty) => {
+      const history = stoppedOnCall(empty);
+      const row = history.messages['a1']!;
+      return {
+        ...history,
+        messages: {
+          ...history.messages,
+          a1: { ...row, metadata: { ...row.metadata, [CINDER_NOTES_METADATA_KEY]: [line] } },
+        },
+      };
+    });
+
+    await session.retryTurn();
+    expect(resolveMessageNotes(session.conversation.messages['a1']!)).toEqual([line]);
+
+    expect(await session.refresh()).toBe(true);
+    expect(resolveMessageNotes(session.conversation.messages['a1']!)).toEqual([line]);
+  });
+
+  test('has the Bureau forget the grant of an unanswered call that may change things before the turn is sent, so it asks again', async () => {
     const tools = new Map<string, ToolInfo>([
       ['issue-refund', { title: 'Issue refund', tier: 'dangerous' }],
     ]);
@@ -274,34 +332,27 @@ describe('running the last turn again', () => {
 
     await session.retryTurn({ tools });
 
-    expect(state.rewinds).toEqual([
-      { contextId: THREAD, fromMessageId: 'u1', forgetGrantsFor: ['issue-refund'] },
-    ]);
+    expect(state.forgets).toEqual([{ contextId: THREAD, tools: ['issue-refund'] }]);
+    expect(state.order).toEqual(['forget', 'start']);
   });
 
-  test('forgets the grant of a changing call that finished inside the failed turn, since the rewind takes its result row away', async () => {
-    const { session, state } = open(
-      [
-        { id: 'u1', role: 'user', content: 'Please refund 4471' },
-        { id: 'a1', role: 'assistant', content: 'Order 4471 is' },
-      ],
-      stoppedAfterRefund,
-    );
+  test('keeps the grant of a changing call that finished in the failed turn, whose result is on record', async () => {
+    const { session, state } = open(FAILED_PARTWAY, stoppedAfterRefund);
 
-    expect(session.callsThatMayChangeInLastTurn(REFUND_THEN_LOOKUP)).toEqual(['issue-refund']);
+    expect(session.interruptedCallsThatMayChange(REFUND_THEN_LOOKUP)).toEqual([]);
 
     await session.retryTurn({ tools: REFUND_THEN_LOOKUP });
 
-    // Only the retried turn's calls count: the credit from the earlier turn stays remembered.
-    expect(state.rewinds[0]?.forgetGrantsFor).toEqual(['issue-refund']);
+    expect(state.forgets).toEqual([]);
+    expect(state.bodies).toHaveLength(1);
   });
 
-  test('forgets the grant of a call the catalog does not classify', async () => {
+  test('forgets the grant of an interrupted call the catalog does not classify', async () => {
     const { session, state } = open(FAILED_ON_CALL, stoppedOnCall);
 
     await session.retryTurn();
 
-    expect(state.rewinds[0]?.forgetGrantsFor).toEqual(['issue-refund']);
+    expect(state.forgets[0]?.tools).toEqual(['issue-refund']);
   });
 
   test('forgets the grant of no call that only reads', async () => {
@@ -312,31 +363,12 @@ describe('running the last turn again', () => {
 
     await session.retryTurn({ tools: reads });
 
-    expect(state.rewinds[0]?.forgetGrantsFor).toBeUndefined();
+    expect(state.forgets).toEqual([]);
+    expect(state.bodies).toHaveLength(1);
   });
 
-  test('sends nothing and keeps the transcript when a run still holds the chat', async () => {
-    const { session, state } = open(FAILED_PARTWAY, stopped, () =>
-      Response.json({
-        jsonrpc: '2.0',
-        id: 1,
-        error: {
-          code: -32000,
-          message: 'A run is going',
-          data: { weftCode: 'Conflict', httpStatus: 409, reason: 'run-in-progress' },
-        },
-      }),
-    );
-
-    await session.retryTurn();
-
-    expect(state.bodies).toEqual([]);
-    expect(session.failure).toBe(CHAT_COPY.stopLine.retryBusy);
-    expect(visibleText(session)).toEqual(['user:Please refund 4471', 'assistant:Order 4471 is']);
-  });
-
-  test('sends nothing and says so when the Bureau cannot be asked', async () => {
-    const { session, state } = open(FAILED_PARTWAY, stopped, () =>
+  test('sends nothing and says so when the grant cannot be forgotten', async () => {
+    const { session, state } = open(FAILED_ON_CALL, stoppedOnCall, () =>
       Response.json(
         { jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'down' } },
         { status: 500 },
@@ -347,26 +379,8 @@ describe('running the last turn again', () => {
 
     expect(state.bodies).toEqual([]);
     expect(session.failure).toBe(CHAT_COPY.stopLine.retryFailed);
-    expect(visibleText(session)).toEqual(['user:Please refund 4471', 'assistant:Order 4471 is']);
-  });
-
-  test('sends the message again when the Bureau never held it, with nothing to take back', async () => {
-    const { session, state } = open([], stopped, () =>
-      Response.json({
-        jsonrpc: '2.0',
-        id: 1,
-        error: {
-          code: -32000,
-          message: 'No message',
-          data: { weftCode: 'NotFound', httpStatus: 404, resource: 'message' },
-        },
-      }),
-    );
-
-    await session.retryTurn();
-
-    expect(state.bodies).toHaveLength(1);
-    expect(visibleText(session)).toEqual(['user:Please refund 4471', 'assistant:Refunded.']);
+    expect(visibleText(session)).toEqual(['user:Please refund 4471', 'tool-call:']);
+    expect(toolRows(session)).toEqual(['a1']);
   });
 
   test('is not offered for a message that is not plain text, and sends nothing then', async () => {
@@ -375,7 +389,7 @@ describe('running the last turn again', () => {
     );
     expect(session.canRetryTurn).toBe(false);
     await session.retryTurn();
-    expect(state.rewinds).toEqual([]);
+    expect(state.forgets).toEqual([]);
     expect(state.bodies).toEqual([]);
   });
 });

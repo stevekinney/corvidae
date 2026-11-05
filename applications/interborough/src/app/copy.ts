@@ -2726,11 +2726,12 @@ export const CHAT_COPY = {
     mayHaveRun: (tool: string, subject: string = 'result'): string =>
       `${tool} may have run. Check the ${subject} before retrying. Retry goes back through the approval.`,
     retry: 'Retry',
-    /** Said when Retry could not take the failed turn back out of the chat. */
-    retryFailed: 'The failed reply could not be taken back, so nothing was sent. Try again.',
-    /** Said when a run still holds the chat, so the failed turn cannot be taken back yet. */
-    retryBusy:
-      'The agent is still working on this chat, so nothing was sent. Try again in a moment.',
+    /**
+     * Said when Retry could not put the interrupted tool back behind its approval, so it sent
+     * nothing rather than let the call run again unasked.
+     */
+    retryFailed:
+      'Retry could not ask for the tool’s approval again, so nothing was sent. Try again.',
   },
   /** The chat's header and its strip of runs. */
   strip: {

@@ -614,12 +614,7 @@ import {
   type ForkSessionResult,
   SessionForkRefusedError,
 } from './session-fork';
-import {
-  holdsPendingApproval,
-  rewoundSession,
-  type SessionRewindOutcome,
-  type SessionRewindRequest,
-} from './session-rewind';
+import { withoutGrantsFor } from './session-grants';
 import {
   answerSteeringRetry,
   type BureauSteeringGate,
@@ -16868,75 +16863,44 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * B06 (rows 19r and 20c) — take a turn back out of a context: the conversation from
-   * `request.fromMessageId` to its end is removed, and the grants of `request.forgetGrantsFor` are
-   * forgotten, so Retry sends the turn again over a transcript that never held the failed attempt
-   * and a changing tool asks again. A context a run still holds (going, or parked on an approval)
-   * is refused, because the run writes the rows this removes; the answer comes from the context
-   * as it is read inside the store's own update, so a run that starts meanwhile is seen.
+   * B06 (row 20c) — forget the chat's "Allow for the rest of this chat" grants of `tools`, so Retry
+   * on a reply that failed sends the turn again with the interrupted tool back behind its approval.
+   * Only the session's metadata changes: every row of the conversation stays, and the failed
+   * attempt is kept on record. Like a rename it is not activity, so `updatedAt` does not move.
    */
-  async function rewindSession(
-    sessionId: string,
-    request: SessionRewindRequest,
-  ): Promise<SessionRewindOutcome> {
+  async function forgetSessionGrants(
+    id: string,
+    tools: readonly string[],
+    forgetOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<readonly string[] | undefined> {
+    const sessions = requireSessionStore();
     if (runAdmissionClosed) {
       throw new BureauShuttingDownError(
-        'Cannot rewind: Bureau is shutting down.',
+        'Cannot forget grants: Bureau is shutting down.',
         runtimeServices.clock.nowISO(),
       );
     }
-    const sessions = requireSessionStore();
-    const session = await sessions.load(sessionId);
-    if (session === undefined) return { outcome: 'not-found' };
-    if (await sessionHoldsRun(session)) return { outcome: 'run-in-progress' };
-    let outcome: SessionRewindOutcome = { outcome: 'not-found' };
+    let forgotten: readonly string[] | undefined;
     await sessions.update(
-      sessionId,
-      async (current) => {
-        if (current === undefined || current.incarnation !== session.incarnation) {
-          outcome = { outcome: 'not-found' };
+      id,
+      (session) => {
+        if (session === undefined) return undefined;
+        if (
+          forgetOptions?.incarnation !== undefined &&
+          session.incarnation !== forgetOptions.incarnation
+        ) {
           return undefined;
         }
-        if (await sessionHoldsRun(current)) {
-          outcome = { outcome: 'run-in-progress' };
-          return undefined;
-        }
-        const rewound = rewoundSession(current, request);
-        if (rewound === undefined) {
-          outcome = { outcome: 'message-not-found' };
-          return undefined;
-        }
-        outcome = {
-          outcome: 'rewound',
-          removed: rewound.removed,
-          forgotten: rewound.forgotten,
-        };
-        return rewound.session;
+        const without = withoutGrantsFor(session.metadata, tools);
+        forgotten = without.forgotten;
+        // Nothing to forget is no write: undefined leaves the session as it is.
+        return without.metadata === session.metadata
+          ? undefined
+          : { ...session, metadata: without.metadata };
       },
-      { refreshActivity: true },
+      { refreshActivity: false },
     );
-    return outcome;
-  }
-
-  /**
-   * Whether a run of `session` is going, or is parked on an unexpired tool approval: the rule the
-   * AG-UI mount decides a thread is busy with, so a start and a rewind never disagree.
-   */
-  async function sessionHoldsRun(session: AgentSession): Promise<boolean> {
-    const metadata = session.metadata;
-    const lastRunId = metadata['lastRunId'];
-    if (typeof lastRunId !== 'string') return false;
-    try {
-      if (metadata['lastRunStatus'] === 'running') {
-        const durable = await getDurableRun(lastRunId);
-        if (durable !== undefined && durable !== null && isDurableRunUnsettled(durable.status)) {
-          return true;
-        }
-      }
-      return holdsPendingApproval(metadata, lastRunId, runtimeServices.clock.now());
-    } catch {
-      return true;
-    }
+    return forgotten;
   }
 
   /**
@@ -23358,7 +23322,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     signal: signalSession,
     input: submitSessionInput,
     retract: retractSessionInput,
-    rewind: rewindSession,
+    forgetGrants: forgetSessionGrants,
     inputsDeliveredBy: sessionInputsDeliveredBy,
     steer: submitSteeringCommand,
     steering: getSessionSteering,
