@@ -33,6 +33,11 @@
       "description": "Label of the retry button.",
       "default": "Try again"
     },
+    "retryVariant": {
+      "enum": ["primary", "secondary"],
+      "description": "How prominent the retry button is. `'primary'` suits a full-page failure, where retrying is\nthe one thing to do. `'secondary'` suits a section of a page that has other controls, such as\na tab's body under a tab bar, so the retry does not outrank them.",
+      "default": "primary"
+    },
     "headingLevel": {
       "enum": [1, 2, 3, 4, 5, 6],
       "description": "Heading level for the title element.",

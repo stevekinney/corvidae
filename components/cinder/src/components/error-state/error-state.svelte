@@ -13,7 +13,12 @@
    * @avoidWhen Reporting the result of a just-completed action — use alert or toast-region.
    * @related alert, empty-state, banner
    */
-  export type { ErrorStateProps, ErrorStateTone, ErrorStateVariant } from './error-state.types.ts';
+  export type {
+    ErrorStateProps,
+    ErrorStateRetryVariant,
+    ErrorStateTone,
+    ErrorStateVariant,
+  } from './error-state.types.ts';
 </script>
 
 <script lang="ts">
@@ -32,6 +37,7 @@
     tone = 'danger',
     onRetry,
     retryLabel = 'Try again',
+    retryVariant = 'primary',
     retryIcon,
     secondaryAction,
     icon,
@@ -93,12 +99,16 @@
     {#if onRetry || secondaryAction}
       <div class="cinder-error-state-action">
         {#if onRetry}
-          <Button variant="primary" label={retryLabel} onclick={() => onRetry()}>
+          <Button
+            variant={retryVariant === 'secondary' ? 'secondary' : 'primary'}
+            label={retryLabel}
+            onclick={() => onRetry()}
+          >
             {#snippet leadingIcon()}
               {#if retryIcon}
                 {@render retryIcon()}
               {:else}
-                <RefreshCw />
+                <RefreshCw size={14} aria-hidden="true" />
               {/if}
             {/snippet}
           </Button>

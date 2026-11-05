@@ -357,3 +357,42 @@ describe('ErrorState bordered', () => {
     ).toBe(false);
   });
 });
+
+describe('ErrorState retryVariant', () => {
+  test('is primary by default, the page’s one primary action', () => {
+    const { getByRole } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', onRetry: () => {} },
+    });
+    expect(getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant')).toBe(
+      'primary',
+    );
+  });
+
+  test('is secondary when a section of a page asks for it, and still calls onRetry', async () => {
+    const onRetry = mock(() => {});
+    const { getByRole } = render(ErrorState, {
+      props: {
+        title: 'Failed',
+        description: 'Nope.',
+        onRetry,
+        retryVariant: 'secondary',
+      },
+    });
+    const button = getByRole('button', { name: 'Try again' });
+    expect(button.getAttribute('data-cinder-variant')).toBe('secondary');
+    await fireEvent.click(button);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ErrorState retry glyph', () => {
+  test('is the 14px refresh glyph, the size of the glyph in every button, not the 24px icon default', () => {
+    const { getByRole } = render(ErrorState, {
+      props: { title: 'Failed', description: 'Nope.', onRetry: () => {} },
+    });
+    const glyph = getByRole('button', { name: 'Try again' }).querySelector('svg');
+    expect(glyph?.getAttribute('width')).toBe('14');
+    expect(glyph?.getAttribute('height')).toBe('14');
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+  });
+});

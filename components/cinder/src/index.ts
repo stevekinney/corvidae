@@ -445,6 +445,7 @@ export type {
 export { default as ErrorState } from './components/error-state/index.ts';
 export type {
   ErrorStateProps,
+  ErrorStateRetryVariant,
   ErrorStateTone,
   ErrorStateVariant,
 } from './components/error-state/index.ts';
