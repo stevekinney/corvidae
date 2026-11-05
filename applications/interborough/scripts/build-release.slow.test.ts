@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { buildRelease } from './build-release.ts';
 
 describe('the signed release archive', () => {
+  // load-proof: real signed archive build deterministically verifies relocated host artifacts.
   test('builds and inspects a real relocated release archive', async () => {
     if (process.platform !== 'darwin' || process.arch !== 'arm64') return;
     const output = await mkdtemp(join(tmpdir(), 'interborough-release-test-'));
@@ -31,6 +32,5 @@ describe('the signed release archive', () => {
     } finally {
       await rm(output, { recursive: true, force: true });
     }
-  // load-proof: real signed archive build deterministically verifies relocated host artifacts.
   }, 30_000);
 });
