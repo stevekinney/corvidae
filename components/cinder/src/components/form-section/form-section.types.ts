@@ -11,6 +11,12 @@ type FormSectionSharedProps = {
   meta?: string;
   /** Column ceiling. Container queries pick the actual rendered count. Default 2. */
   columns?: 1 | 2 | 3 | 4;
+  /**
+   * Draws the children as one bordered card, each child separated from the next by a divider, under
+   * a larger heading and description. For a page of settings: the children are `SettingRow`s, and a
+   * grouped section is always one column.
+   */
+  grouped?: boolean;
   /** Additional class merged with `.cinder-form-section`. */
   class?: string;
   /** Children (FormField instances or arbitrary content). */

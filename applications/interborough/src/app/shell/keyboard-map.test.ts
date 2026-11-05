@@ -125,12 +125,12 @@ describe('the registry holds row 25f', () => {
     expect(spelled()).not.toContain('a');
   });
 
-  test('Settings registers ⌘Enter to save, only while it is on screen', async () => {
+  test('A settings section with a Save registers ⌘Enter, only while it is on screen', async () => {
     registerShell();
     expect(spelled()).not.toContain('⌘+enter');
 
     settingsBureau = installSettingsBureau(servedSettings());
-    landAt('/settings');
+    landAt('/settings/a2a');
     const view = render(RouteOutletHarness, {
       props: {
         client: new HttpClient({ baseUrl: 'http://localhost/api' }),

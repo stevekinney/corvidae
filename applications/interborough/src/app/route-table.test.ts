@@ -163,7 +163,9 @@ describe('the route table', () => {
       const address = addressOf(route.pattern);
       const segments = address.split('/').filter((segment) => segment.length > 0);
       const trail = breadcrumbTrail(address, new Map());
-      expect(trail.length, `${route.pattern}: ${JSON.stringify(trail)}`).toBe(segments.length);
+      // A page that names itself after its path (`/settings` is General) adds one crumb of its own.
+      const crumbs = segments.length + (route.leafCrumb === undefined ? 0 : 1);
+      expect(trail.length, `${route.pattern}: ${JSON.stringify(trail)}`).toBe(crumbs);
       // Every crumb but the last links to its own leading part of the address.
       for (const [index, item] of trail.entries()) {
         if (index === trail.length - 1) expect(item.href, route.pattern).toBeUndefined();

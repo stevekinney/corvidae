@@ -1362,7 +1362,7 @@ export const SETTINGS_SECTION_COPY = {
   navigation: 'Settings sections',
   general: 'General',
   models: 'Models',
-  modelPolicy: 'Model policy',
+  modelPolicy: 'Allowed models',
   a2a: 'A2A',
   plugins: 'Plugins',
   dataAndRetention: 'Data and retention',
@@ -2124,6 +2124,89 @@ export const MODEL_POLICY_COPY = {
 
 /** The words the settings page (`/settings`) uses outside its view states. */
 export const SETTINGS_COPY = {
+  /** The General page (board SettingsShell, "General · /settings"). */
+  general: {
+    intro: 'Tools, runs and your own preferences. Settings save as you leave a field.',
+    /** The heading narrow widths show over the section select, which names the section. */
+    narrowTitle: 'Settings',
+    sections: {
+      tools: { title: 'Tools' },
+      runs: {
+        title: 'Runs',
+        description: 'Settings that apply after a restart say so, and a saved one waits for it.',
+      },
+      storage: { title: 'Storage' },
+      remote: { title: 'Remote deployment' },
+      preferences: {
+        title: 'Your preferences',
+        description:
+          'Only you see these. They live in this browser and in quick settings, apart from the settings above that belong to this installation.',
+      },
+    },
+    /** The row of the storage backend, which the host reports rather than the Bureau holding a setting. */
+    storageBackend: {
+      label: 'Storage backend',
+      identifier: 'storage.backend',
+      description: 'Where Interborough keeps runs, chats and memories. Chosen when it was set up.',
+      remoteDescription: 'Where Interborough keeps runs, chats and memories.',
+      local: 'SQLite · on this machine',
+      remote: 'Postgres and S3',
+      setByDeployment: 'Set by the deployment',
+    },
+    preferences: {
+      theme: {
+        label: 'Theme',
+        identifier: 'theme',
+        description: 'Matches your system by default.',
+        options: { system: 'System', light: 'Light', dark: 'Dark' },
+      },
+      sidebar: {
+        label: 'Sidebar',
+        identifier: 'sidebar',
+        description: 'Whether the sidebar starts expanded on this browser.',
+        options: { expanded: 'Expanded', collapsed: 'Collapsed' },
+      },
+      defaultAgent: {
+        label: 'Default agent for new chats',
+        identifier: 'chat.defaultAgent',
+        description: 'The agent a new chat starts with.',
+        none: 'First agent that can run',
+      },
+      singleKey: {
+        label: 'Use single-key shortcuts',
+        identifier: 'shortcuts.singleKey',
+        description:
+          'Press G then a letter to go somewhere, or C for a new chat. They never act while you type in a field.',
+      },
+    },
+    /** The sticky banner over the page while saved settings wait for a restart. */
+    restartBanner: {
+      title: (count: number): string =>
+        count === 1
+          ? '1 change waits for a restart'
+          : `${String(count)} changes wait for a restart`,
+      detail: (names: readonly string[]): string =>
+        `${names.join(', ')}. Running work picks up where it stopped; reviews stay waiting.`,
+    },
+    /** The status of a row a restart just applied. */
+    inEffectSince: (time: string): string => `In effect since ${time}`,
+    /** Loading, and giving up on it. */
+    loading: {
+      label: 'Loading settings',
+      stillLoading: 'Still loading. This is taking longer than usual.',
+      canceled: 'Loading was canceled.',
+      tryAgain: 'Try again',
+    },
+  },
+  /** The label of the section select that replaces the navigation below 640px. */
+  sectionSelect: 'Section',
+  /** A value that failed its check was not saved. */
+  nothingSaved: 'Nothing was saved.',
+  /** A save that did not go through; the typed value is still in the field. */
+  couldNotSave: 'Couldn’t save. Your value is still in the field.',
+  /** A locked setting (board SettingsShell, "Locked settings · remote mode"). */
+  lockedMessage:
+    'Locked by your deployment (remote mode). Change it in the deployment’s configuration.',
   /**
    * The keyboard preference on the General page (design row 03f): it lives in this browser, so it is
    * not one of the deployment's settings above it.

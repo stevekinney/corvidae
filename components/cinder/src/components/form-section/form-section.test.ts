@@ -272,3 +272,30 @@ describe('FormSection meta (rows 43b, 43c)', () => {
     expect(container.querySelector('.cinder-form-section__meta')).toBeNull();
   });
 });
+
+const twoRows = createRawSnippet(() => ({
+  render: () => `<div><p>One</p><p>Two</p></div>`,
+  setup: () => {},
+}));
+
+describe('FormSection grouped', () => {
+  test('draws the children as one bordered card in a single column', () => {
+    const { container } = render(FormSection, {
+      props: { heading: 'Runs', grouped: true, children: twoRows },
+    });
+    const section = container.querySelector('.cinder-form-section');
+    expect(section?.getAttribute('data-grouped')).toBe('true');
+    expect(section?.getAttribute('data-columns')).toBe('1');
+    expect(container.querySelector('h2')?.textContent?.trim()).toBe('Runs');
+    expect(container.querySelectorAll('.cinder-form-section__grid > *')).toHaveLength(1);
+  });
+
+  test('is not grouped unless asked', () => {
+    const { container } = render(FormSection, {
+      props: { heading: 'Runs', children: twoRows },
+    });
+    const section = container.querySelector('.cinder-form-section');
+    expect(section?.hasAttribute('data-grouped')).toBe(false);
+    expect(section?.getAttribute('data-columns')).toBe('2');
+  });
+});

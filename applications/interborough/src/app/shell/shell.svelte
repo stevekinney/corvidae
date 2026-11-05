@@ -48,7 +48,7 @@
   import { LayoutPreferences, provideLayoutPreferences } from '../layout-preferences.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
-  import { ThemeStore } from '../theme.svelte.ts';
+  import { provideTheme, ThemeStore } from '../theme.svelte.ts';
   import AuthModeBanner from './auth-mode-banner.svelte';
   import { holdChangingActions } from './changing-actions.ts';
   import CommandPaletteLauncher from './command-palette.svelte';
@@ -145,7 +145,7 @@
     });
   });
 
-  const theme = new ThemeStore();
+  const theme = provideTheme(new ThemeStore());
   const layout = provideLayoutPreferences(new LayoutPreferences());
   const keyboard = provideKeyboardPreferences(new KeyboardPreferences());
   const notifications = new NotificationStore();

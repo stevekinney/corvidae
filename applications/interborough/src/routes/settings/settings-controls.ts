@@ -156,6 +156,27 @@ const DURABILITY_KEYS: ReadonlySet<string> = new Set([
   'workflowVersion',
 ]);
 
+/**
+ * The settings that hold a duration in milliseconds, with the unit the page shows it in and whether
+ * the person may change that unit. A claim lasting seconds is always counted in seconds, so its unit
+ * is text in the field; a sweep that runs hourly lets the person pick.
+ */
+export const DURATION_SETTINGS: Readonly<
+  Record<string, { readonly unit: 'ms' | 's' | 'min' | 'h'; readonly selectable: boolean }>
+> = {
+  'engine.workflowClaimTtl': { unit: 's', selectable: false },
+  'engine.workflowClaimRenewInterval': { unit: 's', selectable: false },
+  'engine.schedulerPollIntervalMs': { unit: 's', selectable: true },
+  'engine.retentionSweepInterval': { unit: 'h', selectable: true },
+  'children.delegation.defaultTimeToLiveMilliseconds': { unit: 'min', selectable: true },
+  'a2a.push.sweepIntervalMs': { unit: 'h', selectable: true },
+};
+
+/** The word after a number field's value, for the settings that count something (`4 runs`). */
+export const SETTING_UNITS: Readonly<Record<string, string>> = {
+  'engine.maxConcurrentRuns': 'runs',
+};
+
 /** The one setting the Model policy section holds, and so the General section does not. */
 export const MODEL_POLICY_KEY = 'modelPolicy';
 
@@ -164,7 +185,7 @@ export const MODEL_POLICY_KEY = 'modelPolicy';
  * policy holds the model policy, the Decisions part of the Models page holds `decisions.*`, and
  * the A2A section holds `a2a.*`.
  */
-export type SettingsSectionId = 'general' | 'model-policy' | 'decisions' | 'a2a';
+export type SettingsSectionId = 'general' | 'model-policy' | 'decisions' | 'a2a' | 'retention';
 
 /** The settings the Models page holds: the decision model, its fallback, and its limit per task. */
 function isDecisionKey(key: string): boolean {
@@ -176,12 +197,18 @@ function isA2aKey(key: string): boolean {
   return key.startsWith('a2a.');
 }
 
+/** The settings the Data and retention section holds: how long each kind of record is kept. */
+function isRetentionKey(key: string): boolean {
+  return key.startsWith('retention.');
+}
+
 /** Whether the section `section` edits the key `key`. */
 export function inSection(key: string, section: SettingsSectionId): boolean {
   if (section === 'model-policy') return key === MODEL_POLICY_KEY;
   if (section === 'decisions') return isDecisionKey(key);
   if (section === 'a2a') return isA2aKey(key);
-  return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key);
+  if (section === 'retention') return isRetentionKey(key);
+  return key !== MODEL_POLICY_KEY && !isDecisionKey(key) && !isA2aKey(key) && !isRetentionKey(key);
 }
 
 /**

@@ -46,7 +46,7 @@ describe('the section navigation', () => {
     expect(links.map((link) => link.textContent?.trim())).toEqual([
       'General',
       'Models',
-      'Model policy',
+      'Allowed models',
       'A2A',
       'Plugins',
       'Data and retention',
@@ -70,6 +70,30 @@ describe('the section navigation', () => {
     const { getByRole } = render(SettingsSectionNav);
     const current = [...getByRole('navigation').querySelectorAll('a[aria-current="page"]')];
     expect(current.map((link) => link.textContent?.trim())).toEqual(['Data and retention']);
+  });
+
+  test('is a Section select below 640px, reading the open section and opening another on change', async () => {
+    if (!(window instanceof Window)) throw new Error('expected a happy-dom window');
+    window.happyDOM.setViewport({ width: 375, height: 800 });
+    try {
+      const { getByRole, queryByRole } = render(SettingsSectionNav);
+      expect(queryByRole('navigation')).toBeNull();
+      const select = getByRole('combobox', { name: 'Section' }) as HTMLSelectElement;
+      expect(select.value).toBe('/settings/data-and-retention');
+      expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
+        'General',
+        'Models',
+        'Allowed models',
+        'A2A',
+        'Plugins',
+        'Data and retention',
+        'API reference',
+      ]);
+      await fireEvent.change(select, { target: { value: '/settings/a2a' } });
+      expect(router.pathname).toBe('/settings/a2a');
+    } finally {
+      window.happyDOM.setViewport({ width: 1024, height: 768 });
+    }
   });
 
   test('opens a section in the client router when its link is clicked', async () => {

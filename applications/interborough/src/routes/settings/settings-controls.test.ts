@@ -160,13 +160,27 @@ describe('the controls', () => {
 });
 
 describe('the sections', () => {
-  test('keep the model policy, the decisions and A2A out of General and nothing else out of it', () => {
+  test('hold the retention windows under Data and retention, and nowhere else', () => {
+    for (const key of SETTING_KEYS.filter((key) => key.startsWith('retention.'))) {
+      expect(inSection(key, 'retention'), key).toBe(true);
+      for (const other of ['general', 'model-policy', 'decisions', 'a2a'] as const) {
+        expect(inSection(key, other), `${key} in ${other}`).toBe(false);
+      }
+    }
+  });
+
+  test('keep the model policy, the decisions, A2A and retention out of General and nothing else out of it', () => {
     expect(inSection(MODEL_POLICY_KEY, 'model-policy')).toBe(true);
     expect(inSection(MODEL_POLICY_KEY, 'general')).toBe(false);
     for (const key of SETTING_KEYS.filter(
-      (key) => key !== MODEL_POLICY_KEY && !key.startsWith('decisions.') && !key.startsWith('a2a.'),
+      (key) =>
+        key !== MODEL_POLICY_KEY &&
+        !key.startsWith('decisions.') &&
+        !key.startsWith('a2a.') &&
+        !key.startsWith('retention.'),
     )) {
       expect(inSection(key, 'general'), key).toBe(true);
+      expect(inSection(key, 'retention'), key).toBe(false);
       expect(inSection(key, 'model-policy'), key).toBe(false);
       expect(inSection(key, 'decisions'), key).toBe(false);
       expect(inSection(key, 'a2a'), key).toBe(false);

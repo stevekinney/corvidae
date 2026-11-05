@@ -59,6 +59,7 @@
     'model-policy': '/settings/model-policy',
     decisions: '/settings/models',
     a2a: '/settings/a2a',
+    retention: '/settings/data-and-retention',
   };
 
   const queryClient = useQueryClient();

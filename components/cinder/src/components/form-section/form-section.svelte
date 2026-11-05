@@ -34,6 +34,7 @@
     description,
     meta,
     columns = 2,
+    grouped = false,
     class: className,
     children,
   }: FormSectionProps = $props();
@@ -50,10 +51,15 @@
   });
 
   const headingTag = $derived(headingTags[headingLevel] ?? 'h2');
+  const columnCount = $derived(grouped ? 1 : columns);
 </script>
 
 {#if as === 'fieldset'}
-  <fieldset class={classNames('cinder-form-section', className)} data-columns={columns}>
+  <fieldset
+    class={classNames('cinder-form-section', className)}
+    data-columns={columnCount}
+    data-grouped={grouped ? 'true' : undefined}
+  >
     {#if heading}
       <legend class="cinder-form-section__legend"
         >{heading}{#if meta}<span class="cinder-form-section__meta">{meta}</span>{/if}</legend
@@ -67,7 +73,11 @@
     </div>
   </fieldset>
 {:else}
-  <section class={classNames('cinder-form-section', className)} data-columns={columns}>
+  <section
+    class={classNames('cinder-form-section', className)}
+    data-columns={columnCount}
+    data-grouped={grouped ? 'true' : undefined}
+  >
     {#if heading && meta}
       <div class="cinder-form-section__title">
         <svelte:element this={headingTag} class="cinder-form-section__heading">
