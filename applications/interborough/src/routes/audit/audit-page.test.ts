@@ -5,8 +5,10 @@
  * the search narrow what was read. Each event is worded from its record and from what the page
  * looks up for it.
  */
+import { quietFor } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import type { QueryClient } from '@tanstack/svelte-query';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { AUDIT_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
@@ -572,7 +574,9 @@ describe('the filters', () => {
 
     await fireEvent.input(box, { target: { value: 'refund 9999' } });
 
-    await findByText(AUDIT_COPY.noMatches.title);
+    // Row 83h: the title names the search, and the box keeps what was typed.
+    await findByText('No events match “refund 9999”');
+    await findByText(AUDIT_COPY.noMatches.searchHint);
     expect(box.value).toBe('refund 9999');
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.noMatches.clear }));
     await findByText('Removed the Anthropic key');
@@ -615,8 +619,41 @@ describe('an empty log', () => {
     );
 
     await findByRole('heading', { name: AUDIT_COPY.noMatches.title });
+    await findByText('Nothing approved was recorded in the last 7 days. Try a longer period.');
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.noMatches.clear }));
     await findByText('Removed the Anthropic key');
+  });
+
+  test('Agents and Today: the count reads 0 events, and the empty state says what was not recorded, with a search icon in a neutral disc', async () => {
+    const { container, findByRole, findByText, getByTestId } = open(
+      { records: [], nextCursor: null },
+      {},
+      { at: '/health/audit?actor=agents&period=today' },
+    );
+
+    await findByRole('heading', { name: 'No events match these filters' });
+    await findByText('Nothing by agents was recorded today. Try a longer period.');
+    expect(getByTestId('audit-count').textContent).toBe('0 events');
+    const state = container.querySelector('.cinder-empty-state') as HTMLElement;
+    expect(state.getAttribute('data-cinder-kind')).toBe('filtered');
+    expect(state.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
+  });
+
+  test('a period the log already reaches back through the most of offers a different filter, not a longer period', async () => {
+    const { findByText } = open(
+      { records: [], nextCursor: null },
+      {},
+      { at: '/health/audit?period=all&action=removed&actor=you' },
+    );
+
+    await findByText('Nothing removed by you has been recorded. Change or clear a filter.');
+  });
+
+  test('a default view of a log that holds events but none in the period has nothing to clear', async () => {
+    const { findByText, queryByRole } = open({ records: [], nextCursor: null });
+
+    await findByText('Nothing was recorded in the last 7 days. Try a longer period.');
+    expect(queryByRole('button', { name: AUDIT_COPY.noMatches.clear })).toBeNull();
   });
 
   test('a log with nothing in it is the first-use empty state, with nothing to clear', async () => {
@@ -628,8 +665,16 @@ describe('an empty log', () => {
       props: { client: client(), scopes: AUTHORIZATION_SCOPES },
     } as never);
 
-    await findByRole('heading', { name: VIEW_COPY.audit.empty?.title ?? '' });
-    expect(queryByRole('button', { name: AUDIT_COPY.noMatches.clear })).toBeNull();
+    // Row 82u: the empty state is the page body, with a document icon and no action; the filter
+    // row has nothing to filter, and Health's own heading and tabs stay.
+    await findByRole('heading', { name: 'Nothing recorded yet' });
+    expect(
+      queryByRole('button', { name: AUDIT_COPY.noMatches.clear }) ?? queryByRole('link'),
+    ).toBeNull();
+    expect(container.querySelector('.cinder-empty-state-action')).toBeNull();
+    expect(container.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
+    expect(container.querySelector('[role="search"]')).toBeNull();
+    expect(container.querySelector('[data-page="health"]')).not.toBeNull();
     expect(frameState(container)).toBe('empty');
   });
 });
@@ -735,7 +780,7 @@ describe('Export', () => {
 
   test('saves no file when nothing matches', async () => {
     const { findByText, getByRole } = open(FULL, {}, { at: '/health/audit?q=nothing-says-this' });
-    await findByText(AUDIT_COPY.noMatches.title);
+    await findByText('No events match “nothing-says-this”');
 
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.exportAction }));
 
@@ -743,8 +788,8 @@ describe('Export', () => {
     expect(blobs).toHaveLength(0);
   });
 
-  test('a failed export is an error with Try again, which saves the file once the server answers', async () => {
-    const { findByText, getByRole, findByRole } = open(FULL);
+  test('a failed export is a danger alert with Export again at its right, and Export stays the retry', async () => {
+    const { container, findByText, getByRole, findByRole } = open(FULL);
     await findByText('Removed the Anthropic key');
     stub?.on('bureau.audit.query', () => {
       throw new StubFault('Unavailable', 503, 'The log is down.');
@@ -752,11 +797,56 @@ describe('Export', () => {
 
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.exportAction }));
 
-    await findByText(AUDIT_COPY.exportFailed.title);
+    // Row 83e: the lead, why, that the filters are as they were and nothing was downloaded.
+    const lead = await findByText(AUDIT_COPY.exportFailed.lead);
+    const alert = lead.closest('[role="alert"]');
+    expect(alert?.textContent).toContain(AUDIT_COPY.exportFailed.answered);
+    expect(alert?.getAttribute('data-cinder-variant')).toBe('danger');
     expect(blobs).toHaveLength(0);
+    const again = alert?.querySelector('.cinder-alert__actions button');
+    expect(again?.textContent?.trim()).toBe('Export again');
+    // The filters are unchanged, and the log is still on screen.
+    expect(window.location.search).not.toMatch(/actor=|period=|action=|q=/);
+    expect(rowsOf(container).length).toBeGreaterThan(0);
+    expect(getByRole('button', { name: AUDIT_COPY.exportAction })).not.toBeNull();
+
     stub?.on('bureau.audit.query', () => FULL);
-    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
+    await fireEvent.click(await findByRole('button', { name: 'Export again' }));
     await waitFor(() => expect(blobs).toHaveLength(1));
+    await waitFor(() => expect(container.querySelector('.cinder-alert') === null).toBe(true));
+  });
+
+  test('while Export reads the log it is replaced by its status, and a line says how many events it prepares, with Cancel', async () => {
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { findByRole, findByTestId, findByText, getByRole, getByTestId, queryByTestId } =
+      open(FULL);
+    await findByText('Removed the Anthropic key');
+    stub?.on('bureau.audit.query', async (params) => {
+      if (params['limit'] === 100) await held;
+      return isTotal(params) ? { records: [], nextCursor: null, total: 1240 } : FULL;
+    });
+
+    await fireEvent.click(getByRole('button', { name: AUDIT_COPY.exportAction }));
+
+    // Row 83d: the button reads Exporting… and is inert; the line below says what is being made.
+    await findByTestId('audit-export-progress');
+    const button = await findByRole('button', { name: 'Exporting…' });
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    const progress = await findByTestId('audit-export-progress');
+    // It repeats the count beside the search (the noise record the log leaves out is not counted).
+    expect(getByTestId('audit-count').textContent).toBe('4 events');
+    expect(progress.textContent).toContain('Preparing 4 events as JSON Lines…');
+    await fireEvent.click(getByRole('button', { name: AUDIT_COPY.exportCancel }));
+    // A failing `toBeNull` on an element formats the whole element, so the wait asks a boolean.
+    await waitFor(() => expect(queryByTestId('audit-export-progress') === null).toBe(true));
+    // Cancelling is not a failure: no alert, and the button is Export again.
+    expect(document.querySelector('.cinder-alert')).toBeNull();
+    expect(getByRole('button', { name: AUDIT_COPY.exportAction })).not.toBeNull();
+    release?.();
+    expect(blobs).toHaveLength(0);
   });
 });
 
@@ -783,7 +873,7 @@ describe('who may see it', () => {
     expect(frameState(container)).toBe('forbidden');
   });
 
-  test('a read that fails after the view opened says so inline, and can be tried again', async () => {
+  test('a read that fails when the log had nothing on screen is a full error state with Try again and Open Health', async () => {
     let failing = false;
     stub = installBureauStub({
       'bureau.audit.query': (params) => {
@@ -793,16 +883,137 @@ describe('who may see it', () => {
       },
     });
     landAt('/health/audit');
-    const { findByText, getByLabelText, getByRole } = render(RouteOutletHarness, {
+    const { container, findByText, getByLabelText, getByRole } = render(RouteOutletHarness, {
       props: { client: client(), scopes: AUTHORIZATION_SCOPES },
     } as never);
     await findByText('Removed the Anthropic key');
     failing = true;
     await fireEvent.change(getByLabelText(AUDIT_COPY.periodLabel), { target: { value: 'all' } });
 
+    // Row 82w: Health's own heading stays, the error says the status, and the second action is Open Health.
     await findByText(AUDIT_COPY.failed.title);
+    expect(container.textContent).toContain(
+      'The server answered with an error (503). Nothing you did caused it.',
+    );
+    expect(container.querySelector('[data-page="health"]')).not.toBeNull();
+    expect(container.querySelector('[role="search"]')).toBeNull();
+    const retry = getByRole('button', { name: RETRY_LABEL });
+    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(retry.querySelector('svg')).not.toBeNull();
+    const open = getByRole('link', { name: AUDIT_COPY.failed.openHealth });
+    expect(open.getAttribute('href')).toContain('/health');
+    expect(container.textContent).not.toContain('Check Health');
+    expect(container.querySelector('.cinder-banner')).toBeNull();
+
     failing = false;
-    await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
+    await fireEvent.click(retry);
     await findByText('Removed the Anthropic key');
+  });
+
+  test('a read that does not answer at all says so, not a status', async () => {
+    stub = installBureauStub({
+      'bureau.audit.query': (params) => {
+        if (isProbe(params)) return { records: [KEY_REMOVED], nextCursor: null };
+        throw new TypeError('fetch failed');
+      },
+    });
+    landAt('/health/audit');
+    const { findByText } = render(RouteOutletHarness, {
+      props: { client: client(), scopes: AUTHORIZATION_SCOPES },
+    } as never);
+
+    await findByText(AUDIT_COPY.failed.title);
+    await findByText(AUDIT_COPY.failed.noAnswer);
+  });
+});
+
+describe('a refresh that fails over events on screen', () => {
+  test('keeps the events under the shared banner, holds only Export, and Retry now reads again', async () => {
+    let failing = false;
+    stub = installBureauStub({
+      'bureau.audit.query': (params) => {
+        if (isProbe(params)) return { records: [KEY_REMOVED], nextCursor: null };
+        if (failing) throw new StubFault('Unavailable', 503, 'The log is down.');
+        return isTotal(params) ? { records: [], nextCursor: null, total: 5 } : FULL;
+      },
+    });
+    landAt('/health/audit');
+    let queryClient: QueryClient | undefined;
+    const { container, findByText } = render(RouteOutletHarness, {
+      props: {
+        client: client(),
+        scopes: AUTHORIZATION_SCOPES,
+        onQueryClient: (created: QueryClient) => {
+          queryClient = created;
+        },
+      },
+    } as never);
+    await findByText('Removed the Anthropic key');
+    const view = within(container);
+    const exportButton = view.getByRole('button', { name: AUDIT_COPY.exportAction });
+    expect(exportButton.getAttribute('aria-disabled')).toBeNull();
+
+    failing = true;
+    await queryClient?.invalidateQueries({ queryKey: ['audit', 'list'] });
+    const banner = await view.findByRole('region', { name: 'Refresh problem' });
+
+    // Row 83a: the shared preset's words, with a Retry now and no dismiss.
+    expect(banner.textContent).toContain('Couldn’t refresh this page.');
+    expect(banner.textContent).toMatch(/Showing what loaded as of .+\./);
+    expect(banner.textContent).not.toMatch(/Retrying in|attempt/);
+    expect(banner.querySelector('[aria-label*="ismiss"]')).toBeNull();
+    // Rows 83b: the events stay, and the banner sits between the filters and the table.
+    expect(rowsOf(container).length).toBeGreaterThan(0);
+    const filters = container.querySelector('[role="search"]') as Element;
+    const table = container.querySelector('table') as Element;
+    expect(filters.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(banner.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Row 83c: Export is inert with its reason as its description; the filters and rows are live.
+    expect(exportButton.getAttribute('aria-disabled')).toBe('true');
+    const reasonId = exportButton.getAttribute('aria-describedby') ?? '';
+    expect(container.ownerDocument.getElementById(reasonId)?.textContent).toBe(
+      AUDIT_COPY.exportOff,
+    );
+    expect(
+      (view.getByLabelText(AUDIT_COPY.periodLabel) as HTMLSelectElement).getAttribute(
+        'aria-disabled',
+      ),
+    ).toBeNull();
+    expect(
+      view.getByRole('button', { name: 'Retry now' }).getAttribute('aria-disabled'),
+    ).toBeNull();
+
+    failing = false;
+    await fireEvent.click(view.getByRole('button', { name: 'Retry now' }));
+    await waitFor(() =>
+      expect(view.queryByRole('region', { name: 'Refresh problem' }) === null).toBe(true),
+    );
+    expect(exportButton.getAttribute('aria-disabled')).toBeNull();
+    expect(rowsOf(container).length).toBeGreaterThan(0);
+  });
+
+  test('does not ask again by itself for the next page of a narrowed log once that read failed', async () => {
+    stub = installBureauStub({
+      'bureau.audit.query': (params) => {
+        if (isProbe(params)) return { records: [KEY_REMOVED], nextCursor: null };
+        if (params['cursor'] === 'c1') throw new StubFault('Broken', 500, 'The log is down.');
+        return isTotal(params)
+          ? { records: [], nextCursor: null, total: 9 }
+          : { records: [KEY_REMOVED, BOOTED], nextCursor: 'c1' };
+      },
+    });
+    // A search reads on by itself, looking for what it narrows to; the second page fails.
+    landAt('/health/audit?q=anthropic');
+    const { findByRole } = render(RouteOutletHarness, {
+      props: { client: client(), scopes: AUTHORIZATION_SCOPES },
+    } as never);
+    await findByRole('region', { name: 'Refresh problem' });
+    const secondPageReads = () => queries().filter((params) => params['cursor'] === 'c1');
+    const first = secondPageReads().length;
+    expect(first).toBeGreaterThan(0);
+
+    // Asking again after a failure would repeat at once, and again after that.
+    await quietFor(100);
+    expect(secondPageReads()).toHaveLength(first);
   });
 });

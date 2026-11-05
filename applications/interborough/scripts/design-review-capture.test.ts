@@ -41,6 +41,7 @@ describe('parseArguments', () => {
       'tests/e2e/health-workers-states.spec.ts',
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
+      'tests/e2e/health-audit-states.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',
@@ -83,6 +84,7 @@ describe('parseArguments', () => {
       'tests/e2e/health-workers-states.spec.ts',
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
+      'tests/e2e/health-audit-states.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/first-run.spec.ts',
     ]);
@@ -109,6 +111,7 @@ describe('parseArguments', () => {
       'tests/e2e/health-workers-states.spec.ts',
       'tests/e2e/health-storage.spec.ts',
       'tests/e2e/health-audit.spec.ts',
+      'tests/e2e/health-audit-states.spec.ts',
       'tests/e2e/restart.spec.ts',
       'tests/e2e/first-run.spec.ts',
       'tests/e2e/responsive.spec.ts',

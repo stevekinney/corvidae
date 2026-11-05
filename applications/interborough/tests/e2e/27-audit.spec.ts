@@ -33,7 +33,11 @@ for (const width of WIDTHS) {
 
     // Text that matches nothing is the filtered empty state, and says so; it is not the empty log.
     await page.getByPlaceholder(AUDIT_COPY.textPlaceholder).fill('no-such-event-anywhere');
-    await expect(page.getByRole('heading', { name: AUDIT_COPY.noMatches.title })).toBeVisible();
+    await expect(
+      page.getByRole('heading', {
+        name: AUDIT_COPY.noMatches.titleForSearch('no-such-event-anywhere'),
+      }),
+    ).toBeVisible();
     await expect(page.locator('[data-view="audit"]')).toHaveAttribute('data-state', 'ready');
     await checkA11y(`audit — a search that finds nothing at ${width}px`);
 

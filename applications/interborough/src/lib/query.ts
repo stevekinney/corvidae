@@ -152,6 +152,8 @@ export const queryKeys = {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
     /** How many events a filter matches, read once beside the first page. */
     total: (filter: AuditFilter) => ['audit', 'total', filter] as const,
+    /** Whether the log holds any event at all, asked once a filtered read finds none. */
+    anyEvent: () => ['audit', 'any-event'] as const,
     /** The schedules' names, which the events of a schedule are worded with. */
     schedules: () => ['audit', 'schedules'] as const,
   },

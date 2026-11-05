@@ -2575,19 +2575,59 @@ export const AUDIT_COPY = {
   },
   exportAction: 'Export',
   exporting: 'Exporting…',
+  /** Why Export is off while the log on screen is old: the same word the page's other held controls use. */
+  exportOff: 'Off until the audit log loads again',
+  /** The line under the filter row while Export reads the log: how many events it prepares, and the way out. */
+  exportProgress: (count: number): string =>
+    `Preparing ${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'} as JSON Lines…`,
+  exportCancel: 'Cancel',
   exported: (count: number): string =>
     `Exported ${count.toLocaleString('en-US')} ${count === 1 ? 'event' : 'events'}`,
   nothingToExport: 'There is nothing to export for these filters.',
+  /** A danger alert at the page: the lead, then why, then that the filters and the download are as they were. */
   exportFailed: {
-    title: 'The export failed',
-    description:
-      'The server did not answer. Check that the host is running, then try the export again.',
+    lead: 'Couldn’t export.',
+    answered:
+      'The server stopped while writing the file. Your filters are unchanged; nothing was downloaded.',
+    noAnswer: 'The server didn’t answer. Your filters are unchanged; nothing was downloaded.',
+    again: 'Export again',
   },
   loadingLabel: 'Loading the audit log',
+  /**
+   * Filters that match nothing. A search names itself in the title and says how to search; filters
+   * say what was not recorded ("Nothing by agents was recorded today.") and what to try.
+   */
   noMatches: {
     title: 'No events match these filters',
-    description: 'Nothing in the log matches this search. Try a longer period or clear a filter.',
+    titleForSearch: (text: string): string => `No events match “${text}”`,
+    searchHint: 'Check the spelling, or search by actor, action or target.',
     clear: 'Clear filters',
+    /** "Nothing", then the action and who when they are set, then when. */
+    nothing: 'Nothing',
+    byActor: { you: 'by you', agents: 'by agents', interborough: 'by Interborough' },
+    actionWords: {
+      approved: 'approved',
+      deleted: 'deleted',
+      edited: 'edited',
+      removed: 'removed',
+      started: 'started',
+    },
+    wasRecorded: {
+      today: 'was recorded today.',
+      '7d': 'was recorded in the last 7 days.',
+      '30d': 'was recorded in the last 30 days.',
+      '90d': 'was recorded in the last 90 days.',
+      all: 'has been recorded.',
+    },
+    /** What to try, by how far back the period already reaches. */
+    tryLongerPeriod: 'Try a longer period.',
+    tryAllTime: 'Try all time, or change a filter.',
+    tryAnotherFilter: 'Change or clear a filter.',
+  },
+  /** What the log says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+  stopped: {
+    title: 'Stopped loading the audit log',
+    description: 'You stopped the read, so the log is not shown. Nothing in it was changed.',
   },
   /** A list with more pages to read, where none of the events read so far matches the search. */
   noLoadedMatches: {
@@ -2602,10 +2642,19 @@ export const AUDIT_COPY = {
     end: 'That event is not in the log.',
   },
   loadMore: 'Load more',
+  /** A read that did not give the page its events, with the status the server answered with. */
   failed: {
-    title: 'The search failed',
-    description:
-      'The server did not answer this search. Check that the host is running, then try again.',
+    title: 'Couldn’t load the audit log',
+    answered: (status: number): string =>
+      `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+    /** A refusal (401 or 403) is something to fix, so it carries the server's own words. */
+    refused: (status: number, message: string): string =>
+      `The server answered with an error (${String(status)}): ${message.replace(/[.\s]+$/, '')}.`,
+    noAnswer: 'The server didn’t answer. Nothing you did caused it.',
+    unknown: 'Something went wrong reading the audit log. Nothing you did caused it.',
+    /** The second action: this page is already inside Health, so it says Open Health. */
+    openHealth: 'Open Health',
+    openHealthPath: '/health',
   },
 } as const;
 
@@ -4746,8 +4795,9 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'Reading the record of what changed.',
     },
     empty: {
-      title: 'No audit entries yet',
-      description: 'The record of who changed what appears here once something has been done.',
+      title: 'Nothing recorded yet',
+      description:
+        'Changes you and your agents make show up here, newest first, with who made them and what changed.',
     },
     error: {
       title: 'The audit trail is unavailable',

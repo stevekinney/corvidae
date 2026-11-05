@@ -371,8 +371,8 @@ describe('a view that finds something to show', () => {
 });
 
 describe('a view that owns its states', () => {
-  test('is a page that keeps its header: the schedules list and the Health Workers tab', () => {
-    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual(['schedules', 'workers']);
+  test('is a page that keeps its header: the schedules list and the Health Workers and Audit log tabs', () => {
+    expect(VIEWS_THAT_OWN_THEIR_STATES).toEqual(['schedules', 'workers', 'audit']);
   });
 
   for (const view of VIEWS_THAT_OWN_THEIR_STATES) {

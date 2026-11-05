@@ -15,28 +15,46 @@
    * Lines.
    *
    * The Bureau shows each caller the records about what it owns, so the page holds no scope of its
-   * own: owner scoping is the gate. Whether the log is empty, failing, or refused is the view
-   * frame's to say (`app/view-probes.ts`), and this page speaks only for a read that fails after
-   * the view opened, and for filters that match nothing.
+   * own: owner scoping is the gate. The view owns its states (`app/views.ts`), so Health's heading
+   * and tab bar stay in each of them and the page says them itself: a skeleton in the real layout
+   * while the log is read (Cancel stops the read), a first-use empty state when the log holds no
+   * event at all, an empty state for filters that match nothing, a full error state when the first
+   * read fails, and, when a later read fails over events already on screen, the shared
+   * refresh-failed banner with every control that changes something held (`StaleRegion`). A refusal
+   * (forbidden) is still the frame's to say.
+   *
+   * Export reads every page the filters match. While it does, a line under the filter row says how
+   * many events it prepares and offers Cancel; a failed export is a danger alert at the page with
+   * Export again at its right.
    */
   import {
     Alert,
+    Banner,
     Button,
     DataTable,
     EmptyState,
+    ErrorState,
+    InlineLoading,
     ListDetail,
     SearchField,
     Select,
     Skeleton,
+    StaleRegion,
   } from '@lostgradient/cinder';
   import type { DataTableColumn } from '@lostgradient/cinder';
-  import { Download, FileText } from '@lucide/svelte';
-  import { createInfiniteQuery, createMutation, createQuery } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
+  import { Download, FileText, Search } from '@lucide/svelte';
+  import {
+    createInfiniteQuery,
+    createMutation,
+    createQuery,
+    useQueryClient,
+  } from '@tanstack/svelte-query';
+  import { onDestroy, untrack } from 'svelte';
 
-  import { AUDIT_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
+  import { getConnection } from '../../app/connection.svelte.ts';
+  import { AUDIT_COPY, CONNECTION_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
-  import { AUDIT_ACTION_KINDS } from '../../lib/audit-event-types.ts';
+  import { AUDIT_ACTION_KINDS, AUDIT_EVENT_TYPES } from '../../lib/audit-event-types.ts';
   import { queryAudit } from '../../lib/bureau-audit.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -70,8 +88,11 @@
     type AuditDraft,
   } from './audit-filter.ts';
   import { useAuditLookups } from './audit-lookups.svelte.ts';
+  import { auditExportFailure, auditLoadFailure, auditNoMatches } from './audit-states.ts';
 
   const copy = AUDIT_COPY;
+  const queryClient = useQueryClient();
+  const connection = getConnection();
 
   /** How long a read runs before the skeleton is drawn, so a quick read never flashes one. */
   const LOADING_DELAY_MILLISECONDS = 300;
@@ -169,7 +190,8 @@
   // While Who or the search is set, read on until the log is read or a bound is reached, so what
   // they narrow to is not only what the first page held.
   $effect(() => {
-    if (!narrowing || !trail.hasNextPage || trail.isFetchingNextPage) return;
+    // A read that failed is not asked again on its own: the banner's Retry now does that.
+    if (!narrowing || !trail.hasNextPage || trail.isFetchingNextPage || trail.isError) return;
     if (searchedPages >= NARROWING_PAGES) return;
     void trail.fetchNextPage();
   });
@@ -207,6 +229,74 @@
       ? copy.count(events.length, trail.hasNextPage)
       : copy.count(totalQuery.data, false),
   );
+
+  // "Cancel" in the "Still loading" line stopped the first read, and "Try again" reads again.
+  // TanStack puts a first read that is cancelled back to pending, so the page keeps what it was
+  // told here. Different filters are a new read.
+  let loadStopped = $state(false);
+  const filterKey = $derived(JSON.stringify(filter));
+  $effect(() => {
+    void filterKey;
+    loadStopped = false;
+  });
+
+  function stopLoading(): void {
+    loadStopped = true;
+    void queryClient.cancelQueries({ queryKey: queryKeys.audit.list(filter) });
+  }
+
+  function readAgain(): void {
+    loadStopped = false;
+    void trail.refetch();
+  }
+
+  // A read that failed with nothing to show is the page's error; one that failed over events
+  // already read leaves them in place under the refresh-failed banner. A server that gives no
+  // answer at all is the shell's to say, in its own banner, so the page adds none.
+  const failedFirstLoad = $derived(trail.isError && trail.data === undefined);
+  const refreshFailed = $derived(
+    trail.isError && trail.data !== undefined && !connection.unreachable,
+  );
+  const loadFailure = $derived(failedFirstLoad ? auditLoadFailure(trail.error) : undefined);
+
+  /** Reads the log again, and the frame's own probe of it, so what the frame says follows. */
+  function retry(): void {
+    void trail.refetch();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('audit', null) });
+  }
+
+  // Once a read finds no event, whether the log holds any at all decides between "Nothing recorded
+  // yet" (first use) and filters that match nothing, so the page asks once.
+  const settledEmpty = $derived(
+    !trail.isPending && !trail.isError && events.length === 0 && !trail.hasNextPage,
+  );
+  const anyEvent = createQuery(
+    () => ({
+      queryKey: queryKeys.audit.anyEvent(),
+      queryFn: async ({ signal }) => {
+        const first = await queryAudit({ types: AUDIT_EVENT_TYPES }, undefined, {
+          limit: 1,
+          signal,
+        });
+        return first.records.length > 0;
+      },
+      enabled: settledEmpty,
+      retry: false,
+      // What was found last time is not what to say now: each empty read asks again.
+      gcTime: 0,
+    }),
+    undefined,
+  );
+  const logIsEmpty = $derived(settledEmpty && anyEvent.data === false);
+  const awaitingEmptiness = $derived(settledEmpty && anyEvent.isPending);
+  const stopped = $derived(trail.isPending && loadStopped);
+  const loading = $derived((trail.isPending && !loadStopped) || awaitingEmptiness);
+  const noMatches = $derived(auditNoMatches(applied));
+  // The filter row has nothing to filter while the log is empty, unread or failed.
+  const showControls = $derived(!failedFirstLoad && !stopped && !logIsEmpty);
+
+  /** The words of a held control: the connection's when the server does not answer, else the log's. */
+  const heldReason = $derived(connection.unreachable ? CONNECTION_COPY.changesOff : copy.exportOff);
 
   function clear(): void {
     selectedKey = null;
@@ -258,201 +348,290 @@
 
   // Export reads every page the filters match, not only the ones the table has loaded. While Who or
   // the search narrows the log, it saves the events on screen, which the page has read in full.
-  const exportMutation = createMutation<number, unknown, void>(
+  // Cancel in its progress line stops the read, which is no failure and says nothing.
+  let exportController: AbortController | undefined;
+  // The result is the count saved, or `null` for an export the person cancelled.
+  const exportMutation = createMutation<number | null, unknown, void>(
     () => ({
       mutationFn: async () => {
-        const read = narrowing ? undefined : await readAuditExport(filter);
-        const matched =
-          read === undefined
-            ? events.map((event) => event.record)
-            : read.filter((record) => describeRecords([record], NO_LOOKUPS).length > 0);
-        if (matched.length === 0) return 0;
-        downloadText(toJsonLines(matched), auditExportFilename(), JSON_LINES_TYPE);
-        return matched.length;
+        const controller = new AbortController();
+        exportController = controller;
+        try {
+          const read = narrowing ? undefined : await readAuditExport(filter, controller.signal);
+          controller.signal.throwIfAborted();
+          const matched =
+            read === undefined
+              ? events.map((event) => event.record)
+              : read.filter((record) => describeRecords([record], NO_LOOKUPS).length > 0);
+          if (matched.length === 0) return 0;
+          downloadText(toJsonLines(matched), auditExportFilename(), JSON_LINES_TYPE);
+          return matched.length;
+        } catch (error) {
+          if (controller.signal.aborted) return null;
+          throw error;
+        }
       },
-      onSuccess: (exported) =>
+      onSuccess: (exported) => {
+        if (exported === null) return;
         showToast(exported === 0 ? copy.nothingToExport : copy.exported(exported), {
           variant: exported === 0 ? 'info' : 'success',
-        }),
+        });
+      },
+      // The failure is the page's own alert, with Export again; the generic fault toast would say
+      // it a second time.
+      onError: () => undefined,
     }),
     undefined,
   );
+
+  /** How many events the export prepares: the count beside the search, as a number. */
+  const exportCount = $derived(
+    narrowing || totalQuery.data == null || !trail.hasNextPage
+      ? events.length
+      : Math.max(totalQuery.data, events.length),
+  );
+
+  function cancelExport(): void {
+    exportController?.abort();
+    exportMutation.reset();
+  }
+
+  onDestroy(() => exportController?.abort());
 </script>
 
 <HealthFrame active="audit">
   <section class="ib-audit" aria-label={VIEW_COPY.audit.label} data-page="audit">
-    <div class="ib-audit__controls">
-      <form
-        class="ib-audit__filters"
-        role="search"
-        aria-label={copy.searchLabel}
-        onsubmit={(event) => event.preventDefault()}
-      >
-        <Select
-          id="ib-audit-actor"
-          label={copy.actorLabel}
-          labelVisible={false}
-          class="ib-audit__select"
-          options={actorOptions}
-          value={applied.actor}
-          onchange={(event) => go({ actor: event.currentTarget.value as AuditDraft['actor'] })}
-        />
-        <Select
-          id="ib-audit-period"
-          label={copy.periodLabel}
-          labelVisible={false}
-          class="ib-audit__select"
-          options={periodOptions}
-          value={applied.period}
-          onchange={(event) => go({ period: event.currentTarget.value as AuditDraft['period'] })}
-        />
-        <Select
-          id="ib-audit-action"
-          label={copy.actionLabel}
-          labelVisible={false}
-          class="ib-audit__select"
-          options={actionOptions}
-          value={applied.action}
-          onchange={(event) => go({ action: event.currentTarget.value as AuditDraft['action'] })}
-        />
-        <SearchField
-          aria-label={copy.textLabel}
-          placeholder={copy.textPlaceholder}
-          class="ib-audit__search"
-          bind:value={text}
-          onClear={() => (text = '')}
-        />
-        <p class="ib-audit__count" data-testid="audit-count">{count}</p>
-      </form>
-      <div class="ib-audit__export">
-        <Button
-          variant="secondary"
-          loading={exportMutation.isPending}
-          onclick={() => exportMutation.mutate()}
-        >
-          {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
-          {exportMutation.isPending ? copy.exporting : copy.exportAction}
-        </Button>
-      </div>
-    </div>
-
-    {#if exportMutation.isError}
-      <Alert variant="danger">
-        <p class="ib-audit__alert-title">{copy.exportFailed.title}</p>
-        <p class="ib-audit__alert-body">{copy.exportFailed.description}</p>
-        <Button variant="secondary" onclick={() => exportMutation.mutate()}>{RETRY_LABEL}</Button>
-      </Alert>
-    {/if}
-
-    {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
-      <Alert variant="info">
-        <p class="ib-audit__alert-body">
-          {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
-        </p>
-      </Alert>
-    {/if}
-
-    {#if trail.isError}
-      <Alert variant="danger">
-        <p class="ib-audit__alert-title">{copy.failed.title}</p>
-        <p class="ib-audit__alert-body">{copy.failed.description}</p>
-        <Button variant="secondary" onclick={() => void trail.refetch()}>{RETRY_LABEL}</Button>
-      </Alert>
-    {:else if trail.isPending}
-      <div data-testid="audit-loading" aria-busy="true">
-        <Skeleton
-          variant="list"
-          rows={5}
-          statusMarker="dot"
-          statusColumn={false}
-          delay={LOADING_DELAY_MILLISECONDS}
-          stillLoadingAfter={STILL_LOADING_MILLISECONDS}
-          label={copy.loadingLabel}
-          onCancel={() => void trail.refetch()}
-        />
-      </div>
-    {:else if events.length === 0 && !trail.hasNextPage}
-      {#if isNarrowed(applied)}
-        <EmptyState
-          kind="filtered"
-          headingLevel={2}
-          title={copy.noMatches.title}
-          description={copy.noMatches.description}
-          clearFiltersLabel={copy.noMatches.clear}
-          onClearFilters={clear}
-        />
-      {:else}
-        <EmptyState
-          kind="first-use"
-          headingLevel={2}
-          title={VIEW_COPY.audit.empty?.title ?? ''}
-          description={VIEW_COPY.audit.empty?.description ?? ''}
-        />
+    <!-- While the log on screen is old, the controls that change something are held, each described
+         by why; the events keep full contrast, and filters, search, rows and links stay live. -->
+    <StaleRegion
+      stale={connection.unreachable || refreshFailed}
+      reason={heldReason}
+      class="ib-audit__region"
+    >
+      {#if showControls}
+        <div class="ib-audit__controls">
+          <form
+            class="ib-audit__filters"
+            role="search"
+            aria-label={copy.searchLabel}
+            onsubmit={(event) => event.preventDefault()}
+          >
+            <Select
+              id="ib-audit-actor"
+              label={copy.actorLabel}
+              labelVisible={false}
+              class="ib-audit__select"
+              options={actorOptions}
+              value={applied.actor}
+              onchange={(event) => go({ actor: event.currentTarget.value as AuditDraft['actor'] })}
+            />
+            <Select
+              id="ib-audit-period"
+              label={copy.periodLabel}
+              labelVisible={false}
+              class="ib-audit__select"
+              options={periodOptions}
+              value={applied.period}
+              onchange={(event) =>
+                go({ period: event.currentTarget.value as AuditDraft['period'] })}
+            />
+            <Select
+              id="ib-audit-action"
+              label={copy.actionLabel}
+              labelVisible={false}
+              class="ib-audit__select"
+              options={actionOptions}
+              value={applied.action}
+              onchange={(event) =>
+                go({ action: event.currentTarget.value as AuditDraft['action'] })}
+            />
+            <SearchField
+              aria-label={copy.textLabel}
+              placeholder={copy.textPlaceholder}
+              class="ib-audit__search"
+              bind:value={text}
+              onClear={() => (text = '')}
+            />
+            <!-- Nothing is counted while the log is read: "0 events" would be a claim. -->
+            {#if !loading}
+              <p class="ib-audit__count" data-testid="audit-count">{count}</p>
+            {/if}
+          </form>
+          <div class="ib-audit__export">
+            <Button
+              variant="secondary"
+              mutating
+              loading={exportMutation.isPending}
+              onclick={() => exportMutation.mutate()}
+            >
+              {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
+              {exportMutation.isPending ? copy.exporting : copy.exportAction}
+            </Button>
+          </div>
+        </div>
       {/if}
-    {:else}
-      <div class="ib-audit__frame" data-shortcut-region="list-detail" bind:this={frame}>
-        <ListDetail
-          items={events}
-          key={(event: AuditEvent) => event.key}
-          label={copy.caption}
-          detailLabel={copy.detailLabel}
-          selectionParameter="record"
-          {selectionLocation}
-          bind:selectedKey
-          pushBelow={PUSH_BELOW}
-          storageKey="interborough-audit"
-          defaultListWidth={LIST_PANE_WIDTH}
-          maximumListWidth={LIST_PANE_MAXIMUM_WIDTH}
-          class="ib-audit__layout"
+
+      {#if exportMutation.isPending}
+        <div class="ib-audit__progress" data-testid="audit-export-progress">
+          <InlineLoading status="active" description={copy.exportProgress(exportCount)} />
+          <Button variant="link" onclick={cancelExport}>{copy.exportCancel}</Button>
+        </div>
+      {/if}
+
+      {#if exportMutation.isError}
+        <Alert variant="danger" data-testid="audit-export-failed">
+          <p class="ib-audit__alert-body">
+            <strong>{copy.exportFailed.lead}</strong>
+            {auditExportFailure(exportMutation.error)}
+          </p>
+          {#snippet actions()}
+            <Button variant="secondary" onclick={() => exportMutation.mutate()}
+              >{copy.exportFailed.again}</Button
+            >
+          {/snippet}
+        </Alert>
+      {/if}
+
+      {#if refreshFailed}
+        <Banner preset="refresh-failed" dataUpdatedAt={trail.dataUpdatedAt} onRetry={retry} />
+      {/if}
+
+      {#if recordMissing && (!trail.hasNextPage || searchedPages >= RECORD_SEARCH_PAGES)}
+        <Alert variant="info">
+          <p class="ib-audit__alert-body">
+            {trail.hasNextPage ? copy.recordNotFound.more : copy.recordNotFound.end}
+          </p>
+        </Alert>
+      {/if}
+
+      {#if failedFirstLoad && loadFailure !== undefined}
+        <ErrorState
+          bordered
+          headingLevel={2}
+          title={loadFailure.title}
+          description={loadFailure.description}
+          retryLabel={RETRY_LABEL}
+          onRetry={retry}
         >
-          {#snippet listBody(body)}
-            <DataTable
-              {columns}
-              {rows}
-              caption={copy.caption}
-              density="condensed"
-              class="ib-audit__table"
-              getRowId={(row) => row.id}
-              groupBy={(row) => dayGroupOf(row.at, now)}
-              openRowId={body.selectedKey}
-              onRowOpen={(row) => body.open(row.id)}
-              onReachEnd={trail.hasNextPage && !narrowing
-                ? () => void trail.fetchNextPage()
-                : undefined}
+          {#snippet secondaryAction()}
+            <Button variant="link" href={router.href(copy.failed.openHealthPath)}
+              >{copy.failed.openHealth}</Button
             >
-              {#snippet cell({ column, value })}
-                {#if column.key === 'what'}
-                  <span class="ib-audit__what">{value}</span>
-                {:else}
-                  {value}
-                {/if}
-              {/snippet}
-              {#snippet footer()}
-                <span class="ib-audit__footer" data-testid="audit-footer">
-                  {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
-                </span>
-              {/snippet}
-            </DataTable>
           {/snippet}
-          {#snippet detail(event)}
-            {#key event.key}
-              <AuditDetail {event} lookups={lookups.current} {now} />
-            {/key}
-          {/snippet}
-          {#snippet empty()}
-            <EmptyState
-              kind="first-use"
-              size="compact"
-              headingLevel={2}
-              title={copy.emptyDetailTitle}
-              description={copy.emptyDetailDescription}
-            >
-              {#snippet icon()}<FileText aria-hidden="true" />{/snippet}
-            </EmptyState>
-          {/snippet}
-        </ListDetail>
-      </div>
-    {/if}
+        </ErrorState>
+      {:else if stopped}
+        <ErrorState
+          bordered
+          headingLevel={2}
+          tone="neutral"
+          title={copy.stopped.title}
+          description={copy.stopped.description}
+          retryLabel={RETRY_LABEL}
+          retryVariant="secondary"
+          onRetry={readAgain}
+        />
+      {:else if loading}
+        <div data-testid="audit-loading" aria-busy="true">
+          <Skeleton
+            variant="list"
+            rows={5}
+            statusMarker="dot"
+            statusColumn={false}
+            delay={LOADING_DELAY_MILLISECONDS}
+            stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+            label={copy.loadingLabel}
+            onCancel={stopLoading}
+          />
+        </div>
+      {:else if settledEmpty}
+        {#if logIsEmpty}
+          <EmptyState
+            kind="first-use"
+            bordered
+            headingLevel={2}
+            title={VIEW_COPY.audit.empty?.title ?? ''}
+            description={VIEW_COPY.audit.empty?.description ?? ''}
+          >
+            {#snippet icon()}<FileText aria-hidden="true" />{/snippet}
+          </EmptyState>
+        {:else}
+          <EmptyState
+            kind="filtered"
+            bordered
+            headingLevel={2}
+            title={noMatches.title}
+            description={noMatches.description}
+            clearFiltersLabel={copy.noMatches.clear}
+            {...isNarrowed(applied) ? { onClearFilters: clear } : {}}
+          >
+            {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+          </EmptyState>
+        {/if}
+      {:else}
+        <div class="ib-audit__frame" data-shortcut-region="list-detail" bind:this={frame}>
+          <ListDetail
+            items={events}
+            key={(event: AuditEvent) => event.key}
+            label={copy.caption}
+            detailLabel={copy.detailLabel}
+            selectionParameter="record"
+            {selectionLocation}
+            bind:selectedKey
+            pushBelow={PUSH_BELOW}
+            storageKey="interborough-audit"
+            defaultListWidth={LIST_PANE_WIDTH}
+            maximumListWidth={LIST_PANE_MAXIMUM_WIDTH}
+            class="ib-audit__layout"
+          >
+            {#snippet listBody(body)}
+              <DataTable
+                {columns}
+                {rows}
+                caption={copy.caption}
+                density="condensed"
+                class="ib-audit__table"
+                getRowId={(row) => row.id}
+                groupBy={(row) => dayGroupOf(row.at, now)}
+                openRowId={body.selectedKey}
+                onRowOpen={(row) => body.open(row.id)}
+                onReachEnd={trail.hasNextPage && !narrowing && !trail.isError
+                  ? () => void trail.fetchNextPage()
+                  : undefined}
+              >
+                {#snippet cell({ column, value })}
+                  {#if column.key === 'what'}
+                    <span class="ib-audit__what">{value}</span>
+                  {:else}
+                    {value}
+                  {/if}
+                {/snippet}
+                {#snippet footer()}
+                  <span class="ib-audit__footer" data-testid="audit-footer">
+                    {copy.footer(events.length, totalQuery.data ?? undefined, trail.hasNextPage)}
+                  </span>
+                {/snippet}
+              </DataTable>
+            {/snippet}
+            {#snippet detail(event)}
+              {#key event.key}
+                <AuditDetail {event} lookups={lookups.current} {now} />
+              {/key}
+            {/snippet}
+            {#snippet empty()}
+              <EmptyState
+                kind="first-use"
+                size="compact"
+                headingLevel={2}
+                title={copy.emptyDetailTitle}
+                description={copy.emptyDetailDescription}
+              >
+                {#snippet icon()}<FileText aria-hidden="true" />{/snippet}
+              </EmptyState>
+            {/snippet}
+          </ListDetail>
+        </div>
+      {/if}
+    </StaleRegion>
   </section>
 </HealthFrame>
 
@@ -463,6 +642,14 @@
     gap: var(--cinder-space-4);
     min-width: 0;
     container-type: inline-size;
+  }
+
+  /* The stale region is the one box the page's parts sit in, so they keep the page's own rhythm. */
+  .ib-audit :global(.ib-audit__region) {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-4);
+    min-width: 0;
   }
 
   /* One row of controls, with Export at its right end because it applies to this tab only. */
@@ -513,13 +700,18 @@
     }
   }
 
-  .ib-audit__alert-title {
-    margin: 0;
-    font-weight: 600;
+  /* While Export reads the log: the spinner and its words, with Cancel beside them. */
+  .ib-audit__progress {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-3);
+    align-items: center;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
   }
 
   .ib-audit__alert-body {
-    margin: var(--cinder-space-1) 0 var(--cinder-space-2);
+    margin: 0;
   }
 
   /* The table and the open event, Cinder's list and detail, in one bordered box. Side by side the

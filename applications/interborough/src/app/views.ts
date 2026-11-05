@@ -129,8 +129,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   workers: { scopes: ['system:read'], canBeEmpty: false, ownsStates: true },
   storage: { scopes: ['storage:admin'], canBeEmpty: false },
   // Holds no console scope: the Bureau shows each caller the records about what it owns, and a
-  // principal that may see none is answered with an empty page, so owner scoping is the gate.
-  audit: { scopes: [], canBeEmpty: true },
+  // principal that may see none is answered with an empty page, so owner scoping is the gate. The
+  // Health tab keeps its heading and tab bar, and the log its filters, in every state, so the page
+  // draws its own loading, empty, failed and refresh-failed states (`routes/audit/index.svelte`).
+  audit: { scopes: [], canBeEmpty: true, ownsStates: true },
   // The Bureau's runtime settings. They are deployment-wide, so no owner scopes them, and the view
   // holds no console scope: the Bureau answers the scopes it declares. It always has something to show.
   settings: { scopes: [], canBeEmpty: false },
