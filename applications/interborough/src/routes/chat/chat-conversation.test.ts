@@ -1481,7 +1481,8 @@ describe('the files on a row', () => {
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
   };
 
-  const reloadWithWorkflowRevisionPanel = (result: string) => {
+  const reloadWithWorkflowRevisionPanel = (results: string | readonly string[]) => {
+    const proposalResults = typeof results === 'string' ? [results] : results;
     let appReads = 0;
     restore = bureau(
       { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
@@ -1489,23 +1490,31 @@ describe('the files on a row', () => {
         if (url.endsWith('/messages')) {
           return Response.json({
             threadId: 'session-1',
-            messages: [
-              {
-                id: 'proposal-call',
-                role: 'assistant',
-                toolCalls: [
-                  {
-                    id: 'proposal-call',
-                    type: 'function',
-                    function: {
-                      name: 'bureau__workflows-propose-update',
-                      arguments: '{"id":"daily","expectedHash":"hash-1"}',
+            messages: proposalResults.flatMap((result, index) => {
+              const callId = index === 0 ? 'proposal-call' : 'malformed-proposal';
+              return [
+                {
+                  id: callId,
+                  role: 'assistant',
+                  toolCalls: [
+                    {
+                      id: callId,
+                      type: 'function',
+                      function: {
+                        name: 'bureau__workflows-propose-update',
+                        arguments: '{"id":"daily","expectedHash":"hash-1"}',
+                      },
                     },
-                  },
-                ],
-              },
-              { id: 'proposal-result', role: 'tool', toolCallId: 'proposal-call', content: result },
-            ],
+                  ],
+                },
+                {
+                  id: `${callId}-result`,
+                  role: 'tool',
+                  toolCallId: callId,
+                  content: result,
+                },
+              ];
+            }),
           });
         }
         if (url === '/host/mcp-apps') {
@@ -1546,10 +1555,23 @@ describe('the files on a row', () => {
   });
 
   test('does not mount the workflow revision panel for a malformed proposal result', async () => {
-    const { container, appReads } = reloadWithWorkflowRevisionPanel('not-json');
+    const { container, appReads } = reloadWithWorkflowRevisionPanel([
+      JSON.stringify({
+        status: 'ok',
+        id: 'daily',
+        baseHash: 'hash-1',
+        proposedText: 'id: daily\ntrigger: 1h\nsteps: []',
+      }),
+      'not-json',
+    ]);
 
     await waitFor(() => expect(appReads()).toBe(1));
-    expect(container.querySelector('iframe[title="Review workflow revision"]')).toBeNull();
+    await waitFor(() =>
+      expect(container.querySelectorAll('iframe[title="Review workflow revision"]')).toHaveLength(
+        1,
+      ),
+    );
+    expect(container.querySelector('[data-tool-call-row="malformed-proposal"] iframe')).toBeNull();
   });
 
   test('shows an image a run announces on the assistant row it ends with', async () => {
