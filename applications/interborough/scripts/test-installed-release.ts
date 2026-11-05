@@ -13,6 +13,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
+import { mcp, runFixtureAgent } from './test-installed-release-transport.ts';
+export { parseRunStartedRunId } from './test-installed-release-transport.ts';
 
 const DEFAULT_EVIDENCE = 'tmp/chef/COR-2039';
 const ARCHIVE_SHA = 'd80098b9f44a4edec43187dea42447bfc0eb67d08f368bac78121245242bd80f';
@@ -56,12 +58,6 @@ type Acceptance = {
 const assertions: Acceptance[] = [];
 const pass = (assertion: string, command: string, details?: Record<string, unknown>) =>
   assertions.push({ assertion, command, exit: 0, ...(details === undefined ? {} : { details }) });
-
-export function parseRunStartedRunId(stream: string): string {
-  const runId = stream.match(/"type":"RUN_STARTED"[^\n]*"runId":"([^"]+)"/)?.[1];
-  if (runId === undefined) throw new Error('The AG-UI stream did not contain RUN_STARTED');
-  return runId;
-}
 
 export function referencedAssets(html: string): string[] {
   return [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
@@ -195,54 +191,29 @@ async function linkPluginRuntime(home: string, runtime: string): Promise<void> {
   await symlink(runtime, join(home, 'plugins', 'node_modules'), 'dir');
 }
 
-async function mcp(
-  url: string,
-  id: number,
-  method: string,
-  params: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const response = await fetch(`${url}/bureau/mcp`, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json, text/event-stream',
-      'content-type': 'application/json',
-      'mcp-protocol-version': '2025-03-26',
-    },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-  });
-  if (!response.ok) throw new Error(`MCP ${method} returned ${response.status}`);
-  const text = await response.text();
-  const json = text.startsWith('{') ? text : text.match(/^data: (.*)$/m)?.[1];
-  if (!json) throw new Error(`MCP ${method} returned no JSON`);
-  return JSON.parse(json) as Record<string, unknown>;
-}
+export type InstalledJourneyOperations = {
+  readonly spawn?: typeof spawn;
+  readonly waitForListening?: typeof waitForListening;
+  readonly waitForHttp?: typeof waitForHttp;
+  readonly fetch?: typeof fetch;
+  readonly assertBrowser?: typeof assertInstalledAppsInChromium;
+};
 
-async function runFixtureAgent(url: string): Promise<{ stream: string; runId: string }> {
-  const response = await fetch(`${url}/bureau/ag-ui/agents/installed-fixture%3Aassistant/run`, {
-    method: 'POST',
-    headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      threadId: `thread-${crypto.randomUUID()}`,
-      runId: `run-${crypto.randomUUID()}`,
-      messages: [{ id: 'user-1', role: 'user', content: 'Greet Ada.' }],
-      tools: [],
-      context: [],
-      state: {},
-      forwardedProps: {},
-    }),
-  });
-  const stream = await response.text();
-  if (!response.ok) throw new Error(`Fixture agent did not start: ${stream.slice(0, 500)}`);
-  return { stream, runId: parseRunStartedRunId(stream) };
-}
-
-async function runInstalled(
+export async function runInstalled(
   executable: string,
   prefix: string,
   relocated = false,
   port = 0,
   existingHome?: string,
+  operations: InstalledJourneyOperations = {},
 ): Promise<void> {
+  const processOperations = {
+    spawn: operations.spawn ?? spawn,
+    waitForListening: operations.waitForListening ?? waitForListening,
+    waitForHttp: operations.waitForHttp ?? waitForHttp,
+    fetch: operations.fetch ?? fetch,
+    assertBrowser: operations.assertBrowser ?? assertInstalledAppsInChromium,
+  };
   const home = existingHome ?? join(prefix, 'home');
   const cwd = join(prefix, 'unrelated-cwd');
   await mkdir(home, { recursive: true });
@@ -253,22 +224,27 @@ async function runInstalled(
     await writeFixture(home, executable, marker);
   }
   console.info(`starting ${executable} home=${home}`);
-  const probe = spawn(executable, ['start', '--port', String(port), '--home', home], home, cwd);
-  const listening = await waitForListening(probe);
+  const probe = processOperations.spawn(
+    executable,
+    ['start', '--port', String(port), '--home', home],
+    home,
+    cwd,
+  );
+  const listening = await processOperations.waitForListening(probe);
   const url = `http://127.0.0.1:${listening.port}`;
-  const shell = await waitForHttp(`${url}/`);
+  const shell = await processOperations.waitForHttp(`${url}/`);
   const html = await shell.text();
   const assets = referencedAssets(html);
   if (assets.length < 2) throw new Error('Shell did not mount JavaScript and CSS');
   for (const path of assets) {
-    const response = await fetch(`${url}${path}`);
+    const response = await processOperations.fetch(`${url}${path}`);
     if (response.status !== 200) throw new Error(`${path} returned ${response.status}`);
   }
   pass('mounted shell and HTTP 200 JavaScript/CSS', `GET ${url}/`, {
     port: listening.port,
     sanitizedPath: '/usr/bin:/bin',
   });
-  const pluginResponse = await fetch(`${url}/host/plugins`);
+  const pluginResponse = await processOperations.fetch(`${url}/host/plugins`);
   const plugins = (await pluginResponse.json()) as {
     plugins: Array<Record<string, unknown>>;
     unloaded: Array<Record<string, unknown>>;
@@ -281,11 +257,11 @@ async function runInstalled(
     !plugins.unloaded.some((entry) => JSON.stringify(entry).includes('missing-installed-import'))
   )
     throw new Error(`Fixture/broken plugin isolation failed: ${JSON.stringify(plugins)}`);
-  const agent = await runFixtureAgent(url);
+  const agent = await runFixtureAgent(url, processOperations.fetch);
   if (!agent.stream.includes('fixture greeted Ada'))
     throw new Error('Fixture tool output was not deterministic');
   if (!(await Bun.file(marker).exists())) throw new Error('Fixture tool marker was not written');
-  const appsResponse = await fetch(`${url}/host/mcp-apps`);
+  const appsResponse = await processOperations.fetch(`${url}/host/mcp-apps`);
   const apps = (await appsResponse.json()) as {
     apps: Array<Record<string, unknown>>;
   };
@@ -295,24 +271,34 @@ async function runInstalled(
     )
   )
     throw new Error('Fixture MCP panel was not mounted');
-  const panel = await fetch(`${url}/host/plugins/installed-fixture/apps/fixture-panel`);
+  const panel = await processOperations.fetch(
+    `${url}/host/plugins/installed-fixture/apps/fixture-panel`,
+  );
   const panelPayload = (await panel.json()) as { html?: string; ui?: { csp?: unknown } };
   if (
     !panelPayload.html?.includes('Installed fixture MCP panel') ||
     panelPayload.ui?.csp === undefined
   )
     throw new Error('Fixture panel text or UI metadata missing');
-  const run = await mcp(url, 2, 'tools/call', {
-    name: 'bureau.tasks.inspect',
-    arguments: { taskId: agent.runId },
-  });
+  const run = await mcp(
+    url,
+    2,
+    'tools/call',
+    {
+      name: 'bureau.tasks.inspect',
+      arguments: { taskId: agent.runId },
+    },
+    processOperations.fetch,
+  );
   if (!run['result'] && !run['error'])
     throw new Error('Built-in inspector did not answer for the fixture run');
-  const inspector = await fetch(`${url}/host/plugins/inspectors/apps/run-inspector`);
+  const inspector = await processOperations.fetch(
+    `${url}/host/plugins/inspectors/apps/run-inspector`,
+  );
   const inspectorPayload = (await inspector.json()) as { html?: string; ui?: { csp?: unknown } };
   if (inspector.status !== 200 || !inspectorPayload.html?.includes('<div id="root">'))
     throw new Error(`Built-in inspector page missing (${inspector.status})`);
-  await assertInstalledAppsInChromium(
+  await processOperations.assertBrowser(
     url,
     `${url}/host/plugins/installed-fixture/apps/fixture-panel`,
     `${url}/host/plugins/inspectors/apps/run-inspector`,
@@ -330,9 +316,9 @@ async function runInstalled(
     'SDK plugin, additional zod dependency, tool, panel, inspector, and broken import isolation',
     `GET ${url}/host/plugins`,
   );
-  const status = await fetch(`${url}/host/status`);
+  const status = await processOperations.fetch(`${url}/host/status`);
   if (status.status !== 200) throw new Error('Host status unavailable');
-  const restarted = await fetch(`${url}/host/restart`, { method: 'POST' });
+  const restarted = await processOperations.fetch(`${url}/host/restart`, { method: 'POST' });
   if (restarted.status !== 202) throw new Error(`Restart returned ${restarted.status}`);
   const restartStart = Date.now();
   let secondPort: number | undefined;
@@ -349,7 +335,10 @@ async function runInstalled(
     throw new Error(`Explicit port changed across restart: ${port} -> ${secondPort}`);
   const second = await waitForHttp(`http://127.0.0.1:${secondPort}`);
   if (!second.ok) throw new Error('Restart did not preserve listener');
-  const restartedAgent = await runFixtureAgent(`http://127.0.0.1:${secondPort}`);
+  const restartedAgent = await runFixtureAgent(
+    `http://127.0.0.1:${secondPort}`,
+    processOperations.fetch,
+  );
   if (!restartedAgent.stream.includes('fixture greeted Ada'))
     throw new Error('Restarted fixture tool output was not deterministic');
   if ((await readFile(marker, 'utf8')) !== 'fixture-owned-dependency')

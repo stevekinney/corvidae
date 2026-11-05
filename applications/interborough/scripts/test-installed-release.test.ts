@@ -7,6 +7,7 @@ import {
   parseInstalledReleaseArguments,
   parseRunStartedRunId,
   referencedAssets,
+  runInstalled,
   runInstalledRelease,
 } from './test-installed-release.ts';
 
@@ -75,6 +76,34 @@ describe('installed-release harness arguments', () => {
       expect(evidence).toMatch(/installed-release-.*\.json$/);
     } finally {
       await rm(evidenceDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test('propagates readiness failures through the process seam', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'installed-release-process-seam-'));
+    const process = {
+      exitCode: null,
+      exited: Promise.resolve(0),
+      kill: () => true,
+    } as unknown as ReturnType<typeof Bun.spawn>;
+    const probe = {
+      process,
+      stdout: Promise.resolve(''),
+      stderr: Promise.resolve(''),
+      output: () => '',
+    };
+    try {
+      await expect(
+        runInstalled('/bin/true', root, false, 0, root, {
+          spawn: () => probe,
+          waitForListening: async () => ({ port: 43123, text: 'listening' }),
+          waitForHttp: async () => {
+            throw new Error('shell readiness failed');
+          },
+        }),
+      ).rejects.toThrow('shell readiness failed');
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
