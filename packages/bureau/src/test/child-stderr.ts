@@ -12,4 +12,4 @@ export function unexpectedChildStderr(stderr: string): string {
 const COMPOSITION_HOLD_LINE =
   /^\[bureau\] Run "[^"\n]+" reached recovery before the bureau finished composing; holding it until composition completes\.\n/gm;
 const RESOLVER_HOLD_LINE =
-  /^\[bureau\] Run "[^"\n]+" needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog\.\n/gm;
+  /^\[bureau\] (?:Run "[^"\n]+"|A run) needs the agent run options resolver before the bureau has wired it; holding it until the bureau finishes building its agent catalog\.\n/gm;
