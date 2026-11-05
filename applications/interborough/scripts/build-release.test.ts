@@ -18,7 +18,13 @@ async function releaseFixture(
     readonly recursiveDependency?: boolean;
     readonly missingDependency?: boolean;
     readonly invalidExportMap?: boolean;
-    readonly runtimeFailure?: 'missing-link' | 'wrong-link';
+    readonly runtimeFailure?:
+      | 'missing-link'
+      | 'wrong-link'
+      | 'missing-inspector'
+      | 'not-running'
+      | 'missing-contribution'
+      | 'malformed-html';
     readonly markerPath?: string;
   } = {},
 ) {
@@ -66,17 +72,19 @@ async function releaseFixture(
         await writeFile(
           output,
           `#!/opt/homebrew/bin/bun
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 const home = process.argv[process.argv.indexOf('--home') + 1];
 const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
 const root = dirname(dirname(process.argv[1]));
 const runtime = join(root, 'share', 'interborough', 'plugin-runtime', 'node_modules');
 const marker = ${JSON.stringify(options.markerPath ?? '')};
-if (${JSON.stringify(options.runtimeFailure ?? '')} !== 'missing-link') {
+const behavior = ${JSON.stringify(options.runtimeFailure ?? '')};
+if (behavior !== 'missing-link') {
   await mkdir(join(home, 'plugins'), { recursive: true });
   await symlink(${options.runtimeFailure === 'wrong-link' ? 'home' : 'runtime'}, join(home, 'plugins', 'node_modules'));
 }
+if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
 if (marker) {
   await writeFile(marker, 'started');
   process.on('SIGTERM', async () => {
@@ -86,8 +94,8 @@ if (marker) {
 }
 const server = Bun.serve({ port, fetch(request) {
   const pathname = new URL(request.url).pathname;
-  if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: 'running', contributions: [{ kind: 'mcp-app', id: 'runtime-proof:external-proof' }] }] });
-  if (pathname === '/host/plugins/runtime-proof/apps/external-proof') return Response.json({ html: '<html>external runtime</html>' });
+  if (pathname === '/host/plugins') return Response.json({ plugins: [{ descriptor: { name: 'runtime-proof' }, status: behavior === 'not-running' ? 'stopped' : 'running', contributions: behavior === 'missing-contribution' ? [] : [{ kind: 'mcp-app', id: 'runtime-proof:external-proof' }] }] });
+  if (pathname === '/host/plugins/runtime-proof/apps/external-proof') return Response.json({ html: behavior === 'malformed-html' ? 42 : '<html>external runtime</html>' });
   return new Response('not found', { status: 404 });
 } });
 await writeFile(join(home, 'server-port'), String(server.port));
@@ -151,6 +159,33 @@ await new Promise(() => {});
       ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }) as never,
   };
   return { root, operations };
+}
+
+async function expectRelocatedFailure(
+  runtimeFailure: NonNullable<Parameters<typeof releaseFixture>[0]>['runtimeFailure'],
+  message: string,
+) {
+  const marker = join(await mkdtemp(join(tmpdir(), 'interborough-release-marker-')), 'lifecycle');
+  const fixture = await releaseFixture({ markerPath: marker, runtimeFailure });
+  const output = await mkdtemp(join(tmpdir(), `interborough-release-${runtimeFailure}-`));
+  let clock = 0;
+  try {
+    await expect(
+      buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+        ...fixture.operations,
+        now: () => clock,
+        sleep: async () => {
+          while (!(await Bun.file(marker).exists())) await Bun.sleep(0);
+          clock += 100;
+        },
+      }),
+    ).rejects.toThrow(message);
+    expect(await Bun.file(marker).text()).toBe('terminated');
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+    await rm(output, { recursive: true, force: true });
+    await rm(marker, { force: true });
+  }
 }
 
 describe('release arguments', () => {
@@ -265,6 +300,13 @@ describe('release arguments', () => {
       await rm(output, { recursive: true, force: true });
       await rm(marker, { force: true });
     }
+  });
+
+  test('covers relocated host validation failures', async () => {
+    await expectRelocatedFailure('missing-inspector', 'Prebuilt inspector is missing');
+    await expectRelocatedFailure('not-running', 'did not run');
+    await expectRelocatedFailure('missing-contribution', 'did not register');
+    await expectRelocatedFailure('malformed-html', 'did not contain its generated page');
   });
 
   test('rejects a dependency absent from the frozen production install', async () => {
