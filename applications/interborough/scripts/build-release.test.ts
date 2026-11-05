@@ -81,7 +81,7 @@ const behavior = ${JSON.stringify(options.runtimeFailure ?? 'success')};
 if (behavior === 'missing-inspector') await rm(join(root, 'share', 'interborough', 'mcp-apps', 'run-inspector.json'), { force: true });
 if (behavior !== 'missing-link') {
   await mkdir(join(home, 'plugins'), { recursive: true });
-  await symlink(behavior === 'wrong-link' ? '/tmp' : runtime, join(home, 'plugins', 'node_modules'));
+  await symlink(behavior === 'wrong-link' ? home : runtime, join(home, 'plugins', 'node_modules'));
 }
 if (behavior === 'missing-link') process.exit(0);
 if (behavior === 'poll-error') await Bun.sleep(100);
