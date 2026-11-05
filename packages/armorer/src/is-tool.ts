@@ -481,6 +481,8 @@ export type ToolSecretResolver = (
 export type ToolContext<_E extends ToolEventsMap = DefaultToolEvents> = RuntimeToolContext;
 
 export interface ToolExecuteOptions {
+  /** Trusted runtime check after queues, policy and approval, immediately before the callback. */
+  revalidateAuthority?: (context: ToolRequestContext) => Promise<ToolRequestContext | undefined>;
   requestContext?: ToolRequestContext;
   effectiveContext?: EffectiveToolExecutionContext;
   clearTimeoutFunction?: ClearScheduledTimeout;

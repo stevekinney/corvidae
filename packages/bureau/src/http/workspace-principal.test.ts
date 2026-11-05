@@ -22,6 +22,12 @@ test('two verified credentials retain one durable owner across rotation, without
     workspaceId: 'workspace-a',
     resolveMembership: async ({ subject }) =>
       subject === 'other-key' ? { ...member(), actorId: 'user-b', owner: 'owner-b' } : member(),
+    resolveOwnerMembership: async (owner) =>
+      owner === member().owner
+        ? member()
+        : owner === 'owner-b'
+          ? { ...member(), actorId: 'user-b', owner: 'owner-b' }
+          : null,
   };
   const opened = await openBureau({
     generate: answering(),

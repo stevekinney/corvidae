@@ -33,6 +33,7 @@ export {
   narrowToolAuthority,
   privilegedExecutionSnapshot,
   projectExecutionSnapshot,
+  readRunWorkspaceAuthority,
 } from './execution-context';
 export type {
   EffectiveToolExecutionContext,
@@ -40,6 +41,7 @@ export type {
   ExternalFieldClass,
   ExternalProjectionAudience,
   ExternalProjectionOptions,
+  RunWorkspaceAuthority,
   ToolAuthority,
   ToolRequestContext,
 } from './execution-context';

@@ -17,7 +17,7 @@ export type WorkspaceCredential = Readonly<Pick<AuthenticatedPrincipal, 'method'
 export type WorkspaceMembershipOptions = {
   /** The configured runtime identity; a result for any other workspace is refused. */
   readonly workspaceId: string;
-  /** Resolve another opaque owner for an explicit share; absent means self-only sharing. */
+  /** Resolve an opaque owner for durable execution and explicit shares; absent denies these admissions. */
   readonly resolveOwnerMembership?:
     ((owner: string) => Promise<WorkspaceMembership | null>) | undefined;
   /** Resolve current membership after verification; null removes access and errors fail closed. */

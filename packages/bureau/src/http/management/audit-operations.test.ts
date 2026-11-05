@@ -3,6 +3,7 @@ import {
   workspacePrivacyCall,
   WORKSPACE_PRIVACY_ACTORS,
   type WorkspacePrivacyActor,
+  workspaceAdministratorDirectory,
 } from '../workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-1482 — `bureau.audit.query` over a real Bureau and its handler: what an owner and an
@@ -12,7 +13,6 @@ import {
 import type { GenerateContext } from '@lostgradient/operative';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { WorkspaceIdentity } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { waitForCondition } from '../../test';
@@ -127,19 +127,7 @@ describe('bureau.audit.query without bureau.audit:read', () => {
     const opened = await openBureau({
       generate: answering('done'),
       handlerOptions: {
-        workspace: {
-          workspaceId: 'workspace-a',
-          resolveMembership: async ({ subject }) =>
-            ({
-              version: 1,
-              workspaceId: 'workspace-a',
-              actorId: subject ?? 'unknown',
-              actorKind: 'user',
-              owner: `api-key:${subject ?? 'unknown'}`,
-              membershipRevision: 'revision-1',
-              capabilities: ['workspace:use', 'workspace:manage'],
-            }) satisfies WorkspaceIdentity,
-        },
+        workspace: workspaceAdministratorDirectory(),
       },
     });
     cleanups.push(() => opened.dispose());

@@ -77,6 +77,7 @@ function hasOperationKey(input: ExecuteOptionsInput): boolean {
 
 function hasContextOptions(input: ExecuteOptionsInput): boolean {
   return Boolean(
+    input.options?.revalidateAuthority ||
     input.options?.requestContext ||
     input.resolvedTraceContext !== undefined ||
     input.resolvedExecutionContext !== undefined,
@@ -159,6 +160,9 @@ function copyContextOptions(
       ? { executionContext: resolvedExecutionContext }
       : {}),
     parentExecutionId,
+    ...(input.options?.revalidateAuthority
+      ? { revalidateAuthority: input.options.revalidateAuthority }
+      : {}),
     ...(privilegedContextMirrorHandle ? { privilegedContextMirrorHandle } : {}),
     ...(requestContext && initialEffectiveContext
       ? { requestContext, effectiveContext: initialEffectiveContext }

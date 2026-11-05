@@ -1,3 +1,5 @@
+import { createAgentSchedule as seedAgentSchedule } from '@lostgradient/operative';
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createLiveOperationRegistry } from '@lostgradient/weft';
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -101,12 +103,26 @@ test('browser schedule parsing accepts the real workspace host create and list r
     expect(created.lastFireAt).toBeNull();
     expect(created.missedFireCount).toBe(0);
     expect(created.skippedCount).toBe(0);
-    const foreign = await host.bureau.schedules.create({
+    expect(
+      await throwingRejectionOf(
+        host.bureau.schedules.create({
+          agentName: 'demo:assistant',
+          spec: '24h',
+          input: 'PRIVATE-OTHER-OWNER-a137',
+          principal: 'workspace:another-owner',
+        }),
+      ),
+    ).toThrow('Workspace authority unavailable');
+    // Historical records can outlive membership. Seed one through the native fixture boundary;
+    // the public Bureau API correctly refuses new schedules for an unknown workspace owner.
+    const foreign = await seedAgentSchedule({
+      engine: host.engine,
       agentName: 'demo:assistant',
-      spec: '24h',
+      spec: { every: '24h' },
       input: 'PRIVATE-OTHER-OWNER-a137',
       principal: 'workspace:another-owner',
     });
+    await foreign.pause();
     expect(foreign).toBeDefined();
     const listed = await listBureauSchedules(options);
     expect(listed).toHaveLength(2);

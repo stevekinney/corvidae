@@ -1,6 +1,6 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type CleanupAcknowledgement, createAgent } from '@lostgradient/operative';
-import type { WorkspaceIdentity } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
@@ -91,19 +91,7 @@ describe('bureau.tasks.list', () => {
     await withBureau(
       {
         handlerOptions: {
-          workspace: {
-            workspaceId: 'workspace-a',
-            resolveMembership: async ({ subject }) =>
-              ({
-                version: 1,
-                workspaceId: 'workspace-a',
-                actorId: subject ?? 'unknown',
-                actorKind: 'user',
-                owner: `api-key:${subject ?? 'unknown'}`,
-                membershipRevision: 'revision-1',
-                capabilities: ['workspace:use', 'workspace:manage'],
-              }) satisfies WorkspaceIdentity,
-          },
+          workspace: workspaceAdministratorDirectory(),
         },
       },
       async (opened) => {

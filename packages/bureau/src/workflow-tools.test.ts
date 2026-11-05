@@ -575,14 +575,8 @@ describe('workflows-get and workflow revisions', () => {
       { principal: 'owner-member' },
     );
     expect(refused.result).toMatchObject({ status: 'not-found' });
-    const run = await harness.bureau
-      .durableEngine()!
-      .start(
-        'digest',
-        { origin: { kind: 'person', principal: 'owner-member', surface: 'api' } },
-        { id: 'private-member-run' },
-      );
-    await run.result();
+    const run = await harness.bureau.workflows!.start('digest', { owner: 'owner-member' });
+    await harness.bureau.durableEngine()!.getHandle(run.runId).result();
     const member = await harness.callTool(
       'bureau__workflows-revisions-list',
       { id: 'digest' },

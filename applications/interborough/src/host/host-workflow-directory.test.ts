@@ -93,14 +93,11 @@ describe('the host’s workflow directory', () => {
       { id: 'digest', state: 'ready', owner: 'anonymous:local', agent: 'assistant' },
     ]);
 
-    const run = await host.engine.start(
-      'digest',
-      { kind: 'schedule', scheduleId: 'manual' },
-      { id: 'digest-run' },
-    );
+    const started = await host.bureau.workflows!.start('digest', { owner: 'anonymous:local' });
+    const run = host.engine.getHandle(started.runId);
     const result = (await run.result()) as { content: string };
     expect(result.content).toContain('Hello from the assistant');
-    expect(await host.bureau.ownerOf({ kind: 'run', id: 'digest-run' })).toBe('anonymous:local');
+    expect(await host.bureau.ownerOf({ kind: 'run', id: started.runId })).toBe('anonymous:local');
     // The workflow has its one native schedule.
     const schedules = await host.bureau.schedules.list({ status: ['active'] });
     expect(schedules?.items.map((schedule) => schedule.id)).toEqual([
