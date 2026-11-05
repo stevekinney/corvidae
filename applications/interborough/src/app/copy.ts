@@ -3781,7 +3781,9 @@ export const PALETTE_COPY = {
   groups: {
     waiting: 'Waiting on you',
     chats: 'Chats',
+    workflows: 'Workflows',
     runs: 'Runs',
+    schedules: 'Schedules',
     workers: 'Workers',
     reviews: 'Reviews',
     agents: 'Agents',

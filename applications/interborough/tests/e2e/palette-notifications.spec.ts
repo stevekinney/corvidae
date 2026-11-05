@@ -65,7 +65,7 @@ test.describe('⌘K over every kind of record', () => {
     await deleteChats([chatThread, waitingThread]);
   });
 
-  test('finds a chat, a run, a worker, an agent, a tool and an action, and no workflow type', async ({
+  test('finds a chat, a workflow, a run, a worker, an agent, a tool and an action', async ({
     page,
     checkA11y,
   }) => {
@@ -82,10 +82,9 @@ test.describe('⌘K over every kind of record', () => {
     ).toBeVisible();
     await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.chats);
 
-    // A workflow type is not searched (design row 03g draws no Workflows group).
     await search(page).fill('order-proc');
-    await expect(palette(page).getByText(PALETTE_COPY.noMatchesTitle)).toBeVisible();
-    expect(await groupsOf(page)).not.toContain('Workflows');
+    await expect(palette(page).getByRole('option', { name: /^order-processing/ })).toBeVisible();
+    await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.workflows);
 
     await search(page).fill(runPrefix);
     await expect.poll(() => groupsOf(page)).toContain(PALETTE_COPY.groups.runs);
@@ -127,6 +126,13 @@ test.describe('⌘K over every kind of record', () => {
     await expect(page).toHaveURL(
       new RegExp(`/capabilities\\?tool=${encodeURIComponent(toolName)}`),
     );
+
+    await openPalette(page);
+    await search(page).fill('order-proc');
+    await palette(page)
+      .getByRole('option', { name: /^order-processing/ })
+      .click();
+    await expect(page).toHaveURL(/\/workflows\/order-processing$/);
 
     await openPalette(page);
     await search(page).fill('go to reviews');

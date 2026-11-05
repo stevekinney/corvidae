@@ -153,15 +153,12 @@ test.describe('the search palette on the sample world', () => {
       palette(page).getByRole('group', { name: 'Agents and tools', exact: true }),
     ).toBeVisible();
 
-    // Exactly the five groups of the design, in its order: the sample world's order-refund workflow
-    // and Weekly refund audit schedule are not searched, so neither draws a group the board omits.
-    expect(await groupsOf(page)).toEqual([
-      'Waiting on you',
-      'Chats',
-      'Runs',
-      'Agents and tools',
-      'Actions',
-    ]);
+    // The five groups of the design, in its order; other kinds (a workflow, a schedule) sit between.
+    const groups = await groupsOf(page);
+    const named = groups.filter((group) =>
+      ['Waiting on you', 'Chats', 'Runs', 'Agents and tools', 'Actions'].includes(group ?? ''),
+    );
+    expect(named).toEqual(['Waiting on you', 'Chats', 'Runs', 'Agents and tools', 'Actions']);
 
     const group = (name: string) => palette(page).getByRole('group', { name, exact: true });
     const first = group('Waiting on you').getByRole('option').first();

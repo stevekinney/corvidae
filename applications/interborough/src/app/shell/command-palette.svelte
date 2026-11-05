@@ -2,10 +2,9 @@
   /**
    * ⌘K search over everything the console holds, and the actions it can run, in one order: what is
    * waiting on the person, then chats, runs, then agents and tools under one heading, then the
-   * workers and reviews that match (the board's order is waiting, chats, runs, agents and tools,
-   * actions; the workers and reviews are kinds it does not draw, so they sit between the last two and
-   * never between its own; workflow types and schedules are not searched, because the board's search
-   * for "refund" shows neither), then the actions with their shortcuts. A query
+   * workflows, schedules, workers and reviews that match (the board's order is waiting, chats, runs,
+   * agents and tools, actions; these are the kinds it does not draw, so they sit between the last two
+   * and never between its own), then the actions with their shortcuts. A query
    * that starts with `>` is for actions only, and one that starts with `@` for agents only.
    * Choosing a result opens that record, not the collection it belongs to.
    *
@@ -28,22 +27,26 @@
   import type { HttpClient } from '@lostgradient/weft';
   import {
     Bot,
+    CalendarClock,
     CircleQuestionMark,
     Cpu,
     Inbox,
     MessageSquare,
     Play,
     Plus,
+    Workflow,
     Wrench,
   } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
 
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import IdentifierText from '../../lib/identifier-text.svelte';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { shortcuts, type ShortcutAction, type ShortcutRegistry } from '../../lib/shortcuts.ts';
-  import { CATALOG_STALE_TIME_MS } from '../../lib/workflow-catalog.ts';
+  import { CATALOG_STALE_TIME_MS, loadCatalog } from '../../lib/workflow-catalog.ts';
+  import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { newChatPath } from '../../routes/agents/agent-presentation.ts';
   import { actionIcon } from './destinations.ts';
@@ -60,6 +63,7 @@
     NO_RESULTS,
     parseQuery,
     runMeta,
+    schedulePath,
     searchConsole,
     toolPath,
     waitingLabel,
@@ -75,7 +79,9 @@
     store?: NotificationStore | undefined;
     /** The shortcuts the palette lists as actions. The shell's registry when omitted. */
     registry?: ShortcutRegistry | undefined;
-    /** `workflows:read`, for workflow runs by identifier. Open when omitted. */
+    /** Whether the principal holds `schedules:read`; without it schedules are not searched. Open when omitted. */
+    scheduleReadGate?: ScopeGate | undefined;
+    /** `workflows:read`, for workflow types and runs. Open when omitted. */
     workflowReadGate?: ScopeGate | undefined;
     /** `reviews:read`, for reviews. Open when omitted. */
     reviewReadGate?: ScopeGate | undefined;
@@ -90,6 +96,7 @@
     client,
     store,
     registry = shortcuts,
+    scheduleReadGate = OPEN_GATE,
     workflowReadGate = OPEN_GATE,
     reviewReadGate = OPEN_GATE,
     systemReadGate = OPEN_GATE,
@@ -99,16 +106,19 @@
 
   let results = $state<ConsoleSearchResults>(NO_RESULTS);
 
-  // The tool catalog changes slowly and is large, so a keystroke is answered from the last read.
+  // The catalogs change slowly and are large, so a keystroke is answered from the last read.
+  const readWorkflows = $derived(memoizeRead(() => loadCatalog(client), CATALOG_STALE_TIME_MS));
   const readTools = $derived(
     memoizeRead(() => getAgentCatalog().then((catalog) => catalog.tools), CATALOG_STALE_TIME_MS),
   );
 
   async function search(currentQuery: string): Promise<void> {
     const found = await searchConsole(client, currentQuery, {
+      scheduleReadGate,
       workflowReadGate,
       reviewReadGate,
       systemReadGate,
+      readWorkflows,
       readTools,
     });
 
@@ -175,7 +185,9 @@
       actions.length +
       shown.chats.length +
       shown.runs.length +
+      shown.definitions.length +
       shown.workflows.length +
+      shown.schedules.length +
       shown.workers.length +
       shown.reviews.length +
       shown.agents.length +
@@ -330,6 +342,44 @@
         {/each}
       {/snippet}
       {@render section(PALETTE_COPY.groups.agentsAndTools, agentAndToolRows)}
+    {/if}
+    {#if shown.definitions.length > 0}
+      {#snippet definitionRows()}
+        {#each shown.definitions as workflow (workflow.name)}
+          <CommandItem
+            value={`definition-${workflow.name}`}
+            accessibleLabel={workflow.description === null
+              ? workflow.name
+              : `${workflow.name}, ${workflow.description}`}
+            onSelect={() => goTo(workflowTypePath(workflow.name))}
+          >
+            <code class="ib-identifier">{workflow.name}</code>
+            {#snippet leading()}<Workflow />{/snippet}
+            {#snippet meta()}{#if workflow.description !== null}{workflow.description}{/if}{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.workflows, definitionRows)}
+    {/if}
+    {#if shown.schedules.length > 0}
+      {#snippet scheduleRows()}
+        {#each shown.schedules as schedule (schedule.id)}
+          <CommandItem
+            value={`schedule-${schedule.id}`}
+            accessibleLabel={schedule.workflowTypeShown === null
+              ? schedule.name
+              : `${schedule.name}, ${schedule.workflowTypeShown}`}
+            onSelect={() => goTo(schedulePath(schedule.id))}
+          >
+            <IdentifierText text={schedule.name} identifiers={schedule.identifiers} />
+            {#snippet leading()}<CalendarClock />{/snippet}
+            {#snippet meta()}{#if schedule.workflowTypeShown !== null}<code class="ib-identifier"
+                  >{schedule.workflowTypeShown}</code
+                >{/if}{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.schedules, scheduleRows)}
     {/if}
     {#if shown.workers.length > 0}
       {#snippet workerRows()}
