@@ -3,8 +3,9 @@
  * reason `deployment`, and a write that fails leaves what the host serves as it was. The home is
  * a record of what was written, so a test can say that nothing was.
  */
-import type { Bungalow } from '@lostgradient/bungalow';
+import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import { resolveProviderGenerate } from '@lostgradient/bureau';
+import { createAgent } from '@lostgradient/operative';
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 
@@ -95,11 +96,15 @@ function fakeHome(
   return home;
 }
 
-async function managerFor(home: FakeHome, audits: ProviderAuditEntry[] = []) {
+async function managerFor(
+  home: FakeHome,
+  audits: ProviderAuditEntry[] = [],
+  resolver: typeof resolveProviderGenerate = resolveProviderGenerate,
+) {
   const manager = createProviderManager({
     bungalow: home,
     warn: () => undefined,
-    resolveProviderGenerate,
+    resolveProviderGenerate: resolver,
     audit: async (entry) => {
       audits.push(entry);
     },
@@ -119,6 +124,69 @@ async function failureOf(work: Promise<unknown>): Promise<unknown> {
     (error: unknown) => error,
   );
 }
+
+describe('provider admission across hosts', () => {
+  test('refreshes committed credentials for old functions without changing an admitted call', async () => {
+    const home = fakeHome('local');
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const observed: string[] = [];
+    const resolver: typeof resolveProviderGenerate = (_definitions, configuration) => {
+      const key = configuration.apiKey ?? '';
+      return async () => {
+        observed.push(key);
+        if (observed.length === 1) {
+          entered.resolve();
+          await release.promise;
+        }
+        return { content: key, toolCalls: [] };
+      };
+    };
+    const writer = await managerFor(home);
+    const observer = await managerFor(home, [], resolver);
+    const generate = observer.manager.generateFor({ provider: 'anthropic', model: 'sonnet' });
+    const first = createAgent({ name: 'first', generate }).run('First').result();
+    await entered.promise;
+    try {
+      await writer.manager.connect({ provider: 'anthropic', apiKey: KEY });
+      await createAgent({ name: 'second', generate }).run('Second').result();
+      expect(observed).toEqual(['fixture-existing-key', KEY]);
+      const standing = await observer.manager.snapshot();
+      const committed = await home.readConfiguration();
+      expect(standing.appliedConfigurationRevision).toBe(committed.revision);
+    } finally {
+      release.resolve();
+      await first;
+    }
+  });
+});
+
+test('a missing committed version denies new provider calls without falling back to a legacy key', async () => {
+  const home = fakeHome('local');
+  const writer = await managerFor(home);
+  await writer.manager.connect({ provider: 'anthropic', apiKey: KEY });
+  let unavailable = false;
+  let dispatched = 0;
+  const observerHome = {
+    ...home,
+    secretProvider: {
+      ...home.secretProvider,
+      readVersion: async (reference: string) => {
+        if (unavailable) throw new SecretProviderError('unavailable', 'Fixture version revoked');
+        return home.secretProvider.readVersion(reference);
+      },
+    },
+  };
+  const { manager } = await managerFor(observerHome, [], () => async () => {
+    dispatched += 1;
+    return { content: 'done', toolCalls: [] };
+  });
+  const generate = manager.generateFor({ provider: 'anthropic', model: 'sonnet' });
+  unavailable = true;
+  const result = await createAgent({ name: 'denied', generate }).run('No fallback').result();
+  expect(result.finishReason).not.toBe('stop-condition');
+  expect(dispatched).toBe(0);
+});
 
 describe('a remote home', () => {
   test('refuses to connect a provider or edit the catalog, writing nothing and reporting `deployment`', async () => {

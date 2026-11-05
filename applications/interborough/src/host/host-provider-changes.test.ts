@@ -281,7 +281,7 @@ describe('connecting a provider', () => {
 });
 
 describe('a key that changes under running work', () => {
-  test('a generate resolved before the change keeps its key, and one resolved after uses the new one', async () => {
+  test('a generate resolved before the change refreshes its key when invoked after the change', async () => {
     const directory = await home();
     await writeFile(
       join(directory, 'configuration.json'),
@@ -297,7 +297,7 @@ describe('a key that changes under running work', () => {
 
     await createAgent({ name: 'started-before', generate: started }).run('Hello').result();
     await createAgent({ name: 'started-after', generate: later }).run('Hello').result();
-    expect(requests).toEqual(['A', 'B']);
+    expect(requests).toEqual(['B', 'B']);
   });
 
   test('a file agent runs with the new key from the first run after the change', async () => {

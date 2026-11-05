@@ -31,6 +31,65 @@ export interface WebSocketData {
   workflowWebSocketConnectionLease?: ConnectionLease;
   principal?: Principal;
   jsonRpcSession?: JsonRpcWebSocketSession;
+  /** Current workspace authority, captured from the authenticated upgrade request. */
+  revalidateWorkspace?: () => Promise<boolean>;
+  /** Serialize admission checks without waiting for admitted operations to finish. */
+  workspaceRequestTail?: Promise<void>;
+  /** Preserve outgoing frame order while each frame resolves current authority. */
+  workspaceReleaseTail?: Promise<void>;
+  /** Fence pending checks and frames after revocation or socket closure. */
+  workspaceClosed?: boolean;
+}
+
+async function workspaceAllowed(
+  ws: Pick<ServerWebSocket<WebSocketData>, 'data' | 'close'>,
+): Promise<boolean> {
+  if (ws.data.workspaceClosed) return false;
+  let allowed = false;
+  try {
+    allowed = (await ws.data.revalidateWorkspace?.()) ?? true;
+  } catch {
+    /* Fail closed. */
+  }
+  if (ws.data.workspaceClosed) return false;
+  if (!allowed) {
+    ws.data.workspaceClosed = true;
+    ws.close(1008, 'Workspace membership required');
+    await ws.data.jsonRpcSession?.close();
+  }
+  return allowed;
+}
+
+function workspaceEmitter(ws: Pick<ServerWebSocket<WebSocketData>, 'data' | 'send' | 'close'>) {
+  return {
+    send(message: string): void {
+      if (ws.data.revalidateWorkspace === undefined) {
+        ws.send(message);
+        return;
+      }
+      ws.data.workspaceReleaseTail = (ws.data.workspaceReleaseTail ?? Promise.resolve())
+        .then(async () => {
+          if (await workspaceAllowed(ws)) ws.send(message);
+          return undefined;
+        })
+        .catch(() => {
+          ws.data.workspaceClosed = true;
+          ws.close(1011, 'Workspace stream closed');
+        });
+    },
+  };
+}
+
+async function admitWorkspaceMessage(
+  ws: Pick<ServerWebSocket<WebSocketData>, 'data' | 'close'>,
+  session: JsonRpcWebSocketSession,
+  text: string,
+): Promise<void> {
+  if (!(await workspaceAllowed(ws))) return;
+  void session.handleMessage(text).catch(() => {
+    ws.data.workspaceClosed = true;
+    ws.close(1011, 'Workspace request failed');
+  });
 }
 
 export function handleJsonRpcWebSocketMessage(
@@ -45,6 +104,15 @@ export function handleJsonRpcWebSocketMessage(
   }
 
   const text = typeof rawMessage === 'string' ? rawMessage : new TextDecoder().decode(rawMessage);
+  if (ws.data.revalidateWorkspace !== undefined) {
+    ws.data.workspaceRequestTail = (ws.data.workspaceRequestTail ?? Promise.resolve())
+      .then(() => admitWorkspaceMessage(ws, session, text))
+      .catch(() => {
+        ws.data.workspaceClosed = true;
+        ws.close(1011, 'Workspace request failed');
+      });
+    return;
+  }
   session.handleMessage(text).catch((error) => {
     console.error('[weft] /jsonrpc WS message error', error);
   });
@@ -65,7 +133,7 @@ export function openJsonRpcWebSocketSession(options: {
       registry: options.registry,
       engine: options.engine,
       principal: options.ws.data.principal ?? anonymousPrincipal(),
-      emitter: { send: (message) => options.ws.send(message) },
+      emitter: workspaceEmitter(options.ws),
       feed: options.feed,
       ...(options.fleetFeed !== undefined ? { fleetFeed: options.fleetFeed } : {}),
       ...(options.acquireWorkflowSubscription !== undefined
@@ -96,7 +164,7 @@ export function openGenericJsonRpcWebSocketSession(options: {
       registry: options.registry,
       engine: options.host,
       principal: options.ws.data.principal ?? anonymousPrincipal(),
-      emitter: { send: (message) => options.ws.send(message) },
+      emitter: workspaceEmitter(options.ws),
       transport: 'jsonRpcWebSocket',
       ...(options.discoverDocument === undefined
         ? {}

@@ -49,6 +49,7 @@ import {
   handleSubscriptionRequest,
 } from './operation-handler-subscription.ts';
 import { errorResponse, jsonResponse, negotiatedResponse } from './response-helpers.ts';
+import { createWorkspaceRevalidation, guardWorkspaceResponse } from './workspace-release.ts';
 
 /**
  * Options for {@link createOperationHandler}.
@@ -258,12 +259,19 @@ export function createOperationHandler<Host>(
       authContext = outcome;
     }
     const principal = authContextToPrincipal(authContext);
+    const revalidate = createWorkspaceRevalidation(authenticate, request, principal);
 
     const mount = mounts.match(pathname);
     if (mount !== undefined) {
-      return mount.fetch(request, mountContext(registry, options.host, principal));
+      return guardWorkspaceResponse(
+        await mount.fetch(request, mountContext(registry, options.host, principal)),
+        revalidate,
+      );
     }
-    return routeCatalog({ request, pathname, principal, registry, documents, options });
+    return guardWorkspaceResponse(
+      await routeCatalog({ request, pathname, principal, registry, documents, options }),
+      revalidate,
+    );
   };
 
   const handler = async (request: Request): Promise<Response> => {
@@ -301,11 +309,14 @@ export function createOperationHandler<Host>(
       if (outcome instanceof Response) return false;
       authContext = outcome;
     }
+    const principal = authContextToPrincipal(authContext);
+    const revalidateWorkspace = createWorkspaceRevalidation(authenticate, request, principal);
     return server.upgrade(request, {
       data: {
         pathname,
         connectionType: 'jsonrpc',
-        principal: authContextToPrincipal(authContext),
+        principal,
+        ...(revalidateWorkspace === undefined ? {} : { revalidateWorkspace }),
       },
     });
   };
@@ -323,6 +334,7 @@ export function createOperationHandler<Host>(
       handleJsonRpcWebSocketMessage(ws, message);
     },
     close(ws: ServerWebSocket<WebSocketData>) {
+      ws.data.workspaceClosed = true;
       closeJsonRpcWebSocketSession({ session: ws.data.jsonRpcSession, activeSessions });
     },
   };

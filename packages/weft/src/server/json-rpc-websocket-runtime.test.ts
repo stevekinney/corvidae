@@ -43,6 +43,112 @@ function createWebSocket(data: Partial<WebSocketData> = {}): {
 }
 
 describe('json-rpc websocket runtime helpers', () => {
+  it('denies queued operations when workspace removal precedes their admission check', async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let member = true;
+    const handled: string[] = [];
+    const { ws, closeCalls } = createWebSocket({
+      revalidateWorkspace: async () => {
+        entered.resolve();
+        await release.promise;
+        return member;
+      },
+      jsonRpcSession: {
+        handleMessage: async (message) => {
+          handled.push(message);
+        },
+        close: async () => {},
+      },
+    });
+    handleJsonRpcWebSocketMessage(ws, 'private-operation');
+    await entered.promise;
+    handleJsonRpcWebSocketMessage(ws, 'another-operation');
+    member = false;
+    release.resolve();
+    await ws.data.workspaceRequestTail;
+    expect(handled).toEqual([]);
+    expect(closeCalls).toEqual([{ code: 1008, reason: 'Workspace membership required' }]);
+  });
+
+  it('does not admit a pending message after the socket closes during revalidation', async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const handled: string[] = [];
+    const { ws } = createWebSocket({
+      revalidateWorkspace: async () => {
+        entered.resolve();
+        await release.promise;
+        return true;
+      },
+      jsonRpcSession: {
+        handleMessage: async (message) => {
+          handled.push(message);
+        },
+        close: async () => {},
+      },
+    });
+    handleJsonRpcWebSocketMessage(ws, 'private-operation');
+    await entered.promise;
+    ws.data.workspaceClosed = true;
+    release.resolve();
+    await ws.data.workspaceRequestTail;
+    expect(handled).toEqual([]);
+  });
+
+  it('does not hold later admissions behind an already admitted long-running operation', async () => {
+    const release = Promise.withResolvers<void>();
+    const handled: string[] = [];
+    const { ws } = createWebSocket({
+      revalidateWorkspace: async () => true,
+      jsonRpcSession: {
+        handleMessage: async (message) => {
+          handled.push(message);
+          if (message === 'long-running') await release.promise;
+        },
+        close: async () => {},
+      },
+    });
+    handleJsonRpcWebSocketMessage(ws, 'long-running');
+    handleJsonRpcWebSocketMessage(ws, 'cancel');
+    await ws.data.workspaceRequestTail;
+    expect(handled).toEqual(['long-running', 'cancel']);
+    release.resolve();
+  });
+
+  it('discards an outgoing frame when membership is lost at the release barrier', async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let member = true;
+    const { ws, sent, closeCalls } = createWebSocket({
+      revalidateWorkspace: async () => {
+        entered.resolve();
+        await release.promise;
+        return member;
+      },
+    });
+    const module = await import('./json-rpc-websocket.ts');
+    const create = spyOn(module, 'createJsonRpcWebSocketSession').mockImplementation((options) => {
+      options.emitter.send('PRIVATE-FRAME');
+      return { handleMessage: async () => {}, close: async () => {} };
+    });
+    try {
+      openGenericJsonRpcWebSocketSession({
+        ws,
+        registry: {} as never,
+        host: {},
+        activeSessions: new Set(),
+      });
+      await entered.promise;
+      member = false;
+      release.resolve();
+      await ws.data.workspaceReleaseTail;
+      expect(sent).toEqual([]);
+      expect(closeCalls).toEqual([{ code: 1008, reason: 'Workspace membership required' }]);
+    } finally {
+      create.mockRestore();
+    }
+  });
   it('closes frames that arrive without a session attached', () => {
     const { ws, closeCalls } = createWebSocket();
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {});

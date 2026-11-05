@@ -22,6 +22,8 @@
  * @module providers
  */
 
+import type { ConfigurationSnapshot } from '@lostgradient/bungalow';
+
 import type {
   BureauPluginEntry,
   PluginModelContributions,
@@ -280,6 +282,8 @@ export function selectCatalogRows(input: {
 
 /** What the host offers: the rows to install and the key each offered provider is called with. */
 export type LoadedProviders = {
+  /** Opaque revision whose exact secret bindings were loaded. */
+  readonly configurationRevision: string | null;
   /** Every provider the loaded plugins contribute, whether or not it has a key. */
   readonly providers: readonly ContributedProvider[];
   /** The allowlist of each plugin that has one, by plugin name. */
@@ -298,7 +302,7 @@ export async function loadProviders(input: {
   /** Where the configuration lives, named in every message about it. */
   readonly configurationLocation: string;
   /** The configuration's text, or `undefined` when none exists: Bungalow's `readConfiguration`. */
-  readonly readConfiguration: () => Promise<string | undefined>;
+  readonly readConfiguration: () => Promise<ConfigurationSnapshot>;
   readonly readSecret: (
     key: string,
     snapshot: { text: string | undefined; revision: string | null },
@@ -307,9 +311,9 @@ export async function loadProviders(input: {
   /** The providers the loaded plugins contribute. */
   readonly providers: readonly ContributedProvider[];
 }): Promise<LoadedProviders> {
-  let text: string | undefined;
+  let snapshot: ConfigurationSnapshot;
   try {
-    text = await input.readConfiguration();
+    snapshot = await input.readConfiguration();
   } catch {
     throw new ProviderConfigurationError(
       input.configurationLocation,
@@ -317,6 +321,7 @@ export async function loadProviders(input: {
       'it could not be read.',
     );
   }
+  const { text, revision } = snapshot;
   const document = parseDocument(text, input.configurationLocation);
   const configuration = parseProviderConfiguration(
     JSON.stringify(document),
@@ -333,7 +338,7 @@ export async function loadProviders(input: {
     const stored =
       provider.secretKey === undefined
         ? undefined
-        : await input.readSecret(provider.secretKey, { text, revision: null });
+        : await input.readSecret(provider.secretKey, snapshot);
     const key = stored?.trim();
     if (key === undefined || key === '') missing.push(provider);
     else apiKeys.set(provider.name, key);
@@ -351,7 +356,7 @@ export async function loadProviders(input: {
       `The ${provider.name} provider has an allowlist in ${input.configurationLocation} but the secret "${provider.secretKey}" is not set, so it is not offered.`,
     );
   }
-  return { providers: input.providers, allowlists, rows, apiKeys };
+  return { providers: input.providers, allowlists, rows, apiKeys, configurationRevision: revision };
 }
 
 /** A catalog model, named by its provider and either its model or an alias. */

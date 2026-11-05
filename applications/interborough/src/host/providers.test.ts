@@ -47,7 +47,7 @@ function fileReader(path: string): {
   readonly location: string;
   readonly configurationLocation: string;
   readonly read: () => Promise<string | undefined>;
-  readonly readConfiguration: () => Promise<string | undefined>;
+  readonly readConfiguration: () => Promise<{ text: string | undefined; revision: string | null }>;
 } {
   const read = async (): Promise<string | undefined> => {
     try {
@@ -59,7 +59,15 @@ function fileReader(path: string): {
       throw error;
     }
   };
-  return { location: path, configurationLocation: path, read, readConfiguration: read };
+  return {
+    location: path,
+    configurationLocation: path,
+    read,
+    readConfiguration: async () => {
+      const text = await read();
+      return { text, revision: text === undefined ? null : Bun.hash(text).toString() };
+    },
+  };
 }
 
 function failureOf(run: () => unknown): ProviderConfigurationError {

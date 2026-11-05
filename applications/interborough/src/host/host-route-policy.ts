@@ -2,6 +2,8 @@ import type { BureauResourceInventoryEntry, WorkspaceOperationClass } from '@los
 import { createLiveOperationRegistry, type ServeOptions } from '@lostgradient/weft';
 import { routes as clientRoutes } from '../app/routes.ts';
 import { ENGINE_PATH_PREFIXES } from './engine-proxy.ts';
+import type { HostAuthority } from './host-authority.ts';
+import type { HostSocketData } from './host-websocket.ts';
 
 /** A live registered route and its policy; delegated routes enumerate their own child catalog. */
 export interface HostRouteInventoryEntry {
@@ -20,6 +22,7 @@ export interface HostRouteInventoryEntry {
 }
 
 const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
+  'GET /api/v1/principal': 'private-owned',
   'GET /host/providers': 'administrator-shared',
   'PUT /host/providers/:name': 'administrator-shared',
   'DELETE /host/providers/:name': 'administrator-shared',
@@ -51,6 +54,58 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'GET /host/paths': 'deployment-operator',
   'GET /__dev/reload': 'deployment-operator',
 };
+
+type HostHandler = (
+  request: Request,
+  server: Bun.Server<HostSocketData>,
+) => Promise<Response | undefined>;
+
+/** Guard the actual registered handlers with the same inventory used by conformance tests. */
+export function authorizeHostRoutes(
+  routes: Readonly<Record<string, unknown>>,
+  authority: HostAuthority,
+  refuse: (request: Request) => Response | undefined,
+): Record<string, HostHandler | Record<string, HostHandler>> {
+  const inventory = inventoryHostRoutes(routes);
+  const guarded: Record<string, HostHandler | Record<string, HostHandler>> = {};
+  const wrap = (handler: unknown, classification: WorkspaceOperationClass | null): HostHandler => {
+    if (typeof handler !== 'function') throw new TypeError('Host routes require handlers');
+    return async (request, server) => {
+      if (classification !== null) {
+        const refusal = refuse(request);
+        if (refusal !== undefined) return refusal;
+      }
+      if (classification !== null && classification !== 'public-discovery') {
+        const refusal = await authority.authorize(request, classification);
+        if (refusal !== undefined) return refusal;
+      }
+      const response: unknown = await Reflect.apply(handler, undefined, [request, server]);
+      if (response !== undefined && !(response instanceof Response))
+        throw new TypeError('Host handler returned an invalid response');
+      return response !== undefined &&
+        classification !== null &&
+        classification !== 'public-discovery'
+        ? authority.release(request, classification, response)
+        : response;
+    };
+  };
+  for (const [path, handlers] of Object.entries(routes)) {
+    if (typeof handlers === 'function') {
+      guarded[path] = wrap(handlers, null);
+      continue;
+    }
+    if (handlers === null || typeof handlers !== 'object')
+      throw new TypeError('Invalid host routes');
+    const methods: Record<string, HostHandler> = {};
+    for (const [method, handler] of Object.entries(handlers)) {
+      const entry = inventory.find((candidate) => candidate.key === `${method} ${path}`);
+      if (entry === undefined) throw new TypeError('Unclassified host route');
+      methods[method] = wrap(handler, entry.resourceClass);
+    }
+    guarded[path] = methods;
+  }
+  return guarded;
+}
 
 /** Capture the exact object passed to Bun; a new route or method must explicitly declare policy. */
 export function inventoryHostRoutes(

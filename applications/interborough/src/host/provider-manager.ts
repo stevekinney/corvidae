@@ -18,9 +18,8 @@
  *   the edits the caller read before it changed them. Under the configuration queue they are
  *   compared with the edits stored now, and a mismatch is a {@link ProviderConflictError} that
  *   writes nothing, so a save never overwrites an edit made elsewhere since.
- * - **In-flight runs keep what they started with.** A generate captures the key it was resolved
- *   with, so a run that began before a change finishes with the provider it began with, and a run
- *   that begins after it resolves the new one.
+ * - **In-flight runs keep what they started with.** Each provider call resolves the committed key before
+ *   dispatch. A call already in flight finishes with that key; the next call resolves current state.
  *
  * @module provider-manager
  */
@@ -34,7 +33,12 @@ import {
   type resolveProviderGenerate,
   type SettingLockReason,
 } from '@lostgradient/bureau';
-import type { BackendDescriptor, GenerateFunction } from '@lostgradient/operative';
+import {
+  readBackendDescriptors,
+  withBackendDescriptors,
+  type BackendDescriptor,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 
 import { parseCatalogEdits, type CatalogEdit } from './catalog-edits.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -174,6 +178,8 @@ export type ProviderModelRow = {
 
 /** The provider configuration as the host holds it, without a key. */
 export type ProviderSnapshot = {
+  /** Committed configuration revision most recently applied by this host. */
+  readonly appliedConfigurationRevision: string | null;
   /** Every provider the host can call, connected or not. */
   readonly providers: readonly ProviderStatus[];
   /** The catalog edits in `configuration.json`. */
@@ -188,7 +194,7 @@ export type ProviderSnapshot = {
 export type ProviderManager = {
   /** What the host offers now. Read it at the moment of use, not once: a change replaces it. */
   current(): LoadedProviders;
-  /** The generate for a catalog model, resolved with the key held now. A run keeps the one it was given. */
+  /** The generate for a catalog model, resolved with the key held now. Each call resolves current committed credentials; an admitted call keeps its credential. */
   generateFor(selection: ModelSelection): GenerateFunction;
   /** Why writes are refused, or `undefined` when they are allowed. */
   lockReason(): SettingLockReason | undefined;
@@ -399,10 +405,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
   const load = (providers: readonly ContributedProvider[]): Promise<LoadedProviders> =>
     loadProviders({
       configurationLocation: location,
-      readConfiguration: async () => {
-        const snapshot = await bungalow.readConfiguration();
-        return snapshot.text;
-      },
+      readConfiguration: () => bungalow.readConfiguration(),
       readSecret: (key, snapshot) => workspaceSecrets.read(key, snapshot),
       warn: options.warn,
       providers,
@@ -410,6 +413,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
 
   // Nothing is offered until the plugins have been set up and `adopt` hands over their providers.
   let loaded: LoadedProviders = {
+    configurationRevision: null,
     providers: [],
     allowlists: new Map(),
     rows: [],
@@ -485,13 +489,31 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
     current: () => loaded,
     configurationQueue,
     lockReason,
-    generateFor: (selection) =>
-      createCatalogGenerate(selection, {
-        rows: loaded.rows,
-        apiKeys: loaded.apiKeys,
-        providers: loaded.providers,
+    generateFor(selection) {
+      const selected = { provider: selection.provider, model: selection.model };
+      const initial = createCatalogGenerate(selected, {
+        ...loaded,
         resolveProviderGenerate: options.resolveProviderGenerate,
-      }),
+      });
+      const generate: GenerateFunction = async (context) => {
+        const admitted = await serialized(async () => {
+          const next = await load(loaded.providers);
+          const changed = next.configurationRevision !== loaded.configurationRevision;
+          // Catalog replacement rebuilds file agents synchronously against current().
+          loaded = next;
+          if (changed) {
+            if (replaceRows === undefined) throw new Error('The provider manager is not attached.');
+            await replaceRows(next.rows);
+          }
+          return createCatalogGenerate(selected, {
+            ...next,
+            resolveProviderGenerate: options.resolveProviderGenerate,
+          });
+        });
+        return admitted(context);
+      };
+      return withBackendDescriptors(generate, readBackendDescriptors(initial));
+    },
     async adopt(providers) {
       loaded = await load([...providers]);
       return loaded.rows;
@@ -512,6 +534,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
       );
       const reason = lockReason();
       return {
+        appliedConfigurationRevision: loaded.configurationRevision,
         providers: loaded.providers.map((provider) => {
           const models = allowlists.get(provider.plugin);
           const hasKey = loaded.apiKeys.has(provider.name);
