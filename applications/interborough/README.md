@@ -229,6 +229,12 @@ A source is a directory whose subdirectories are skills: `id` is letters, digits
 
 Remote mode refuses a trust change: `PUT` answers `403` with `{ "error": "locked", "reason": "deployment" }` and `host.skills.setTrust` throws `SkillWriteLockedError`, since the bucket's configuration belongs to the deployment. Listing and refreshing still work. If the change is applied but the audit trail cannot take the record, the answer is `500` with `{ "error": "partial" }` and the change stands.
 
+### A2A peer tools
+
+Register external peers at startup in `configuration.json` with an `a2aPeers` list. Each entry has an `id`, `description`, and absolute `url`, plus an optional `bearerSecret` naming a Bungalow secret. The host exposes each configured peer as `a2a-peer:<id>`. Grant that exact tool name in an agent's Markdown `tools` allowlist; ungranted agents and unknown peer names cannot call it.
+
+Peer tools accept only a text `message`. Calls are mutating and use the normal `on-changes` approval policy, so the peer receives no request while a call waits for approval. Bearer secrets stay on the host and are never included in tool output or diagnostics. Configuration changes apply after a restart. If a durable call has recorded a remote task, the restarted host reattaches to that task; it refuses recovery before contacting the peer if the configured URL changed.
+
 ### Saved tool sources
 
 An agent file may list tools from an MCP server or an OpenAPI service the host has saved. Sources are the `toolSources` key of `configuration.json`; each entry holds Armorer's description under `source` (plain JSON from `armorer/tool-sources`, which names a credential and never holds one) and, beside it, any settings of the host's own under `tools`, keyed by the tool's own name. `tools` has one field, `acceptsSecrets` (see below), and a field it does not know is refused, not ignored:

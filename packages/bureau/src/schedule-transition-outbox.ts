@@ -1,3 +1,4 @@
+import { z } from 'zod';
 /**
  * COR-194 — the pending record a schedule pause, resume, or cancel commits in the same storage
  * write as the schedule's own new state (Weft's `ScheduleTransitionOptions.additionalOperations`).
@@ -22,7 +23,20 @@ export const SCHEDULE_TRANSITION_KEY_PREFIX = 'bureau-schedule-transition:';
 export type ScheduleTransitionKind = 'schedule.paused' | 'schedule.resumed' | 'schedule.cancelled';
 
 /** A schedule transition committed with the schedule's state and not yet recorded. */
+const reassignmentSchema = z
+  .object({
+    workspaceId: z.string().min(1),
+    previousActor: z.string().min(1),
+    nextActor: z.string().min(1),
+    administrator: z.string().min(1),
+    previousRevision: z.number().int().nonnegative(),
+    nextRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export interface PendingScheduleTransition {
+  /** Redacted shared configuration audit, committed atomically with the new authority. */
+  readonly reassignment?: z.infer<typeof reassignmentSchema>;
   readonly kind: ScheduleTransitionKind;
   readonly scheduleId: string;
   /** When the transition was committed, and the time both of its records carry. */
@@ -62,6 +76,7 @@ export function scheduleTransitionOperation(
       kind: transition.kind,
       scheduleId: transition.scheduleId,
       committedAtMs: transition.committedAtMs,
+      ...(transition.reassignment === undefined ? {} : { reassignment: transition.reassignment }),
     }),
   };
 }
@@ -88,5 +103,13 @@ export function decodeScheduleTransition(bytes: Uint8Array): PendingScheduleTran
   ) {
     return undefined;
   }
-  return { kind: kind as ScheduleTransitionKind, scheduleId, committedAtMs };
+  const reassignmentValue: unknown = Reflect.get(value, 'reassignment');
+  const reassignment = reassignmentSchema.safeParse(reassignmentValue);
+  if (reassignmentValue !== undefined && !reassignment.success) return undefined;
+  return {
+    kind: kind as ScheduleTransitionKind,
+    scheduleId,
+    committedAtMs,
+    ...(reassignment.success ? { reassignment: reassignment.data } : {}),
+  };
 }

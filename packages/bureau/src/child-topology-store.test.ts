@@ -528,3 +528,24 @@ describe('createChildTopologyStore — peer call records', () => {
     expect(await store.listByParent('run-1')).toHaveLength(1);
   });
 });
+
+it('retains workspace actor authority when a child topology store is reopened', async () => {
+  const storage = createKv();
+  const record = childRecord({
+    workspaceAuthority: {
+      version: 1,
+      workspaceId: 'workspace-a',
+      actorId: 'actor-a',
+      authorizingOwner: 'owner-a',
+      membershipRevision: 'revision-a',
+    },
+  });
+  await createChildTopologyStore(storage).register(record);
+  const reopened = createChildTopologyStore(storage);
+  expect(await reopened.get(record.childRunId)).toEqual(record);
+  await storage.set(
+    `${CHILD_RECORD_KEY_PREFIX}${record.childRunId}`,
+    JSON.stringify({ ...record, workspaceAuthority: { ...record.workspaceAuthority, version: 2 } }),
+  );
+  expect(await reopened.get(record.childRunId)).toBeUndefined();
+});

@@ -1,3 +1,5 @@
+import type { WorkspaceRuntimeAuthority } from './http/workspace-principal.ts';
+import { captureRunWorkspaceAuthority } from './run-authority.ts';
 /**
  * COR-851 — `bureau.goals`: the control plane over durable goals.
  *
@@ -60,6 +62,7 @@ import { ownerOrLocal } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 
 export interface BureauGoalsDependencies extends GoalControlDependencies {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   readonly runtime: Pick<RuntimeServices, 'identifiers'>;
   /** See `BureauOptions.resolveFreshAttemptSource`. */
   readonly resolveFreshAttemptSource: FreshAttemptSourceResolver | undefined;
@@ -226,6 +229,15 @@ export function createBureauGoals<TName extends string = string>(
       };
     } catch (error) {
       built = { error };
+    }
+    if ('state' in built && dependencies.workspace !== undefined) {
+      const workspaceAuthority = await captureRunWorkspaceAuthority(
+        dependencies.workspace,
+        ownerOrLocal(built.state.principal),
+      );
+      if (workspaceAuthority === undefined)
+        return rejected('invalid-configuration', 'Workspace authority unavailable.');
+      built = { state: { ...built.state, workspaceAuthority } };
     }
 
     /** A goal under this id is already stored: a repeat of the same request heals it, a different one conflicts. */

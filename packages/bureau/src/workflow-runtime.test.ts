@@ -1,21 +1,25 @@
+import { reconcileWorkflowSchedules } from './workflow-schedule.ts';
+import { createWorkflowScheduleHolds } from './workflow-schedule-holds.ts';
+import { workspaceAdministratorDirectory } from './http/workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-1527 — the runtime behind `Bureau.workflows`, against a real engine: what it registers at
  * startup, the revisions it keeps for instances in flight, the two retention steps, the history it
  * records, and the schedules it keeps in line with the files. A "restart" is a new engine over the
  * same storage and the same snapshot store.
  */
-import { mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { Engine, workflow } from '@lostgradient/weft';
+import { decode, encode, KEYS, Engine, workflow } from '@lostgradient/weft';
 import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
   createWorkflowRuntime,
   type WorkflowRuntime,
+  type WorkflowRuntimeOptions,
   WorkflowApplyError,
 } from './workflow-runtime';
 import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-host';
@@ -58,6 +62,7 @@ interface World {
   /** A fresh engine over the same storage, with a runtime over the same directory and snapshots. */
   boot(options?: {
     nowISO?: () => string;
+    runtimeOptions?: Pick<WorkflowRuntimeOptions, 'workspace' | 'resumeAdministrator' | 'audit'>;
     /** Runs on the new engine before the runtime starts, to give it a workflow of its own. */
     prepare?: (engine: Engine) => void;
     /** The contributed activities and trigger kinds the files may use (COR-1874). */
@@ -90,6 +95,7 @@ async function world(): Promise<World> {
       cleanups.push(() => engine[Symbol.asyncDispose]());
       options.prepare?.(engine);
       const runtime = createWorkflowRuntime({
+        ...options.runtimeOptions,
         source: workflowFileDirectory(directory, { watch: false }),
         engine,
         contributions: options.contributions,
@@ -985,3 +991,134 @@ describe('the version a manual start reports (COR-1927)', () => {
     expect(w.diagnostics.join('\n')).toContain(result.runId);
   });
 });
+
+for (const failure of ['malformed', 'stale', 'concurrent-edit'] as const) {
+  it(`keeps workspace workflow resume safe after ${failure} authority failure`, async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'ask'));
+    const audits: string[] = [];
+    const { engine, runtime } = await w.boot({
+      runtimeOptions: {
+        workspace: workspaceAdministratorDirectory(),
+        resumeAdministrator: async () => true,
+        audit: async (entry) => {
+          audits.push(entry.type);
+        },
+      },
+    });
+    await runtime.workflows.pause('digest', { expectedHash: runtime.workflows.list()[0]!.hash! });
+    const expectedHash = runtime.workflows.list()[0]!.hash!;
+    const schedules = await engine.listSchedules({ limit: 100, offset: 0 });
+    const schedule = schedules.items[0]!;
+    const stored = decode((await w.storage.get(KEYS.schedule(schedule.id)))!) as {
+      input: Record<string, unknown>;
+    };
+    if (failure === 'malformed') {
+      await w.storage.put(
+        KEYS.schedule(schedule.id),
+        encode({ ...stored, input: { ...stored.input, workspaceAuthority: { version: 99 } } }),
+      );
+    } else {
+      const replace = engine.replaceScheduleInput.bind(engine);
+      engine.replaceScheduleInput = async (id, input, options) => {
+        if (options.status !== 'active') return replace(id, input, options);
+        if (failure === 'concurrent-edit')
+          await w.put('digest', { ...parked('digest', 'concurrent edit'), paused: true });
+        const current = (await engine.getSchedule(id))!;
+        await replace(
+          id,
+          { ...stored.input, authorityHold: 'reassigned' },
+          { expectedRevision: current.revision },
+        );
+        return replace(id, input, options);
+      };
+    }
+    const error = await runtime.workflows
+      .resume('digest', { expectedHash, actor: 'administrator' })
+      .then(
+        () => null,
+        (reason: unknown) => reason,
+      );
+    expect(error).toBeInstanceOf(Error);
+    const file = await readFile(join(w.directory, 'digest.json'), 'utf8');
+    expect(JSON.parse(file).paused).toBe(true);
+    if (failure === 'concurrent-edit') expect(file).toContain('concurrent edit');
+    expect((await engine.getSchedule(schedule.id))!.status).toBe('paused');
+    expect(audits).not.toContain('workflow.resumed');
+  });
+}
+
+for (const outcome of ['commit', 'crash'] as const) {
+  it(`keeps a peer paused while workspace resume awaits activation (${outcome})`, async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'ask'));
+    const workspace = workspaceAdministratorDirectory();
+    const { engine, runtime } = await w.boot({
+      runtimeOptions: { workspace, resumeAdministrator: async () => true },
+    });
+    await runtime.workflows.pause('digest', { expectedHash: runtime.workflows.list()[0]!.hash! });
+    const schedules = await engine.listSchedules({ limit: 100, offset: 0 });
+    const schedule = schedules.items[0]!;
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const replace = engine.replaceScheduleInput.bind(engine);
+    engine.replaceScheduleInput = async (id, input, options) => {
+      if (options.status === 'active') {
+        entered.resolve();
+        await release.promise;
+        if (outcome === 'crash') throw new Error('Activation did not commit');
+      }
+      return replace(id, input, options);
+    };
+    const resuming = runtime.workflows
+      .resume('digest', { expectedHash: runtime.workflows.list()[0]!.hash! })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    await entered.promise;
+    await using peer = new Engine({
+      storage: w.storage,
+      ownership: 'none',
+      backgroundTasks: 'manual',
+    });
+    try {
+      expect(JSON.parse(await readFile(join(w.directory, 'digest.json'), 'utf8')).paused).toBe(
+        false,
+      );
+      await reconcileWorkflowSchedules(
+        peer,
+        new Map([
+          [
+            'digest',
+            { spec: '1h', overlap: 'skip', timeZone: 'UTC', backfill: false, paused: false },
+          ],
+        ]),
+        new Set(),
+        {
+          workspace,
+          broken: new Set(),
+          holds: createWorkflowScheduleHolds({ nowISO: () => new Date(0).toISOString() }),
+        },
+      );
+      expect(await peer.getSchedule(schedule.id)).toMatchObject({ status: 'paused' });
+      const stored = decode((await w.storage.get(KEYS.schedule(schedule.id)))!) as {
+        input: Record<string, unknown>;
+      };
+      expect(stored.input['authorityHold']).toBe('resuming');
+      const runs = await peer.list({ type: 'digest' });
+      expect(runs.total).toBe(0);
+    } finally {
+      release.resolve();
+    }
+    const result = await resuming;
+    expect(result === null).toBe(outcome === 'commit');
+    const stored = decode((await w.storage.get(KEYS.schedule(schedule.id)))!) as {
+      input: Record<string, unknown>;
+    };
+    expect(stored.input['authorityHold']).toBe(outcome === 'commit' ? undefined : 'resuming');
+    expect(await peer.getSchedule(schedule.id)).toMatchObject({
+      status: outcome === 'commit' ? 'active' : 'paused',
+    });
+  });
+}

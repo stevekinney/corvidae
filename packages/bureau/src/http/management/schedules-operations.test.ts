@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 /**
  * COR-1482 — `bureau.schedules.*` over a real Bureau and its handler: each operation, the owner
@@ -765,18 +766,7 @@ describe('a schedule whose creation lost its locator', () => {
 });
 
 it('workspace administrators manage shared configuration without private schedule observations', async () => {
-  const workspace: WorkspaceMembershipOptions = {
-    workspaceId: 'workspace-a',
-    resolveMembership: async ({ subject }) => ({
-      version: 1,
-      workspaceId: 'workspace-a',
-      actorId: subject ?? 'unknown',
-      actorKind: 'user',
-      owner: `api-key:${subject ?? 'unknown'}`,
-      membershipRevision: 'revision-1',
-      capabilities: ['workspace:use', 'workspace:manage'],
-    }),
-  };
+  const workspace: WorkspaceMembershipOptions = workspaceAdministratorDirectory();
   const opened = await serve(workspace);
   const id = await createdBy(opened, 'alice-key');
   const handler = opened.handler;

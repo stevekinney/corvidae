@@ -17,7 +17,8 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
-import { createAgent, type GenerateFunction } from '@lostgradient/operative';
+import type { BureauOwnTools } from '@lostgradient/bureau';
+import { createAgent, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createWorkflowLogStore, Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -54,6 +55,7 @@ import {
   E2E_SHOWCASE_PORT,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
+
 import { createEchoAgents } from './echo-agent.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
@@ -64,6 +66,10 @@ import { seedSkills } from './skills-seed.ts';
 import { createTextEchoAgents } from './text-echo-agent.ts';
 import { seedToolSources, startToolSourceServers } from './tool-sources-seed.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
 const buildDirectory = join(scratch, 'build');
@@ -166,6 +172,119 @@ const chatProofParent = createAgent({
   }) satisfies GenerateFunction,
 });
 
+const workflowRevisionAgent = (tools: BureauOwnTools) =>
+  createAgent({
+    name: 'workflow-revision',
+    description: 'Proposes a scripted workflow revision for Chat review.',
+    tools: {
+      'bureau:workflows-get': tools['bureau:workflows-get']!,
+      'bureau:workflows-propose-update': tools['bureau:workflows-propose-update']!,
+    },
+    generate: (async ({ conversation }) => {
+      const messages = conversation.getMessages();
+      const opener = messages.find((message) => message.role === 'user');
+      const content = typeof opener?.content === 'string' ? opener.content : '';
+      const id = 'cor-2034-chat-workflow';
+      const calls = messages.filter((message) => message.toolCall !== undefined).length;
+      const read = messages.findLast((message) => message.toolResult !== undefined);
+      const readContent = read?.toolResult?.content;
+      const currentHash = (() => {
+        if (typeof readContent === 'object' && readContent !== null) {
+          const direct = Reflect.get(readContent, 'hash');
+          if (typeof direct === 'string') return direct;
+        }
+        const serialized =
+          typeof readContent === 'string' ? readContent : JSON.stringify(readContent);
+        if (serialized === undefined) return undefined;
+        try {
+          const parsed: unknown = JSON.parse(serialized);
+          return typeof parsed === 'object' &&
+            parsed !== null &&
+            typeof Reflect.get(parsed, 'hash') === 'string'
+            ? Reflect.get(parsed, 'hash')
+            : undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+      if (calls === 1) {
+        if (typeof currentHash !== 'string')
+          return { content: 'The workflow could not be read.', toolCalls: [] };
+        const stale = /stale:([^\s]+)/.exec(content)?.[1] ?? currentHash;
+        const invalid = content.includes('invalid');
+        const noChange = content.includes('no-change');
+        const longValues = content.includes('long-values');
+        const singleChange = content.includes('single-change');
+        const currentDefinition = (() => {
+          try {
+            const parsed = JSON.parse(
+              typeof readContent === 'string' ? readContent : JSON.stringify(readContent),
+            ) as unknown;
+            const text =
+              isRecord(parsed) && typeof parsed['text'] === 'string' ? parsed['text'] : undefined;
+            return text === undefined ? undefined : (JSON.parse(text) as Record<string, unknown>);
+          } catch {
+            return undefined;
+          }
+        })();
+        const definition =
+          noChange && currentDefinition !== undefined
+            ? Object.fromEntries(
+                Object.entries(currentDefinition).filter(([key]) => key !== 'name'),
+              )
+            : singleChange && currentDefinition !== undefined
+              ? {
+                  ...Object.fromEntries(
+                    Object.entries(currentDefinition).filter(([key]) => key !== 'name'),
+                  ),
+                  trigger: {
+                    ...(isRecord(currentDefinition['trigger']) ? currentDefinition['trigger'] : {}),
+                    name: 'single-change',
+                  },
+                }
+              : {
+                  trigger: invalid ? { kind: 'webhook' } : { kind: 'signal', name: 'approved' },
+                  steps: [
+                    {
+                      kind: 'activity',
+                      handler: 'agent',
+                      title: 'Write the revised digest',
+                      input: {
+                        agent: 'demo:assistant',
+                        message: longValues
+                          ? 'Write the revised digest with this deliberately long value: '.repeat(8)
+                          : 'Write the revised digest.',
+                      },
+                    },
+                  ],
+                };
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'cor-2034-workflow-proposal',
+              name: 'bureau__workflows-propose-update',
+              arguments: {
+                id,
+                expectedHash: stale,
+                ...definition,
+              },
+            },
+          ],
+        };
+      }
+      if (calls > 1)
+        return { content: 'The workflow revision is ready for review.', toolCalls: [] };
+      return {
+        content: '',
+        toolCalls: [
+          { id: 'cor-2034-workflow-read', name: 'bureau__workflows-get', arguments: { id } },
+        ],
+      };
+    }) satisfies GenerateFunction,
+    stopWhen: stopWhen.noToolCalls(),
+  });
+
 // Three workflow files, in the directory the Bureau reads at start (`26-workflows.spec.ts`): one
 // that loads and is started by a schedule, one started by a signal whose one step waits for another,
 // and one the Bureau cannot use. Each is written as a person would write it, by hand.
@@ -205,6 +324,7 @@ const host = await startHost({
       ...createQuestionAgents(),
       ...createModelAgents(),
     },
+    withBureauTools: { 'workflow-revision': workflowRevisionAgent },
   },
   environment: { INTERBOROUGH_HOME: home },
   // A chat whose first message carries an access marker is scripted to call a tool (`access-provider.ts`).
@@ -335,6 +455,7 @@ const bureauHome = join(scratch, 'bureau-home');
 // Establish the empty home's identity before adding workflow content.
 await enableDemoPlugin(bureauHome);
 const bureauWorkflowDirectory = join(bureauHome, 'workflows');
+await writeProviderHome(bureauHome);
 await mkdir(bureauWorkflowDirectory, { recursive: true });
 await writeFile(
   join(bureauWorkflowDirectory, 'e2e-digest.json'),

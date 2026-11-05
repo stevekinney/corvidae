@@ -31,17 +31,19 @@ import {
   type WorkflowFileDefinition,
   WorkflowFileConflictError,
   WorkflowFileError,
+  serializeWorkflowFile,
 } from './workflow-file';
 import { type BureauWorkflows, WorkflowApplyError } from './workflow-runtime';
 import { WorkflowInputInvalidError } from './workflow-schema.ts';
 
 /**
- * The names of the eight tools within the `bureau` plugin. Hyphens, because provider tool-name
+ * The names of the workflow tools within the `bureau` plugin. Hyphens, because provider tool-name
  * grammars exclude dots.
  */
 export const WORKFLOW_TOOL_NAMES = [
   'workflows-create',
   'workflows-update',
+  'workflows-propose-update',
   'workflows-validate',
   'workflows-catalog',
   'workflows-pause',
@@ -96,6 +98,12 @@ export type WorkflowToolResult =
       readonly issues: readonly WorkflowToolIssue[];
     }
   | { readonly status: 'not-found'; readonly id: string }
+  | {
+      readonly status: 'ok';
+      readonly id: string;
+      readonly baseHash: string;
+      readonly proposedText: string;
+    }
   | { readonly status: 'forbidden'; readonly message: string }
   | {
       readonly status: 'ok';
@@ -572,6 +580,45 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     },
   });
 
+  const proposeUpdate = createTool({
+    name: 'workflows-propose-update',
+    version: '1.0.0',
+    description:
+      'Validate a proposed replacement for a workflow without saving it. The proposal is based on expectedHash and returns its canonical text for a person to review.',
+    input: updateInput,
+    metadata: {
+      readOnly: true,
+      title: 'Propose workflow revision',
+      shortDescription: 'Validate a workflow revision without saving it.',
+    },
+    execute: async (input, context): Promise<WorkflowToolResult> => {
+      const calling = await caller(context, input.id, 'bureau.workflows:read');
+      if ('refusal' in calling) return calling.refusal;
+      const current = await calling.workflows.get(input.id);
+      if (current === undefined) return { status: 'not-found', id: input.id };
+      if (current.hash !== input.expectedHash) {
+        return {
+          status: 'conflict',
+          id: input.id,
+          reason: 'workflow-file-changed',
+          ...(current.hash === undefined ? {} : { currentHash: current.hash }),
+        };
+      }
+      const proposed = definition(calling.agent, input);
+      try {
+        await calling.workflows.validate(input.id, proposed, input.expectedHash);
+        return {
+          status: 'ok',
+          id: input.id,
+          baseHash: current.hash,
+          proposedText: serializeWorkflowFile(input.id, proposed),
+        };
+      } catch (error) {
+        return resultOfFailure(error, input.id);
+      }
+    },
+  });
+
   function guarded(name: 'workflows-pause' | 'workflows-resume', paused: boolean) {
     return createTool({
       name,
@@ -940,6 +987,7 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
   return {
     [create.name]: create,
     [update.name]: update,
+    [proposeUpdate.name]: proposeUpdate,
     [validate.name]: validate,
     [catalog.name]: catalog,
     'workflows-pause': guarded('workflows-pause', true),

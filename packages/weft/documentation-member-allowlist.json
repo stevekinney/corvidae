@@ -1483,7 +1483,6 @@
     ". WorkflowFailedEvent.workflowId",
     ". WorkflowHandle.[Symbol.asyncDispose]",
     ". WorkflowHandle.[Symbol.asyncIterator]",
-    ". WorkflowHandle.[Symbol.observable]",
     ". WorkflowHandle.addTags",
     ". WorkflowHandle.cancel",
     ". WorkflowHandle.getAttributes",

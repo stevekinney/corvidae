@@ -157,7 +157,7 @@ export async function schedule(
       }),
       ...cadenceFields,
       timeZone,
-      status: 'active',
+      status: normalizedOptions.initialStatus ?? 'active',
       overlap: normalizedOptions.overlap,
       backfill: normalizedOptions.backfill,
       ...(normalizedOptions.jitterMs !== undefined && { jitterMs: normalizedOptions.jitterMs }),
@@ -171,11 +171,10 @@ export async function schedule(
       skippedCount: 0,
       queuedRuns: [],
     };
-    await writeScheduleState(
-      internals,
-      state,
-      await buildPinnedRevisionWriteOptions(internals, type, pinnedRevision),
-    );
+    await writeScheduleState(internals, state, {
+      ...(await buildPinnedRevisionWriteOptions(internals, type, pinnedRevision)),
+      includeTimer: state.status === 'active',
+    });
     return new ScheduleHandle(scheduleId, internals.engine);
   } finally {
     internals.pendingScheduleCreations.delete(scheduleId);
@@ -235,7 +234,7 @@ function withReadConditions(
  * does not itself include `undefined`; omitting an absent key entirely is the
  * only way to pass an "unset" option through untyped.
  */
-function scheduleTransitionWriteOptions(
+export function scheduleTransitionWriteOptions(
   options: ScheduleTransitionOptions | undefined,
   readConditions: ConditionalBatchCondition[],
 ): {

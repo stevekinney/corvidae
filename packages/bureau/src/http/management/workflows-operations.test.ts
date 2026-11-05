@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-1527 — `bureau.workflows.*` over a real Bureau and its handler: the owner predicate and the
  * operator scopes on every operation (a black-box test with several principals, over the exported
@@ -42,32 +43,6 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 }
 
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
-
-function workspaceBinding(): WorkspaceMembershipOptions {
-  return {
-    workspaceId: 'workspace-a',
-    resolveMembership: async ({ subject, method }) =>
-      method === 'unauthenticated-local'
-        ? {
-            version: 1,
-            workspaceId: 'workspace-a',
-            actorId: 'local-owner',
-            actorKind: 'local',
-            owner: 'anonymous:local',
-            membershipRevision: 'revision-1',
-            capabilities: ['workspace:use', 'workspace:manage', 'deployment:operate'],
-          }
-        : {
-            version: 1,
-            workspaceId: 'workspace-a',
-            actorId: subject ?? 'unknown',
-            actorKind: 'user',
-            owner: `api-key:${subject ?? 'unknown'}`,
-            membershipRevision: 'revision-1',
-            capabilities: ['workspace:use', 'workspace:manage'],
-          },
-  };
-}
 
 describe('the operations list', () => {
   it('serves the eighteen workflow operations, with their scopes registered', () => {
@@ -286,7 +261,7 @@ describe('the owner predicate, with several principals', () => {
 
 describe('results', () => {
   it('shares definitions but keeps runs, counts, and revisions private per workspace member', async () => {
-    const binding = workspaceBinding();
+    const binding = workspaceAdministratorDirectory();
     const served = await serve(undefined, binding);
     await served.bureau.workflows!.create('digest', DEFINITION);
     const workspace = served.keyed;
@@ -414,7 +389,7 @@ describe('results', () => {
   });
 
   it('signals only the caller-owned waiting runs and starts new runs with the caller owner', async () => {
-    const served = await serve(undefined, workspaceBinding());
+    const served = await serve(undefined, workspaceAdministratorDirectory());
     await served.bureau.workflows!.create('starter', {
       agent: 'writer',
       trigger: { kind: 'signal', name: 'go' },

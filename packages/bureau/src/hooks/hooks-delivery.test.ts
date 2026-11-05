@@ -461,3 +461,38 @@ describe('an event that matches several hooks when a later delivery cannot be st
     expect(diagnostics.some((message) => message.includes('Failed to dispatch'))).toBe(true);
   });
 });
+
+it('records an admitted external request and refuses the next delivery attempt after removal', async () => {
+  let present = true;
+  const { bureau, receiver } = await open(
+    () => {
+      present = false;
+      return new Response('busy', { status: 503 });
+    },
+    {
+      workspace: {
+        workspaceId: 'workspace-a',
+        resolveMembership: async () => null,
+        resolveOwnerMembership: async (owner) =>
+          present
+            ? {
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: 'actor-alice',
+                actorKind: 'user',
+                owner,
+                membershipRevision: 'r1',
+                capabilities: ['workspace:use', 'workspace:manage'],
+              }
+            : null,
+      },
+    },
+  );
+  const hook = await bureau.hooks!.create(HOOK);
+  await fireRunEvents(bureau, HOOK.principal);
+  const [delivery] = await waitForSettledDeliveries(bureau, hook.id, 1);
+  expect(receiver.calls).toHaveLength(1);
+  expect(delivery?.attempts.map((attempt) => attempt.outcome)).toEqual(['response', 'rejected']);
+  expect(delivery?.attempts[0]?.status).toBe(503);
+  expect(delivery?.attempts[1]?.error).toBe('Workspace authority unavailable.');
+});

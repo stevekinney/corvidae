@@ -40,9 +40,10 @@
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
   import { onMount, tick, untrack } from 'svelte';
+  import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
   import { Alert, Button, Combobox, EmptyState, PageHeader } from '@lostgradient/cinder';
-  import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
+  import { Chat, ChatNote, ChatQuestion, McpApp, resolveMessageNotes } from '@lostgradient/chat';
   import { GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -73,6 +74,8 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
+  import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
   import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
   import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
@@ -106,7 +109,7 @@
   import NewChatWelcome from './new-chat-welcome.svelte';
   import ReplyDetails from './reply-details.svelte';
   import { replyStepOf } from './reply-details.ts';
-  import { toolGroups } from './tool-activity.ts';
+  import { toolGroups, type ToolCallEntry } from './tool-activity.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
 
@@ -508,6 +511,52 @@
     new Map(approvals.map((entry) => [entry.toolCallId, entry] as const)),
   );
   const activity = $derived(toolGroups(session.conversation));
+  const mcpApps = createQuery(
+    () => ({
+      queryKey: queryKeys.hostMcpApps(),
+      queryFn: ({ signal }) => getMcpApps({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  // Host context is sent through postMessage; keep it raw so the bridge receives a structured-
+  // cloneable object rather than a deeply proxied Svelte state value.
+  let mcpHostContext = $state.raw<McpUiHostContext>({ theme: 'light' });
+
+  onMount(() => {
+    const root = document.documentElement;
+    const update = (): void => {
+      mcpHostContext = readMcpHostContext(root);
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  });
+  const workflowRevisionPanels = $derived(
+    (mcpApps.data ?? []).filter(
+      (panel) => panel.opensFromAgentTool === 'bureau:workflows-propose-update',
+    ),
+  );
+  const revisionProposalText = (entry: ToolCallEntry): string | undefined => {
+    const serialized =
+      typeof entry.result === 'string' ? entry.result : JSON.stringify(entry.result);
+    if (serialized === undefined) return undefined;
+    try {
+      const parsed = JSON.parse(serialized) as unknown;
+      return typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        Reflect.get(parsed, 'status') === 'ok' &&
+        typeof Reflect.get(parsed, 'id') === 'string' &&
+        typeof Reflect.get(parsed, 'baseHash') === 'string' &&
+        typeof Reflect.get(parsed, 'proposedText') === 'string'
+        ? serialized
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -975,6 +1024,31 @@
                   input={argumentEntries(entry.arguments)}
                   onDecide={(choice) => void decide(entry.callId, choice)}
                   onAllowForChat={() => void allowForChat(entry.callId)}
+                />
+              {/if}
+            {/snippet}
+            {#snippet mcpApp(entry)}
+              {@const panel = workflowRevisionPanels.find(
+                (candidate) =>
+                  candidate.opensFromAgentTool === entry.name ||
+                  candidate.opensFromAgentTool === entry.name.replace('__', ':'),
+              )}
+              {@const proposalText = revisionProposalText(entry)}
+              {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
+                {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
+                {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
+                <McpApp
+                  resourceUri={panel.uri}
+                  title={panel.title}
+                  {loadResource}
+                  {onToolCall}
+                  hostContext={mcpHostContext}
+                  maxHeight={560}
+                  toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
+                  toolResult={{
+                    content: [],
+                    structuredContent: proposalText,
+                  }}
                 />
               {/if}
             {/snippet}

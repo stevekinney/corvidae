@@ -6,6 +6,8 @@ import { executeChat, executeReviewsOrRuns } from './cli-chat.ts';
 import { executeConnection } from './cli-client-connections.ts';
 import { readPreferences } from './cli-client-preferences.ts';
 import { request } from './cli-client-transport.ts';
+import { executeDefinitions } from './cli-definitions.ts';
+import { executeAudit, executeRuns } from './cli-runs.ts';
 /** Version of the CLI JSON envelope. */
 export const CLI_SCHEMA_VERSION = 1;
 /** Default loopback management endpoint. */
@@ -104,6 +106,8 @@ export const CLI_OPERATION_INVENTORY = [
   'api.list',
   'api.describe',
   'api.call',
+  'agents.*',
+  'workflows.*',
 ] as const;
 
 const optionNames = new Set([
@@ -149,6 +153,24 @@ const optionNames = new Set([
   'call-id',
   'attachment',
   'provider',
+  'format',
+  'status',
+  'kind',
+  'agent-name',
+  'origin',
+  'workflow',
+  'offset',
+  'page-token',
+  'run-id',
+  'type',
+  'principal',
+  'since',
+  'until',
+  'step',
+  'if-revision',
+  'revision',
+  'include-runs',
+  'signal-id',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -246,6 +268,71 @@ const commandOptions: Record<string, readonly string[]> = {
     'signal-name',
     'call-id',
     'reason',
+    'kind',
+    'agent-name',
+    'origin',
+    'workflow',
+    'offset',
+    'page-token',
+    'limit',
+    'cursor',
+    'wait',
+    'step',
+    'status',
+  ],
+  events: ['help', 'output', 'no-input', 'connection', 'url', 'timeout', 'kind', 'cursor'],
+  audit: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'run-id',
+    'type',
+    'principal',
+    'since',
+    'until',
+    'format',
+    'cursor',
+    'limit',
+  ],
+  agents: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'input',
+    'input-file',
+    'limit',
+    'offset',
+    'if-revision',
+    'expected-revision',
+    'revision',
+    'message',
+  ],
+  workflows: [
+    'help',
+    'output',
+    'no-input',
+    'connection',
+    'url',
+    'timeout',
+    'file',
+    'input',
+    'input-file',
+    'limit',
+    'offset',
+    'if-revision',
+    'expected-revision',
+    'revision',
+    'wait',
+    'include-runs',
+    'signal-name',
+    'signal-id',
   ],
 };
 
@@ -261,7 +348,14 @@ const helpText: Record<string, string> = {
   chat: 'Usage: interborough chat --agent <name> [message]\n\n  --message-file <path>  Read one message from a file',
   chats: 'Usage: interborough chats <list|get|send|fork|rename|delete|configure> [options]',
   reviews: 'Usage: interborough reviews <list|get|approve|reject> [options]',
-  runs: 'Usage: interborough runs respond <task> [options]',
+  runs: 'Usage: interborough runs <list|get|inspect|watch|cancel> [options]\n\n  --kind task|workflow  Required for get, inspect, watch and cancel; list defaults to task\n  --output jsonl       Emit one typed watch record per line',
+  events:
+    'Usage: interborough events watch [options]\n\n  --kind task|workflow  Required for watch',
+  audit: 'Usage: interborough audit list [options]',
+  agents:
+    'Usage: interborough agents <list|get|create|update|delete|duplicate|models|versions|try> [options]',
+  workflows:
+    'Usage: interborough workflows <list|get|create|update|validate|start|signal|history> [options]',
 };
 const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
@@ -293,7 +387,9 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     if (!optionNames.has(name) || !allowed.has(name)) return usage(`Unknown option --${name}.`);
     if (values.has(name)) return usage(`Duplicate option --${name}.`);
     const inline = equals === -1 ? undefined : argument.slice(equals + 1);
-    const booleanOption = ['all', 'help', 'no-input', 'yes'].includes(name);
+    const booleanOption =
+      ['all', 'help', 'no-input', 'yes'].includes(name) ||
+      ((name === 'wait' || name === 'include-runs') && command === 'workflows');
     if (booleanOption) {
       if (inline !== undefined) return usage(`Option --${name} does not take a value.`);
       values.set(name, true);
@@ -314,7 +410,13 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
   const outputValue = values.get('output') ?? 'text';
   if (outputValue !== 'text' && outputValue !== 'json' && outputValue !== 'jsonl')
     return usage('Option --output must be text, json, or jsonl.');
-  if (outputValue === 'jsonl' && command !== 'api' && command !== 'chat')
+  if (
+    outputValue === 'jsonl' &&
+    command !== 'api' &&
+    command !== 'chat' &&
+    command !== 'runs' &&
+    command !== 'events'
+  )
     return usage('JSONL output is only supported for streams.');
   if (outputValue === 'jsonl' && command === 'api' && values.get('help') !== true)
     return usage('JSONL output is only supported for streaming API calls.');
@@ -440,8 +542,13 @@ async function execute(
   }
   if (parsed.command === 'chat' || parsed.command === 'chats')
     return executeChat(resolved, parsed, dependencies);
-  if (parsed.command === 'reviews' || parsed.command === 'runs')
-    return executeReviewsOrRuns(resolved, parsed, dependencies);
+  if (parsed.command === 'reviews' || parsed.command === 'runs' || parsed.command === 'events')
+    return parsed.command === 'runs' || parsed.command === 'events'
+      ? executeRuns(resolved, parsed, dependencies)
+      : executeReviewsOrRuns(resolved, parsed, dependencies);
+  if (parsed.command === 'audit') return executeAudit(resolved, parsed, dependencies);
+  if (parsed.command === 'agents' || parsed.command === 'workflows')
+    return executeDefinitions(resolved, parsed, dependencies);
   if (parsed.command === 'restart') {
     if (parsed.options.get('yes') !== true)
       throw makeCliFailure(
@@ -660,7 +767,8 @@ export async function executeCli(
     }
     return {
       stdout:
-        result.metadata?.['streamed'] === true && parsed.output === 'text'
+        result.metadata?.['streamed'] === true &&
+        (parsed.output === 'text' || parsed.output === 'jsonl')
           ? ''
           : render(parsed, result),
       stderr: '',
@@ -671,7 +779,9 @@ export async function executeCli(
       isRecord(error) && typeof error['status'] === 'number' ? error['status'] : undefined;
     const usageError = isRecord(error) && error['usage'] === true;
     const mutation =
-      parsed.command === 'restart' || (parsed.command === 'api' && parsed.arguments[0] === 'call');
+      parsed.command === 'restart' ||
+      (parsed.command === 'api' && parsed.arguments[0] === 'call') ||
+      (parsed.command === 'runs' && parsed.arguments[0] === 'cancel');
     const exitCode: CliExitCode = dependencies.signal?.aborted
       ? 130
       : isRecord(error) && isCliExitCode(error['exitCode'])

@@ -507,6 +507,8 @@ export interface BureauReceiptRetentionOption {
 }
 
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
+  /** Supplies the peer-call journal before durable boot recovery begins. */
+  peerCallsReady?: (journal: PeerCallJournal) => void;
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
    * `bureau.events` subscription names.
@@ -2165,6 +2167,15 @@ export interface CreateScheduleOptions {
  * `createBureauHandler` delegate to these members.
  */
 export interface BureauSchedules {
+  /** Reassign only future authority with a revision check; retain history and leave paused. */
+  reassign(
+    scheduleId: string,
+    request: {
+      readonly administrator: string;
+      readonly targetOwner: string;
+      readonly expectedRevision: number;
+    },
+  ): Promise<true | undefined>;
   /**
    * Register a durable recurring schedule via `engine.schedule(...)`.
    * Throws `ScheduleLocatorUnavailableError` when the schedule was created

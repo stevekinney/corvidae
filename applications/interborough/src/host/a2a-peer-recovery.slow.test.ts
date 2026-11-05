@@ -1,0 +1,233 @@
+import { openBungalow } from '@lostgradient/bungalow';
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { afterEach, expect, test } from 'bun:test';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { startHost, type Host } from './host.ts';
+import { writeProviderHome } from './stub-provider.ts';
+
+const homes: string[] = [];
+const hosts: Host[] = [];
+const children: ReturnType<typeof spawnWithHangGuard>[] = [];
+const PEER_BEARER = 'fixture-peer-bearer-cor-2025';
+async function exists(path: string, text?: string): Promise<boolean> {
+  try {
+    const contents = await readFile(path, 'utf8');
+    return text === undefined || contents.includes(text);
+  } catch {
+    return false;
+  }
+}
+async function startCaller(
+  home: string,
+  env: Record<string, string>,
+  readyFile = true,
+): Promise<ReturnType<typeof spawnWithHangGuard>> {
+  const child = spawnWithHangGuard(
+    [process.execPath, '--no-install', join(import.meta.dir, 'a2a-peer-recovery-caller.ts')],
+    {
+      cwd: join(import.meta.dir, '..', '..'),
+      env: { ...process.env, INTERBOROUGH_HOME: home, ...env },
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    },
+  );
+  children.push(child);
+  await waitUntil(() => exists(env[readyFile ? 'READY_FILE' : 'BOOT_FILE'] ?? ''), {
+    message: readyFile ? 'caller ready' : 'caller booted',
+  });
+  return child;
+}
+afterEach(async () => {
+  for (const child of children.splice(0)) {
+    if (child.exitCode === null) child.kill('SIGKILL');
+    await child.exited;
+  }
+  for (const host of hosts.splice(0)) await host.close();
+  for (const home of homes.splice(0)) await rm(home, { recursive: true, force: true });
+});
+
+const recovery = await (async () => {
+  const peerHome = await mkdtemp(join(tmpdir(), 'interborough-peer-recovery-'));
+  homes.push(peerHome);
+  const peerBungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: peerHome },
+  });
+  await peerBungalow.deploymentSecrets.write('a2a-api-key', PEER_BEARER);
+  peerBungalow.close();
+  const state = { sends: 0, active: false, release: () => {} };
+  const peer = await startHost({
+    environment: { INTERBOROUGH_HOME: peerHome },
+    port: 0,
+    a2aAgents: ['peer'],
+    extraAgents: {
+      agents: {
+        peer: createAgent({
+          name: 'peer',
+          description: 'Peer',
+          generate: async ({ signal }) => {
+            state.sends += 1;
+            state.active = true;
+            await new Promise<void>((resolve, reject) => {
+              const abort = () => reject(new Error('aborted'));
+              signal?.addEventListener('abort', abort, { once: true });
+              state.release = () => {
+                signal?.removeEventListener('abort', abort);
+                resolve();
+              };
+            });
+            return { content: `peer result ${PEER_BEARER}`, toolCalls: [] };
+          },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+    },
+  });
+  hosts.push(peer);
+  const callerHome = await mkdtemp(join(tmpdir(), 'interborough-caller-recovery-'));
+  homes.push(callerHome);
+  await writeProviderHome(callerHome);
+  const callerBungalow = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: callerHome },
+  });
+  await callerBungalow.deploymentSecrets.write('peer-bearer', PEER_BEARER);
+  callerBungalow.close();
+  await mkdir(join(callerHome, 'agents'), { recursive: true });
+  await writeFile(
+    join(callerHome, 'agents', 'caller.md'),
+    '---\nname: Caller\nmodel: anthropic/sonnet\ntools: [a2a-peer:peer]\n---\nDelegate.\n',
+  );
+  const configurationPath = join(callerHome, 'configuration.json');
+  const configuration = JSON.parse(await readFile(configurationPath, 'utf8')) as Record<
+    string,
+    unknown
+  >;
+  configuration['a2aPeers'] = [
+    {
+      id: 'peer',
+      description: 'Peer',
+      url: new URL('/bureau/a2a/peer', peer.url).href,
+      bearerSecret: 'peer-bearer',
+    },
+  ];
+  await writeFile(configurationPath, JSON.stringify(configuration));
+  const files = {
+    READY_FILE: join(callerHome, 'ready_file'),
+    BOOT_FILE: join(callerHome, 'boot_file'),
+    RUN_FILE: join(callerHome, 'run_file'),
+    JOURNAL_FILE: join(callerHome, 'journal_file'),
+    APPROVE_FILE: join(callerHome, 'approve_file'),
+    GO_FILE: join(callerHome, 'go_file'),
+    KEY_FILE: join(callerHome, 'key_file'),
+    REVIEW_FILE: join(callerHome, 'review_file'),
+    RESULT_FILE: join(callerHome, 'result_file'),
+    ERROR_FILE: join(callerHome, 'error_file'),
+    SEND_FILE: join(callerHome, 'send_file'),
+    ATTACH_FILE: join(callerHome, 'attach_file'),
+    AUTH_ATTACH_FILE: join(callerHome, 'auth_attach_file'),
+    AUDIT_FILE: join(callerHome, 'audit_file'),
+    SESSION_ID_FILE: join(callerHome, 'session_id_file'),
+    SESSION_FILE: join(callerHome, 'session_file'),
+    URL_FILE: join(callerHome, 'caller-url-first'),
+  };
+  const env = { ...files, PEER_PORT: peer.url.port };
+  const first = await startCaller(callerHome, env);
+  expect(await exists(files.JOURNAL_FILE)).toBe(false);
+  await waitUntil(() => exists(files.REVIEW_FILE), { message: 'caller approval' });
+  expect(await readFile(files.SEND_FILE, 'utf8')).toBe('0');
+  await writeFile(files.APPROVE_FILE, 'approve');
+  await waitUntil(() => state.active, { message: 'peer send' });
+  await writeFile(files.GO_FILE, 'read journal');
+  if (state.sends !== 1)
+    throw new Error(`expected one peer send before restart, got ${state.sends}`);
+  await waitUntil(() => exists(files.JOURNAL_FILE), { message: 'peer journal' });
+  const journalMarker = JSON.parse(await readFile(files.JOURNAL_FILE, 'utf8')) as {
+    entry?: { taskId?: string };
+  };
+  const journalTaskId = journalMarker.entry?.taskId;
+  if (typeof journalTaskId !== 'string') throw new Error('journal marker has no task ID');
+  first.kill('SIGKILL');
+  await first.exited;
+  const second = await startCaller(
+    callerHome,
+    {
+      ...env,
+      RESTART: '1',
+      READY_FILE: join(callerHome, 'ready-second'),
+      BOOT_FILE: join(callerHome, 'boot-second'),
+      URL_FILE: join(callerHome, 'caller-url-second'),
+    },
+    false,
+  );
+  await waitUntil(() => exists(files.ATTACH_FILE), { message: 'authenticated recovery attach' });
+  await waitUntil(() => exists(files.AUTH_ATTACH_FILE), {
+    message: 'successful authenticated GetTask',
+  });
+  const authAttachMarker = JSON.parse(await readFile(files.AUTH_ATTACH_FILE, 'utf8')) as {
+    method: string;
+    status: number;
+    taskId: string;
+  };
+  expect(authAttachMarker.status).toBe(200);
+  expect(['GetTask', 'SubscribeToTask']).toContain(authAttachMarker.method);
+  expect(authAttachMarker.taskId).toBe(journalTaskId);
+  const attachMarker = JSON.parse(await readFile(files.ATTACH_FILE, 'utf8')) as {
+    method: string;
+    taskId: string;
+    status?: number;
+  };
+  expect(attachMarker.taskId).toBe(journalTaskId);
+  state.release();
+  await waitUntil(() => exists(files.RESULT_FILE, 'completed'), { message: 'replayed result' });
+  await waitUntil(() => exists(files.AUDIT_FILE), { message: 'persisted recovery audit' });
+  await waitUntil(() => exists(files.SESSION_FILE), { message: 'persisted recovered session' });
+  const resultText = await readFile(files.RESULT_FILE, 'utf8');
+  expect(resultText).not.toContain(PEER_BEARER);
+  const auditText = await readFile(files.AUDIT_FILE, 'utf8');
+  expect(auditText).not.toContain(PEER_BEARER);
+  expect(auditText).toContain('peer-call-1');
+  const sessionText = await readFile(files.SESSION_FILE, 'utf8');
+  expect(sessionText).not.toContain(PEER_BEARER);
+  const session = JSON.parse(sessionText) as {
+    conversationHistory?: {
+      messages?: Record<
+        string,
+        {
+          toolResult?: {
+            callId?: string;
+            outcome?: string;
+            content?: string;
+          };
+        }
+      >;
+    };
+  };
+  const recoveredToolResult = Object.values(session.conversationHistory?.messages ?? {})
+    .map((message) => message.toolResult)
+    .find((toolResult) => toolResult?.callId === 'peer-call-1');
+  if (recoveredToolResult === undefined)
+    throw new Error('recovered session has no peer-call-1 tool result');
+  expect(recoveredToolResult).toMatchObject({
+    callId: 'peer-call-1',
+    outcome: 'success',
+    content: 'peer result [REDACTED]',
+  });
+  expect(await readFile(files.SEND_FILE, 'utf8')).toBe('1');
+  const resultObserved = await exists(files.RESULT_FILE, 'completed');
+  if (!resultObserved) throw new Error('replayed result was not observed');
+  second.kill('SIGKILL');
+  await second.exited;
+  return { sends: state.sends, resultObserved };
+})();
+
+test('replays a recorded peer task after the caller process is lost', () => {
+  expect(recovery.sends).toBe(1);
+  expect(recovery.resultObserved).toBe(true);
+});

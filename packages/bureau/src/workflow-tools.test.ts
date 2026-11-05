@@ -91,6 +91,7 @@ describe('which agents are offered the tools', () => {
     expect([...WORKFLOW_TOOL_NAMES]).toEqual([
       'workflows-create',
       'workflows-update',
+      'workflows-propose-update',
       'workflows-validate',
       'workflows-catalog',
       'workflows-pause',
@@ -317,6 +318,7 @@ describe('what a model is shown of a tool’s input', () => {
   it.each([
     ['workflows-create', ['name', 'trigger', 'steps']],
     ['workflows-update', ['id', 'expectedHash', 'trigger', 'steps']],
+    ['workflows-propose-update', ['id', 'expectedHash', 'trigger', 'steps']],
     ['workflows-pause', ['id', 'expectedHash']],
     ['workflows-resume', ['id', 'expectedHash']],
   ] as const)(
@@ -337,6 +339,54 @@ describe('what a model is shown of a tool’s input', () => {
 });
 
 describe('workflows-get and workflow revisions', () => {
+  it('proposes a validated revision without writing it and rejects stale or invalid proposals', async () => {
+    const harness = await start();
+    await harness.callTool('bureau__workflows-create', {
+      name: 'Digest',
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    const before = await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8');
+    const hash = hashOf(harness, 'digest');
+    const proposal = await harness.callTool('bureau__workflows-propose-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: { kind: 'signal', name: 'approved' },
+      steps: [{ ...STEPS[0], title: 'Write the revised digest' }],
+    });
+    expect(proposal.result).toMatchObject({ status: 'ok', id: 'digest', baseHash: hash });
+    expect((proposal.result as { proposedText: string }).proposedText).toContain('approved');
+    expect(await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8')).toBe(before);
+
+    const invalid = await harness.callTool('bureau__workflows-propose-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: { kind: 'webhook' },
+      steps: STEPS,
+    });
+    expect(invalid.result).toMatchObject({ status: 'invalid', code: 'invalid-document' });
+    expect(await readFile(join(harness.workflowsPath, 'digest.json'), 'utf8')).toBe(before);
+
+    await harness.callTool('bureau__workflows-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: { kind: 'schedule', spec: '2h' },
+      steps: STEPS,
+    });
+    const stale = await harness.callTool('bureau__workflows-propose-update', {
+      id: 'digest',
+      expectedHash: hash,
+      trigger: TRIGGER,
+      steps: STEPS,
+    });
+    expect(stale.result).toMatchObject({
+      status: 'conflict',
+      id: 'digest',
+      reason: 'workflow-file-changed',
+      currentHash: hashOf(harness, 'digest'),
+    });
+  });
+
   it('reads a workflow and updates it with the returned hash', async () => {
     const harness = await start();
     await harness.callTool('bureau__workflows-create', {
@@ -532,14 +582,8 @@ describe('workflows-get and workflow revisions', () => {
       { principal: 'owner-member' },
     );
     expect(refused.result).toMatchObject({ status: 'not-found' });
-    const run = await harness.bureau
-      .durableEngine()!
-      .start(
-        'digest',
-        { origin: { kind: 'person', principal: 'owner-member', surface: 'api' } },
-        { id: 'private-member-run' },
-      );
-    await run.result();
+    const run = await harness.bureau.workflows!.start('digest', { owner: 'owner-member' });
+    await harness.bureau.durableEngine()!.getHandle(run.runId).result();
     const member = await harness.callTool(
       'bureau__workflows-revisions-list',
       { id: 'digest' },

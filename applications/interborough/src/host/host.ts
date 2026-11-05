@@ -115,11 +115,13 @@ import {
   type AgentDefinitions,
   type AgentWithBureauTools,
   type Bureau,
+  type BureauOptions,
   type BureauPluginEntry,
   type SettingsOptions,
 } from '@lostgradient/bureau';
 import {
   type GenerateFunction,
+  type PeerCallJournal,
   type RuntimeServices,
   type Validator,
 } from '@lostgradient/operative';
@@ -132,11 +134,13 @@ import {
   type ServeOptions,
   type WeftServer,
 } from '@lostgradient/weft';
+import { createEgressPolicy, type A2APeerUpdate, type EgressPolicy } from '@lostgradient/weft/a2a';
 
 import { routes as clientRoutes } from '../app/routes.ts';
 import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import { HOST_STORAGE_ROUTE } from '../lib/host-storage.ts';
 import { A2A_API_KEY_SECRET_KEY, resolveA2aExposure } from './a2a-authentication.ts';
+import { createA2APeerTools, readA2APeersConfiguration } from './a2a-peers.ts';
 import { startHostPushDelivery, type HostPushDelivery } from './a2a-push.ts';
 import { ANSWER_ENCRYPTION_KEY, answerEncryptionKeys } from './answer-encryption.ts';
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
@@ -347,6 +351,12 @@ export type HostOptions = {
   >;
   /** Agents to define beside the ones the plugins contribute, for tests that need an agent of their own. */
   readonly extraAgents?: ExtraAgents;
+  /** Egress policy for configured A2A peers; tests may allow an explicit loopback destination. */
+  readonly a2aPeerEgressPolicy?: EgressPolicy;
+  /** Fetch implementation for configured peers; used by end-to-end fixtures to observe requests. */
+  readonly a2aPeerFetch?: typeof fetch;
+  /** Observes nonterminal updates from a configured peer during durable recovery. */
+  readonly a2aPeerRecoveryUpdate?: (update: A2APeerUpdate) => void;
   /**
    * The code-defined agents that opt into A2A (COR-1819): each is served at
    * `/bureau/a2a/<name>` with an Agent Card, as a file agent with `a2a: true` is. Every name must
@@ -868,6 +878,52 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     });
     held.toolSources = toolSources;
     await toolSources.start();
+    const configuration = await bungalow.readConfiguration();
+    const configuredPeers = readA2APeersConfiguration(
+      configuration.text,
+      bungalow.configurationLocation,
+    );
+    const peerSecrets = new Map<string, string | undefined>();
+    for (const peer of configuredPeers) {
+      if (peer.bearerSecret !== undefined && !peerSecrets.has(peer.bearerSecret)) {
+        peerSecrets.set(
+          peer.bearerSecret,
+          await workspaceSecrets.read(peer.bearerSecret, configuration),
+        );
+      }
+    }
+    const recoverableStartedApprovals = new Map<
+      string,
+      NonNullable<BureauOptions['recoverableStartedApprovals']> extends ReadonlyMap<
+        string,
+        infer Approval
+      >
+        ? Approval
+        : never
+    >();
+    let peerCalls: PeerCallJournal | undefined;
+    const peerCallHandoff: PeerCallJournal = {
+      read: (key) => {
+        if (peerCalls === undefined) throw new Error('The Bureau peer journal is not ready.');
+        return peerCalls.read(key);
+      },
+      write: (key, entry) => {
+        if (peerCalls === undefined) throw new Error('The Bureau peer journal is not ready.');
+        return peerCalls.write(key, entry);
+      },
+    };
+    const peerTools = createA2APeerTools({
+      peers: configuredPeers,
+      readSecret: (key) => peerSecrets.get(key),
+      ...(options.a2aPeerFetch === undefined ? {} : { fetch: options.a2aPeerFetch }),
+      ...(options.a2aPeerRecoveryUpdate === undefined
+        ? {}
+        : { onRecoveryUpdate: options.a2aPeerRecoveryUpdate }),
+      egressPolicy: options.a2aPeerEgressPolicy ?? createEgressPolicy(),
+      peerCalls: peerCallHandoff,
+      recoverableStartedApprovals,
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
     const agentContent = bungalow.content(AGENT_DIRECTORY_NAME);
     const workflowContent = bungalow.content(WORKFLOW_DIRECTORY_NAME);
     // Hosts that share a database must agree on who owns a run, so a remote host holds ownership
@@ -897,11 +953,24 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
           return source === undefined ? [] : [source];
         }),
     });
+    const peerToolNames = new Set(Object.keys(peerTools));
+    const sourceTools = toolSources.tools();
+    for (const name of Object.keys(sourceTools)) {
+      if (peerToolNames.has(name)) {
+        (options.warn ?? ((message) => console.warn(message)))(
+          `Configured A2A peer tool "${name}" replaces an existing tool with the same name.`,
+        );
+      }
+    }
     const workspace = localWorkspaceMembership(
       bungalow.workspaceId,
       a2aExposure.authentication !== undefined,
     );
     const bureau = await createBureau({
+      peerCallsReady: (journal) => {
+        peerCalls = journal;
+      },
+      recoverableStartedApprovals,
       workspace,
       id: bungalow.workspaceId,
       ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
@@ -952,7 +1021,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the `models` catalog.
-      agentSource: createAgentSource(bungalow, agentContent, toolSources.tools()),
+      agentSource: createAgentSource(bungalow, agentContent, {
+        ...sourceTools,
+        ...peerTools,
+      }),
       agentSkillCatalog: () => held.skills?.standing().catalog ?? firstSkills,
       // The agent files a running plugin ships (COR-1897): its `content/agents`, read-only, beneath the owner's.
       pluginAgentSource: createPluginAgentSource,

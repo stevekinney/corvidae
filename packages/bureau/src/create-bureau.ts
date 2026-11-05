@@ -458,7 +458,11 @@ import {
   agentStepResultFromState,
   workflowStepRunId,
 } from './workflow-agent-step';
-import { parseWorkflowScheduleId } from './workflow-schedule';
+import {
+  parseWorkflowScheduleId,
+  storedScheduleInput,
+  workflowScheduleBinding,
+} from './workflow-schedule';
 import {
   createWorkflowRuntime,
   payloadMaximumBytesOf,
@@ -588,6 +592,7 @@ import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-ow
 import {
   normalizeRunRequestContext,
   recoveredRequestContextFromMetadata,
+  persistedRequestAuthority,
 } from './session-request-context';
 import { allowsModelOverride, describeAgentModels } from './agent-models';
 import {
@@ -712,7 +717,15 @@ import {
   type WebhookNotifierOptions,
 } from './webhook-notifier';
 import { workspaceHookEvents } from './hooks/workspace-hook-events.ts';
-import { mayRunUseSharedConfiguration } from './run-authority.ts';
+import {
+  bindRunWorkspaceAuthority,
+  captureRunWorkspaceAuthority,
+  validateRunWorkspaceAuthority,
+  mayUseAutomationInput,
+  createRunAuthorityValidator,
+  mayRunUseSharedConfiguration,
+  recoverRunWorkspaceAuthority,
+} from './run-authority.ts';
 import type { HooksDependencies } from './hooks/create-hooks.ts';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
 import type { HookSubjectSources } from './hooks/hook-scope';
@@ -2577,6 +2590,7 @@ function webhookNotifierOptionsOf(
  * Bureau's workflows are loaded.
  */
 function composeHooks(input: {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
   readonly mayStartWorkflows?: HooksDependencies['mayStartWorkflows'];
   readonly options: BureauOptions<AgentDefinitions>['hooks'];
@@ -2598,6 +2612,7 @@ function composeHooks(input: {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
   const created = createHooks({
+    workspace: input.workspace,
     eventForHookOwner: input.eventForHookOwner,
     mayStartWorkflows: input.mayStartWorkflows,
     kv,
@@ -2648,6 +2663,13 @@ function resumeHooks(input: {
         }),
     ),
   );
+}
+
+function notifyPeerCallsReady<D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+  journal: PeerCallJournal,
+): void {
+  options.peerCallsReady?.(journal);
 }
 
 /** Preserve one immutable membership directory binding throughout runtime construction. */
@@ -3064,6 +3086,18 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      onScheduleAuthorityDenied: (scheduleId) => {
+        runtimeServices.deferred.track(
+          pauseInvalidSchedule(scheduleId).catch(() => {
+            diagnose({
+              level: 'error',
+              scope: 'durable-maintenance',
+              message: 'Workspace schedule pause could not be persisted; maintenance will retry.',
+            });
+          }),
+          'workspace-schedule-pause',
+        );
+      },
       configureDurableRun: (_runId, services, principal) => {
         configureChildWaitServices(services, principal);
       },
@@ -3652,11 +3686,65 @@ async function constructBureau<const D extends AgentDefinitions>(
       options.workflowSource === undefined || runtime.durable === undefined
         ? undefined
         : createWorkflowRuntime({
+            workspace,
+            resumeAdministrator: async (actor) => {
+              if (workspace === undefined) return true;
+              const owner = actor?.startsWith('agent-run:')
+                ? await runOwner(actor.slice('agent-run:'.length))
+                : (actor ?? ANONYMOUS_LOCAL_OWNER);
+              if (owner === undefined) return false;
+              const member = await resolveWorkspaceOwner(workspace, owner);
+              return member?.capabilities.includes('workspace:manage') ?? false;
+            },
             source: options.workflowSource,
             // The composition's engine type hides `register`; it is the one Weft `Engine`, and
             // registering documents (`registerSource`) is exactly what it is lent out for here.
             engine: runtime.durable.engine as Engine,
             host: createWorkflowDocumentHost({
+              admitActivity: async (argument) => {
+                if (workspace === undefined) return;
+                const trigger = argument.trigger;
+                const sourceSchedule: unknown =
+                  typeof trigger === 'object' && trigger !== null
+                    ? Reflect.get(trigger, 'scheduleId')
+                    : undefined;
+                try {
+                  const binding = workflowScheduleBinding(trigger);
+                  const currentBinding =
+                    typeof sourceSchedule === 'string'
+                      ? workflowScheduleBinding(
+                          await storedScheduleInput(runtime.durable!.engine, sourceSchedule),
+                        )
+                      : binding;
+                  if (
+                    currentBinding.authorityHold === undefined &&
+                    currentBinding.workspaceAuthority?.actorId ===
+                      binding.workspaceAuthority?.actorId &&
+                    binding.authorityHold === undefined &&
+                    (await validateRunWorkspaceAuthority(workspace, binding.workspaceAuthority)) !==
+                      undefined
+                  )
+                    return;
+                } catch {
+                  /* Malformed persisted authority is denied and its schedule paused below. */
+                }
+                const scheduleId: unknown =
+                  typeof trigger === 'object' && trigger !== null
+                    ? Reflect.get(trigger, 'scheduleId')
+                    : undefined;
+                if (typeof scheduleId === 'string')
+                  runtimeServices.deferred.track(
+                    pauseInvalidSchedule(scheduleId).catch(() => {
+                      diagnose({
+                        level: 'error',
+                        scope: 'durable-maintenance',
+                        message: 'Workspace schedule pause remains pending.',
+                      });
+                    }),
+                    'workspace-workflow-pause',
+                  );
+                throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+              },
               runAgentStep: (request) => runWorkflowAgentStep(request),
               contributions: workflowContributions,
             }),
@@ -5265,10 +5353,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   };
   let requestAuthorityValidator:
     ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined =
-    options.requestAuthorityValidator;
+    createRunAuthorityValidator(workspace, options.requestAuthorityValidator);
   const isTransportIssuedAuthority = (context: ToolRequestContext): boolean =>
-    context.authority.authorizationRevision !== 'bureau:1' &&
-    context.authority.authorizationRevision !== 'bureau:scheduler:1';
+    workspace !== undefined ||
+    (context.authority.authorizationRevision !== 'bureau:1' &&
+      context.authority.authorizationRevision !== 'bureau:scheduler:1');
   let durableRecoveryDeferred = false;
   let durableRecoveryStarted = false;
   let durableRecoveryBarrier: Promise<BureauRecoveryReport> = Promise.resolve({
@@ -8280,7 +8369,8 @@ async function constructBureau<const D extends AgentDefinitions>(
             freshSession.agentName,
             runtimeServices.clock.now,
           );
-          if (context === undefined || !isTransportIssuedAuthority(context)) return true;
+          if (context === undefined) return workspace === undefined;
+          if (!isTransportIssuedAuthority(context)) return true;
           return (
             requestAuthorityValidator !== undefined && (await requestAuthorityValidator(context))
           );
@@ -9348,12 +9438,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     // is stopped by it only before its first step. Two runs that start together both read the
     // total as it is: the owner's decision is that the NEXT run stops, not one that has begun.
     const chatCostBudget = await chatCostBudgetOf(sessionAgent, sessionId, session);
-    const requestContext = normalizeRunRequestContext(
-      request.requestContext,
-      runId,
-      sessionId,
-      agentName,
-      request.principal,
+    const requestContext = await bindRunWorkspaceAuthority(
+      workspace,
+      normalizeRunRequestContext(
+        request.requestContext,
+        runId,
+        sessionId,
+        agentName,
+        request.principal,
+      ),
+      owner,
     );
     if (isTransportIssuedAuthority(requestContext)) {
       if (!requestAuthorityValidator) {
@@ -9535,32 +9629,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           // Durable recovery needs the authority that was safe to persist at
           // dispatch time. Credentials, tracing, and other request-local data
           // intentionally never cross the session boundary.
-          lastRequestAuthority: {
-            agentId: agentName,
-            principalId: requestContext.authority.principalId,
-            tenantId: requestContext.authority.tenantId,
-            ownerId: requestContext.authority.ownerId,
-            capabilities: [...requestContext.authority.capabilities],
-            authorizationRevision: requestContext.authority.authorizationRevision,
-            ...(requestContext.audience !== undefined ? { audience: requestContext.audience } : {}),
-            ...(requestContext.deadline !== undefined ? { deadline: requestContext.deadline } : {}),
-          },
-          lastRequestAuthorities: {
-            [runId]: {
-              agentId: agentName,
-              principalId: requestContext.authority.principalId,
-              tenantId: requestContext.authority.tenantId,
-              ownerId: requestContext.authority.ownerId,
-              capabilities: [...requestContext.authority.capabilities],
-              authorizationRevision: requestContext.authority.authorizationRevision,
-              ...(requestContext.audience !== undefined
-                ? { audience: requestContext.audience }
-                : {}),
-              ...(requestContext.deadline !== undefined
-                ? { deadline: requestContext.deadline }
-                : {}),
-            },
-          },
+          lastRequestAuthority: persistedRequestAuthority(requestContext, agentName),
+          lastRequestAuthorities: { [runId]: persistedRequestAuthority(requestContext, agentName) },
           // AB-359, COR-718 — persist the run's OWNER (`request.principal`, or
           // `anonymous:local` when it states none), never
           // `requestContext.authority.principalId`: that is tool-execution
@@ -14829,6 +14899,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       await reconcileAssetClaims();
       // COR-194 — a schedule transition whose record failed after its commit is retried here.
       try {
+        await pauseInvalidSchedules();
         await recordPendingScheduleTransitions();
       } catch (error: unknown) {
         diagnose({
@@ -15205,6 +15276,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         await reconcileAssetClaims();
         // COR-194 — a schedule transition whose record failed after its commit is retried here.
         try {
+          await pauseInvalidSchedules();
           await recordPendingScheduleTransitions();
         } catch (error: unknown) {
           diagnose({
@@ -20555,6 +20627,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     ) {
       throw new BureauError('Session not found', 'NOT_FOUND');
     }
+    const workspaceAuthority =
+      workspace === undefined ? undefined : await captureRunWorkspaceAuthority(workspace, owner);
+    if (workspace !== undefined && workspaceAuthority === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
     if (!runtime.durable) return undefined;
     // COR-1667 — resolve the name the way a fire does (`agentCatalog.find`, which includes file
     // agents), so a typo is refused now instead of as `missing-agent` at the first fire. An agent
@@ -20607,6 +20683,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
         ...(definition.timeZone !== undefined ? { timeZone: definition.timeZone } : {}),
         principal: owner,
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       });
     } catch (error) {
       // Nothing was registered under the id, so its origin names no schedule.
@@ -20680,6 +20757,151 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   }
 
+  async function reassignSchedule(
+    scheduleId: string,
+    request: {
+      readonly administrator: string;
+      readonly targetOwner: string;
+      readonly expectedRevision: number;
+    },
+  ): Promise<true | undefined> {
+    const { administrator, targetOwner, expectedRevision } = request;
+    if (workspace === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const durable = runtime.durable;
+    if (durable === undefined) return undefined;
+    const snapshot = await durable.engine.getSchedule(scheduleId);
+    if (snapshot?.revision !== expectedRevision)
+      throw new BureauError('Schedule revision changed.', 'CONFLICT');
+    const input = await storedScheduleInput(durable.engine, scheduleId);
+    if (
+      typeof input !== 'object' ||
+      input === null ||
+      Array.isArray(input) ||
+      (!isScheduledAgentRunInput(input) &&
+        (parseWorkflowScheduleId(scheduleId) === undefined ||
+          Reflect.get(input, 'kind') !== 'schedule'))
+    )
+      throw new BureauError('Schedule not found.', 'NOT_FOUND');
+    const previous = workflowScheduleBinding(input).workspaceAuthority;
+    if (previous === undefined || previous.workspaceId !== workspace.workspaceId)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const target = await resolveWorkspaceOwner(workspace, targetOwner);
+    const admin = await resolveWorkspaceOwner(workspace, administrator);
+    if (
+      admin === undefined ||
+      !admin.capabilities.includes('workspace:manage') ||
+      target === undefined ||
+      target.actorKind === 'service'
+    )
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const next = {
+      version: 1 as const,
+      workspaceId: target.workspaceId,
+      actorId: target.actorId,
+      authorizingOwner: target.owner,
+      membershipRevision: target.membershipRevision,
+    };
+    const transition: PendingScheduleTransition = {
+      kind: 'schedule.paused',
+      scheduleId,
+      committedAtMs: runtimeServices.clock.now(),
+      reassignment: {
+        workspaceId: workspace.workspaceId,
+        previousActor: previous.actorId,
+        nextActor: target.actorId,
+        administrator: admin.actorId,
+        previousRevision: expectedRevision,
+        nextRevision: expectedRevision + 1,
+      },
+    };
+    const key = scheduleTransitionKey(
+      transition,
+      runtimeServices.identifiers.next('schedule-transition'),
+    );
+    await durable.engine.replaceScheduleInput(
+      scheduleId,
+      { ...input, workspaceAuthority: next, authorityHold: 'reassigned' },
+      {
+        expectedRevision,
+        additionalOperations: [scheduleTransitionOperation(key, transition)],
+      },
+    );
+    try {
+      await recordPendingScheduleTransitions(scheduleTransitionKeyPrefix(scheduleId));
+    } catch {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: 'Schedule reassignment audit remains pending for maintenance.',
+      });
+    }
+    return true;
+  }
+
+  async function pauseInvalidSchedule(scheduleId: string): Promise<void> {
+    if (workspace === undefined || runtime.durable === undefined) return;
+    const snapshot = await runtime.durable.engine.getSchedule(scheduleId);
+    if (snapshot?.status !== 'active') return;
+    const input = await storedScheduleInput(runtime.durable.engine, scheduleId);
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
+    if (!isScheduledAgentRunInput(input) && parseWorkflowScheduleId(scheduleId) === undefined) {
+      if (snapshot.workflowType === 'agentRun')
+        await runtime.durable.engine.pauseSchedule(scheduleId, {
+          expectedRevision: snapshot.revision,
+        });
+      return;
+    }
+    let binding;
+    try {
+      binding = workflowScheduleBinding(input);
+    } catch {
+      await runtime.durable.engine.pauseSchedule(scheduleId, {
+        expectedRevision: snapshot.revision,
+      });
+      return;
+    }
+    const authority = await recoverRunWorkspaceAuthority(
+      workspace,
+      binding.workspaceAuthority,
+      isScheduledAgentRunInput(input) ? input.principal : 'anonymous:local',
+    );
+    const usableInput =
+      !isScheduledAgentRunInput(input) ||
+      (authority !== undefined &&
+        (input.sessionId === undefined ||
+          (await sessionOwner(input.sessionId)) === authority.authorizingOwner) &&
+        (await mayUseAutomationInput(
+          input.input,
+          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
+        )));
+    if (authority !== undefined && binding.authorityHold === undefined && usableInput) {
+      if (binding.workspaceAuthority === undefined)
+        await runtime.durable.engine.replaceScheduleInput(
+          scheduleId,
+          { ...input, workspaceAuthority: authority },
+          { expectedRevision: snapshot.revision, status: 'active' },
+        );
+      return;
+    }
+    await runtime.durable.engine.replaceScheduleInput(
+      scheduleId,
+      { ...input, authorityHold: binding.authorityHold ?? 'revoked' },
+      { expectedRevision: snapshot.revision },
+    );
+  }
+
+  async function pauseInvalidSchedules(): Promise<void> {
+    if (workspace === undefined || runtime.durable === undefined) return;
+    let offset = 0;
+    for (;;) {
+      const page = await runtime.durable.engine.listSchedules({ offset, limit: 100 });
+      for (const schedule of page.items) await pauseInvalidSchedule(schedule.id);
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) break;
+    }
+  }
+
   async function pauseSchedule(
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
@@ -20700,9 +20922,36 @@ async function constructBureau<const D extends AgentDefinitions>(
     const durable = runtime.durable;
     if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
-      durable.engine.resumeSchedule(scheduleId, transition),
-    );
+    if (workspace === undefined) {
+      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
+        durable.engine.resumeSchedule(scheduleId, transition),
+      );
+    } else {
+      const snapshot = await durable.engine.getSchedule(scheduleId);
+      const input = await readScheduledAgentInput(scheduleId);
+      const authority = await validateRunWorkspaceAuthority(workspace, input?.workspaceAuthority);
+      if (
+        snapshot === null ||
+        input === undefined ||
+        authority === undefined ||
+        (input.sessionId !== undefined &&
+          (await sessionOwner(input.sessionId)) !== authority.authorizingOwner) ||
+        !(await mayUseAutomationInput(
+          input.input,
+          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
+        ))
+      ) {
+        throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+      }
+      const { authorityHold: _hold, ...resumed } = input;
+      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
+        durable.engine.replaceScheduleInput(scheduleId, resumed, {
+          ...transition,
+          expectedRevision: transition.expectedRevision ?? snapshot.revision,
+          status: 'active',
+        }),
+      );
+    }
     return true;
   }
 
@@ -20774,16 +21023,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     // key since.
     if ((await runtime.durable!.engine.storage.get(key)) === null) return;
     const { kind, scheduleId, committedAtMs } = transition;
-    await eventHistoryInstance?.record(
-      { kind: 'schedule', id: scheduleId },
-      kind,
-      { scheduleId },
-      { dedupeKey: key, emittedAtMs: committedAtMs },
-    );
+    const recordKind = transition.reassignment === undefined ? kind : 'schedule.reassigned';
+    const detail = { scheduleId, ...transition.reassignment };
+    await eventHistoryInstance?.record({ kind: 'schedule', id: scheduleId }, recordKind, detail, {
+      dedupeKey: key,
+      emittedAtMs: committedAtMs,
+    });
     await auditTrailInstance?.record({
       runId: `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`,
-      type: kind,
-      detail: { scheduleId },
+      type: recordKind,
+      detail,
       timestampMs: committedAtMs,
       dedupeKey: key,
     });
@@ -22429,6 +22678,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   const { planChildRun, startChildRun, startGoalAttemptRun, startWorkflowStepRun } =
     createCatalogDispatcher({
+      workspace,
       agentCatalog,
       runtime,
       runtimeServices,
@@ -22496,6 +22746,13 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   async function runWorkflowAgentStep(request: AgentStepRequest): Promise<AgentStepResult> {
+    const authority =
+      workspace === undefined
+        ? undefined
+        : await validateRunWorkspaceAuthority(workspace, request.workspaceAuthority);
+    if (workspace !== undefined && authority === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const owner = authority?.authorizingOwner ?? ANONYMOUS_LOCAL_OWNER;
     const engine = runtime.durable?.engine;
     if (engine === undefined) {
       throw new WorkflowAgentStepError(
@@ -22514,7 +22771,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         claim.record.workflowStep?.workflowId !== request.workflowId ||
         claim.record.workflowStep.step !== request.step ||
         claim.record.agentName !== request.agent ||
-        claim.record.principal !== ANONYMOUS_LOCAL_OWNER
+        claim.record.principal !== owner
       ) {
         throw new WorkflowAgentStepError(
           'agent-run-failed',
@@ -22538,7 +22795,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         input: request.message,
         runId,
         workflowStep: { workflowId: request.workflowId, step: request.step },
-        principal: ANONYMOUS_LOCAL_OWNER,
+        principal: owner,
+        ...(authority === undefined ? {} : { workspaceAuthority: authority }),
       });
     } catch (error) {
       throw new WorkflowAgentStepError(
@@ -22600,8 +22858,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     // run that does not exist, as any parent that cannot own children is.
     if (isTryAgentName(attribution?.agentName ?? '')) return undefined;
     const childParent = await childTopologyStore.get(parentRunId);
+    let inheritedAuthority =
+      runRequestContexts.get(parentRunId)?.authority.workspace ?? childParent?.workspaceAuthority;
+    if (workspace !== undefined && inheritedAuthority === undefined) {
+      const recovered = await runtime.loadCatalogRunRecoveryRecord(parentRunId);
+      if (recovered.status === 'found') inheritedAuthority = recovered.record.workspaceAuthority;
+    }
+    const workspaceAuthority =
+      workspace === undefined
+        ? undefined
+        : await validateRunWorkspaceAuthority(workspace, inheritedAuthority);
+    if (workspace !== undefined && workspaceAuthority === undefined) return undefined;
+
     if (childParent) {
       return {
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
         agentName: childParent.childAgentName,
         principal: ownerOrLocal(childParent.principal),
         live: childParent.status === 'running',
@@ -22613,6 +22884,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const runState = catalogRunIds.has(parentRunId) ? undefined : store.getRun(parentRunId);
     if (runState) {
       return {
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
         agentName: attribution?.agentName ?? findRunAgentName(runState) ?? BUREAU_AGENT_NAME,
         principal: ownerOrLocal(attribution?.principal),
         live: runState.status === 'running',
@@ -22623,6 +22895,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const state = runtime.durable ? await runtime.durable.engine.get(parentRunId) : null;
     if (!state || !isAgentRunWorkflowInput(state.input)) return undefined;
     return {
+      ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       agentName: state.input.agentName,
       principal: ownerOrLocal(attribution?.principal),
       live: DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status),
@@ -22746,10 +23019,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     },
   };
+  notifyPeerCallsReady(options, peerCalls);
 
   // COR-851 — durable goals: the control plane over the goal store, its
   // controller workflow's ports, and the attempt forwarder.
   const goalsComposition = composeBureauGoals({
+    workspace,
     catalog: goalValidatorCatalog,
     kv: runtime.kv,
     sessionStore: runtime.sessionStore,
@@ -22858,6 +23133,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     list: listSchedules,
     pause: pauseSchedule,
     resume: resumeSchedule,
+    reassign: reassignSchedule,
     cancel: cancelSchedule,
     update: updateSchedule,
     skipNext: skipNextSchedule,
@@ -23047,7 +23323,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     maintain,
     removeExpiredRecords,
     setRequestAuthorityValidator(validator) {
-      requestAuthorityValidator = validator;
+      requestAuthorityValidator = createRunAuthorityValidator(workspace, validator);
       runtime.setRequestAuthorityValidator(validator);
       if (validator && durableRecoveryDeferred && !durableRecoveryStarted) {
         durableRecoveryDeferred = false;
@@ -23255,6 +23531,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   // COR-1939: user-defined hooks, on the notifier's delivery engine.
   hooksInstance = composeHooks({
+    workspace,
     eventForHookOwner:
       workspace === undefined ? undefined : workspaceHookEvents(workspace, ownerOf),
     mayStartWorkflows:

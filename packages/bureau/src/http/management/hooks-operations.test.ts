@@ -1,3 +1,4 @@
+import { workspaceAdministratorDirectory } from '../workspace-privacy-fixtures.test-support.ts';
 /**
  * COR-1939 — `bureau.hooks.*` over a real Bureau and its handler: who may create, read, change,
  * test and delete a hook and see its deliveries, the shapes returned, and the typed faults.
@@ -718,18 +719,7 @@ describe('bureau.hooks.*', () => {
 });
 
 it('workspace administration cannot retarget private hooks or bypass the secret operation', async () => {
-  const workspace: WorkspaceMembershipOptions = {
-    workspaceId: 'workspace-a',
-    resolveMembership: async ({ subject }) => ({
-      version: 1,
-      workspaceId: 'workspace-a',
-      actorId: subject ?? 'unknown',
-      actorKind: 'user',
-      owner: `api-key:${subject ?? 'unknown'}`,
-      membershipRevision: 'revision-1',
-      capabilities: ['workspace:use', 'workspace:manage'],
-    }),
-  };
+  const workspace: WorkspaceMembershipOptions = workspaceAdministratorDirectory();
   const { opened } = await open({ workspace });
   const handler = opened.handler;
   const created = await rpc(handler, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
@@ -768,21 +758,7 @@ it('workspace administration cannot retarget private hooks or bypass the secret 
 });
 
 it('projects hook delivery summaries for their owner and trusted local operator, but not a foreign administrator', async () => {
-  const workspace: WorkspaceMembershipOptions = {
-    workspaceId: 'workspace-a',
-    resolveMembership: async ({ subject, method }) => ({
-      version: 1,
-      workspaceId: 'workspace-a',
-      actorId: subject ?? 'local-owner',
-      actorKind: method === 'unauthenticated-local' ? 'local' : 'user',
-      owner: method === 'unauthenticated-local' ? 'anonymous:local' : `api-key:${subject}`,
-      membershipRevision: '1',
-      capabilities:
-        method === 'unauthenticated-local'
-          ? ['workspace:use', 'workspace:manage', 'deployment:operate']
-          : ['workspace:use', 'workspace:manage'],
-    }),
-  };
+  const workspace: WorkspaceMembershipOptions = workspaceAdministratorDirectory();
   const { opened, receiver } = await open({ workspace });
   const hook = await wire(opened, 'bureau.hooks.create', NEW_HOOK, 'alice-observer-key');
   await wire(opened, 'bureau.hooks.test', { hookId: hook.id }, 'alice-key');
