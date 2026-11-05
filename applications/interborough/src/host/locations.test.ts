@@ -1,9 +1,12 @@
+import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { MemoryStorage } from '@lostgradient/storage';
 import {
+  claimWorkspaceBinding,
   createHostStorage,
   createPluginAgentSource,
   createPluginSkillSource,
@@ -117,6 +120,15 @@ describe('the storage for a database location', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  test('claims one canonical binding and refuses a different prefix or workspace', async () => {
+    using storage = new MemoryStorage();
+    await claimWorkspaceBinding(storage, 'prod/', 'workspace-a');
+    await claimWorkspaceBinding(storage, 'prod/', 'workspace-a');
+    expect(
+      await throwingRejectionOf(claimWorkspaceBinding(storage, 'other/', 'workspace-b')),
+    ).toThrow('already bound');
   });
 });
 

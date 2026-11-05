@@ -79,6 +79,7 @@ describe('an entry inside the root that is not what Bungalow expects', () => {
     'a symbolic link at %s is refused and its target left alone',
     async (name, label) => {
       const root = temporaryDirectory();
+      writeFileSync(join(root, 'deployment-id'), `${ULID}\n`);
       const target = foreignDirectory();
       symlinkSync(target, join(root, name));
       const error = await rejectedBy(openIn(root));
@@ -112,6 +113,7 @@ describe('an entry inside the root that is not what Bungalow expects', () => {
 
   test('a file where a directory belongs is refused', async () => {
     const root = temporaryDirectory();
+    writeFileSync(join(root, 'deployment-id'), `${ULID}\n`);
     writeFileSync(join(root, 'secrets'), 'a file');
     const error = await rejectedBy(openIn(root));
     expect(error).toBeInstanceOf(BungalowStateError);

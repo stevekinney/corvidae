@@ -27,15 +27,15 @@ export async function writeProviderHome(
   home: string,
   models: readonly string[] = ['sonnet'],
 ): Promise<void> {
-  await writeFile(
-    join(home, 'configuration.json'),
-    JSON.stringify({ plugins: { anthropic: { configuration: { models } } } }),
-  );
   const bungalow = await openBungalow({
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
+    await writeFile(
+      join(home, 'configuration.json'),
+      JSON.stringify({ plugins: { anthropic: { configuration: { models } } } }),
+    );
     bungalow.writeSecret('anthropic-api-key', FIXTURE_PROVIDER_KEY);
   } finally {
     bungalow.close();
