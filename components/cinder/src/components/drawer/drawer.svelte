@@ -38,6 +38,7 @@
     open = $bindable(false),
     placement = 'right',
     size = 'md',
+    closeIconLabel = 'Close drawer',
     modal = true,
     title,
     class: className,
@@ -233,7 +234,7 @@
     <button
       type="button"
       class="cinder-drawer__close"
-      aria-label="Close drawer"
+      aria-label={closeIconLabel}
       onclick={requestDrawerClose}
     >
       <svg

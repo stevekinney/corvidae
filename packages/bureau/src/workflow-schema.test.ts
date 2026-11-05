@@ -214,6 +214,52 @@ describe('the input a schema describes', () => {
     expect(workflowInputOf({ kind: 'schedule', scheduleId: 's', input: null })).toBeNull();
   });
 
+  it('unwraps every authority-bound trigger without treating authority as user input', () => {
+    const workspaceAuthority = {
+      version: 1,
+      workspaceId: 'workspace-a',
+      actorId: 'actor-a',
+      authorizingOwner: 'owner-a',
+      membershipRevision: 'revision-a',
+    };
+    const input = { city: 'Oslo' };
+    const origin = { kind: 'person', principal: 'owner-a', surface: 'api' };
+    for (const envelope of [
+      { kind: 'manual', input, origin },
+      { kind: 'signal', name: 'go', payload: input },
+      { kind: 'schedule', scheduleId: 's', fireId: 'f', input },
+      { kind: 'plugin:trigger', payload: input },
+    ]) {
+      const trigger = { ...envelope, workspaceAuthority };
+      expect(workflowInputOf(trigger)).toEqual(input);
+      expect(checkWorkflowSchema('input', INPUT_SCHEMA, trigger)).toEqual([]);
+      const raw = { ...trigger, city: 'extra user field' };
+      expect(workflowInputOf(raw)).toEqual(raw);
+    }
+    for (const authorityHold of ['revoked', 'reassigned', 'resuming']) {
+      expect(
+        workflowInputOf({
+          kind: 'schedule',
+          scheduleId: 's',
+          input,
+          workspaceAuthority,
+          authorityHold,
+        }),
+      ).toEqual(input);
+    }
+  });
+
+  it('preserves raw inputs whose authority-like fields are not host metadata', () => {
+    for (const metadata of [
+      { workspaceAuthority: 'business value' },
+      { workspaceAuthority: { version: 99 } },
+      { authorityHold: 'business value' },
+    ]) {
+      const raw = { kind: 'schedule', scheduleId: 's', input: { city: 'Oslo' }, ...metadata };
+      expect(workflowInputOf(raw)).toBe(raw);
+    }
+  });
+
   it('is a raw start’s input as it is', () => {
     expect(workflowInputOf({ city: 'Oslo' })).toEqual({ city: 'Oslo' });
     expect(workflowInputOf('text')).toBe('text');

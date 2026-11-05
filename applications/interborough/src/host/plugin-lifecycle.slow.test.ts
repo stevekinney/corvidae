@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1897, the success evidence of the Interborough plugins project: a folder plugin that
  * contributes one tool, one agent file, and the model that agent uses, lives through its whole
@@ -295,6 +296,7 @@ async function scaffoldPlugin(home: string, marker: string): Promise<void> {
 }
 
 const home = await scratch('interborough-plugin-lifecycle-');
+await initializeWorkspaceHome(home);
 const buildDirectory = join(await scratch('interborough-plugin-lifecycle-build-'), 'build');
 await Bun.write(join(buildDirectory, 'index.html'), '<!doctype html><title>Interborough</title>');
 const marker = join(home, 'tool-ran.txt');
@@ -307,7 +309,7 @@ const bungalow = await openBungalow({
   environment: { INTERBOROUGH_HOME: home },
 });
 try {
-  bungalow.writeSecret(SECRET_KEY, 'fixture-e2e-key-0c1f');
+  await bungalow.deploymentSecrets.write(SECRET_KEY, 'fixture-e2e-key-0c1f');
 } finally {
   bungalow.close();
 }

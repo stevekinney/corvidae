@@ -1,3 +1,8 @@
+import {
+  workspaceOwnerAuthority,
+  type BureauWorkspaceHost,
+  type WorkspaceOwnerAuthority,
+} from './workspace-principal.ts';
 /**
  * The AG-UI mount of `createBureauHandler`: Agent Bureau runs, served as AG-UI 1.0
  * Server-Sent Events.
@@ -162,7 +167,7 @@ export type AgUiBureau = Pick<Bureau, 'addEventListener' | 'removeEventListener'
  * owner is not looked up apart: the mount decides from the owner of the session it then uses
  * (`ag-ui-session-owner.ts`), so the lookup takes only the records that are not read in hand.
  */
-export type AgUiAuthorization = {
+export type AgUiAuthorization = BureauWorkspaceHost & {
   readonly mayAccess: OwnerAccessPredicate;
   readonly ownerOf: (resource: {
     readonly kind: 'run' | 'review';
@@ -723,6 +728,8 @@ export function createAgUiMount(
             owner,
             appendMessages,
             principal.method !== 'unauthenticated' && principal.hasScope('bureau.assets:read'),
+            authorization.workspaceAuthority?.(principal) ??
+              workspaceOwnerAuthority(undefined, principal),
           );
         } catch {
           return { response: refuse('RUN_FAILED', 'The run could not be started') };
@@ -930,6 +937,7 @@ async function inspectNamedAssets(
   owner: string,
   rows: Parameters<typeof managedAssetIdsOf>[0],
   mayReadAssets: boolean,
+  workspaceAuthority?: WorkspaceOwnerAuthority,
 ): Promise<NamedAssets> {
   const mediaTypes = new Map<string, string>();
   const assets = bureau.assets;
@@ -940,7 +948,7 @@ async function inspectNamedAssets(
     // existence nor its state is disclosed.
     if (!mayReadAssets) return { unusable: `Asset "${assetId}" was not found` };
     try {
-      const { state, mediaType } = await assets.inspect(assetId, { id: owner });
+      const { state, mediaType } = await assets.inspect(assetId, { id: owner, workspaceAuthority });
       if (state !== 'available') return { unusable: `Asset "${assetId}" is ${state}` };
       if (mediaType !== undefined && mediaType !== '') mediaTypes.set(assetId, mediaType);
     } catch (error) {

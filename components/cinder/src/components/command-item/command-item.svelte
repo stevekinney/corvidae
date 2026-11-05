@@ -42,6 +42,8 @@
     keyboardShortcut,
     keys,
     leading,
+    leadingTone = 'neutral',
+    meta,
     trailing,
     children,
     class: className,
@@ -127,15 +129,26 @@
   onclick={handleClick}
 >
   {#if leading}
-    <span class="cinder-command-item__leading" aria-hidden="true">
+    <span
+      class="cinder-command-item__leading"
+      data-cinder-tone={leadingTone === 'neutral' ? undefined : leadingTone}
+      aria-hidden="true"
+    >
       {@render leading()}
     </span>
   {/if}
 
   <span class="cinder-command-item__content">
-    <span class="cinder-command-item__label cinder-_truncate">
-      {@render children()}
-    </span>
+    {#if meta}
+      <span class="cinder-command-item__label" data-cinder-meta>
+        <span class="cinder-command-item__text cinder-_truncate">{@render children()}</span>
+        <span class="cinder-command-item__meta" aria-hidden="true">{@render meta()}</span>
+      </span>
+    {:else}
+      <span class="cinder-command-item__label cinder-_truncate">
+        {@render children()}
+      </span>
+    {/if}
     {#if description}
       <span class="cinder-command-item__description cinder-_truncate">{description}</span>
     {/if}

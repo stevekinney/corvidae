@@ -1,5 +1,6 @@
 import { accessSync, constants, existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 
 import type { BungalowEnvironment } from '@lostgradient/bungalow';
@@ -7,6 +8,7 @@ import { environmentalist } from '@lostgradient/environmentalist';
 import type { Source } from '@lostgradient/environmentalist/types';
 import { z } from 'zod';
 
+import { executeCli } from './cli-client.ts';
 import {
   A2A_PUBLIC_ORIGIN_VARIABLE,
   BUILD_DIRECTORY_VARIABLE,
@@ -16,7 +18,9 @@ import {
   resolveA2aPublicOrigin,
   resolvePort,
 } from './environment-configuration.ts';
+import { PLUGIN_RUNTIME_DIRECTORY_VARIABLE } from './folder-plugins.ts';
 import { launchCommandEnvironment, shellQuote } from './launch-command.ts';
+import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE } from './mcp-app-mounts.ts';
 import { serveHost } from './serve.ts';
 import { supervise } from './supervisor.ts';
 
@@ -25,6 +29,11 @@ declare const INTERBOROUGH_RELEASE_VERSION: string;
 
 const HOME_VARIABLE = 'INTERBOROUGH_HOME';
 const INTERNAL_HOST_COMMAND = '__interborough-host';
+
+/** The plugin runtime directory relative to a relocated compiled executable. */
+export function pluginRuntimeDirectory(executable: string): string {
+  return join(dirname(executable), '..', 'share', 'interborough', 'plugin-runtime', 'node_modules');
+}
 
 const HELP = `Usage: interborough start [options]
 
@@ -133,6 +142,31 @@ async function run(arguments_: string[]): Promise<number> {
     await serveHost(environment, buildDirectory);
     return 0;
   }
+  if (command !== 'start' && command !== '--help' && command !== '--version') {
+    const interrupt = new AbortController();
+    const onInterrupt = () => interrupt.abort();
+    process.once('SIGINT', onInterrupt);
+    const result = await executeCli(arguments_, {
+      environment: processEnvironment(),
+      ...(process.stdin.isTTY ? {} : { stdin: () => Bun.stdin.text() }),
+      writeStdout: (chunk) => process.stdout.write(chunk),
+      stdinIsTTY: process.stdin.isTTY,
+      signal: interrupt.signal,
+      prompt: async (question, signal) => {
+        const readline = createInterface({ input: process.stdin, output: process.stderr });
+        readline.on('SIGINT', onInterrupt);
+        try {
+          return await readline.question(question, { signal });
+        } finally {
+          readline.close();
+        }
+      },
+    });
+    process.removeListener('SIGINT', onInterrupt);
+    if (result.stdout !== '') process.stdout.write(`${result.stdout}\n`);
+    if (result.stderr !== '') console.error(result.stderr);
+    return result.exitCode;
+  }
   const cwd = process.cwd();
   let result: ReturnType<typeof startEnvironment>;
   try {
@@ -160,6 +194,14 @@ async function run(arguments_: string[]): Promise<number> {
     environment: {
       ...result.environment,
       [BUILD_DIRECTORY_VARIABLE]: buildDirectory,
+      [PLUGIN_RUNTIME_DIRECTORY_VARIABLE]: pluginRuntimeDirectory(executable),
+      [MCP_APP_PREBUILT_DIRECTORY_VARIABLE]: join(
+        dirname(executable),
+        '..',
+        'share',
+        'interborough',
+        'mcp-apps',
+      ),
       ...launchCommandEnvironment({
         command: [executable, ...arguments_].map(shellQuote).join(' '),
         directory: cwd,

@@ -12,6 +12,7 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
+  import NotFoundState from '../../app/not-found-state.svelte';
   import { getContext } from '../../lib/bureau-client.ts';
   import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import { classifyFault } from '../../lib/faults.ts';
@@ -77,11 +78,10 @@
   <ChatConversation {sessionId} title={context.data.title} agentName={context.data.agentName} />
 {:else if context.isError}
   {#if classifyFault(context.error)?.kind === 'not-found' && VIEW_COPY.chat.notFound}
-    <ErrorState
-      variant="flat"
+    <NotFoundState
       title={VIEW_COPY.chat.notFound.title}
       description={VIEW_COPY.chat.notFound.description}
-      headingLevel={1}
+      view="chat"
     />
   {:else}
     <ErrorState

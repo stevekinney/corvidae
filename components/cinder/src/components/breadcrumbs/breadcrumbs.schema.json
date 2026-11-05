@@ -29,10 +29,28 @@
       "description": "Accessible name of the phone back link; `{label}` is replaced by the parent's label.",
       "default": "Back to {label}"
     },
+    "maxVisible": {
+      "type": "number",
+      "description": "How many ancestors show before the rest fold into a \"…\" menu. Unset, every ancestor shows\nuntil the container is narrower than 24rem, where one does."
+    },
+    "overflowLabel": {
+      "type": "string",
+      "description": "Accessible name of the \"…\" button that opens the hidden ancestors.",
+      "default": "Show earlier pages"
+    },
     "class": {
       "type": "string",
       "description": "Additional class names merged with `.cinder-breadcrumbs`."
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "onOverflowNavigate",
+        "reason": "function-or-snippet",
+        "description": "Called when a link in the hidden-ancestors menu is clicked, with the entry it opens. Call\n`event.preventDefault()` to open the page without a reload, as an application's router does.\nThe menu renders in a portal, outside the trail's own element, so a click handler on the\ntrail never sees these links."
+      }
+    ]
+  }
 }

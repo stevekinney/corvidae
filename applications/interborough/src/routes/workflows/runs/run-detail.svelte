@@ -23,14 +23,14 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { ErrorState, Skeleton } from '@lostgradient/cinder';
   import { renderMarkdown } from '@lostgradient/markdown';
-  import { SearchX } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
   import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
+  import NotFoundState from '../../../app/not-found-state.svelte';
   import { getContext } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
   import {
@@ -213,15 +213,14 @@
     undefined,
   );
 
-  // A run of a workflow file that the engine behind the console does not hold may still be the
-  // Bureau's (`bureau.workflows.runs.get`): the end-to-end host's engine is a fixture, and answers
-  // the read by the run's identifier with a 404. Asked only once the engine has said it does not
-  // have the run, and only for a run no task describes.
+  // A workflow-file run's durable origin belongs to the Bureau even when the engine also holds the
+  // live workflow. Read it for every run with no task or goal, so the page does not lose agent-run
+  // provenance merely because Weft still has the instance.
   const fileRun = createQuery(
     () => ({
       queryKey: queryKeys.workflows.fileRun(initialRunId),
       queryFn: ({ signal }) => getWorkflowFileRun(initialRunId, { signal }),
-      enabled: engineAllowed && engine.notFound && notFound && attempt === undefined,
+      enabled: engineAllowed && notFound && attempt === undefined,
       retry: false,
     }),
     undefined,
@@ -367,14 +366,11 @@
 </script>
 
 {#if follower.removed || unknownRun}
-  <EmptyState
-    kind="first-use"
+  <NotFoundState
     title={TASK_COPY.notFound.title}
     description={TASK_COPY.notFound.description}
-    headingLevel={1}
-  >
-    {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
-  </EmptyState>
+    view="runs"
+  />
 {:else if failed}
   <ErrorState
     variant="flat"
@@ -441,7 +437,7 @@
             answerTruncated={follower.artifact?.truncated === true}
             followState={follower.state}
             {workflow}
-            record={workflow === undefined ? record : undefined}
+            {record}
           />
           <RunActivity
             task={task.data}
@@ -482,6 +478,7 @@
           engine={workflow === undefined ? undefined : engine}
           {workflow}
           recordWorkflow={record?.workflow}
+          workflowOrigin={record?.origin?.kind === 'agent-run' ? record.origin : null}
           startedAt={summary.startedAt}
           updatedAt={summary.updatedAt}
           over={summary.over}

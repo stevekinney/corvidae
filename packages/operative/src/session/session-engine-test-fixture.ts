@@ -19,7 +19,7 @@ import {
 } from './session-recovery-handle-test-fixture';
 
 export interface SessionEngineBehavior {
-  readonly cancel?: (workflowId: string) => Promise<void>;
+  readonly cancel?: (workflowId: string) => Promise<Awaited<ReturnType<Engine['cancel']>>>;
   readonly get?: (workflowId: string) => Promise<SessionWorkflowState | null>;
   readonly query?: (workflowId: string, name: string, input?: unknown) => Promise<unknown>;
   readonly resume?: (workflowId: string) => Promise<WorkflowHandle | SessionRecoveryHandleSpec>;
@@ -53,7 +53,7 @@ export class SessionEngineFixture extends Engine {
     activeEngines.add(this);
   }
 
-  override cancel(workflowId: string): Promise<void> {
+  override cancel(workflowId: string): ReturnType<Engine['cancel']> {
     return this.#behavior.cancel?.(workflowId) ?? super.cancel(workflowId);
   }
 

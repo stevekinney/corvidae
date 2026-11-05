@@ -44,6 +44,8 @@ export type ContextOperationRequest =
        * anchors the durable async-completion task token to a fixed activity.
        */
       step?: number;
+      /** Optional document step identity used by file-workflow lifecycle history. */
+      documentStep?: number;
       /**
        * Optional deterministic state key for activity sub-operations that are
        * owned by another workflow step. Plain `ctx.run()` leaves this unset and
@@ -61,12 +63,16 @@ export type ContextOperationRequest =
       duration: number;
       scheduledFireAt: number;
       callerStack?: string;
+      /** Optional document step identity used by file-workflow lifecycle history. */
+      documentStep?: number;
     }
   | {
       type: 'wait-signal';
       operationId: string;
       signalName: string;
       callerStack?: string;
+      /** Optional document step identity used by file-workflow lifecycle history. */
+      documentStep?: number;
     }
   | {
       type: 'wait-update';

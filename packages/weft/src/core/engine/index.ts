@@ -1,3 +1,4 @@
+import { replaceScheduleInput as replaceScheduleInputFromInternals } from './schedule-input.ts';
 /* oxlint-disable max-lines -- Engine's public overload signatures (~191 lines: register/start/signal/update/query, the five bulk dry-run-vs-commit methods, schedule, and static create) plus member JSDoc (~130 lines) ARE the published declaration surface, gated byte-for-byte by verify:jsdoc:declarations and the scoped Engine class-block .d.ts oracle; the irreducible declaration floor alone (>=531 lines, counted with skipBlankLines:false skipComments:false) exceeds the 500 ceiling before any method body is counted. The aggressive class split was attempted (task 3765ffa6, documentation/engine-split-log/PR-33.md): a class-expression mixin regresses the emitted .d.ts (Engine extends a synthetic any-typed Engine_base intersection; schedule methods leave the Engine block), and a verbatim class move only relocates this suppression because max-lines is repo-wide; rejected. All extractable bodies live in ~90 sibling modules under src/core/engine/. */
 import { requireStorageCapability, type Storage as WeftStorage } from '@lostgradient/storage';
 import { AlertManager } from '../../alerting/alert-manager.ts';
@@ -44,6 +45,7 @@ import {
   type BulkSignalAllDryRunOptions,
   type BulkSignalResult,
   type BulkTagResult,
+  type CancelWorkflowResult,
   type CheckpointState,
   type CheckpointSummary,
   type CoordinatedUpdateResult,
@@ -2106,15 +2108,15 @@ export class Engine<
           this.#createLifecycleCallbacks(),
         ),
       abandon: () =>
-        abandonPreparedWorkflowFromLifecycle(getInternals(this), context, (workflowId) =>
-          terminateWorkflowFromTermination(
+        abandonPreparedWorkflowFromLifecycle(getInternals(this), context, async (workflowId) => {
+          await terminateWorkflowFromTermination(
             getInternals(this),
             workflowId,
             'cancelled',
             this.#createTerminationCallbacks(),
             PREPARED_WORKFLOW_ABANDONED_REASON,
-          ),
-        ),
+          );
+        }),
     };
   }
   /**
@@ -2498,6 +2500,18 @@ export class Engine<
       await ensureWorkflowCatalogReady(this as unknown as Engine);
     }
     return pauseScheduleFromInternals(internals, scheduleId, options);
+  }
+  /** Atomically replace future input and status, retaining historic runs; paused unless explicitly activated. */
+  async replaceScheduleInput(
+    scheduleId: string,
+    input: unknown,
+    options: ScheduleTransitionOptions & { expectedRevision: number; status?: 'active' | 'paused' },
+  ): Promise<void> {
+    const internals = getInternals(this);
+    assertLeaseHeldForEngineWork(internals);
+    if (!isWorkflowCatalogReady(this as unknown as Engine))
+      await ensureWorkflowCatalogReady(this as unknown as Engine);
+    return replaceScheduleInputFromInternals(internals, scheduleId, input, options);
   }
   async resumeSchedule(scheduleId: string, options?: ScheduleTransitionOptions): Promise<void> {
     const internals = getInternals(this);
@@ -3048,8 +3062,8 @@ export class Engine<
         finalizePendingTimelineEntry(getInternals(this), workflowId, status, output),
     });
   }
-  async cancel(workflowId: string): Promise<void> {
-    await cancelWorkflowFromTermination(
+  async cancel(workflowId: string): Promise<CancelWorkflowResult> {
+    return await cancelWorkflowFromTermination(
       getInternals(this),
       workflowId,
       this.#createTerminationCallbacks(),

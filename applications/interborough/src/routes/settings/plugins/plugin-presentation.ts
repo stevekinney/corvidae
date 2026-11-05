@@ -6,12 +6,13 @@
  */
 import type { StatusDotStatus } from '@lostgradient/cinder';
 
-import { PLUGINS_COPY } from '../../../app/copy.ts';
+import { nameList, PLUGINS_COPY, RESTART_COPY } from '../../../app/copy.ts';
+import type { RestartIntent } from '../../../app/restart/host-restart-flow.svelte.ts';
 import type {
   PluginContribution,
   PluginProblem,
-  PluginStanding,
   PluginsSnapshot,
+  PluginStanding,
 } from '../../../lib/host-plugins.ts';
 
 /** A status as a person reads it: the word and the dot that goes with it. */
@@ -200,19 +201,67 @@ export function disableImpacts(plugin: PluginStanding): readonly DisableImpact[]
   return impacts;
 }
 
-/** How many plugins are running, need setup, and are disabled, for the line shown once the host is back. */
-export function standingCounts(snapshot: PluginsSnapshot): {
-  running: number;
-  needSetup: number;
-  disabled: number;
+/**
+ * What stops working when a plugin is turned off, such as "2 agents and 1 schedule", or
+ * `undefined` when nothing depends on it.
+ */
+export function unavailableAfterDisable(plugin: PluginStanding): string | undefined {
+  const impacts = disableImpacts(plugin);
+  return impacts.length === 0 ? undefined : nameList(impacts.map((impact) => impact.count));
+}
+
+/** The plugins by standing, named as a person reads them. */
+export function standingNames(snapshot: PluginsSnapshot): {
+  running: string[];
+  needSetup: string[];
+  disabled: string[];
+  notLoaded: string[];
 } {
-  let running = 0;
-  let needSetup = 0;
-  let disabled = 0;
+  const names = { running: [], needSetup: [], disabled: [], notLoaded: [] } as {
+    running: string[];
+    needSetup: string[];
+    disabled: string[];
+    notLoaded: string[];
+  };
   for (const plugin of snapshot.plugins) {
-    if (plugin.status === 'running') running += 1;
-    else if (plugin.status === 'needs-setup') needSetup += 1;
-    else if (plugin.status === 'disabled') disabled += 1;
+    const title = plugin.descriptor.title;
+    if (plugin.status === 'running') names.running.push(title);
+    else if (plugin.status === 'needs-setup') names.needSetup.push(title);
+    else if (plugin.status === 'disabled') names.disabled.push(title);
+    else names.notLoaded.push(title);
   }
-  return { running, needSetup, disabled };
+  return names;
+}
+
+/**
+ * The lead and the words of the banner once the host is back: what applied, how the plugins stand
+ * now, and, for a plugin turned off, what that affected. The impact is the one the disable dialog
+ * showed before the restart, because the host no longer holds the references it counted.
+ */
+export function restartBackWords(
+  intent: RestartIntent,
+  snapshot: PluginsSnapshot | undefined,
+): { title: string; text: string } {
+  const words = RESTART_COPY.back;
+  const names = snapshot === undefined ? undefined : standingNames(snapshot);
+  const standing =
+    names === undefined
+      ? ''
+      : words.standing(names.running, names.needSetup, names.disabled, names.notLoaded);
+  if (intent.disabling !== undefined) {
+    return {
+      title: words.disabled(intent.disabling.title),
+      text: [
+        standing,
+        words.unavailable(intent.disabling.title, intent.disabling.unavailable),
+        words.enableAgain,
+      ]
+        .filter((part) => part !== '')
+        .join(' '),
+    };
+  }
+  return {
+    title: words.title,
+    text: [words.applied(intent.changes), standing].filter((part) => part !== '').join(' '),
+  };
 }

@@ -1,3 +1,5 @@
+import type { WorkspaceRuntimeAuthority } from '../http/workspace-principal.ts';
+import { recoverRunWorkspaceAuthority } from '../run-authority.ts';
 /**
  * The delivery of hook events (COR-1939), on the machinery the webhook notifier already has
  * ({@link WebhookDeliveryEngine}): its HTTP client, clock, retry schedule, abandonable backoff
@@ -76,6 +78,8 @@ export interface HookActionRunner {
 
 /** What {@link createHookDeliveries} is built from. */
 export interface HookDeliveryDependencies {
+  /** Revalidated immediately before each external delivery attempt. */
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
   /** Runs the `start-workflow` and `notify` actions. */
   readonly actions: HookActionRunner;
   /** The notifier's delivery machinery. */
@@ -339,8 +343,18 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
     request: HookDeliveryRequest,
     number: number,
     secret: string,
+    record: HookDeliveryRecord,
   ): Promise<Omit<HookDeliveryAttempt, 'number' | 'startedAt' | 'finishedAt'>> {
     try {
+      if (
+        dependencies.workspace !== undefined &&
+        (await recoverRunWorkspaceAuthority(
+          dependencies.workspace,
+          record.workspaceAuthority,
+          record.owner,
+        )) === undefined
+      )
+        return { outcome: 'rejected', error: 'Workspace authority unavailable.' };
       const timestampSeconds = Math.floor(engine.now() / 1000);
       const response = await engine.fetch(request.url, {
         method: 'POST',
@@ -388,6 +402,18 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
       };
     }
     try {
+      if (
+        dependencies.workspace !== undefined &&
+        (await recoverRunWorkspaceAuthority(
+          dependencies.workspace,
+          record.workspaceAuthority,
+          record.owner,
+        )) === undefined
+      )
+        return {
+          attempt: { outcome: 'rejected', error: 'Workspace authority unavailable.' },
+          permanent: true,
+        };
       const receipt = await dependencies.actions.run(record.work, {
         owner: record.owner,
         hookId: record.hookId,
@@ -470,7 +496,7 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
       const done =
         request === undefined
           ? await act(record)
-          : { attempt: await send(request, number, secret), permanent: false };
+          : { attempt: await send(request, number, secret, record), permanent: false };
       const outcome = done.attempt;
       const closedAttempt: HookDeliveryAttempt = {
         number,
@@ -493,7 +519,7 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
         await finish(opened, 'delivered', attempts);
         return;
       }
-      if (done.permanent) {
+      if (done.permanent || outcome.outcome === 'rejected') {
         await finish(opened, 'failed', attempts);
         return;
       }
@@ -570,6 +596,9 @@ export function createHookDeliveries(dependencies: HookDeliveryDependencies): Ho
         id,
         hookId: hook.id,
         owner: hook.owner,
+        ...(hook.workspaceAuthority === undefined
+          ? {}
+          : { workspaceAuthority: hook.workspaceAuthority }),
         actionType: hook.action.type,
         kind: event.kind,
         test,

@@ -91,6 +91,7 @@
 
   /** A call that stays on the rail wherever it falls, folded or not. */
   const isPinned = (call: ToolCallRailCall): boolean =>
+    call.pinned === true ||
     call.status === 'failed' ||
     call.status === 'waiting' ||
     call.status === 'denied' ||

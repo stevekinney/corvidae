@@ -57,6 +57,13 @@ export type RunOrigin =
       readonly parentRunId: string;
       readonly href: string;
     }
+  /** A workflow file run started by an agent tool call: the agent and its calling run. */
+  | {
+      readonly kind: 'agent-run';
+      readonly agentName: string;
+      readonly runId: string;
+      readonly href: string;
+    }
   /** A goal's attempt: the goal, and the session the attempt ran in while the Bureau still has it. */
   | {
       readonly kind: 'goal';
@@ -166,6 +173,16 @@ function recordedOrigin(
         agentName: recordedText(recorded, 'agentName') ?? '',
         parentRunId,
         href: workflowDetailPath(parentRunId),
+      };
+    }
+    case 'agent-run': {
+      const runId = recordedText(recorded, 'runId');
+      if (runId === undefined) return undefined;
+      return {
+        kind: 'agent-run',
+        agentName: recordedText(recorded, 'agentId') ?? '',
+        runId,
+        href: workflowDetailPath(runId),
       };
     }
     case 'goal': {

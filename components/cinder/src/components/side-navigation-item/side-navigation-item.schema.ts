@@ -43,6 +43,11 @@ const schema = {
       description:
         'The words that follow the count in the accessible name and tooltip: "need you" gives\n"Reviews, 2 need you". The pill\'s own name is the count plus these words.',
     },
+    emptyLabel: {
+      type: 'string',
+      description:
+        'The words that follow the label in the accessible name and tooltip when `count` is zero or\nabsent: "nothing needs attention" gives "Health, nothing needs attention". Without it a row\nwith no count is named by its label alone.',
+    },
     countTone: {
       enum: ['neutral', 'success', 'warning', 'danger', 'info', 'accent'],
       description:

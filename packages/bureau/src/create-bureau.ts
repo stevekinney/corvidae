@@ -1,4 +1,9 @@
 import {
+  resolveWorkspaceOwner,
+  type WorkspaceRuntimeAuthority,
+  runtimeWorkspaceOwnerAuthority,
+} from './http/workspace-principal.ts';
+import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   mergeHookRegistries,
@@ -91,6 +96,7 @@ import {
   type SteeringRequestedValue,
   type StepRecord,
   type PeerCallJournal,
+  type PeerCallJournalEntry,
   type Store,
   StoreActionEvent,
   type Subscription,
@@ -167,6 +173,8 @@ import {
 import { bureauOwnTools, withAgentsBuiltFromBureauTools } from './agents-with-bureau-tools';
 import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
+import { createChildRunTools } from './child-run-tools';
+import { createAssetTools } from './asset-tools';
 import { createPluginRegistry } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
@@ -256,6 +264,7 @@ import {
 } from './bureau-session-persistence';
 import {
   type BureauChildren,
+  type ChildTopology,
   type ChildTopologyParent,
   createChildTopology,
 } from './child-topology';
@@ -424,6 +433,7 @@ import {
   type TaskToolGrant,
 } from './task-registry';
 import {
+  isTaskOrigin,
   parseStartTaskOrigin,
   type StartTaskOrigin,
   type TaskOrigin,
@@ -454,7 +464,11 @@ import {
   agentStepResultFromState,
   workflowStepRunId,
 } from './workflow-agent-step';
-import { parseWorkflowScheduleId } from './workflow-schedule';
+import {
+  parseWorkflowScheduleId,
+  storedScheduleInput,
+  workflowScheduleBinding,
+} from './workflow-schedule';
 import {
   createWorkflowRuntime,
   payloadMaximumBytesOf,
@@ -586,6 +600,7 @@ import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-ow
 import {
   normalizeRunRequestContext,
   recoveredRequestContextFromMetadata,
+  persistedRequestAuthority,
 } from './session-request-context';
 import { allowsModelOverride, describeAgentModels } from './agent-models';
 import {
@@ -637,6 +652,7 @@ import type {
   AbortingRun,
   Bureau,
   BureauOptions,
+  ApprovalPeerRecovery,
   BureauRecoveryReport,
   BureauShutdownOptions,
   BureauShutdownOwnerReport,
@@ -714,6 +730,17 @@ import {
   type WebhookNotifier,
   type WebhookNotifierOptions,
 } from './webhook-notifier';
+import { workspaceHookEvents } from './hooks/workspace-hook-events.ts';
+import {
+  bindRunWorkspaceAuthority,
+  captureRunWorkspaceAuthority,
+  validateRunWorkspaceAuthority,
+  mayUseAutomationInput,
+  createRunAuthorityValidator,
+  mayRunUseSharedConfiguration,
+  recoverRunWorkspaceAuthority,
+} from './run-authority.ts';
+import type { HooksDependencies } from './hooks/create-hooks.ts';
 import { createHooks, type CreatedHooks } from './hooks/create-hooks';
 import type { HookSubjectSources } from './hooks/hook-scope';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
@@ -727,6 +754,7 @@ function createBureauMemoryTools(
   memoryAuthority: Parameters<typeof createToolMemoryAuthority>[2],
   tenantId: string,
   ownerForRun: (runId: string | undefined) => Promise<string | undefined>,
+  workspace: WorkspaceRuntimeAuthority | undefined,
 ): Record<string, Tool> {
   if (memory === undefined) return {};
   return createGovernedMemoryTools(memory, {
@@ -736,6 +764,11 @@ function createBureauMemoryTools(
         requestContext.runId === undefined
           ? requestContext.authority.ownerId
           : ((await ownerForRun(requestContext.runId)) ?? requestContext.authority.ownerId);
+      if (
+        workspace !== undefined &&
+        (await resolveWorkspaceOwner(workspace, ownerId)) === undefined
+      )
+        return undefined;
       return {
         collection: requestContext.agentId ?? BUREAU_AGENT_NAME,
         authority: createToolMemoryAuthority(requestContext, toolName, memoryAuthority, {
@@ -903,6 +936,7 @@ function stringValues(values: readonly JSONValue[]): string[] {
 interface ApprovalResolutionStartedRecord {
   id: string;
   startedAt: number | undefined;
+  peerRecovery?: ApprovalPeerRecovery;
 }
 
 /** Reads the started marker in either form, dropping entries that are neither. */
@@ -919,6 +953,24 @@ function readApprovalResolutionStarted(
       records.push({
         id: entry['id'],
         startedAt: typeof startedAt === 'number' ? startedAt : undefined,
+        ...(isJsonObject(entry['peerRecovery']) &&
+        entry['peerRecovery']['version'] === 1 &&
+        typeof entry['peerRecovery']['toolDefinitionRevision'] === 'string' &&
+        entry['peerRecovery']['toolDefinitionRevision'].length > 0 &&
+        typeof entry['peerRecovery']['durableOperationKey'] === 'string' &&
+        isJsonObject(entry['peerRecovery']['request']) &&
+        typeof entry['peerRecovery']['request']['reviewId'] === 'string' &&
+        typeof entry['peerRecovery']['request']['round'] === 'number' &&
+        Number.isInteger(entry['peerRecovery']['request']['round']) &&
+        entry['peerRecovery']['request']['round'] >= 0 &&
+        entry['peerRecovery']['request']['decision'] === 'approve' &&
+        typeof entry['peerRecovery']['request']['principal'] === 'string' &&
+        typeof entry['peerRecovery']['request']['digest'] === 'string' &&
+        isJsonObject(entry['peerRecovery']['arguments']) &&
+        typeof entry['peerRecovery']['arguments']['message'] === 'string' &&
+        entry['peerRecovery']['arguments']['message'].trim().length > 0
+          ? { peerRecovery: entry['peerRecovery'] as unknown as ApprovalPeerRecovery }
+          : {}),
       });
     }
   }
@@ -931,8 +983,19 @@ function writeApprovalResolutionStarted(
 ): JSONValue[] {
   return records.map((record) =>
     record.startedAt === undefined
-      ? { id: record.id }
-      : { id: record.id, startedAt: record.startedAt },
+      ? {
+          id: record.id,
+          ...(record.peerRecovery === undefined
+            ? {}
+            : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
+        }
+      : {
+          id: record.id,
+          startedAt: record.startedAt,
+          ...(record.peerRecovery === undefined
+            ? {}
+            : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
+        },
   );
 }
 
@@ -1072,7 +1135,7 @@ export function isDurableRunUnsettled(status: string): boolean {
  */
 export interface CancelDurableRunDependencies {
   getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  cancel: (runId: string) => Promise<void>;
+  cancel: (runId: string) => Promise<unknown>;
 }
 
 /** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
@@ -2541,6 +2604,9 @@ function webhookNotifierOptionsOf(
  * Bureau's workflows are loaded.
  */
 function composeHooks(input: {
+  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
+  readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
+  readonly mayStartWorkflows?: HooksDependencies['mayStartWorkflows'];
   readonly options: BureauOptions<AgentDefinitions>['hooks'];
   readonly engine: WebhookDeliveryEngine | undefined;
   readonly kv: ConditionalTextValueStore | undefined;
@@ -2560,6 +2626,9 @@ function composeHooks(input: {
   const { options, engine, kv, diagnose } = input;
   if (options === undefined || engine === undefined || kv === undefined) return undefined;
   const created = createHooks({
+    workspace: input.workspace,
+    eventForHookOwner: input.eventForHookOwner,
+    mayStartWorkflows: input.mayStartWorkflows,
     kv,
     engine,
     secrets: options.secrets,
@@ -2610,22 +2679,43 @@ function resumeHooks(input: {
   );
 }
 
+function notifyPeerCallsReady<D extends AgentDefinitions>(
+  options: BureauOptions<D>,
+  journal: PeerCallJournal,
+): void {
+  options.peerCallsReady?.(journal);
+}
+
+/** Preserve one immutable membership directory binding throughout runtime construction. */
+function snapshotWorkspaceOptions<const D extends AgentDefinitions>(
+  options: LayeredBureauOptions<D>,
+): LayeredBureauOptions<D> {
+  return options.workspace === undefined
+    ? options
+    : { ...options, workspace: Object.freeze({ ...options.workspace }) };
+}
+
+/** Snapshot caller-owned answer keys before asynchronous construction begins. */
+function snapshotAnswerEncryption(
+  keys: AnswerEncryptionKeys | undefined,
+): AnswerEncryptionKeys | undefined {
+  return keys === undefined
+    ? undefined
+    : {
+        current: keys.current,
+        ...(keys.retired === undefined ? {} : { retired: keys.retired }),
+      };
+}
+
 async function constructBureau<const D extends AgentDefinitions>(
   given: BureauOptions<D>,
   construction: BureauConstruction<D>,
 ): Promise<void> {
   // COR-1873: several definition sources are read as one layered source from here on.
-  let options = withLayeredSources(given);
+  let options = snapshotWorkspaceOptions(withLayeredSources(given));
+  const workspace = options.workspace;
   // COR-1920: the answer keys are the caller's, so they are read once, before the first await.
-  const answerEncryption: AnswerEncryptionKeys | undefined =
-    options.answerEncryption === undefined
-      ? undefined
-      : {
-          current: options.answerEncryption.current,
-          ...(options.answerEncryption.retired === undefined
-            ? {}
-            : { retired: options.answerEncryption.retired }),
-        };
+  const answerEncryption = snapshotAnswerEncryption(options.answerEncryption);
   // AB-194: validated here (BAD_REQUEST at construction time). Admission
   // enforces these same validated values (defaulting to
   // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`)
@@ -2680,19 +2770,40 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
   // COR-1890: the `bureau` namespace and the `built-in` source are the built-in plugin's.
   validateBuiltInPluginOptions(options, toBadRequest);
+  const assetServiceHolder: { current: AssetService | undefined } = { current: undefined };
   // COR-1890: the built-in `bureau` plugin contributes Bureau's own tools through the plugin API.
   // The tools read the Bureau when they are called, which is after construction has finished.
   const bureauTools = [
-    createAgentDiscoveryTool({
-      entries: () => agentCatalog.entries(),
-      list: () => agentCatalog.list(),
-      find: (name) => agentCatalog.find(name),
+    createAgentDiscoveryTool(
+      {
+        entries: () => agentCatalog.entries(),
+        list: () => agentCatalog.list(),
+        find: (name) => agentCatalog.find(name),
+      },
+      {
+        runAgent: async (runId) => runAttribution.get(runId)?.agentName,
+        agentDetail: (id) => agentCatalog.detail(id),
+      },
+    ),
+    ...createChildRunTools({
+      children: () => childTopologyForWait?.children,
+      assets: () => assetServiceHolder.current,
+      ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
+      workspaceAuthority: (owner) => runtimeWorkspaceOwnerAuthority(workspace, owner),
+      agentDetail: (id) => agentCatalog.detail(id),
+      runAgent: async (runId) => runAttribution.get(runId)?.agentName,
+    }),
+    ...createAssetTools({
+      assets: () => assetServiceHolder.current,
+      ownerOfRun: async (runId) => ownerOrLocal(await runOwner(runId)),
+      workspaceAuthority: (owner) => runtimeWorkspaceOwnerAuthority(workspace, owner),
     }),
     ...(options.workflowSource === undefined
       ? []
       : Object.values(
           // COR-1529: the workflow tools read the workflow runtime and the run's identity when called.
           createWorkflowTools({
+            workspace: workspace,
             workflows: () => workflowRuntime?.workflows,
             runIdentity: async (runId) => ({
               agent: runAttribution.get(runId)?.agentName,
@@ -2925,6 +3036,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   const assetServiceInstance: AssetService | undefined = options.assets
     ? await createAssetService({ ...options.assets, runtime: runtimeServices })
     : undefined;
+  assetServiceHolder.current = assetServiceInstance;
   if (assetServiceInstance !== undefined) {
     stopForwarding.push(
       forwardAssetEvents(assetServiceInstance, (event) => emitter.dispatch(event)),
@@ -2935,9 +3047,41 @@ async function constructBureau<const D extends AgentDefinitions>(
   const workflowFileTypes: { current: ((type: string) => boolean) | undefined } = {
     current: undefined,
   };
-  const assetServiceHolder: { current: AssetService | undefined } = {
-    current: assetServiceInstance,
-  };
+  let childTopologyForWait: ChildTopology | undefined;
+  function configureChildWaitServices(services: DurableRunDeps, principal: string): void {
+    services.deferredChildCallIds ??= new Set<string>();
+    services.childWaitPrincipal = principal;
+    services.requestChildWait = (request) => {
+      if (services.childWaitPrincipal !== request.principal)
+        return { parked: false, reason: 'unauthorized' };
+      if (
+        services.pendingChildWait !== undefined ||
+        services.pendingHumanWait !== undefined ||
+        services.pendingWakeup !== undefined
+      )
+        return { parked: false, reason: 'already-parked' };
+      services.pendingChildWait = { schemaVersion: 1, ...request };
+      services.deferredChildCallIds?.add(request.toolCallId);
+      return { parked: true };
+    };
+    services.resolveChildWait = async (request) => {
+      const topology = childTopologyForWait;
+      if (topology === undefined) return { status: 'not-found' };
+      const outcome = await topology.children.wait(
+        {
+          parentRunId: request.parentRunId,
+          childRunId: request.childRunId,
+        },
+        { signal: AbortSignal.abort() },
+      );
+      if (outcome.outcome === 'settled')
+        return { status: 'settled', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'unobservable')
+        return { status: 'unobservable', child: outcome.child as unknown as JSONValue };
+      if (outcome.outcome === 'wait-aborted') return { status: 'pending' };
+      return { status: 'not-found' };
+    };
+  }
   // COR-1585 — these two are read by the composition's `claimHolderFor` callback below, so they
   // are declared before the composition is awaited, not with the rest of the run bookkeeping.
   const runSessionIdentifiers = new WeakMap<ActiveRun, string>();
@@ -2974,6 +3118,21 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      onScheduleAuthorityDenied: (scheduleId) => {
+        runtimeServices.deferred.track(
+          pauseInvalidSchedule(scheduleId).catch(() => {
+            diagnose({
+              level: 'error',
+              scope: 'durable-maintenance',
+              message: 'Workspace schedule pause could not be persisted; maintenance will retry.',
+            });
+          }),
+          'workspace-schedule-pause',
+        );
+      },
+      configureDurableRun: (_runId, services, principal) => {
+        configureChildWaitServices(services, principal);
+      },
       // COR-1811 — persisted workflow log lines, when `options.logs` asks for them. The cap is read
       // on every line, so a change to `logs.maximumLinesPerRun` applies to the next one.
       ...(options.logs === undefined
@@ -3010,6 +3169,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (assetServiceHolder.current !== undefined) {
           return createAssetContentSourceResolver(assetServiceHolder.current, owner, {
             mcpResources: options.mcpResources,
+            workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, owner),
           });
         }
         // No asset service: a host that reads MCP resources still resolves a linked one.
@@ -3029,6 +3189,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                 // `assets/row-asset-claims.ts`). A catalog dispatch (`bureau.run()`, a child, a
                 // goal attempt, a workflow step) never has a session, whether or not it is
                 // registered with the store, so it holds its own rows.
+                workspaceAuthority: runtimeWorkspaceOwnerAuthority(
+                  workspace,
+                  ownerOrLocal(principalId),
+                ),
                 claimSeededInput: rowHolder === 'run',
                 claimHolderFor:
                   rowHolder === 'run'
@@ -3368,6 +3532,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // workflow runtime and the run's identity when called, which is after construction has finished.
     // COR-1710: the settings tools are always in the catalog; an agent file that lists them gets them.
     const settingsTools = createSettingsTools({
+      workspace: workspace,
       settings: () => settingsOf().settings,
       authorityForRun: async (runId) => (await ownerOf({ kind: 'run', id: runId })) ?? undefined,
     });
@@ -3376,6 +3541,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       options.memoryAuthority,
       bureauId,
       async (runId) => (runId === undefined ? undefined : ownerOf({ kind: 'run', id: runId })),
+      workspace,
     );
     const memoryToolsByName = Object.fromEntries(
       Object.values(memoryTools).map((tool) => [tool.name, tool]),
@@ -3552,11 +3718,65 @@ async function constructBureau<const D extends AgentDefinitions>(
       options.workflowSource === undefined || runtime.durable === undefined
         ? undefined
         : createWorkflowRuntime({
+            workspace,
+            resumeAdministrator: async (actor) => {
+              if (workspace === undefined) return true;
+              const owner = actor?.startsWith('agent-run:')
+                ? await runOwner(actor.slice('agent-run:'.length))
+                : (actor ?? ANONYMOUS_LOCAL_OWNER);
+              if (owner === undefined) return false;
+              const member = await resolveWorkspaceOwner(workspace, owner);
+              return member?.capabilities.includes('workspace:manage') ?? false;
+            },
             source: options.workflowSource,
             // The composition's engine type hides `register`; it is the one Weft `Engine`, and
             // registering documents (`registerSource`) is exactly what it is lent out for here.
             engine: runtime.durable.engine as Engine,
             host: createWorkflowDocumentHost({
+              admitActivity: async (argument) => {
+                if (workspace === undefined) return;
+                const trigger = argument.trigger;
+                const sourceSchedule: unknown =
+                  typeof trigger === 'object' && trigger !== null
+                    ? Reflect.get(trigger, 'scheduleId')
+                    : undefined;
+                try {
+                  const binding = workflowScheduleBinding(trigger);
+                  const currentBinding =
+                    typeof sourceSchedule === 'string'
+                      ? workflowScheduleBinding(
+                          await storedScheduleInput(runtime.durable!.engine, sourceSchedule),
+                        )
+                      : binding;
+                  if (
+                    currentBinding.authorityHold === undefined &&
+                    currentBinding.workspaceAuthority?.actorId ===
+                      binding.workspaceAuthority?.actorId &&
+                    binding.authorityHold === undefined &&
+                    (await validateRunWorkspaceAuthority(workspace, binding.workspaceAuthority)) !==
+                      undefined
+                  )
+                    return;
+                } catch {
+                  /* Malformed persisted authority is denied and its schedule paused below. */
+                }
+                const scheduleId: unknown =
+                  typeof trigger === 'object' && trigger !== null
+                    ? Reflect.get(trigger, 'scheduleId')
+                    : undefined;
+                if (typeof scheduleId === 'string')
+                  runtimeServices.deferred.track(
+                    pauseInvalidSchedule(scheduleId).catch(() => {
+                      diagnose({
+                        level: 'error',
+                        scope: 'durable-maintenance',
+                        message: 'Workspace schedule pause remains pending.',
+                      });
+                    }),
+                    'workspace-workflow-pause',
+                  );
+                throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+              },
               runAgentStep: (request) => runWorkflowAgentStep(request),
               contributions: workflowContributions,
             }),
@@ -5165,10 +5385,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   };
   let requestAuthorityValidator:
     ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined =
-    options.requestAuthorityValidator;
+    createRunAuthorityValidator(workspace, options.requestAuthorityValidator);
   const isTransportIssuedAuthority = (context: ToolRequestContext): boolean =>
-    context.authority.authorizationRevision !== 'bureau:1' &&
-    context.authority.authorizationRevision !== 'bureau:scheduler:1';
+    workspace !== undefined ||
+    (context.authority.authorizationRevision !== 'bureau:1' &&
+      context.authority.authorizationRevision !== 'bureau:scheduler:1');
   let durableRecoveryDeferred = false;
   let durableRecoveryStarted = false;
   let durableRecoveryBarrier: Promise<BureauRecoveryReport> = Promise.resolve({
@@ -6502,7 +6723,13 @@ async function constructBureau<const D extends AgentDefinitions>(
   // trail exactly once, in the same ordinal order as every other outbox
   // entry for that session, whether that happens promptly (this bureau is
   // still alive) or after a restart.
-  type ReviewAuditAttachment = { runId: string; type: string; detail: unknown; principal: string };
+  type ReviewAuditAttachment = {
+    runId: string;
+    type: string;
+    detail: unknown;
+    principal: string;
+    decisionRequest?: ReviewDecisionRequest;
+  };
   const REVIEW_AUDIT_OUTBOX_NAMESPACE = 'audit-record';
   function reviewAuditOutboxAttachment(
     attachment: ReviewAuditAttachment | undefined,
@@ -6561,6 +6788,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function persistApprovalResolutionStarted(
     sessionId: string,
     reviewId: string,
+    peerRecovery?: ApprovalPeerRecovery,
   ): Promise<void> {
     if (!runtime.sessionStore) return;
     await runtime.sessionStore.update(sessionId, (session) => {
@@ -6574,8 +6802,18 @@ async function constructBureau<const D extends AgentDefinitions>(
           ...session.metadata,
           approvalResolutionStartedIds: writeApprovalResolutionStarted(
             started.some((record) => record.id === reviewId)
-              ? started
-              : [...started, { id: reviewId, startedAt: runtimeServices.clock.now() }],
+              ? started.map((record) =>
+                  record.id === reviewId && peerRecovery !== undefined
+                    ? { ...record, peerRecovery }
+                    : record,
+                )
+              : [
+                  {
+                    id: reviewId,
+                    startedAt: runtimeServices.clock.now(),
+                    ...(peerRecovery === undefined ? {} : { peerRecovery }),
+                  },
+                ],
           ),
         },
       };
@@ -6750,11 +6988,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function persistApprovalResolutionStartedWithRetry(
     sessionId: string,
     reviewId: string,
+    peerRecovery?: ApprovalPeerRecovery,
   ): Promise<void> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
       try {
-        await persistApprovalResolutionStarted(sessionId, reviewId);
+        await persistApprovalResolutionStarted(sessionId, reviewId, peerRecovery);
         return;
       } catch (error) {
         lastError = error;
@@ -6764,6 +7003,33 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     throw lastError;
+  }
+
+  function peerRecoveryForApproval(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    input: ResolveReviewInput,
+    request: ReviewDecisionRequest,
+  ): ApprovalPeerRecovery | undefined {
+    if (input.decision !== 'approve') return undefined;
+    const revision = review.approval.approvalBinding?.toolDefinitionRevision;
+    if (revision === undefined || !options.recoverableStartedApprovals?.has(revision)) {
+      return undefined;
+    }
+    const effectiveArguments = Object.prototype.hasOwnProperty.call(input, 'arguments')
+      ? input.arguments
+      : review.approval.arguments;
+    const argumentsRecord = isJsonObject(effectiveArguments as JSONValue)
+      ? (effectiveArguments as Record<string, JSONValue>)
+      : undefined;
+    const message = argumentsRecord?.['message'];
+    if (typeof message !== 'string' || message.trim().length === 0) return undefined;
+    return {
+      version: 1,
+      toolDefinitionRevision: revision,
+      durableOperationKey: `approval-resume:v1:${review.id}`,
+      request,
+      arguments: { message },
+    };
   }
 
   async function persistReviewResolution(
@@ -6798,6 +7064,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1828: the tool the decision asked to remember. It joins the session's `approvalGrants`
     // in this same commit, so the grant and the decision land together or not at all.
     rememberTool?: string,
+    /** Recovery-only guard evaluated against the fresh session immediately before its CAS write. */
+    commitGuard?: () => Promise<boolean>,
     // AB-391 (Codex review finding, PR #601, "Detect when the resolution
     // update appends nothing"): returns whether the `sessionStore.update()`
     // call below actually committed — `false` when the updater returned
@@ -6833,7 +7101,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     let conflictingDecision: { decision?: string; principal?: string; reason?: string } | undefined;
     const committed = await runtime.sessionStore.update(
       sessionId,
-      (session) => {
+      async (session) => {
         if (!session) return session;
         const currentResolved = session.metadata['resolvedReviewIds'];
         const persistedResolvedReviewIds: string[] = [];
@@ -6920,6 +7188,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           >;
           lastRequestAuthorities = remainingAuthorities;
         }
+        if (commitGuard !== undefined && !(await commitGuard())) return undefined;
         return {
           ...session,
           metadata: {
@@ -6969,6 +7238,15 @@ async function constructBureau<const D extends AgentDefinitions>(
                     : {}),
                 }
               : {}),
+            ...(removePendingApproval &&
+            isJsonObject(session.metadata['approvalPeerRecoveryResults'])
+              ? {
+                  approvalPeerRecoveryResults: omitKey(
+                    session.metadata['approvalPeerRecoveryResults'],
+                    reviewId,
+                  ),
+                }
+              : {}),
             ...(lastRequestAuthorities !== session.metadata['lastRequestAuthorities']
               ? { lastRequestAuthorities }
               : {}),
@@ -7013,6 +7291,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     reason: string | undefined,
     auditAttachment?: ReviewAuditAttachment,
     rememberTool?: string,
+    commitGuard?: () => Promise<boolean>,
     // AB-391: see `persistReviewResolution`'s own doc comment on this
     // return value, including its `alreadyLanded` handling of an ambiguous
     // prior commit — that check runs on EVERY call to
@@ -7034,6 +7313,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           reason,
           auditAttachment,
           rememberTool,
+          commitGuard,
         );
       } catch (error) {
         // AB-391 (Codex P1 review finding, PR #601, "Distinguish concurrent
@@ -7491,6 +7771,56 @@ async function constructBureau<const D extends AgentDefinitions>(
     };
   }
 
+  function persistedPeerRecoveryResult(
+    metadata: Record<string, JSONValue> | undefined,
+    reviewId: string,
+  ): ToolExecutionResult | undefined {
+    const results = metadata?.['approvalPeerRecoveryResults'];
+    const raw = isJsonObject(results) ? ownEntry(results, reviewId) : undefined;
+    if (!isJsonObject(raw)) return undefined;
+    if (
+      typeof raw['callId'] !== 'string' ||
+      typeof raw['toolCallId'] !== 'string' ||
+      typeof raw['toolName'] !== 'string' ||
+      (raw['outcome'] !== 'success' && raw['outcome'] !== 'error') ||
+      !Object.prototype.hasOwnProperty.call(raw, 'content')
+    )
+      return undefined;
+    return raw as unknown as ToolExecutionResult;
+  }
+
+  async function persistPeerRecoveryResult(
+    sessionId: string,
+    reviewId: string,
+    result: ToolExecutionResult,
+    commitGuard?: () => Promise<boolean>,
+  ): Promise<boolean> {
+    if (runtime.sessionStore === undefined) return false;
+    const committed = await runtime.sessionStore.update(sessionId, async (session) => {
+      if (session === undefined) return undefined;
+      if (commitGuard !== undefined && !(await commitGuard())) return undefined;
+      const results = isJsonObject(session.metadata['approvalPeerRecoveryResults'])
+        ? session.metadata['approvalPeerRecoveryResults']
+        : {};
+      if (ownEntry(results, reviewId) !== undefined) {
+        return persistedPeerRecoveryResult(session.metadata, reviewId) === undefined
+          ? undefined
+          : session;
+      }
+      return {
+        ...session,
+        metadata: {
+          ...session.metadata,
+          approvalPeerRecoveryResults: {
+            ...results,
+            [reviewId]: JSON.parse(JSON.stringify(result)) as JSONValue,
+          },
+        },
+      };
+    });
+    return committed !== undefined;
+  }
+
   /**
    * COR-1621 — takes the approval a peer re-gated into this process's own copy of the review: the
    * session holds it at a round beyond the one held here, so this process lists the round the
@@ -7903,6 +8233,430 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (pendingApprovalOverrides.size > 0) ensureLazyExpirySweep();
   }
 
+  const peerRecoveryRetryKeys = new Set<string>();
+
+  /** COR-2051 — attach to a journaled peer task after an approved resolution lost its caller. */
+  async function recoverPeerApproval(
+    sessionId: string,
+    runId: string,
+    initialMetadata: Record<string, JSONValue>,
+  ): Promise<void> {
+    const leaseTtlMilliseconds = 30_000;
+    const started = readApprovalResolutionStarted(initialMetadata['approvalResolutionStartedIds']);
+    for (const marker of started) {
+      let journalEntry: PeerCallJournalEntry | undefined;
+      try {
+        const recovery = marker.peerRecovery;
+        if (recovery === undefined || recovery.request.reviewId !== marker.id) continue;
+        const session = await runtime.sessionStore?.load(sessionId);
+        const currentMetadata = session?.metadata;
+        const currentMarker = readApprovalResolutionStarted(
+          currentMetadata?.['approvalResolutionStartedIds'],
+        ).find((candidate) => candidate.id === marker.id);
+        if (
+          currentMarker?.peerRecovery === undefined ||
+          currentMarker.peerRecovery.request.reviewId !== marker.id
+        )
+          continue;
+        const currentRecovery = currentMarker.peerRecovery;
+        const persisted = persistedApprovalOf(currentMetadata, marker.id);
+        if (persisted === undefined || persisted.approval.callId === undefined) continue;
+        if (
+          persisted.round !== currentRecovery.request.round ||
+          persisted.approval.approvalBinding?.toolDefinitionRevision !==
+            currentRecovery.toolDefinitionRevision ||
+          persisted.approval.approvalToken === undefined
+        )
+          continue;
+        const adapter = options.recoverableStartedApprovals?.get(
+          currentRecovery.toolDefinitionRevision,
+        );
+        if (adapter === undefined || adapter.version !== 1) continue;
+        const restoreApproval = (
+          runToolboxesByRunId.get(runId) as unknown as {
+            restoreApproval?: (approval: SignedPendingToolApproval) => Promise<void>;
+          }
+        )?.restoreApproval;
+        if (restoreApproval === undefined) continue;
+        try {
+          await restoreApproval(persisted.approval as SignedPendingToolApproval);
+        } catch (error) {
+          // A consumed binding is the expected post-attach state. Every other binding failure
+          // (bad signature, expiry, revocation, or a missing state record) fails closed.
+          if ((error as { code?: unknown })?.code !== 'already-consumed') continue;
+        }
+        const decision = await reviewDecisions.inspect(currentRecovery.request);
+        if (decision.outcome !== 'matching' || decision.recorded) continue;
+        const authority = runRequestContexts.get(runId);
+        if (
+          authority !== undefined &&
+          isTransportIssuedAuthority(authority) &&
+          (requestAuthorityValidator === undefined || !(await requestAuthorityValidator(authority)))
+        )
+          continue;
+        const review: Extract<PendingReview, { kind: 'tool-approval' }> = {
+          kind: 'tool-approval',
+          id: marker.id,
+          runId,
+          sessionId,
+          agentName: terminalReviewSessions.get(runId)?.agentName,
+          approval: persisted.approval,
+          requestedAt: 0,
+          ageMilliseconds: 0,
+          status: 'pending',
+          round: persisted.round,
+        };
+        const policyToolbox = await skillPolicyToolboxOf(review, runToolboxesByRunId.get(runId));
+        if (
+          !policyToolbox.tools().some((tool) => tool.id === currentRecovery.toolDefinitionRevision)
+        )
+          continue;
+        journalEntry = await peerCalls.read({
+          parentRunId: runId,
+          operationKey: currentRecovery.durableOperationKey,
+        });
+        if (
+          journalEntry === undefined ||
+          typeof journalEntry.taskId !== 'string' ||
+          journalEntry.taskId.length === 0 ||
+          typeof journalEntry.contextId !== 'string' ||
+          journalEntry.contextId.length === 0 ||
+          !/^[0-9a-f]{64}$/.test(journalEntry.requestDigest)
+        )
+          continue;
+
+        const token = runtimeServices.identifiers.next('approval-recovery');
+        const leaseOf = (
+          leaseMetadata: Record<string, JSONValue>,
+        ): Record<string, JSONValue> | undefined => {
+          const leases = leaseMetadata['approvalPeerRecoveryLeases'];
+          const lease = isJsonObject(leases) ? ownEntry(leases, marker.id) : undefined;
+          return isJsonObject(lease) ? lease : undefined;
+        };
+        const leaseValue = (): Record<string, JSONValue> => ({
+          token,
+          round: persisted.round,
+          expiresAt: runtimeServices.clock.now() + leaseTtlMilliseconds,
+          operationKey: currentRecovery.durableOperationKey,
+        });
+        const acquireLease = async (): Promise<boolean> => {
+          const committed = await runtime.sessionStore?.update(sessionId, (leaseSession) => {
+            if (leaseSession === undefined) return undefined;
+            const current = leaseOf(leaseSession.metadata);
+            if (
+              current !== undefined &&
+              typeof current['expiresAt'] === 'number' &&
+              current['expiresAt'] > runtimeServices.clock.now()
+            )
+              return undefined;
+            const leases = isJsonObject(leaseSession.metadata['approvalPeerRecoveryLeases'])
+              ? leaseSession.metadata['approvalPeerRecoveryLeases']
+              : {};
+            return {
+              ...leaseSession,
+              metadata: {
+                ...leaseSession.metadata,
+                approvalPeerRecoveryLeases: { ...leases, [marker.id]: leaseValue() },
+              },
+            };
+          });
+          return committed !== undefined;
+        };
+        const ownsLease = async (): Promise<boolean> => {
+          const leaseSession = await runtime.sessionStore?.load(sessionId);
+          const lease = leaseSession === undefined ? undefined : leaseOf(leaseSession.metadata);
+          return (
+            lease?.['token'] === token &&
+            lease['round'] === persisted.round &&
+            lease['operationKey'] === currentRecovery.durableOperationKey &&
+            typeof lease['expiresAt'] === 'number' &&
+            lease['expiresAt'] > runtimeServices.clock.now()
+          );
+        };
+        const recoveryStateCurrent = async (): Promise<boolean> => {
+          if (!(await ownsLease())) return false;
+          const freshSession = await runtime.sessionStore?.load(sessionId);
+          const freshMarker = readApprovalResolutionStarted(
+            freshSession?.metadata['approvalResolutionStartedIds'],
+          ).find((candidate) => candidate.id === marker.id);
+          if (
+            freshMarker?.peerRecovery === undefined ||
+            freshMarker.peerRecovery.request.reviewId !== marker.id ||
+            freshMarker.peerRecovery.durableOperationKey !== currentRecovery.durableOperationKey
+          )
+            return false;
+          const freshApproval = persistedApprovalOf(freshSession?.metadata, marker.id);
+          if (freshApproval === undefined || freshApproval.round !== currentRecovery.request.round)
+            return false;
+          const freshDecision = await reviewDecisions.inspect(currentRecovery.request);
+          return freshDecision.outcome === 'matching' && !freshDecision.recorded;
+        };
+        const recoveryAuthorityCurrent = async (): Promise<boolean> => {
+          const freshSession = await runtime.sessionStore?.load(sessionId);
+          if (freshSession === undefined) return false;
+          const context = recoveredRequestContextFromMetadata(
+            freshSession.metadata,
+            runId,
+            sessionId,
+            freshSession.agentName,
+            runtimeServices.clock.now,
+          );
+          if (context === undefined) return workspace === undefined;
+          if (!isTransportIssuedAuthority(context)) return true;
+          return (
+            requestAuthorityValidator !== undefined && (await requestAuthorityValidator(context))
+          );
+        };
+        if (!(await acquireLease())) {
+          const retryKey = `${sessionId}:${marker.id}:${String(persisted.round)}`;
+          if (!peerRecoveryRetryKeys.has(retryKey)) {
+            peerRecoveryRetryKeys.add(retryKey);
+            runtimeServices.timers.setTimeout(() => {
+              peerRecoveryRetryKeys.delete(retryKey);
+              void (async () => {
+                const retrySession = await runtime.sessionStore?.load(sessionId);
+                if (retrySession !== undefined) {
+                  await recoverPeerApproval(sessionId, runId, retrySession.metadata);
+                }
+              })().catch((error: unknown) => {
+                diagnose({
+                  level: 'warn',
+                  scope: 'approval-recovery',
+                  message: `[bureau] Peer approval recovery retry failed for "${marker.id}".`,
+                  cause: error,
+                });
+              });
+            }, leaseTtlMilliseconds + 1);
+          }
+          continue;
+        }
+        const controller = new AbortController();
+        const renewal = runtimeServices.timers.setInterval(
+          () => {
+            void (async () => {
+              const renewed = await runtime.sessionStore?.update(sessionId, (renewalSession) => {
+                if (renewalSession === undefined) return undefined;
+                const current = leaseOf(renewalSession.metadata);
+                if (current?.['token'] !== token) return undefined;
+                const leases = isJsonObject(renewalSession.metadata['approvalPeerRecoveryLeases'])
+                  ? renewalSession.metadata['approvalPeerRecoveryLeases']
+                  : {};
+                return {
+                  ...renewalSession,
+                  metadata: {
+                    ...renewalSession.metadata,
+                    approvalPeerRecoveryLeases: { ...leases, [marker.id]: leaseValue() },
+                  },
+                };
+              });
+              if (renewed === undefined) controller.abort();
+            })().catch((error: unknown) => {
+              controller.abort();
+              diagnose({
+                level: 'warn',
+                scope: 'approval-recovery',
+                message: `[bureau] Peer approval recovery lease renewal failed for "${marker.id}"; attachment aborted.`,
+                cause: error,
+              });
+            });
+          },
+          Math.max(1, Math.floor(leaseTtlMilliseconds / 3)),
+        );
+        try {
+          if (!(await recoveryStateCurrent())) continue;
+          const freshSession = await runtime.sessionStore?.load(sessionId);
+          const freshApproval = persistedApprovalOf(freshSession?.metadata, marker.id);
+          if (freshApproval === undefined) continue;
+          let result = persistedPeerRecoveryResult(freshSession?.metadata, marker.id);
+          if (result === undefined) {
+            // The authority may be revoked during the lease/state reads above. Revalidate at the
+            // last possible point before invoking the external attachment adapter.
+            if (!(await recoveryAuthorityCurrent())) continue;
+            result = await adapter.attach({
+              sessionId,
+              runId,
+              reviewId: marker.id,
+              callId: freshApproval.approval.callId,
+              toolDefinitionRevision: currentRecovery.toolDefinitionRevision,
+              durableOperationKey: currentRecovery.durableOperationKey,
+              arguments: currentRecovery.arguments,
+              journalEntry,
+              signal: controller.signal,
+            });
+          }
+          if (!(await recoveryStateCurrent())) continue;
+          if (
+            result === undefined ||
+            result === null ||
+            typeof result !== 'object' ||
+            result.callId !== freshApproval.approval.callId ||
+            result.toolCallId !== freshApproval.approval.callId ||
+            result.toolName !== freshApproval.approval.toolName ||
+            !Object.prototype.hasOwnProperty.call(result, 'content') ||
+            (result.outcome !== 'success' && result.outcome !== 'error')
+          )
+            continue;
+          const resultCheckpointed =
+            persistedPeerRecoveryResult(freshSession?.metadata, marker.id) !== undefined ||
+            (await persistPeerRecoveryResult(sessionId, marker.id, result, recoveryStateCurrent));
+          if (!resultCheckpointed || !(await recoveryStateCurrent())) continue;
+          const input: ResolveReviewInput = {
+            id: marker.id,
+            decision: 'approve',
+            principal: currentRecovery.request.principal,
+            round: currentRecovery.request.round,
+            arguments: currentRecovery.arguments,
+            ...(currentRecovery.request.reason === undefined
+              ? {}
+              : { reason: currentRecovery.request.reason }),
+          };
+          const materialized = await materializeToolResultAsync(result);
+          const admitted = await admitApprovedToolResultMedia(review, result, materialized);
+          const auditAttachment = buildReviewDecisionAuditRecord(
+            review,
+            'approve',
+            input.principal,
+            input.reason,
+            [],
+            currentRecovery.request.digest,
+            await ownerForRecord(runId),
+          );
+          const committed = await runtime.sessionStore?.update(
+            sessionId,
+            async (finalSession) => {
+              if (finalSession === undefined) return undefined;
+              const lease = leaseOf(finalSession.metadata);
+              if (
+                lease?.['token'] !== token ||
+                lease['round'] !== persisted.round ||
+                lease['operationKey'] !== currentRecovery.durableOperationKey ||
+                typeof lease['expiresAt'] !== 'number' ||
+                lease['expiresAt'] <= runtimeServices.clock.now()
+              )
+                return undefined;
+              const finalMarker = readApprovalResolutionStarted(
+                finalSession.metadata['approvalResolutionStartedIds'],
+              ).find((candidate) => candidate.id === marker.id);
+              const currentApproval = persistedApprovalOf(finalSession.metadata, marker.id);
+              if (
+                finalMarker?.peerRecovery === undefined ||
+                finalMarker.peerRecovery.durableOperationKey !==
+                  currentRecovery.durableOperationKey ||
+                currentApproval === undefined ||
+                currentApproval.round !== persisted.round
+              )
+                return undefined;
+              const finalDecision = await reviewDecisions.inspect(currentRecovery.request);
+              if (finalDecision.outcome !== 'matching' || finalDecision.recorded) return undefined;
+              const recoveredContext = recoveredRequestContextFromMetadata(
+                finalSession.metadata,
+                runId,
+                sessionId,
+                finalSession.agentName,
+                runtimeServices.clock.now,
+              );
+              if (recoveredContext === undefined) return undefined;
+              if (
+                isTransportIssuedAuthority(recoveredContext) &&
+                (requestAuthorityValidator === undefined ||
+                  !(await requestAuthorityValidator(recoveredContext)))
+              )
+                return undefined;
+              const leases = isJsonObject(finalSession.metadata['approvalPeerRecoveryLeases'])
+                ? finalSession.metadata['approvalPeerRecoveryLeases']
+                : {};
+              const results = isJsonObject(finalSession.metadata['approvalPeerRecoveryResults'])
+                ? finalSession.metadata['approvalPeerRecoveryResults']
+                : {};
+              const pending = isJsonObject(finalSession.metadata['pendingApprovalOverrides'])
+                ? finalSession.metadata['pendingApprovalOverrides']
+                : {};
+              const rounds = isJsonObject(finalSession.metadata['pendingApprovalRounds'])
+                ? finalSession.metadata['pendingApprovalRounds']
+                : {};
+              const resolved = Array.isArray(finalSession.metadata['resolvedReviewIds'])
+                ? stringValues(finalSession.metadata['resolvedReviewIds'])
+                : [];
+              const priorDecisions = isJsonObject(finalSession.metadata['resolvedReviewDecisions'])
+                ? finalSession.metadata['resolvedReviewDecisions']
+                : {};
+              return {
+                ...finalSession,
+                conversationHistory: resolveToolResult(
+                  finalSession.conversationHistory,
+                  currentApproval.approval.callId,
+                  admitted,
+                ),
+                metadata: {
+                  ...finalSession.metadata,
+                  approvalResolutionStartedIds: omitStartedRecord(
+                    finalSession.metadata['approvalResolutionStartedIds'],
+                    marker.id,
+                  ),
+                  pendingApprovalOverrides: omitKey(pending, marker.id),
+                  pendingApprovalRounds: omitKey(rounds, marker.id),
+                  approvalPeerRecoveryResults: omitKey(results, marker.id),
+                  approvalPeerRecoveryLeases: omitKey(leases, marker.id),
+                  resolvedReviewIds: [...new Set([...resolved, marker.id])],
+                  resolvedReviewDecisions: {
+                    ...priorDecisions,
+                    [marker.id]: {
+                      decision: 'approve',
+                      principal: input.principal,
+                      ...(input.reason === undefined ? {} : { reason: input.reason }),
+                    },
+                  },
+                },
+              };
+            },
+            {
+              outbox: reviewAuditOutboxAttachment({
+                ...auditAttachment,
+                decisionRequest: currentRecovery.request,
+                detail: {
+                  ...(auditAttachment.detail as Record<string, unknown>),
+                  decisionRequest: currentRecovery.request,
+                },
+              }),
+            },
+          );
+          if (committed === undefined) continue;
+          markReviewResolvedLocally(review);
+          await releaseDecidedReview(runId, marker.id);
+          await recordReviewDecision(review, 'approve', input.principal, input.reason, {
+            auditAlreadyAppended: true,
+            answerDigest: currentRecovery.request.digest,
+          });
+          await recordApprovedCall(approvedCallAuditOf(review, persisted.approval, result));
+        } finally {
+          runtimeServices.timers.clearInterval(renewal);
+          await runtime.sessionStore?.update(sessionId, (cleanupSession) => {
+            if (cleanupSession === undefined) return undefined;
+            const current = leaseOf(cleanupSession.metadata);
+            if (current?.['token'] !== token) return undefined;
+            const leases = isJsonObject(cleanupSession.metadata['approvalPeerRecoveryLeases'])
+              ? cleanupSession.metadata['approvalPeerRecoveryLeases']
+              : {};
+            return {
+              ...cleanupSession,
+              metadata: {
+                ...cleanupSession.metadata,
+                approvalPeerRecoveryLeases: omitKey(leases, marker.id),
+              },
+            };
+          });
+        }
+      } catch (error) {
+        diagnose({
+          level: 'warn',
+          scope: 'approval-recovery',
+          message: `[bureau] Peer approval recovery for "${marker.id}" did not complete; leaving it interrupted.`,
+          cause: error,
+        });
+      }
+    }
+  }
+
   function persistedApprovalRunIds(metadata: unknown): Set<string> {
     const metadataRecord =
       metadata && typeof metadata === 'object' && !Array.isArray(metadata)
@@ -7958,10 +8712,22 @@ async function constructBureau<const D extends AgentDefinitions>(
         ? stringValues(metadataRecord['resolvedReviewIds'])
         : [],
     );
+    // A peer approval marker is written after the binding has been consumed by the original
+    // process. `restoreApproval` quite correctly refuses consumed bindings, but removing the
+    // persisted approval here would also remove the only durable handle the trusted adapter can
+    // use to attach to the already-started task.
+    const peerRecoveryIds = new Set(
+      readApprovalResolutionStarted(
+        metadataRecord?.['approvalResolutionStartedIds'] as JSONValue | undefined,
+      )
+        .filter((record) => record.peerRecovery !== undefined)
+        .map((record) => record.id),
+    );
     for (const [reviewId, approval] of Object.entries(overrides as Record<string, unknown>)) {
       if (!reviewId.startsWith(`approval:${runId}:`)) continue;
       if (decidedReviewIds.has(reviewId)) continue;
       if (committed !== undefined && !committed.has(reviewId)) continue;
+      if (peerRecoveryIds.has(reviewId)) continue;
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
         if (!(approval as { approvalBinding?: unknown }).approvalBinding) continue;
         try {
@@ -8704,12 +9470,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     // is stopped by it only before its first step. Two runs that start together both read the
     // total as it is: the owner's decision is that the NEXT run stops, not one that has begun.
     const chatCostBudget = await chatCostBudgetOf(sessionAgent, sessionId, session);
-    const requestContext = normalizeRunRequestContext(
-      request.requestContext,
-      runId,
-      sessionId,
-      agentName,
-      request.principal,
+    const requestContext = await bindRunWorkspaceAuthority(
+      workspace,
+      normalizeRunRequestContext(
+        request.requestContext,
+        runId,
+        sessionId,
+        agentName,
+        request.principal,
+      ),
+      owner,
     );
     if (isTransportIssuedAuthority(requestContext)) {
       if (!requestAuthorityValidator) {
@@ -8891,32 +9661,8 @@ async function constructBureau<const D extends AgentDefinitions>(
           // Durable recovery needs the authority that was safe to persist at
           // dispatch time. Credentials, tracing, and other request-local data
           // intentionally never cross the session boundary.
-          lastRequestAuthority: {
-            agentId: agentName,
-            principalId: requestContext.authority.principalId,
-            tenantId: requestContext.authority.tenantId,
-            ownerId: requestContext.authority.ownerId,
-            capabilities: [...requestContext.authority.capabilities],
-            authorizationRevision: requestContext.authority.authorizationRevision,
-            ...(requestContext.audience !== undefined ? { audience: requestContext.audience } : {}),
-            ...(requestContext.deadline !== undefined ? { deadline: requestContext.deadline } : {}),
-          },
-          lastRequestAuthorities: {
-            [runId]: {
-              agentId: agentName,
-              principalId: requestContext.authority.principalId,
-              tenantId: requestContext.authority.tenantId,
-              ownerId: requestContext.authority.ownerId,
-              capabilities: [...requestContext.authority.capabilities],
-              authorizationRevision: requestContext.authority.authorizationRevision,
-              ...(requestContext.audience !== undefined
-                ? { audience: requestContext.audience }
-                : {}),
-              ...(requestContext.deadline !== undefined
-                ? { deadline: requestContext.deadline }
-                : {}),
-            },
-          },
+          lastRequestAuthority: persistedRequestAuthority(requestContext, agentName),
+          lastRequestAuthorities: { [runId]: persistedRequestAuthority(requestContext, agentName) },
           // AB-359, COR-718 — persist the run's OWNER (`request.principal`, or
           // `anonymous:local` when it states none), never
           // `requestContext.authority.principalId`: that is tool-execution
@@ -8993,12 +9739,12 @@ async function constructBureau<const D extends AgentDefinitions>(
         decide: decideWiring,
         ...(humanInputEmitter ? { humanInputEmitter } : {}),
       });
-      const durableServicesOnServices =
-        wantsHumanInput || wantsWakeup
-          ? (services: DurableRunDeps) => {
-              servicesRef.current = services;
-            }
-          : undefined;
+      const durableServicesOnServices = runtime.durable
+        ? (services: DurableRunDeps) => {
+            servicesRef.current = services;
+            configureChildWaitServices(services, owner);
+          }
+        : undefined;
 
       // AB-67/AB-199 — steering is scoped to in-memory (process-local)
       // sessions only: a durably-configured bureau's `submitSteeringCommand`
@@ -11120,7 +11866,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               verdict: 'cancel',
               rejection: 'prepared-not-launched',
             });
-            cancelNeverLaunched(handle.id, durable.engine.cancel(handle.id));
+            cancelNeverLaunched(
+              handle.id,
+              durable.engine.cancel(handle.id).then(() => undefined),
+            );
           }
           continue;
         }
@@ -11598,6 +12347,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       workflowRuntime !== undefined &&
       (await workflowRuntime.isWorkflowType(fire.type))
     ) {
+      const input = fire.input;
+      const origin =
+        typeof input === 'object' && input !== null && 'origin' in input ? input.origin : undefined;
+      if (isTaskOrigin(origin) && origin.kind === 'person') return origin.principal;
       return workflowRuntime.workflows.owner;
     }
     if (fire !== null && isScheduledAgentRunInput(fire.input)) {
@@ -12104,7 +12857,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   async function cancelDurableRun(runId: string): Promise<CancelDurableRunOutcome> {
     const outcome = await resolveCancelDurableRun(runId, {
       getDurableRun,
-      cancel: (id) => runtime.durable!.engine.cancel(id),
+      cancel: (id) => runtime.durable!.engine.cancel(id).then(() => undefined),
     });
     // AB-46: only an ACTUALLY-committed cancellation ('requested') terminates
     // the run — 'already-terminal'/'not-found'/'failed'/'unsupported-capability'
@@ -13588,17 +14341,32 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the only payload shape this bureau ever appends under
    * {@link REVIEW_AUDIT_OUTBOX_NAMESPACE}.
    */
-  function isReviewAuditAttachmentPayload(
-    value: unknown,
-  ): value is { runId: string; type: string; detail: unknown; principal: string } {
+  function isReviewAuditAttachmentPayload(value: unknown): value is ReviewAuditAttachment {
     if (typeof value !== 'object' || value === null) return false;
     const record = value as Record<string, unknown>;
-    return (
+    if (
       typeof record['runId'] === 'string' &&
       typeof record['type'] === 'string' &&
       'detail' in record &&
       typeof record['principal'] === 'string'
-    );
+    ) {
+      const request = record['decisionRequest'];
+      if (request === undefined) return true;
+      if (typeof request !== 'object' || request === null || Array.isArray(request)) return false;
+      const candidate = request as Record<string, unknown>;
+      return (
+        typeof candidate['reviewId'] === 'string' &&
+        typeof candidate['round'] === 'number' &&
+        Number.isInteger(candidate['round']) &&
+        (candidate['decision'] === 'approve' ||
+          candidate['decision'] === 'deny' ||
+          candidate['decision'] === 'reject') &&
+        typeof candidate['principal'] === 'string' &&
+        typeof candidate['digest'] === 'string' &&
+        (candidate['reason'] === undefined || typeof candidate['reason'] === 'string')
+      );
+    }
+    return false;
   }
 
   /**
@@ -13680,6 +14448,17 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1828: the decision's resolved-review record rides the same replay, so a crash after the
     // session commit leaves it for the next drain, as it leaves the audit entry.
     await recordResolvedReview(payload, entry.committedAtMs);
+    if (payload.decisionRequest !== undefined) {
+      const recorded = await reviewDecisions.markRecorded(payload.decisionRequest);
+      const inspection = recorded
+        ? undefined
+        : await reviewDecisions.inspect(payload.decisionRequest);
+      if (!recorded && (inspection?.outcome !== 'matching' || !inspection.recorded)) {
+        throw new Error(
+          `could not mark review decision "${payload.decisionRequest.reviewId}" recorded before acknowledging its outbox entry`,
+        );
+      }
+    }
     return acknowledge();
   }
 
@@ -14152,6 +14931,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       await reconcileAssetClaims();
       // COR-194 — a schedule transition whose record failed after its commit is retried here.
       try {
+        await pauseInvalidSchedules();
         await recordPendingScheduleTransitions();
       } catch (error: unknown) {
         diagnose({
@@ -14528,6 +15308,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         await reconcileAssetClaims();
         // COR-194 — a schedule transition whose record failed after its commit is retried here.
         try {
+          await pauseInvalidSchedules();
           await recordPendingScheduleTransitions();
         } catch (error: unknown) {
           diagnose({
@@ -15235,6 +16016,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       context.holderOf,
       context.rows,
       {
+        workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, context.principalId),
         onFailure: (assetId, error, rowId) => {
           context.onFailure(assetId, error, rowId);
           if (!isPermanentClaimFailure(error)) transientFailure ??= { error };
@@ -16629,7 +17411,10 @@ async function constructBureau<const D extends AgentDefinitions>(
       assetService === undefined
         ? undefined
         : await sizeManagedAssets(session.conversationHistory, async (assetId) => {
-            const descriptor = await assetService.inspect(assetId, { id: owner });
+            const descriptor = await assetService.inspect(assetId, {
+              id: owner,
+              workspaceAuthority: runtimeWorkspaceOwnerAuthority(workspace, owner),
+            });
             return {
               state: descriptor.state,
               custody: descriptor.custody,
@@ -18787,7 +19572,12 @@ async function constructBureau<const D extends AgentDefinitions>(
               'CONFLICT',
             );
           }
-          await persistApprovalResolutionStartedWithRetry(review.sessionId, review.id);
+          const peerRecovery = peerRecoveryForApproval(review, input, claimRequest);
+          await persistApprovalResolutionStartedWithRetry(
+            review.sessionId,
+            review.id,
+            peerRecovery,
+          );
           actionStarted = true;
           const approvedCallStartedAt = runtimeServices.clock.nowISO();
           result = await approvalToolbox.resumeApproval(
@@ -18800,6 +19590,9 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1920: the approved call is the run's, so a secret answer it names resolves for
               // that run, as it would have had the call not waited for approval.
               executionContext: { parentRunId: review.runId },
+              ...(peerRecovery === undefined
+                ? {}
+                : { durableOperationKey: peerRecovery.durableOperationKey }),
             },
           );
           approvalRunTimes.set(review.id, {
@@ -20013,6 +20806,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1879 — the plugin whose host API creates the schedule; its `schedule.created` names it.
     source?: string,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
+    definition = structuredClone(definition);
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
       // A schedule's session is made by its first fire when none exists yet. Only `.` and `..` are
@@ -20027,6 +20821,17 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
+    if (
+      workspace !== undefined &&
+      definition.sessionId !== undefined &&
+      (await sessionOwner(definition.sessionId.trim())) !== owner
+    ) {
+      throw new BureauError('Session not found', 'NOT_FOUND');
+    }
+    const workspaceAuthority =
+      workspace === undefined ? undefined : await captureRunWorkspaceAuthority(workspace, owner);
+    if (workspace !== undefined && workspaceAuthority === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
     if (!runtime.durable) return undefined;
     // COR-1667 — resolve the name the way a fire does (`agentCatalog.find`, which includes file
     // agents), so a typo is refused now instead of as `missing-agent` at the first fire. An agent
@@ -20079,6 +20884,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
         ...(definition.timeZone !== undefined ? { timeZone: definition.timeZone } : {}),
         principal: owner,
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       });
     } catch (error) {
       // Nothing was registered under the id, so its origin names no schedule.
@@ -20152,6 +20958,151 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   }
 
+  async function reassignSchedule(
+    scheduleId: string,
+    request: {
+      readonly administrator: string;
+      readonly targetOwner: string;
+      readonly expectedRevision: number;
+    },
+  ): Promise<true | undefined> {
+    const { administrator, targetOwner, expectedRevision } = request;
+    if (workspace === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const durable = runtime.durable;
+    if (durable === undefined) return undefined;
+    const snapshot = await durable.engine.getSchedule(scheduleId);
+    if (snapshot?.revision !== expectedRevision)
+      throw new BureauError('Schedule revision changed.', 'CONFLICT');
+    const input = await storedScheduleInput(durable.engine, scheduleId);
+    if (
+      typeof input !== 'object' ||
+      input === null ||
+      Array.isArray(input) ||
+      (!isScheduledAgentRunInput(input) &&
+        (parseWorkflowScheduleId(scheduleId) === undefined ||
+          Reflect.get(input, 'kind') !== 'schedule'))
+    )
+      throw new BureauError('Schedule not found.', 'NOT_FOUND');
+    const previous = workflowScheduleBinding(input).workspaceAuthority;
+    if (previous === undefined || previous.workspaceId !== workspace.workspaceId)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const target = await resolveWorkspaceOwner(workspace, targetOwner);
+    const admin = await resolveWorkspaceOwner(workspace, administrator);
+    if (
+      admin === undefined ||
+      !admin.capabilities.includes('workspace:manage') ||
+      target === undefined ||
+      target.actorKind === 'service'
+    )
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const next = {
+      version: 1 as const,
+      workspaceId: target.workspaceId,
+      actorId: target.actorId,
+      authorizingOwner: target.owner,
+      membershipRevision: target.membershipRevision,
+    };
+    const transition: PendingScheduleTransition = {
+      kind: 'schedule.paused',
+      scheduleId,
+      committedAtMs: runtimeServices.clock.now(),
+      reassignment: {
+        workspaceId: workspace.workspaceId,
+        previousActor: previous.actorId,
+        nextActor: target.actorId,
+        administrator: admin.actorId,
+        previousRevision: expectedRevision,
+        nextRevision: expectedRevision + 1,
+      },
+    };
+    const key = scheduleTransitionKey(
+      transition,
+      runtimeServices.identifiers.next('schedule-transition'),
+    );
+    await durable.engine.replaceScheduleInput(
+      scheduleId,
+      { ...input, workspaceAuthority: next, authorityHold: 'reassigned' },
+      {
+        expectedRevision,
+        additionalOperations: [scheduleTransitionOperation(key, transition)],
+      },
+    );
+    try {
+      await recordPendingScheduleTransitions(scheduleTransitionKeyPrefix(scheduleId));
+    } catch {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: 'Schedule reassignment audit remains pending for maintenance.',
+      });
+    }
+    return true;
+  }
+
+  async function pauseInvalidSchedule(scheduleId: string): Promise<void> {
+    if (workspace === undefined || runtime.durable === undefined) return;
+    const snapshot = await runtime.durable.engine.getSchedule(scheduleId);
+    if (snapshot?.status !== 'active') return;
+    const input = await storedScheduleInput(runtime.durable.engine, scheduleId);
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
+    if (!isScheduledAgentRunInput(input) && parseWorkflowScheduleId(scheduleId) === undefined) {
+      if (snapshot.workflowType === 'agentRun')
+        await runtime.durable.engine.pauseSchedule(scheduleId, {
+          expectedRevision: snapshot.revision,
+        });
+      return;
+    }
+    let binding;
+    try {
+      binding = workflowScheduleBinding(input);
+    } catch {
+      await runtime.durable.engine.pauseSchedule(scheduleId, {
+        expectedRevision: snapshot.revision,
+      });
+      return;
+    }
+    const authority = await recoverRunWorkspaceAuthority(
+      workspace,
+      binding.workspaceAuthority,
+      isScheduledAgentRunInput(input) ? input.principal : 'anonymous:local',
+    );
+    const usableInput =
+      !isScheduledAgentRunInput(input) ||
+      (authority !== undefined &&
+        (input.sessionId === undefined ||
+          (await sessionOwner(input.sessionId)) === authority.authorizingOwner) &&
+        (await mayUseAutomationInput(
+          input.input,
+          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
+        )));
+    if (authority !== undefined && binding.authorityHold === undefined && usableInput) {
+      if (binding.workspaceAuthority === undefined)
+        await runtime.durable.engine.replaceScheduleInput(
+          scheduleId,
+          { ...input, workspaceAuthority: authority },
+          { expectedRevision: snapshot.revision, status: 'active' },
+        );
+      return;
+    }
+    await runtime.durable.engine.replaceScheduleInput(
+      scheduleId,
+      { ...input, authorityHold: binding.authorityHold ?? 'revoked' },
+      { expectedRevision: snapshot.revision },
+    );
+  }
+
+  async function pauseInvalidSchedules(): Promise<void> {
+    if (workspace === undefined || runtime.durable === undefined) return;
+    let offset = 0;
+    for (;;) {
+      const page = await runtime.durable.engine.listSchedules({ offset, limit: 100 });
+      for (const schedule of page.items) await pauseInvalidSchedule(schedule.id);
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) break;
+    }
+  }
+
   async function pauseSchedule(
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
@@ -20172,9 +21123,36 @@ async function constructBureau<const D extends AgentDefinitions>(
     const durable = runtime.durable;
     if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
-      durable.engine.resumeSchedule(scheduleId, transition),
-    );
+    if (workspace === undefined) {
+      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
+        durable.engine.resumeSchedule(scheduleId, transition),
+      );
+    } else {
+      const snapshot = await durable.engine.getSchedule(scheduleId);
+      const input = await readScheduledAgentInput(scheduleId);
+      const authority = await validateRunWorkspaceAuthority(workspace, input?.workspaceAuthority);
+      if (
+        snapshot === null ||
+        input === undefined ||
+        authority === undefined ||
+        (input.sessionId !== undefined &&
+          (await sessionOwner(input.sessionId)) !== authority.authorizingOwner) ||
+        !(await mayUseAutomationInput(
+          input.input,
+          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
+        ))
+      ) {
+        throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+      }
+      const { authorityHold: _hold, ...resumed } = input;
+      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
+        durable.engine.replaceScheduleInput(scheduleId, resumed, {
+          ...transition,
+          expectedRevision: transition.expectedRevision ?? snapshot.revision,
+          status: 'active',
+        }),
+      );
+    }
     return true;
   }
 
@@ -20246,16 +21224,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     // key since.
     if ((await runtime.durable!.engine.storage.get(key)) === null) return;
     const { kind, scheduleId, committedAtMs } = transition;
-    await eventHistoryInstance?.record(
-      { kind: 'schedule', id: scheduleId },
-      kind,
-      { scheduleId },
-      { dedupeKey: key, emittedAtMs: committedAtMs },
-    );
+    const recordKind = transition.reassignment === undefined ? kind : 'schedule.reassigned';
+    const detail = { scheduleId, ...transition.reassignment };
+    await eventHistoryInstance?.record({ kind: 'schedule', id: scheduleId }, recordKind, detail, {
+      dedupeKey: key,
+      emittedAtMs: committedAtMs,
+    });
     await auditTrailInstance?.record({
       runId: `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`,
-      type: kind,
-      detail: { scheduleId },
+      type: recordKind,
+      detail,
       timestampMs: committedAtMs,
       dedupeKey: key,
     });
@@ -21901,6 +22879,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   const { planChildRun, startChildRun, startGoalAttemptRun, startWorkflowStepRun } =
     createCatalogDispatcher({
+      workspace,
       agentCatalog,
       runtime,
       runtimeServices,
@@ -21938,6 +22917,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (shutdownPromise) return;
         void childTopology.parentCancelled(runId, reason);
       },
+      configureDurableRun: (_runId, services, principal) => {
+        configureChildWaitServices(services, principal);
+      },
     });
 
   /**
@@ -21965,6 +22947,13 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   async function runWorkflowAgentStep(request: AgentStepRequest): Promise<AgentStepResult> {
+    const authority =
+      workspace === undefined
+        ? undefined
+        : await validateRunWorkspaceAuthority(workspace, request.workspaceAuthority);
+    if (workspace !== undefined && authority === undefined)
+      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
+    const owner = authority?.authorizingOwner ?? ANONYMOUS_LOCAL_OWNER;
     const engine = runtime.durable?.engine;
     if (engine === undefined) {
       throw new WorkflowAgentStepError(
@@ -21983,7 +22972,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         claim.record.workflowStep?.workflowId !== request.workflowId ||
         claim.record.workflowStep.step !== request.step ||
         claim.record.agentName !== request.agent ||
-        claim.record.principal !== ANONYMOUS_LOCAL_OWNER
+        claim.record.principal !== owner
       ) {
         throw new WorkflowAgentStepError(
           'agent-run-failed',
@@ -22007,7 +22996,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         input: request.message,
         runId,
         workflowStep: { workflowId: request.workflowId, step: request.step },
-        principal: ANONYMOUS_LOCAL_OWNER,
+        principal: owner,
+        ...(authority === undefined ? {} : { workspaceAuthority: authority }),
       });
     } catch (error) {
       throw new WorkflowAgentStepError(
@@ -22069,8 +23059,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     // run that does not exist, as any parent that cannot own children is.
     if (isTryAgentName(attribution?.agentName ?? '')) return undefined;
     const childParent = await childTopologyStore.get(parentRunId);
+    let inheritedAuthority =
+      runRequestContexts.get(parentRunId)?.authority.workspace ?? childParent?.workspaceAuthority;
+    if (workspace !== undefined && inheritedAuthority === undefined) {
+      const recovered = await runtime.loadCatalogRunRecoveryRecord(parentRunId);
+      if (recovered.status === 'found') inheritedAuthority = recovered.record.workspaceAuthority;
+    }
+    const workspaceAuthority =
+      workspace === undefined
+        ? undefined
+        : await validateRunWorkspaceAuthority(workspace, inheritedAuthority);
+    if (workspace !== undefined && workspaceAuthority === undefined) return undefined;
+
     if (childParent) {
       return {
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
         agentName: childParent.childAgentName,
         principal: ownerOrLocal(childParent.principal),
         live: childParent.status === 'running',
@@ -22082,6 +23085,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const runState = catalogRunIds.has(parentRunId) ? undefined : store.getRun(parentRunId);
     if (runState) {
       return {
+        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
         agentName: attribution?.agentName ?? findRunAgentName(runState) ?? BUREAU_AGENT_NAME,
         principal: ownerOrLocal(attribution?.principal),
         live: runState.status === 'running',
@@ -22092,6 +23096,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const state = runtime.durable ? await runtime.durable.engine.get(parentRunId) : null;
     if (!state || !isAgentRunWorkflowInput(state.input)) return undefined;
     return {
+      ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       agentName: state.input.agentName,
       principal: ownerOrLocal(attribution?.principal),
       live: DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status),
@@ -22137,10 +23142,19 @@ async function constructBureau<const D extends AgentDefinitions>(
     },
     // COR-1806: a child shows on its parent run's stream as a child a tool dispatched does. A
     // parent this process does not hold has no action log here, and the record is dropped.
-    announce: (announcement) => {
+    announce: async (announcement) => {
       const action = childActionOf(announcement);
       if (action !== undefined) {
         store.recordAction(announcement.record.parentRunId, action.type, action.detail);
+      }
+      if (announcement.kind === 'settled') {
+        void runtime.durable?.engine
+          .signal(
+            announcement.record.parentRunId,
+            `durable-child:${announcement.record.parentRunId}:${announcement.record.childRunId}`,
+            null,
+          )
+          .catch(() => undefined);
       }
     },
     resolveParent: resolveChildParent,
@@ -22157,6 +23171,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     defaultTimeToLiveMilliseconds: () =>
       currentSettings()['children.delegation.defaultTimeToLiveMilliseconds'],
   });
+  childTopologyForWait = childTopology;
 
   // COR-1670 — the journal behind `createPeerCallTool({ durable })`.
   const peerCalls: PeerCallJournal = {
@@ -22205,10 +23220,12 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     },
   };
+  notifyPeerCallsReady(options, peerCalls);
 
   // COR-851 — durable goals: the control plane over the goal store, its
   // controller workflow's ports, and the attempt forwarder.
   const goalsComposition = composeBureauGoals({
+    workspace,
     catalog: goalValidatorCatalog,
     kv: runtime.kv,
     sessionStore: runtime.sessionStore,
@@ -22317,6 +23334,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     list: listSchedules,
     pause: pauseSchedule,
     resume: resumeSchedule,
+    reassign: reassignSchedule,
     cancel: cancelSchedule,
     update: updateSchedule,
     skipNext: skipNextSchedule,
@@ -22391,6 +23409,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
 
   const bureau: Bureau<D> = {
+    workspaceBinding: workspace,
     id: bureauId,
     plugins: pluginRegistry.plugins,
     // COR-2009: what needs attention, read now from the parts this Bureau has.
@@ -22507,7 +23526,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     maintain,
     removeExpiredRecords,
     setRequestAuthorityValidator(validator) {
-      requestAuthorityValidator = validator;
+      requestAuthorityValidator = createRunAuthorityValidator(workspace, validator);
       runtime.setRequestAuthorityValidator(validator);
       if (validator && durableRecoveryDeferred && !durableRecoveryStarted) {
         durableRecoveryDeferred = false;
@@ -22715,6 +23734,13 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   // COR-1939: user-defined hooks, on the notifier's delivery engine.
   hooksInstance = composeHooks({
+    workspace,
+    eventForHookOwner:
+      workspace === undefined ? undefined : workspaceHookEvents(workspace, ownerOf),
+    mayStartWorkflows:
+      workspace === undefined
+        ? undefined
+        : (owner) => mayRunUseSharedConfiguration(workspace, owner, 'bureau.workflows:write', true),
     options: options.hooks,
     engine: webhookNotifierInstance?.engine,
     kv: runtime.kv,
@@ -22991,6 +24017,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             });
             await restoreTerminalReviewSession(session, restoredRunId, committed);
           }
+          await recoverPeerApproval(session.id, restoredRunId, metadata);
         }
         if (!requestAuthorityValidator && hasRecoverableTransportAuthority(session.metadata)) {
           hasDeferredGatewayAuthority = true;

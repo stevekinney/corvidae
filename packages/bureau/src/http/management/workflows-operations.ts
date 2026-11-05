@@ -1,3 +1,8 @@
+import {
+  authorizeWorkspaceClass,
+  authorizeWorkspaceOperation,
+} from '../workspace-authorization.ts';
+
 /**
  * `bureau.workflows.*`: the agent-authored workflow files of a Bureau (COR-1527), written, read,
  * paused, resumed, and deleted through the same JSON files a person edits by hand, and the
@@ -62,6 +67,7 @@ import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
   resourceNotFound,
+  taskOriginSchema,
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
@@ -212,6 +218,7 @@ const runSummarySchema = z.object({
   status: runStatusSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
+  origin: taskOriginSchema.nullable(),
 });
 
 const runDetailSchema = runSummarySchema.extend({
@@ -223,6 +230,17 @@ const runDetailSchema = runSummarySchema.extend({
    * the workflow’s schema (`error` lists the issues), else `null`.
    */
   finishReason: z.enum(['input-invalid', 'output-invalid']).nullable(),
+});
+
+const runHistoryEventSchema = z.object({
+  type: z.string(),
+  timestamp: z.string(),
+  step: z.string().nullable(),
+  summary: z.string(),
+});
+const runHistoryOutput = z.object({
+  events: z.array(runHistoryEventSchema),
+  truncated: z.boolean(),
 });
 
 const documentSchema = z.object({
@@ -254,6 +272,15 @@ function mayAccessWorkflows(
   principal: Principal,
   operatorScope: BureauScope,
 ): boolean {
+  if (principal.method !== 'unauthenticated' && principal.workspace !== undefined) {
+    return (
+      principal.workspace.actorKind !== 'service' &&
+      principal.workspace.capabilities.includes('workspace:use') &&
+      (operatorScope === 'bureau.workflows:read' ||
+        (operatorScope === 'bureau.workflows:write' &&
+          principal.workspace.capabilities.includes('workspace:manage')))
+    );
+  }
   return host.ownership.mayAccess({ principal, resourceOwner: DEPLOYMENT_OWNER, operatorScope });
 }
 
@@ -388,6 +415,7 @@ export const workflowsCreateOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.create',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.create'),
   mcpExposable: false,
   summary: 'Create a workflow file',
   description:
@@ -455,6 +483,7 @@ export const workflowsValidateOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.validate',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.validate'),
   mcpExposable: true,
   summary: 'Validate a workflow draft',
   description:
@@ -502,6 +531,7 @@ export const workflowsUpdateOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.update',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.update'),
   mcpExposable: false,
   summary: 'Replace a workflow file',
   description:
@@ -539,7 +569,7 @@ export const workflowsUpdateOperation = defineOperation<
 const guardedInput = z.object({ id: workflowId, expectedHash: hash });
 
 function defineGuardedWrite(
-  name: string,
+  name: 'bureau.workflows.pause' | 'bureau.workflows.resume' | 'bureau.workflows.delete',
   summary: string,
   description: string,
   run: (
@@ -554,6 +584,7 @@ function defineGuardedWrite(
     BureauWorkflowsOperationHost
   >({
     name,
+    authorize: authorizeWorkspaceOperation(name),
     mcpExposable: false,
     summary,
     description,
@@ -622,6 +653,7 @@ export const workflowsGetOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.get',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.get'),
   mcpExposable: true,
   summary: 'Read one workflow',
   description:
@@ -663,6 +695,7 @@ export const workflowsListOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.list',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.list'),
   mcpExposable: true,
   summary: 'List workflows',
   description:
@@ -691,7 +724,9 @@ export const workflowsListOperation = defineOperation<
           ...listingView(listing),
           // A file the Bureau cannot use is never registered, so it has had no instance to count.
           runs:
-            input.includeRuns === true && listing.state === 'ready'
+            authorizeWorkspaceClass('deployment-operator', principal).allowed &&
+            input.includeRuns === true &&
+            listing.state === 'ready'
               ? await workflows.runCounts(listing.id)
               : null,
         })),
@@ -743,6 +778,7 @@ export const workflowsRevisionsOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.revisions',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.revisions'),
   mcpExposable: false,
   summary: 'List the revisions of a workflow that have run',
   description:
@@ -758,7 +794,15 @@ export const workflowsRevisionsOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'workflow', input.id);
-    const revisions = await workflows.revisions(input.id);
+    const revisions = await workflows.revisions(
+      input.id,
+      authorizeWorkspaceClass('deployment-operator', principal).allowed
+        ? undefined
+        : async (runId) => {
+            const owner = ownerOfPrincipal(principal);
+            return owner !== undefined && (await host.ownership.runOwner(runId)) === owner;
+          },
+    );
     if (revisions === undefined) throw resourceNotFound('workflow', input.id);
     return {
       revisions: revisions.map((revision) => ({
@@ -805,6 +849,7 @@ export const workflowsRunsListOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.runs.list',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.runs.list'),
   mcpExposable: true,
   summary: 'List the instances of workflows',
   description:
@@ -824,6 +869,14 @@ export const workflowsRunsListOperation = defineOperation<
     }
     const workflows = workflowsOf(host);
     const page = await workflows.listRuns({
+      ...(principal.method === 'unauthenticated' || principal.workspace === undefined
+        ? {}
+        : {
+            mayReadRun: async (runId: string) => {
+              const owner = ownerOfPrincipal(principal);
+              return owner !== undefined && (await host.ownership.runOwner(runId)) === owner;
+            },
+          }),
       workflow: input.workflow,
       status: input.status,
       limit: input.limit ?? DEFAULT_PAGE_LIMIT,
@@ -843,6 +896,7 @@ export const workflowsRunsGetOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.runs.get',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.runs.get'),
   mcpExposable: true,
   summary: 'Read one instance of a workflow',
   description:
@@ -858,6 +912,16 @@ export const workflowsRunsGetOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'run', input.runId);
+    if (
+      principal.method !== 'unauthenticated' &&
+      principal.workspace !== undefined &&
+      !host.ownership.mayAccess({
+        principal,
+        resourceOwner: await host.ownership.runOwner(input.runId),
+        operatorScope: 'bureau.workflows:read',
+      })
+    )
+      throw resourceNotFound('run', input.runId);
     const run = await workflows.getRun(input.runId);
     if (run === undefined) throw resourceNotFound('run', input.runId);
     return {
@@ -867,11 +931,113 @@ export const workflowsRunsGetOperation = defineOperation<
       status: run.status,
       createdAt: run.createdAt,
       updatedAt: run.updatedAt,
+      origin: run.origin ?? null,
       trigger: (run.trigger ?? null) as never,
       result: (run.result ?? null) as never,
       error: run.error ?? null,
       finishReason: run.finishReason,
     };
+  },
+});
+
+export const workflowsRunsCancelOperation = defineOperation<
+  typeof runsGetInput,
+  z.ZodObject<{ runId: z.ZodString; status: z.ZodLiteral<'cancel-requested'> }>,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.runs.cancel',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.runs.cancel'),
+  mcpExposable: false,
+  summary: 'Cancel a workflow run',
+  description:
+    'Requests cancellation of a Bureau workflow-file instance. Returns immediately with `cancel-requested`; read `bureau.workflows.runs.get` to observe the terminal status.',
+  destructive: true,
+  tags: ['Workflows'],
+  inputSchema: runsGetInput,
+  outputSchema: z.object({ runId: z.string(), status: z.literal('cancel-requested') }),
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(
+      host,
+      principal,
+      principal.method === 'unauthenticated' || principal.workspace === undefined
+        ? 'bureau.workflows:write'
+        : 'bureau.workflows:read',
+      'run',
+      input.runId,
+    );
+    if (
+      principal.method !== 'unauthenticated' &&
+      principal.workspace !== undefined &&
+      !host.ownership.mayAccess({
+        principal,
+        resourceOwner: await host.ownership.runOwner(input.runId),
+        operatorScope: 'bureau.workflows:write',
+      })
+    ) {
+      throw resourceNotFound('run', input.runId);
+    }
+    try {
+      return await workflows.cancel(input.runId);
+    } catch (error) {
+      if (error instanceof BureauError && error.code === 'NOT_FOUND')
+        throw resourceNotFound('run', input.runId);
+      throw error;
+    }
+  },
+});
+
+const runsHistoryInput = z.object({
+  runId: z.string().min(1).describe('The identifier of the workflow instance to inspect.'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe('The maximum number of sanitized events to return.'),
+});
+
+export const workflowsRunsHistoryOperation = defineOperation<
+  typeof runsHistoryInput,
+  typeof runHistoryOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.runs.history',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.runs.history'),
+  mcpExposable: false,
+  summary: 'Read workflow step history',
+  description:
+    'Reads bounded, sanitized step history for a Bureau workflow-file instance. Raw event data is never returned.',
+  destructive: false,
+  tags: ['Workflows'],
+  inputSchema: runsHistoryInput,
+  outputSchema: runHistoryOutput,
+  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    const workflows = workflowsFor(host, principal, 'bureau.workflows:read', 'run', input.runId);
+    if (
+      principal.method !== 'unauthenticated' &&
+      principal.workspace !== undefined &&
+      !host.ownership.mayAccess({
+        principal,
+        resourceOwner: await host.ownership.runOwner(input.runId),
+        operatorScope: 'bureau.workflows:read',
+      })
+    ) {
+      throw resourceNotFound('run', input.runId);
+    }
+    const history = await workflows.historyRuns(input.runId, input.limit ?? 100);
+    if (history === undefined) throw resourceNotFound('run', input.runId);
+    return { events: [...history.events], truncated: history.truncated };
   },
 });
 
@@ -902,6 +1068,7 @@ export const workflowsStartOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.start',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.start'),
   mcpExposable: false,
   summary: 'Start a workflow',
   description:
@@ -916,7 +1083,15 @@ export const workflowsStartOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const workflows = workflowsFor(host, principal, 'bureau.workflows:write', 'workflow', input.id);
+    const workflows = workflowsFor(
+      host,
+      principal,
+      principal.method === 'unauthenticated' || principal.workspace === undefined
+        ? 'bureau.workflows:write'
+        : 'bureau.workflows:read',
+      'workflow',
+      input.id,
+    );
     try {
       return await workflows.start(input.id, {
         input: input.input,
@@ -970,6 +1145,7 @@ export const workflowsInternalGetOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.internal.get',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.internal.get'),
   mcpExposable: false,
   summary: 'Read a code-defined workflow',
   description:
@@ -1032,6 +1208,7 @@ export const workflowsSignalOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.signal',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.signal'),
   mcpExposable: false,
   summary: 'Signal workflows',
   description:
@@ -1046,13 +1223,30 @@ export const workflowsSignalOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:write')) {
+    if (
+      !mayAccessWorkflows(
+        host,
+        principal,
+        principal.method !== 'unauthenticated' && principal.workspace !== undefined
+          ? 'bureau.workflows:read'
+          : 'bureau.workflows:write',
+      )
+    ) {
       return { started: [], delivered: [], rejected: [] };
     }
     const workflows = workflowsOf(host);
     try {
       const result = await workflows.signal(input.name, input.payload ?? null, {
         signalId: input.signalId,
+        ...(principal.method === 'unauthenticated' || principal.workspace === undefined
+          ? {}
+          : {
+              owner: ownerOfPrincipal(principal),
+              maySignalRun: async (runId: string) => {
+                const owner = ownerOfPrincipal(principal);
+                return owner !== undefined && (await host.ownership.runOwner(runId)) === owner;
+              },
+            }),
       });
       return {
         started: result.started,
@@ -1178,11 +1372,13 @@ const historyOutput = z.object({
       previousVersion: z.string().nullable(),
       changes: z.array(revisionChangeSchema),
       compatibility: revisionCompatibilitySchema,
-      runs: z.object({
-        count: z.number().int(),
-        firstRunAt: z.string().nullable(),
-        lastRunAt: z.string().nullable(),
-      }),
+      runs: z
+        .object({
+          count: z.number().int(),
+          firstRunAt: z.string().nullable(),
+          lastRunAt: z.string().nullable(),
+        })
+        .nullable(),
     }),
   ),
 });
@@ -1193,6 +1389,7 @@ export const workflowsHistoryOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.history',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.history'),
   mcpExposable: false,
   summary: 'List the saved versions of a workflow',
   description:
@@ -1230,7 +1427,9 @@ export const workflowsHistoryOperation = defineOperation<
         previousVersion: entry.previousVersion,
         changes: entry.changes.map((change) => ({ ...change })),
         compatibility: entry.compatibility,
-        runs: { ...entry.runs },
+        runs: authorizeWorkspaceClass('deployment-operator', principal).allowed
+          ? { ...entry.runs }
+          : null,
       })),
     };
   },
@@ -1252,6 +1451,7 @@ const impactOutput = z.object({
   inFlight: z
     .number()
     .int()
+    .nullable()
     .describe(
       'How many instances of the workflow have not finished: pending, running, or suspended.',
     ),
@@ -1263,6 +1463,7 @@ export const workflowsImpactOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.impact',
+  authorize: authorizeWorkspaceOperation('bureau.workflows.impact'),
   mcpExposable: false,
   summary: 'Say what saving a workflow would do',
   description:
@@ -1285,7 +1486,9 @@ export const workflowsImpactOperation = defineOperation<
         previousVersion: impact.previousVersion,
         changes: impact.changes.map((change) => ({ ...change })),
         compatibility: impact.compatibility,
-        inFlight: impact.inFlight,
+        inFlight: authorizeWorkspaceClass('deployment-operator', principal).allowed
+          ? impact.inFlight
+          : null,
       };
     } catch (error) {
       return faultOf(error, input.id);
@@ -1308,6 +1511,8 @@ export const bureauWorkflowsOperations = [
   workflowsImpactOperation,
   workflowsRunsListOperation,
   workflowsRunsGetOperation,
+  workflowsRunsCancelOperation,
+  workflowsRunsHistoryOperation,
   workflowsStartOperation,
   workflowsInternalGetOperation,
   workflowsSignalOperation,

@@ -11,22 +11,23 @@
  *   declared and tells the watchers Bureau registered, so a plugin that was `needs-setup` becomes
  *   `running` as soon as the value is stored, and a provider plugin's models join the catalog.
  * - **Generated secrets.** A declaration with `generated: true` is created on first enable, in
- *   local mode only. A remote home keeps secrets in the deployment's environment, which the host
- *   cannot write, so the plugin stays `needs-setup` until the deployment sets the variable.
+ *   when the provider and configuration backend permit publication. Read-only environment
+ *   providers leave the plugin in `needs-setup` until the deployment supplies its value.
  * - **A plugin the host cannot honor is skipped.** One that declares a secret the host keeps for
  *   itself, or one Bungalow cannot store, is not given to Bureau; it is listed `skipped` with
  *   `secret-refused`, and the host starts. {@link PluginManager.loadable} is what Bureau gets.
- * - **Local only.** A remote home refuses every write with the lock reason `deployment`.
+ * - **Capabilities.** Backend write capabilities determine whether publication is available.
  * - **No secret leaves.** A secret is written and never read back out: no answer, error, or
  *   listing carries a value, only whether one is set and where it lives.
  *
  * @module plugin-manager
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
-import type { Bungalow } from '@lostgradient/bungalow';
+import { SecretProviderError, type Bungalow } from '@lostgradient/bungalow';
 import {
+  ANONYMOUS_LOCAL_OWNER,
   pluginLoadOrder,
   type BureauPluginEntry,
   type BureauPluginSecrets,
@@ -41,7 +42,8 @@ import { createConfigurationQueue, type ConfigurationQueue } from './configurati
 import { hostWriteLocks } from './locations.ts';
 import { parsePluginSettings, readPluginSettings } from './plugins.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
-import { parseProviderConfiguration } from './providers.ts';
+import { parseDocument, parseProviderConfiguration } from './providers.ts';
+import { createWorkspaceSecrets, type WorkspaceSecrets } from './workspace-secrets.ts';
 
 /** The longest secret value the host stores. Real keys are far shorter; the limit bounds a request. */
 const MAXIMUM_SECRET_LENGTH = 4096;
@@ -100,7 +102,7 @@ export type PluginSecretStanding = {
   readonly generated: boolean;
   /** Whether a non-empty value is stored. */
   readonly set: boolean;
-  /** Where it lives: a 0600 file's path locally, or the environment variable's name remotely. */
+  /** Workspace and logical-key identity, without provider internals. */
   readonly location: string;
 };
 
@@ -177,21 +179,15 @@ export type PluginManager = {
   readonly secrets: BureauPluginSecrets;
   /** Why writes are refused, or `undefined` when they are allowed. */
   lockReason(): SettingLockReason | undefined;
-  /**
-   * Store the secret `key` and tell its watchers, so a plugin that waits on the key is not left
-   * waiting. A writer of Bungalow's secrets other than this manager calls it instead of
-   * `Bungalow.writeSecret`. The watchers hear even when the write throws, because Bungalow renames
-   * the file into place before it syncs the directory, so a failure may follow a stored value; the
-   * error still reaches the caller.
-   */
-  writeSecret(key: string, value: string): void;
+  /** Publish a version and notify watchers after settlement; no value is returned. */
+  writeSecret(key: string, value: string): Promise<void>;
   /**
    * Read the persisted choices from the file again, for a writer of `plugins.<name>` other than
    * this manager (the provider manager writes a provider plugin's allowlist), so a report shows
    * what is stored.
    */
   reload(): Promise<void>;
-  /** Create the secrets declared `generated` that an enabled plugin lacks. Local mode only; a remote home does nothing. */
+  /** Publish generated secrets an enabled plugin lacks, when both backends allow writes. */
   ensureGeneratedSecrets(): Promise<void>;
   /** Every plugin with the owner's choices and its secrets' standing. */
   snapshot(): Promise<PluginSnapshot>;
@@ -205,6 +201,8 @@ export type PluginManager = {
 
 /** What {@link createPluginManager} reads. */
 export type PluginManagerOptions = {
+  /** Shared activation/recovery service for this host. */
+  readonly workspaceSecrets?: WorkspaceSecrets;
   /** The open home. Its mode decides whether a write is allowed. */
   readonly bungalow: Pick<
     Bungalow,
@@ -212,9 +210,10 @@ export type PluginManagerOptions = {
     | 'configurationLocation'
     | 'readConfiguration'
     | 'writeConfiguration'
-    | 'readSecret'
-    | 'writeSecret'
-    | 'secretLocation'
+    | 'workspaceId'
+    | 'secretProvider'
+    | 'configurationWriteCapability'
+    | 'deploymentSecrets'
   >;
   /** The plugins the host loads. Copied: a later change to the array does not reach the manager. */
   readonly plugins: readonly BureauPluginEntry[];
@@ -247,12 +246,31 @@ export type PluginManagerOptions = {
    * (COR-2009). Bureau's watchers have already heard by then.
    */
   readonly applySecret?: (plugin: string) => Promise<void>;
+  /** Records committed plugin configuration metadata without exposing request values. */
+  readonly audit?: (entry: PluginAuditEntry) => Promise<void>;
   /** Bureau's listing, once the Bureau exists; it is empty before. */
   readonly listing: () => Promise<readonly PluginListing[]>;
   /** Secret keys the host keeps for itself: a plugin that declares one is skipped, since it would read or overwrite it. */
   readonly reservedSecretKeys: readonly string[];
   /** Prefixes of secret keys the host keeps for itself, such as the tool sources' credentials. */
   readonly reservedSecretPrefixes: readonly string[];
+};
+
+/** Metadata emitted after a plugin configuration write commits. */
+export type PluginAuditEntry = {
+  /** Stable configuration resource key in the audit trail. */
+  readonly runId: string;
+  /** Committed plugin configuration event discriminator. */
+  readonly type: 'plugin.configured';
+  /** Verified owner responsible for the committed edit. */
+  readonly principal: string;
+  /** Metadata describing the commit, excluding configuration values and secrets. */
+  readonly detail: {
+    readonly outcome: 'committed';
+    readonly changedKeys: readonly string[];
+    readonly hash: string;
+    readonly previousRevision: string | null;
+  };
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -325,6 +343,7 @@ export function pluginStartupLines(snapshot: PluginSnapshot): string[] {
 /** Create the manager. Reads the persisted choices once, now. */
 export async function createPluginManager(options: PluginManagerOptions): Promise<PluginManager> {
   const { bungalow } = options;
+  const workspaceSecrets = options.workspaceSecrets ?? createWorkspaceSecrets(bungalow);
   const location = bungalow.configurationLocation;
   // Bureau composes plugins in this order and the first holder of a name runs, so the manager
   // orders them the same way: its lookups by name then find the plugin that is running (COR-1881).
@@ -353,7 +372,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       } else {
         try {
           // Bungalow refuses a key it cannot store, naming it.
-          bungalow.secretLocation(key);
+          bungalow.deploymentSecrets.location(key);
         } catch (error) {
           message = error instanceof Error ? error.message : String(error);
         }
@@ -369,7 +388,8 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
 
   async function readText(): Promise<string | undefined> {
     try {
-      return await bungalow.readConfiguration();
+      const snapshot = await bungalow.readConfiguration();
+      return snapshot.text;
     } catch {
       throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
     }
@@ -422,15 +442,15 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       }
     }
   };
-  const writeSecret = (key: string, value: string): void => {
+  const writeSecret = async (key: string, value: string): Promise<void> => {
     try {
-      bungalow.writeSecret(key, value);
+      await workspaceSecrets.write(key, value);
     } finally {
       secretChanged(key);
     }
   };
   const secrets: BureauPluginSecrets = {
-    get: async (key) => bungalow.readSecret(key),
+    get: (key) => workspaceSecrets.read(key),
     watch(key, listener) {
       const set = watchers.get(key) ?? new Set<() => void>();
       watchers.set(key, set);
@@ -442,18 +462,30 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
   };
 
   /**
-   * Create the `generated` secrets of every enabled plugin that lacks them. The read and the write
-   * of one key are adjacent and synchronous, so a save of the same key cannot fall between them.
+   * Generate only against the configuration revision that proved the key absent. Another host
+   * can win that revision; its committed value is retained without retrying this publication.
    */
-  function generate(): void {
-    if (bungalow.mode === 'remote') return;
+  async function generate(): Promise<void> {
+    if (!workspaceSecrets.writable) return;
     for (const entry of loadable) {
       if (!enabledIn(persisted, entry)) continue;
       for (const declaration of entry.descriptor.secrets ?? []) {
         if (!isGenerated(declaration)) continue;
         const key = declaredKey(declaration);
-        if (isSet(bungalow.readSecret(key))) continue;
-        writeSecret(key, `${randomUUID()}${randomUUID()}`);
+        const snapshot = await bungalow.readConfiguration();
+        if (isSet(await workspaceSecrets.read(key, snapshot))) continue;
+        const result = await workspaceSecrets.publish({
+          operationId: randomUUID(),
+          key,
+          value: `${randomUUID()}${randomUUID()}`,
+          expectedRevision: snapshot.revision,
+          document: parseDocument(snapshot.text, location),
+        });
+        if (result.outcome !== 'committed') {
+          if (result.outcome === 'conflict' && isSet(await workspaceSecrets.read(key))) continue;
+          throw new SecretProviderError('unavailable', 'The generated secret was not published.');
+        }
+        secretChanged(key);
       }
     }
   }
@@ -501,6 +533,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     writeSecret,
     async reload() {
       persisted = readPluginSettings(await readText(), location);
+      for (const key of watchers.keys()) secretChanged(key);
     },
     ensureGeneratedSecrets: () => serialized(async () => generate()),
     close() {
@@ -510,32 +543,38 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
     async snapshot() {
       const listing = await options.listing();
       const reason = lockReason();
-      const standingOf = (plugin: PluginListing, entry: BureauPluginEntry): PluginStanding => ({
+      const standingOf = async (
+        plugin: PluginListing,
+        entry: BureauPluginEntry,
+      ): Promise<PluginStanding> => ({
         ...plugin,
         enabled: enabledIn(persisted, entry),
         configuration: configurationIn(persisted, entry.descriptor.name),
-        secrets: (entry.descriptor.secrets ?? []).map((declaration) => {
-          const key = declaredKey(declaration);
-          return {
-            key,
-            generated: isGenerated(declaration),
-            set: isSet(bungalow.readSecret(key)),
-            location: bungalow.secretLocation(key),
-          };
-        }),
+        secrets: await Promise.all(
+          (entry.descriptor.secrets ?? []).map(async (declaration) => {
+            const key = declaredKey(declaration);
+            return {
+              key,
+              generated: isGenerated(declaration),
+              set: isSet(await workspaceSecrets.read(key)),
+              location: `workspace:${bungalow.workspaceId}/${key}`,
+            };
+          }),
+        ),
         restartRequired: restartRequired(entry),
       });
+      const standing = await Promise.all(
+        listing.map(async (plugin): Promise<PluginStanding | undefined> => {
+          const entry = loadable.find(
+            (candidate) =>
+              candidate.source === plugin.source && candidate.location === plugin.location,
+          );
+          return entry === undefined ? undefined : standingOf(plugin, entry);
+        }),
+      );
       return {
         plugins: [
-          ...listing.flatMap((plugin): PluginStanding[] => {
-            // Two plugins may share a name, one running and one skipped with `name-clash`, so a
-            // listing is matched to its entry by where it came from.
-            const entry = loadable.find(
-              (candidate) =>
-                candidate.source === plugin.source && candidate.location === plugin.location,
-            );
-            return entry === undefined ? [] : [standingOf(plugin, entry)];
-          }),
+          ...standing.filter((entry): entry is PluginStanding => entry !== undefined),
           ...[...refusals].map(([entry, problem]) => refusedStanding(entry, problem)),
         ],
         unloaded,
@@ -566,9 +605,13 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         if (problem !== undefined) throw new PluginInputError(problem.field, problem.message);
       }
       const live = options.appliesConfigurationLive?.(name) === true;
+      let changedKeys: string[] = [];
+      let committedText = '';
+      let previousRevision: string | null = null;
       const change = await serialized(async () => {
         assertWritable();
-        const text = await readText();
+        const snapshot = await bungalow.readConfiguration();
+        const text = snapshot.text;
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
         if (text !== undefined) parseProviderConfiguration(text, location);
         const current = readPluginSettings(text, location);
@@ -584,16 +627,30 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
           ...(nextEnabled === undefined ? {} : { enabled: nextEnabled }),
           ...(nextConfiguration === undefined ? {} : { configuration: nextConfiguration }),
         };
+        changedKeys = [
+          ...(enabled !== undefined && enabled !== existing.enabled ? ['enabled'] : []),
+          ...(configuration !== undefined || clearsConfiguration ? ['configuration'] : []),
+        ];
         const nextDocument = { ...document, plugins: { ...declared, [name]: nextEntry } };
         // The same check the next start applies, before a byte is written.
         const applied = parsePluginSettings(nextDocument, location);
         if (live && configuration !== undefined) options.checkDocument?.(nextDocument);
         try {
-          bungalow.writeConfiguration(`${JSON.stringify(nextDocument, null, 2)}\n`);
+          const result = await bungalow.writeConfiguration(
+            `${JSON.stringify(nextDocument, null, 2)}\n`,
+            { expectedRevision: snapshot.revision },
+          );
+          if (result.outcome !== 'committed')
+            throw new Error(
+              `Configuration write outcome: ${result.outcome}. Reload before retrying.`,
+            );
+          committedText = `${JSON.stringify(nextDocument, null, 2)}\n`;
+          previousRevision = snapshot.revision;
         } catch (error) {
           // A write that throws may still have replaced the file, so the disk decides what is reported.
           try {
             persisted = readPluginSettings(await readText(), location);
+            for (const key of watchers.keys()) secretChanged(key);
           } catch {
             // The failure to report is the write's.
           }
@@ -603,9 +660,22 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
         // A plugin turned on gets the secrets it asks the host to create, now, so the next start
         // finds them. They are created after the choice is stored: a failure here leaves the choice
         // made, and the same request again finishes the job.
-        if (enabledIn(persisted, entry)) generate();
+        if (enabledIn(persisted, entry)) await generate();
         return changeOf(entry);
       });
+      await options
+        .audit?.({
+          runId: `plugin:${name}`,
+          type: 'plugin.configured',
+          principal: ANONYMOUS_LOCAL_OWNER,
+          detail: {
+            outcome: 'committed',
+            changedKeys,
+            hash: createHash('sha256').update(committedText).digest('hex'),
+            previousRevision,
+          },
+        })
+        .catch(() => undefined);
       // Applied outside the queue, which the work shares. A change to `enabled` alone waits for a restart.
       if (live && (configuration !== undefined || clearsConfiguration)) {
         await options.applyConfiguration?.(name);
@@ -642,7 +712,7 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
       }
       const change = await serialized(async () => {
         assertWritable();
-        writeSecret(key, trimmed);
+        await writeSecret(key, trimmed);
         return { plugin: name, key, set: true } as const;
       });
       // Applied outside the queue, which the work shares.

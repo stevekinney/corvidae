@@ -77,12 +77,12 @@ describe('ChatInput — Markdown in place', () => {
       { key: 'b', shiftKey: false, expected: 'say **hi**' },
       { key: 'i', shiftKey: false, expected: 'say *hi*' },
       { key: 'e', shiftKey: false, expected: 'say `hi`' },
-      { key: 'K', shiftKey: true, expected: 'say [hi](url)' },
+      { key: 'k', shiftKey: true, expected: 'say [hi](url)' },
     ];
     for (const { key, shiftKey, expected } of cases) {
       await type(textarea, 'say hi');
       textarea.setSelectionRange(4, 6);
-      const notPrevented = await fireEvent.keyDown(textarea, { key, shiftKey, metaKey: true });
+      const notPrevented = await fireEvent.keyDown(textarea, { key, metaKey: true, shiftKey });
       await tick();
       expect(notPrevented).toBe(false);
       expect(textarea.value).toBe(expected);
@@ -91,11 +91,12 @@ describe('ChatInput — Markdown in place', () => {
     expect(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)).toBe('url');
   });
 
-  test('Cmd+K is left alone, so the host can open its command palette from the composer', async () => {
-    const { container } = render(ChatInput, { id: 'markdown-palette' });
+  test('Cmd+K alone leaves the composer and its draft alone, so the application can use it', async () => {
+    const { container } = render(ChatInput, { id: 'markdown-search-key' });
     const textarea = composer(container);
     await type(textarea, 'say hi');
     textarea.setSelectionRange(4, 6);
+
     const notPrevented = await fireEvent.keyDown(textarea, { key: 'k', metaKey: true });
     await tick();
 

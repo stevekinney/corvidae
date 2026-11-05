@@ -1,3 +1,9 @@
+export type { WorkspaceOperationClass } from './http/operation-map.ts';
+export type {
+  WorkspaceCredential,
+  WorkspaceMembership,
+  WorkspaceMembershipOptions,
+} from './http/workspace-principal.ts';
 export {
   BUREAU_RESERVED_KEY_FAMILIES,
   BUREAU_RESERVED_KEY_PREFIXES,
@@ -883,6 +889,7 @@ export {
  * attach through its `mounts` option.
  */
 export {
+  type BureauResourceInventoryEntry,
   type BureauHandlerHost,
   type BureauHandlerSource,
   type BureauHandlerOptions,

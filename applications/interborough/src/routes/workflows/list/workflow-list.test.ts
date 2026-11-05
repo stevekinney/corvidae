@@ -87,6 +87,49 @@ describe('WorkflowList', () => {
     expect(await findByText('No workflows match')).not.toBeNull();
   });
 
+  test('correlates provenance by the visible filtered-page id, not a newest-runs page', async () => {
+    resetLocation('/health/runs?offset=50');
+    const visibleId = 'wf_older_agent_run';
+    fetchScript.routeUrl('/workflows', {
+      items: [summary({ id: visibleId, status: 'running', tags: ['origin:agent-run'] })],
+      total: 51,
+      offset: 50,
+      limit: 50,
+    });
+    fetchScript.routeJsonRpcMethod('bureau.workflows.runs.get', {
+      id: visibleId,
+      workflow: 'order-processing',
+      workflowVersion: 'sha256:older',
+      status: 'running',
+      createdAt: '2026-10-31T11:26:19.437Z',
+      updatedAt: '2026-10-31T11:26:20.437Z',
+      trigger: { kind: 'signal', name: 'e2e-begin' },
+      origin: { kind: 'agent-run', runId: 'calling-run-older', agentId: 'assistant' },
+    });
+
+    const { getByRole, container } = render(WorkflowListHarness, {
+      props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
+    });
+
+    await waitFor(() => expect(container.textContent).toContain('order-processing'));
+    await waitFor(() =>
+      expect(container.textContent).toContain("An agent's tool call · assistant"),
+    );
+    expect(
+      fetchScript.calls.some(
+        (call) => typeof call.init?.body === 'string' && call.init.body.includes('runs.get'),
+      ),
+    ).toBe(true);
+    expect(getByRole('link', { name: 'Calling run' }).getAttribute('href')).toBe(
+      '/runs/calling-run-older',
+    );
+    expect(
+      fetchScript.calls.filter(
+        (call) => typeof call.init?.body === 'string' && call.init.body.includes('runs.list'),
+      ),
+    ).toHaveLength(0);
+  });
+
   test('renders the table once the list query resolves', async () => {
     fetchScript.routeUrl('/workflows', {
       items: [summary()],

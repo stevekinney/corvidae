@@ -1,3 +1,8 @@
+import {
+  authorizeWorkspaceClass,
+  authorizeWorkspaceOperation,
+} from '../workspace-authorization.ts';
+
 /**
  * `bureau.hooks.*` (COR-1939, COR-1940): user-defined hooks over the Bureau's published events,
  * through `Bureau.hooks`. A hook has one `action`: a `webhook` POSTs each matching event to its URL,
@@ -37,6 +42,7 @@
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { isSharedWebhook } from '../../hooks/workspace-hook-events.ts';
 import { PUBLISHED_BUREAU_EVENT_KINDS } from '../../bureau-event-feed.ts';
 import {
   type BureauHooks,
@@ -561,6 +567,7 @@ const DEPLOYMENT_OWNER = ownerOrLocal(undefined);
  * workflows or holds `bureau.workflows:write`. The hook's owner is checked separately, by the Bureau.
  */
 function requireWorkflowAuthority(host: BureauHooksOperationHost, principal: Principal): void {
+  if (isWorkspaceAdministrator(principal)) return;
   if (
     !host.ownership.mayAccess({
       principal,
@@ -580,6 +587,13 @@ function requireWorkflowAuthority(host: BureauHooksOperationHost, principal: Pri
  * The hook `id` when `principal` may use `operatorScope` on it (it owns it, or holds the scope),
  * and `NotFound` otherwise.
  */
+function isWorkspaceAdministrator(principal: Principal): boolean {
+  return (
+    principal.method !== 'unauthenticated' &&
+    principal.workspace?.capabilities.includes('workspace:manage') === true
+  );
+}
+
 async function hookFor(
   host: BureauHooksOperationHost,
   principal: Principal,
@@ -590,7 +604,8 @@ async function hookFor(
   const hook = await host.hooks.get(id);
   if (
     hook === undefined ||
-    !host.ownership.mayAccess({ principal, resourceOwner: hook.owner, operatorScope })
+    (!isWorkspaceAdministrator(principal) &&
+      !host.ownership.mayAccess({ principal, resourceOwner: hook.owner, operatorScope }))
   ) {
     throw resourceNotFound('hook', id);
   }
@@ -625,6 +640,7 @@ export const hooksCreateOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.create',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.create'),
   mcpExposable: false,
   summary: 'Create a hook',
   description:
@@ -654,7 +670,12 @@ export const hooksCreateOperation = defineOperation<
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
       });
-      return { ...hookViewOf(created), signingSecret: created.signingSecret ?? null };
+      return {
+        ...hookViewOf(created),
+        signingSecret: authorizeWorkspaceClass('deployment-operator', principal).allowed
+          ? (created.signingSecret ?? null)
+          : null,
+      };
     } catch (error) {
       return faultOf(error);
     }
@@ -699,6 +720,7 @@ export const hooksUpdateOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.update',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.update'),
   mcpExposable: false,
   summary: 'Change a hook',
   description:
@@ -719,7 +741,21 @@ export const hooksUpdateOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    const { hooks, hook } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    const workspace = principal.method !== 'unauthenticated' && principal.workspace !== undefined;
+    const foreign = workspace && ownerFor(principal) !== hook.owner;
+    if (
+      workspace &&
+      input.signingSecret !== undefined &&
+      !authorizeWorkspaceClass('deployment-operator', principal).allowed
+    )
+      throw {
+        code: 'Forbidden',
+        message: 'Signing secrets require the deployment operation',
+        data: { reason: 'deployment operation required' },
+      } satisfies OperationFault;
+    if (foreign && !isSharedWebhook(input.action ?? hook.action, input.events ?? hook.events))
+      throw resourceNotFound('hook', input.hookId);
     // Where the whole Bureau's events go is decided by the url, the kinds, and whether the hook
     // fires at all, so the caller needs the scope for each of them, whoever created the hook.
     if (
@@ -743,9 +779,9 @@ export const hooksUpdateOperation = defineOperation<
         ...(input.signingSecret === undefined ? {} : { signingSecret: input.signingSecret }),
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
-        ...(input.expectedRevision === undefined
+        ...((input.expectedRevision ?? (foreign ? hook.revision : undefined)) === undefined
           ? {}
-          : { expectedRevision: input.expectedRevision }),
+          : { expectedRevision: input.expectedRevision ?? hook.revision }),
       });
       if (updated === undefined) throw resourceNotFound('hook', input.hookId);
       return hookViewOf(updated);
@@ -773,6 +809,7 @@ export const hooksReplaceSigningSecretOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.secret.replace',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.secret.replace'),
   mcpExposable: false,
   summary: 'Replace a hook’s signing secret',
   description:
@@ -816,6 +853,7 @@ export const hooksDeleteOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.delete',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.delete'),
   mcpExposable: false,
   summary: 'Delete a hook',
   description:
@@ -847,6 +885,7 @@ export const hooksGetOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.get',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.get'),
   mcpExposable: false,
   summary: 'Read a hook',
   description:
@@ -878,6 +917,7 @@ export const hooksListOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.list',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.list'),
   mcpExposable: false,
   summary: 'List hooks',
   description:
@@ -893,13 +933,25 @@ export const hooksListOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     if (host.hooks === undefined) throw unsupported();
-    const everyOwner = holds(principal, 'bureau.hooks:read');
+    const everyOwner =
+      isWorkspaceAdministrator(principal) ||
+      (principal.method !== 'unauthenticated' &&
+        principal.workspace === undefined &&
+        holds(principal, 'bureau.hooks:read'));
     const owner = everyOwner ? undefined : ownerFor(principal);
     const listed = await host.hooks.list({
       ...(owner === undefined ? {} : { owner }),
       ...(input.scope === undefined ? {} : { scope: input.scope }),
     });
-    return { hooks: listed.map(listedHookViewOf) };
+    return {
+      hooks: listed.map((hook) => ({
+        ...listedHookViewOf(hook),
+        ...(!authorizeWorkspaceClass('deployment-operator', principal).allowed &&
+        ownerOfPrincipal(principal) !== hook.owner
+          ? { lastDelivery: null }
+          : {}),
+      })),
+    };
   },
 });
 
@@ -909,6 +961,7 @@ export const hooksTestOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.test',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.test'),
   mcpExposable: false,
   summary: 'Send a test delivery',
   description:
@@ -923,7 +976,13 @@ export const hooksTestOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const { hooks } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    const { hooks, hook } = await hookFor(host, principal, input.hookId, 'bureau.hooks:write');
+    if (
+      principal.method !== 'unauthenticated' &&
+      principal.workspace !== undefined &&
+      ownerFor(principal) !== hook.owner
+    )
+      throw resourceNotFound('hook', input.hookId);
     const actor = actorOf(principal);
     try {
       const delivery = await hooks.test(
@@ -955,6 +1014,7 @@ export const hooksDeliveriesOperation = defineOperation<
   BureauHooksOperationHost
 >({
   name: 'bureau.hooks.deliveries',
+  authorize: authorizeWorkspaceOperation('bureau.hooks.deliveries'),
   mcpExposable: false,
   summary: 'List a hook’s deliveries',
   description:

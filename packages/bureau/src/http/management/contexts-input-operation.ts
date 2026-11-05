@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.contexts.input`: admit one input to a context (a Bureau session) through
  * `Bureau.contexts.input`, so a client can follow up on a run that is still going.
@@ -137,6 +139,7 @@ export const contextsInputOperation = defineOperation<
   BureauContextsInputOperationHost
 >({
   name: 'bureau.contexts.input',
+  authorize: authorizeWorkspaceOperation('bureau.contexts.input'),
   mcpExposable: true,
   summary: 'Send input to a context',
   description:

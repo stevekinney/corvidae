@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * The host's workflow directory (COR-1527): JSON files in Bungalow's `workflows/` directory are
  * workflows of the Bureau. Their agent steps run the host's agents, here the seeded `assistant`,
@@ -33,6 +34,7 @@ async function startAt(files: Readonly<Record<string, string>> = {}): Promise<{
   readonly home: string;
 }> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-workflows-'));
+  await initializeWorkspaceHome(home);
   directories.push(home);
   if (Object.keys(files).length > 0) {
     await mkdir(join(home, 'workflows'), { recursive: true });
@@ -91,14 +93,11 @@ describe('the host’s workflow directory', () => {
       { id: 'digest', state: 'ready', owner: 'anonymous:local', agent: 'assistant' },
     ]);
 
-    const run = await host.engine.start(
-      'digest',
-      { kind: 'schedule', scheduleId: 'manual' },
-      { id: 'digest-run' },
-    );
+    const started = await host.bureau.workflows!.start('digest', { owner: 'anonymous:local' });
+    const run = host.engine.getHandle(started.runId);
     const result = (await run.result()) as { content: string };
     expect(result.content).toContain('Hello from the assistant');
-    expect(await host.bureau.ownerOf({ kind: 'run', id: 'digest-run' })).toBe('anonymous:local');
+    expect(await host.bureau.ownerOf({ kind: 'run', id: started.runId })).toBe('anonymous:local');
     // The workflow has its one native schedule.
     const schedules = await host.bureau.schedules.list({ status: ['active'] });
     expect(schedules?.items.map((schedule) => schedule.id)).toEqual([

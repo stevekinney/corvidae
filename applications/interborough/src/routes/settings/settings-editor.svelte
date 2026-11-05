@@ -9,9 +9,13 @@
    */
   import { Alert, Button, ConfirmDialog, validateSchemaFormValue } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount, untrack } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
 
-  import { SETTINGS_COPY } from '../../app/copy.ts';
+  import { RESTART_COPY, SETTINGS_COPY } from '../../app/copy.ts';
+  import { HostRestartFlow } from '../../app/restart/host-restart-flow.svelte.ts';
+  import RestartBackBanner from '../../app/restart/restart-back-banner.svelte';
+  import RestartConfirmDialog from '../../app/restart/restart-confirm-dialog.svelte';
+  import RestartDialog from '../../app/restart/restart-dialog.svelte';
   import {
     getSettings,
     settingsFaultOf,
@@ -33,6 +37,7 @@
     groupsOf,
     inSection,
     MODEL_POLICY_KEY,
+    settingLabel,
     type Control,
     type SettingsSectionId,
   } from './settings-controls.ts';
@@ -196,6 +201,25 @@
     ),
   );
 
+  // The restart the summary offers: the host is back when the settings it reports no longer wait
+  // for one. Everything the page kept is from the host that stopped, so it is read again.
+  const restartFlow = new HostRestartFlow<SettingsSnapshot>({
+    read: () => getSettings(),
+    waiting: (current) => Object.values(current.keys).some((key) => key.pendingRestart),
+  });
+  onDestroy(() => restartFlow.dispose());
+  let confirmingRestart = $state(false);
+  const restartRefusalWords = $derived(
+    restartFlow.refusal === undefined || restartFlow.refusal === 'save-failed'
+      ? ''
+      : RESTART_COPY.refusal[restartFlow.refusal],
+  );
+
+  $effect(() => {
+    if (restartFlow.phase !== 'back') return;
+    untrack(() => void queryClient.invalidateQueries());
+  });
+
   /** Reads the settings again and starts the form over from them, whatever was edited. */
   async function reload(): Promise<void> {
     const fresh = await queryClient.fetchQuery({
@@ -255,6 +279,35 @@
     <p class="weft-settings-editor__alert-body">
       {SETTINGS_COPY.restartSummary(restartKeys)}
     </p>
+    {#if restartRefusalWords !== ''}
+      <p class="weft-settings-editor__alert-body" data-testid="settings-restart-refused">
+        {restartRefusalWords}
+      </p>
+    {/if}
+    <Button
+      data-changes
+      variant="primary"
+      size="sm"
+      disabled={restartFlow.running || form.dirtyKeys.length > 0}
+      onclick={() => (confirmingRestart = true)}>{RESTART_COPY.confirm.confirm}</Button
+    >
+  </Alert>
+{/if}
+{#if restartFlow.phase === 'back'}
+  <RestartBackBanner
+    title={RESTART_COPY.back.title}
+    text={RESTART_COPY.back.applied(restartFlow.intent.changes)}
+    onDismiss={() => restartFlow.close()}
+  />
+{:else if restartFlow.phase === 'unconfirmed'}
+  <Alert
+    variant="warning"
+    dismissible
+    onDismiss={() => restartFlow.close()}
+    data-testid="settings-restart-unconfirmed"
+  >
+    <p class="weft-settings-editor__alert-title">{RESTART_COPY.unconfirmed.title}</p>
+    <p class="weft-settings-editor__alert-body">{RESTART_COPY.unconfirmed.description}</p>
   </Alert>
 {/if}
 
@@ -306,6 +359,13 @@
     >
   </div>
 </div>
+
+<RestartConfirmDialog
+  bind:open={confirmingRestart}
+  changes={restartKeys.length}
+  onConfirm={() => void restartFlow.restart({ changes: restartKeys.map(settingLabel) })}
+/>
+<RestartDialog flow={restartFlow} />
 
 <ConfirmDialog
   bind:open={confirming}

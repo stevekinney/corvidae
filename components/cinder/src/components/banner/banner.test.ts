@@ -227,3 +227,27 @@ describe('Banner persistence', () => {
     expect(container.querySelector('.cinder-banner')).not.toBeNull();
   });
 });
+
+describe('Banner success glyph', () => {
+  test('a success banner leads with a decorative check-circle, and an icon replaces it', () => {
+    const { container } = render(Banner, {
+      props: { variant: 'success', title: 'Back up', children: textSnippet('All applied.') },
+    });
+    const glyph = container.querySelector('.cinder-banner__icon');
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+    expect(glyph?.querySelector('svg')?.getAttribute('class')).toContain('lucide-circle-check');
+    cleanup();
+    const own = render(Banner, {
+      props: {
+        variant: 'success',
+        children: textSnippet('All applied.'),
+        icon: createRawSnippet(() => ({ render: () => '<svg data-testid="own"></svg>' })),
+      },
+    });
+    expect(own.container.querySelector('.cinder-banner__icon [data-testid="own"]')).not.toBeNull();
+    expect(own.container.querySelector('.lucide-circle-check')).toBeNull();
+    cleanup();
+    const info = render(Banner, { props: { variant: 'info', children: textSnippet('Heads up.') } });
+    expect(info.container.querySelector('.cinder-banner__icon')).toBeNull();
+  });
+});

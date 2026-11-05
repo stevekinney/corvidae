@@ -38,6 +38,26 @@ export type BreadcrumbsProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
    * Default `"Back to {label}"`.
    */
   backLabel?: string;
+  /**
+   * How many ancestors (every entry before the current page) show before the rest fold into a
+   * leading "…" button that lists them in a menu. Left unset, a trail shows every ancestor until
+   * its container is narrower than 24rem, where one ancestor shows (the current page's parent):
+   * an ancestor that cannot show its full first word is left out with its separator, never
+   * squeezed to a fragment. A number applies at every width, and `0` folds every ancestor.
+   */
+  maxVisible?: number;
+  /**
+   * Accessible name of the "…" button that opens the hidden ancestors. Default
+   * `"Show earlier pages"`.
+   */
+  overflowLabel?: string;
+  /**
+   * Called when a link in the hidden-ancestors menu is clicked, with the entry it opens. Call
+   * `event.preventDefault()` to open the page without a reload, as an application's router does.
+   * The menu renders in a portal, outside the trail's own element, so a click handler on the
+   * trail never sees these links.
+   */
+  onOverflowNavigate?: (item: BreadcrumbItem, event: MouseEvent) => void;
   /** Additional class names merged with `.cinder-breadcrumbs`. */
   class?: string;
 };
@@ -69,6 +89,16 @@ export interface BreadcrumbsSchemaProps {
    * @default "Back to {label}"
    */
   backLabel?: string;
+  /**
+   * How many ancestors show before the rest fold into a "…" menu. Unset, every ancestor shows
+   * until the container is narrower than 24rem, where one does.
+   */
+  maxVisible?: number;
+  /**
+   * Accessible name of the "…" button that opens the hidden ancestors.
+   * @default "Show earlier pages"
+   */
+  overflowLabel?: string;
   /** Additional class names merged with `.cinder-breadcrumbs`. */
   class?: string;
 }

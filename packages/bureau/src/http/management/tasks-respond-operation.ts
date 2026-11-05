@@ -28,13 +28,18 @@ import { type TasksRespondInput, tasksRespondInput } from '../../tasks/respond-t
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauTasks, TaskRespondResult } from '../../types.ts';
 import { reviewFault, reviewReceiptSchema } from '../bureau-reviews-operations.ts';
-import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
+import {
+  type BureauOwnershipHost,
+  mayUseCrossOwnerScope,
+  ownerOfPrincipal,
+} from '../owner-predicate.ts';
 import {
   resourceNotFound,
   unaryTransports as transports,
   unknownKeyPolicy,
 } from './management-schemas.ts';
-import { holdsScope, mayAccessTask } from './tasks-operations.ts';
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+import { mayAccessTask } from './tasks-operations.ts';
 
 const tasksRespondOutput = z.object({
   taskId: z.string(),
@@ -122,7 +127,8 @@ export async function respondToTask(
     return await host.respond({
       ...input,
       principal: caller,
-      operator: holdsScope(principal, 'bureau.tasks:write'),
+      // The responder checks caller-owned receipts before task retention, then task ownership.
+      operator: mayUseCrossOwnerScope(principal, 'bureau.tasks:write'),
     });
   } catch (error) {
     throw respondFault(error, input.taskId);
@@ -135,6 +141,7 @@ export const tasksRespondOperation = defineOperation<
   BureauTasksRespondOperationHost
 >({
   name: 'bureau.tasks.respond',
+  authorize: authorizeWorkspaceOperation('bureau.tasks.respond'),
   mcpExposable: true,
   summary: 'Answer a task’s open human-input or approval wait',
   description:

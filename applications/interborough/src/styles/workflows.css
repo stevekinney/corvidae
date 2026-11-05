@@ -110,7 +110,16 @@
 
 .weft-workflows-table__id-cell {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: var(--cinder-space-1-5, 6px);
+  min-width: 0;
+}
+
+.weft-workflows-table__id-line {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
   gap: var(--cinder-space-1-5, 6px);
   min-width: 0;
 }
@@ -132,6 +141,20 @@
 
 .weft-workflows-table__id-link code {
   font-family: var(--cinder-font-mono);
+}
+
+.weft-workflows-table__origin {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--cinder-text-subtle);
+  font-size: var(--cinder-text-xs);
+}
+
+.weft-workflows-table__origin-label {
+  margin-right: 4px;
+  color: var(--cinder-text-subtle);
 }
 
 .weft-workflows-table__tags {

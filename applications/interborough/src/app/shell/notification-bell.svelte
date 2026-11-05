@@ -1,36 +1,36 @@
 <script lang="ts">
   /**
-   * Notification bell + dropdown: what needs the person (a tool waiting for approval, a question,
-   * a failed run) and what finished in a chat they are not looking at. One flat row per item, the
-   * sentence first and the chat or schedule it is about after it, never a run. The badge counts
-   * what needs the person; an answer is listed but does not count. The critical strip below the
-   * header is a sibling component (`./critical-alert-strip.svelte`) fed by the same store.
+   * Notification bell + popover (design rows 02w and 02x): what needs the person (a tool waiting
+   * for approval, a question, a failed run, a schedule that missed runs) and what finished in a
+   * chat they are not looking at. The bell carries a dot while anything is unread; the popover is
+   * titled "Notifications · 3 unread", lists what waits on the person first, then failures and
+   * missed schedules, and tints the unread rows. A row is a sentence, a second line that says what
+   * kind of wait it is and whose it is, and how long ago. The critical strip below the header is a
+   * sibling component (`./critical-alert-strip.svelte`) fed by the same store.
    *
    * A list that could not be read says so instead of reading as empty, and a mark-as-read the
    * Bureau refused says the items are unread again. The panel ends with where notifications are set
    * up: their settings, and Hooks for email or webhooks.
    *
    * Built on Cinder's `Popover`, the component for a non-menu panel anchored to a button: it
-   * supplies the trigger's `aria-expanded`, focus, Escape, click-outside and positioning. A
-   * `Dropdown` would set `role="menu"`, which forbids the links and the button a panel of
-   * notifications holds. Cinder has no one-line notification row (`StackedListItem` is a two-line
-   * row), so the row is a plain anchor over the store's items.
+   * supplies the trigger's `aria-expanded`, focus, Escape, click-outside and positioning, and below
+   * 640px it opens as a bottom sheet. A `Dropdown` would set `role="menu"`, which forbids the links
+   * and the button a panel of notifications holds. Cinder's `StackedListItem` is a status-first
+   * list row for pages; a popover row with an icon tile and an unread mark is not that shape, so
+   * the row is a plain anchor over the store's items.
    */
-  import { Alert, Button, EmptyState, Popover, VisuallyHidden } from '@lostgradient/cinder';
+  import { Alert, Button, EmptyState, formatCompactAge, Popover } from '@lostgradient/cinder';
   import type { LucideIcon } from '@lucide/svelte';
   import {
     Bell,
     CalendarX,
     CircleX,
-    MessageCircleCheck,
     MessageCircleQuestionMark,
     PlugZap,
     ShieldQuestionMark,
     TriangleAlert,
   } from '@lucide/svelte';
 
-  import { formatRelativeTime } from '../../lib/format/index.ts';
-  import IdentifierText from '../../lib/identifier-text.svelte';
   import { router } from '../../lib/router.svelte.ts';
   import { NOTIFICATION_COPY, RETRY_LABEL } from '../copy.ts';
   import type { NotificationItem, NotificationStore } from '../notifications.svelte.ts';
@@ -43,6 +43,13 @@
 
   let open = $state(false);
 
+  /** The popover's title, with how many are unread: "Notifications · 3 unread". */
+  const panelTitle = $derived(
+    store.unreadCount > 0
+      ? `${NOTIFICATION_COPY.panelTitle} ${NOTIFICATION_COPY.unreadSummary(store.unreadCount)}`
+      : NOTIFICATION_COPY.panelTitle,
+  );
+
   /** Where the Bureau's settings are, among them how long a notification is kept. */
   const NOTIFICATION_SETTINGS_PATH = '/settings';
   /** Where a hook sends an event as a webhook, or as email through one. */
@@ -52,7 +59,6 @@
   const ICONS: Readonly<Record<string, LucideIcon>> = {
     'shield-question-mark': ShieldQuestionMark,
     'message-circle-question-mark': MessageCircleQuestionMark,
-    'message-circle-check': MessageCircleCheck,
     'circle-x': CircleX,
     'calendar-x': CalendarX,
     'plug-zap': PlugZap,
@@ -61,6 +67,26 @@
 
   function iconFor(name: string): LucideIcon {
     return ICONS[name] ?? TriangleAlert;
+  }
+
+  /**
+   * The tint of a row's icon tile: a question is information (sky), a firing rule and anything
+   * that needs a decision or failed is a warning (amber), a critical item is danger (red), and
+   * anything else is neutral.
+   */
+  function toneOf(item: NotificationItem): 'info' | 'warning' | 'danger' | 'neutral' {
+    if (item.kind === 'question') return 'info';
+    if (item.kind === 'alert') return 'warning';
+    if (item.tier === 'critical') return 'danger';
+    return item.tier === 'warning' ? 'warning' : 'neutral';
+  }
+
+  /**
+   * Whether a row is drawn unread: tinted, with its dot. It is the rows the title counts, so an
+   * standing item, which is listed but never counts, is not.
+   */
+  function isUnread(item: NotificationItem): boolean {
+    return !item.read && item.tier !== 'info';
   }
 
   /** Where a link at the foot of the panel goes. */
@@ -77,12 +103,7 @@
   }
 </script>
 
-<Popover
-  bind:open
-  placement="bottom-end"
-  label={NOTIFICATION_COPY.panelTitle}
-  class="weft-notification-popover"
->
+<Popover bind:open placement="bottom-end" label={panelTitle} class="weft-notification-popover">
   {#snippet trigger()}
     <Button
       variant="ghost"
@@ -95,7 +116,7 @@
       <span class="weft-notification-bell__icon">
         <Bell aria-hidden="true" size={16} />
         {#if store.unreadCount > 0}
-          <span class="weft-notification-bell__count" aria-hidden="true">{store.unreadCount}</span>
+          <span class="weft-notification-bell__dot" aria-hidden="true"></span>
         {/if}
       </span>
     </Button>
@@ -103,7 +124,14 @@
 
   <div class="weft-notification-panel">
     <div class="weft-notification-panel__bar">
-      <span class="weft-notification-panel__title">{NOTIFICATION_COPY.panelTitle}</span>
+      <h2 class="weft-notification-panel__title">
+        {NOTIFICATION_COPY.panelTitle}
+        {#if store.unreadCount > 0}
+          <span class="weft-notification-panel__unread"
+            >{NOTIFICATION_COPY.unreadSummary(store.unreadCount)}</span
+          >
+        {/if}
+      </h2>
       <Button variant="ghost" size="sm" data-changes onclick={() => store.markAllRead()}>
         {NOTIFICATION_COPY.markAllRead}
       </Button>
@@ -130,22 +158,34 @@
           class="weft-notification-panel__item"
           data-tier={item.tier}
           data-kind={item.kind}
-          data-read={item.read}
+          data-read={!isUnread(item)}
           onclick={(event) => {
             event.preventDefault();
             goTo(item);
           }}
         >
-          <Icon aria-hidden="true" size={14} class="weft-notification-panel__item-icon" />
+          <span class="weft-notification-panel__item-mark">
+            {#if isUnread(item)}
+              <span
+                class="weft-notification-panel__item-dot"
+                role="img"
+                aria-label={NOTIFICATION_COPY.unreadMark}
+              ></span>
+            {/if}
+          </span>
+          <span
+            class="weft-notification-panel__item-tile"
+            data-tone={toneOf(item)}
+            aria-hidden="true"
+          >
+            <Icon size={14} />
+          </span>
           <span class="weft-notification-panel__item-text">
-            <span class="weft-notification-panel__item-title"
-              ><IdentifierText text={item.title} identifiers={item.identifiers} /></span
-            >
-            <VisuallyHidden>{item.joiner}</VisuallyHidden>
+            <span class="weft-notification-panel__item-title">{item.title}</span>
             <span class="weft-notification-panel__item-detail">{item.detail}</span>
           </span>
           <span class="weft-notification-panel__item-time">
-            {formatRelativeTime(item.emittedAtMs)}
+            {formatCompactAge(item.emittedAtMs)}
           </span>
         </a>
       {/each}

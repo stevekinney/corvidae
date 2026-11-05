@@ -1,3 +1,4 @@
+import { SecretProviderError } from '@lostgradient/bungalow';
 /**
  * The host's routes for the model providers (`provider-manager.ts`):
  *
@@ -26,7 +27,6 @@ import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import {
   ProviderConflictError,
   ProviderInputError,
-  ProviderPartialChangeError,
   ProviderWriteLockedError,
   type ProviderManager,
 } from './provider-manager.ts';
@@ -72,6 +72,24 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
   try {
     return Response.json(await work());
   } catch (error) {
+    if (error instanceof SecretProviderError) {
+      const status =
+        error.code === 'rejected'
+          ? 400
+          : error.code === 'read-only'
+            ? 403
+            : error.code === 'conflict'
+              ? 409
+              : 503;
+      return Response.json(
+        {
+          error: 'failed',
+          reason: error.code,
+          message: 'The secret provider could not complete the operation.',
+        },
+        { status },
+      );
+    }
     if (error instanceof ProviderWriteLockedError) {
       return Response.json(
         { error: 'locked', reason: error.reason, message: error.message },
@@ -102,17 +120,7 @@ async function respond(work: () => Promise<unknown>): Promise<Response> {
         { status: 400 },
       );
     }
-    if (error instanceof ProviderPartialChangeError) {
-      return Response.json(
-        {
-          error: 'partial',
-          provider: error.provider,
-          inUse: error.inUse,
-          message: error.message,
-        },
-        { status: 500 },
-      );
-    }
+
     // Nothing from the failure is repeated: it may hold a path or, from a provider, a value.
     return Response.json(
       { error: 'failed', message: 'The provider configuration could not be changed.' },

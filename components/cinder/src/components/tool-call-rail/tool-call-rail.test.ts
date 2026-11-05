@@ -196,6 +196,18 @@ describe('ToolCallRail folding', () => {
     const { container } = render(ToolCallRail, { props: { calls } });
     expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])).toContain('no');
   });
+
+  test('a finished call marked pinned stays on the rail when the middle folds', () => {
+    const calls = turn(12);
+    calls[6] = { ...done('panel', 'Propose update'), pinned: true };
+    const { container } = render(ToolCallRail, { props: { calls } });
+    expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])).toContain('panel');
+    cleanup();
+    const unpinned = render(ToolCallRail, { props: { calls: turn(12) } });
+    expect(rows(unpinned.container).map((row) => row.dataset['cinderToolCallRow'])).not.toContain(
+      'call-6',
+    );
+  });
 });
 
 describe('ToolCallRail rows', () => {

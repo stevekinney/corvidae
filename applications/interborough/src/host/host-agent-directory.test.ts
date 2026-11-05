@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * The host's agent directory (COR-1524): Markdown files in Bungalow's `agents/` directory are
  * agents of the Bureau. A file's model is a row of the host's catalog, so it runs with the key in
@@ -28,6 +29,7 @@ afterEach(async () => {
 
 async function prepareHome(files: Readonly<Record<string, string>> = {}): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-agents-'));
+  await initializeWorkspaceHome(home);
   directories.push(home);
   await writeFile(
     join(home, 'configuration.json'),
@@ -39,7 +41,7 @@ async function prepareHome(files: Readonly<Record<string, string>> = {}): Promis
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
-    bungalow.writeSecret('anthropic-api-key', FIXTURE_KEY);
+    await bungalow.deploymentSecrets.write('anthropic-api-key', FIXTURE_KEY);
   } finally {
     bungalow.close();
   }

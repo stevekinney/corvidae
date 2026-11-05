@@ -1,13 +1,13 @@
 /**
- * Every view declares how dense it is (COR-1647), and every route says what kind of page it is,
- * which sets its width (COR-1834, design row 17f): a page's width follows its kind, not its area,
- * so the shell's outlet tells Cinder's density tokens and its reading column, and no page decides
- * either for itself.
+ * Every route says what kind of page it is, which sets its width (COR-1834, design row 17f): a
+ * page's width follows its kind, not its area, so the shell's outlet tells Cinder's reading column
+ * and no page decides it for itself. There is one density everywhere (design row 02y), so a view
+ * declares none.
  */
 import { describe, expect, test } from 'bun:test';
 
 import { routes } from './routes.ts';
-import { PAGE_KINDS, pageWidth, VIEW_DENSITIES, VIEW_NAMES, VIEW_WIDTHS, VIEWS } from './views.ts';
+import { PAGE_KINDS, pageWidth, VIEW_NAMES, VIEW_WIDTHS, VIEWS } from './views.ts';
 
 /** The width the outlet gives the route with `pattern`. */
 function widthOf(pattern: string): string {
@@ -17,25 +17,9 @@ function widthOf(pattern: string): string {
 }
 
 describe('the views', () => {
-  test('each declares a density the shell knows', () => {
+  test('declare no density: one density everywhere', () => {
     for (const name of VIEW_NAMES) {
-      expect(VIEW_DENSITIES, `${name} density`).toContain(VIEWS[name].density);
-    }
-  });
-
-  test('the operator tables are compact, and the pages a person reads are not', () => {
-    for (const name of ['runs', 'audit', 'health', 'workers', 'storage'] as const) {
-      expect(VIEWS[name].density, name).toBe('compact');
-    }
-    for (const name of [
-      'chat',
-      'agents',
-      'agent-editor',
-      'workflows',
-      'schedules',
-      'reviews',
-    ] as const) {
-      expect(VIEWS[name].density, name).toBe('comfortable');
+      expect(Object.keys(VIEWS[name]), name).not.toContain('density');
     }
   });
 });

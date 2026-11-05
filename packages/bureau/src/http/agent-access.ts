@@ -25,6 +25,17 @@ export function mayAccessAgents(
   principal: Principal,
   operatorScope: BureauScope,
 ): boolean {
+  const workspace = principal.method === 'unauthenticated' ? undefined : principal.workspace;
+  if (workspace !== undefined) {
+    return (
+      principal.method !== 'unauthenticated' &&
+      workspace.actorKind !== 'service' &&
+      workspace.capabilities.includes('workspace:use') &&
+      (operatorScope === 'bureau.agents:read' ||
+        (operatorScope === 'bureau.agents:write' &&
+          workspace.capabilities.includes('workspace:manage')))
+    );
+  }
   return ownership.mayAccess({
     principal,
     resourceOwner: DEPLOYMENT_AGENT_OWNER,

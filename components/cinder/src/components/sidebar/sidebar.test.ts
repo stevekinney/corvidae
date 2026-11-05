@@ -625,6 +625,40 @@ describe('Sidebar (mobile / drawer)', () => {
     expect(wrapper).toBeNull();
   });
 
+  test('drawerQuery joins the width breakpoint as an "or", so touch gets the drawer at tablet width', () => {
+    const touchTablet = '(pointer: coarse) and (max-width: 1023.98px)';
+    mock = installMatchMediaMock(true, `${SIDEBAR_MOBILE_MEDIA_QUERY}, ${touchTablet}`);
+    const { container } = render(Sidebar, {
+      props: { drawerQuery: touchTablet, navigation: listSnippet('items') },
+    });
+    expectQueryWasUsed(mock, `${SIDEBAR_MOBILE_MEDIA_QUERY}, ${touchTablet}`);
+    expect(container.querySelector('dialog')).not.toBeNull();
+    expect(container.querySelector('aside')).toBeNull();
+  });
+
+  test('the drawer is 280px wide and its close button is named "Close navigation"', () => {
+    mock = installMatchMediaMock(true);
+    const { container } = render(Sidebar, {
+      props: { navigation: listSnippet('items') },
+    });
+    expect(container.querySelector('.cinder-drawer__panel')?.getAttribute('data-cinder-size')).toBe(
+      'xs',
+    );
+    expect(container.querySelector('.cinder-drawer__close')?.getAttribute('aria-label')).toBe(
+      'Close navigation',
+    );
+  });
+
+  test('closeLabel renames the drawer close button', () => {
+    mock = installMatchMediaMock(true);
+    const { container } = render(Sidebar, {
+      props: { closeLabel: 'Hide menu', navigation: listSnippet('items') },
+    });
+    expect(container.querySelector('.cinder-drawer__close')?.getAttribute('aria-label')).toBe(
+      'Hide menu',
+    );
+  });
+
   test('custom mobile breakpoint controls the media query and mobile wrapper presentation', () => {
     const customQuery = '(max-width: 64rem)';
     mock = installMatchMediaMock(true, customQuery);
@@ -902,6 +936,32 @@ describe('Sidebar collapsed CSS contract', () => {
         ).toBeUndefined();
       }
     }
+  });
+
+  test('the hide rules spare a row’s count pill, which rides the icon on the rail', async () => {
+    const css = await Bun.file(new URL('./sidebar.css', import.meta.url)).text();
+    const rules = parseCssRules(css).filter((rule) =>
+      rule.declarations.includes('clip-path: inset(50%)'),
+    );
+    const labelRules = rules.filter((rule) =>
+      rule.selectors.some((selector) => selector.includes('> :not([aria-hidden=')),
+    );
+    expect(labelRules.length).toBeGreaterThan(0);
+    for (const rule of labelRules) {
+      for (const selector of rule.selectors.filter((entry) => entry.includes('> :not('))) {
+        expect(selector).toContain(':not(.cinder-side-navigation-item__count)');
+      }
+    }
+  });
+
+  test('the drawer’s rows are 44px touch targets whatever the pointer', async () => {
+    const css = await Bun.file(new URL('./sidebar.css', import.meta.url)).text();
+    const rule = parseCssRules(css).find((candidate) =>
+      candidate.selectors.some((selector) =>
+        selector.startsWith('.cinder-sidebar--mobile .cinder-navigation-item'),
+      ),
+    );
+    expect(rule?.declarations).toContain('min-block-size: 2.75rem');
   });
 
   test('visually-hidden block pairs `clip` with `clip-path` for modern browsers', async () => {

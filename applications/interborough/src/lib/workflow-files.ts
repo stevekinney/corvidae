@@ -266,10 +266,49 @@ const runSummarySchema = z.object({
   ]),
   createdAt: z.string(),
   updatedAt: z.string(),
+  origin: z
+    .discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('chat'),
+        contextId: z.string(),
+        agentName: z.string(),
+        principal: z.string(),
+      }),
+      z.object({
+        kind: z.literal('person'),
+        principal: z.string(),
+        surface: z.enum(['web', 'palette', 'api']),
+      }),
+      z.object({
+        kind: z.literal('schedule'),
+        scheduleId: z.string(),
+        fireId: z.string(),
+        manual: z.literal(true).optional(),
+      }),
+      z.object({ kind: z.literal('api') }),
+      z.object({
+        kind: z.literal('agent'),
+        parentRunId: z.string(),
+        parentContextId: z.string().optional(),
+        agentName: z.string(),
+        toolCallId: z.string().optional(),
+      }),
+      z.object({ kind: z.literal('agent-run'), runId: z.string(), agentId: z.string() }),
+      z.object({ kind: z.literal('goal'), goalRunId: z.string(), attemptId: z.string() }),
+      z.object({ kind: z.literal('parent'), parentRunId: z.string() }),
+      z.object({ kind: z.literal('system') }),
+    ])
+    .nullable()
+    .default(null),
 });
 
 /** One instance of a workflow file, as `bureau.workflows.runs.list` summarises it. */
-export type WorkflowFileRun = z.infer<typeof runSummarySchema>;
+type ParsedWorkflowFileRun = z.infer<typeof runSummarySchema>;
+/** One workflow-file run summary returned by the Bureau list operation. */
+export type WorkflowFileRun = Omit<ParsedWorkflowFileRun, 'origin'> & {
+  /** Older fixtures and Bureau versions omit this field; the decoder defaults it to `null`. */
+  readonly origin?: ParsedWorkflowFileRun['origin'];
+};
 
 const runDetailSchema = runSummarySchema.extend({
   trigger: z.unknown(),
@@ -280,7 +319,11 @@ const runDetailSchema = runSummarySchema.extend({
 });
 
 /** One instance of a workflow file with what started it and how it ended (`bureau.workflows.runs.get`). */
-export type WorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
+type ParsedWorkflowFileRunDetail = z.infer<typeof runDetailSchema>;
+/** One workflow-file run detail returned by the Bureau get operation. */
+export type WorkflowFileRunDetail = Omit<ParsedWorkflowFileRunDetail, 'origin'> & {
+  readonly origin?: ParsedWorkflowFileRunDetail['origin'];
+};
 
 /**
  * One instance of a workflow file, by the identifier `bureau.workflows.start` or a trigger gave it.

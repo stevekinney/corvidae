@@ -14,6 +14,7 @@ import {
 } from '@lostgradient/weft/a2a';
 import { describe, expect, it } from 'bun:test';
 
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { createChildRunRegistry } from './child-run';
 import {
@@ -36,7 +37,7 @@ const CARD: A2APeerCard = {
   activeExtensions: [],
 };
 
-function outcome(taskId = 'task-1'): A2APeerOutcome {
+function outcome(taskId = 'task-1', message = 'found it'): A2APeerOutcome {
   return {
     untrusted: true,
     state: 'completed',
@@ -48,7 +49,7 @@ function outcome(taskId = 'task-1'): A2APeerOutcome {
       cardUrl: CARD.cardUrl,
       taskId,
     },
-    message: 'found it',
+    message,
     artifacts: [],
   };
 }
@@ -59,6 +60,10 @@ interface PeerScript {
   taskId?: string;
   /** Makes `attach` fail like a peer that forgot the task. */
   attachError?: A2APeerError;
+  /** Message returned by the peer. */
+  message?: string;
+  /** Error returned while sending. */
+  sendError?: Error;
 }
 
 function fakePeer(script: PeerScript = {}) {
@@ -70,7 +75,7 @@ function fakePeer(script: PeerScript = {}) {
     contextId: 'context-1',
     provenance: outcome(taskId).provenance,
     state: () => 'completed',
-    result: async () => outcome(taskId),
+    result: async () => outcome(taskId, script.message),
     cancel: async (reason) => {
       cancels.push(reason);
       return { ...outcome(taskId), state: 'canceled' };
@@ -80,6 +85,7 @@ function fakePeer(script: PeerScript = {}) {
     card: async () => CARD,
     send: async (request) => {
       sends.push(request);
+      if (script.sendError !== undefined) throw script.sendError;
       return task(script.taskId ?? 'task-1');
     },
     attach: async (request) => {
@@ -111,14 +117,21 @@ function memoryJournal(
   };
 }
 
-function toolOver(client: A2APeerClient, journal: PeerCallJournal | undefined) {
+function toolOver(
+  client: A2APeerClient,
+  journal: PeerCallJournal | undefined,
+  peerUrl?: string,
+  redactPeerText?: (text: string) => string,
+) {
   const registry = createChildRunRegistry();
   const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
   const tool = createPeerCallTool({
     name: 'ask_researcher',
     description: 'Ask the researcher agent.',
     peer: client,
+    ...(peerUrl === undefined ? {} : { peerUrl }),
     durable: journal,
+    redactPeerText,
     parentContext: { emitter, parentAgentName: 'orchestrator', parentRunId: 'run-1', registry },
   });
   const call = (
@@ -129,7 +142,7 @@ function toolOver(client: A2APeerClient, journal: PeerCallJournal | undefined) {
       params,
       context,
     );
-  return { registry, call };
+  return { registry, call, emitter };
 }
 
 async function rejection(promise: Promise<unknown>): Promise<unknown> {
@@ -144,6 +157,51 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
 const KEY = 'schedule-safe:run-1:step-0:tool-0:ask_researcher';
 
 describe('a durable peer call', () => {
+  it('redacts peer text before the result and child registry receive it', async () => {
+    const secret = 'peer-bearer-secret';
+    const { registry, call } = toolOver(
+      fakePeer({ message: `the peer echoed ${secret}` }).client,
+      undefined,
+      undefined,
+      (text) => text.split(secret).join('[REDACTED]'),
+    );
+    const result = (await call({ message: 'hello' })) as { message: string };
+    expect(result.message).toBe('the peer echoed [REDACTED]');
+    const child = registry.children()[0];
+    expect(child?.result?.content).toBe('the peer echoed [REDACTED]');
+    expect(JSON.stringify(child)).not.toContain(secret);
+  });
+
+  it('redacts peer errors before child failure events receive them', async () => {
+    const secret = 'peer-bearer-secret';
+    const { registry, call } = toolOver(
+      fakePeer({ sendError: new Error(`peer echoed ${secret}`) }).client,
+      undefined,
+      undefined,
+      (text) => text.split(secret).join('[REDACTED]'),
+    );
+    const error = await rejection(call({ message: 'hello' }));
+    expect(error).toMatchObject({ message: 'peer echoed [REDACTED]' });
+    expect(JSON.stringify(registry.children())).not.toContain(secret);
+  });
+
+  it('keeps following a legacy journal record when no destination was bound', async () => {
+    const peer = fakePeer();
+    const journal = memoryJournal();
+    journal.entries.set(JSON.stringify(['run-1', KEY]), {
+      taskId: 'task-1',
+      contextId: 'context-1',
+      requestDigest: sha256HexSync(JSON.stringify(['find it', '', ''])),
+    });
+    const { call } = toolOver(peer.client, journal, undefined);
+
+    const result = await call({ message: 'find it' }, { durableOperationKey: KEY });
+
+    expect(result).toMatchObject({ taskId: 'task-1', message: 'found it' });
+    expect(peer.sends).toHaveLength(0);
+    expect(peer.attaches).toHaveLength(1);
+  });
+
   it('sends with a message id derived from its operation key, then records the task', async () => {
     const peer = fakePeer();
     const journal = memoryJournal();
@@ -194,6 +252,33 @@ describe('a durable peer call', () => {
     expect(restarted.sends).toEqual([]);
     expect(restarted.attaches).toHaveLength(1);
     expect(restarted.attaches[0]).toMatchObject({ taskId: 'task-1', contextId: 'context-1' });
+  });
+
+  it('rejects a replay whose configured destination changed before reading the card', async () => {
+    const journal = memoryJournal();
+    await toolOver(fakePeer().client, journal, 'https://peer.example/').call(
+      { message: 'find it' },
+      { durableOperationKey: KEY },
+    );
+
+    let cards = 0;
+    const replacement = fakePeer();
+    const originalCard = replacement.client.card;
+    replacement.client.card = async () => {
+      cards += 1;
+      return originalCard();
+    };
+    const error = await rejection(
+      toolOver(replacement.client, journal, 'https://replacement.example/').call(
+        { message: 'find it' },
+        { durableOperationKey: KEY },
+      ),
+    );
+
+    expect(error).toBeInstanceOf(PeerCallMismatchError);
+    expect(cards).toBe(0);
+    expect(replacement.sends).toEqual([]);
+    expect(replacement.attaches).toEqual([]);
   });
 
   it('resends with the same message id when the crash came before the record was written', async () => {

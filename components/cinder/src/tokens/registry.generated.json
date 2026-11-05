@@ -2814,7 +2814,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Gap between top-level navigation items."
+      "description": "Gap between top-level navigation items: 2px, so a 30px row sits on a 32px pitch."
     },
     {
       "path": "spinner.indicator",

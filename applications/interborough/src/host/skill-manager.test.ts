@@ -44,17 +44,24 @@ async function fakeHome(
   const options: SkillManagerOptions = {
     bungalow: {
       mode,
+      configurationWriteCapability:
+        mode === 'remote' ? ('read-only' as const) : ('writable' as const),
       configurationLocation: 's3://bucket/configuration.json',
-      readConfiguration: async () => text,
-      writeConfiguration: (next: string) => {
+      readConfiguration: async () => ({
+        text,
+        revision: text === undefined ? null : Bun.hash(text).toString(),
+      }),
+      writeConfiguration: async (next, condition) => {
+        if (condition.expectedRevision !== (text === undefined ? null : Bun.hash(text).toString()))
+          return { outcome: 'conflict' };
         writes.push(next);
         if (failure === undefined) {
           text = next;
-          return;
+          return { outcome: 'committed' };
         }
         // Bungalow renames the file and then syncs the directory, so a throw may follow the replace.
         if (failure.replaces) text = next;
-        throw failure.error;
+        return failure.replaces ? { outcome: 'unknown' } : { outcome: 'unavailable' };
       },
     },
     audit: async (entry) => {
@@ -217,21 +224,25 @@ describe('a local home', () => {
     ]);
   });
 
-  test('records a write that threw after replacing the file, because the change took', async () => {
+  test('refreshes standing after an uncertain write without claiming this actor committed it', async () => {
     const error = new Error('the directory could not be synced');
     const { options, audited } = await fakeHome('local', { replaces: true, error });
     const manager = await createSkillManager(options);
     expect(manager.standing().catalog.records[0]?.available).toBe(false);
 
-    const change = await manager.setTrust({ source: 'workspace', trusted: true });
+    const failure = await manager
+      .setTrust({ source: 'workspace', trusted: true })
+      .catch((caught: unknown) => caught);
 
-    // The file says trusted, so the host serves trusted, with a new revision, and records it.
-    expect(change).toMatchObject({ trusted: true, changed: true });
+    // Current standing is authoritative, but matching content does not identify its writer.
+    expect(failure).toMatchObject({
+      message: 'Configuration write outcome: unknown. Reload before retrying.',
+    });
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
-    expect(audited.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
+    expect(audited).toEqual([]);
   });
 
-  test('owes the record of a write that threw after replacing the file when the trail is down', async () => {
+  test('does not replay or manufacture a success audit after an uncertain write', async () => {
     const error = new Error('the directory could not be synced');
     const { options, audited } = await fakeHome('local', { replaces: true, error });
     let down = true;
@@ -247,11 +258,13 @@ describe('a local home', () => {
       .setTrust({ source: 'workspace', trusted: true })
       .catch((caught: unknown) => caught);
 
-    expect(failure).toMatchObject({ name: 'SkillAuditError', trusted: true });
+    expect(failure).toMatchObject({
+      message: 'Configuration write outcome: unknown. Reload before retrying.',
+    });
     expect(manager.standing().catalog.records[0]?.available).toBe(true);
     down = false;
     await manager.setTrust({ source: 'workspace', trusted: true });
-    expect(audited.map((entry) => entry.type)).toEqual(['skill.source.trusted']);
+    expect(audited).toEqual([]);
   });
 
   test('keeps serving the file it read when the write throws without replacing it', async () => {
@@ -263,7 +276,9 @@ describe('a local home', () => {
       .setTrust({ source: 'workspace', trusted: true })
       .catch((caught: unknown) => caught);
 
-    expect(failure).toBe(error);
+    expect(failure).toMatchObject({
+      message: 'Configuration write outcome: unavailable. Reload before retrying.',
+    });
     expect(manager.standing().catalog.records[0]?.available).toBe(false);
     expect(manager.standing().sources[0]?.trust).toBe('untrusted');
   });

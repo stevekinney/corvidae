@@ -1,3 +1,4 @@
+import type { WorkspaceOwnerAuthority } from './workspace-principal.ts';
 /**
  * A message's file and data parts as native content (COR-788, part 2): what an A2A caller may
  * attach to a task it starts or to a task that is still working.
@@ -58,6 +59,7 @@ export type InboundProjection = {
 
 /** What planning a message's parts needs. */
 export type InboundContext = {
+  readonly workspaceAuthority?: WorkspaceOwnerAuthority | undefined;
   readonly publicUrl: string;
   /** The asset service, or `undefined` when the Bureau has none (no file part is read). */
   readonly assets: Pick<AssetService, 'admit' | 'inspect' | 'delete' | 'policy'> | undefined;
@@ -174,7 +176,10 @@ async function plannedUrlPart(
   if (!context.mayReadAssets) throw notFound(assetId);
   let descriptor;
   try {
-    descriptor = await assets.inspect(assetId, { id: context.owner });
+    descriptor = await assets.inspect(assetId, {
+      id: context.owner,
+      workspaceAuthority: context.workspaceAuthority,
+    });
   } catch (error) {
     if (error instanceof AssetNotFoundError) throw notFound(assetId);
     throw error;
@@ -292,7 +297,7 @@ export async function admitInline(
           source: { kind: 'inline', bytes: part.bytes },
           declaredMediaType: part.declaredMediaType,
         },
-        { id: context.owner },
+        { id: context.owner, workspaceAuthority: context.workspaceAuthority },
       );
       // Until it settles, the only asset this call knows it created is the pending one.
       admitted.push({ assetId: admission.assetId, mediaType: part.declaredMediaType });

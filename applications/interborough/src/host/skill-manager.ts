@@ -54,7 +54,6 @@ import {
 } from '@lostgradient/bureau/skills';
 
 import { createConfigurationQueue, type ConfigurationQueue } from './configuration-queue.ts';
-import { hostWriteLocks } from './locations.ts';
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 import { parseProviderConfiguration } from './providers.ts';
 import {
@@ -167,7 +166,11 @@ export type SkillManagerOptions = {
   /** The open home. Its mode decides whether a write is allowed. */
   readonly bungalow: Pick<
     Bungalow,
-    'mode' | 'configurationLocation' | 'readConfiguration' | 'writeConfiguration'
+    | 'mode'
+    | 'configurationLocation'
+    | 'readConfiguration'
+    | 'writeConfiguration'
+    | 'configurationWriteCapability'
   >;
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
@@ -203,7 +206,8 @@ export async function discoverFirstSkills(
   const location = bungalow.configurationLocation;
   let text: string | undefined;
   try {
-    text = await bungalow.readConfiguration();
+    const snapshot = await bungalow.readConfiguration();
+    text = snapshot.text;
   } catch {
     throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
   }
@@ -226,7 +230,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
   /** Changes that were applied and not recorded, oldest first. In memory: a restart drops them. */
   const unrecorded: SkillAuditEntry[] = [];
 
-  const lockReason = (): SettingLockReason | undefined => hostWriteLocks(bungalow).configuration;
+  const lockReason = (): SettingLockReason | undefined =>
+    bungalow.configurationWriteCapability === 'writable' ? undefined : 'deployment';
   const serialized = <Result>(work: () => Promise<Result>): Promise<Result> =>
     configurationQueue.run(() => {
       if (closed) throw new Error('The host is shutting down.');
@@ -235,7 +240,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
 
   async function readText(): Promise<string | undefined> {
     try {
-      return await bungalow.readConfiguration();
+      const snapshot = await bungalow.readConfiguration();
+      return snapshot.text;
     } catch {
       throw new ProviderConfigurationError(location, 'the file', 'it could not be read.');
     }
@@ -308,8 +314,6 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
     }
   }
 
-  const trustOf = (source: string) => current?.sources.find((entry) => entry.id === source)?.trust;
-
   await discover(readSkillsConfiguration(await readText(), location));
 
   return {
@@ -341,7 +345,8 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
         throw new SkillInputError('trusted', 'expected true or false.');
       }
       return serialized(async () => {
-        const text = await readText();
+        const snapshot = await bungalow.readConfiguration();
+        const text = snapshot.text;
         // Parsed first as the host reads it, so a file that is already invalid is refused, not overwritten.
         if (text !== undefined) parseProviderConfiguration(text, location);
         const configuration = readSkillsConfiguration(text, location);
@@ -370,16 +375,16 @@ export async function createSkillManager(options: SkillManagerOptions): Promise<
           timestampMs: now(),
           detail: { sourceId: source, trusted, owner },
         };
-        let written = true;
-        try {
-          bungalow.writeConfiguration(next);
-        } catch (error) {
-          // A write that throws may still have replaced the file, so the disk decides what is served.
-          written = false;
+        const result = await bungalow.writeConfiguration(next, {
+          expectedRevision: snapshot.revision,
+        });
+        if (result.outcome !== 'committed') {
           await readBackAfterFailure();
-          if (trustOf(source) !== (trusted ? 'trusted' : 'untrusted')) throw error;
+          throw new Error(
+            `Configuration write outcome: ${result.outcome}. Reload before retrying.`,
+          );
         }
-        const standing = written ? await discover(applied) : standingNow();
+        const standing = await discover(applied);
         // The change is applied now. It is queued behind what is already owed so the trail keeps its
         // order, and it stays owed if the trail cannot take it.
         unrecorded.push(entry);

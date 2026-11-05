@@ -13,11 +13,13 @@
   import { getClient } from '../../lib/client.ts';
   import { formatDuration, formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router, workflowRunPath } from '../../lib/router.svelte.ts';
+  import { router, workflowDetailPath, workflowRunPath } from '../../lib/router.svelte.ts';
   import { listWorkflowFileRuns } from '../../lib/workflow-files.ts';
   import { workflowRunsPath } from '../../lib/workflow-type-paths.ts';
   import { workflowStatusBadge } from '../workflows/list/workflow-status-badge.ts';
   import WorkflowStatusIcon from '../workflows/list/workflow-status-icon.svelte';
+  import { STARTED_BY_LABELS } from '../workflows/runs/started-by.ts';
+  import type { WorkflowFileRun } from '../../lib/workflow-files.ts';
 
   interface Props {
     /** The workflow's type, which is its file's identifier for an agent-authored workflow. */
@@ -42,6 +44,7 @@
     readonly status: Parameters<typeof workflowStatusBadge>[0];
     readonly createdAt: number;
     readonly updatedAt: number;
+    readonly origin: WorkflowFileRun['origin'];
   };
 
   const runs = createQuery(
@@ -55,6 +58,7 @@
             status: run.status,
             createdAt: Date.parse(run.createdAt),
             updatedAt: Date.parse(run.updatedAt),
+            origin: run.origin,
           }));
         }
         const page = await client.list({ type, limit: RECENT_LIMIT });
@@ -63,6 +67,7 @@
           status: run.status,
           createdAt: run.createdAt,
           updatedAt: run.updatedAt,
+          origin: null,
         }));
       },
       retry: false,
@@ -145,6 +150,7 @@
       {#each runs.data as run (run.id)}
         {@const status = workflowStatusBadge(run.status)}
         {@const took = durationOf(run)}
+        {@const origin = run.origin ?? null}
         <li data-run={run.id} data-status={run.status}>
           <a
             class="ib-workflow__run-status"
@@ -155,6 +161,16 @@
             {status.label}
           </a>
           <span>{formatRelativeTime(run.createdAt)}</span>
+          <span>
+            {#if origin === null}
+              Not recorded
+            {:else if origin.kind === 'agent-run'}
+              An agent's tool call · {origin.agentId} ·
+              <a href={router.href(workflowDetailPath(origin.runId))}>Calling run</a>
+            {:else}
+              {STARTED_BY_LABELS[origin.kind]}
+            {/if}
+          </span>
           {#if took !== undefined}<span class="ib-workflow__muted"
               >{copy.page.runDuration(took)}</span
             >{/if}

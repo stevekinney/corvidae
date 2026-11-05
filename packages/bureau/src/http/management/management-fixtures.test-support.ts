@@ -287,6 +287,8 @@ export async function openBureau(
      * 'allow'` beside the authentication, COR-1904).
      */
     localAccess?: boolean;
+    /** Override verified fixture credentials without changing the production authenticator. */
+    authentication?: AuthConfig;
     /** Passed to `createBureauHandler` beside the authentication. */
     handlerOptions?: Omit<
       Parameters<typeof createBureauHandler>[1],
@@ -294,6 +296,8 @@ export async function openBureau(
     >;
   } = {},
 ): Promise<OpenedBureau> {
+  const bureauWorkspace = options.bureauOptions?.workspace ?? options.handlerOptions?.workspace;
+  const handlerWorkspace = options.handlerOptions?.workspace ?? bureauWorkspace;
   const fixture =
     options.durableHistory === true
       ? createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() })
@@ -321,6 +325,7 @@ export async function openBureau(
     },
     storage: options.storage ?? fixture?.storage ?? new MemoryStorage(),
     durable: true,
+    ...(bureauWorkspace === undefined ? {} : { workspace: bureauWorkspace }),
     assets: {
       storage: options.assetStorage ?? createMemoryAssetStorage(),
       ...(options.assetPolicy === undefined ? {} : { policy: options.assetPolicy }),
@@ -335,9 +340,10 @@ export async function openBureau(
   let handler: ReturnType<typeof createBureauHandler>;
   try {
     handler = createBureauHandler(bureau, {
-      authentication,
+      authentication: options.authentication ?? authentication,
       ...(options.localAccess === true ? { unauthenticatedAccess: 'allow' as const } : {}),
       ...(options.a2aAgents === undefined ? {} : { a2aAgents: options.a2aAgents }),
+      ...(handlerWorkspace === undefined ? {} : { workspace: handlerWorkspace }),
       ...options.handlerOptions,
     });
   } catch (error) {

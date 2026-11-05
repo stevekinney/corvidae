@@ -9,17 +9,15 @@
    */
   import type { Component } from 'svelte';
 
-  import { Button, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { ErrorState, Skeleton } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import { NOT_FOUND_ROUTE_COPY, ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
   import { clearChunkReloadGuard, reloadOnceForMissingChunk } from './chunk-reload.ts';
   import FaultBoundary from '../fault-boundary.svelte';
+  import NotFoundState from '../not-found-state.svelte';
   import ViewFrame from '../view-frame.svelte';
-  import { effectiveDensity, getLayoutPreferences } from '../layout-preferences.svelte.ts';
-  import { pageWidth, VIEWS } from '../views.ts';
-
-  const layoutPreferences = getLayoutPreferences();
+  import { pageWidth } from '../views.ts';
 
   let activeComponent = $state<Component | null>(null);
   let loading = $state(false);
@@ -31,14 +29,6 @@
   // to the query string, or a page that asked to be kept, `router.navigate`'s `keep`) is not a
   // new page: it must not unmount what is on screen.
   let loadedKey: string | undefined;
-
-  function goToChats(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(NOT_FOUND_ROUTE_COPY.action.href);
-  }
 
   $effect(() => {
     const match = router.current;
@@ -104,38 +94,18 @@
   });
 </script>
 
-<!-- The outlet is the only thing that pads a page. The view the route belongs to decides how dense
-     the page is, unless the person asked for compact everywhere, and the kind of page the route is
-     decides how wide (`views.ts`, `pageWidth`), so a page never chooses either for itself: it reads
-     Cinder's density tokens, and `foundation.css` centres a reading page in the reading column. A
-     route that belongs to no view (the not-found page) reads like a reading page. -->
+<!-- The outlet is the only thing that pads a page. The kind of page the route is decides how wide it
+     is (`views.ts`, `pageWidth`), so a page never chooses its width for itself: `foundation.css`
+     centres a reading page in the reading column. Every page has one density. A route that belongs
+     to no view (the not-found page) reads like a reading page. -->
 <main
   class="weft-shell-outlet"
-  data-density={effectiveDensity(
-    router.current.route?.view ? VIEWS[router.current.route.view].density : 'comfortable',
-    layoutPreferences?.density ?? 'comfortable',
-  )}
   data-width={router.current.route ? pageWidth(router.current.route.kind) : 'reading'}
 >
   <FaultBoundary>
     {#if notFound}
       <div class="weft-view" data-view="not-found" data-state="not-found">
-        <ErrorState
-          variant="flat"
-          title={NOT_FOUND_ROUTE_COPY.title}
-          description={NOT_FOUND_ROUTE_COPY.description}
-          headingLevel={1}
-        />
-        <div class="weft-not-found__action">
-          <code class="ib-identifier weft-not-found__path">{router.pathname}</code>
-          <Button
-            variant="primary"
-            href={router.href(NOT_FOUND_ROUTE_COPY.action.href)}
-            onclick={goToChats}
-          >
-            {NOT_FOUND_ROUTE_COPY.action.label}
-          </Button>
-        </div>
+        <NotFoundState title={NOT_FOUND_ROUTE_COPY.title} />
       </div>
     {:else if loadFailed}
       <div class="weft-view" data-state="error" data-view="route">

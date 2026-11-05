@@ -7,6 +7,7 @@
 
   import { QueryClientProvider } from '@tanstack/svelte-query';
 
+  import { provideConnection, type ConnectionMonitor } from '../../app/connection.svelte.ts';
   import { subscribeBureauInvalidation } from '../../app/bureau-event-queries.ts';
   import { provideConnection, type ConnectionMonitor } from '../../app/connection.svelte.ts';
   import { provideBureauEventSource } from '../../app/live-polling.svelte.ts';
@@ -24,7 +25,7 @@
     bureauEvents?: BureauEventSource;
     /** The caller the page is shown to, for a page that reads who it is. */
     principal?: Principal;
-    /** The shell's connection monitor, for a page that reads whether the server answers. */
+    /** The shell's connection monitor, provided to the page as the shell does. */
     connection?: ConnectionMonitor;
   }
 
@@ -40,6 +41,8 @@
   const queryClient = untrack(() => client ?? createQueryClient());
   const events = untrack(() => bureauEvents);
   const caller = untrack(() => principal);
+  const monitor = untrack(() => connection);
+  if (monitor !== undefined) provideConnection(monitor);
   if (caller !== undefined) providePrincipalStore().setPrincipal(caller);
   const monitor = untrack(() => connection);
   if (monitor !== undefined) provideConnection(monitor);

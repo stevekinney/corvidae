@@ -203,6 +203,8 @@ describe('the Instructions tab', () => {
 
     expect(body.querySelector('strong')?.textContent).toBe('every');
     expect(body.querySelector('h1, h2')?.textContent).toBe('Be careful');
+    // The instructions keep Cinder's Markdown rhythm, so paragraphs do not run together.
+    expect(body.classList).toContain('cinder-markdown-content');
     const references = await findByTestId('agent-references');
     expect([...references.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
       'references/style.md',

@@ -38,7 +38,8 @@
    * the address becomes `/chats/:chat` by replacing the history entry, with this page kept
    * mounted (`router.navigate`'s `keep`), and the agent is fixed from then on.
    */
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
+  import type { McpUiHostContext } from '@modelcontextprotocol/ext-apps/app-bridge';
 
   import {
     Alert,
@@ -48,11 +49,11 @@
     PageHeader,
     StatusDot,
   } from '@lostgradient/cinder';
-  import { Chat, ChatNote, ChatQuestion, resolveMessageNotes } from '@lostgradient/chat';
+  import { Chat, ChatNote, ChatQuestion, McpApp, resolveMessageNotes } from '@lostgradient/chat';
   import { CircleHelp, GitBranch } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY, REVIEWS_COPY } from '../../app/copy.ts';
+  import { CHAT_COPY, CONNECTION_COPY, REVIEWS_COPY } from '../../app/copy.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { getConnection } from '../../app/connection.svelte.ts';
   import { useBureauEventsLive } from '../../app/live-polling.svelte.ts';
@@ -82,6 +83,8 @@
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { readMcpHostContext } from '../../lib/mcp-host-context.ts';
+  import { getMcpApps, loadPluginApp, pluginToolCaller } from '../../lib/host-mcp-apps.ts';
   import ApprovalDecision from '../../lib/decision/approval-decision.svelte';
   import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
@@ -122,7 +125,7 @@
   import ReplyDetails from './reply-details.svelte';
   import { replyModelLabel, replyModelOf } from './reply-model.ts';
   import { replyStepOf } from './reply-details.ts';
-  import { toolGroups, type ToolInfo } from './tool-activity.ts';
+  import { toolGroups, type ToolCallEntry, type ToolInfo } from './tool-activity.ts';
   import { hasFailedStop, withStopLine } from './stop-line.ts';
   import ToolCalls from './tool-calls.svelte';
   import SessionTasks from './session-tasks.svelte';
@@ -867,6 +870,52 @@
     }, RUNNING_CALL_TICK_MILLISECONDS);
     return () => clearInterval(timer);
   });
+  const mcpApps = createQuery(
+    () => ({
+      queryKey: queryKeys.hostMcpApps(),
+      queryFn: ({ signal }) => getMcpApps({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  // Host context is sent through postMessage; keep it raw so the bridge receives a structured-
+  // cloneable object rather than a deeply proxied Svelte state value.
+  let mcpHostContext = $state.raw<McpUiHostContext>({ theme: 'light' });
+
+  onMount(() => {
+    const root = document.documentElement;
+    const update = (): void => {
+      mcpHostContext = readMcpHostContext(root);
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  });
+  const workflowRevisionPanels = $derived(
+    (mcpApps.data ?? []).filter(
+      (panel) => panel.opensFromAgentTool === 'bureau:workflows-propose-update',
+    ),
+  );
+  const revisionProposalText = (entry: ToolCallEntry): string | undefined => {
+    const serialized =
+      typeof entry.result === 'string' ? entry.result : JSON.stringify(entry.result);
+    if (serialized === undefined) return undefined;
+    try {
+      const parsed = JSON.parse(serialized) as unknown;
+      return typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        Reflect.get(parsed, 'status') === 'ok' &&
+        typeof Reflect.get(parsed, 'id') === 'string' &&
+        typeof Reflect.get(parsed, 'baseHash') === 'string' &&
+        typeof Reflect.get(parsed, 'proposedText') === 'string'
+        ? serialized
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
   // A decision made somewhere else (`/reviews`, a run's page, another tab) is written into the
   // conversation by the Bureau, and this page is not told. While the conversation waits on a person,
@@ -1006,6 +1055,10 @@
     );
     // A new chat has no thread yet, so there is nothing to attach to or to read back.
     if (!untrack(() => isNew)) void session.attach();
+    // "New chat about <topic>" in the palette (`?about=`) opens with the topic in the box, for the
+    // person to send or change. It sends nothing.
+    const about = untrack(() => (isNew ? router.current.search.get('about') : null));
+    if (about !== null && about.trim() !== '') void tick().then(() => fillComposer(about));
     return () => {
       for (const remove of removals) remove();
       restart.dispose();
@@ -1274,6 +1327,31 @@
                   input={argumentEntries(entry.arguments)}
                   onDecide={(choice) => void decide(entry.callId, choice)}
                   onAllowForChat={() => void allowForChat(entry.callId)}
+                />
+              {/if}
+            {/snippet}
+            {#snippet mcpApp(entry)}
+              {@const panel = workflowRevisionPanels.find(
+                (candidate) =>
+                  candidate.opensFromAgentTool === entry.name ||
+                  candidate.opensFromAgentTool === entry.name.replace('__', ':'),
+              )}
+              {@const proposalText = revisionProposalText(entry)}
+              {#if panel !== undefined && entry.state === 'done' && proposalText !== undefined}
+                {@const loadResource = () => loadPluginApp(panel.plugin, panel.app)}
+                {@const onToolCall = pluginToolCaller(panel.plugin, panel.app)}
+                <McpApp
+                  resourceUri={panel.uri}
+                  title={panel.title}
+                  {loadResource}
+                  {onToolCall}
+                  hostContext={mcpHostContext}
+                  maxHeight={560}
+                  toolInput={{ arguments: entry.arguments as Record<string, unknown> }}
+                  toolResult={{
+                    content: [],
+                    structuredContent: proposalText,
+                  }}
                 />
               {/if}
             {/snippet}

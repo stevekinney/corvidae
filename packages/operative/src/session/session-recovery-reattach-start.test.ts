@@ -312,7 +312,7 @@ describe('recover() — reattach failure and initial state', () => {
       }),
     );
     const fakeEngine = createSessionEngine({
-      cancel: async () => {},
+      cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
       get: async () => ({ status: 'completed' }),
       resume: async () => ({
         id: runId,

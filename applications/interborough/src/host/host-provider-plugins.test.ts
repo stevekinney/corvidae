@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1884 — the model catalog is assembled from the providers the loaded plugins contribute. A
  * plugin carries a provider, its catalog rows and the secret that holds its key; the host reads an
@@ -33,6 +34,7 @@ async function prepareHome(setup: {
   readonly agents?: Readonly<Record<string, string>>;
 }): Promise<string> {
   const home = await mkdtemp(join(tmpdir(), 'interborough-provider-plugins-'));
+  await initializeWorkspaceHome(home);
   directories.push(home);
   if (setup.configuration !== undefined) {
     await writeFile(join(home, 'configuration.json'), JSON.stringify(setup.configuration));
@@ -43,7 +45,7 @@ async function prepareHome(setup: {
   });
   try {
     for (const [key, value] of Object.entries(setup.secrets ?? {}))
-      bungalow.writeSecret(key, value);
+      await bungalow.deploymentSecrets.write(key, value);
   } finally {
     bungalow.close();
   }
@@ -248,6 +250,7 @@ describe('connecting a provider', () => {
       unknown
     >;
     expect(written).toEqual({
+      secretBindings: { 'openai-api-key': expect.any(String) },
       plugins: { openai: { configuration: { models: ['gpt-4.1'] } } },
     });
     expect(pairsOf(host)).toEqual(['openai/gpt-4.1']);

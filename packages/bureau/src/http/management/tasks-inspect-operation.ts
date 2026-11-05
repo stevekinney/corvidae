@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.tasks.inspect`: one task as the run inspector shows it (COR-910), a versioned,
  * plain-data snapshot of what `bureau.tasks.get` leaves out: the run's liveness, the children it owns,
@@ -203,6 +205,7 @@ export const tasksInspectOperation = defineOperation<
   BureauTasksInspectOperationHost
 >({
   name: 'bureau.tasks.inspect',
+  authorize: authorizeWorkspaceOperation('bureau.tasks.inspect'),
   mcpExposable: true,
   summary: 'Inspect one task',
   description:

@@ -21,20 +21,30 @@
     decision?: Snippet<[ToolCallEntry]>;
     /** The run's end state, on its own line after the last row, for a turn that ends on a tool call. */
     endLabel?: string | undefined;
+    /** An inline plugin panel for a completed tool call. */
+    mcpApp?: Snippet<[ToolCallEntry]>;
   }
 
-  let { id, entries, decision, endLabel }: ToolCallsProps = $props();
+  let { id, entries, decision, endLabel, mcpApp }: ToolCallsProps = $props();
 
   let openDetails = $state<ReadonlySet<string>>(new Set());
 
   const byId = $derived(new Map(entries.map((entry) => [entry.callId, entry] as const)));
+  /** A finished revision proposal keeps its inline panel on the rail, whatever the fold. */
+  const showsPanel = (entry: ToolCallEntry): boolean =>
+    mcpApp !== undefined &&
+    entry.state === 'done' &&
+    entry.name === 'bureau__workflows-propose-update';
   const calls = $derived(
-    entries.map((entry) =>
-      railCall(
+    entries.map((entry) => ({
+      ...railCall(
         entry,
-        (entry.state === 'needs-you' && decision !== undefined) || openDetails.has(entry.callId),
+        (entry.state === 'needs-you' && decision !== undefined) ||
+          openDetails.has(entry.callId) ||
+          showsPanel(entry),
       ),
-    ),
+      ...(showsPanel(entry) ? { pinned: true } : {}),
+    })),
   );
   const running = $derived(entries.some((entry) => entry.state === 'running'));
 
@@ -79,6 +89,9 @@
         {/if}
         {#if entry.state === 'needs-you' && decision !== undefined}
           {@render decision(entry)}
+        {/if}
+        {#if mcpApp !== undefined}
+          {@render mcpApp(entry)}
         {/if}
       {/if}
     {/snippet}

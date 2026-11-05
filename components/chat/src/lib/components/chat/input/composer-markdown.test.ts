@@ -130,23 +130,28 @@ describe('composerShortcutFormat', () => {
     return new KeyboardEvent('keydown', init);
   }
 
-  test('maps Cmd or Ctrl with B, I and E, and with Shift and K', () => {
+  test('maps Cmd or Ctrl with B, I, and E, and with Shift and K for a link', () => {
     expect(composerShortcutFormat(key({ key: 'b', metaKey: true }))).toBe('bold');
     expect(composerShortcutFormat(key({ key: 'I', ctrlKey: true }))).toBe('italic');
     expect(composerShortcutFormat(key({ key: 'e', metaKey: true }))).toBe('code');
-    expect(composerShortcutFormat(key({ key: 'K', metaKey: true, shiftKey: true }))).toBe('link');
     expect(composerShortcutFormat(key({ key: 'k', ctrlKey: true, shiftKey: true }))).toBe('link');
+    // Caps Lock and Shift report the capital.
+    expect(composerShortcutFormat(key({ key: 'K', metaKey: true, shiftKey: true }))).toBe('link');
   });
 
-  test('leaves Cmd or Ctrl with K to the host, which opens its command palette', () => {
+  test('leaves Cmd or Ctrl with K alone, which is the application’s search (row 03e)', () => {
     expect(composerShortcutFormat(key({ key: 'k', metaKey: true }))).toBeUndefined();
     expect(composerShortcutFormat(key({ key: 'k', ctrlKey: true }))).toBeUndefined();
+    expect(composerShortcutFormat(key({ key: 'K', metaKey: true }))).toBeUndefined();
   });
 
   test('ignores other keys and extra modifiers', () => {
     expect(composerShortcutFormat(key({ key: 'b' }))).toBeUndefined();
     expect(
       composerShortcutFormat(key({ key: 'b', metaKey: true, shiftKey: true })),
+    ).toBeUndefined();
+    expect(
+      composerShortcutFormat(key({ key: 'k', metaKey: true, shiftKey: true, altKey: true })),
     ).toBeUndefined();
     expect(composerShortcutFormat(key({ key: 'z', metaKey: true }))).toBeUndefined();
     expect(composerShortcutFormat(key({ key: 'constructor', metaKey: true }))).toBeUndefined();

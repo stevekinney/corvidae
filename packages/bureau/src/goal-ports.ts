@@ -436,6 +436,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     let started: GoalAttemptRun;
     try {
       started = startAttemptRun({
+        workspaceAuthority: record.workspaceAuthority,
         agentName,
         input: seat.input,
         runId: request.runId,

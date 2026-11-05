@@ -1,8 +1,9 @@
 /**
- * The notification feed follows `bureau.events` (COR-1725): the recent tasks are read again on a
- * timer only while the Bureau’s feed is not live, and once for a run event; the chats’ titles
- * likewise for a session event, and the notifications for a `notification.created`. The feed is the real source over a stubbed stream, and TanStack
- * Query’s refetch interval is the timer, so the clock is faked and moved by hand.
+ * The notification feed follows `bureau.events` (COR-1725): the chats’ titles are read again on a
+ * timer only while the Bureau’s feed is not live, and once for a session event, and the
+ * notifications likewise for a `notification.created`. The feed is the real source over a stubbed
+ * stream, and TanStack Query’s refetch interval is the timer, so the clock is faked and moved by
+ * hand.
  */
 import { cleanup, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
@@ -36,7 +37,6 @@ afterEach(() => {
 function open(): void {
   stub = bureau({
     'bureau.reviews.list': () => ({ reviews: [] }),
-    'bureau.tasks.list': () => ({ tasks: [], nextPageToken: null }),
     'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
     'bureau.notifications.list': () => ({ notifications: [], nextPageToken: null }),
     'bureau.schedules.list': () => ({ schedules: [], nextOffset: null }),
@@ -56,7 +56,6 @@ function open(): void {
 }
 
 const SITES = [
-  { site: 'the recent tasks', operation: 'bureau.tasks.list', event: 'run.settled' },
   { site: 'the chats’ titles', operation: 'bureau.contexts.list', event: 'session.created' },
   {
     site: 'the notifications',

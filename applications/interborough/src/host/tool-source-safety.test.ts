@@ -18,7 +18,7 @@ import {
   type ToolSourceManager,
   type ToolSourceManagerOptions,
 } from './tool-source-manager.ts';
-import { keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
+import { activeFixtureSecret, keysOf, memoryHome } from './tool-source-memory-home.test-support.ts';
 import {
   petsDocument,
   startMcpServer,
@@ -173,7 +173,7 @@ describe('credentials', () => {
       credentials: { key: 'key-for-the-first-address' },
       principal: owner,
     });
-    const before = home.state.secrets.get(toolSourceSecretKey('pets'));
+    const before = activeFixtureSecret(home, toolSourceSecretKey('pets')).value;
     const configurationBefore = home.state.configuration;
 
     const refused = await failureOf(
@@ -182,7 +182,7 @@ describe('credentials', () => {
 
     expect(refused).toBeInstanceOf(ToolSourceInputError);
     expect((refused as ToolSourceInputError).field).toBe('credentials.key');
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).toBe(before);
+    expect(activeFixtureSecret(home, toolSourceSecretKey('pets')).value).toBe(before);
     expect(home.state.configuration).toBe(configurationBefore);
 
     await manager.connect({
@@ -257,7 +257,10 @@ describe('credentials', () => {
     });
 
     await manager.remove({ id: 'pets', principal: owner });
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).toBe('');
+    expect(await secretsOf(home, keys, 'pets')).toMatchObject({
+      credentials: new Map(),
+      oauth: undefined,
+    });
 
     const refused = await failureOf(
       manager.connect({ id: 'pets', source: pets(), principal: owner }),
@@ -276,8 +279,10 @@ describe('credentials', () => {
       principal: owner,
     });
     // The file is edited by hand: the source is gone, its secret is not.
+    const abandoned = activeFixtureSecret(home, toolSourceSecretKey('pets'));
     home.state.configuration = undefined;
-    expect(home.state.secrets.get(toolSourceSecretKey('pets'))).not.toBe('');
+    expect(home.state.versions.get(abandoned.reference.version)).toBe(abandoned.value);
+    expect(abandoned.value.length).toBeGreaterThan(0);
 
     const refused = await failureOf(
       manager.connect({ id: 'pets', source: pets(), principal: owner }),
@@ -393,34 +398,39 @@ describe('a source that is replaced while its tools are loaded', () => {
     expect(await lookup?.execute({})).toBeDefined();
   });
 
-  test('lifts the fence again when the replacement could not be written', async () => {
-    const first = await startMcpServer('token-for-the-first');
-    servers.push(first);
-    const home = memoryHome();
-    const keys = await keysOf();
-    await managerOver(home, keys).connect({
-      id: 'files',
-      source: bearerSource(`${first.origin}/`),
-      credentials: { token: 'token-for-the-first' },
-      principal: owner,
-    });
-    const booted = managerOver(home, keys);
-    await booted.start();
-    const lookup = Object.values(booted.tools()).find((tool) => tool.name === 'lookup');
-
-    home.state.configurationFailure = 'before-replacing';
-    const failed = await failureOf(
-      booted.connect({
+  test.each(['before-replacing', 'unknown-before-replacing'] as const)(
+    'only lifts the fence for definite noncommit: %s',
+    async (failure) => {
+      const first = await startMcpServer('token-for-the-first');
+      servers.push(first);
+      const home = memoryHome();
+      const keys = await keysOf();
+      await managerOver(home, keys).connect({
         id: 'files',
-        source: bearerSource('http://127.0.0.1:9/'),
-        credentials: { token: 'token-for-nowhere' },
+        source: bearerSource(`${first.origin}/`),
+        credentials: { token: 'token-for-the-first' },
         principal: owner,
-      }),
-    );
+      });
+      const booted = managerOver(home, keys);
+      await booted.start();
+      const lookup = Object.values(booted.tools()).find((tool) => tool.name === 'lookup');
 
-    expect(failed).toBeInstanceOf(Error);
-    expect(await lookup?.execute({})).toBeDefined();
-  });
+      home.state.configurationFailure = failure;
+      const failed = await failureOf(
+        booted.connect({
+          id: 'files',
+          source: bearerSource('http://127.0.0.1:9/'),
+          credentials: { token: 'token-for-nowhere' },
+          principal: owner,
+        }),
+      );
+
+      expect(failed).toBeInstanceOf(Error);
+      expect(lookup).toBeDefined();
+      if (failure === 'before-replacing') expect(await lookup?.execute({})).toBeDefined();
+      else expect(await failureOf(Promise.resolve(lookup?.execute({})))).toBeInstanceOf(Error);
+    },
+  );
 
   test('never gives a source re-added by hand elsewhere under the same id to tools loaded for the old one', async () => {
     const first = await startMcpServer('token-for-the-first');
@@ -466,7 +476,10 @@ describe('a source whose stored secret cannot be read', () => {
       transport: { type: 'http', url: 'http://127.0.0.1:9/', authentication: { type: 'oauth' } },
     };
     await manager.connect({ id: 'calendar', source, principal: owner });
-    home.state.secrets.set(toolSourceSecretKey('calendar'), 'damaged beyond reading');
+    home.state.versions.set(
+      activeFixtureSecret(home, toolSourceSecretKey('calendar')).reference.version,
+      'damaged beyond reading',
+    );
     expect(await failureOf(secretsOf(home, keys, 'calendar'))).toBeDefined();
 
     const change = await manager.connect({ id: 'calendar', source, principal: owner });
@@ -563,7 +576,7 @@ describe('a sign-in', () => {
   });
 
   test('is refused once the source has been removed, and nothing is stored for it', async () => {
-    const { oauth, home, manager } = await signingIn();
+    const { oauth, home, keys, manager } = await signingIn();
     const callback = await callbackAfterAuthorizing(manager, 'calendar');
     await manager.remove({ id: 'calendar', principal: owner });
 
@@ -571,7 +584,10 @@ describe('a sign-in', () => {
 
     expect(refused).toBeInstanceOf(ToolSourceInputError);
     expect(oauth.issuedAccessTokens).toEqual([]);
-    expect(home.state.secrets.get(toolSourceSecretKey('calendar'))).toBe('');
+    expect(await secretsOf(home, keys, 'calendar')).toMatchObject({
+      credentials: new Map(),
+      oauth: undefined,
+    });
   });
 
   test('is refused once the description it began for has changed, and the sign-in is dropped', async () => {
@@ -603,7 +619,7 @@ describe('a sign-in', () => {
       }
       return fetch(input, init);
     }) as typeof fetch;
-    const { oauth, home, manager } = await signingIn({ fetch: gate });
+    const { oauth, home, keys, manager } = await signingIn({ fetch: gate });
     const callback = await callbackAfterAuthorizing(manager, 'calendar');
 
     const completing = manager.completeAuthorization('calendar', callback);
@@ -615,8 +631,14 @@ describe('a sign-in', () => {
 
     expect(oauth.issuedAccessTokens).toHaveLength(1);
     // Removed after the sign-in, not before it: nothing was written into the cleared secret.
-    expect(home.state.secrets.get(toolSourceSecretKey('calendar'))).toBe('');
-    expect(home.state.configuration).not.toContain('calendar');
+    expect(await secretsOf(home, keys, 'calendar')).toMatchObject({
+      credentials: new Map(),
+      oauth: undefined,
+    });
+    const removedConfiguration = JSON.parse(home.state.configuration ?? '{}') as {
+      toolSources?: unknown;
+    };
+    expect(removedConfiguration.toolSources).toBeUndefined();
   });
 
   test('has its token exchange cancelled at the deadline instead of holding every writer', async () => {

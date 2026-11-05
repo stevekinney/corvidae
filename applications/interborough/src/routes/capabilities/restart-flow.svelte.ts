@@ -2,7 +2,7 @@
  * The restart Capabilities › Sources offers once a source is saved: ask the host to restart
  * (`POST /host/restart`, answered `202` before it stops), then watch the host until it answers
  * again with nothing left waiting for a restart. It is the sibling of the plugins page's flow
- * (`settings/plugins/restart-flow.svelte.ts`), which reads the plugins and writes before it asks;
+ * (`settings/plugins/restart-flow.svelte.ts`, on the shell's `app/restart/host-restart-flow.svelte.ts`), which reads the plugins and writes before it asks;
  * this one only asks and reads the tool sources, and both share one timing (`restartProbing`) so a
  * test shortens the wait once.
  *
@@ -13,9 +13,9 @@
  * instead of waited for: nothing supervises it, or the restart failed. The wait is on the host's
  * answer and never on a duration, so a slow start is waited out.
  */
+import { restartProbing } from '../../app/restart/host-restart-flow.svelte.ts';
 import { HostPluginError, restartHost } from '../../lib/host-plugins.ts';
 import { getToolSources, type ToolSourcesSnapshot } from '../../lib/host-tool-sources.ts';
-import { restartProbing } from '../settings/plugins/restart-flow.svelte.ts';
 import { sourceWaitsForRestart } from './capability-presentation.ts';
 
 /** Where a restart stands. */

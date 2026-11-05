@@ -33,6 +33,12 @@ const schema = {
       description:
         'A key sequence shown at the end of the row, read as "G then H": each key in a `Kbd`, with "then"\nbetween them. One key shows alone ("C"). It is text in the row, so it joins the option\'s\naccessible name unless `accessibleLabel` is set; it does not set `aria-keyshortcuts`, which\ndescribes a chord, not a sequence. Pass `keyboardShortcut` as well for a chord.',
     },
+    leadingTone: {
+      enum: ['neutral', 'warning'],
+      description:
+        'How the leading content is drawn. `neutral` is a bare glyph in muted ink; `warning` is the\nglyph on a small amber tile, for a row that is waiting on the person.',
+      default: 'neutral',
+    },
     class: {
       type: 'string',
       description: 'Class merged with `.cinder-command-item`.',
@@ -57,6 +63,12 @@ const schema = {
         name: 'leading',
         reason: 'function-or-snippet',
         description: 'Leading content (icon, avatar). Rendered with aria-hidden.',
+      },
+      {
+        name: 'meta',
+        reason: 'function-or-snippet',
+        description:
+          'Secondary text on the label\'s own line, after it and muted ("Refund order 4471 for $42.00?\n· Approval · waiting"). The label and the meta truncate together as one line. Rendered with\naria-hidden, so name the row with `accessibleLabel` when the meta carries meaning.',
       },
       {
         name: 'onSelect',

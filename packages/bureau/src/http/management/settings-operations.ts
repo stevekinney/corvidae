@@ -1,3 +1,5 @@
+import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
+
 /**
  * `bureau.settings.get`, `bureau.settings.schema`, `bureau.settings.update`, and
  * `bureau.settings.events`: the deployment's runtime settings through `Bureau.settings`
@@ -76,6 +78,7 @@ export const settingsGetOperation = defineOperation<
   BureauSettingsOperationHost
 >({
   name: 'bureau.settings.get',
+  authorize: authorizeWorkspaceOperation('bureau.settings.get'),
   mcpExposable: false,
   summary: 'Read the runtime settings',
   description:
@@ -108,6 +111,7 @@ export const settingsSchemaOperation = defineOperation<
   BureauSettingsOperationHost
 >({
   name: 'bureau.settings.schema',
+  authorize: authorizeWorkspaceOperation('bureau.settings.schema'),
   mcpExposable: false,
   summary: 'Read the runtime settings’ JSON Schema',
   description:
@@ -159,6 +163,7 @@ export const settingsUpdateOperation = defineOperation<
   BureauSettingsOperationHost
 >({
   name: 'bureau.settings.update',
+  authorize: authorizeWorkspaceOperation('bureau.settings.update'),
   mcpExposable: false,
   summary: 'Change runtime settings',
   description:
@@ -302,6 +307,7 @@ export const settingsEventsOperation = defineOperation<
   BureauSettingsOperationHost
 >({
   name: 'bureau.settings.events',
+  authorize: authorizeWorkspaceOperation('bureau.settings.events'),
   mcpExposable: false,
   kind: 'subscription',
   summary: 'Follow changes to the runtime settings',

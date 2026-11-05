@@ -1,3 +1,11 @@
+import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule.ts';
+import { normalizeRunRequestContext } from './session-request-context.ts';
+import {
+  createRunAuthorityValidator,
+  guardWorkspaceRunOptions,
+  mayUseAutomationInput,
+  recoverRunWorkspaceAuthority,
+} from './run-authority.ts';
 import type { EventMap, HookReplayPolicy, RuntimeServices } from '@lostgradient/lifecycle';
 import {
   createSecretAnswerStore,
@@ -52,6 +60,8 @@ import type {
 } from '@lostgradient/operative';
 import {
   appendAgentInput,
+  readBackendDescriptors,
+  withBackendDescriptors,
   MEMORY_EVIDENCE_METADATA_KEY,
   createAgentSession,
   createCheckpointStore,
@@ -139,6 +149,7 @@ import {
   type ToolboxExecuteOptions,
   type ToolCallInput,
   type ToolRequestContext,
+  readRunWorkspaceAuthority,
 } from 'armorer';
 import {
   Conversation,
@@ -208,6 +219,9 @@ export function createHumanWaitContext(
     get pendingWakeup() {
       return servicesRef.current?.pendingWakeup;
     },
+    get pendingChildWait() {
+      return servicesRef.current?.pendingChildWait;
+    },
     runId,
     // Only ever constructed inside the `options.humanInput && runtime.durable`
     // guard below, so this context always backs a real durable run
@@ -241,6 +255,9 @@ export function createWakeupContext(servicesRef: {
     // COR-1578 — read-only: a human-input request already made in this step refuses a wakeup.
     get pendingHumanWait() {
       return servicesRef.current?.pendingHumanWait;
+    },
+    get pendingChildWait() {
+      return servicesRef.current?.pendingChildWait;
     },
     // Only ever constructed inside the `options.wakeup && runtime.durable`
     // guard (below, in `createBureau`'s run composition — same placement as
@@ -457,6 +474,8 @@ function requestContextFromAuthorityValue(
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const authority = value as Record<string, JSONValue>;
   const capabilities = authority['capabilities'];
+  const workspace = readRunWorkspaceAuthority(authority['workspace']);
+  if (authority['workspace'] !== undefined && workspace === undefined) return undefined;
   const audience = authority['audience'];
   const deadline = authority['deadline'];
   if (
@@ -482,6 +501,7 @@ function requestContextFromAuthorityValue(
       ownerId: authority['ownerId'],
       capabilities: Object.freeze([...capabilities] as string[]),
       authorizationRevision: authority['authorizationRevision'],
+      ...(workspace === undefined ? {} : { workspace }),
     },
     ...(audience !== undefined ? { audience } : {}),
     ...(typeof deadline === 'number' ? { deadline } : {}),
@@ -572,28 +592,30 @@ function withDefaultToolboxRequestContext(
       input: ToolCallInput | ToolCallInput[],
       executeOptions?: ToolboxExecuteOptions,
     ) => {
-      const options =
-        executeOptions?.requestContext === undefined
-          ? { ...executeOptions, requestContext }
-          : executeOptions;
-      const executionRequestContext = options.requestContext;
-      const authorizationRevision = executionRequestContext?.authority.authorizationRevision;
-      const requiresTransportValidation =
-        authorizationRevision !== undefined &&
-        authorizationRevision !== 'bureau:1' &&
-        authorizationRevision !== 'bureau:scheduler:1';
-      if (requiresTransportValidation && executionRequestContext) {
-        const validator = requestAuthorityValidator();
-        if (
-          !validator ||
-          !(await raceRequestAuthorityValidation(
-            validator(executionRequestContext),
-            options,
-            runtimeServices,
-          ))
-        ) {
+      const options: ToolboxExecuteOptions = {
+        ...executeOptions,
+        requestContext: executeOptions?.requestContext ?? requestContext,
+      };
+      const inheritedValidation = options.revalidateAuthority;
+      const revision = options.requestContext!.authority.authorizationRevision;
+      const requiresValidation =
+        options.requestContext!.authority.workspace !== undefined ||
+        (revision !== 'bureau:1' && revision !== 'bureau:scheduler:1');
+      if (requiresValidation) {
+        options.revalidateAuthority = async (candidate) => {
+          const inherited =
+            inheritedValidation === undefined ? candidate : await inheritedValidation(candidate);
+          if (inherited === undefined) return undefined;
+          const validator = requestAuthorityValidator();
+          if (
+            !validator ||
+            !(await raceRequestAuthorityValidation(validator(inherited), options, runtimeServices))
+          )
+            return undefined;
+          return inherited;
+        };
+        if ((await options.revalidateAuthority(options.requestContext!)) === undefined)
           throw new Error('Request authority is no longer current.');
-        }
       }
       return Array.isArray(input) ? inner.execute(input, options) : inner.execute(input, options);
     }) as AnyToolbox['execute'];
@@ -942,6 +964,8 @@ export interface GoalAttemptClaimOwner {
 export type GoalAttemptClaimFence = 'fenced' | 'foreign';
 
 export interface CatalogRunRecoveryRecord {
+  /** Original authorizing actor; never reconstructed from historic owner on recovery. */
+  readonly workspaceAuthority?: import('armorer').RunWorkspaceAuthority;
   readonly schemaVersion: 1;
   /**
    * COR-1710 — the tools the task was granted when it started, so its recovery offers the same
@@ -1067,6 +1091,11 @@ function isCatalogAgentInput(value: unknown): value is AgentInput {
 function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecoveryRecord {
   if (!isRecord(value)) return false;
   if (value['schemaVersion'] !== 1) return false;
+  if (
+    value['workspaceAuthority'] !== undefined &&
+    readRunWorkspaceAuthority(value['workspaceAuthority']) === undefined
+  )
+    return false;
   const agentName = value['agentName'];
   if (typeof agentName !== 'string' || agentName.length === 0) return false;
   if (typeof value['definitionRevision'] !== 'number') return false;
@@ -1573,6 +1602,9 @@ export function applyCache(
 export type MediaRowHolder = 'session' | 'run';
 
 export type RuntimeCompositionDependencies = {
+  /** Configures live and recovered durable catalog-run services. */
+  configureDurableRun?:
+    ((runId: string, services: DurableRunDeps, principal: string) => void) | undefined;
   /**
    * Builds the session store this composition uses over its resolved KV
    * view. Defaults to operative's own `createSessionStore` — the real
@@ -1632,6 +1664,8 @@ export type RuntimeCompositionDependencies = {
    * responsible for recording once.
    */
   onScheduledFire?: (fire: ScheduledFireNotice) => void | Promise<void>;
+  /** Queue a durable pause without blocking the scheduler's own serialized fire. */
+  onScheduleAuthorityDenied?: (scheduleId: string) => void;
   /**
    * COR-1482 — called once a schedule fire's run has ended, however it ended: completed, failed,
    * or canceled. `createBureau` settles the fire's task here.
@@ -1765,7 +1799,7 @@ export type ScheduledFireServicesNotice = {
   readonly sessionId: string;
   readonly agentName: string;
   /** The request context the fire runs under, which a later approval of its tool resumes under. */
-  readonly requestContext: ReturnType<typeof createSchedulerServiceRequestContext>;
+  readonly requestContext: ToolRequestContext;
 };
 
 /** What {@link RuntimeCompositionDependencies.onScheduledSessionKnown} is told. */
@@ -2403,6 +2437,7 @@ export interface RuntimeComposition {
       skillPolicyUnverifiable?: boolean | undefined;
       /** COR-1911 — the run neither recalls nor remembers: no memory hook is registered. */
       withoutMemory?: boolean | undefined;
+      admitDispatch?: (() => Promise<boolean>) | undefined;
     },
   ): Promise<{
     generate: GenerateFunction;
@@ -2800,7 +2835,10 @@ async function buildRuntimeComposition(
   // binding. Manual mode has no background poller, but shares the same gate for consistency.
   // Only so the resolver can say, once, that it had to wait; the gate itself is `readiness`.
   let compositionOpen = false;
-  let requestAuthorityValidator = options.requestAuthorityValidator;
+  let requestAuthorityValidator = createRunAuthorityValidator(
+    options.workspace,
+    options.requestAuthorityValidator,
+  );
   // AB-240: wired by `createBureau` once its agent catalog exists (this
   // function's own contract deliberately excludes `agents` — see
   // `RuntimeCompositionOptions`'s doc comment) — `undefined` until then, and
@@ -3417,20 +3455,41 @@ async function buildRuntimeComposition(
        * nothing in the memory its owner keeps.
        */
       withoutMemory?: boolean | undefined;
+      admitDispatch?: (() => Promise<boolean>) | undefined;
     },
   ) {
     const sessionAgent = runtimeOptions?.sessionAgent;
     const requestContext = request.requestContext;
     // COR-1996: a catalog agent's generate is held to the model policy; the Bureau-wide one is the
     // deployment's own and no agent's choice.
-    const generate =
+    const underlyingGenerate =
       sessionAgent !== undefined
         ? holdGenerateOfAgent(sessionAgent.options.generate, sessionAgent.generationMode)
         : configuredGenerate;
 
-    if (!generate) {
+    if (!underlyingGenerate) {
       throw new Error('No generate function configured');
     }
+    const validateDispatch = async (candidate: ToolRequestContext): Promise<boolean> => {
+      if (runtimeOptions?.admitDispatch !== undefined && !(await runtimeOptions.admitDispatch()))
+        return false;
+      return (
+        requestAuthorityValidator === undefined || (await requestAuthorityValidator(candidate))
+      );
+    };
+    const generate: GenerateFunction = withBackendDescriptors(async (context) => {
+      const revision = requestContext?.authority.authorizationRevision;
+      const required =
+        options.workspace !== undefined ||
+        (revision !== undefined && revision !== 'bureau:1' && revision !== 'bureau:scheduler:1');
+      if (
+        required &&
+        (!requestContext || !requestAuthorityValidator || !(await validateDispatch(requestContext)))
+      ) {
+        throw new Error('Request authority is no longer current.');
+      }
+      return underlyingGenerate(context);
+    }, readBackendDescriptors(underlyingGenerate));
 
     // Clone the toolbox for this run so concurrent runs do not share a single
     // CompletableEventTarget emitter. A shared emitter would route every tool.*
@@ -3762,7 +3821,7 @@ async function buildRuntimeComposition(
           )
         : chatToolbox,
       requestContext,
-      () => requestAuthorityValidator,
+      () => validateDispatch,
       runtimeServices,
     );
     return Promise.resolve({
@@ -3910,13 +3969,29 @@ async function buildRuntimeComposition(
           );
     const initialActiveSkillRecords =
       skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
-    const requestContext = recoveredRequestContext(
+    let requestContext = recoveredRequestContext(
       session.metadata,
       runId,
       session.id,
       agentName,
       runtimeServices.clock.now,
     );
+    if (options.workspace !== undefined && requestContext?.authority.workspace === undefined) {
+      const owner = runId === undefined ? undefined : recoveredOwnerOf(session, runId);
+      const authority = await recoverRunWorkspaceAuthority(options.workspace, undefined, owner);
+      if (authority !== undefined) {
+        const context =
+          requestContext ??
+          normalizeRunRequestContext(
+            undefined,
+            runId ?? session.id,
+            session.id,
+            agentName ?? defaultBureauAgentName,
+            owner,
+          );
+        requestContext = { ...context, authority: { ...context.authority, workspace: authority } };
+      }
+    }
     const runRuntime = await createRunRuntime(
       {
         message: typeof message === 'string' ? message : '',
@@ -4055,6 +4130,13 @@ async function buildRuntimeComposition(
           : {}),
       },
     };
+    if (runId !== undefined) {
+      dependencies.configureDurableRun?.(
+        runId,
+        services,
+        ownerOrLocal(recoveredOwnerOf(session, runId)),
+      );
+    }
     if (wantsHumanInput || wantsWakeup) {
       servicesRef.current = services;
     }
@@ -4506,6 +4588,27 @@ async function buildRuntimeComposition(
     runId: string,
     record: CatalogRunRecoveryRecord,
   ): Promise<WorkflowServicesResolution> {
+    const authority =
+      options.workspace === undefined
+        ? undefined
+        : await recoverRunWorkspaceAuthority(
+            options.workspace,
+            record.workspaceAuthority,
+            record.principal,
+          );
+    if (options.workspace !== undefined && authority === undefined)
+      return { status: 'unavailable', reason: 'Workspace authority unavailable.' };
+    const baseContext = normalizeRunRequestContext(
+      undefined,
+      runId,
+      record.contextId ?? runId,
+      record.agentName,
+      record.principal,
+    );
+    const workspaceContext: ToolRequestContext =
+      authority === undefined
+        ? baseContext
+        : { ...baseContext, authority: { ...baseContext.authority, workspace: authority } };
     const wired = await awaitCatalogAgentRunOptionsResolver(runId);
     if (wired.status === 'absent') {
       return {
@@ -4642,7 +4745,11 @@ async function buildRuntimeComposition(
     const services: DurableRunDeps = {
       options: {
         // COR-1996: held to the model policy as a fresh dispatch's generate is.
-        ...holdToModelPolicy(resolution.options, resolution.generationMode),
+        ...guardWorkspaceRunOptions(
+          options.workspace,
+          holdToModelPolicy(resolution.options, resolution.generationMode),
+          workspaceContext,
+        ),
         // The run's owner of record resolves its assets and holds the same
         // unverified-asset policy as on a fresh dispatch, unless the agent set its own.
         ...unsetMediaOptions(
@@ -4654,6 +4761,20 @@ async function buildRuntimeComposition(
       },
       toolbox,
     };
+    services.childWaitPrincipal = ownerOrLocal(record.principal);
+    services.requestChildWait = (request) => {
+      if (services.childWaitPrincipal !== request.principal)
+        return { parked: false, reason: 'unauthorized' };
+      if (
+        services.pendingChildWait !== undefined ||
+        services.pendingHumanWait !== undefined ||
+        services.pendingWakeup !== undefined
+      )
+        return { parked: false, reason: 'already-parked' };
+      services.pendingChildWait = { schemaVersion: 1, ...request };
+      return { parked: true };
+    };
+    dependencies.configureDurableRun?.(runId, services, ownerOrLocal(record.principal));
     humanInputServices.current = services;
     return { status: 'available', services };
   }
@@ -4906,7 +5027,34 @@ async function buildRuntimeComposition(
     // COR-718 — the fire is recorded, with its owner and its `schedule.fired` entry,
     // before any refusal below: a refused fire is still a fire, and its run is the
     // schedule owner's.
-    const owner = ownerOrLocal(scheduledInput.principal);
+    const scheduleAuthority =
+      options.workspace === undefined
+        ? undefined
+        : await recoverRunWorkspaceAuthority(
+            options.workspace,
+            scheduledInput.workspaceAuthority,
+            scheduledInput.principal,
+          );
+    if (
+      options.workspace !== undefined &&
+      (scheduleAuthority === undefined || scheduledInput.authorityHold !== undefined)
+    ) {
+      if (recoveredScheduleId !== undefined)
+        dependencies.onScheduleAuthorityDenied?.(recoveredScheduleId);
+      return { status: 'unavailable', reason: 'Workspace authority unavailable.' };
+    }
+    const owner = scheduleAuthority?.authorizingOwner ?? ownerOrLocal(scheduledInput.principal);
+    if (
+      options.workspace !== undefined &&
+      !(await mayUseAutomationInput(
+        scheduledInput.input,
+        mediaOptionsFor(owner, 'session').contentSourceResolver,
+      ))
+    ) {
+      if (recoveredScheduleId !== undefined)
+        dependencies.onScheduleAuthorityDenied?.(recoveredScheduleId);
+      return { status: 'unavailable', reason: 'Automation input unavailable.' };
+    }
     await dependencies.onScheduledFire?.({
       runId,
       scheduleId: recoveredScheduleId,
@@ -5049,7 +5197,14 @@ async function buildRuntimeComposition(
     );
     const initialActiveSkillRecords =
       skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
-    const requestContext = createSchedulerServiceRequestContext(runId, agentName, sessionId);
+    const schedulerContext = createSchedulerServiceRequestContext(runId, agentName, sessionId);
+    const requestContext: ToolRequestContext =
+      scheduleAuthority === undefined
+        ? schedulerContext
+        : {
+            ...schedulerContext,
+            authority: { ...schedulerContext.authority, workspace: scheduleAuthority },
+          };
 
     // COR-1546 — the fire's run writes into the schedule owner's memory, not the scheduler's.
     const runRuntime = await createRunRuntime(
@@ -5059,6 +5214,24 @@ async function buildRuntimeComposition(
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         memoryOwner: owner,
         sessionAgent: fireAgent,
+        admitDispatch:
+          options.workspace === undefined || recoveredScheduleId === undefined
+            ? undefined
+            : async () => {
+                let admitted = false;
+                try {
+                  const current = workflowScheduleBinding(
+                    await storedScheduleInput(durable!.engine, recoveredScheduleId),
+                  );
+                  admitted =
+                    current.authorityHold === undefined &&
+                    current.workspaceAuthority?.actorId === scheduleAuthority?.actorId;
+                } catch {
+                  // Unreadable or malformed durable authority must request the same pause.
+                }
+                if (!admitted) dependencies.onScheduleAuthorityDenied?.(recoveredScheduleId);
+                return admitted;
+              },
       },
     );
     const skillRecovery = await runRuntime.skillsRecovered;
@@ -5363,8 +5536,9 @@ async function buildRuntimeComposition(
     }
     const recoveredAuthorizationRevision = recoveredAuthority.authority.authorizationRevision;
     const requiresTransportValidation =
-      recoveredAuthorizationRevision !== 'bureau:1' &&
-      recoveredAuthorizationRevision !== 'bureau:scheduler:1';
+      options.workspace !== undefined ||
+      (recoveredAuthorizationRevision !== 'bureau:1' &&
+        recoveredAuthorizationRevision !== 'bureau:scheduler:1');
     if (requestAuthorityValidator === undefined && requiresTransportValidation) {
       return {
         status: 'unavailable',
@@ -5469,7 +5643,7 @@ async function buildRuntimeComposition(
     withChatPermission: governedByChat,
     holdToModelPolicy,
     setRequestAuthorityValidator(validator) {
-      requestAuthorityValidator = validator;
+      requestAuthorityValidator = createRunAuthorityValidator(options.workspace, validator);
     },
     setCatalogAgentRunOptionsResolver(resolver) {
       catalogAgentRunOptionsResolver = resolver;

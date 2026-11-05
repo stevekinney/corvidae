@@ -156,6 +156,7 @@
     onInputSubmit,
     answerInComposer = false,
     disabled = false,
+    pausedReason,
     messageReasoning,
     messageSteps,
     messageSuggestions,
@@ -2057,6 +2058,7 @@
           header={composerHeader}
           disabled={streaming && (!followUpsEnabled || composerCompact)}
           paused={disabled}
+          {pausedReason}
           sending={composerSending}
           allowFollowUp={followUpsEnabled && !composerCompact}
           compact={composerCompact}

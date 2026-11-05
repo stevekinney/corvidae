@@ -24,6 +24,7 @@ export function createDurableToolboxForwarder(args: {
   isOwnEvent: (event: { ownerId?: string | undefined }) => boolean;
   onToolStarted: () => void;
   onToolSettled: () => void;
+  deferredChildCallIds?: Set<string> | undefined;
 }) {
   const {
     toolbox,
@@ -36,6 +37,7 @@ export function createDurableToolboxForwarder(args: {
     isOwnEvent,
     onToolStarted,
     onToolSettled,
+    deferredChildCallIds,
   } = args;
 
   let currentStep = 0;
@@ -106,6 +108,7 @@ export function createDurableToolboxForwarder(args: {
     }
     const hasError = e.error !== undefined;
     const status = e.status;
+    if (deferredChildCallIds?.has(e.call.id) === true) return;
     emitter.dispatchEvent(
       new ToolSettledBubbleEvent(
         { agentName, runId, step: currentStep },

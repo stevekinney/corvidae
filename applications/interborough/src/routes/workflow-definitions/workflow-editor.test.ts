@@ -190,7 +190,7 @@ describe('the editor', () => {
     await ready(container);
     if (stub !== undefined) stub.world.files = [];
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
-    await findByRole('heading', { level: 1, name: /not found/i });
+    await findByRole('heading', { level: 1, name: /doesn’t exist/i });
     await waitFor(() =>
       expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
         'not-found',

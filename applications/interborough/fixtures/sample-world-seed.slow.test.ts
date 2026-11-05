@@ -858,6 +858,23 @@ describe('the sample world, part B', () => {
     }
   });
 
+  test('has cleared what the person’s own hooks wrote, so the bell lists what needs them now', async () => {
+    type NotificationRow = { kind: string; title: string };
+    const listed = await call<{ notifications: NotificationRow[] }>(
+      'bureau.notifications.list',
+      {},
+    );
+    expect(listed.notifications.filter((notification) => notification.kind === 'hook')).toEqual([]);
+    // The hooks delivered, and what they wrote is dismissed, not gone: the record is kept.
+    const everything = await call<{ notifications: NotificationRow[] }>(
+      'bureau.notifications.list',
+      { includeDismissed: true },
+    );
+    expect(
+      everything.notifications.filter((notification) => notification.kind === 'hook').length,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
   test('runs Guardrails and Inspectors, needs setup for the providers and TypeSafe, and keeps Demo, Workspace, Ollama and Voyage off', async () => {
     const response = await fetch(new URL('/host/plugins', world.host.url));
     const { plugins } = (await response.json()) as {

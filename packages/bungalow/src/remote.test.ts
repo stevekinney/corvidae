@@ -30,6 +30,7 @@ const SESSION_TOKEN = 'sentinel-session-token';
 const DATABASE_URL = 'postgres://bungalow:sentinel-database-password@127.0.0.1:5432/bungalow';
 const SECRET_VALUE = 'sentinel-secret-value';
 const DEPLOYMENT_KEY = `${PREFIX}/deployment-id`;
+const WORKSPACE_KEY = `${PREFIX}/workspace-id`;
 const CONFIGURATION_KEY = `${PREFIX}/configuration.json`;
 
 const DATABASE_VARIABLE = 'BUNGALOW_TEST_DATABASE_URL';
@@ -69,7 +70,11 @@ function remoteEnvironment(endpoint: string, overrides: Environment = {}): Envir
 }
 
 function openRemote(endpoint: string, overrides: Environment = {}) {
-  return openBungalow({ name: TEST_NAME, environment: remoteEnvironment(endpoint, overrides) });
+  return openBungalow({
+    name: TEST_NAME,
+    environment: remoteEnvironment(endpoint, overrides),
+    databaseWorkspaceClaim: async () => {},
+  });
 }
 
 /** The message and `cause` of a failure hold no bucket, prefix, URL, credential, or secret. */
@@ -234,7 +239,11 @@ describe('remote mode: the lock', () => {
       throw new Error('flock was requested');
     };
     using remote = await openBungalowWithDependencies(
-      { name: TEST_NAME, environment: remoteEnvironment(server.endpoint) },
+      {
+        name: TEST_NAME,
+        environment: remoteEnvironment(server.endpoint),
+        databaseWorkspaceClaim: async () => {},
+      },
       { acquireLock },
     );
     expect(remote.mode).toBe('remote');
@@ -253,20 +262,25 @@ describe('remote mode: exact addressing', () => {
     const proxy = startProxy(startServer());
     // Past the prefix validation, as a later caller of `openRemoteBungalow` could be.
     const error = await rejectionOf(
-      openRemoteBungalow(TEST_NAME, {
-        databaseUrl: DATABASE_URL,
-        bucket: BUCKET,
-        prefix: 'a/./',
-        client: {
-          endpoint: proxy.endpoint,
-          region: 'us-east-1',
-          accessKeyId: ACCESS_KEY_ID,
-          secretAccessKey: SECRET_ACCESS_KEY,
+      openRemoteBungalow(
+        TEST_NAME,
+        {
+          databaseUrl: DATABASE_URL,
           bucket: BUCKET,
-          virtualHostedStyle: false,
+          prefix: 'a/./',
+          client: {
+            endpoint: proxy.endpoint,
+            region: 'us-east-1',
+            accessKeyId: ACCESS_KEY_ID,
+            secretAccessKey: SECRET_ACCESS_KEY,
+            bucket: BUCKET,
+            virtualHostedStyle: false,
+          },
+          secrets: new Map(),
         },
-        secrets: new Map(),
-      }),
+        undefined,
+        async () => {},
+      ),
     );
     expect(error).toBeInstanceOf(BungalowInputError);
     expectNothingLeaked(error, proxy.endpoint);
@@ -293,12 +307,115 @@ describe('remote mode: the bucket prefix', () => {
         prefix: `${normalized}agents/`,
       });
       expect(bungalow.configurationLocation).toBe(`s3://${BUCKET}/${normalized}configuration.json`);
-      expect([...server.objects().keys()]).toEqual([`${normalized}deployment-id`]);
+      expect([...server.objects().keys()].toSorted()).toEqual([
+        `${normalized}deployment-id`,
+        `${normalized}workspace-id`,
+      ]);
     });
   }
 });
 
 describe('remote mode: the deployment ID outcome matrix', () => {
+  test('requires the database binding port before making any remote request', async () => {
+    const server = startServer();
+    const proxy = startProxy(server);
+    expect(
+      await throwingRejectionOf(
+        openBungalow({ name: TEST_NAME, environment: remoteEnvironment(proxy.endpoint) }),
+      ),
+    ).toThrow('database workspace binding callback');
+    expect(proxy.requests).toEqual([]);
+    expect(server.objects().size).toBe(0);
+  });
+
+  test('refuses existing content without an identity and leaves it intact', async () => {
+    const server = startServer();
+    server.put(CONFIGURATION_KEY, '{}');
+    expect(await throwingRejectionOf(openRemote(server.endpoint))).toThrow('Restore');
+    expect([...server.objects().keys()]).toEqual([CONFIGURATION_KEY]);
+  });
+
+  test('rejects a configured identity mismatch before claiming the database', async () => {
+    const server = startServer();
+    server.put(DEPLOYMENT_KEY, generateUlid());
+    let claims = 0;
+    expect(
+      await throwingRejectionOf(
+        openBungalow({
+          name: TEST_NAME,
+          environment: remoteEnvironment(server.endpoint),
+          workspaceId: generateUlid(),
+          databaseWorkspaceClaim: async () => {
+            claims++;
+          },
+        }),
+      ),
+    ).toThrow('does not match');
+    expect(claims).toBe(0);
+    expect(server.objects().has(WORKSPACE_KEY)).toBe(false);
+  });
+
+  test('publishes no workspace marker after a rejected database claim and retries its original identity', async () => {
+    const server = startServer();
+    const claims: Array<string | undefined> = [];
+    expect(
+      await throwingRejectionOf(
+        openBungalow({
+          name: TEST_NAME,
+          environment: remoteEnvironment(server.endpoint),
+          databaseWorkspaceClaim: async (_url, _prefix, identity) => {
+            claims.push(identity);
+            if (identity !== undefined) throw new Error('database belongs to another workspace');
+          },
+        }),
+      ),
+    ).toThrow('another workspace');
+    const deployment = new TextDecoder().decode(server.objects().get(DEPLOYMENT_KEY)).trim();
+    expect(claims).toEqual([undefined, deployment]);
+    expect([...server.objects().keys()]).toEqual([DEPLOYMENT_KEY]);
+    using reopened = await openBungalow({
+      name: TEST_NAME,
+      environment: remoteEnvironment(server.endpoint),
+      databaseWorkspaceClaim: async (_url, _prefix, identity) => {
+        expect(identity).toBe(deployment);
+      },
+    });
+    expect(reopened.workspaceId).toBe(deployment);
+    expect(new TextDecoder().decode(server.objects().get(WORKSPACE_KEY)).trim()).toBe(deployment);
+  });
+
+  test('retries a failed workspace publication using the identity already claimed in the database', async () => {
+    const server = startServer();
+    const proxy = startProxy(server);
+    let claimed: string | undefined;
+    const open = () =>
+      openBungalow({
+        name: TEST_NAME,
+        environment: remoteEnvironment(proxy.endpoint),
+        databaseWorkspaceClaim: async (_url, _prefix, identity) => {
+          if (identity === undefined) {
+            expect(claimed).toBeUndefined();
+            return;
+          }
+          if (claimed !== undefined) expect(identity).toBe(claimed);
+          claimed = identity;
+        },
+      });
+    proxy.intercept(({ method, key }) =>
+      method === 'PUT' && key === WORKSPACE_KEY
+        ? new Response('unavailable', { status: 500 })
+        : undefined,
+    );
+    expect(await rejectionOf(open())).toBeInstanceOf(BungalowFilesystemError);
+    expect(claimed).toBeDefined();
+    expect(server.objects().has(WORKSPACE_KEY)).toBe(false);
+    const deployment = server.objects().get(DEPLOYMENT_KEY);
+    proxy.intercept(undefined);
+    using reopened = await open();
+    expect(reopened.workspaceId).toBe(claimed!);
+    expect(server.objects().get(DEPLOYMENT_KEY)).toEqual(deployment);
+  });
+
   test('an empty bucket: written with If-None-Match, read back, and used', async () => {
     const server = startServer();
     const proxy = startProxy(server);
@@ -309,8 +426,15 @@ describe('remote mode: the deployment ID outcome matrix', () => {
     );
     expect(proxy.requests).toEqual([
       { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'GET', key: '' },
+      { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: DEPLOYMENT_KEY },
       { method: 'PUT', key: DEPLOYMENT_KEY },
       { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'PUT', key: WORKSPACE_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
     ]);
   });
 
@@ -321,7 +445,14 @@ describe('remote mode: the deployment ID outcome matrix', () => {
     server.put(DEPLOYMENT_KEY, `${stored}\n`);
     using bungalow = await openRemote(proxy.endpoint);
     expect(bungalow.deploymentId).toBe(stored);
-    expect(proxy.requests).toEqual([{ method: 'GET', key: DEPLOYMENT_KEY }]);
+    expect(proxy.requests).toEqual([
+      { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'GET', key: DEPLOYMENT_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+      { method: 'PUT', key: WORKSPACE_KEY },
+      { method: 'GET', key: WORKSPACE_KEY },
+    ]);
   });
 
   test('a stored value that is not a ULID is BungalowStateError and is left alone', async () => {
@@ -435,9 +566,11 @@ describe('remote mode: the handle', () => {
   test('reads the configuration from the bucket, or undefined when absent', async () => {
     const server = startServer();
     using bungalow = await openRemote(server.endpoint);
-    expect(await bungalow.readConfiguration()).toBeUndefined();
+    const configurationSnapshot1 = await bungalow.readConfiguration();
+    expect(configurationSnapshot1.text).toBeUndefined();
     server.put(CONFIGURATION_KEY, '{"providers":[]}');
-    expect(await bungalow.readConfiguration()).toBe('{"providers":[]}');
+    const configurationSnapshot2 = await bungalow.readConfiguration();
+    expect(configurationSnapshot2.text).toBe('{"providers":[]}');
   });
 
   test('a 500 reading the configuration names only the operation', async () => {
@@ -456,14 +589,16 @@ describe('remote mode: the handle', () => {
   test('reads secrets from <NAME>_SECRET_<KEY> and refuses to write them', async () => {
     const server = startServer();
     using bungalow = await openRemote(server.endpoint, { BUNGALOW_TEST_SECRET_EMPTY: '' });
-    expect(bungalow.readSecret('api-key')).toBe(SECRET_VALUE);
-    expect(bungalow.readSecret('missing')).toBeUndefined();
-    expect(bungalow.readSecret('empty')).toBeUndefined();
-    expect(bungalow.secretLocation('api-key')).toBe('BUNGALOW_TEST_SECRET_API_KEY');
-    expect(() => bungalow.readSecret('API_KEY')).toThrow(BungalowInputError);
+    expect(await bungalow.deploymentSecrets.read('api-key')).toBe(SECRET_VALUE);
+    expect(await bungalow.deploymentSecrets.read('missing')).toBeUndefined();
+    expect(await bungalow.deploymentSecrets.read('empty')).toBeUndefined();
+    expect(bungalow.deploymentSecrets.location('api-key')).toBe('BUNGALOW_TEST_SECRET_API_KEY');
+    expect(await throwingRejectionOf(bungalow.deploymentSecrets.read('API_KEY'))).toThrow(
+      BungalowInputError,
+    );
     let thrown: unknown;
     try {
-      bungalow.writeSecret('api-key', 'new-sentinel-value');
+      await bungalow.deploymentSecrets.write('api-key', 'new-sentinel-value');
     } catch (error) {
       thrown = error;
     }
@@ -475,26 +610,24 @@ describe('remote mode: the handle', () => {
   test('refuses to write the configuration, naming neither the text nor the location', async () => {
     const server = startServer();
     using bungalow = await openRemote(server.endpoint);
-    let thrown: unknown;
-    try {
-      bungalow.writeConfiguration('sentinel-configuration-text');
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(BungalowStateError);
-    expect((thrown as Error).message).not.toContain('sentinel-configuration-text');
-    expect((thrown as Error).message).not.toContain(bungalow.configurationLocation);
+    expect(
+      await bungalow.writeConfiguration('sentinel-configuration-text', { expectedRevision: null }),
+    ).toEqual({ outcome: 'read-only' });
   });
 
   test('secrets are read from the environment as it was when the open began', async () => {
     const server = startServer();
     const environment = remoteEnvironment(server.endpoint);
-    const opening = openBungalow({ name: TEST_NAME, environment });
+    const opening = openBungalow({
+      name: TEST_NAME,
+      environment,
+      databaseWorkspaceClaim: async () => {},
+    });
     environment['BUNGALOW_TEST_SECRET_API_KEY'] = 'changed-after-the-open-began';
     environment['BUNGALOW_TEST_SECRET_LATE'] = 'added-after-the-open-began';
     using bungalow = await opening;
-    expect(bungalow.readSecret('api-key')).toBe(SECRET_VALUE);
-    expect(bungalow.readSecret('late')).toBeUndefined();
+    expect(await bungalow.deploymentSecrets.read('api-key')).toBe(SECRET_VALUE);
+    expect(await bungalow.deploymentSecrets.read('late')).toBeUndefined();
   });
 
   test('close is idempotent and a closed handle refuses further use', async () => {
@@ -505,7 +638,9 @@ describe('remote mode: the handle', () => {
     bungalow[Symbol.dispose]();
     expect(() => bungalow.s3Client()).toThrow(BungalowStateError);
     expect(() => bungalow.content('agents')).toThrow(BungalowStateError);
-    expect(() => bungalow.readSecret('api-key')).toThrow(BungalowStateError);
+    expect(await throwingRejectionOf(bungalow.deploymentSecrets.read('api-key'))).toThrow(
+      BungalowStateError,
+    );
     const reject = await throwingRejectionOf(bungalow.readConfiguration());
     expect(reject).toThrow(BungalowStateError);
   });

@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1490's real-provider bullet: in development, a file agent whose model is a
  * configured provider's can be chatted with. The provider path is a fake client (a test never
@@ -40,6 +41,7 @@ const agentFile = (name: string, a2a: boolean) =>
 
 async function startWithFileAgents(files: Record<string, string>) {
   const home = await mkdtemp(join(tmpdir(), 'interborough-chat-file-agent-'));
+  await initializeWorkspaceHome(home);
   directories.push(home);
   await writeFile(
     join(home, 'configuration.json'),
@@ -50,7 +52,7 @@ async function startWithFileAgents(files: Record<string, string>) {
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
-    bungalow.writeSecret('anthropic-api-key', FIXTURE_KEY);
+    await bungalow.deploymentSecrets.write('anthropic-api-key', FIXTURE_KEY);
   } finally {
     bungalow.close();
   }

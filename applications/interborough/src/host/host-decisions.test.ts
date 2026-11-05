@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * COR-1886 — the host's decision model is the typesafe plugin's `typesafe:jev`, the default of the
  * `decisions.model` setting. With the `typesafe-api-key` secret in Bungalow's secrets, Bureau's
@@ -48,7 +49,8 @@ async function startWith(secrets: Readonly<Record<string, string>>): Promise<Hos
     environment: { INTERBOROUGH_HOME: home },
   });
   try {
-    for (const [key, value] of Object.entries(secrets)) bungalow.writeSecret(key, value);
+    for (const [key, value] of Object.entries(secrets))
+      await bungalow.deploymentSecrets.write(key, value);
   } finally {
     bungalow.close();
   }
@@ -163,6 +165,7 @@ describe('the TypeSafe decision model', () => {
 
   test('starts with no default decision model when the owner disabled the plugin', async () => {
     const home = await mkdtemp(join(tmpdir(), 'interborough-decisions-'));
+    await initializeWorkspaceHome(home);
     directories.push(home);
     await writeFile(
       join(home, 'configuration.json'),

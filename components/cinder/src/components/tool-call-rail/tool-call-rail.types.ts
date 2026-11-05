@@ -61,6 +61,11 @@ export type ToolCallRailCall = {
    * a `waiting` call is waiting on, or the approved one under a call that has been decided.
    */
   nested?: boolean | undefined;
+  /**
+   * Keeps this call on the rail wherever it falls, folded or not, as a failed or waiting call is.
+   * For a finished call whose result the person still has to act on, such as an inline panel.
+   */
+  pinned?: boolean | undefined;
 };
 
 /** The words the rail speaks, for a caller that is not writing English. */

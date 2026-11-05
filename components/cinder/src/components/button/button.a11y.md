@@ -60,7 +60,7 @@ The focus ring uses `outline: var(--cinder-ring-width) solid ButtonText` under `
 
 ## Toggle buttons
 
-A button that is a toggle carries `aria-pressed="true"` or `"false"` and keeps the same accessible name in both states. While pressed, every variant except `primary` and `danger` (already filled) takes the filled accent face with the accent contrast color, the look `SegmentedControl` uses for a pressed option in multiple mode. The focus ring keeps the page-coloured gap that filled faces get, and under forced colors the pressed face is `Highlight` on `HighlightText` with a `ButtonBorder` border. The state is not signaled by color alone for assistive technology: `aria-pressed` is what it reads. A disabled pressed button keeps its disabled look.
+A button that is a toggle carries `aria-pressed="true"` or `"false"` and keeps the same accessible name in both states. While pressed, every variant except `primary` and `danger` (already filled) takes the filled accent face with the accent contrast color. The focus ring keeps the page-coloured gap that filled faces get, and under forced colors the pressed face is `Highlight` on `HighlightText` with a `ButtonBorder` border. The state is not signaled by color alone for assistive technology: `aria-pressed` is what it reads. A disabled pressed button keeps its disabled look.
 
 ## Soft variant contrast
 

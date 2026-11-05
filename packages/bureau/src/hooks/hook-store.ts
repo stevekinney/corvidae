@@ -1,3 +1,4 @@
+import { readRunWorkspaceAuthority } from 'armorer';
 /**
  * Where hooks, their deliveries, and their sealed signing secrets are kept (COR-1939): records in
  * Bureau's key-value store, each written by compare-and-swap so two writers never both win a
@@ -147,6 +148,8 @@ function parseHook(raw: string): HookRecord | undefined {
     (value['version'] !== 1 && value['version'] !== 2) ||
     typeof value['id'] !== 'string' ||
     typeof value['owner'] !== 'string' ||
+    (value['workspaceAuthority'] !== undefined &&
+      readRunWorkspaceAuthority(value['workspaceAuthority']) === undefined) ||
     !Array.isArray(value['events']) ||
     typeof value['enabled'] !== 'boolean' ||
     typeof value['revision'] !== 'number'
@@ -173,6 +176,8 @@ function parseDelivery(raw: string): HookDeliveryRecord | undefined {
     typeof value['id'] !== 'string' ||
     typeof value['hookId'] !== 'string' ||
     typeof value['owner'] !== 'string' ||
+    (value['workspaceAuthority'] !== undefined &&
+      readRunWorkspaceAuthority(value['workspaceAuthority']) === undefined) ||
     typeof value['status'] !== 'string' ||
     !Array.isArray(value['attempts']) ||
     typeof value['revision'] !== 'number' ||

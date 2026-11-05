@@ -183,7 +183,7 @@ describe('session.run() — durable engine and terminal authority', () => {
           [Symbol.asyncIterator]: async function* () {},
         };
       },
-      cancel: async () => {},
+      cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
       signal: async () => {},
       update: async () => {},
       query: async () => {},
@@ -234,7 +234,7 @@ describe('session.run() — durable engine and terminal authority', () => {
           removeEventListener: () => {},
           [Symbol.asyncIterator]: async function* () {},
         }),
-        cancel: async () => {},
+        cancel: async (id: string) => ({ workflowId: id, status: 'cancel-requested' }),
         signal: async () => {},
         update: async () => {},
         query: async () => {},

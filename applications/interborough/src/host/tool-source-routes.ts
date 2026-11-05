@@ -1,3 +1,4 @@
+import { SecretProviderError } from '@lostgradient/bungalow';
 /**
  * The host's routes for saved tool sources (`tool-source-manager.ts`):
  *
@@ -69,7 +70,6 @@ import {
   ToolSourceExistsError,
   ToolSourceInputError,
   ToolSourceOwnerOnlyError,
-  ToolSourcePartialChangeError,
   ToolSourceWriteLockedError,
   type ToolSourceManager,
 } from './tool-source-manager.ts';
@@ -147,6 +147,24 @@ function refusalOf(error: unknown): Response | undefined {
   if (error instanceof ToolSourceOwnerOnlyError) {
     return Response.json({ error: 'owner-only', message: error.message }, { status: 403 });
   }
+  if (error instanceof SecretProviderError) {
+    const status =
+      error.code === 'rejected'
+        ? 400
+        : error.code === 'read-only'
+          ? 403
+          : error.code === 'conflict'
+            ? 409
+            : 503;
+    return Response.json(
+      {
+        error: 'failed',
+        reason: error.code,
+        message: 'The secret provider could not complete the operation.',
+      },
+      { status },
+    );
+  }
   if (error instanceof ToolSourceInputError) {
     const unknown = error.kind === 'unknown-source';
     return Response.json(
@@ -166,12 +184,7 @@ function refusalOf(error: unknown): Response | undefined {
       { status: 400 },
     );
   }
-  if (error instanceof ToolSourcePartialChangeError) {
-    return Response.json(
-      { error: 'partial', source: error.sourceId, stage: error.stage, message: error.message },
-      { status: 500 },
-    );
-  }
+
   if (error instanceof ToolSourceAuditError) {
     return Response.json(
       { error: 'partial', source: error.sourceId, stage: 'not-audited', message: error.message },

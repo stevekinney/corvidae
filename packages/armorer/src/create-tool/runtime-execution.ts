@@ -78,7 +78,7 @@ export function runRuntimeExecution<TInput, E extends ToolEventsMap, TReturn>(
   input: RuntimeExecutionInput<TInput, E, TReturn>,
 ): RuntimeExecutionOutcome<TReturn> {
   const progress = createProgressReporter(input.options, input.baseDetail, input.dispatch);
-  if (input.options[approvalConsumeSymbol]) {
+  if (input.options[approvalConsumeSymbol] || input.options.revalidateAuthority) {
     return {
       kind: 'pending',
       value: runRuntimeExecutionWithApproval(input, progress),
@@ -145,7 +145,15 @@ async function runRuntimeExecutionWithApproval<TInput, E extends ToolEventsMap, 
   let rollbackApprovalAdmission: ApprovalAdmissionRollback | undefined;
   try {
     rollbackApprovalAdmission = await input.options[approvalConsumeSymbol]?.();
+    if (input.options.revalidateAuthority) {
+      const context = input.effectiveRequestContext;
+      const validated =
+        context === undefined ? undefined : await input.options.revalidateAuthority(context);
+      if (validated === undefined) throw new Error('Request authority is no longer current.');
+      input.effectiveRequestContext = freezeToolRequestContext(validated);
+    }
   } catch (error) {
+    await rollbackApprovalAdmission?.();
     progress.finish();
     throw error;
   }

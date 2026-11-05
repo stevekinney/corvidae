@@ -1,10 +1,17 @@
 <script lang="ts">
   /**
    * ⌘K search over everything the console holds, and the actions it can run, in one order: what is
-   * waiting on the person, then chats, workflows and runs (with schedules, workers and reviews by
-   * id), then agents and tools, then the actions with their shortcuts. A query that starts with `>`
-   * is for actions only, and one that starts with `@` for agents only. Choosing a result opens that
-   * record, not the collection it belongs to.
+   * waiting on the person, then chats, runs, then agents and tools under one heading, then the
+   * workflows, schedules, workers and reviews that match (the board's order is waiting, chats, runs,
+   * agents and tools, actions; these are the kinds it does not draw, so they sit between the last two
+   * and never between its own), then the actions with their shortcuts. A query
+   * that starts with `>` is for actions only, and one that starts with `@` for agents only.
+   * Choosing a result opens that record, not the collection it belongs to.
+   *
+   * With nothing typed it lists what is waiting, then the "Go to" rows and New chat, under no
+   * heading of their own (design row 03c). Each row is a glyph, the title, and its meta on the same
+   * line ("Refund order 4471 for $42.00? · Approval · waiting"); the footer names the `>` and `@`
+   * prefixes (design rows 03c, 03g).
    *
    * What is waiting comes from the notification store, and the actions from the shortcut registry
    * (`../../lib/shortcuts.ts`) plus "New chat with <agent>", so a shortcut registered later is an
@@ -16,12 +23,24 @@
    * rather than failing the whole palette — a search-as-you-type surface
    * degrading one section to "no results" beats it going blank.
    */
-  import { CommandItem, CommandPalette, EmptyState, ShortcutHint } from '@lostgradient/cinder';
+  import { CommandItem, CommandPalette, EmptyState, Kbd } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
+  import {
+    Bot,
+    CalendarClock,
+    CircleQuestionMark,
+    Cpu,
+    Inbox,
+    MessageSquare,
+    Play,
+    Plus,
+    Workflow,
+    Wrench,
+  } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
 
-  import { formatRelativeTime } from '../../lib/format/index.ts';
   import { chatSessionPath } from '../../lib/identifier-paths.ts';
+  import IdentifierText from '../../lib/identifier-text.svelte';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
@@ -30,6 +49,7 @@
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { newChatPath } from '../../routes/agents/agent-presentation.ts';
+  import { actionIcon } from './destinations.ts';
   import { PALETTE_COPY } from '../copy.ts';
   import type { NotificationStore } from '../notifications.svelte.ts';
   import {
@@ -37,13 +57,17 @@
     matchWaiting,
     memoizeRead,
     NARROWED_RESULTS,
+    newChatAboutPath,
     newChatLabel,
+    newChatTopic,
     NO_RESULTS,
     parseQuery,
+    runMeta,
     schedulePath,
     searchConsole,
     toolPath,
     waitingLabel,
+    waitingMeta,
     workerPath,
     type ConsoleSearchResults,
   } from './command-palette-search.ts';
@@ -129,9 +153,15 @@
   const waiting = $derived(
     all && store !== undefined ? matchWaiting(store.items, parsed.text) : [],
   );
+  // Read when the palette opens as well as when the query changes, because whether the registry's
+  // keys are printed beside an action depends on a preference that is changed while it is closed.
   const actions = $derived(
-    all || actionsOnly
-      ? matchActions(registry.actions(), parsed.text, actionsOnly ? NARROWED_RESULTS : undefined)
+    open && (all || actionsOnly)
+      ? matchActions(
+          registry.actions(),
+          parsed.text,
+          actionsOnly || parsed.text.length === 0 ? NARROWED_RESULTS : undefined,
+        )
       : [],
   );
   // A search settles after the query changed, so what the query is for decides what is shown of it.
@@ -139,7 +169,12 @@
     actionsOnly
       ? { ...NO_RESULTS, newChats: results.newChats, failed: results.failed }
       : agentsOnly
-        ? { ...NO_RESULTS, agents: results.agents, failed: results.failed }
+        ? {
+            ...NO_RESULTS,
+            agents: results.agents,
+            agentNames: results.agentNames,
+            failed: results.failed,
+          }
         : parsed.text.length === 0
           ? NO_RESULTS
           : results,
@@ -149,6 +184,7 @@
     waiting.length +
       actions.length +
       shown.chats.length +
+      shown.runs.length +
       shown.definitions.length +
       shown.workflows.length +
       shown.schedules.length +
@@ -159,15 +195,31 @@
       shown.newChats.length >
       0,
   );
+  /**
+   * What "New chat about" starts with, listed last among the actions so that Enter on a search that
+   * names a place goes there: the typed text of a search that names no kind and found something. A search that found nothing says so instead (the palette's empty state), so the
+   * action never stands alone under a "No matches".
+   */
+  const topic = $derived(all && hasRows ? newChatTopic(parsed.text) : undefined);
+  /** A person's name for an agent: its display name, else the identifier it is known by. */
+  const agentLabel = (name: string): string => shown.agentNames.get(name) ?? name;
+  /** With nothing typed, the "Go to" rows and New chat run on under no heading of their own (row 03c). */
+  const actionsHeading = $derived(parsed.text.length > 0 || !all);
 </script>
 
-{#snippet section(label: string, rows: Snippet)}
-  <li role="presentation" class="weft-command-group">
-    <span class="weft-command-group__label">{label}</span>
+{#snippet section(label: string, rows: Snippet, heading: boolean = true)}
+  <li role="presentation" class="cinder-command-group">
+    {#if heading}<span class="cinder-command-group__label">{label}</span>{/if}
     <ul role="group" aria-label={label}>
       {@render rows()}
     </ul>
   </li>
+{/snippet}
+
+{#snippet footer()}
+  <span><Kbd size="sm" label=">" /> {PALETTE_COPY.footer.actions}</span>
+  <span><Kbd size="sm" label="@" /> {PALETTE_COPY.footer.agents}</span>
+  <span>{PALETTE_COPY.footer.open}</span>
 {/snippet}
 
 <CommandPalette
@@ -175,11 +227,12 @@
   bind:query
   label={PALETTE_COPY.label}
   placeholder={PALETTE_COPY.placeholder}
+  {footer}
 >
   {#snippet items()}
     {#if shown.failed.length > 0 && hasRows}
-      <li role="presentation" class="weft-command-group">
-        <span role="status" class="weft-command-group__label">
+      <li role="presentation" class="cinder-command-group">
+        <span role="status" class="cinder-command-group__label">
           {PALETTE_COPY.searchFailedDescription(shown.failed)}
         </span>
       </li>
@@ -190,15 +243,14 @@
           <CommandItem
             value={`waiting-${item.id}`}
             accessibleLabel={waitingLabel(item)}
+            leadingTone="warning"
             onSelect={() => goTo(item.href)}
           >
             {item.title}
-            {#snippet trailing()}
-              <span class="weft-command-meta">
-                {#if item.detail !== ''}<span>{item.detail}</span>{/if}
-                <span>{formatRelativeTime(item.emittedAtMs)}</span>
-              </span>
+            {#snippet leading()}
+              {#if item.kind === 'approval'}<Inbox />{:else}<CircleQuestionMark />{/if}
             {/snippet}
+            {#snippet meta()}{waitingMeta(item)}{/snippet}
           </CommandItem>
         {/each}
       {/snippet}
@@ -210,20 +262,86 @@
           {@const title = chat.title ?? chat.lastMessagePreview ?? PALETTE_COPY.untitledChat}
           <CommandItem
             value={`chat-${chat.id}`}
-            accessibleLabel={`${title}, ${chat.agentName}`}
+            accessibleLabel={`${title}, ${agentLabel(chat.agentName)}`}
             onSelect={() => goTo(chatSessionPath(chat.id))}
           >
             {title}
-            {#snippet trailing()}
-              <span class="weft-command-meta">
-                <code class="ib-identifier">{chat.agentName}</code>
-                <span>{formatRelativeTime(Date.parse(chat.updatedAt))}</span>
-              </span>
-            {/snippet}
+            {#snippet leading()}<MessageSquare />{/snippet}
+            {#snippet meta()}{agentLabel(chat.agentName)}{/snippet}
           </CommandItem>
         {/each}
       {/snippet}
       {@render section(PALETTE_COPY.groups.chats, chatRows)}
+    {/if}
+    {#if shown.runs.length > 0 || shown.workflows.length > 0}
+      {#snippet runRows()}
+        {#each shown.runs as run (run.id)}
+          {@const agent = run.agentName === null ? undefined : agentLabel(run.agentName)}
+          <CommandItem
+            value={`run-${run.id}`}
+            accessibleLabel={`${run.title}, ${runMeta(run, agent).replaceAll(' · ', ', ')}`}
+            onSelect={() => goTo(workflowDetailPath(run.id))}
+          >
+            {run.title}
+            {#snippet leading()}<Play />{/snippet}
+            {#snippet meta()}{runMeta(run, agent)}{/snippet}
+          </CommandItem>
+        {/each}
+        {#each shown.workflows as workflow (workflow.id)}
+          <CommandItem
+            value={`workflow-${workflow.id}`}
+            accessibleLabel={`${workflow.id}, ${workflow.type}`}
+            onSelect={() => goTo(workflowDetailPath(workflow.id))}
+          >
+            <code class="ib-identifier">{workflow.id}</code>
+            {#snippet leading()}<Play />{/snippet}
+            {#snippet meta()}<code class="ib-identifier">{workflow.type}</code>{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.runs, runRows)}
+    {/if}
+    {#if shown.agents.length > 0 || shown.tools.length > 0}
+      {#snippet agentAndToolRows()}
+        {#each shown.agents as agent (agent.name)}
+          {@const label = agentLabel(agent.name)}
+          {@const named = label !== agent.name}
+          <CommandItem
+            value={`agent-${agent.name}`}
+            accessibleLabel={[label, ...(named ? [agent.name] : []), PALETTE_COPY.agentKind].join(
+              ', ',
+            )}
+            onSelect={() => goTo(agentPath(agent.name))}
+          >
+            {label}
+            {#snippet leading()}<Bot />{/snippet}
+            {#snippet meta()}{#if named}<code class="ib-identifier">{agent.name}</code
+                >{' · '}{/if}{PALETTE_COPY.agentKind}{/snippet}
+          </CommandItem>
+        {/each}
+        {#each shown.tools as tool (tool.name)}
+          {@const users = tool.users.map(agentLabel)}
+          {@const named = tool.title !== null && tool.title !== tool.name}
+          <CommandItem
+            value={`tool-${tool.name}`}
+            accessibleLabel={[
+              tool.title ?? tool.name,
+              ...(named ? [tool.name] : []),
+              PALETTE_COPY.toolKind,
+              ...users,
+            ].join(', ')}
+            onSelect={() => goTo(toolPath(tool.name))}
+          >
+            {tool.title ?? tool.name}
+            {#snippet leading()}<Wrench />{/snippet}
+            {#snippet meta()}{#if named}<code class="ib-identifier">{tool.name}</code
+                >{' · '}{/if}{PALETTE_COPY.toolKind}{#if users.length > 0}{' · '}{users.join(
+                  ', ',
+                )}{/if}{/snippet}
+          </CommandItem>
+        {/each}
+      {/snippet}
+      {@render section(PALETTE_COPY.groups.agentsAndTools, agentAndToolRows)}
     {/if}
     {#if shown.definitions.length > 0}
       {#snippet definitionRows()}
@@ -236,49 +354,28 @@
             onSelect={() => goTo(workflowTypePath(workflow.name))}
           >
             <code class="ib-identifier">{workflow.name}</code>
-            {#snippet trailing()}
-              {#if workflow.description !== null}
-                <span class="weft-command-meta">{workflow.description}</span>
-              {/if}
-            {/snippet}
+            {#snippet leading()}<Workflow />{/snippet}
+            {#snippet meta()}{#if workflow.description !== null}{workflow.description}{/if}{/snippet}
           </CommandItem>
         {/each}
       {/snippet}
       {@render section(PALETTE_COPY.groups.workflows, definitionRows)}
-    {/if}
-    {#if shown.workflows.length > 0}
-      {#snippet runRows()}
-        {#each shown.workflows as workflow (workflow.id)}
-          <CommandItem
-            value={`workflow-${workflow.id}`}
-            accessibleLabel={`${workflow.id}, ${workflow.type}`}
-            onSelect={() => goTo(workflowDetailPath(workflow.id))}
-          >
-            <code class="ib-identifier">{workflow.id}</code>
-            {#snippet trailing()}
-              <span class="weft-command-meta"
-                ><code class="ib-identifier">{workflow.type}</code></span
-              >
-            {/snippet}
-          </CommandItem>
-        {/each}
-      {/snippet}
-      {@render section(PALETTE_COPY.groups.runs, runRows)}
     {/if}
     {#if shown.schedules.length > 0}
       {#snippet scheduleRows()}
         {#each shown.schedules as schedule (schedule.id)}
           <CommandItem
             value={`schedule-${schedule.id}`}
-            accessibleLabel={`${schedule.id}, ${schedule.workflowType}`}
+            accessibleLabel={schedule.workflowTypeShown === null
+              ? schedule.name
+              : `${schedule.name}, ${schedule.workflowTypeShown}`}
             onSelect={() => goTo(schedulePath(schedule.id))}
           >
-            <code class="ib-identifier">{schedule.id}</code>
-            {#snippet trailing()}
-              <span class="weft-command-meta"
-                ><code class="ib-identifier">{schedule.workflowType}</code></span
-              >
-            {/snippet}
+            <IdentifierText text={schedule.name} identifiers={schedule.identifiers} />
+            {#snippet leading()}<CalendarClock />{/snippet}
+            {#snippet meta()}{#if schedule.workflowTypeShown !== null}<code class="ib-identifier"
+                  >{schedule.workflowTypeShown}</code
+                >{/if}{/snippet}
           </CommandItem>
         {/each}
       {/snippet}
@@ -293,11 +390,8 @@
             onSelect={() => goTo(workerPath(worker.id))}
           >
             <code class="ib-identifier">{worker.id}</code>
-            {#snippet trailing()}
-              <span class="weft-command-meta"
-                ><code class="ib-identifier">{worker.queue}</code></span
-              >
-            {/snippet}
+            {#snippet leading()}<Cpu />{/snippet}
+            {#snippet meta()}<code class="ib-identifier">{worker.queue}</code>{/snippet}
           </CommandItem>
         {/each}
       {/snippet}
@@ -312,69 +406,25 @@
             onSelect={() => goTo('/reviews')}
           >
             <code class="ib-identifier">{review.reviewId}</code>
-            {#snippet trailing()}
-              <span class="weft-command-meta">{review.reviewType}</span>
-            {/snippet}
+            {#snippet leading()}<Inbox />{/snippet}
+            {#snippet meta()}{review.reviewType}{/snippet}
           </CommandItem>
         {/each}
       {/snippet}
       {@render section(PALETTE_COPY.groups.reviews, reviewRows)}
     {/if}
-    {#if shown.agents.length > 0}
-      {#snippet agentRows()}
-        {#each shown.agents as agent (agent.name)}
-          <CommandItem
-            value={`agent-${agent.name}`}
-            accessibleLabel={agent.description === null
-              ? agent.name
-              : `${agent.name}, ${agent.description}`}
-            onSelect={() => goTo(agentPath(agent.name))}
-          >
-            <code class="ib-identifier">{agent.name}</code>
-            {#snippet trailing()}
-              {#if agent.description !== null}
-                <span class="weft-command-meta">{agent.description}</span>
-              {/if}
-            {/snippet}
-          </CommandItem>
-        {/each}
-      {/snippet}
-      {@render section(PALETTE_COPY.groups.agents, agentRows)}
-    {/if}
-    {#if shown.tools.length > 0}
-      {#snippet toolRows()}
-        {#each shown.tools as tool (tool.name)}
-          {@const summary = tool.shortDescription ?? tool.description}
-          <CommandItem
-            value={`tool-${tool.name}`}
-            accessibleLabel={`${tool.name}, ${summary}`}
-            onSelect={() => goTo(toolPath(tool.name))}
-          >
-            <code class="ib-identifier">{tool.name}</code>
-            {#snippet trailing()}
-              <span class="weft-command-meta">{summary}</span>
-            {/snippet}
-          </CommandItem>
-        {/each}
-      {/snippet}
-      {@render section(PALETTE_COPY.groups.tools, toolRows)}
-    {/if}
-    {#if actions.length > 0 || shown.newChats.length > 0}
+    {#if actions.length > 0 || shown.newChats.length > 0 || topic !== undefined}
       {#snippet actionRows()}
         {#each actions as action (action.label)}
+          {@const Icon = actionIcon(action.label)}
           <CommandItem
             value={`action-${action.label}`}
             accessibleLabel={action.label}
-            keyboardShortcut={action.keys.join(' ')}
+            keys={action.keys.length > 0 ? action.keys : undefined}
             onSelect={() => run({ ...action })}
           >
             {action.label}
-            {#snippet trailing()}
-              <ShortcutHint
-                keys={[...action.keys]}
-                keysLabel={action.keys.join(PALETTE_COPY.keysThen)}
-              />
-            {/snippet}
+            {#snippet leading()}<Icon />{/snippet}
           </CommandItem>
         {/each}
         {#each shown.newChats as agent (agent.name)}
@@ -384,10 +434,21 @@
             onSelect={() => goTo(newChatPath(agent.name))}
           >
             New chat with <code class="ib-identifier">{agent.name}</code>
+            {#snippet leading()}<Plus />{/snippet}
           </CommandItem>
         {/each}
+        {#if topic !== undefined}
+          <CommandItem
+            value="new-chat-about"
+            accessibleLabel={PALETTE_COPY.newChatAbout(topic)}
+            onSelect={() => goTo(newChatAboutPath(topic))}
+          >
+            {PALETTE_COPY.newChatAbout(topic)}
+            {#snippet leading()}<Plus />{/snippet}
+          </CommandItem>
+        {/if}
       {/snippet}
-      {@render section(PALETTE_COPY.groups.actions, actionRows)}
+      {@render section(PALETTE_COPY.groups.actions, actionRows, actionsHeading)}
     {/if}
   {/snippet}
   {#snippet empty()}

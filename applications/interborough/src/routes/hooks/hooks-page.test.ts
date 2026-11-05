@@ -925,7 +925,7 @@ describe('the hook editor', () => {
 
   test('says a hook is not found when it is not the caller’s', async () => {
     const { view } = open([], { path: '/hooks/ghost' });
-    await view.findByRole('heading', { level: 1, name: 'This hook was not found' });
+    await view.findByRole('heading', { level: 1, name: 'This hook doesn’t exist' });
   });
 
   test('says hooks are off on a home that keeps them off, on the new hook page too', async () => {

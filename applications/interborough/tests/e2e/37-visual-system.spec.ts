@@ -7,7 +7,7 @@
 import type { Page } from '@playwright/test';
 
 import { routes } from '../../src/app/routes.ts';
-import { pageWidth, VIEW_NAMES, VIEWS } from '../../src/app/views.ts';
+import { pageWidth, VIEW_NAMES } from '../../src/app/views.ts';
 import { approveThroughMount, conversation, newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -117,10 +117,8 @@ test.describe('the empty chat screen on a fresh host', () => {
   });
 });
 
-test.describe('each view declares how dense it is, and each route what kind of page it is', () => {
-  test('the outlet carries the view’s density and the width of the route’s kind', async ({
-    page,
-  }) => {
+test.describe('each route says what kind of page it is, and every page has one density', () => {
+  test('the outlet carries the width of the route’s kind and no density', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     const paths: Partial<Record<(typeof VIEW_NAMES)[number], string>> = {
       agents: '/agents',
@@ -130,17 +128,16 @@ test.describe('each view declares how dense it is, and each route what kind of p
       audit: '/health/audit',
       health: '/health',
     };
-    for (const [view, path] of Object.entries(paths)) {
+    for (const path of Object.values(paths)) {
       await page.goto(path);
       const outlet = page.locator('main.weft-shell-outlet');
-      const declared = VIEWS[view as keyof typeof VIEWS];
       const route = routes.find((candidate) => candidate.pattern === path);
-      await expect(outlet).toHaveAttribute('data-density', declared.density);
+      await expect(outlet).not.toHaveAttribute('data-density', /.*/);
       await expect(outlet).toHaveAttribute('data-width', pageWidth(route?.kind ?? 'reading'));
     }
   });
 
-  test('a reading page is the 760px column, centred; a table page takes the whole width', async ({
+  test('a reading page is the 720px column, centred; a table page takes the whole width', async ({
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
@@ -156,8 +153,8 @@ test.describe('each view declares how dense it is, and each route what kind of p
         Number.parseFloat(style.paddingRight)
       );
     });
-    expect(column).toBeLessThanOrEqual(760);
-    expect(column).toBeGreaterThanOrEqual(740);
+    expect(column).toBeLessThanOrEqual(720);
+    expect(column).toBeGreaterThanOrEqual(700);
     await page.goto('/runs');
     // The loading skeleton is already wider than 900px, so a width read before the frame has swapped
     // it for the page measures nothing about the page. Wait for the page, then read its width.
@@ -171,24 +168,19 @@ test.describe('each view declares how dense it is, and each route what kind of p
       .toBeGreaterThan(900);
   });
 
-  test('the compact density has shorter rows and tighter padding than the comfortable one', async ({
-    page,
-  }) => {
+  test('every page reads the same row height, the comfortable one', async ({ page }) => {
     await page.setViewportSize(DESKTOP);
-    await page.goto('/runs');
-    const compact = await page
-      .locator('main.weft-shell-outlet')
-      .evaluate((outlet) =>
-        getComputedStyle(outlet).getPropertyValue('--cinder-density-row-height'),
-      );
-    await page.goto('/agents');
-    const comfortable = await page
-      .locator('main.weft-shell-outlet')
-      .evaluate((outlet) =>
-        getComputedStyle(outlet).getPropertyValue('--cinder-density-row-height'),
-      );
-    expect(compact.trim()).toBe('2.5rem');
-    expect(comfortable.trim()).toBe('3.5rem');
+    const heights: string[] = [];
+    for (const path of ['/runs', '/agents', '/health']) {
+      await page.goto(path);
+      const height = await page
+        .locator('main.weft-shell-outlet')
+        .evaluate((outlet) =>
+          getComputedStyle(outlet).getPropertyValue('--cinder-density-row-height'),
+        );
+      heights.push(height.trim());
+    }
+    expect(heights).toEqual(['3.5rem', '3.5rem', '3.5rem']);
   });
 });
 

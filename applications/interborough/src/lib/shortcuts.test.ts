@@ -282,6 +282,140 @@ describe('a shortcut held with ⌘', () => {
   });
 });
 
+describe('⌘K and the composer (row 03e)', () => {
+  function searchRegistry(ran: string[]): ShortcutRegistry {
+    const registry = new ShortcutRegistry();
+    registry.register({
+      keys: ['k'],
+      modifier: 'mod',
+      label: 'Search everything',
+      group: 'General',
+      scope: 'global',
+      handler: () => ran.push('search'),
+    });
+    return registry;
+  }
+
+  test('opens search from inside the composer, a field the person is typing into', () => {
+    const ran: string[] = [];
+    const registry = searchRegistry(ran);
+    expect(registry.handleKey(key('k', { metaKey: true, editable: true }), NOWHERE, 0)).toBe(true);
+    expect(registry.handleKey(key('k', { ctrlKey: true, editable: true }), NOWHERE, 1)).toBe(true);
+    expect(ran).toEqual(['search', 'search']);
+  });
+
+  test('never acts under Shift: ⌘⇧K is the composer’s link shortcut and is left alone', () => {
+    const ran: string[] = [];
+    const registry = searchRegistry(ran);
+    for (const pressed of ['k', 'K']) {
+      expect(
+        registry.handleKey(
+          key(pressed, { metaKey: true, shiftKey: true, editable: true }),
+          NOWHERE,
+          0,
+        ),
+      ).toBe(false);
+      expect(registry.handleKey(key(pressed, { ctrlKey: true, shiftKey: true }), NOWHERE, 1)).toBe(
+        false,
+      );
+    }
+    expect(ran).toEqual([]);
+  });
+});
+
+describe('single-key shortcuts (row 03f)', () => {
+  function shell(ran: string[]): ShortcutRegistry {
+    const registry = new ShortcutRegistry();
+    registry.register({
+      keys: ['g', 'c'],
+      label: 'Go to Chat',
+      group: 'Go to',
+      scope: 'global',
+      handler: () => ran.push('chat'),
+    });
+    registry.register({
+      keys: ['c'],
+      label: 'New chat',
+      group: 'Chat',
+      scope: 'global',
+      handler: () => ran.push('new'),
+    });
+    registry.register({
+      keys: ['?'],
+      label: 'Show keyboard shortcuts',
+      group: 'General',
+      scope: 'global',
+      alwaysOn: true,
+      handler: () => ran.push('map'),
+    });
+    registry.register({
+      keys: ['k'],
+      modifier: 'mod',
+      label: 'Search everything',
+      group: 'General',
+      scope: 'global',
+      handler: () => ran.push('search'),
+    });
+    return registry;
+  }
+
+  test('are on by default', () => {
+    const ran: string[] = [];
+    const registry = shell(ran);
+    expect(registry.singleKeyShortcuts).toBe(true);
+    registry.handleKey(key('g'), NOWHERE, 0);
+    expect(registry.handleKey(key('c'), NOWHERE, 1)).toBe(true);
+    expect(registry.handleKey(key('c'), NOWHERE, 5_000)).toBe(true);
+    expect(ran).toEqual(['chat', 'new']);
+  });
+
+  test('the G sequences and C stop acting when they are turned off; ⌘K and ? still do', () => {
+    const ran: string[] = [];
+    const registry = shell(ran);
+    registry.setSingleKeyShortcuts(false);
+
+    expect(registry.handleKey(key('g'), NOWHERE, 0)).toBe(false);
+    expect(registry.handleKey(key('c'), NOWHERE, 1)).toBe(false);
+    expect(registry.handleKey(key('c'), NOWHERE, 5_000)).toBe(false);
+    expect(registry.handleKey(key('?'), NOWHERE, 6_000)).toBe(true);
+    expect(registry.handleKey(key('k', { metaKey: true }), NOWHERE, 7_000)).toBe(true);
+    expect(ran).toEqual(['map', 'search']);
+
+    registry.setSingleKeyShortcuts(true);
+    expect(registry.handleKey(key('c'), NOWHERE, 8_000)).toBe(true);
+    expect(ran).toEqual(['map', 'search', 'new']);
+  });
+
+  test('turning them off drops a sequence that was waiting for its next key', () => {
+    const ran: string[] = [];
+    const registry = shell(ran);
+    registry.handleKey(key('g'), NOWHERE, 0);
+    registry.setSingleKeyShortcuts(false);
+    registry.setSingleKeyShortcuts(true);
+    expect(registry.handleKey(key('c'), NOWHERE, 1)).toBe(true);
+    expect(ran).toEqual(['new']);
+  });
+
+  test('a key typed into a field never acts, with them on or off', () => {
+    const ran: string[] = [];
+    const registry = shell(ran);
+    expect(registry.handleKey(key('c', { editable: true }), NOWHERE, 0)).toBe(false);
+    registry.handleKey(key('g'), NOWHERE, 1);
+    expect(registry.handleKey(key('c', { editable: true }), NOWHERE, 2)).toBe(false);
+    expect(ran).toEqual([]);
+  });
+
+  test('the actions lose their keys while they are off, and the always-on ones keep theirs', () => {
+    const registry = shell([]);
+    registry.setSingleKeyShortcuts(false);
+    expect(registry.actions().map((action) => [action.label, action.keys, action.group])).toEqual([
+      ['Go to Chat', [], 'Go to'],
+      ['New chat', [], 'Chat'],
+      ['Show keyboard shortcuts', ['?'], 'General'],
+    ]);
+  });
+});
+
 describe('the actions', () => {
   test('are the handled shortcuts that act everywhere, without a modifier, in the order registered', () => {
     const registry = new ShortcutRegistry();

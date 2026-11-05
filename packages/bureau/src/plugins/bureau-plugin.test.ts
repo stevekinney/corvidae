@@ -1,6 +1,6 @@
 /**
  * COR-1890 — Bureau's own tools reach agents as the built-in `bureau` plugin's contributions:
- * `bureau:discover-agents` and the eight `bureau:workflows-*` tools. The plugin is required, holds the
+ * `bureau:discover-agents`, five `bureau:child-runs-*`, two asset tools, and the eleven `bureau:workflows-*` tools. The plugin is required, holds the
  * name `bureau` before any other plugin, and the events its tools cause carry `source: 'bureau'`.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -52,6 +52,7 @@ const STEPS = [
 const WORKFLOW_TOOLS = [
   'workflows-create',
   'workflows-update',
+  'workflows-propose-update',
   'workflows-validate',
   'workflows-catalog',
   'workflows-pause',
@@ -60,7 +61,21 @@ const WORKFLOW_TOOLS = [
   'workflows-get',
   'workflows-revisions-list',
   'workflows-revisions-get',
+  'workflows-start',
+  'workflows-signal',
+  'workflows-runs-cancel',
+  'workflows-runs-list',
+  'workflows-runs-get',
+  'workflows-runs-history',
 ];
+const CHILD_RUN_TOOLS = [
+  'child-runs-dispatch',
+  'child-runs-list',
+  'child-runs-get',
+  'child-runs-wait',
+  'child-runs-cancel',
+];
+const ASSET_TOOLS = ['assets-publish', 'assets-read'];
 
 function twin(source: BureauPluginEntry['source'], location: string): BureauPluginEntry {
   return {
@@ -85,7 +100,7 @@ function twin(source: BureauPluginEntry['source'], location: string): BureauPlug
 }
 
 describe('the built-in bureau plugin', () => {
-  it('is a required, running, built-in plugin whose contributions are the nine tools, by versioned id', async () => {
+  it('is a required, running, built-in plugin whose contributions have versioned ids', async () => {
     const harness = await start();
     const [listing] = await harness.bureau.plugins.list();
 
@@ -98,7 +113,7 @@ describe('the built-in bureau plugin', () => {
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([]);
     expect(listing?.contributions.map(({ kind, id }) => `${kind} ${id}`).toSorted()).toEqual(
-      ['discover-agents', ...WORKFLOW_TOOLS]
+      ['discover-agents', ...CHILD_RUN_TOOLS, ...ASSET_TOOLS, ...WORKFLOW_TOOLS]
         .map(
           (name) =>
             `tool bureau:${name}@${name === 'discover-agents' ? BUREAU_PLUGIN_VERSION : '1.0.0'}`,
@@ -170,7 +185,7 @@ describe('the built-in bureau plugin', () => {
     ]);
   });
 
-  it('lists the eight workflow tools in the tool catalog as Bureau’s, under bureau:', async () => {
+  it('lists the workflow tools in the tool catalog as Bureau’s, under bureau:', async () => {
     const harness = await start();
     const names = harness.bureau.agents.tools().map((tool) => tool.name);
     for (const name of WORKFLOW_TOOLS) expect(names).toContain(`bureau:${name}`);
@@ -181,6 +196,16 @@ describe('the built-in bureau plugin', () => {
         .filter((tool) => tool.name.startsWith('bureau:'))
         .every((tool) => tool.source === 'bureau'),
     ).toBe(true);
+  });
+
+  it('registers all five child-run tools under Bureau with their authority metadata', async () => {
+    const harness = await start();
+    const tools = harness.bureau.agents.tools();
+    for (const name of CHILD_RUN_TOOLS) {
+      expect(tools.find((tool) => tool.name === `bureau:${name}`)).toMatchObject({
+        source: 'bureau',
+      });
+    }
   });
 
   it('skips a folder plugin named bureau with name-clash: first is the built-in, second is the folder', async () => {

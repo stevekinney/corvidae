@@ -206,6 +206,20 @@ export interface PendingHumanWait {
   inputSchema?: HumanInputSchema | undefined;
 }
 
+export interface PendingChildWait {
+  readonly schemaVersion: 1;
+  readonly parentRunId: string;
+  readonly childRunId: string;
+  readonly toolCallId: string;
+  readonly principal: string;
+}
+
+export type DurableChildWaitResolution =
+  | { readonly status: 'pending' }
+  | { readonly status: 'settled'; readonly child: JSONValue }
+  | { readonly status: 'unobservable'; readonly child: JSONValue }
+  | { readonly status: 'not-found' };
+
 /**
  * The non-serializable, per-run behavior a durable workflow needs but cannot
  * checkpoint: the `generate` function, the `toolbox`, the hook registry, the
@@ -269,6 +283,21 @@ export interface DurableRunDeps {
    * `requestHumanInput` tool inside `ctx.memo`.
    */
   pendingHumanWait?: PendingHumanWait | undefined;
+  /** Mutable slot for the single child-wait request accepted by this step. */
+  pendingChildWait?: PendingChildWait | undefined;
+  /** Registers the first authorized child-wait request for the current step. */
+  requestChildWait?:
+    | ((
+        request: Omit<PendingChildWait, 'schemaVersion'>,
+      ) => { parked: true } | { parked: false; reason: 'already-parked' | 'unauthorized' })
+    | undefined;
+  /** Principal bound to the durable child-wait capability for this run. */
+  childWaitPrincipal?: string | undefined;
+  /** Original tool-call identifiers whose provisional settlement is deferred. */
+  deferredChildCallIds?: Set<string> | undefined;
+  /** Resolves a recovered child-wait request against the host child topology. */
+  resolveChildWait?:
+    ((request: PendingChildWait) => Promise<DurableChildWaitResolution>) | undefined;
   /**
    * Optional plain metadata to persist with the committed step record after
    * `runStep` finishes. This runs immediately before `recordStep`, so the

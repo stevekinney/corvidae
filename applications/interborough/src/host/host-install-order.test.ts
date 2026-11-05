@@ -1,3 +1,4 @@
+import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
 /**
  * The catalog rows are built while the Bureau is constructed (`models.catalog` is a factory over
  * the providers the plugins contribute), so no boot step plans against a provider the
@@ -48,6 +49,7 @@ afterEach(async () => {
 
 test('the configured rows are the Bureau’s catalog from its first revision', async () => {
   const home = await mkdtemp(join(tmpdir(), 'interborough-order-'));
+  await initializeWorkspaceHome(home);
   directories.push(home);
   await writeFile(
     join(home, 'configuration.json'),
@@ -57,7 +59,7 @@ test('the configured rows are the Bureau’s catalog from its first revision', a
     name: 'interborough',
     environment: { INTERBOROUGH_HOME: home },
   });
-  bungalow.writeSecret('gemini-api-key', 'fixture-gemini-key');
+  await bungalow.deploymentSecrets.write('gemini-api-key', 'fixture-gemini-key');
   bungalow.close();
 
   seenWhenCreated.length = 0;

@@ -41,6 +41,11 @@ type Setup = {
 /** A home directory holding the configuration file and secrets a test names. */
 async function prepareHome(setup: Setup): Promise<string> {
   const home = await scratch();
+  const initialized = await openBungalow({
+    name: 'interborough',
+    environment: { INTERBOROUGH_HOME: home },
+  });
+  initialized.close();
   if (setup.configuration !== undefined) {
     await writeFile(join(home, 'configuration.json'), JSON.stringify(setup.configuration));
   }
@@ -50,7 +55,8 @@ async function prepareHome(setup: Setup): Promise<string> {
       environment: { INTERBOROUGH_HOME: home },
     });
     try {
-      for (const [key, value] of Object.entries(setup.secrets)) bungalow.writeSecret(key, value);
+      for (const [key, value] of Object.entries(setup.secrets))
+        await bungalow.deploymentSecrets.write(key, value);
     } finally {
       bungalow.close();
     }

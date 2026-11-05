@@ -964,6 +964,7 @@ describe('MCP Streamable HTTP transport', () => {
     const cancelledWorkflowIds: string[] = [];
     engine.cancel = async (workflowId: string) => {
       cancelledWorkflowIds.push(workflowId);
+      return { workflowId, status: 'cancel-requested' };
     };
     const request = new AbortController();
     let workflowId = '';

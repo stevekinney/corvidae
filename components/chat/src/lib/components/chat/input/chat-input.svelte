@@ -46,6 +46,10 @@
      * controls, attachments or formatting, and the hint stays under it. Default `false`.
      */
     compact?: boolean;
+     * Why typing and sending are paused, as muted text beside Send. Shown only while `paused`, and
+     * named by Send's `aria-describedby`, so a screen reader hears the reason on the button.
+     */
+    pausedReason?: string | undefined;
     /** Whether a submission is in progress */
     sending?: boolean;
     /**
@@ -251,6 +255,7 @@
     disabled = false,
     paused = false,
     compact = false,
+    pausedReason,
     sending = false,
     allowFollowUp = false,
     error,
@@ -380,6 +385,9 @@
   // Derived state
   const errorId = $derived(`${id}-error`);
   const shortcutDescriptionId = $derived(`${id}-shortcut-description`);
+  const pausedReasonId = $derived(`${id}-paused-reason`);
+  /** The reason Send is off, while the host has paused the composer and said why. */
+  const shownPausedReason = $derived(paused && pausedReason ? pausedReason : undefined);
   const isWhitespaceOnly = $derived(value.trim().length === 0);
   const hasPendingAttachments = $derived(
     attachments.some((a) => a.status === 'pending' || a.status === 'uploading'),
@@ -1420,6 +1428,10 @@
             />
           {/if}
 
+          {#if shownPausedReason !== undefined}
+            <span id={pausedReasonId} class="chat-input-paused-reason">{shownPausedReason}</span>
+          {/if}
+
           <!-- One Send/Stop/Answer button stays mounted, so focus is never dropped as the run starts and ends. -->
           <Button
             type={showStopButton ? 'button' : 'submit'}
@@ -1432,7 +1444,9 @@
             disabled={showStopButton ? false : !canSubmit}
             label={showStopButton ? 'Stop' : sendLabel}
             aria-label={sendAccessibleName}
-            aria-describedby={shortcutDescriptionId}
+            aria-describedby={shownPausedReason === undefined
+              ? shortcutDescriptionId
+              : `${shortcutDescriptionId} ${pausedReasonId}`}
             onclick={handleSendButtonClick}
           >
             {#snippet leadingIcon()}
@@ -1802,6 +1816,15 @@
   }
 
   /* The line under the box: a status reads from the box's left edge, the hint is centred. */
+  /* The reason may wrap on a narrow composer, so it never pushes Send past the composer's edge. */
+  .chat-input-paused-reason {
+    min-width: 0;
+    font-size: var(--cinder-text-xs);
+    line-height: 1.3;
+    text-align: end;
+    color: var(--cinder-text-muted);
+  }
+
   .chat-input-status,
   .chat-input-hint {
     margin: 0;

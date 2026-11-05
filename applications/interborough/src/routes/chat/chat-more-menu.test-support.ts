@@ -4,6 +4,7 @@
  */
 import { fireEvent, render } from '@testing-library/svelte';
 
+import type { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { CHAT_COPY } from '../../app/copy.ts';
 import { createQueryClient } from '../../lib/query.ts';
 import ChatConversation from './chat-conversation.svelte';
@@ -64,13 +65,14 @@ export function serve(
   return { ...served, runs };
 }
 
-export function mount(sessionId = 'session-1') {
+export function mount(sessionId = 'session-1', connection?: ConnectionMonitor) {
   const client = createQueryClient();
   const view = render(ChatToasts, {
     props: {
       page: ChatConversation,
       pageProps: { sessionId, title: 'Plan the week', agentName: 'assistant' },
       client,
+      ...(connection === undefined ? {} : { connection }),
     },
   } as never);
   return { ...view, client };

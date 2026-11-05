@@ -27,6 +27,7 @@ import {
 } from './snapshot-delta';
 import type {
   DurableRunDeps,
+  PendingChildWait,
   PendingHumanWait,
   PendingWakeup,
   RecordedToolCall,
@@ -107,6 +108,7 @@ export interface DurableStepMemoResult {
   >;
   pendingWakeup?: PendingWakeup | undefined;
   pendingHumanWait?: PendingHumanWait | undefined;
+  pendingChildWait?: PendingChildWait | undefined;
   /**
    * COR-1476 — the session inputs this step's boundary received before it
    * generated, in admission order, each already appended to the conversation
@@ -185,6 +187,7 @@ export function runStepMemo(
     const deps = runDepsFrom(ctx.services);
     deps.pendingHumanWait = undefined;
     deps.pendingWakeup = undefined;
+    deps.pendingChildWait = undefined;
     const conversation = conversationForStep(deps, snapshot);
     let stepToolbox: AnyToolbox = deps.toolbox;
     const stepDeps = {
@@ -197,6 +200,9 @@ export function runStepMemo(
         deps.onStepToolbox?.(toolbox);
       },
       admissionTracker: deps.admissionTracker,
+      requestChildWait: deps.requestChildWait,
+      childWaitPrincipal: deps.childWaitPrincipal,
+      getPendingChildWait: () => deps.pendingChildWait,
       runId,
       durableOperationKeys: true,
     };
@@ -299,6 +305,7 @@ export function runStepMemo(
       },
       pendingWakeup: deps.pendingWakeup,
       pendingHumanWait: deps.pendingHumanWait,
+      pendingChildWait: deps.pendingChildWait,
       ...(sessionInputDeliveries.length > 0 ? { sessionInputDeliveries } : {}),
       ...(lateSessionInputDeliveries.length > 0 ? { lateSessionInputDeliveries } : {}),
     };

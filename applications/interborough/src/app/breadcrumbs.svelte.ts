@@ -15,12 +15,15 @@ const pageLabels = new SvelteMap<string, string>();
 
 /**
  * The trail for `pathname`: one item for each leading part of the path whose first matching route
- * has a crumb, each linking to its own path except the last, which is the page itself.
+ * has a crumb, each linking to its own path except the last, which is the page itself. With
+ * `leaf` false there is no page to end the trail, as on an address no route owns, so every item
+ * links: the not-found page adds its own "Not found" after them.
  */
 export function breadcrumbTrail(
   pathname: string,
   labels: ReadonlyMap<string, string> = pageLabels,
   table: readonly RouteDefinition[] = routes,
+  leaf = true,
 ): BreadcrumbItem[] {
   const segments = pathname.split('/').filter((segment) => segment.length > 0);
   const items: { label: string; path: string }[] = [];
@@ -39,7 +42,9 @@ export function breadcrumbTrail(
     if (label !== undefined) items.push({ label, path });
   }
   return items.map((item, index) =>
-    index === items.length - 1 ? { label: item.label } : { label: item.label, href: item.path },
+    leaf && index === items.length - 1
+      ? { label: item.label }
+      : { label: item.label, href: item.path },
   );
 }
 

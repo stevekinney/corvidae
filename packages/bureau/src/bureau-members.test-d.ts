@@ -140,10 +140,11 @@ export type ReviewsMembers = AssertNever<
   Exclude<keyof BureauReviews, 'list' | 'listResolved' | 'get' | 'resolve' | 'pendingOf'>
 >;
 
-// `schedules` has exactly the fifteen operations.
+// `schedules` includes revision-checked future authority reassignment.
 export type SchedulesMembers = AssertNever<
   Exclude<
     keyof BureauSchedules,
+    | 'reassign'
     | 'create'
     | 'get'
     | 'list'
@@ -285,6 +286,7 @@ type TopLevelMembers =
   | 'frames'
   // The members that did not change.
   | 'id'
+  | 'workspaceBinding'
   | 'durableEngine'
   | 'lifecycle'
   | 'shutdown'

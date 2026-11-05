@@ -244,6 +244,38 @@ describe('a new chat', () => {
     expect(router.current.search.get('agent')).toBe('researcher');
   });
 
+  test('opens with the topic of "New chat about" in the composer, and sends nothing', async () => {
+    const runs: string[] = [];
+    restore = bureau({}, (url) => {
+      if (url.includes('/ag-ui/agents/')) runs.push(url);
+      return undefined;
+    }).restore;
+    landAt('/chats/new?about=refund');
+    const { container } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    await waitFor(() => expect(container.querySelector('textarea')?.value).toBe('refund'));
+    expect(runs).toEqual([]);
+  });
+
+  test('opens with an empty composer when no topic is named', async () => {
+    restore = bureau({}).restore;
+    landAt('/chats/new');
+    const { container } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'assistant',
+      isNew: true,
+    });
+
+    await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
+    expect(container.querySelector('textarea')?.value).toBe('');
+  });
+
   test('names an agent whose display name is its identifier once, in monospace, in the greeting', async () => {
     const echo = { ...AGENT, name: 'echo', displayName: 'echo', description: null };
     const runner = {
@@ -1414,6 +1446,14 @@ describe('attachments', () => {
 
 describe('the files on a row', () => {
   const SEER = { ...AGENT, name: 'seer', displayName: 'Seer', media: null };
+  const WORKFLOW_REVISION_PANEL = {
+    plugin: 'inspectors',
+    app: 'workflow-revision-review',
+    title: 'Review workflow revision',
+    uri: 'ui://bureau/workflow-revision-review/v1',
+    opensFromTool: 'bureau.workflows.update',
+    opensFromAgentTool: 'bureau:workflows-propose-update',
+  };
   const reload = (history: unknown[]) => {
     restore = bureau(
       { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
@@ -1430,6 +1470,99 @@ describe('the files on a row', () => {
     landAt('/chats/session-1');
     return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
   };
+
+  const reloadWithWorkflowRevisionPanel = (results: string | readonly string[]) => {
+    const proposalResults = typeof results === 'string' ? [results] : results;
+    let appReads = 0;
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({
+            threadId: 'session-1',
+            messages: proposalResults.flatMap((result, index) => {
+              const callId = index === 0 ? 'proposal-call' : 'malformed-proposal';
+              return [
+                {
+                  id: callId,
+                  role: 'assistant',
+                  toolCalls: [
+                    {
+                      id: callId,
+                      type: 'function',
+                      function: {
+                        name: 'bureau__workflows-propose-update',
+                        arguments: '{"id":"daily","expectedHash":"hash-1"}',
+                      },
+                    },
+                  ],
+                },
+                {
+                  id: `${callId}-result`,
+                  role: 'tool',
+                  toolCallId: callId,
+                  content: result,
+                },
+              ];
+            }),
+          });
+        }
+        if (url === '/host/mcp-apps') {
+          appReads += 1;
+          return Response.json({ apps: [WORKFLOW_REVISION_PANEL] });
+        }
+        if (url.endsWith('/apps/workflow-revision-review')) {
+          return Response.json({ html: '<div id="root">workflow review</div>' });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chats/session-1');
+    return {
+      ...mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' }),
+      appReads: () => appReads,
+    };
+  };
+
+  test('mounts the workflow revision panel for a completed proposal tool result', async () => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel(
+      JSON.stringify({
+        status: 'ok',
+        id: 'daily',
+        baseHash: 'hash-1',
+        proposedText: 'id: daily\ntrigger: 1h\nsteps: []',
+      }),
+    );
+
+    await waitFor(() => expect(appReads()).toBe(1));
+    await waitFor(() => {
+      const frame = container.querySelector('iframe[title="Review workflow revision"]');
+      expect(frame?.getAttribute('srcdoc')).toContain('workflow review');
+    });
+  });
+
+  test('does not mount the workflow revision panel for a malformed proposal result', async () => {
+    const { container, appReads } = reloadWithWorkflowRevisionPanel([
+      JSON.stringify({
+        status: 'ok',
+        id: 'daily',
+        baseHash: 'hash-1',
+        proposedText: 'id: daily\ntrigger: 1h\nsteps: []',
+      }),
+      'not-json',
+    ]);
+
+    await waitFor(() => expect(appReads()).toBe(1));
+    await waitFor(() =>
+      expect(container.querySelectorAll('iframe[title="Review workflow revision"]')).toHaveLength(
+        1,
+      ),
+    );
+    expect(container.querySelector('[data-tool-call-row="malformed-proposal"] iframe')).toBeNull();
+  });
 
   test('shows an image a run announces on the assistant row it ends with', async () => {
     restore = bureau(

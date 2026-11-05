@@ -1,9 +1,14 @@
 <script lang="ts">
   /**
-   * The top bar's quick settings (design row 03b): one small icon that opens a popover of
-   * personal preferences for this browser, the theme, the density and the sidebar's icon rail,
-   * with a link to every setting. The theme is the `ThemeStore`'s, and the density and the rail
-   * are the shell's `LayoutPreferences`, so each is remembered across reloads.
+   * The top bar's quick settings (design row 02y): the sliders icon (the gear is Settings) opens a
+   * popover of personal preferences for this browser, titled "Quick settings": the theme (Cinder's
+   * `ThemeSwitch`), whether the sidebar is expanded or collapsed to its rail, and a link to every
+   * setting. There is no density switch: one density everywhere.
+   *
+   * The Sidebar choice is the person's preference and applies at 1024px and wider; below that the
+   * rail or the drawer rules win (design row 04b, `../shell/shell-navigation.svelte.ts`). The
+   * theme is the `ThemeStore`'s and the preference is the shell's `LayoutPreferences`, so each is
+   * remembered across reloads.
    */
   import {
     Button,
@@ -12,13 +17,12 @@
     Segment,
     SegmentedControl,
     ThemeSwitch,
-    Toggle,
   } from '@lostgradient/cinder';
-  import { Settings2 } from '@lucide/svelte';
+  import { ChevronRight, Settings, SlidersHorizontal } from '@lucide/svelte';
 
   import { router } from '../../lib/router.svelte.ts';
   import { QUICK_SETTINGS_COPY } from '../copy.ts';
-  import type { DensityPreference, LayoutPreferences } from '../layout-preferences.svelte.ts';
+  import type { LayoutPreferences } from '../layout-preferences.svelte.ts';
   import type { ThemeStore } from '../theme.svelte.ts';
 
   interface QuickSettingsProps {
@@ -40,7 +44,12 @@
   }
 </script>
 
-<Popover bind:open placement="bottom-end" label={QUICK_SETTINGS_COPY.trigger}>
+<Popover
+  bind:open
+  placement="bottom-end"
+  label={QUICK_SETTINGS_COPY.trigger}
+  class="weft-quick-settings-popover"
+>
   {#snippet trigger()}
     <Button
       variant="ghost"
@@ -51,43 +60,46 @@
       title={QUICK_SETTINGS_COPY.trigger}
       onclick={() => (open = !open)}
     >
-      <Settings2 aria-hidden="true" size={16} />
+      <SlidersHorizontal aria-hidden="true" size={16} />
     </Button>
   {/snippet}
   <div class="weft-quick-settings">
+    <h2 class="weft-quick-settings__title">{QUICK_SETTINGS_COPY.trigger}</h2>
     <div class="weft-quick-settings__row">
       <span class="weft-quick-settings__label">{QUICK_SETTINGS_COPY.theme}</span>
       <ThemeSwitch
         value={theme.mode}
-        label={QUICK_SETTINGS_COPY.theme}
+        label={QUICK_SETTINGS_COPY.themeLabel}
         onValueChange={(mode) => theme.set(mode)}
       />
     </div>
     <div class="weft-quick-settings__row">
-      <span class="weft-quick-settings__label">{QUICK_SETTINGS_COPY.density}</span>
+      <span class="weft-quick-settings__label">{QUICK_SETTINGS_COPY.sidebar}</span>
       <SegmentedControl
-        id="weft-quick-settings-density"
-        label={QUICK_SETTINGS_COPY.density}
+        id="weft-quick-settings-sidebar"
+        label={QUICK_SETTINGS_COPY.sidebar}
         labelVisible={false}
         size="sm"
-        value={layout.density}
-        onValueChange={(density: DensityPreference) => layout.setDensity(density)}
+        value={layout.sidebarCollapsed ? 'collapsed' : 'expanded'}
+        onValueChange={(choice: 'expanded' | 'collapsed') =>
+          layout.setSidebarCollapsed(choice === 'collapsed')}
       >
-        <Segment value="comfortable">{QUICK_SETTINGS_COPY.comfortable}</Segment>
-        <Segment value="compact">{QUICK_SETTINGS_COPY.compact}</Segment>
+        <Segment value="expanded">{QUICK_SETTINGS_COPY.expanded}</Segment>
+        <Segment value="collapsed">{QUICK_SETTINGS_COPY.collapsed}</Segment>
       </SegmentedControl>
     </div>
-    <div class="weft-quick-settings__row">
-      <span class="weft-quick-settings__label">{QUICK_SETTINGS_COPY.sidebar}</span>
-      <Toggle
-        id="weft-quick-settings-sidebar"
-        label={QUICK_SETTINGS_COPY.collapsed}
-        checked={layout.sidebarCollapsed}
-        onValueChange={(collapsed) => layout.setSidebarCollapsed(collapsed)}
-      />
-    </div>
-    <Link href={router.href('/settings')} onclick={openAllSettings}>
-      {QUICK_SETTINGS_COPY.allSettings}
+    <Link
+      href={router.href('/settings')}
+      color="inherit"
+      underline="none"
+      class="weft-quick-settings__all"
+      onclick={openAllSettings}
+    >
+      <span class="weft-quick-settings__all-label">
+        <Settings aria-hidden="true" size={15} />
+        {QUICK_SETTINGS_COPY.allSettings}
+      </span>
+      <ChevronRight aria-hidden="true" size={16} />
     </Link>
   </div>
 </Popover>

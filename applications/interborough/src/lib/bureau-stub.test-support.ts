@@ -354,6 +354,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       defaultEffort: null,
       tools: ['lookup-order'],
       allowedSkills: null,
+      childAgents: null,
       skillDescriptors: [
         {
           id: 'cite',

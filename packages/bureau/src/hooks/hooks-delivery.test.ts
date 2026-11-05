@@ -37,6 +37,7 @@ afterEach(async () => {
 async function open(
   script?: Parameters<typeof createReceiver>[0],
   options: {
+    workspace?: Parameters<typeof openHooksBureau>[0]['workspace'];
     storage?: Storage;
     maxAttempts?: number;
     hooks?: NonNullable<Parameters<typeof openHooksBureau>[0]['hooks']>;
@@ -63,6 +64,44 @@ const HOOK = {
 } as const;
 
 describe('a hook on a published event', () => {
+  it('persists and delivers a workspace private event only to its owner hook', async () => {
+    const { bureau, receiver } = await open(undefined, {
+      workspace: {
+        workspaceId: 'workspace-a',
+        resolveMembership: async ({ subject }) => ({
+          version: 1,
+          workspaceId: 'workspace-a',
+          actorId: subject ?? 'unknown',
+          actorKind: 'user',
+          owner: `api-key:${subject ?? 'unknown'}`,
+          membershipRevision: 'revision-1',
+          capabilities: ['workspace:use', 'workspace:manage'],
+        }),
+        resolveOwnerMembership: async (owner) => ({
+          version: 1,
+          workspaceId: 'workspace-a',
+          actorId: owner,
+          actorKind: 'user',
+          owner,
+          membershipRevision: 'revision-1',
+          capabilities: ['workspace:use', 'workspace:manage'],
+        }),
+      },
+    });
+    const alice = await bureau.hooks!.create(HOOK);
+    const bob = await bureau.hooks!.create({
+      ...HOOK,
+      principal: 'api-key:bob',
+      url: 'https://other.example/hook',
+    });
+    await fireRunEvents(bureau, 'api-key:alice');
+    await waitForSettledDeliveries(bureau, alice.id, 1);
+    await bureau.internals.webhookNotifier!.flush();
+    expect(await deliveriesOf(bureau, bob.id)).toEqual([]);
+    expect(receiver.calls).toHaveLength(1);
+    expect(receiver.calls[0]?.url).toBe(HOOK.url);
+  });
+
   it('delivers a signed webhook that a verifier accepts, and an altered body or timestamp fails', async () => {
     const { bureau, receiver, clock } = await open();
     const hook = await bureau.hooks!.create(HOOK);
@@ -421,4 +460,39 @@ describe('an event that matches several hooks when a later delivery cannot be st
     expect(delivery!.status).toBe('delivered');
     expect(diagnostics.some((message) => message.includes('Failed to dispatch'))).toBe(true);
   });
+});
+
+it('records an admitted external request and refuses the next delivery attempt after removal', async () => {
+  let present = true;
+  const { bureau, receiver } = await open(
+    () => {
+      present = false;
+      return new Response('busy', { status: 503 });
+    },
+    {
+      workspace: {
+        workspaceId: 'workspace-a',
+        resolveMembership: async () => null,
+        resolveOwnerMembership: async (owner) =>
+          present
+            ? {
+                version: 1,
+                workspaceId: 'workspace-a',
+                actorId: 'actor-alice',
+                actorKind: 'user',
+                owner,
+                membershipRevision: 'r1',
+                capabilities: ['workspace:use', 'workspace:manage'],
+              }
+            : null,
+      },
+    },
+  );
+  const hook = await bureau.hooks!.create(HOOK);
+  await fireRunEvents(bureau, HOOK.principal);
+  const [delivery] = await waitForSettledDeliveries(bureau, hook.id, 1);
+  expect(receiver.calls).toHaveLength(1);
+  expect(delivery?.attempts.map((attempt) => attempt.outcome)).toEqual(['response', 'rejected']);
+  expect(delivery?.attempts[0]?.status).toBe(503);
+  expect(delivery?.attempts[1]?.error).toBe('Workspace authority unavailable.');
 });

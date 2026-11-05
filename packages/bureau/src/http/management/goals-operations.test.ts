@@ -23,6 +23,13 @@ import {
   type RpcBody,
 } from './management-fixtures.test-support.ts';
 import { bureauGoalsOperations } from './goals-operations.ts';
+import {
+  WORKSPACE_PRIVACY_ACTORS,
+  openWorkspacePrivacyBureau,
+  workspacePrivacyCall,
+  type WorkspacePrivacyActor,
+  workspaceAdministratorDirectory,
+} from '../workspace-privacy-fixtures.test-support.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -36,6 +43,20 @@ async function serve(): Promise<OpenedBureau> {
     a2aAgents: ['worker'],
     generate: hangUntilAborted,
     validators: [createCheckValidator()],
+  });
+  cleanups.push(() => opened.dispose());
+  return opened;
+}
+
+async function serveWorkspace(): Promise<OpenedBureau> {
+  const opened = await openBureau({
+    agents: { worker: workerAgent(hangUntilAborted) },
+    a2aAgents: ['worker'],
+    generate: hangUntilAborted,
+    validators: [createCheckValidator()],
+    handlerOptions: {
+      workspace: workspaceAdministratorDirectory(),
+    },
   });
   cleanups.push(() => opened.dispose());
   return opened;
@@ -182,6 +203,31 @@ describe('each goal operation, as the owner', () => {
 });
 
 describe('the owner predicate and the operator scopes', () => {
+  it('keeps a workspace administrator’s legacy goal scope owner-scoped', async () => {
+    const opened = await serveWorkspace();
+    const own = idOf(await createdBy(opened, 'operator-key', 'operator-goal'));
+    const foreign = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));
+    const listed = await rpc(opened.handler, 'bureau.goals.list', {}, 'operator-key');
+    expect(
+      (listed.result!['goals'] as Array<{ goalRunId: string }>).map((goal) => goal.goalRunId),
+    ).toEqual([own]);
+    const foreignGet = await rpc(
+      opened.handler,
+      'bureau.goals.get',
+      { goalRunId: foreign },
+      'operator-key',
+    );
+    const unknownGet = await rpc(
+      opened.handler,
+      'bureau.goals.get',
+      { goalRunId: 'goal-missing' },
+      'operator-key',
+    );
+    expect(JSON.stringify(foreignGet).replaceAll(foreign, '<id>')).toBe(
+      JSON.stringify(unknownGet).replaceAll('goal-missing', '<id>'),
+    );
+  });
+
   it('shows a goal only to its owner and to bureau.goals:read, and answers anyone else as a missing one', async () => {
     const opened = await serve();
     const gAlice = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));
@@ -301,6 +347,91 @@ describe('a goal that another principal owns', () => {
         ),
       ),
     ).toBe(404);
+  });
+});
+
+describe('workspace privacy for goals', () => {
+  it('keeps every private goal operation owner-scoped despite legacy scopes', async () => {
+    const opened = await openWorkspacePrivacyBureau({
+      agents: { worker: workerAgent(hangUntilAborted) },
+      a2aAgents: ['worker'],
+      generate: hangUntilAborted,
+      validators: [createCheckValidator()],
+    });
+    cleanups.push(() => opened.dispose());
+    const create = async (actor: WorkspacePrivacyActor, idempotencyKey: string) => {
+      const body = await workspacePrivacyCall(opened, actor, 'bureau.goals.create', {
+        ...NEW_GOAL,
+        idempotencyKey,
+      });
+      expect(body.status, actor).toBe(200);
+      const goal = body.body?.result?.['goal'];
+      expect(goal).toBeDefined();
+      if (goal === undefined || typeof goal !== 'object' || goal === null || !('goalRunId' in goal))
+        throw new Error(`Expected a created goal, got ${JSON.stringify(body.body)}`);
+      return String(goal.goalRunId);
+    };
+    const aliceGoal = await create('owner', 'workspace-alice-goal');
+    const administratorGoal = await create('administrator', 'workspace-admin-goal');
+    expect(administratorGoal).not.toBe(aliceGoal);
+
+    for (const actor of [
+      ...(Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]).filter(
+        (value) => value !== 'owner',
+      ),
+      'owner',
+    ] as WorkspacePrivacyActor[]) {
+      const denied = actor === 'foreign' || actor === 'removed';
+      const expectedStatus = denied ? 403 : actor === 'owner' ? 200 : 404;
+      for (const [method, input] of [
+        ['bureau.goals.get', { goalRunId: aliceGoal }],
+        ['bureau.goals.cancel', { goalRunId: aliceGoal, reason: 'workspace-test' }],
+      ] as const) {
+        const response = await workspacePrivacyCall(opened, actor, method, input);
+        expect(response.status, `${actor} ${method}`).toBe(denied ? 403 : 200);
+        if (actor === 'owner') expect(response.body?.error).toBeUndefined();
+        if (expectedStatus === 404) {
+          expect(response.body?.error?.data?.httpStatus, `${actor} ${method}`).toBe(404);
+          const unknown = await workspacePrivacyCall(opened, actor, method, {
+            ...input,
+            goalRunId: 'unknown-goal',
+          });
+          expect(JSON.stringify(response.body?.error).replaceAll(aliceGoal, '<id>')).toBe(
+            JSON.stringify(unknown.body?.error).replaceAll('unknown-goal', '<id>'),
+          );
+        }
+      }
+      const listed = await workspacePrivacyCall(opened, actor, 'bureau.goals.list', {});
+      expect(listed.status, `${actor} list`).toBe(denied ? 403 : 200);
+      const ids = ((listed.body?.result?.['goals'] ?? []) as Array<{ goalRunId: string }>).map(
+        (goal) => goal.goalRunId,
+      );
+      expect(ids, actor).toEqual(
+        actor === 'owner' ? [aliceGoal] : actor === 'administrator' ? [administratorGoal] : [],
+      );
+    }
+  });
+  it('creates private goals for every current member and refuses both invalid memberships', async () => {
+    const opened = await openWorkspacePrivacyBureau({
+      agents: { worker: workerAgent(hangUntilAborted) },
+      a2aAgents: ['worker'],
+      generate: hangUntilAborted,
+      validators: [createCheckValidator()],
+    });
+    cleanups.push(() => opened.dispose());
+    for (const actor of Object.keys(WORKSPACE_PRIVACY_ACTORS) as WorkspacePrivacyActor[]) {
+      const result = await workspacePrivacyCall(opened, actor, 'bureau.goals.create', {
+        ...NEW_GOAL,
+        idempotencyKey: `workspace-create-${actor}`,
+      });
+      if (actor === 'foreign' || actor === 'removed') expect(result.status).toBe(403);
+      else {
+        expect(result.body?.error).toBeUndefined();
+        expect(result.body?.result?.['goal']).toMatchObject({
+          owner: WORKSPACE_PRIVACY_ACTORS[actor].owner,
+        });
+      }
+    }
   });
 });
 

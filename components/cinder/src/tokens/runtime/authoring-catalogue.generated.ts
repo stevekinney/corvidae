@@ -19129,7 +19129,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-side-navigation-list-gap',
       category: 'spacing',
       component: 'side-navigation',
-      description: 'Gap between top-level navigation items.',
+      description:
+        'Gap between top-level navigation items: 2px, so a 30px row sits on a 32px pitch.',
       themeAware: false,
       deprecated: false,
       profile: 'gap',
@@ -19168,7 +19169,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'side-navigation.list-gap',
               },
             },
-            inputs: { aliases: ['space.one'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['space.0-5'], refs: [], extends: [], recipes: [] },
           },
         },
       ],

@@ -2,7 +2,7 @@
  * `weft.system.principal` operation + REST binding.
  *
  * Reports the caller's own resolved principal: the authentication method,
- * the normalized subject, and the granted scope set. Public access by
+ * the normalized subject, the granted scope set, and any host-resolved workspace identity. Public access by
  * design — introspection has to work for every credential state to be
  * useful (a dashboard probes its principal before it knows anything), and
  * an unauthenticated caller learns only what it already knows: that it is
@@ -31,6 +31,17 @@ const principalMethodSchema = z.enum([
 ]);
 const getPrincipalInput = z.object({});
 const getPrincipalOutput = z.object({
+  workspace: z
+    .object({
+      version: z.literal(1),
+      workspaceId: z.string(),
+      actorId: z.string(),
+      actorKind: z.enum(['user', 'service', 'local']),
+      owner: z.string(),
+      membershipRevision: z.string(),
+      capabilities: z.array(z.enum(['workspace:use', 'workspace:manage', 'deployment:operate'])),
+    })
+    .optional(),
   method: principalMethodSchema,
   subject: z.string().nullable(),
   // Built-in scopes, or a package scope a handler registered through
@@ -76,7 +87,8 @@ export const getPrincipalOperation = defineOperation({
     "receives method 'unauthenticated' with an empty scope list rather than an error, so " +
     'clients can distinguish "no credential" from "credential with few scopes" without probing ' +
     "other operations. A server with no authentication reports 'unauthenticated-local' holding " +
-    'every scope. Reflects only the request credential — never server auth configuration.',
+    'every scope. A workspace-aware host also reports its resolved workspace identity, stable actor, ' +
+    'opaque owner, membership revision and capabilities. Never exposes server auth configuration.',
   destructive: false,
   tags: ['System'],
   inputSchema: getPrincipalInput,
@@ -91,6 +103,14 @@ export const getPrincipalOperation = defineOperation({
     }
     return {
       method: principal.method,
+      ...(principal.workspace === undefined
+        ? {}
+        : {
+            workspace: {
+              ...principal.workspace,
+              capabilities: [...principal.workspace.capabilities],
+            },
+          }),
       subject: principal.subject ?? null,
       // Sorted for a deterministic wire shape — `scopes` is a Set whose
       // iteration order is credential-construction order, which callers

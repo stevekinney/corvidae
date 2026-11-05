@@ -33,33 +33,51 @@ function nameOf(schedule: BureauSchedule): ScheduleName {
 /** How many schedules the bell looks up the missed fires of: the most recently changed. */
 export const MISSED_SCHEDULE_LOOKUP_LIMIT = 10;
 
-/** The newest fire one schedule missed. */
+/** The fires one schedule missed. */
 export interface MissedFireSource {
   readonly scheduleId: string;
   readonly name: ScheduleName;
-  readonly missed: MissedFire;
+  /** The agent the schedule runs, or `null` for a schedule that starts a workflow. */
+  readonly agentName: string | null;
+  /** Every fire it missed that the schedule still holds, newest first; never empty. */
+  readonly fires: readonly [MissedFire, ...MissedFire[]];
 }
 
 /**
- * The newest fire missed by each schedule that has missed any (`missedFireCount`), for the
+ * The fires missed by each schedule that has missed any (`missedFireCount`), for the
  * {@link MISSED_SCHEDULE_LOOKUP_LIMIT} most recently changed. A read that fails fails the whole
  * lookup, so the bell says it could not look rather than listing some of the misses.
  */
 export async function loadMissedFires(options?: Options): Promise<readonly MissedFireSource[]> {
   const schedules = await listBureauSchedules(options);
   const missing = schedules
-    .filter((schedule) => schedule.missedFireCount > 0 && schedule.status !== 'cancelled')
+    .filter(
+      (schedule) =>
+        schedule.missedFireCount !== null &&
+        schedule.missedFireCount > 0 &&
+        schedule.status !== 'cancelled',
+    )
     .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, MISSED_SCHEDULE_LOOKUP_LIMIT);
-  const newest = await Promise.all(
-    missing.map(async (schedule) => {
-      const fires = await listAgentScheduleMissed(schedule.id, options);
-      return { schedule, missed: fires[0] };
-    }),
+  const missed = await Promise.all(
+    missing.map(async (schedule) => ({
+      schedule,
+      fires: await listAgentScheduleMissed(schedule.id, options),
+    })),
   );
-  return newest.flatMap(({ schedule, missed }) =>
-    missed === undefined ? [] : [{ scheduleId: schedule.id, name: nameOf(schedule), missed }],
-  );
+  return missed.flatMap(({ schedule, fires }): MissedFireSource[] => {
+    const [newest, ...older] = fires;
+    return newest === undefined
+      ? []
+      : [
+          {
+            scheduleId: schedule.id,
+            name: nameOf(schedule),
+            agentName: schedule.agentName,
+            fires: [newest, ...older],
+          },
+        ];
+  });
 }
 
 /**

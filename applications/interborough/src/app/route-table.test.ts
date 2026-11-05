@@ -37,12 +37,14 @@ function ancestorPatterns(pattern: string): string[] {
 
 /**
  * What is wrong with a table's breadcrumbs: a route that renders but has no label, and a route
- * whose parent address is not a route with a label, so the trail would skip a level.
+ * whose parent address is not a route with a label, so the trail would skip a level. Home, the
+ * page at `/`, is the root of every address and has no crumb: its trail is the view's name, and no
+ * other trail begins with it.
  */
 function breadcrumbGaps(table: readonly RouteDefinition[]): string[] {
   const gaps: string[] = [];
   for (const route of table) {
-    if (route.redirect !== undefined) continue;
+    if (route.redirect !== undefined || route.pattern === '/') continue;
     if (route.crumb === undefined) gaps.push(`${route.pattern} has no breadcrumb label`);
     for (const ancestor of ancestorPatterns(route.pattern)) {
       const parent = table.find((candidate) => candidate.pattern === ancestor);
@@ -61,9 +63,7 @@ function addressOf(pattern: string): string {
 describe('the route table', () => {
   test('names no route by a path it had before it nested, and keeps no redirect for one', () => {
     for (const path of RETIRED_PATHS) expect(matchRoute(path), path).toBeNull();
-    expect(
-      routes.filter((route) => route.redirect !== undefined).map((route) => route.pattern),
-    ).toEqual(['/']);
+    expect(routes.filter((route) => route.redirect !== undefined)).toEqual([]);
   });
 
   test('names no retired path in the application source', async () => {

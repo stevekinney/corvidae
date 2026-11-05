@@ -116,3 +116,75 @@ for (const name of OFFLINE_ROUTES) {
     }
   });
 }
+
+/** The offline banner, over a page that stays as it was, on the sample world. */
+async function expectOfflineBanner(page: Page, label: string) {
+  const banner = page.getByRole('region', { name: 'Connection problem' });
+  await expect(banner, label).toBeVisible();
+  // The browser, not the server, is the cause, so the banner leads with that and offers Retry now.
+  await expect(banner).toContainText('You’re offline.');
+  await expect(banner).toContainText('Showing what loaded as of');
+  await expect(banner).toContainText('Changes are off until you’re back.');
+  await expect(banner.getByRole('button', { name: 'Retry now' })).toBeVisible();
+  return banner;
+}
+
+for (const width of [375, 1280] as const) {
+  test(`Shell · offline: the new chat keeps its typed text with Send off and the reason beside it, at ${width} pixels`, async ({
+    page,
+    context,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: HEIGHT });
+    await page.goto(`${E2E_SHOWCASE_URL}/chats/new`);
+    const composer = page.getByRole('textbox', { name: /message/i });
+    await composer.fill('What did I approve yesterday?');
+    await untilQuiet(page);
+
+    await goOffline(context, pageErrors);
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    const banner = await expectOfflineBanner(page, `new chat at ${width}px offline`);
+    // The typed text stays, Send is off, and the reason sits beside it.
+    await expect(composer).toHaveValue('What did I approve yesterday?');
+    await expect(page.getByText('Off until it’s back')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    // The top bar and the navigation stay live, because navigation still works for loaded pages.
+    await expect(page.getByRole('button', { name: 'Search everything' })).toBeEnabled();
+    if (width < 1024) {
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+    }
+    await expect(page.getByRole('link', { name: 'Home', exact: true }).first()).toBeVisible();
+    if (width < 1024) await page.keyboard.press('Escape');
+    await captureForDesignReview(page, {
+      route: '/chats/new',
+      state: 'offline',
+      source: 'showcase.spec.ts',
+    });
+
+    await context.setOffline(false);
+    await expect(banner, `new chat at ${width}px back online`).toHaveCount(0);
+    await expect(composer).toHaveValue('What did I approve yesterday?');
+    await expect(page.getByText('Off until it’s back')).toHaveCount(0);
+  });
+
+  test(`Shell · offline: Home shows the banner under the top bar at ${width} pixels`, async ({
+    page,
+    context,
+    pageErrors,
+  }) => {
+    await page.setViewportSize({ width, height: HEIGHT });
+    await page.goto(`${E2E_SHOWCASE_URL}/`);
+    await untilQuiet(page);
+    await goOffline(context, pageErrors);
+    await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+    const banner = await expectOfflineBanner(page, `home at ${width}px offline`);
+    await captureForDesignReview(page, {
+      route: '/',
+      state: 'offline',
+      source: 'showcase.spec.ts',
+    });
+
+    await context.setOffline(false);
+    await expect(banner, `home at ${width}px back online`).toHaveCount(0);
+  });
+}
