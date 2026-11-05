@@ -8,9 +8,10 @@
  * first beside the one status word, the sentence under the heading, Edit and Run now and a menu that
  * holds Delete schedule, a schedule whose workflow is paused, Run now held off for a workflow that
  * cannot load, and the details card beside the runs at a desktop width and below them under 1024
- * pixels. Nothing here changes the world every other specification reads: Delete is only asked, and
- * the run that Run now starts is answered by the specification (the Bureau's `bureau.workflows.start`),
- * so no run is made.
+ * pixels. Nothing here leaves the world every other specification reads changed: Delete is only
+ * asked, the run that Run now starts is answered by the specification (the Bureau's
+ * `bureau.workflows.start`), so no run is made, and a test that skips a run takes the skip back
+ * before it ends, whether or not its assertions pass.
  */
 import type { Page, Route } from '@playwright/test';
 
