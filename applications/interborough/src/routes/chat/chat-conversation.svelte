@@ -854,6 +854,7 @@
       timing: {
         now: bureauNow,
         callStarts: session.callStarts,
+        callEnds: session.callEnds,
         ...(session.stoppedAt === undefined ? {} : { stoppedAt: session.stoppedAt }),
       },
     }),

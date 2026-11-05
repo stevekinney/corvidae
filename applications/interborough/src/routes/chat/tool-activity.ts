@@ -71,6 +71,11 @@ export type ToolTimingContext = {
    * the stored thread has its row's recorded time instead.
    */
   readonly callStarts?: ReadonlyMap<string, number> | undefined;
+  /**
+   * When each call the page watched answer answered, from its `TOOL_CALL_RESULT`: the row the
+   * page wrote for the answer carries the page's time until the run's snapshot replaces it.
+   */
+  readonly callEnds?: ReadonlyMap<string, number> | undefined;
   /** When the last run stopped, for a call it left without an answer; absent while unknown. */
   readonly stoppedAt?: number | undefined;
 };
@@ -102,9 +107,11 @@ type CallRows = {
 };
 
 /**
- * How long a call ran, from the times the Bureau recorded: the result row's start and end, or for
- * a call with no answer, from its start (the page's sight of `TOOL_CALL_START`, else its row's
- * recorded time) to the Bureau's now while it runs, or to the run's stop once it was interrupted.
+ * How long a call ran, from the times the Bureau recorded: the result row's start and end. A call
+ * whose answer records none counts from its start (the Bureau's time on its `TOOL_CALL_START`, else
+ * its row's recorded time) to its answer (the Bureau's time on its `TOOL_CALL_RESULT`, else the
+ * answer row's), to the Bureau's now while it runs, or to the run's stop once it was interrupted.
+ * A call a person denied never ran, so it has a duration only when one was recorded.
  */
 function durationOf(
   state: ToolCallState,
@@ -114,15 +121,16 @@ function durationOf(
   if (timing === undefined || state === 'needs-you') return undefined;
   const recorded = recordedTiming(rows.result?.metadata);
   if (recorded !== undefined) return recorded.endedAt - recorded.startedAt;
-  const start =
-    timing.callStarts?.get(rows.call.toolCall?.id ?? '') ?? epochOf(rows.call.createdAt);
+  if (state === 'denied') return undefined;
+  const callId = rows.call.toolCall?.id ?? '';
+  const start = timing.callStarts?.get(callId) ?? epochOf(rows.call.createdAt);
   if (start === undefined) return undefined;
   const end =
     state === 'running'
       ? timing.now
       : state === 'interrupted'
         ? timing.stoppedAt
-        : epochOf(rows.result?.createdAt);
+        : (timing.callEnds?.get(callId) ?? epochOf(rows.result?.createdAt));
   return end === undefined ? undefined : Math.max(0, end - start);
 }
 

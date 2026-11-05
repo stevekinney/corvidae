@@ -201,6 +201,11 @@ export type ChatRunWiringOptions = {
    */
   readonly onCallStarted?: (callId: string, at: number) => void;
   /**
+   * Told when a call this page watched answered: its `TOOL_CALL_RESULT`, with the Bureau's time
+   * on it. Its row is written on the page until the run's snapshot brings the Bureau's.
+   */
+  readonly onCallSettled?: (callId: string, at: number) => void;
+  /**
    * Told when a run ended, with the Bureau's time it ended at: a stream's `RUN_FINISHED` or
    * `RUN_ERROR`, or, for a thread read again, its last run's record when that run failed or was
    * stopped. A call the run left without an answer was interrupted then.
@@ -413,9 +418,15 @@ function isCallEventFor(event: unknown, held: ReadonlySet<string>): boolean {
   return typeof callId === 'string' && held.has(callId);
 }
 
-/** The call a `TOOL_CALL_START` begins, and the Bureau's time on it; `undefined` for any other event. */
-function callStartOf(event: unknown): { readonly callId: string; readonly at: number } | undefined {
-  if (!isRecord(event) || event['type'] !== 'TOOL_CALL_START') return undefined;
+/**
+ * The call a `TOOL_CALL_START` begins or a `TOOL_CALL_RESULT` answers, as `type` says, and the
+ * Bureau's time on it; `undefined` for any other event.
+ */
+function callTimeOf(
+  event: unknown,
+  type: 'TOOL_CALL_START' | 'TOOL_CALL_RESULT',
+): { readonly callId: string; readonly at: number } | undefined {
+  if (!isRecord(event) || event['type'] !== type) return undefined;
   const callId = event['toolCallId'];
   const at = event['timestamp'];
   return typeof callId === 'string' && typeof at === 'number' && Number.isFinite(at)
@@ -1174,8 +1185,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // A run that follows an approval shows the call it was waiting on again, for a client that
         // did not watch it run. This conversation holds the call, and holds it only once.
         if (isCallEventFor(event, held)) continue;
-        const callStart = callStartOf(event);
+        const callStart = callTimeOf(event, 'TOOL_CALL_START');
         if (callStart !== undefined) options.onCallStarted?.(callStart.callId, callStart.at);
+        const callEnd = callTimeOf(event, 'TOOL_CALL_RESULT');
+        if (callEnd !== undefined) options.onCallSettled?.(callEnd.callId, callEnd.at);
         yield event;
         // Apply the live note after the mapped frame for this event has been consumed. Otherwise
         // ChatSession's controller can immediately write its pre-snapshot conversation back over

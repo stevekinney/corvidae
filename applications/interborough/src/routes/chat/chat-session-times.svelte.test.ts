@@ -66,8 +66,9 @@ describe('a chat session on the Bureau’s clock', () => {
     expect(userRow(session)?.createdAt).toBe('2026-11-02T16:45:00.000Z');
   });
 
-  test('keeps when a watched call started, and when the run ended, on the Bureau’s clock', async () => {
+  test('keeps when a watched call started and answered, and when the run ended, on the Bureau’s clock', async () => {
     const started = BUREAU + 2_000;
+    const answered = BUREAU + 2_400;
     const ended = BUREAU + 3_200;
     const session = open(() =>
       sse([
@@ -94,6 +95,15 @@ describe('a chat session on the Bureau’s clock', () => {
         },
         { type: 'TOOL_CALL_END', toolCallId: 'call-2', metadata: meta, timestamp: started },
         {
+          type: 'TOOL_CALL_RESULT',
+          messageId: 'native-1:step:0:result:call-2',
+          toolCallId: 'call-2',
+          content: 'delivered',
+          role: 'tool',
+          metadata: meta,
+          timestamp: answered,
+        },
+        {
           type: 'RUN_ERROR',
           message: 'The model provider dropped the connection.',
           code: 'RUN_FAILED',
@@ -106,6 +116,7 @@ describe('a chat session on the Bureau’s clock', () => {
     await session.send('Also look up order 4398, the same carrier.').catch(() => undefined);
     await waitUntil(() => session.stoppedAt !== undefined, { message: 'the run ended' });
     expect(session.callStarts.get('call-2')).toBe(started);
+    expect(session.callEnds.get('call-2')).toBe(answered);
     expect(session.stoppedAt).toBe(ended);
   });
 });

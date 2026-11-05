@@ -101,6 +101,48 @@ describe('a call’s duration', () => {
     expect(railCall(entry!, false).duration).toBe('1.5s');
   });
 
+  test('counts a call the page watched answer to the Bureau’s time on its answer, not its row’s page time', () => {
+    const [entry] = entriesOf(
+      conversation(
+        call('c', 'call-1', '16:41:05.000'),
+        // The page wrote this row on its own clock, three days on from the Bureau's.
+        row({
+          id: 'r',
+          role: 'tool-result',
+          createdAt: '2026-11-05T15:00:00.000Z',
+          toolResult: { callId: 'call-1', outcome: 'success', content: '$42.00' },
+        }),
+      ),
+      {
+        timing: {
+          ...NOW,
+          callStarts: new Map([['call-1', Date.parse(at('16:41:05.000'))]]),
+          callEnds: new Map([['call-1', Date.parse(at('16:41:05.400'))]]),
+        },
+      },
+    );
+    expect(railCall(entry!, false).duration).toBe('0.4s');
+  });
+
+  test('gives a call a person denied no duration unless one was recorded', () => {
+    const history = conversation(
+      call('c', 'call-4', '16:40:00.000'),
+      row({
+        id: 'r',
+        role: 'tool-result',
+        createdAt: at('16:40:30.000'),
+        toolResult: {
+          callId: 'call-4',
+          outcome: 'error',
+          content: 'Tool call denied: not this one',
+        },
+      }),
+    );
+    const [entry] = entriesOf(history, { timing: NOW });
+    expect(entry?.state).toBe('denied');
+    expect(entry?.durationMilliseconds).toBeUndefined();
+  });
+
   test('counts a running call from when the page watched it start to the Bureau’s now', () => {
     const [entry] = entriesOf(conversation(call('c', 'call-2', '16:45:00.500')), {
       runActive: true,

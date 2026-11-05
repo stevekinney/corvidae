@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import { noToolCalls } from './conditions/predicates';
 import { createActiveRun } from './create-run';
+import { resultRowBatch } from './run-step-support';
 import { createMockGenerate } from './test/index';
 import { TOOL_TIMING_METADATA_KEY, ToolTimingRecorder } from './tool-timing';
 
@@ -66,5 +67,27 @@ describe('tool timing', () => {
     expect(recorder.metadataOf('b')).toBeUndefined();
     recorder.ended('b');
     expect(recorder.metadataOf('b')).toBeUndefined();
+  });
+
+  it('records no time on the row of a call that waits on a person, which has not run', () => {
+    const recorder = new ToolTimingRecorder(() => '2026-11-02T16:41:00.000Z');
+    recorder.started(['ran', 'asked']);
+    recorder.endAll();
+    const batch = resultRowBatch(
+      { runId: 'run-1', step: 0 },
+      [
+        { callId: 'ran', outcome: 'success' },
+        { callId: 'asked', outcome: 'action_required' },
+      ],
+      recorder,
+    );
+    expect(batch?.metadata?.[0]).toEqual({
+      [TOOL_TIMING_METADATA_KEY]: {
+        startedAt: '2026-11-02T16:41:00.000Z',
+        endedAt: '2026-11-02T16:41:00.000Z',
+      },
+    });
+    expect(batch?.metadata?.[1]).toBeUndefined();
+    expect(batch?.messageIds).toEqual(['run-1:step:0:result:ran', 'run-1:step:0:result:asked']);
   });
 });

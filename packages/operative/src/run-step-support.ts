@@ -113,12 +113,14 @@ export interface ResultRowScope {
 
 /**
  * The row ids for appending `results`, derived from the run and step, and each row's record of
- * when its call ran from `timing`. `undefined` when the run has no id and nothing was timed, so
- * the conversation mints the ids and the rows carry no metadata.
+ * when its call ran from `timing`. A call that is waiting on a person (`action_required`) has not
+ * run, so its row records no time: whoever runs it once it is approved records its own. `undefined`
+ * when the run has no id and nothing was timed, so the conversation mints the ids and the rows
+ * carry no metadata.
  */
 export function resultRowBatch(
   scope: ResultRowScope | undefined,
-  results: ReadonlyArray<{ readonly callId: string }>,
+  results: ReadonlyArray<{ readonly callId: string; readonly outcome?: string }>,
   timing?: ToolTimingRecorder,
 ): AppendBatchOptions | undefined {
   const runId = scope?.runId;
@@ -127,7 +129,11 @@ export function resultRowBatch(
       ? undefined
       : results.map((result) => toolResultMessageIdentifier(runId, scope.step, result.callId)!);
   const metadata =
-    timing === undefined ? [] : results.map((result) => timing.metadataOf(result.callId));
+    timing === undefined
+      ? []
+      : results.map((result) =>
+          result.outcome === 'action_required' ? undefined : timing.metadataOf(result.callId),
+        );
   const timed = metadata.some((entry) => entry !== undefined);
   if (messageIds === undefined && !timed) return undefined;
   return { ...(messageIds === undefined ? {} : { messageIds }), ...(timed ? { metadata } : {}) };

@@ -107,6 +107,8 @@ import {
   humanInputSchemaOf,
   sessionOwnerOf,
   type ScheduleTick,
+  TOOL_TIMING_METADATA_KEY,
+  type ToolTiming,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -17842,6 +17844,25 @@ async function constructBureau<const D extends AgentDefinitions>(
    * `stopWhen: pendingApproval()`) can write its own copy of the conversation
    * over this one at its terminal save, so a host serving approvals configures it.
    */
+  /**
+   * When each approved call ran, by review id (COR-2014): the Bureau runs an approved call itself
+   * (`resumeApproval`), so it times the run, and the outcome it writes over the call's waiting row
+   * says when the call ran rather than when it was asked for.
+   */
+  const approvalRunTimes = new Map<string, ToolTiming>();
+
+  /**
+   * The metadata the outcome's row is written with: the waiting row's own, with no time the asking
+   * left on it, and the time the approved call ran when it ran.
+   */
+  function approvalOutcomeMetadata(
+    waiting: Readonly<Record<string, JSONValue>> | undefined,
+    ran: ToolTiming | undefined,
+  ): Record<string, JSONValue> {
+    const { [TOOL_TIMING_METADATA_KEY]: _asked, ...kept } = waiting ?? {};
+    return ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } };
+  }
+
   async function writeApprovalOutcomeToSession(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     input: ResolveReviewInput,
@@ -17894,9 +17915,15 @@ async function constructBureau<const D extends AgentDefinitions>(
               missing = true;
               return undefined;
             }
+            const waiting = history.ids
+              .map((id) => getOwn(history.messages, id))
+              .find((row) => row?.toolResult?.callId === callId);
+            const ran = input.decision === 'approve' ? approvalRunTimes.get(review.id) : undefined;
             return {
               ...session,
-              conversationHistory: resolveToolResult(history, callId, toolResult),
+              conversationHistory: resolveToolResult(history, callId, toolResult, {
+                metadata: approvalOutcomeMetadata(waiting?.metadata, ran),
+              }),
             };
           });
           if (continuingFire) {
@@ -17905,13 +17932,19 @@ async function constructBureau<const D extends AgentDefinitions>(
             );
             break;
           }
-          if (!missing) return undefined;
+          if (!missing) {
+            approvalRunTimes.delete(review.id);
+            return undefined;
+          }
           // A conversation that never held a row for the call (a review restored
           // from persisted metadata alone) shows no approval as pending, so there is
           // nothing stale to replace. A run that is still going is different: its
           // row is not stored yet, and the terminal save would put the stale one
           // there, so the outcome is lost unless the caller is told.
-          if (!stillGoing) return undefined;
+          if (!stillGoing) {
+            approvalRunTimes.delete(review.id);
+            return undefined;
+          }
           lastError = new Error(
             'the run is still going and has not stored the conversation the row is in',
           );
@@ -18613,6 +18646,7 @@ async function constructBureau<const D extends AgentDefinitions>(
           }
           await persistApprovalResolutionStartedWithRetry(review.sessionId, review.id);
           actionStarted = true;
+          const approvedCallStartedAt = runtimeServices.clock.nowISO();
           result = await approvalToolbox.resumeApproval(
             { ...approval, approvalToken: approval.approvalToken },
             {
@@ -18625,6 +18659,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               executionContext: { parentRunId: review.runId },
             },
           );
+          approvalRunTimes.set(review.id, {
+            startedAt: approvedCallStartedAt,
+            endedAt: runtimeServices.clock.nowISO(),
+          });
 
           // `resumeApproval` re-runs the tool's `beforeExecute` policy from
           // scratch — a policy that re-evaluates on edited arguments (or has

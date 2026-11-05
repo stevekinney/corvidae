@@ -12,6 +12,7 @@
 import {
   createScriptedGenerate,
   stopWhen,
+  TOOL_TIMING_METADATA_KEY,
   type Toolbox,
   waitForCondition,
   createAgent,
@@ -155,6 +156,48 @@ describe('resolveReview writes the outcome of a tool approval into the session',
       expect(charges).toEqual([500]);
     } finally {
       await bureau.dispose();
+    }
+  });
+
+  it('says when the approved call ran, not when it was asked for, and gives a denied one no time (COR-2014)', async () => {
+    const approved = await parkedBureau(approvalToolbox([]));
+    try {
+      const waiting = resultRow(
+        await sessionRows(approved.bureau, approved.run.contextId),
+        'call-1',
+      );
+      // A call waiting on a person has not run, so its row says no time.
+      expect(waiting.metadata[TOOL_TIMING_METADATA_KEY]).toBeUndefined();
+      const asked = Date.parse(waiting.createdAt);
+      await approved.bureau.reviews.resolve({
+        id: approved.review.id,
+        decision: 'approve',
+        principal: 'alice',
+      });
+      const replaced = resultRow(
+        await sessionRows(approved.bureau, approved.run.contextId),
+        'call-1',
+      );
+      const timing = replaced.metadata[TOOL_TIMING_METADATA_KEY] as
+        { startedAt: string; endedAt: string } | undefined;
+      expect(timing).toBeDefined();
+      expect(Date.parse(timing!.startedAt)).toBeGreaterThanOrEqual(asked);
+      expect(Date.parse(timing!.endedAt)).toBeGreaterThanOrEqual(Date.parse(timing!.startedAt));
+    } finally {
+      await approved.bureau.dispose();
+    }
+
+    const denied = await parkedBureau(approvalToolbox([]));
+    try {
+      await denied.bureau.reviews.resolve({
+        id: denied.review.id,
+        decision: 'deny',
+        principal: 'alice',
+      });
+      const replaced = resultRow(await sessionRows(denied.bureau, denied.run.contextId), 'call-1');
+      expect(replaced.metadata[TOOL_TIMING_METADATA_KEY]).toBeUndefined();
+    } finally {
+      await denied.bureau.dispose();
     }
   });
 

@@ -159,6 +159,8 @@ export class ChatSessionState {
    * running call's duration counts from it.
    */
   callStarts = $state.raw<ReadonlyMap<string, number>>(new Map());
+  /** When each call this page watched answered, on the Bureau's clock, by call identifier. */
+  callEnds = $state.raw<ReadonlyMap<string, number>>(new Map());
   /** When the last run ended, on the Bureau's clock: a call it left without an answer stopped then. */
   stoppedAt = $state<number | undefined>(undefined);
 
@@ -209,6 +211,9 @@ export class ChatSessionState {
       onCallStarted: (callId, at) => {
         if (!this.callStarts.has(callId))
           this.callStarts = new Map(this.callStarts).set(callId, at);
+      },
+      onCallSettled: (callId, at) => {
+        if (!this.callEnds.has(callId)) this.callEnds = new Map(this.callEnds).set(callId, at);
       },
       onRunStopped: (at) => {
         this.stoppedAt = at;
